@@ -14,7 +14,8 @@ from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
 )
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED, ASSET_DELETED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.asset.events import ASSET_CREATED, ASSET_DELETED
 from pixsim7.backend.main.services.user.user_service import UserService
 
 from pixsim7.backend.main.services.asset._creation import AssetCreationMixin

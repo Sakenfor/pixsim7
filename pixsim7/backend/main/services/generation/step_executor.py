@@ -34,10 +34,8 @@ from pixsim7.backend.main.domain import (
     OperationType,
     User,
 )
-from pixsim7.backend.main.infrastructure.events.bus import (
-    Event,
-    EventBus,
-    event_bus,
+from pixsim7.backend.main.infrastructure.events.bus import Event, EventBus, event_bus
+from pixsim7.backend.main.services.generation.events import (
     JOB_COMPLETED,
     JOB_FAILED,
     JOB_CANCELLED,

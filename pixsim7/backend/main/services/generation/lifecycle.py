@@ -20,8 +20,8 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
 )
-from pixsim7.backend.main.infrastructure.events.bus import (
-    event_bus,
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.generation.events import (
     JOB_STARTED,
     JOB_COMPLETED,
     JOB_FAILED,

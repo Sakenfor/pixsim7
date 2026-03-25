@@ -7,7 +7,8 @@ All helpers add to the session but do NOT commit — callers control transaction
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import json
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,14 +68,14 @@ async def emit_audit_batch(
       - field (str): the field name
       - old (str | None): old value
       - new (str | None): new value
-      - action (str, optional): defaults to "field_changed"; use "content_updated" for large text
+      - action (str, optional): defaults to "updated"
 
     Does not commit.
     """
     now = utcnow()
     entries: List[EntityAudit] = []
     for change in changes:
-        action = change.get("action", "field_changed")
+        action = change.get("action", "updated")
         entry = EntityAudit(
             domain=domain,
             entity_type=entity_type,
@@ -92,3 +93,38 @@ async def emit_audit_batch(
         db.add(entry)
         entries.append(entry)
     return entries
+
+
+def resolve_actor(user: Any) -> str:
+    """Derive audit actor string from a user/principal object."""
+    if user and hasattr(user, 'source'):
+        return user.source
+    if user:
+        return f"user:{getattr(user, 'id', 0)}"
+    return "system"
+
+
+def _serialize_value(value: Any) -> str | None:
+    """Coerce a value to a string suitable for audit old_value / new_value."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, default=str)
+    return str(value)
+
+
+def diff_fields(
+    old: Any,
+    new: Any,
+    fields: Sequence[str],
+) -> List[Tuple[str, str | None, str | None]]:
+    """Compare *fields* on two objects, return list of (field, old_val, new_val) for changed fields."""
+    changes: List[Tuple[str, str | None, str | None]] = []
+    for field in fields:
+        old_val = getattr(old, field, None)
+        new_val = getattr(new, field, None) if not isinstance(new, dict) else new.get(field)
+        if old_val != new_val:
+            changes.append((field, _serialize_value(old_val), _serialize_value(new_val)))
+    return changes

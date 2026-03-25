@@ -23,7 +23,7 @@ from pixsim7.backend.main.services.analysis.analysis_service import AnalysisServ
 from pixsim7.backend.main.services.prompt.parser import AnalyzerTarget, analyzer_registry
 from pixsim7.backend.main.shared.errors import InvalidOperationError, ResourceNotFoundError
 
-logger = configure_logging(__name__)
+logger = configure_logging("service.analysis.backfill")
 
 
 class AnalysisBackfillService:

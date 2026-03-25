@@ -210,40 +210,30 @@ _event_registry: Dict[str, Dict[str, Any]] = {}
 
 def register_event_type(
     event_type: str,
-    description: str,
+    description: str | None = None,
     payload_schema: Dict[str, Any] | None = None,
     source: str | None = None
-) -> None:
+) -> str:
     """
     Register an event type for documentation and discovery.
 
-    This is optional but helps with tooling, documentation, and debugging.
+    Returns the event_type string so it can double as the constant definition:
+
+        JOB_CREATED = register_event_type("job:created")
 
     Args:
         event_type: Event type string (e.g., "game:entity_moved")
-        description: Human-readable description
+        description: Human-readable description (defaults to event_type)
         payload_schema: Optional dict describing expected payload fields
         source: Optional source module/service name
-
-    Example:
-        register_event_type(
-            "game:entity_moved",
-            "Emitted when an entity's transform changes",
-            payload_schema={
-                "entity_type": "str (npc, item, prop, etc.)",
-                "entity_id": "int",
-                "transform": "Transform dict",
-                "link_id": "optional str"
-            },
-            source="NpcSpatialService"
-        )
     """
     _event_registry[event_type] = {
-        "description": description,
+        "description": description or event_type,
         "payload_schema": payload_schema or {},
         "source": source
     }
     logger.debug(f"Registered event type: {event_type}")
+    return event_type
 
 
 def get_registered_events() -> Dict[str, Dict[str, Any]]:
@@ -251,67 +241,3 @@ def get_registered_events() -> Dict[str, Dict[str, Any]]:
     return _event_registry.copy()
 
 
-# ===== LEGACY EVENT CONSTANTS (Deprecated) =====
-# These are kept for backward compatibility but new code should just use strings
-# and optionally call register_event_type() for documentation
-
-def _register_legacy_events():
-    """Register legacy event constants to prevent warnings"""
-    # Job events
-    register_event_type("job:created", "Job/generation created", source="Legacy")
-    register_event_type("job:started", "Job/generation started", source="Legacy")
-    register_event_type("job:completed", "Job/generation completed", source="Legacy")
-    register_event_type("job:failed", "Job/generation failed", source="Legacy")
-    register_event_type("job:cancelled", "Job/generation cancelled", source="Legacy")
-
-    # Asset events
-    register_event_type("asset:created", "Asset created", source="Legacy")
-    register_event_type("asset:downloaded", "Asset downloaded", source="Legacy")
-    register_event_type("asset:download_failed", "Asset download failed", source="Legacy")
-    register_event_type("asset:deleted", "Asset deleted", source="Legacy")
-
-    # Provider events
-    register_event_type("provider:submitted", "Provider submission", source="Legacy")
-    register_event_type("provider:completed", "Provider completed", source="Legacy")
-    register_event_type("provider:failed", "Provider failed", source="Legacy")
-
-    # Account events
-    register_event_type("account:selected", "Account selected", source="Legacy")
-    register_event_type("account:exhausted", "Account exhausted", source="Legacy")
-    register_event_type("account:error", "Account error", source="Legacy")
-
-    # Scene events
-    register_event_type("scene:created", "Scene created", source="Legacy")
-    register_event_type("scene:updated", "Scene updated", source="Legacy")
-
-
-_register_legacy_events()
-
-# Job events
-JOB_CREATED = "job:created"
-JOB_STARTED = "job:started"
-JOB_COMPLETED = "job:completed"
-JOB_FAILED = "job:failed"
-JOB_CANCELLED = "job:cancelled"
-JOB_PAUSED = "job:paused"
-JOB_RESUMED = "job:resumed"
-
-# Asset events
-ASSET_CREATED = "asset:created"
-ASSET_DOWNLOADED = "asset:downloaded"
-ASSET_DOWNLOAD_FAILED = "asset:download_failed"
-ASSET_DELETED = "asset:deleted"
-
-# Provider events
-PROVIDER_SUBMITTED = "provider:submitted"
-PROVIDER_COMPLETED = "provider:completed"
-PROVIDER_FAILED = "provider:failed"
-
-# Account events
-ACCOUNT_SELECTED = "account:selected"
-ACCOUNT_EXHAUSTED = "account:exhausted"
-ACCOUNT_ERROR = "account:error"
-
-# Scene events
-SCENE_CREATED = "scene:created"
-SCENE_UPDATED = "scene:updated"

@@ -22,7 +22,8 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
 )
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.asset.events import ASSET_CREATED
 
 
 class AssetEnrichmentService:

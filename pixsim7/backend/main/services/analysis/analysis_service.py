@@ -49,10 +49,11 @@ from pixsim7.backend.main.infrastructure.events.bus import event_bus
 logger = logging.getLogger(__name__)
 
 # Event types for analysis lifecycle
-ANALYSIS_CREATED = "analysis.created"
-ANALYSIS_STARTED = "analysis.started"
-ANALYSIS_COMPLETED = "analysis.completed"
-ANALYSIS_FAILED = "analysis.failed"
+from pixsim7.backend.main.infrastructure.events.bus import register_event_type
+ANALYSIS_CREATED = register_event_type("analysis.created")
+ANALYSIS_STARTED = register_event_type("analysis.started")
+ANALYSIS_COMPLETED = register_event_type("analysis.completed")
+ANALYSIS_FAILED = register_event_type("analysis.failed")
 
 
 @dataclass(frozen=True)

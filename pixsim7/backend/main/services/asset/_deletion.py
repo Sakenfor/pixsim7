@@ -13,7 +13,8 @@ from sqlalchemy import select, func
 
 from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.shared.errors import InvalidOperationError
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_DELETED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.asset.events import ASSET_DELETED
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:

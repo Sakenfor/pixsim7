@@ -26,7 +26,7 @@ from pixsim7.backend.main.services.prompt.parser import (
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-logger = configure_logging(__name__)
+logger = configure_logging("service.analysis.definition")
 
 
 class AnalyzerDefinitionError(Exception):

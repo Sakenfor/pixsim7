@@ -6,7 +6,7 @@ Clean service for account pool management with normalized credit tracking
 from typing import Optional, Dict
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
 from pixsim_logging import get_logger
@@ -244,10 +244,19 @@ class AccountService:
             ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs
         )
 
-        # Sort by priority, least recently used
+        # Sort by priority, then lowest credits first (drain cheap accounts),
+        # then least recently used as tiebreaker.
+        _total_credits = (
+            select(func.coalesce(func.sum(ProviderCredit.amount), 0))
+            .where(ProviderCredit.account_id == ProviderAccount.id)
+            .correlate(ProviderAccount)
+            .scalar_subquery()
+            .label("total_credits")
+        )
         query = query.order_by(
             ProviderAccount.priority.desc(),
-            ProviderAccount.last_used.asc().nullsfirst()
+            _total_credits.asc(),
+            ProviderAccount.last_used.asc().nullsfirst(),
         )
 
         result = await self.db.execute(query)
@@ -414,10 +423,19 @@ class AccountService:
                 )
             )
 
-        # Sort by priority, least recently used
+        # Sort by priority, then lowest credits first (drain cheap accounts
+        # before touching high-credit ones), then least recently used.
+        _total_credits = (
+            select(func.coalesce(func.sum(ProviderCredit.amount), 0))
+            .where(ProviderCredit.account_id == ProviderAccount.id)
+            .correlate(ProviderAccount)
+            .scalar_subquery()
+            .label("total_credits")
+        )
         query = query.order_by(
             ProviderAccount.priority.desc(),
-            ProviderAccount.last_used.asc().nullsfirst()
+            _total_credits.asc(),
+            ProviderAccount.last_used.asc().nullsfirst(),
         )
 
         # Lock and skip already-locked rows (concurrent jobs will get different accounts)

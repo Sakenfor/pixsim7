@@ -25,7 +25,8 @@ from pixsim7.backend.main.services.provider.base import (
     ProviderError,
 )
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ResourceNotFoundError
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, PROVIDER_SUBMITTED, PROVIDER_COMPLETED, PROVIDER_FAILED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.provider.events import PROVIDER_SUBMITTED, PROVIDER_COMPLETED, PROVIDER_FAILED
 from pixsim7.backend.main.shared.operation_mapping import (
     get_image_operations,
     get_video_operations,

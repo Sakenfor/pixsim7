@@ -37,7 +37,8 @@ from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
     NoAccountAvailableError,
 )
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, JOB_CREATED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.generation.events import JOB_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.cache import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences

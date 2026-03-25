@@ -21,7 +21,7 @@ from pixsim7.backend.main.shared.presets.review import (
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-logger = configure_logging(__name__)
+logger = configure_logging("service.analysis.preset")
 
 
 class AnalyzerPresetError(PresetReviewError):

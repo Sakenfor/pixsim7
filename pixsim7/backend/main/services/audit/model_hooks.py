@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Optional, Sequence
+from uuid import uuid4
 
 from sqlalchemy import event, inspect
 from sqlmodel import SQLModel
@@ -28,6 +29,12 @@ from pixsim7.backend.main.services.audit.context import get_audit_actor, get_aud
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 import json
+
+
+def _emit_audit(connection, **kwargs):
+    """Insert an EntityAudit row via core connection (safe during flush)."""
+    kwargs.setdefault("id", uuid4())
+    connection.execute(EntityAudit.__table__.insert().values(**kwargs))
 
 
 @dataclass
@@ -64,7 +71,8 @@ def _on_after_insert(mapper, connection, target):
     meta: AuditMeta = getattr(target.__class__, "__audit__", None)
     if not meta:
         return
-    entry = EntityAudit(
+    _emit_audit(
+        connection,
         domain=meta.domain,
         entity_type=meta.entity_type,
         entity_id=_get_id(target, meta),
@@ -74,11 +82,6 @@ def _on_after_insert(mapper, connection, target):
         commit_sha=get_audit_commit_sha(),
         timestamp=utcnow(),
     )
-    # Use the sync connection from the flush context to add to same transaction
-    from sqlalchemy.orm import object_session
-    session = object_session(target)
-    if session:
-        session.add(entry)
 
 
 def _on_after_update(mapper, connection, target):
@@ -95,11 +98,6 @@ def _on_after_update(mapper, connection, target):
 
     tracked = set(meta.tracked_fields) if meta.tracked_fields else None
 
-    from sqlalchemy.orm import object_session
-    session = object_session(target)
-    if not session:
-        return
-
     for attr in insp.attrs:
         if attr.key.startswith("_"):
             continue
@@ -114,7 +112,8 @@ def _on_after_update(mapper, connection, target):
         old_val = hist.deleted[0] if hist.deleted else None
         new_val = hist.added[0] if hist.added else None
 
-        session.add(EntityAudit(
+        _emit_audit(
+            connection,
             domain=meta.domain,
             entity_type=meta.entity_type,
             entity_id=entity_id,
@@ -126,18 +125,15 @@ def _on_after_update(mapper, connection, target):
             actor=actor,
             commit_sha=commit_sha,
             timestamp=now,
-        ))
+        )
 
 
 def _on_after_delete(mapper, connection, target):
     meta: AuditMeta = getattr(target.__class__, "__audit__", None)
     if not meta:
         return
-    from sqlalchemy.orm import object_session
-    session = object_session(target)
-    if not session:
-        return
-    session.add(EntityAudit(
+    _emit_audit(
+        connection,
         domain=meta.domain,
         entity_type=meta.entity_type,
         entity_id=_get_id(target, meta),
@@ -146,7 +142,7 @@ def _on_after_delete(mapper, connection, target):
         actor=get_audit_actor(),
         commit_sha=get_audit_commit_sha(),
         timestamp=utcnow(),
-    ))
+    )
 
 
 _registered = False
