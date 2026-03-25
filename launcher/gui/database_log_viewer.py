@@ -31,7 +31,7 @@ except ImportError:
     from log_view_widget import LogViewWidget
     from clickable_fields import get_registry, get_field, ActionType
 
-from pixsim_logging.spec import SERVICES, CHANNELS, STAGES, PROVIDERS
+from pixsim_logging.spec import SERVICES, CHANNELS, DOMAINS, STAGES, PROVIDERS
 
 
 class LogFetchWorker(QThread):
@@ -222,6 +222,13 @@ class DatabaseLogViewer(QWidget):
         self.channel_combo.setToolTip("Filter by log channel")
         self.channel_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.channel_combo)
+
+        # Domain
+        self.domain_combo = self._styled_combo(['All'] + list(DOMAINS))
+        self.domain_combo.setMinimumWidth(100)
+        self.domain_combo.setToolTip("Filter by business domain")
+        self.domain_combo.currentTextChanged.connect(self.refresh_logs)
+        filter_bar.addWidget(self.domain_combo)
 
         # Search (larger, more prominent)
         self.search_input = QLineEdit()
@@ -556,6 +563,7 @@ class DatabaseLogViewer(QWidget):
         self.service_combo.setCurrentText('All')
         self.level_combo.setCurrentText('All')
         self.channel_combo.setCurrentText('All')
+        self.domain_combo.setCurrentText('All')
         self.provider_combo.setCurrentText('All')
         self.stage_combo.setCurrentText('All')
         self.time_combo.setCurrentText('Last hour')
@@ -586,6 +594,10 @@ class DatabaseLogViewer(QWidget):
         channel = self.channel_combo.currentText()
         if channel != 'All':
             filters.append(f"channel={channel}")
+
+        domain = self.domain_combo.currentText()
+        if domain != 'All':
+            filters.append(f"domain={domain}")
 
         provider = self.provider_combo.currentText()
         if provider != 'All':
@@ -673,6 +685,11 @@ class DatabaseLogViewer(QWidget):
             if channel != 'All':
                 params['channel'] = channel
 
+            # Domain filter
+            domain = self.domain_combo.currentText()
+            if domain != 'All':
+                params['domain'] = domain
+
             # Provider filter
             provider = self.provider_combo.currentText()
             if provider and provider != 'All':
@@ -718,6 +735,8 @@ class DatabaseLogViewer(QWidget):
                 filter_info.append(f"service={service}")
             if channel != 'All':
                 filter_info.append(f"channel={channel}")
+            if domain != 'All':
+                filter_info.append(f"domain={domain}")
             if provider != 'All':
                 filter_info.append(f"provider={provider}")
             if level != 'All':
@@ -1477,6 +1496,7 @@ class DatabaseLogViewer(QWidget):
         combo_map = {
             "service": self.service_combo,
             "channel": self.channel_combo,
+            "domain": self.domain_combo,
         }
         for column, combo in combo_map.items():
             try:

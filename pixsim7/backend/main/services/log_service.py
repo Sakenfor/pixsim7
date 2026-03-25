@@ -108,6 +108,7 @@ class LogService:
         stage: Optional[str] = None,
         stage_prefix: Optional[str] = None,
         channel: Optional[str] = None,
+        domain: Optional[str] = None,
         provider_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -154,6 +155,8 @@ class LogService:
             filters.append(col(LogEntry.stage).like(f"{stage_prefix}:%"))
         if channel:
             filters.append(LogEntry.channel == channel)
+        if domain:
+            filters.append(LogEntry.domain == domain)
         if provider_id:
             filters.append(LogEntry.provider_id == provider_id)
         if start_time:
@@ -302,7 +305,7 @@ class LogService:
         known_cols: Set[str] = {
             "id", "timestamp", "level", "service", "env", "msg", "request_id",
             "job_id", "submission_id", "generation_id", "provider_job_id",
-            "provider_id", "operation_type", "stage", "channel", "user_id", "error",
+            "provider_id", "operation_type", "stage", "domain", "channel", "user_id", "error",
             "error_type", "duration_ms", "attempt", "extra", "created_at"
         }
 
@@ -394,6 +397,7 @@ class LogService:
         provider_id: Optional[str] = None,
         operation_type: Optional[str] = None,
         stage: Optional[str] = None,
+        domain: Optional[str] = None,
         request_id: Optional[str] = None,
         job_id: Optional[int] = None,
         user_id: Optional[int] = None,
@@ -426,7 +430,7 @@ class LogService:
         base_cols = {
             "level", "service", "env", "msg", "request_id", "job_id",
             "submission_id", "generation_id", "provider_job_id", "provider_id",
-            "operation_type", "stage", "channel", "user_id", "error_type", "attempt",
+            "operation_type", "stage", "domain", "channel", "user_id", "error_type", "attempt",
             "duration_ms"
         }
 
@@ -445,6 +449,7 @@ class LogService:
         add_clause("provider_id", provider_id)
         add_clause("operation_type", operation_type)
         add_clause("stage", stage)
+        add_clause("domain", domain)
         add_clause("request_id", request_id)
         add_clause("job_id", job_id)
         add_clause("user_id", user_id)

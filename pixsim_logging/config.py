@@ -38,6 +38,7 @@ DEFAULT_LEVEL = "INFO"
 
 
 _active_db_handler = None  # Set during configure_logging for stats access
+_active_http_handler = None  # Set during configure_logging for stdlib ingestion
 _registered_services: set[str] = set()  # Auto-populated by configure_logging calls
 
 
@@ -166,8 +167,10 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
             http_handler = None
             http_disabled_reason = "handler_exception"
 
+    global _active_http_handler
     if http_handler is not None:
         processors.append(http_handler)
+        _active_http_handler = http_handler
 
     if json:
         # Use ensure_ascii=False to preserve unicode characters like → instead of \u2192
@@ -229,34 +232,146 @@ def _patched_log(self, level, msg, args, **kwargs):
 logging.Logger._log = _patched_log
 
 
-def configure_stdlib_root_logger() -> None:
-    """Configure the stdlib root logger so libraries using ``logging.getLogger()`` emit to stdout.
+def _drop_safe(processor):
+    """Wrap a processor so DropEvent sets a flag instead of raising.
 
-    Reads PIXSIM_LOG_FORMAT and LOG_LEVEL from the environment.
-    Safe to call multiple times — skips if handlers are already attached.
+    ProcessorFormatter (structlog 23.x) does not catch DropEvent in
+    foreign_pre_chain, so we convert it to a sentinel that the renderer
+    wrapper can check.
+    """
+    def wrapper(logger, method_name, event_dict):
+        try:
+            return processor(logger, method_name, event_dict)
+        except structlog.DropEvent:
+            event_dict["_dropped"] = True
+            return event_dict
+    return wrapper
+
+
+def _stdlib_service_processor(logger, method_name, event_dict):
+    """Extract a short service name from the stdlib logger name.
+
+    Maps e.g. ``pixsim7.backend.main.services.prompt.block.primitive_loader``
+    to ``block.primitive_loader`` so the console renderer has something
+    meaningful in its 10-char service column.
+
+    Also removes ``_record`` and ``_from_structlog`` so downstream processors
+    (especially the DB handler) never see non-serializable LogRecord objects.
+    """
+    record = event_dict.pop("_record", None)
+    event_dict.pop("_from_structlog", None)
+    if record:
+        name = getattr(record, "name", "") or ""
+        if name:
+            event_dict.setdefault("logger_name", name)
+        if "service" not in event_dict:
+            parts = name.split(".")
+            if len(parts) > 2:
+                event_dict["service"] = ".".join(parts[-2:])
+            else:
+                event_dict["service"] = name
+        # stdlib/ARQ records can carry transport/renderer fields that duplicate
+        # the actual event payload and create noisy repeated columns in viewers.
+        event_message = None
+        try:
+            event_message = record.getMessage()
+        except Exception:
+            event_message = None
+        if event_dict.get("message") == event_message:
+            event_dict.pop("message", None)
+        event_dict.pop("asctime", None)
+    return event_dict
+
+
+def _make_stdlib_renderer(renderer):
+    """Wrap a renderer to handle dropped events and clean internal keys."""
+    def wrapper(logger, method_name, event_dict):
+        if event_dict.pop("_dropped", False):
+            return ""
+        return renderer(logger, method_name, event_dict)
+    return wrapper
+
+
+class _DropAwareHandler(logging.StreamHandler):
+    """StreamHandler that suppresses records whose formatted output is empty.
+
+    Used together with ``_make_stdlib_renderer`` which returns ``""`` for
+    events that were dropped by domain/level filtering.
+    """
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            if not msg:
+                return
+            self.stream.write(msg + self.terminator)
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
+def configure_stdlib_root_logger() -> None:
+    """Configure the stdlib root logger to emit through structlog processors.
+
+    Uses ``ProcessorFormatter`` so that stdlib loggers (``logging.getLogger()``)
+    get the same rendering, redaction, domain filtering, and DB/HTTP ingestion
+    as native structlog loggers.
+
+    Must be called *after* ``configure_logging()`` for DB/HTTP handlers to be
+    available.  Safe to call multiple times — skips if handlers already present.
     """
     root = logging.getLogger()
     if root.handlers:
         return
 
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
+    _ensure_utf8_stdout()
 
-    if os.getenv("PIXSIM_LOG_FORMAT", "json").lower() == "human":
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S',
+    use_json = os.getenv("PIXSIM_LOG_FORMAT", "json").lower() != "human"
+
+    # Pre-chain for stdlib ("foreign") LogRecords.  ExtraAdder merges the
+    # extra dict (populated by _patched_log) into the event_dict so kwargs
+    # like ``pack=`` and ``error=`` become first-class structured fields.
+    foreign_pre_chain: list = [
+        structlog.stdlib.ExtraAdder(),
+        _stdlib_service_processor,
+        structlog.processors.TimeStamper(fmt="iso", key="timestamp"),
+        structlog.processors.add_log_level,
+        _drop_safe(_global_level_filter_processor),
+        _drop_safe(_domain_filter_processor),
+        _redaction_processor,
+        structlog.processors.format_exc_info,
+    ]
+
+    # Include DB/HTTP ingestion so stdlib logs are captured too.
+    if _active_db_handler is not None:
+        foreign_pre_chain.append(_active_db_handler)
+    if _active_http_handler is not None:
+        foreign_pre_chain.append(_active_http_handler)
+
+    # Use the same renderer as the structlog path.
+    if use_json:
+        renderer = structlog.processors.JSONRenderer(
+            serializer=lambda obj, **kw: __import__('json').dumps(obj, ensure_ascii=False, **kw)
         )
     else:
-        formatter = logging.Formatter('%(message)s')
+        from .console_renderer import CleanConsoleRenderer
+        renderer = CleanConsoleRenderer(colors=True)
 
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=foreign_pre_chain,
+        processors=[_make_stdlib_renderer(renderer)],
+    )
+
+    handler = _DropAwareHandler()
+    handler.setLevel(logging.DEBUG)
     handler.setFormatter(formatter)
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
 
-    level_env = os.getenv("LOG_LEVEL", "INFO").upper()
-    if level_env in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-        root.setLevel(getattr(logging, level_env))
+    root.addHandler(handler)
+    root.setLevel(_get_level())
+
+    # Suppress noisy third-party loggers that would clutter output now
+    # that all stdlib loggers are rendered through the structlog pipeline.
+    for name in ("urllib3", "httpcore", "httpx", "asyncio", "watchfiles"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_logger() -> structlog.stdlib.BoundLogger:
