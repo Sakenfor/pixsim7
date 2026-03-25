@@ -96,6 +96,7 @@ import {
   Users,
   Clock,
   Code,
+  List,
   ListPlus,
   FolderTree,
   Maximize2,
@@ -211,6 +212,7 @@ export const Icons = {
   link: Link2,
   externalLink: ExternalLink,
   'external-link': ExternalLink, // Kebab-case alias
+  list: List,
   listPlus: ListPlus,
   lock: Lock,
   unlock: Unlock,
@@ -257,7 +259,9 @@ export const Icons = {
   tags: Tags,
   shield: Shield,
   flask: FlaskConical,
+  beaker: FlaskConical,   // Alias — flask/beaker both map to FlaskConical
   'git-branch': GitBranch,
+  gitBranch: GitBranch,   // camelCase alias
 
   // Panels & Features
   heart: Heart,

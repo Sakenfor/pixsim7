@@ -195,8 +195,10 @@ def _dedupe_world_list_for_catalog(worlds: List[Any]) -> List[Any]:
 
     Rules per normalized name:
     1) If any world has `project_world_upsert_key`, keep newest keyed world.
-    2) Else if all worlds share same non-empty bootstrap source, keep newest world.
-    3) Else keep all rows (possible intentional duplicates).
+    2) Else if bootstrapped worlds share at most one source (worlds with
+       no source are treated as legacy duplicates, not conflicts), keep
+       newest bootstrapped world (or newest overall if none bootstrapped).
+    3) Else keep all rows (multiple distinct bootstrap sources = intentional).
     """
     grouped: Dict[str, List[Any]] = {}
     for world in worlds:
@@ -219,8 +221,13 @@ def _dedupe_world_list_for_catalog(worlds: List[Any]) -> List[Any]:
             for source in (_read_world_bootstrap_source(world) for world in group)
             if source
         }
-        if len(bootstrap_sources) == 1:
-            deduped.append(max(group, key=lambda world: int(getattr(world, "id", 0) or 0)))
+        # Collapse when all bootstrapped worlds share one source.
+        # Worlds with no source (legacy/manual) are treated as duplicates,
+        # not as a conflicting source.
+        if len(bootstrap_sources) <= 1:
+            bootstrapped = [w for w in group if _read_world_bootstrap_source(w)]
+            winner = max(bootstrapped, key=lambda w: int(getattr(w, "id", 0) or 0)) if bootstrapped else max(group, key=lambda w: int(getattr(w, "id", 0) or 0))
+            deduped.append(winner)
             continue
 
         deduped.extend(group)

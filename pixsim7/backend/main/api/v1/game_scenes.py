@@ -12,7 +12,9 @@ from pixsim7.backend.main.api.dependencies import (
     DatabaseSession,
 )
 from pixsim7.backend.main.domain.game import GameScene, GameSceneEdge, GameSceneNode
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.game.derived_projections import sync_scene_graph_projection
+from pixsim7.backend.main.services.game.events import SCENE_CREATED, SCENE_UPDATED
 from pixsim7.backend.main.services.tag_service import TagService
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 
@@ -405,6 +407,7 @@ async def create_scene(
     scene = await _load_scene_or_404(db, int(scene.id))
     await sync_scene_graph_projection(db, int(scene.id))
     scene = await _load_scene_or_404(db, int(scene.id))
+    await event_bus.publish(SCENE_CREATED, {"scene_id": int(scene.id), "world_id": scene.world_id})
     return await _build_scene_response(scene, db, asset_service, user)
 
 
@@ -433,6 +436,7 @@ async def replace_scene(
     scene = await _load_scene_or_404(db, scene_id)
     await sync_scene_graph_projection(db, int(scene.id))
     scene = await _load_scene_or_404(db, scene_id)
+    await event_bus.publish(SCENE_UPDATED, {"scene_id": int(scene.id), "world_id": scene.world_id})
     return await _build_scene_response(scene, db, asset_service, user)
 
 

@@ -458,22 +458,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
-                        # If we excluded pinned accounts and that left no accounts,
-                        # retry without exclusions so non-pinned jobs don't starve.
-                        # Still exclude rejected accounts — they genuinely lack credits.
-                        if _pinned_exclude_ids:
-                            try:
-                                gen_logger.info("retrying_without_pinned_exclusion")
-                                acct = await account_service.select_and_reserve_account(
-                                    provider_id=generation.provider_id,
-                                    user_id=generation.user_id,
-                                    include_exhausted=include_exhausted_candidates,
-                                    min_credits=required_credit_hint,
-                                    exclude_account_ids=_rejected_account_ids or None,
-                                )
-                                return acct
-                            except (NoAccountAvailableError, AccountCooldownError):
-                                pass  # Fall through to original error
+                        # Never fall back to pinned accounts — stealing a pinned
+                        # slot blocks both the pinned queue and the non-pinned job
+                        # (which gets stuck behind pinned work).  Better to defer.
                         gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
                         debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
                         raise  # Propagate - no more accounts to try

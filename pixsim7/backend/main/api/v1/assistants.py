@@ -122,7 +122,7 @@ async def create_assistant_profile(
         label=payload.name,
         description=payload.description,
         icon=payload.icon,
-        agent_type="claude-cli",
+        agent_type=getattr(payload, 'agent_type', None) or "claude",
         system_prompt=payload.system_prompt,
         model_id=payload.model_id,
         method=payload.method,

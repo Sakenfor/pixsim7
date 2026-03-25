@@ -416,6 +416,12 @@ export const panelSelectors = {
     return this.getAll().filter((panel) => !panel.isInternal);
   },
 
+  getBrowsablePanels(): PanelDefinition[] {
+    return this.getAll().filter(
+      (panel) => !panel.isInternal && panel.browsable !== false,
+    );
+  },
+
   search(query: string): PanelDefinition[] {
     const lowerQuery = query.toLowerCase();
     return this.getAll().filter((panel) => {

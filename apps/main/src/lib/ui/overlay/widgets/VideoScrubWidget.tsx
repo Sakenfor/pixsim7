@@ -726,7 +726,8 @@ export function VideoScrubWidgetRenderer({
       // Pause and reset video
       if (videoRef.current) {
         videoRef.current.pause();
-        if (isVideoLoaded) {
+        // Use readyState instead of isVideoLoaded state to avoid dep cycle
+        if (videoRef.current.readyState >= 1) {
           videoRef.current.currentTime = 0;
         }
       }
@@ -741,7 +742,7 @@ export function VideoScrubWidgetRenderer({
       lastClickTimeRef.current = 0;
       lastClickMarkRef.current = null;
     }
-  }, [isHovering, isVideoLoaded]);
+  }, [isHovering]);
 
   // Calculate progress percentage
   // Use hoverPercent for immediate feedback when scrubbing, progressPercentage when playing

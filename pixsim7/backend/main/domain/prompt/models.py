@@ -24,6 +24,7 @@ from pixsim7.backend.main.domain.prompt.enums import (
     BlockIntent,
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.services.audit.model_hooks import AuditMeta
 
 
 class PromptFamily(SQLModel, table=True):
@@ -36,6 +37,10 @@ class PromptFamily(SQLModel, table=True):
         - "NPC Anne - Playful Tease" (dialogue variations)
     """
     __tablename__ = "prompt_families"
+    __audit__ = AuditMeta(
+        domain="prompt", entity_type="prompt_family", label_field="title",
+        tracked_fields=("title", "description", "category", "tags", "is_active"),
+    )
 
     id: Optional[UUID] = Field(
         default_factory=uuid4,
@@ -133,6 +138,7 @@ class PromptVersion(SQLModel, table=True):
     meaningful blocks are also stored in PromptBlock table for querying.
     """
     __tablename__ = "prompt_versions"
+    __audit__ = AuditMeta(domain="prompt", entity_type="prompt_version")
 
     id: Optional[UUID] = Field(
         default_factory=uuid4,

@@ -76,7 +76,9 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def base_world_meta() -> Dict[str, Any]:
+def base_world_meta(world_name: str = "") -> Dict[str, Any]:
+    normalized = world_name.strip() or "world"
+    upsert_key = f"{BOOTSTRAP_SOURCE_KEY}:world:{normalized}"
     return {
         "genre": "comedy_adventure",
         "premise": (
@@ -85,6 +87,7 @@ def base_world_meta() -> Dict[str, Any]:
         ),
         "style": "leisure-suit-larry-inspired parody tone",
         "turn_model": "turn_based",
+        "project_world_upsert_key": upsert_key,
         "project_content_packs": {
             "registration_mode": "explicit",
             "registered_source_packs": list(REGISTERED_SOURCE_PACKS),

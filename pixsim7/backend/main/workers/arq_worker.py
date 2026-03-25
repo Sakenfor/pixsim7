@@ -116,6 +116,25 @@ async def reload_logging_config(ctx: dict) -> None:
         pass  # Best-effort; next cycle will retry
 
 
+def _normalize_arq_logger_handlers() -> None:
+    """Drop ARQ's default plain-text handler so events flow once via pixsim_logging.
+
+    The `arq` CLI applies its own logging dictConfig after importing this module.
+    That handler emits `%(asctime)s: %(message)s` lines in parallel with the
+    structured stdlib root handler configured by pixsim_logging, causing duplicates.
+    """
+    removed = 0
+    for logger_name in ("arq", "arq.worker"):
+        arq_logger = stdlib_logging.getLogger(logger_name)
+        for handler in list(arq_logger.handlers):
+            arq_logger.removeHandler(handler)
+            removed += 1
+        arq_logger.propagate = True
+        arq_logger.disabled = False
+    if removed:
+        logger.info("arq_logger_handlers_removed", removed_handlers=removed)
+
+
 async def startup(ctx: dict) -> None:
     """
     Worker startup handler
@@ -125,6 +144,7 @@ async def startup(ctx: dict) -> None:
     """
     # Initialize account event satellite handler
     AccountEventService.initialize()
+    _normalize_arq_logger_handlers()
 
     # Initialize health tracker
     health = get_health_tracker()
@@ -233,6 +253,7 @@ async def retry_startup(ctx: dict) -> None:
     """Startup for generation retry worker (no cron/bootstrap side effects)."""
     global _retry_event_bridge
     AccountEventService.initialize()
+    _normalize_arq_logger_handlers()
     get_health_tracker()
     logger.info("worker_start", msg="PixSim7 Generation Retry Worker Starting")
 
@@ -264,6 +285,7 @@ async def retry_shutdown(ctx: dict) -> None:
 
 async def simulation_startup(ctx: dict) -> None:
     """Startup for dedicated simulation scheduler worker."""
+    _normalize_arq_logger_handlers()
     get_health_tracker()
     logger.info("worker_start", msg="PixSim7 Simulation Scheduler Worker Starting")
     await _load_persisted_system_config_for_worker()

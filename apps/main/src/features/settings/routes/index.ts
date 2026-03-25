@@ -3,7 +3,7 @@ import { lazy } from 'react';
 import { defineModule } from '@app/modules/types';
 
 export const settingsPageModule = defineModule({
-  id: 'settings-page',
+  id: 'settings',
   name: 'Settings',
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for settings route module.',

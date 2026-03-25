@@ -119,14 +119,19 @@ export function PromptHistoryPopover({
                 'border-b border-neutral-50 dark:border-neutral-800/50',
                 isCurrent && 'bg-accent/5 dark:bg-accent/10',
                 isFuture && !isCurrent && 'opacity-50',
+                !isCurrent && 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
               )}
+              onClick={!isCurrent ? () => onJumpTo(idx) : undefined}
             >
               {/* Collapsed header — always visible */}
               <div className="flex items-center gap-2 px-3 py-1.5" title={hoverTitle}>
                 {/* Expand/collapse chevron */}
                 <button
                   type="button"
-                  onClick={() => toggleExpanded(idx)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleExpanded(idx);
+                  }}
                   className="p-0.5 -ml-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
                 >
                   <Icon
@@ -195,17 +200,6 @@ export function PromptHistoryPopover({
 
                   {/* Inline diff */}
                   {prev !== null && !isFuture && <DiffDisplay prev={prev} next={entry} />}
-
-                  {/* Restore button */}
-                  {!isCurrent && (
-                    <button
-                      type="button"
-                      onClick={() => onJumpTo(idx)}
-                      className="mt-1.5 text-[10px] px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      Restore
-                    </button>
-                  )}
                 </div>
               )}
             </div>

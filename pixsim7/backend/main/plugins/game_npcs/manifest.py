@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, NpcExpressionSvc
-from pixsim7.backend.main.domain.game.core.models import GameNPC, NPCSchedule, NPCState, GameWorldState
+from pixsim7.backend.main.domain.game.core.models import NPCSchedule, NPCState, GameWorldState
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 
@@ -37,11 +37,6 @@ manifest = PluginManifest(
 # ===== API ROUTER =====
 
 router = APIRouter(tags=["game-npcs"])
-
-
-class NpcSummary(BaseModel):
-    id: int
-    name: str
 
 
 class NpcExpressionDTO(BaseModel):
@@ -74,21 +69,6 @@ def _split_world_time(world_time: float) -> Tuple[int, float]:
     day_of_week = day_index % DAYS_PER_WEEK
     seconds_in_day = float(world_time % SECONDS_PER_DAY)
     return day_of_week, seconds_in_day
-
-
-@router.get("/", response_model=List[NpcSummary])
-async def list_npcs(
-    db: DatabaseSession,
-    user: CurrentUser,
-) -> List[NpcSummary]:
-    """
-    List game NPCs.
-
-    Currently returns all NPCs; future versions may filter by workspace/user.
-    """
-    result = await db.execute(select(GameNPC).order_by(GameNPC.id))
-    npcs = result.scalars().all()
-    return [NpcSummary(id=n.id, name=n.name) for n in npcs]
 
 
 @router.get("/{npc_id}/expressions", response_model=List[NpcExpressionDTO])

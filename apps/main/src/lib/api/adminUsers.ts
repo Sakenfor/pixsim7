@@ -9,6 +9,9 @@ export interface AdminUserPermissions {
   permissions: string[];
   created_at: string;
   last_login_at: string | null;
+  bridge_machines?: BridgeMachine[];
+  bridge_machines_total?: number;
+  bridge_machines_online?: number;
 }
 
 export interface AdminUsersListResponse {
@@ -22,8 +25,38 @@ export interface ListAdminUsersParams {
   offset?: number;
 }
 
+export interface BridgeMachine {
+  bridge_client_id: string;
+  bridge_id: string | null;
+  agent_type: string | null;
+  status: string;
+  online: boolean;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_connected_at: string | null;
+  last_disconnected_at: string | null;
+  model: string | null;
+  client_host: string | null;
+}
+
+export interface BridgeMachinesResponse {
+  total: number;
+  machines: BridgeMachine[];
+}
+
+export interface ListBridgeMachinesParams {
+  user_id?: number;
+  limit?: number;
+}
+
 export async function listAdminUsers(params: ListAdminUsersParams = {}): Promise<AdminUsersListResponse> {
   return pixsimClient.get<AdminUsersListResponse>('/admin/users', { params });
+}
+
+export async function listBridgeMachines(
+  params: ListBridgeMachinesParams = {},
+): Promise<BridgeMachinesResponse> {
+  return pixsimClient.get<BridgeMachinesResponse>('/meta/agents/bridge/machines', { params });
 }
 
 export async function updateAdminUserPermissions(

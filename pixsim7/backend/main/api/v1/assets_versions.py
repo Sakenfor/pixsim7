@@ -229,7 +229,7 @@ async def get_asset_versions(
     return [
         VersionSummary(
             asset_id=v.id,
-            version_family_id=v.version_family_id,
+            version_family_id=str(v.version_family_id) if v.version_family_id else None,
             version_number=v.version_number,
             parent_asset_id=v.parent_asset_id,
             version_message=v.version_message,
@@ -276,7 +276,7 @@ async def get_asset_ancestry(
     return [
         VersionSummary(
             asset_id=a.id,
-            version_family_id=a.version_family_id,
+            version_family_id=str(a.version_family_id) if a.version_family_id else None,
             version_number=a.version_number,
             parent_asset_id=a.parent_asset_id,
             version_message=a.version_message,

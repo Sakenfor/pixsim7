@@ -70,7 +70,7 @@ async def _ensure_world(
     )
     world = existing.scalars().first()
 
-    base_meta = base_world_meta()
+    base_meta = base_world_meta(world_name)
 
     if world is None:
         world = GameWorld(

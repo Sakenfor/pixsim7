@@ -321,7 +321,7 @@ async def _api_ensure_world(
         world_id for world_id in sorted(set(matching_world_ids)) if world_id != preferred_world_id
     )
 
-    base_meta = base_world_meta()
+    base_meta = base_world_meta(world_name)
     base_meta[WORLD_UPSERT_META_KEY] = _world_upsert_key(world_name)
     if not candidate_world_ids:
         created = await _api_post_json(

@@ -95,6 +95,10 @@ export interface MiniGalleryProps {
    *  Useful for picker-style usage (e.g. mask selection). */
   onItemSelect?: (asset: AssetModel) => void;
 
+  /** Called when the user hovers over/leaves a gallery item.
+   *  `asset` is the hovered item, or `null` on mouse leave. */
+  onItemHover?: (asset: AssetModel | null) => void;
+
   // --- Asset resolution ---
   /** Called before addInput / openViewer when asset data may be incomplete
    *  (e.g. history entries that only carry a thumbnail). Return the full
@@ -121,6 +125,7 @@ interface MiniGalleryItemProps {
   renderActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
   extraWidgets?: OverlayWidget[];
   overlayContext?: OverlayContextId;
+  onHover?: (asset: AssetModel | null) => void;
 }
 
 function MiniGalleryItem({
@@ -138,6 +143,7 @@ function MiniGalleryItem({
   renderActions,
   extraWidgets,
   overlayContext,
+  onHover,
 }: MiniGalleryItemProps) {
   const showSlotPicker = isMultiAssetOperation(operationType);
   const zapRef = useRef<HTMLButtonElement | null>(null);
@@ -222,21 +228,26 @@ function MiniGalleryItem({
     );
   }, [suppressHoverActions, asset, defaultActions, renderActions]);
 
+  const handleMouseEnter = useCallback(() => onHover?.(asset), [onHover, asset]);
+  const handleMouseLeave = useCallback(() => onHover?.(null), [onHover]);
+
   return (
     <>
-      <CompactAssetCard
-        asset={asset}
-        hideFooter
-        aspectSquare
-        className={isResolving ? 'opacity-60 pointer-events-none' : ''}
-        onClick={onOpenViewer}
-        enableHoverPreview={asset.mediaType === 'video'}
-        showPlayOverlay={false}
-        overlay={overlay}
-        hoverActions={hoverActions}
-        extraWidgets={extraWidgets}
-        overlayContext={overlayContext ?? (hoverActions === null ? 'gallery' : undefined)}
-      />
+      <div onMouseEnter={onHover ? handleMouseEnter : undefined} onMouseLeave={onHover ? handleMouseLeave : undefined}>
+        <CompactAssetCard
+          asset={asset}
+          hideFooter
+          aspectSquare
+          className={isResolving ? 'opacity-60 pointer-events-none' : ''}
+          onClick={onOpenViewer}
+          enableHoverPreview={asset.mediaType === 'video'}
+          showPlayOverlay={false}
+          overlay={overlay}
+          hoverActions={hoverActions}
+          extraWidgets={extraWidgets}
+          overlayContext={overlayContext ?? (hoverActions === null ? 'gallery' : undefined)}
+        />
+      </div>
 
       {showSlotPicker && slotPickerExpanded && slotPickerPos && createPortal(
         <div
@@ -287,6 +298,7 @@ function MiniGalleryContent({
   renderItemActions,
   renderItemWidgets,
   onItemSelect,
+  onItemHover,
   suppressHoverActions,
   paginationMode = 'infinite',
   pageSize = 20,
@@ -600,6 +612,7 @@ function MiniGalleryContent({
                 suppressHoverActions={suppressHoverActions}
                 renderActions={renderItemActions}
                 extraWidgets={renderItemWidgets?.(asset)}
+                onHover={onItemHover}
               />
             ))}
           </div>

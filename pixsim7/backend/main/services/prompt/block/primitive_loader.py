@@ -275,6 +275,7 @@ async def load_all_primitives(content_packs_dir: Path) -> Dict[str, Any]:
                 "primitive_loader_error",
                 pack=pack_dir.name,
                 error=str(exc),
+                exc_info=True,
             )
             results[pack_dir.name] = {"error": str(exc)}
 

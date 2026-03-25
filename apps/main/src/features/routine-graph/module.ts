@@ -34,5 +34,3 @@ export const routineGraphModule = defineModule({
     // Store cleanup handled by Zustand persist
   },
 });
-
-export default routineGraphModule;
