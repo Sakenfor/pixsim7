@@ -3,6 +3,7 @@ Pixverse session and cache management
 
 Handles session building, caching, and credential persistence.
 """
+import asyncio
 from typing import Dict, Any
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -13,6 +14,88 @@ logger = get_logger()
 class PixverseSessionMixin:
     """Mixin for Pixverse session and cache management"""
 
+    def _schedule_async_close(self, close_result: Any, *, cache_kind: str, cache_key: Any) -> None:
+        """Best-effort close for async client resources evicted from cache."""
+        if not asyncio.iscoroutine(close_result):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                asyncio.run(close_result)
+            except Exception as exc:
+                logger.debug(
+                    "pixverse_cache_close_failed",
+                    cache_kind=cache_kind,
+                    cache_key=str(cache_key),
+                    error=str(exc),
+                )
+            return
+
+        try:
+            loop.create_task(close_result)
+        except Exception as exc:
+            logger.debug(
+                "pixverse_cache_close_schedule_failed",
+                cache_kind=cache_kind,
+                cache_key=str(cache_key),
+                error=str(exc),
+            )
+
+    def _close_cached_client(self, client: Any, *, cache_key: Any) -> None:
+        if client is None:
+            return
+        try:
+            close_fn = getattr(client, "close", None)
+            if callable(close_fn):
+                self._schedule_async_close(
+                    close_fn(),
+                    cache_kind="client",
+                    cache_key=cache_key,
+                )
+                return
+        except Exception as exc:
+            logger.debug(
+                "pixverse_client_close_failed",
+                cache_key=str(cache_key),
+                error=str(exc),
+            )
+
+        # PixverseClient currently exposes async close on nested .api.
+        try:
+            api = getattr(client, "api", None)
+            api_close = getattr(api, "close", None)
+            if callable(api_close):
+                self._schedule_async_close(
+                    api_close(),
+                    cache_kind="client_api",
+                    cache_key=cache_key,
+                )
+        except Exception as exc:
+            logger.debug(
+                "pixverse_client_api_close_failed",
+                cache_key=str(cache_key),
+                error=str(exc),
+            )
+
+    def _close_cached_api(self, api: Any, *, cache_key: Any) -> None:
+        if api is None:
+            return
+        try:
+            close_fn = getattr(api, "close", None)
+            if callable(close_fn):
+                self._schedule_async_close(
+                    close_fn(),
+                    cache_kind="api",
+                    cache_key=cache_key,
+                )
+        except Exception as exc:
+            logger.debug(
+                "pixverse_api_close_failed",
+                cache_key=str(cache_key),
+                error=str(exc),
+            )
+
     def _evict_account_cache(self, account: ProviderAccount) -> None:
         """Remove cached API/client entries for account (e.g., session invalidated)."""
         account_id = account.id
@@ -22,12 +105,14 @@ class PixverseSessionMixin:
         client_keys = [key for key in self._client_cache.keys() if key[0] == account_id]
         for key in client_keys:
             logger.debug('Evicting PixverseClient cache for account %s (key=%s)', account_id, key)
-            self._client_cache.pop(key, None)
+            client = self._client_cache.pop(key, None)
+            self._close_cached_client(client, cache_key=key)
 
         api_keys = [key for key in self._api_cache.keys() if key[0] == account_id]
         for key in api_keys:
             logger.debug('Evicting PixverseAPI cache for account %s (key=%s)', account_id, key)
-            self._api_cache.pop(key, None)
+            api = self._api_cache.pop(key, None)
+            self._close_cached_api(api, cache_key=key)
 
     def _build_web_session(self, account: ProviderAccount) -> Dict[str, Any]:
         """Backward-compatible wrapper that delegates to PixverseSessionManager."""
@@ -160,12 +245,21 @@ class PixverseSessionMixin:
         if use_method:
             session["use_method"] = use_method
 
-        # Note: We don't cache here because run_with_session may refresh credentials
-        # and we want to use the latest session data on retry
+        jwt_prefix = str(session_data.get("jwt_token") or "")[:20]
+        cache_key = (
+            account.id,
+            f"session:{use_method or 'auto'}",
+            jwt_prefix,
+        )
+        if cache_key in self._client_cache:
+            logger.debug('Reusing session-scoped PixverseClient for account %s', account.id)
+            return self._client_cache[cache_key]
+
         client = PixverseClient(
             email=account.email,
             session=session
         )
+        self._client_cache[cache_key] = client
         return client
 
     def _get_cached_api(self, account: ProviderAccount) -> Any:

@@ -31,6 +31,7 @@ Adding similar providers requires:
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any, Dict, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
@@ -137,6 +138,7 @@ class RemakerProvider(WebApiProvider):
 
         resolved: Dict[str, Any] = dict(mapped_params)
         resolved["original_image_path"] = original_path
+        resolved["_debug_original_file"] = self._analyze_image_file(original_path)
 
         if mode == "photo-editor":
             mask_source = mapped_params.get("mask_source")
@@ -148,6 +150,9 @@ class RemakerProvider(WebApiProvider):
                 )
                 temps.extend(mask_temps)
                 resolved["mask_path"] = mask_path
+                resolved["_debug_mask_file"] = self._analyze_image_file(mask_path)
+            else:
+                resolved["_debug_mask_file"] = self._analyze_image_file(None)
 
         resolved["_temp_paths"] = temps
 
@@ -241,6 +246,99 @@ class RemakerProvider(WebApiProvider):
         if resolved not in allowed:
             return default
         return resolved
+
+    @staticmethod
+    def _analyze_image_file(path: Optional[str]) -> Dict[str, Any]:
+        """
+        Inspect a file that will be uploaded to Remaker.
+
+        Records hash + pixel distribution so we can verify exactly what mask
+        was sent when debugging polarity/alpha issues.
+        """
+        result: Dict[str, Any] = {
+            "present": bool(path),
+        }
+        if not path:
+            return result
+
+        normalized_path = str(path)
+        result["path"] = normalized_path
+        exists = os.path.exists(normalized_path)
+        result["exists"] = exists
+        if not exists:
+            return result
+
+        try:
+            result["size_bytes"] = int(os.path.getsize(normalized_path))
+        except Exception:
+            pass
+
+        try:
+            with open(normalized_path, "rb") as handle:
+                result["sha256_16"] = hashlib.sha256(handle.read()).hexdigest()[:16]
+        except Exception as exc:
+            result["hash_error"] = str(exc)
+
+        try:
+            from PIL import Image
+
+            with Image.open(normalized_path) as image:
+                width, height = image.size
+                bands = image.getbands()
+                result["format"] = image.format
+                result["mode"] = image.mode
+                result["size"] = [int(width), int(height)]
+                result["bands"] = list(bands)
+                result["has_alpha"] = "A" in bands
+
+                luminance = image.convert("L")
+                hist = luminance.histogram()
+                total = sum(hist) or 1
+
+                def pct(lo: int, hi: int) -> float:
+                    return round((sum(hist[lo:hi + 1]) / total) * 100.0, 2)
+
+                black_pct = pct(0, 15)
+                white_pct = pct(240, 255)
+                mid_pct = round(max(0.0, 100.0 - black_pct - white_pct), 2)
+                unique_values = sum(1 for value in hist if value > 0)
+                mean_luma = round(
+                    sum(index * count for index, count in enumerate(hist)) / total,
+                    2,
+                )
+
+                result["luma_black_pct"] = black_pct
+                result["luma_white_pct"] = white_pct
+                result["luma_mid_pct"] = mid_pct
+                result["luma_unique_values"] = int(unique_values)
+                result["luma_mean"] = mean_luma
+                result["binary_like"] = unique_values <= 4
+
+                if "A" in bands:
+                    alpha_hist = image.getchannel("A").histogram()
+                    alpha_total = sum(alpha_hist) or 1
+                    alpha_min = next((i for i, c in enumerate(alpha_hist) if c > 0), 0)
+                    alpha_max = next((i for i in range(255, -1, -1) if alpha_hist[i] > 0), 0)
+                    alpha_mean = round(
+                        sum(index * count for index, count in enumerate(alpha_hist)) / alpha_total,
+                        2,
+                    )
+                    result["alpha_min"] = int(alpha_min)
+                    result["alpha_max"] = int(alpha_max)
+                    result["alpha_mean"] = alpha_mean
+                    result["alpha_opaque_pct"] = round((sum(alpha_hist[250:256]) / alpha_total) * 100.0, 2)
+                    result["alpha_transparent_pct"] = round((sum(alpha_hist[0:6]) / alpha_total) * 100.0, 2)
+
+                if white_pct < 0.1:
+                    result["mask_hint"] = "mostly_black_or_empty"
+                elif black_pct < 0.1:
+                    result["mask_hint"] = "mostly_white"
+                else:
+                    result["mask_hint"] = "mixed"
+        except Exception as exc:
+            result["image_inspect_error"] = str(exc)
+
+        return result
 
     def map_parameters(self, operation_type: OperationType, params: Dict[str, Any]) -> Dict[str, Any]:
         if operation_type not in self.supported_operations:
@@ -364,6 +462,14 @@ class RemakerProvider(WebApiProvider):
             "task_type": task_type,
             "turnstile_token": "",
         }
+
+        logger.info(
+            "remaker_photo_editor_submit",
+            task_type=task_type,
+            mask_source=params.get("mask_source"),
+            original_file_debug=params.get("_debug_original_file"),
+            mask_file_debug=params.get("_debug_mask_file"),
+        )
 
         payload = await self._submit_multipart(account, create_url, data, file_fields)
         return self._parse_create_response(payload)
