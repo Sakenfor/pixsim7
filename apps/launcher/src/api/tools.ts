@@ -22,11 +22,15 @@ export interface CodegenRunResult {
   stderr: string
 }
 
+let _codegenCache: CodegenTask[] | null = null
+
 export async function getCodegenTasks(): Promise<CodegenTask[]> {
+  if (_codegenCache) return _codegenCache
   const res = await fetch('/codegen/tasks')
   if (!res.ok) return []
-  const data = await res.json()
-  return data.tasks ?? []
+  const tasks: CodegenTask[] = (await res.json()).tasks ?? []
+  _codegenCache = tasks
+  return tasks
 }
 
 export async function runCodegenTask(taskId: string, check = false): Promise<CodegenRunResult> {
@@ -52,11 +56,15 @@ export interface Buildable {
   tags: string[]
 }
 
+let _buildablesCache: Buildable[] | null = null
+
 export async function getBuildables(): Promise<Buildable[]> {
+  if (_buildablesCache) return _buildablesCache
   const res = await fetch('/buildables')
   if (!res.ok) return []
-  const data = await res.json()
-  return data.buildables ?? []
+  const items: Buildable[] = (await res.json()).buildables ?? []
+  _buildablesCache = items
+  return items
 }
 
 // ── Migrations ──

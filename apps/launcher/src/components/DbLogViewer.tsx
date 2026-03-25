@@ -13,7 +13,7 @@ import {
 } from '../api/logMeta'
 import { LogLine } from './log'
 
-export function DbLogViewer() {
+export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -197,7 +197,10 @@ export function DbLogViewer() {
         )}
         {entries.map((entry) => (
           <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
-            onFieldClick={(name, value) => setSearch(`${name}=${value}`)} />
+            onFieldClick={(name, value) => {
+              setSearch(`${name}=${value}`)
+              onFieldClick?.(name, value)
+            }} />
         ))}
       </div>
     </div>

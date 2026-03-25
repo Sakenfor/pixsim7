@@ -9,8 +9,10 @@
     "preview": "vite preview --port 3100"
   },
   "dependencies": {
+    "@types/react-window": "^2.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-window": "^2.2.7",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

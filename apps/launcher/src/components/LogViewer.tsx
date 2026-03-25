@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
-import { LogLine } from './log'
+import { VirtualLogList } from './log'
 
 const POLL_INTERVAL = 2000
 
@@ -29,13 +29,10 @@ function discoverFilters(lines: string[]) {
   }
 }
 
-export function LogViewer() {
+export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const selectedKey = useServicesStore((s) => s.selectedKey)
   const services = useServicesStore((s) => s.services)
   const { lines, loading, fetchLogs, clearLogs } = useLogsStore()
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const autoScroll = useRef(true)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [meta, setMeta] = useState<LogMeta | null>(null)
@@ -62,16 +59,6 @@ export function LogViewer() {
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [paused, selectedKey])
-
-  useEffect(() => {
-    if (autoScroll.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [lines.length])
-
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-  }, [])
 
   // Discover dynamic filter options from current log lines
   const discovered = useMemo(() => discoverFilters(lines), [lines])
@@ -141,14 +128,20 @@ export function LogViewer() {
         <button onClick={() => selectedKey && clearLogs(selectedKey)} className="px-2 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Clear</button>
       </div>
 
-      {/* Log lines */}
-      <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">
-        {loading && lines.length === 0 && <div className="text-gray-500 py-4 px-3">Loading logs...</div>}
-        {filteredLines.map((line, i) => (
-          <LogLine key={i} line={line} meta={meta} fields={fields}
-            onFieldClick={(name, value) => setSearchFilter(`${name}=${value}`)} />
-        ))}
-        <div ref={bottomRef} />
+      {/* Log lines (virtualized) */}
+      <div className="flex-1 bg-surface min-h-0">
+        {loading && filteredLines.length === 0 && <div className="text-gray-500 py-4 px-3">Loading logs...</div>}
+        {filteredLines.length > 0 && (
+          <VirtualLogList
+            lines={filteredLines}
+            meta={meta}
+            fields={fields}
+            onFieldClick={(name, value) => {
+              setSearchFilter(`${name}=${value}`)
+              onFieldClick?.(name, value)
+            }}
+          />
+        )}
       </div>
     </div>
   )
