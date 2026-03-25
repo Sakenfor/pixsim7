@@ -669,6 +669,7 @@ async def update_plan_review_request(
 
     if (
         payload.status is None
+        and payload.dismissed is None
         and payload.resolution_note is None
         and payload.resolved_node_id is None
         and payload.meta is None
@@ -710,7 +711,7 @@ async def update_plan_review_request(
 
     actor_source = getattr(principal, "source", f"user:{principal.id}")
     actor_fields = _dp._principal_actor_fields(principal)
-    if row.status in _TERMINAL_REVIEW_REQUEST_STATUSES:
+    if row.status in _dp._TERMINAL_REVIEW_REQUEST_STATUSES:
         row.resolved_by = actor_source
         row.resolved_by_principal_type = actor_fields["principal_type"]
         row.resolved_by_agent_id = actor_fields["agent_id"]
@@ -1060,7 +1061,7 @@ async def create_plan_review_node(
                     detail=f"Target review node not found for plan '{plan_id}': {target_uuid}",
                 )
 
-        if ref.relation in _CAUSAL_REVIEW_RELATIONS and target_uuid is None:
+        if ref.relation in _dp._CAUSAL_REVIEW_RELATIONS and target_uuid is None:
             raise HTTPException(
                 status_code=400,
                 detail=f"Relation '{ref.relation}' requires target_node_id.",
@@ -1073,7 +1074,7 @@ async def create_plan_review_node(
         if source_id is None:
             raise HTTPException(status_code=500, detail="Failed to allocate review node ID.")
         for ref, target_uuid in parsed_refs:
-            if ref.relation not in _CAUSAL_REVIEW_RELATIONS or target_uuid is None:
+            if ref.relation not in _dp._CAUSAL_REVIEW_RELATIONS or target_uuid is None:
                 continue
             if source_id == target_uuid or _dp._graph_has_path(adjacency, target_uuid, source_id):
                 raise HTTPException(
@@ -1239,12 +1240,12 @@ async def preview_plan_review_source(
             status_code=400,
             detail=f"Invalid line range: {start_line}-{resolved_end}",
         )
-    if resolved_end - start_line + 1 > _SOURCE_PREVIEW_MAX_LINES:
+    if resolved_end - start_line + 1 > _dp._SOURCE_PREVIEW_MAX_LINES:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Line range too large ({start_line}-{resolved_end}). "
-                f"Max {_SOURCE_PREVIEW_MAX_LINES} lines."
+                f"Max {_dp._SOURCE_PREVIEW_MAX_LINES} lines."
             ),
         )
 
