@@ -8,5 +8,6 @@ from .console_tab import ConsoleTab
 from .db_logs_tab import DbLogsTab
 from .tools_tab import ToolsTab
 from .architecture_tab import ArchitectureTab
+from .diagnostics_tab import DiagnosticsTab
 
-__all__ = ['ConsoleTab', 'DbLogsTab', 'ToolsTab', 'ArchitectureTab']
+__all__ = ['ConsoleTab', 'DbLogsTab', 'ToolsTab', 'ArchitectureTab', 'DiagnosticsTab']
