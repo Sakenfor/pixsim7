@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Gizmo Browser',
   component: GizmoBrowser,
   category: 'tools',
+  panelRole: 'sub-panel',
+  browsable: false,
   tags: ['gizmos', 'lab', 'browser'],
   icon: 'grid',
   description: 'Browse and select gizmos from the registry',

@@ -98,6 +98,8 @@ export {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   type PanelCategory,
+  PANEL_ROLES,
+  type PanelRole,
 } from "./lib/panelConstants";
 export {
   PANEL_IDS,

@@ -12,7 +12,7 @@ export default definePanel({
   component: AssetViewerPanel,
   category: 'workspace',
   tags: ['assets', 'viewer', 'media'],
-  icon: 'image',
+  icon: 'maximize2',
   description: 'Asset viewer with docked sub-panels',
   internal: true,
   supportsCompactMode: false,

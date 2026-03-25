@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Prompt Editor',
   component: PromptAuthoringEditor,
   category: 'generation',
+  panelRole: 'sub-panel',
+  browsable: false,
   icon: 'edit',
   availableIn: ['prompt-authoring'],
   supportsMultipleInstances: false,

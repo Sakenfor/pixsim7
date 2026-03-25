@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Prompt Navigator',
   component: PromptAuthoringNavigator,
   category: 'generation',
+  panelRole: 'sub-panel',
+  browsable: false,
   icon: 'list',
   availableIn: ['prompt-authoring'],
   supportsMultipleInstances: false,

@@ -33,6 +33,8 @@ export {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   type PanelCategory,
+  PANEL_ROLES,
+  type PanelRole,
 } from "./panelConstants";
 
 export {

@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Tool Browser',
   component: ToolBrowser,
   category: 'tools',
+  panelRole: 'sub-panel',
+  browsable: false,
   tags: ['tools', 'lab', 'browser'],
   icon: 'mouse-pointer',
   description: 'Browse and select interactive tools from the registry',

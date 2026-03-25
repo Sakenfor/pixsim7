@@ -17,7 +17,7 @@ import {
   getValidationSummary,
   type ValidationStatus,
 } from "@pixsim7/game.engine";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 import type {
   GenerationNodeConfig,
@@ -54,21 +54,22 @@ export function GenerationHealthView({
   sceneId,
   nodes = [],
 }: GenerationHealthViewProps) {
-  const [nodeHealth, setNodeHealth] = useState<GenerationNodeHealth[]>([]);
   const [filter, setFilter] = useState<"all" | "error" | "warning" | "ok">(
     "all",
   );
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
-  // Validate all nodes
-  useEffect(() => {
-    const healthData = nodes.map((node) => {
+  // Stabilize nodes identity — only recompute when IDs actually change
+  const nodesKey = nodes.map((n) => n.id).join(",");
+  const stableNodes = useMemo(() => nodes, [nodesKey]);
+
+  // Validate all nodes (derived, no state needed)
+  const nodeHealth = useMemo<GenerationNodeHealth[]>(() => {
+    return stableNodes.map((node) => {
       const validation = validateGenerationNode(node.config, {
-        // TODO: Pass actual world and user prefs
         world: undefined,
         userPrefs: undefined,
       });
-
       return {
         nodeId: node.id,
         nodeName: node.name,
@@ -79,15 +80,19 @@ export function GenerationHealthView({
         status: getValidationStatus(validation),
       };
     });
+  }, [stableNodes]);
 
-    setNodeHealth(healthData);
-
-    // Auto-expand nodes with errors
-    const errored = new Set(
-      healthData.filter((h) => h.status === "error").map((h) => h.nodeId),
-    );
-    setExpandedNodes(errored);
-  }, [nodes]);
+  // Auto-expand errored nodes when health data changes
+  const prevNodesKeyRef = useRef(nodesKey);
+  useEffect(() => {
+    if (prevNodesKeyRef.current !== nodesKey) {
+      prevNodesKeyRef.current = nodesKey;
+      const errored = new Set(
+        nodeHealth.filter((h) => h.status === "error").map((h) => h.nodeId),
+      );
+      setExpandedNodes(errored);
+    }
+  }, [nodesKey, nodeHealth]);
 
   // Filter nodes based on selected filter
   const filteredNodes = nodeHealth.filter((node) => {

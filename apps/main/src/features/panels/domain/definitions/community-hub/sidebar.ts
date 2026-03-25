@@ -5,6 +5,7 @@ import type { IconName } from '@lib/icons';
 import { BrowseView } from './views/BrowseView';
 import { ChatView } from './views/ChatView';
 import { PackagesView } from './views/PackagesView';
+import { ProfileView } from './views/ProfileView';
 
 // ---------------------------------------------------------------------------
 // View registry — add entries here to extend the hub
@@ -35,6 +36,12 @@ export const COMMUNITY_VIEWS: CommunityView[] = [
     label: 'Packages',
     icon: 'package',
     component: PackagesView,
+  },
+  {
+    id: 'profile',
+    label: 'Profile',
+    icon: 'user',
+    component: ProfileView,
   },
 ];
 

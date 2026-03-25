@@ -5,13 +5,31 @@ import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@features/panels/lib/panelConstants';
+import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { NavIcon } from './ActivityBar';
 
+const ROLE_ICONS: Record<string, string> = {
+  "context-picker": "mouse-pointer",
+  "sub-panel": "layers",
+  reference: "book-open",
+  container: "layout",
+  debug: "code",
+  editor: "edit",
+};
+
 function formatCategoryLabel(category: string): string {
   return CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]
     ?? category.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getCapabilityLabel(cap: unknown): string {
+  if (typeof cap === "string") return cap;
+  if (typeof cap === "object" && cap !== null && "key" in cap) {
+    return (cap as { key: string }).key;
+  }
+  return String(cap);
 }
 
 /**
@@ -74,6 +92,7 @@ function FlyoutContent() {
   const togglePin = useWorkspaceStore((s) => s.toggleQuickAddPin);
   const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
   const [search, setSearch] = useState('');
+  const [showAuxiliary, setShowAuxiliary] = useState(false);
 
   // Ensure workspace panel definitions are available when flyout is opened.
   useEffect(() => {
@@ -90,7 +109,17 @@ function FlyoutContent() {
     return panelSelectors.subscribe(() => setVersion((v) => v + 1));
   }, []);
 
-  const allPanels = useMemo(() => panelSelectors.getPublicPanels(), [version]);
+  const browsablePanels = useMemo(() => panelSelectors.getBrowsablePanels(), [version]);
+  const publicPanels = useMemo(() => panelSelectors.getPublicPanels(), [version]);
+
+  const allPanels = showAuxiliary ? publicPanels : browsablePanels;
+
+  const auxiliaryIds = useMemo(() => {
+    const browsableIds = new Set(browsablePanels.map((p) => p.id));
+    return new Set(publicPanels.filter((p) => !browsableIds.has(p.id)).map((p) => p.id));
+  }, [browsablePanels, publicPanels]);
+
+  const auxiliaryCount = auxiliaryIds.size;
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allPanels;
@@ -99,13 +128,14 @@ function FlyoutContent() {
       (p) =>
         p.title.toLowerCase().includes(q) ||
         p.id.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q),
+        p.description?.toLowerCase().includes(q) ||
+        p.panelRole?.toLowerCase().includes(q),
     );
   }, [allPanels, search]);
 
   const grouped = useMemo(
     () => {
-      const byCategory = new Map<string, typeof filtered>();
+      const byCategory = new Map<string, PanelDefinition[]>();
       for (const panel of filtered) {
         const category = panel.category ?? 'uncategorized';
         const arr = byCategory.get(category);
@@ -164,14 +194,26 @@ function FlyoutContent() {
             </div>
             {panels.map((panel) => {
               const isPinned = pinnedIds.includes(panel.id);
+              const isAux = auxiliaryIds.has(panel.id);
+              const roleIcon = panel.panelRole ? ROLE_ICONS[panel.panelRole] : undefined;
               return (
                 <div
                   key={panel.id}
-                  className="group/row flex items-center gap-1.5 px-2 py-1.5 rounded text-sm text-neutral-300 hover:text-neutral-100 hover:bg-neutral-700/50 transition-colors cursor-pointer"
+                  className={`group/row flex items-center gap-1.5 px-2 py-1.5 rounded text-sm transition-colors cursor-pointer ${
+                    isAux
+                      ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/30'
+                      : 'text-neutral-300 hover:text-neutral-100 hover:bg-neutral-700/50'
+                  }`}
                   onClick={() => handleOpen(panel.id)}
+                  title={panel.description ?? undefined}
                 >
                   {panel.icon && <NavIcon name={panel.icon} size={14} />}
                   <span className="flex-1 truncate text-xs">{panel.title}</span>
+                  {/* Relationship hints */}
+                  <RelationshipDots panel={panel} />
+                  {roleIcon && isAux && (
+                    <Icon name={roleIcon} size={10} className="shrink-0 text-neutral-600" />
+                  )}
                   <button
                     className={`flex-shrink-0 p-0.5 rounded transition-colors ${
                       isPinned
@@ -192,6 +234,74 @@ function FlyoutContent() {
           </div>
         ))}
       </div>
+
+      {/* Footer: auxiliary toggle */}
+      {auxiliaryCount > 0 && (
+        <div className="border-t border-neutral-700/60 px-2 pt-1.5 mt-1">
+          <button
+            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
+              showAuxiliary
+                ? 'text-accent bg-accent/10'
+                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/40'
+            }`}
+            onClick={() => setShowAuxiliary((v) => !v)}
+          >
+            <Icon name={showAuxiliary ? 'eye' : 'eye-off'} size={11} className="shrink-0" />
+            <span>Auxiliary panels</span>
+            <span className="ml-auto text-[10px] opacity-60">{auxiliaryCount}</span>
+          </button>
+        </div>
+      )}
     </>
+  );
+}
+
+/**
+ * Tiny colored dots indicating panel relationships.
+ * Keeps the flyout compact while hinting at connections.
+ */
+function RelationshipDots({ panel }: { panel: PanelDefinition }) {
+  const dots: Array<{ color: string; title: string }> = [];
+
+  if (panel.availableIn?.length) {
+    dots.push({
+      color: 'bg-violet-400',
+      title: `In: ${panel.availableIn.join(', ')}`,
+    });
+  }
+
+  if (panel.consumesCapabilities?.length) {
+    dots.push({
+      color: 'bg-amber-400',
+      title: `Needs: ${panel.consumesCapabilities.map(getCapabilityLabel).join(', ')}`,
+    });
+  }
+
+  if (panel.providesCapabilities?.length) {
+    dots.push({
+      color: 'bg-emerald-400',
+      title: `Provides: ${panel.providesCapabilities.map(getCapabilityLabel).join(', ')}`,
+    });
+  }
+
+  if (panel.siblings?.length) {
+    dots.push({
+      color: 'bg-blue-400',
+      title: `Siblings: ${panel.siblings.join(', ')}`,
+    });
+  }
+
+  if (dots.length === 0) return null;
+
+  return (
+    <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+      {dots.map((dot, i) => (
+        <span
+          key={i}
+          className={`w-1.5 h-1.5 rounded-full ${dot.color}`}
+          title={dot.title}
+        />
+      ))}
+    </span>
   );
 }

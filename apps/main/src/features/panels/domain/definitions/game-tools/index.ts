@@ -8,7 +8,7 @@ export default definePanel({
   component: GameToolsPanel,
   category: 'tools',
   tags: ['game', 'tools', 'catalog', 'world', 'interactions', 'widgets'],
-  icon: 'grid',
+  icon: 'box',
   description:
     'Browse world tools, interactions, HUD widgets, and dev plugins',
   navigation: {

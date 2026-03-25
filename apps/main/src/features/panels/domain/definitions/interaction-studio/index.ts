@@ -8,7 +8,7 @@ export default definePanel({
   component: InteractionStudio,
   category: 'game',
   tags: ['interaction', 'npc', 'design', 'prototype'],
-  icon: 'sparkles',
+  icon: 'drama',
   description: 'Design and prototype NPC interactions visually',
   navigation: {
     featureIds: ['game', 'interactions'],

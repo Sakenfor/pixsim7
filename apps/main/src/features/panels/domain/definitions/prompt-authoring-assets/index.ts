@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Version Assets',
   component: PromptAuthoringAssets,
   category: 'generation',
+  panelRole: 'sub-panel',
+  browsable: false,
   icon: 'image',
   availableIn: ['prompt-authoring'],
   supportsMultipleInstances: false,

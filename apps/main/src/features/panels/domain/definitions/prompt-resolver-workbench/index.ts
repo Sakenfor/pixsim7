@@ -8,6 +8,7 @@ export default definePanel({
   title: 'Prompt Resolver Workbench',
   component: PromptResolverWorkbenchPanel,
   category: 'prompts',
+  panelRole: 'debug',
   tags: ['prompts', 'resolver', 'workbench', 'blocks', 'debug', 'experimental'],
   icon: 'beaker',
   description:

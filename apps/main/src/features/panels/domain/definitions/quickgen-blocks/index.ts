@@ -8,7 +8,7 @@ export default definePanel({
   component: QuickGenBlocksPanel,
   category: 'generation',
   tags: ['generation', 'prompt', 'blocks', 'quickgen', 'control-center'],
-  icon: 'grid',
+  icon: 'blocks',
   description: 'Prompt companion blocks for quick generation',
   navigation: {
     featureIds: ['generation'],

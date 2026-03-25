@@ -10,7 +10,7 @@ export default definePanel({
   component: ChainBuilderPanel,
   category: 'prompts',
   tags: ['chains', 'workflows', 'sequential', 'generation'],
-  icon: 'layers',
+  icon: 'arrowRightLeft',
   description: 'Build and execute multi-step generation chains (txt2img → refine → upscale)',
   navigation: {
     featureIds: ['automation'],

@@ -8,7 +8,7 @@ export default definePanel({
   component: EdgeEffectsPanel,
   category: 'scene',
   tags: ['scene', 'edges', 'effects', 'relationships', 'quests', 'inventory'],
-  icon: 'zap',
+  icon: 'wand2',
   description: 'Inspect and edit edge effects for the active scene graph.',
   navigation: {
     featureIds: ['game'],

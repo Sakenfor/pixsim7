@@ -7,6 +7,8 @@ export default definePanel({
   title: 'Tool Playground',
   component: ToolPlayground,
   category: 'tools',
+  panelRole: 'sub-panel',
+  browsable: false,
   tags: ['tools', 'lab', 'playground', 'canvas'],
   icon: 'play',
   description: 'Interactive playground for the selected tool',

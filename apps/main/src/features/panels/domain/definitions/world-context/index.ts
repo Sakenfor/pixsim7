@@ -7,8 +7,10 @@ export default definePanel({
   title: 'World Context',
   component: WorldContextPanel,
   category: 'game',
+  panelRole: 'context-picker',
+  browsable: false,
   tags: ['world', 'location', 'context'],
-  icon: 'map',
+  icon: 'target',
   description: 'Select active world and location for the editor context.',
   navigation: {
     featureIds: ['game'],

@@ -7,8 +7,10 @@ export default definePanel({
   title: 'World Visual Roles',
   component: WorldVisualRolesPanel,
   category: 'game',
+  panelRole: 'context-picker',
+  browsable: false,
   tags: ['world', 'assets', 'visual', 'binding', 'roles', 'portraits'],
-  icon: 'user',
+  icon: 'paintbrush',
   description:
     'Bind gallery assets to world visual roles (portraits, POV, backgrounds)',
   navigation: {

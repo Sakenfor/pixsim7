@@ -170,6 +170,8 @@ const assetTagsPanel = definePanel({
   title: 'Asset Tags',
   component: AssetTagsPanel,
   category: 'tools',
+  panelRole: 'context-picker',
+  browsable: false,
   tags: ['tags', 'assets', 'metadata'],
   icon: 'tag',
   description: 'Manage tags for selected assets',

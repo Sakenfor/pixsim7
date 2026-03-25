@@ -11,6 +11,7 @@ import {
   getCategoryColorClasses,
   type PanelCategory,
 } from "@features/panels/lib/panelConstants";
+import type { PanelDefinition } from "@features/panels/lib/panelRegistry";
 import {
   openFloatingWorkspacePanel,
   openWorkspacePanel,
@@ -19,6 +20,15 @@ import {
 } from "@features/workspace";
 
 type VisibilityFilter = "all" | "open" | "closed";
+
+const ROLE_LABELS: Record<string, { label: string; icon: string }> = {
+  "context-picker": { label: "Picker", icon: "mouse-pointer" },
+  "sub-panel": { label: "Sub-panel", icon: "layers" },
+  reference: { label: "Reference", icon: "book-open" },
+  container: { label: "Container", icon: "layout" },
+  debug: { label: "Debug", icon: "code" },
+  editor: { label: "Editor", icon: "edit" },
+};
 
 function formatUpdatedAt(value?: string): string | null {
   if (!value) return null;
@@ -31,19 +41,110 @@ function formatUpdatedAt(value?: string): string | null {
   });
 }
 
+function getCapabilityLabel(cap: unknown): string {
+  if (typeof cap === "string") return cap;
+  if (typeof cap === "object" && cap !== null && "key" in cap) {
+    return (cap as { key: string }).key;
+  }
+  return String(cap);
+}
+
+function PanelRelationships({ panel }: { panel: PanelDefinition }) {
+  const pills: Array<{ label: string; icon: string; color: string }> = [];
+
+  // Container parent (availableIn)
+  if (panel.availableIn?.length) {
+    for (const host of panel.availableIn) {
+      pills.push({
+        label: host,
+        icon: "box",
+        color: "text-violet-600 dark:text-violet-400 bg-violet-500/10",
+      });
+    }
+  }
+
+  // Consumes capabilities
+  const consumes = panel.consumesCapabilities;
+  if (consumes?.length) {
+    for (const cap of consumes) {
+      pills.push({
+        label: getCapabilityLabel(cap),
+        icon: "arrow-down-left",
+        color: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+      });
+    }
+  }
+
+  // Provides capabilities
+  const provides = panel.providesCapabilities;
+  if (provides?.length) {
+    for (const cap of provides) {
+      pills.push({
+        label: getCapabilityLabel(cap),
+        icon: "arrow-up-right",
+        color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+      });
+    }
+  }
+
+  // Siblings
+  if (panel.siblings?.length) {
+    pills.push({
+      label: panel.siblings.join(", "),
+      icon: "link",
+      color: "text-blue-600 dark:text-blue-400 bg-blue-500/10",
+    });
+  }
+
+  if (pills.length === 0) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {pills.map((pill, i) => (
+        <span
+          key={`${pill.icon}-${pill.label}-${i}`}
+          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${pill.color}`}
+        >
+          <Icon name={pill.icon} size={9} className="shrink-0" />
+          {pill.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function PanelBrowserPanel() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
-  const [allPanels, setAllPanels] = useState(() => panelSelectors.getPublicPanels());
+  const [showAuxiliary, setShowAuxiliary] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [openPanels, setOpenPanels] = useState<Set<string>>(new Set());
 
+  // Fetch browsable panels, plus auxiliary when toggled
+  const [browsablePanels, setBrowsablePanels] = useState(() => panelSelectors.getBrowsablePanels());
+  const [publicPanels, setPublicPanels] = useState(() => panelSelectors.getPublicPanels());
+
   useEffect(() => {
     return panelSelectors.subscribe(() => {
-      setAllPanels(panelSelectors.getPublicPanels());
+      setBrowsablePanels(panelSelectors.getBrowsablePanels());
+      setPublicPanels(panelSelectors.getPublicPanels());
     });
   }, []);
+
+  // allPanels = browsable + (optionally) auxiliary
+  const allPanels = useMemo(() => {
+    if (!showAuxiliary) return browsablePanels;
+    return publicPanels;
+  }, [showAuxiliary, browsablePanels, publicPanels]);
+
+  // Set of auxiliary panel IDs for dimming
+  const auxiliaryIds = useMemo(() => {
+    const browsableIds = new Set(browsablePanels.map((p) => p.id));
+    return new Set(publicPanels.filter((p) => !browsableIds.has(p.id)).map((p) => p.id));
+  }, [browsablePanels, publicPanels]);
+
+  const auxiliaryCount = auxiliaryIds.size;
 
   useEffect(() => {
     const host = resolveWorkspaceDockview().host;
@@ -102,6 +203,7 @@ export function PanelBrowserPanel() {
           panel.description,
           panel.category,
           panel.changeNote,
+          panel.panelRole,
           ...(panel.tags ?? []),
           ...(panel.featureHighlights ?? []),
         ];
@@ -110,11 +212,16 @@ export function PanelBrowserPanel() {
         );
       })
       .sort((a, b) => {
+        // Auxiliary panels sort after browsable ones
+        const aAux = auxiliaryIds.has(a.id) ? 1 : 0;
+        const bAux = auxiliaryIds.has(b.id) ? 1 : 0;
+        if (aAux !== bAux) return aAux - bAux;
+
         const orderDiff = (a.order ?? 100) - (b.order ?? 100);
         if (orderDiff !== 0) return orderDiff;
         return a.title.localeCompare(b.title);
       });
-  }, [allPanels, activeCategory, openPanels, searchQuery, visibilityFilter]);
+  }, [allPanels, activeCategory, auxiliaryIds, openPanels, searchQuery, visibilityFilter]);
 
   // When searching, clear the category filter so results show across all categories
   useEffect(() => {
@@ -186,8 +293,26 @@ export function PanelBrowserPanel() {
           })}
         </nav>
 
-        {/* Visibility filter at bottom of sidebar */}
-        <div className="border-t border-neutral-200 dark:border-neutral-700 p-2">
+        {/* Bottom controls */}
+        <div className="border-t border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
+          {/* Show auxiliary toggle */}
+          {auxiliaryCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAuxiliary((v) => !v)}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] transition-colors ${
+                showAuxiliary
+                  ? "bg-accent-subtle text-accent font-medium"
+                  : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              }`}
+            >
+              <Icon name={showAuxiliary ? "eye" : "eye-off"} size={12} className="shrink-0" />
+              <span className="truncate">Auxiliary</span>
+              <span className="ml-auto text-[10px] opacity-60">{auxiliaryCount}</span>
+            </button>
+          )}
+
+          {/* Visibility filter */}
           <div className="flex items-center gap-0.5 rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5 bg-neutral-50 dark:bg-neutral-800/50">
             {(["all", "open", "closed"] as const).map((mode) => (
               <button
@@ -245,17 +370,27 @@ export function PanelBrowserPanel() {
               {filteredPanels.map((panel) => {
                 const isOpen = openPanels.has(panel.id);
                 const isFloating = floatingPanelIds.has(panel.id);
+                const isAuxiliary = auxiliaryIds.has(panel.id);
                 const updatedLabel = formatUpdatedAt(panel.updatedAt);
+                const roleInfo = panel.panelRole ? ROLE_LABELS[panel.panelRole] : undefined;
 
                 return (
                   <article
                     key={panel.id}
-                    className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-800/40 p-2.5 group/panel hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
+                    className={`rounded-lg border p-2.5 group/panel transition-colors ${
+                      isAuxiliary
+                        ? "border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50/30 dark:bg-neutral-800/20 opacity-60 hover:opacity-90"
+                        : "border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-800/40 hover:border-neutral-300 dark:hover:border-neutral-600"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         {panel.icon && (
-                          <div className="shrink-0 w-7 h-7 rounded-md bg-neutral-100 dark:bg-neutral-700/60 flex items-center justify-center">
+                          <div className={`shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${
+                            isAuxiliary
+                              ? "bg-neutral-100/60 dark:bg-neutral-700/30"
+                              : "bg-neutral-100 dark:bg-neutral-700/60"
+                          }`}>
                             <Icon
                               name={panel.icon as string}
                               size={14}
@@ -276,6 +411,12 @@ export function PanelBrowserPanel() {
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
+                        {roleInfo && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] rounded-full bg-neutral-200/60 dark:bg-neutral-700/40 text-neutral-500 dark:text-neutral-400 font-medium">
+                            <Icon name={roleInfo.icon} size={8} className="shrink-0" />
+                            {roleInfo.label}
+                          </span>
+                        )}
                         {isOpen && (
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium">
                             Docked
@@ -288,6 +429,9 @@ export function PanelBrowserPanel() {
                         )}
                       </div>
                     </div>
+
+                    {/* Relationship pills */}
+                    <PanelRelationships panel={panel} />
 
                     {/* Meta badges */}
                     {(updatedLabel || panel.changeNote) && (

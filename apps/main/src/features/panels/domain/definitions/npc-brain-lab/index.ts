@@ -8,7 +8,7 @@ export default definePanel({
   component: NpcBrainLab,
   category: 'tools',
   tags: ['npc', 'ai', 'brain', 'behavior'],
-  icon: 'bot',
+  icon: 'brain',
   description: 'NPC behavior testing and debugging',
   navigation: {
     featureIds: ['game'],

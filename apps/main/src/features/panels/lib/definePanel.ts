@@ -24,6 +24,7 @@
 import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 import type { ComponentType } from 'react';
 
+import type { PanelRole } from './panelConstants';
 import type {
   ContextLabelStrategy,
   CoreEditorRole,
@@ -55,6 +56,18 @@ export interface DefinePanelOptions<TSettings = any> {
 
   // Categorization (with defaults)
   category?: PanelCategory;
+  /**
+   * Semantic role of the panel — describes *what* it does independent of domain.
+   * Used for smarter defaults and UI grouping.  Optional; omit for standard panels.
+   */
+  panelRole?: PanelRole;
+  /**
+   * Whether this panel appears in the main Panel Browser sidebar.
+   * Defaults to `true`.  Set `false` for context-pickers and sub-panels that
+   * are primarily used embedded/alongside other panels.
+   * Panels with `browsable: false` are still available via right-click "Add Panel".
+   */
+  browsable?: boolean;
   tags?: string[];
   icon?: string;
   description?: string;
@@ -164,6 +177,8 @@ export function definePanel<TSettings = any>(
     changeNote,
     featureHighlights,
     category = 'tools',
+    panelRole,
+    browsable,
     tags = [],
     icon,
     description,
@@ -271,6 +286,8 @@ export function definePanel<TSettings = any>(
     featureHighlights,
     component,
     category,
+    panelRole,
+    browsable,
     tags: derivedTags,
     icon,
     description,

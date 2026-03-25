@@ -140,7 +140,18 @@ interface InjectPromptDetail {
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
-    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, modelOverride: null, customInstructions: '', focusAreas: [] as string[], injectToken: false, ...t }));
+    if (raw) {
+      return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => ({
+        usePersona: true,
+        engine: 'claude' as AgentEngine,
+        modelOverride: null,
+        customInstructions: '',
+        focusAreas: [] as string[],
+        ...t,
+        // Legacy tabs without injectToken inherit profile-bound default.
+        injectToken: typeof t.injectToken === 'boolean' ? t.injectToken : Boolean(t.profileId),
+      })) as ChatTab[];
+    }
   } catch { /* ignore */ }
   return [];
 }
@@ -925,7 +936,7 @@ function SystemPromptPreview({ profileId, customInstructions, onChangeInstructio
     }
   }, [focusAreas, onChangeFocus]);
 
-  const toggleChildFocus = useCallback((parentId: string, childId: string, siblings: FocusAreaEntry[]) => {
+  const toggleChildFocus = useCallback((parentId: string, childId: string) => {
     const isActive = focusAreas.includes(childId);
     let next = [...focusAreas];
     if (isActive) {
@@ -1010,7 +1021,7 @@ function SystemPromptPreview({ profileId, customInstructions, onChangeInstructio
             return (
               <button
                 key={child.id}
-                onClick={() => toggleChildFocus(f.id, child.id, f.children!)}
+                onClick={() => toggleChildFocus(f.id, child.id)}
                 className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-colors ${
                   active
                     ? 'bg-accent/20 text-accent'
@@ -1397,7 +1408,16 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         }`}
                       >
                         <button
-                          onClick={() => { onUpdateTab({ profileId: p.id, usePersona: true, engine: engineFromProfile(p), sessionId: null }); setShowProfilePicker(false); }}
+                          onClick={() => {
+                            onUpdateTab({
+                              profileId: p.id,
+                              usePersona: true,
+                              engine: engineFromProfile(p),
+                              sessionId: null,
+                              injectToken: true,
+                            });
+                            setShowProfilePicker(false);
+                          }}
                           className="flex items-center gap-2 flex-1 min-w-0"
                         >
                           <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
@@ -1580,7 +1600,7 @@ export function AIAssistantPanel() {
       usePersona: true,
       customInstructions: '',
       focusAreas: [],
-      injectToken: false,
+      injectToken: Boolean(resolvedProfileId),
       createdAt: new Date().toISOString(),
     };
     setTabs((prev) => [newTab, ...prev]);

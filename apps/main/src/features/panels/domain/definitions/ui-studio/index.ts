@@ -15,7 +15,7 @@ export default definePanelWithMeta({
   component: UiStudioPanel,
   category: "tools",
   tags: ["ui", "studio", "surfaces", "hud", "panel-groups", "widgets", "authoring"],
-  icon: "layoutGrid",
+  icon: "columns",
   description: "Unified authoring panel for surfaces, HUD layout editing, and panel-group runtime controls.",
   availableIn: ["workspace"],
   supportsCompactMode: false,

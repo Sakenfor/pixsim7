@@ -141,6 +141,31 @@ export function getCategoryColorClasses(category: PanelCategory): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Panel Roles
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Semantic role of a panel — describes *what* it does, independent of domain category.
+ *
+ * - `editor`:          Primary editing surface (gallery, graph, game view)
+ * - `context-picker`:  Selects/feeds state consumed by other panels (world-context, gizmo-browser)
+ * - `sub-panel`:       Scoped child of a dockview-container (quickgen-*, prompt-authoring-*)
+ * - `reference`:       Read-only catalog/inspector (block-explorer, template-library)
+ * - `container`:       Hosts sub-panels via embedded dockview (asset-viewer, gizmo-lab)
+ * - `debug`:           Diagnostics and developer tools (context-hub, prompt-resolver-workbench)
+ */
+export const PANEL_ROLES = [
+  "editor",
+  "context-picker",
+  "sub-panel",
+  "reference",
+  "container",
+  "debug",
+] as const;
+
+export type PanelRole = (typeof PANEL_ROLES)[number];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Legacy Category Mapping
 // ─────────────────────────────────────────────────────────────────────────────
 

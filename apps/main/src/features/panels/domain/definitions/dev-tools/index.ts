@@ -9,7 +9,7 @@ export default definePanel({
   component: DevToolsPanel,
   category: 'dev',
   tags: ['dev', 'debug', 'tools', 'diagnostics', 'developer'],
-  icon: 'code',
+  icon: 'flask',
   description: 'Developer tools and diagnostics',
   navigation: {
     openPreference: 'float-preferred',

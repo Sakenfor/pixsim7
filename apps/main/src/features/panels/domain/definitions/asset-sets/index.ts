@@ -8,7 +8,7 @@ export default definePanel({
   component: AssetSetsPanel,
   category: 'tools',
   tags: ['assets', 'sets', 'collections', 'generation', 'strategy'],
-  icon: 'layers',
+  icon: 'package',
   description:
     'Create and manage named asset collections (manual or smart/tag-based) for use with generation combination strategies.',
   supportsCompactMode: false,

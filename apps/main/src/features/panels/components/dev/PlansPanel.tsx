@@ -26,34 +26,22 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
-import { formatActorLabel } from '@lib/identity/actorDisplay';
 import { Icon } from '@lib/icons';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
+
+import {
+  CheckpointList,
+  getCheckpointPointProgress,
+  type Checkpoint,
+} from './plans/PlanCheckpointList';
+import { PlanReviewDiscussion } from './plans/PlanReviewDiscussion';
+import { PlanReviewRequestCard } from './plans/PlanReviewRequestCard';
+import { PlanReviewRequestForm } from './plans/PlanReviewRequestForm';
+import { PlanReviewResponseForm } from './plans/PlanReviewResponseForm';
 
 // =============================================================================
 // Types
 // =============================================================================
-
-interface CheckpointStep {
-  id?: string;
-  label: string;
-  done: boolean;
-  tests?: string[];
-}
-
-interface CheckpointEvidence {
-  kind: string;
-  ref: string;
-}
-
-interface Checkpoint {
-  id: string;
-  label: string;
-  status: 'done' | 'active' | 'pending' | 'blocked';
-  criteria: string;
-  progress?: number;
-  steps?: CheckpointStep[];
-  evidence?: CheckpointEvidence[];
-}
 
 interface PlanTarget {
   type: string;
@@ -91,6 +79,7 @@ interface PlanSummary {
   handoffs: string[];
   tags: string[];
   dependsOn: string[];
+  revision?: number | null;
   reviewRoundCount?: number;
   activeReviewRoundCount?: number;
   children: PlanChildSummary[];
@@ -110,6 +99,7 @@ interface PlansIndexResponse {
 interface PlanUpdateResponse {
   planId: string;
   changes: { field: string; old: string; new: string }[];
+  revision: number | null;
   commitSha: string | null;
   newScope: string | null;
 }
@@ -131,6 +121,7 @@ type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note
 type ReviewAuthorRole = 'reviewer' | 'author' | 'agent' | 'system';
 type ReviewRequestStatus = 'open' | 'in_progress' | 'fulfilled' | 'cancelled';
 type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
+type ReviewRequestMode = 'review_only' | 'propose_patch' | 'apply_patch';
 
 interface PlanReviewRound {
   id: string;
@@ -244,6 +235,8 @@ interface PlanRequest {
   targetMethod: string | null;
   targetModelId: string | null;
   targetProvider: string | null;
+  reviewMode: ReviewRequestMode;
+  baseRevision: number | null;
   queueIfBusy: boolean;
   autoRerouteIfBusy: boolean;
   dispatchState: 'assigned' | 'queued' | 'unassigned' | null;
@@ -280,6 +273,9 @@ interface PlanRequestCreateRequest {
   target_method?: string;
   target_model_id?: string;
   target_provider?: string;
+  target_user_id?: number;
+  review_mode?: ReviewRequestMode;
+  base_revision?: number;
   queue_if_busy?: boolean;
   auto_reroute_if_busy?: boolean;
 }
@@ -332,8 +328,10 @@ interface PlanReviewPoolSession {
 interface PlanReviewAssignee {
   id: string;
   label: string;
-  source: 'live' | 'recent';
+  source: 'live' | 'recent' | 'delegated';
   targetMode: 'session' | 'recent_agent';
+  bridgeId: string | null;
+  targetUserId: number | null;
   targetSessionId: string | null;
   agentId: string;
   agentType: string | null;
@@ -603,6 +601,22 @@ function toErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+interface PlanRevisionConflict {
+  expectedRevision: number;
+  currentRevision: number;
+}
+
+function extractRevisionConflict(err: unknown): PlanRevisionConflict | null {
+  const resp = (err as { response?: { status?: number; data?: { detail?: Record<string, unknown> } } })?.response;
+  if (resp?.status !== 409) return null;
+  const detail = resp.data?.detail;
+  if (detail?.error !== 'plan_revision_conflict') return null;
+  return {
+    expectedRevision: detail.expected_revision as number,
+    currentRevision: detail.current_revision as number,
+  };
+}
+
 function isCanonicalPlanId(value: string): boolean {
   return PLAN_ID_RE.test(value);
 }
@@ -728,176 +742,6 @@ function ClickableBadge({
   );
 }
 
-// =============================================================================
-// Expandable Checkpoints
-// =============================================================================
-
-function CheckpointList({
-  checkpoints,
-  forgeUrlTemplate,
-}: {
-  checkpoints: Checkpoint[];
-  forgeUrlTemplate?: string | null;
-}) {
-  // Active checkpoints start expanded, others collapsed
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(checkpoints.filter((cp) => cp.status === 'active').map((cp) => cp.id)),
-  );
-
-  const toggle = useCallback((id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  return (
-    <div>
-      <SectionHeader>Checkpoints</SectionHeader>
-      <div className="mt-2 space-y-1">
-        {checkpoints.map((cp, cpIdx) => {
-          const checkpointKey = `${cp.id}:${cpIdx}`;
-          const cpSteps = cp.steps ?? [];
-          const cpDone = cpSteps.filter((s) => s.done).length;
-          const cpTotal = cpSteps.length;
-          const cpPct = cpTotal > 0 ? Math.round((cpDone / cpTotal) * 100) : (cp.status === 'done' ? 100 : 0);
-          const isOpen = expanded.has(cp.id);
-          const cpEvidence = cp.evidence ?? [];
-          const hasContent = !!cp.criteria || cpSteps.length > 0 || cpEvidence.length > 0;
-
-          return (
-            <div
-              key={checkpointKey}
-              className={`rounded-md border overflow-hidden ${
-                cp.status === 'active'
-                  ? 'border-green-300 dark:border-green-700'
-                  : cp.status === 'done'
-                    ? 'border-neutral-200 dark:border-neutral-700 opacity-75'
-                    : 'border-neutral-200 dark:border-neutral-700'
-              }`}
-            >
-              <button
-                onClick={() => hasContent && toggle(cp.id)}
-                className={`w-full px-3 py-1.5 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left ${hasContent ? 'cursor-pointer' : 'cursor-default'}`}
-              >
-                {hasContent && (
-                  <Icon
-                    name="chevronRight"
-                    size={10}
-                    className={`text-neutral-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-90' : ''}`}
-                  />
-                )}
-                <Badge
-                  color={cp.status === 'done' ? 'green' : cp.status === 'active' ? 'blue' : cp.status === 'blocked' ? 'red' : 'gray'}
-                  className="text-[10px]"
-                >
-                  {cp.status}
-                </Badge>
-                <span className="font-medium text-sm text-neutral-800 dark:text-neutral-200 flex-1 truncate">{cp.label}</span>
-                {cpTotal > 0 && (
-                  <span className="text-[10px] text-neutral-400 flex-shrink-0">{cpDone}/{cpTotal} ({cpPct}%)</span>
-                )}
-              </button>
-
-              {/* Progress bar Ã¢â‚¬â€ always visible */}
-              {cpTotal > 0 && (
-                <div className="h-1 bg-neutral-200 dark:bg-neutral-800">
-                  <div
-                    className={`h-full transition-all ${cp.status === 'done' ? 'bg-green-500' : 'bg-blue-500'}`}
-                    style={{ width: `${cpPct}%` }}
-                  />
-                </div>
-              )}
-
-              {isOpen && (
-                <>
-                  {cp.criteria && (
-                    <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800">
-                      {cp.criteria}
-                    </div>
-                  )}
-
-                  {cpSteps.length > 0 && (
-                    <div className="px-3 py-2 space-y-1">
-                      {cpSteps.map((step, stepIdx) => {
-                        const stepKey = step.id?.trim()
-                          ? `id:${step.id}`
-                          : `idx:${stepIdx}:${step.label}`;
-                        return (
-                        <div key={`${checkpointKey}:${stepKey}`} className="flex items-start gap-2 text-xs">
-                          <span className={`mt-0.5 ${step.done ? 'text-green-500' : 'text-neutral-400'}`}>
-                            {step.done ? '\u2713' : '\u25CB'}
-                          </span>
-                          <span className={step.done ? 'text-neutral-500 line-through' : 'text-neutral-700 dark:text-neutral-300'}>
-                            {step.label}
-                          </span>
-                          {step.tests && step.tests.length > 0 && (
-                            <span className="ml-auto flex gap-1">
-                              {step.tests.map((t, testIdx) => (
-                                <Badge key={`${checkpointKey}:${stepKey}:test:${t}:${testIdx}`} color="purple" className="text-[9px]">{t}</Badge>
-                              ))}
-                            </span>
-                          )}
-                        </div>
-                      )})}
-                    </div>
-                  )}
-
-                  {cpEvidence.length > 0 && (
-                    <div className="px-3 py-2 border-t border-neutral-100 dark:border-neutral-800 space-y-0.5">
-                      <div className="text-[10px] text-neutral-500 font-medium mb-1">Evidence</div>
-                      {cpEvidence.map((ev, evIdx) => {
-                        const commitUrl =
-                          ev.kind === 'git_commit' && forgeUrlTemplate
-                            ? forgeUrlTemplate.replace('{sha}', ev.ref)
-                            : null;
-                        return (
-                          <div key={`${checkpointKey}:ev:${ev.kind}:${ev.ref}:${evIdx}`} className="flex items-center gap-1.5 text-[11px]">
-                            <Badge
-                              color={ev.kind === 'git_commit' ? 'blue' : ev.kind === 'test_suite' ? 'green' : 'gray'}
-                              className="text-[9px] !px-1"
-                            >
-                              {ev.kind === 'git_commit' ? 'commit' : ev.kind}
-                            </Badge>
-                            {commitUrl ? (
-                              <a
-                                href={commitUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-[10px]"
-                                title={ev.ref}
-                              >
-                                {ev.ref.slice(0, 7)}
-                              </a>
-                            ) : (
-                              <code
-                                className="text-neutral-600 dark:text-neutral-400 font-mono text-[10px]"
-                                title={ev.kind === 'git_commit' ? ev.ref : undefined}
-                              >
-                                {ev.kind === 'git_commit' ? ev.ref.slice(0, 7) : ev.ref}
-                              </code>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// Plan Detail View
-// =============================================================================
-
 function ParticipantEntry({
   participant,
   profileLabels,
@@ -920,6 +764,7 @@ function ParticipantEntry({
     ? (profileLabels.get(participant.profileId) ?? participant.profileId)
     : null;
   const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
+  const summaryAction = participant.lastAction ? participant.lastAction.replace(/_/g, ' ') : null;
 
   return (
     <>
@@ -927,15 +772,25 @@ function ParticipantEntry({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-[11px] text-left group hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1 -mx-1 py-0.5"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Click to view participant details"
+        className="flex w-full items-center justify-between gap-2 text-[11px] text-left group hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1 -mx-1 py-0.5 cursor-pointer"
       >
-        <span className="font-mono text-neutral-700 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-          {label}
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="font-mono text-neutral-700 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:underline group-hover:decoration-dotted">
+            {label}
+          </span>
+          <span className="text-neutral-400 group-hover:text-blue-500">({participant.touches}x)</span>
+          {summaryAction && (
+            <span className="text-neutral-400 text-[10px] truncate">{summaryAction}</span>
+          )}
         </span>
-        <span className="text-neutral-400 group-hover:text-blue-500">({participant.touches}x)</span>
-        {participant.lastAction && (
-          <span className="text-neutral-400 text-[10px]">{participant.lastAction}</span>
-        )}
+        <Icon
+          name="chevronDown"
+          size={8}
+          className={`shrink-0 transition-transform text-neutral-400 group-hover:text-blue-500 ${open ? 'rotate-180' : ''}`}
+        />
       </button>
       <Popover
         anchor={triggerRef.current}
@@ -1071,6 +926,8 @@ function PlanDetailView({
   const [newRequestMethod, setNewRequestMethod] = useState('');
   const [newRequestModelId, setNewRequestModelId] = useState('');
   const [newRequestProvider, setNewRequestProvider] = useState('');
+  const [newRequestMode, setNewRequestMode] = useState<ReviewRequestMode>('review_only');
+  const [newRequestBaseRevision, setNewRequestBaseRevision] = useState('');
   const [newRequestQueuePolicy, setNewRequestQueuePolicy] = useState<ReviewRequestQueuePolicy>('auto_reroute');
   const [creatingRequest, setCreatingRequest] = useState(false);
   const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
@@ -1224,11 +1081,18 @@ function PlanDetailView({
       setUpdating(true);
       setLastResult(null);
       try {
+        const payload: Record<string, unknown> = { ...updates };
+        if (detail?.revision != null) {
+          payload.expected_revision = detail.revision;
+        }
         const res = await pixsimClient.patch<PlanUpdateResponse>(
           `/dev/plans/${encodedPlanId}`,
-          updates,
+          payload,
         );
         const changed = res.changes.map((c) => `${c.field}: ${c.old}\u2192${c.new}`).join(', ');
+        if (res.revision != null) {
+          setDetail((prev) => prev ? { ...prev, revision: res.revision } : prev);
+        }
         setLastResult(
           res.commitSha
             ? `Updated (${changed}) \u2014 committed ${res.commitSha.slice(0, 7)}`
@@ -1236,12 +1100,20 @@ function PlanDetailView({
         );
         handleUpdate();
       } catch (err) {
-        setLastResult(`Failed: ${toErrorMessage(err, 'Unknown error')}`);
+        const conflict = extractRevisionConflict(err);
+        if (conflict) {
+          setLastResult(
+            `Conflict: plan was updated elsewhere (rev ${conflict.expectedRevision} \u2192 ${conflict.currentRevision}). Refreshing\u2026`,
+          );
+          handleUpdate();
+        } else {
+          setLastResult(`Failed: ${toErrorMessage(err, 'Unknown error')}`);
+        }
       } finally {
         setUpdating(false);
       }
     },
-    [encodedPlanId, handleUpdate],
+    [encodedPlanId, detail?.revision, handleUpdate],
   );
 
   const reviewRounds = useMemo(() => {
@@ -1326,7 +1198,7 @@ function PlanDetailView({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [reviewGraph?.requests, selectedRoundId]);
 
-  // Nodes linked to dismissed requests Ã¢â‚¬â€ show faded in discussion
+  // Nodes linked to dismissed requests - show faded in discussion
   const dismissedNodeIds = useMemo(() => {
     const ids = new Set<string>();
     for (const r of reviewGraph?.requests ?? []) {
@@ -1759,15 +1631,36 @@ function PlanDetailView({
       const payload: PlanRequestCreateRequest = {
         title,
         body,
+        review_mode: newRequestMode,
       };
       if (selectedRound) payload.round_id = selectedRound.id;
+      const baseRevisionRaw = newRequestBaseRevision.trim();
+      if (baseRevisionRaw) {
+        const parsed = Number.parseInt(baseRevisionRaw, 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          setReviewError('Base revision must be a positive integer.');
+          return;
+        }
+        payload.base_revision = parsed;
+      } else if (newRequestMode !== 'review_only') {
+        setReviewError('Base revision is required for propose_patch/apply_patch modes.');
+        return;
+      }
 
       if (newRequestAssignee === 'auto') {
         payload.target_mode = 'auto';
       } else {
         const parsed = parseAssigneeOptionValue(newRequestAssignee);
         if (parsed?.kind === 'live') {
-          // Store as preference Ã¢â‚¬â€ dispatcher re-checks availability at dispatch time
+          const selectedLiveAssignee = liveAssigneeOptions.find((option) => option.agentId === parsed.id);
+          if (
+            selectedLiveAssignee
+            && typeof selectedLiveAssignee.targetUserId === 'number'
+            && selectedLiveAssignee.targetUserId > 0
+          ) {
+            payload.target_user_id = selectedLiveAssignee.targetUserId;
+          }
+          // Store as preference - dispatcher re-checks availability at dispatch time
           payload.target_mode = 'auto';
           payload.preferred_agent_id = parsed.id;
         } else if (parsed?.kind === 'recent') {
@@ -1800,6 +1693,8 @@ function PlanDetailView({
       setNewRequestMethod('');
       setNewRequestModelId('');
       setNewRequestProvider('');
+      setNewRequestMode('review_only');
+      setNewRequestBaseRevision('');
 
       // Auto-dispatch when assignee is "auto" (idle agent dispatch)
       if (newRequestAssignee === 'auto' && created.status === 'open') {
@@ -1811,7 +1706,7 @@ function PlanDetailView({
           const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
           setReviewNotice(`Request created & dispatched: ${result.message}${nodeSuffix}`);
         } catch {
-          setReviewNotice('Request created but auto-dispatch failed Ã¢â‚¬â€ dispatch manually.');
+          setReviewNotice('Request created but auto-dispatch failed - dispatch manually.');
         }
       } else {
         const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
@@ -1825,14 +1720,17 @@ function PlanDetailView({
     }
   }, [
     encodedPlanId,
+    liveAssigneeOptions,
     loadReviewGraph,
     newRequestBody,
     newRequestAssignee,
     newRequestMethod,
     newRequestModelId,
+    newRequestMode,
     newRequestProfileId,
     newRequestProvider,
     newRequestQueuePolicy,
+    newRequestBaseRevision,
     newRequestTitle,
     selectedRound,
   ]);
@@ -1858,6 +1756,24 @@ function PlanDetailView({
         setReviewError(toErrorMessage(err, 'Failed to update review request'));
       } finally {
         setUpdatingRequestId(null);
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
+  );
+
+  const handleDismissRequest = useCallback(
+    async (request: PlanRequest) => {
+      if (request.status === 'in_progress') return;
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        await pixsimClient.patch<PlanRequest>(
+          `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
+          { dismissed: true },
+        );
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to dismiss review request'));
       }
     },
     [encodedPlanId, loadReviewGraph],
@@ -1943,9 +1859,19 @@ function PlanDetailView({
 
   if (!detail) return null;
 
+  const pointProgressRows = detail.checkpoints
+    ?.map((cp) => getCheckpointPointProgress(cp))
+    .filter((progress): progress is { done: number; total: number } => progress !== null) ?? [];
+  const donePoints = pointProgressRows.reduce((sum, progress) => sum + progress.done, 0);
+  const totalPoints = pointProgressRows.reduce((sum, progress) => sum + progress.total, 0);
+  const overallPointsProgress = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : null;
   const totalSteps = detail.checkpoints?.reduce((sum, cp) => sum + (cp.steps?.length ?? 0), 0) ?? 0;
   const doneSteps = detail.checkpoints?.reduce((sum, cp) => sum + (cp.steps?.filter((s) => s.done).length ?? 0), 0) ?? 0;
-  const overallProgress = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : null;
+  const overallStepProgress = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : null;
+  const overallProgress = overallPointsProgress ?? overallStepProgress;
+  const overallProgressLabel = overallPointsProgress !== null
+    ? `${donePoints}/${totalPoints} pts`
+    : `${doneSteps}/${totalSteps} steps`;
 
   const statusOptions = [
     { value: 'active', label: 'Active', color: 'green' as const },
@@ -1965,232 +1891,10 @@ function PlanDetailView({
     color: STAGE_BADGE_COLORS[stage.value] ?? 'gray',
   }));
   const stageLabel = stageLabelFromValue(detail.stage, stageOptionsByValue);
-  const renderDiscussionNode = (
-    node: PlanReviewNode,
-    depth: number,
-    ancestry: Set<string>,
-  ): React.ReactNode => {
-    if (ancestry.has(node.id)) {
-      return null;
-    }
-
-    const nextAncestry = new Set(ancestry);
-    nextAncestry.add(node.id);
-
-    const threadRef = selectedRoundThreadRefByChild.get(node.id);
-    const parentId = threadRef?.parentId ?? null;
-    const parentOrder = parentId ? selectedRoundNodeOrder.get(parentId) : null;
-    const threadedLinkId = threadRef?.linkId;
-    const links = (selectedRoundLinksBySource.get(node.id) ?? []).filter((link) => link.id !== threadedLinkId);
-    const children = selectedRoundThread.childrenByParent.get(node.id) ?? [];
-    const nodeOrder = selectedRoundNodeOrder.get(node.id) ?? 0;
-    const indentPx = Math.min(depth, 8) * 16;
-    const isFocused = focusedNodeId === node.id;
-    const isDismissed = dismissedNodeIds.has(node.id);
-    const sourceRefs = extractSourceRefs(node.body);
-    const sourcePreviewForNode = sourcePreview?.nodeId === node.id ? sourcePreview : null;
-    const sourcePreviewErrorForNode = sourcePreviewError?.nodeId === node.id ? sourcePreviewError.message : null;
-    const threadedRelationLabel = threadRef?.relation
-      ? formatReviewRelation(threadRef.relation)
-      : 'reply to';
-    const nodeActorLabel = formatActorLabel(
-      {
-        principalType: node.actorPrincipalType,
-        userId: node.actorUserId,
-        agentId: node.actorAgentId,
-        fallback: node.createdBy,
-      },
-      { profileLabels: reviewProfileLabels },
-    );
-
-    return (
-      <div key={node.id} className="space-y-2" style={{ marginLeft: `${indentPx}px` }}>
-        <div
-          ref={(el) => {
-            if (el) nodeCardRefs.current.set(node.id, el);
-            else nodeCardRefs.current.delete(node.id);
-          }}
-          className={`rounded border border-neutral-200 dark:border-neutral-700 p-2 ${
-            depth > 0 ? 'bg-neutral-50/60 dark:bg-neutral-900/30' : ''
-          } ${isFocused ? 'ring-2 ring-blue-400 ring-offset-1 dark:ring-blue-500' : ''} ${isDismissed ? 'opacity-40' : ''}`}
-        >
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <span className="text-[10px] text-neutral-400">#{nodeOrder}</span>
-            <Badge color={REVIEW_AUTHOR_ROLE_COLORS[node.authorRole]} className="text-[9px]">
-              {node.authorRole}
-            </Badge>
-            <Badge color="gray" className="text-[9px]">
-              {node.kind}
-            </Badge>
-            {node.severity && (
-              <Badge color={REVIEW_SEVERITY_COLORS[node.severity]} className="text-[9px]">
-                {node.severity}
-              </Badge>
-            )}
-            {(node.actorAgentId || node.createdBy || node.actorUserId != null) && (
-              <Badge color="green" className="text-[9px]">
-                {nodeActorLabel}
-              </Badge>
-            )}
-            {node.actorRunId && (
-              <Badge color="gray" className="text-[9px] cursor-default" title={`Run ID: ${node.actorRunId}`}>
-                run {node.actorRunId.slice(0, 12)}
-              </Badge>
-            )}
-            {parentOrder && parentId && (
-              <button
-                type="button"
-                onClick={() => focusLinkedNode(parentId)}
-                className="hover:opacity-80"
-                title="Jump to parent node"
-              >
-                <Badge color="blue" className="text-[9px]">
-                  {threadedRelationLabel} #{parentOrder}
-                </Badge>
-              </button>
-            )}
-            <span className="text-[10px] text-neutral-400">{formatDateTime(node.createdAt)}</span>
-          </div>
-          <div className="text-xs text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
-            {node.body}
-          </div>
-
-          {sourceRefs.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {sourceRefs.map((ref, refIdx) => {
-                const refRequestKey = `${node.id}:${ref.path}:${ref.startLine}-${ref.endLine}`;
-                const isLoading = sourcePreviewLoadingKey === refRequestKey;
-                return (
-                  <button
-                    key={`${refRequestKey}:${refIdx}`}
-                    type="button"
-                    onClick={() => void previewSourceRef(node.id, ref)}
-                    className="hover:opacity-85"
-                    disabled={isLoading}
-                    title="Preview source snippet"
-                  >
-                    <Badge color="gray" className="text-[9px]">
-                      {isLoading ? 'loading...' : ref.raw}
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {sourcePreviewErrorForNode && (
-            <div className="mt-2 text-[11px] text-red-600 dark:text-red-400">
-              {sourcePreviewErrorForNode}
-            </div>
-          )}
-
-          {sourcePreviewForNode && (
-            <div className="mt-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <code className="text-[10px] text-neutral-600 dark:text-neutral-300">
-                  {sourcePreviewForNode.data.path}:{sourcePreviewForNode.data.startLine}-{sourcePreviewForNode.data.endLine}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => setSourcePreview(null)}
-                  className="text-[10px] text-neutral-500 hover:underline"
-                >
-                  Close
-                </button>
-              </div>
-              <pre className="text-[11px] leading-relaxed overflow-auto max-h-56">
-                {sourcePreviewForNode.data.lines.map((line) => (
-                  <div key={`${sourcePreviewForNode.data.path}:${line.lineNumber}`} className="flex gap-2">
-                    <span className="w-10 shrink-0 text-right text-neutral-400 select-none">{line.lineNumber}</span>
-                    <code className="text-neutral-700 dark:text-neutral-200 whitespace-pre">{line.text}</code>
-                  </div>
-                ))}
-              </pre>
-            </div>
-          )}
-
-          {links.length > 0 && (
-            <div className="mt-2 space-y-1">
-              {links.map((link, linkIdx) => {
-                const targetNode = link.targetNodeId ? nodeById.get(link.targetNodeId) : undefined;
-                const targetNodeOrder = targetNode ? selectedRoundNodeOrder.get(targetNode.id) : undefined;
-                const targetRoundNumber = targetNode ? reviewRoundNumberById.get(targetNode.roundId) : undefined;
-                const targetInDifferentRound =
-                  !!targetNode && targetNode.roundId !== selectedRoundId;
-                return (
-                  <div
-                    key={`${node.id}:link:${link.id}:${linkIdx}`}
-                    className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5 flex-wrap"
-                  >
-                    {targetNode ? (
-                      <button
-                        type="button"
-                        onClick={() => focusLinkedNode(targetNode.id)}
-                        className="hover:opacity-80"
-                        title="Jump to referenced node"
-                      >
-                        <Badge color="blue" className="text-[9px]">{link.relation}</Badge>
-                      </button>
-                    ) : (
-                      <Badge color="gray" className="text-[9px]">{link.relation}</Badge>
-                    )}
-                    {targetNode ? (
-                      <button
-                        type="button"
-                        onClick={() => focusLinkedNode(targetNode.id)}
-                        className="text-blue-600 dark:text-blue-400 hover:underline"
-                        title="Jump to referenced node"
-                      >
-                        to <code className="font-mono">{targetNodeOrder ? `#${targetNodeOrder}` : targetNode.id.slice(0, 8)}</code>{' '}
-                        ({targetNode.authorRole}/{targetNode.kind}
-                        {targetInDifferentRound ? `, round #${targetRoundNumber ?? '?'}` : ''})
-                      </button>
-                    ) : link.targetPlanAnchor ? (
-                      <span>
-                        plan anchor <code className="font-mono">{JSON.stringify(link.targetPlanAnchor)}</code>
-                      </span>
-                    ) : (
-                      <span>reference</span>
-                    )}
-                    {link.quote && (
-                      <span className="italic text-neutral-400">"{link.quote}"</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => handleReplyToNode(node)}
-              className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Reply to this node
-            </button>
-          </div>
-        </div>
-
-        {children.length > 0 && (
-          <DisclosureSection
-            label={`${children.length} ${children.length === 1 ? 'reply' : 'replies'}`}
-            defaultOpen={depth < 2}
-            size="sm"
-            bordered
-          >
-            <div className="space-y-2">
-              {children.map((child) => renderDiscussionNode(child, depth + 1, nextAncestry))}
-            </div>
-          </DisclosureSection>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div className="p-4 space-y-4">
-      {/* Plan lineage Ã¢â‚¬â€ parent Ã¢â€ â€™ this Ã¢â€ â€™ children */}
+      {/* Plan lineage - parent -> this -> children */}
       {(detail.parentId || detail.children.length > 0) && (
         <div className="flex items-center gap-1 flex-wrap text-[10px]">
           {detail.parentId && (
@@ -2280,7 +1984,7 @@ function PlanDetailView({
         {overallProgress !== null ? (
           <>
             <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-            <span>{overallProgress}% <span className="text-neutral-400">({doneSteps}/{totalSteps} steps)</span></span>
+            <span>{overallProgress}% <span className="text-neutral-400">({overallProgressLabel})</span></span>
           </>
         ) : (
           <>
@@ -2722,376 +2426,60 @@ function PlanDetailView({
               ) : (
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                   {selectedRoundRequests.filter((r) => !r.dismissed).map((request) => (
-                    <div key={request.id} className="rounded border border-neutral-200 dark:border-neutral-700 p-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-medium text-neutral-800 dark:text-neutral-200">
-                          {request.title}
-                        </span>
-                        <Badge color={REVIEW_REQUEST_STATUS_COLORS[request.status]} className="text-[9px]">
-                          {request.status}
-                        </Badge>
-                        {request.dispatchState && (
-                          <Badge color={REVIEW_REQUEST_DISPATCH_COLORS[request.dispatchState]} className="text-[9px]">
-                            {request.dispatchState}
-                          </Badge>
-                        )}
-                        {request.targetMode && (
-                          <Badge color="gray" className="text-[9px]">
-                            {request.targetMode}
-                          </Badge>
-                        )}
-                        {request.targetAgentId && (
-                          <Badge color="green" className="text-[9px]">
-                            {formatActorLabel(
-                              {
-                                principalType: 'agent',
-                                agentId: request.targetAgentId,
-                              },
-                              { profileLabels: reviewProfileLabels },
-                            )}
-                          </Badge>
-                        )}
-                        {request.roundId && (
-                          <Badge color="gray" className="text-[9px]">
-                            round-bound
-                          </Badge>
-                        )}
-                        <span className="text-[10px] text-neutral-400">{formatDateTime(request.createdAt)}</span>
-                      </div>
-                      <div className="mt-1 text-[11px] text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
-                        {request.body}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1">
-                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          by {formatActorLabel(
-                            {
-                              principalType: request.requestedByPrincipalType,
-                              userId: request.requestedByUserId,
-                              agentId: request.requestedByAgentId,
-                              fallback: request.requestedBy,
-                            },
-                            { profileLabels: reviewProfileLabels },
-                          )}
-                        </span>
-                        {request.targetModelId && (
-                          <Badge color="purple" className="text-[9px]">{request.targetModelId}</Badge>
-                        )}
-                        {request.targetProvider && (
-                          <Badge color="gray" className="text-[9px]">{request.targetProvider}</Badge>
-                        )}
-                        {request.targetMethod && (
-                          <Badge color="gray" className="text-[9px]">{request.targetMethod}</Badge>
-                        )}
-                        {request.targetProfileId && (
-                          <Badge color="indigo" className="text-[9px]">{request.targetProfileId}</Badge>
-                        )}
-                        {request.queueIfBusy && (
-                          <Badge color="yellow" className="text-[9px]">queued</Badge>
-                        )}
-                        {(request.resolvedByAgentId || request.resolvedBy) && (
-                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                            resolved by {formatActorLabel(
-                              {
-                                principalType: request.resolvedByPrincipalType,
-                                userId: request.resolvedByUserId,
-                                agentId: request.resolvedByAgentId,
-                                fallback: request.resolvedBy,
-                              },
-                              { profileLabels: reviewProfileLabels },
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      {request.dispatchReason && request.status !== 'in_progress' && (
-                        <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-                          dispatch: {request.dispatchReason}
-                        </div>
-                      )}
-                      {request.status === 'in_progress' && (() => {
-                        const agentId = request.targetAgentId || request.targetSessionId;
-                        const session = agentId ? agentSessions.get(agentId) : undefined;
-                        return (
-                          <div className="mt-1.5 rounded border border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20 p-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                              </span>
-                              {session ? (
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-[10px] text-green-700 dark:text-green-300">
-                                    {session.action || 'Working'}{session.detail ? `: ${session.detail.slice(0, 80)}` : ''}
-                                  </span>
-                                  {(session.plan_id || session.contract_id) && (
-                                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                                      {session.contract_id && (
-                                        <Badge color="blue" className="text-[9px]">
-                                          {session.contract_id}
-                                        </Badge>
-                                      )}
-                                      {session.plan_id && (
-                                        <Badge color="green" className="text-[9px]">
-                                          plan:{session.plan_id}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-green-700 dark:text-green-300">
-                                  Agent working
-                                  {agentId
-                                    ? ` (${formatActorLabel(
-                                        { principalType: 'agent', agentId },
-                                        { profileLabels: reviewProfileLabels },
-                                      )})`
-                                    : ''}
-                                  ...
-                                </span>
-                              )}
-                            </div>
-                            {session && session.recent_activity.length > 0 && (
-                              <div className="mt-1 space-y-0.5 max-h-20 overflow-y-auto">
-                                {session.recent_activity.slice(0, 5).map((a, i) => (
-                                  <div key={`${session.session_id}:activity:${i}`} className="flex items-start gap-1.5 text-[9px] text-neutral-500 dark:text-neutral-400">
-                                    <span className="shrink-0 w-12 text-right text-neutral-400">
-                                      {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                    </span>
-                                    <span className="font-medium text-neutral-600 dark:text-neutral-300">{a.action}</span>
-                                    {a.detail && <span className="truncate">{a.detail.slice(0, 60)}</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {request.resolutionNote && (
-                        <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400 italic">
-                          {request.resolutionNote}
-                        </div>
-                      )}
-                      {request.resolvedNodeId && (() => {
-                        const resolvedNode = nodeById.get(request.resolvedNodeId!);
-                        const resolvedOrder = resolvedNode ? selectedRoundNodeOrder.get(resolvedNode.id) : undefined;
-                        return (
-                          <div className="mt-1">
-                            <button
-                              type="button"
-                              onClick={() => focusLinkedNode(request.resolvedNodeId!)}
-                              className="hover:opacity-80"
-                              title="Jump to resolved node"
-                            >
-                              <Badge color="green" className="text-[9px]">
-                                resolved Ã¢â€ â€™ #{resolvedOrder ?? request.resolvedNodeId!.slice(0, 8)}
-                              </Badge>
-                            </button>
-                          </div>
-                        );
-                      })()}
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Button
-                          size="sm"
-                          onClick={() => void handleDispatchRequest(request)}
-                          disabled={dispatchingRequestId === request.id || request.status !== 'open'}
-                        >
-                          {dispatchingRequestId === request.id ? 'Dispatching...' : 'Dispatch'}
-                        </Button>
-                        {(['open', 'in_progress', 'fulfilled', 'cancelled'] as const).map((statusValue) => (
-                          <Button
-                            key={`${request.id}:${statusValue}`}
-                            size="sm"
-                            onClick={() => void handleUpdateRequestStatus(request, statusValue)}
-                            disabled={updatingRequestId === request.id || dispatchingRequestId === request.id}
-                          >
-                            {request.status === statusValue ? `* ${statusValue}` : statusValue}
-                          </Button>
-                        ))}
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            void pixsimClient.patch<PlanRequest>(
-                              `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
-                              { dismissed: true },
-                            ).then(() => loadReviewGraph());
-                          }}
-                          disabled={request.status === 'in_progress'}
-                          title="Dismiss this request"
-                        >
-                          dismiss
-                        </Button>
-                      </div>
-                    </div>
+                    <PlanReviewRequestCard
+                      key={request.id}
+                      request={request}
+                      profileLabels={reviewProfileLabels}
+                      requestStatusColors={REVIEW_REQUEST_STATUS_COLORS}
+                      requestDispatchColors={REVIEW_REQUEST_DISPATCH_COLORS}
+                      agentSessions={agentSessions}
+                      nodeById={nodeById}
+                      selectedRoundNodeOrder={selectedRoundNodeOrder}
+                      dispatchingRequestId={dispatchingRequestId}
+                      updatingRequestId={updatingRequestId}
+                      onDispatchRequest={handleDispatchRequest}
+                      onUpdateRequestStatus={handleUpdateRequestStatus}
+                      onDismissRequest={handleDismissRequest}
+                      onFocusNode={focusLinkedNode}
+                      formatDateTime={formatDateTime}
+                    />
                   ))}
                 </div>
               )}
 
-              <DisclosureSection
-                label="New Request"
-                defaultOpen={false}
-                className="rounded border border-neutral-200 dark:border-neutral-700 p-2"
-                contentClassName="space-y-2"
-              >
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                  Title
-                  <input
-                    value={newRequestTitle}
-                    onChange={(e) => setNewRequestTitle(e.target.value)}
-                    className={inputClassName}
-                    placeholder="e.g. Re-review after fixes"
-                  />
-                </label>
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                  Agent Profile (optional)
-                  <select
-                    value={newRequestProfileId}
-                    onChange={(e) => applyRequestProfileSelection(e.target.value)}
-                    className={inputClassName}
-                  >
-                    <option value="">none</option>
-                    {reviewProfiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.label} ({profile.id})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                    Method (optional)
-                    <input
-                      value={newRequestMethod}
-                      onChange={(e) => setNewRequestMethod(e.target.value)}
-                      className={inputClassName}
-                      placeholder="remote"
-                    />
-                  </label>
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                    Provider (optional)
-                    <input
-                      value={newRequestProvider}
-                      onChange={(e) => setNewRequestProvider(e.target.value)}
-                      className={inputClassName}
-                      placeholder="anthropic"
-                    />
-                  </label>
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                    Model (optional)
-                    <input
-                      value={newRequestModelId}
-                      onChange={(e) => setNewRequestModelId(e.target.value)}
-                      className={inputClassName}
-                      placeholder="claude-3-7-sonnet"
-                    />
-                  </label>
-                </div>
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                  Assignee
-                  <select
-                    value={newRequestAssignee}
-                    onChange={(e) => setNewRequestAssignee(e.target.value)}
-                    className={inputClassName}
-                  >
-                    <option value="auto">Auto (dispatcher)</option>
-                    {liveAssigneeOptions.map((agent) => {
-                      const displayLabel = (agent.label || '').trim() || formatActorLabel(
-                        { principalType: 'agent', agentId: agent.agentId },
-                        { profileLabels: reviewProfileLabels },
-                      );
-                      const agentLabel = [
-                        displayLabel,
-                        agent.engines?.join('/') || agent.agentType,
-                        agent.busy ? 'busy' : 'idle',
-                        agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
-                      ].filter(Boolean).join(' - ');
-
-                      // If agent has pool sessions, show them as sub-options
-                      if (agent.poolSessions && agent.poolSessions.length > 0) {
-                        return (
-                          <optgroup key={`live:${agent.agentId}`} label={agentLabel}>
-                            <option value={buildAssigneeOptionValue('live', agent.agentId)}>
-                              Any session (auto)
-                            </option>
-                            {agent.poolSessions.map((ps) => {
-                              const parts = [ps.sessionId];
-                              if (ps.cliModel) parts.push(ps.cliModel);
-                              parts.push(ps.state);
-                              if (ps.messagesSent > 0) parts.push(`${ps.messagesSent} msg`);
-                              if (ps.contextPct != null) parts.push(`ctx ${ps.contextPct}%`);
-                              return (
-                                <option key={`live:${ps.sessionId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
-                                  {'-> '}{parts.join(' - ')}
-                                </option>
-                              );
-                            })}
-                          </optgroup>
-                        );
-                      }
-
-                      // No pool sessions - single option
-                      return (
-                        <option key={`live:${agent.agentId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
-                          {agentLabel}
-                        </option>
-                      );
-                    })}
-                    {recentAssigneeOptions.length > 0 && (
-                      <optgroup label="Recent Reviewers">
-                        {recentAssigneeOptions.map((option) => {
-                          const parts = [
-                            formatActorLabel(
-                              { principalType: 'agent', agentId: option.agentId },
-                              { profileLabels: reviewProfileLabels },
-                            ),
-                          ];
-                          if (option.agentType) parts.push(option.agentType);
-                          if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
-                          return (
-                            <option key={`recent:${option.agentId}`} value={buildAssigneeOptionValue('recent', option.agentId)}>
-                              {parts.join(' - ')}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    )}
-                  </select>
-                </label>
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                  Queue Policy
-                  <select
-                    value={newRequestQueuePolicy}
-                    onChange={(e) => setNewRequestQueuePolicy(e.target.value as ReviewRequestQueuePolicy)}
-                    className={inputClassName}
-                  >
-                    <option value="auto_reroute">Auto reroute if busy (recommended)</option>
-                    <option value="start_now">Start now only</option>
-                    <option value="queue_next">Queue next if busy</option>
-                  </select>
-                </label>
-                {loadingAssignees && (
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Refreshing live assignees...
-                  </div>
-                )}
-                {loadingProfiles && (
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Refreshing agent profiles...
-                  </div>
-                )}
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                  Body
-                  <textarea
-                    value={newRequestBody}
-                    onChange={(e) => setNewRequestBody(e.target.value)}
-                    className={textAreaClassName}
-                    rows={3}
-                    placeholder="What should the reviewer verify or challenge?"
-                  />
-                </label>
-                <Button size="sm" onClick={() => void handleCreateRequest()} disabled={creatingRequest}>
-                  {creatingRequest ? 'Creating...' : 'Create Review Request'}
-                </Button>
-              </DisclosureSection>
+              <PlanReviewRequestForm
+                inputClassName={inputClassName}
+                textAreaClassName={textAreaClassName}
+                title={newRequestTitle}
+                body={newRequestBody}
+                profileId={newRequestProfileId}
+                method={newRequestMethod}
+                provider={newRequestProvider}
+                modelId={newRequestModelId}
+                mode={newRequestMode}
+                baseRevision={newRequestBaseRevision}
+                assignee={newRequestAssignee}
+                queuePolicy={newRequestQueuePolicy}
+                creating={creatingRequest}
+                loadingAssignees={loadingAssignees}
+                loadingProfiles={loadingProfiles}
+                profiles={reviewProfiles}
+                liveAssignees={liveAssigneeOptions}
+                recentAssignees={recentAssigneeOptions}
+                profileLabels={reviewProfileLabels}
+                buildAssigneeOptionValue={buildAssigneeOptionValue}
+                onTitleChange={setNewRequestTitle}
+                onBodyChange={setNewRequestBody}
+                onProfileChange={applyRequestProfileSelection}
+                onMethodChange={setNewRequestMethod}
+                onProviderChange={setNewRequestProvider}
+                onModelIdChange={setNewRequestModelId}
+                onModeChange={setNewRequestMode}
+                onBaseRevisionChange={setNewRequestBaseRevision}
+                onAssigneeChange={setNewRequestAssignee}
+                onQueuePolicyChange={setNewRequestQueuePolicy}
+                onSubmit={() => void handleCreateRequest()}
+              />
             </DisclosureSection>
 
             <DisclosureSection
@@ -3113,154 +2501,69 @@ function PlanDetailView({
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[24rem] overflow-y-auto pr-1">
-                  {selectedRoundThread.roots.map((node) => renderDiscussionNode(node, 0, new Set()))}
+                  <PlanReviewDiscussion
+                    roots={selectedRoundThread.roots}
+                    childrenByParent={selectedRoundThread.childrenByParent}
+                    threadRefByChild={selectedRoundThreadRefByChild}
+                    linksBySource={selectedRoundLinksBySource}
+                    selectedRoundId={selectedRoundId}
+                    nodeById={nodeById}
+                    nodeOrderById={selectedRoundNodeOrder}
+                    roundNumberById={reviewRoundNumberById}
+                    focusedNodeId={focusedNodeId}
+                    dismissedNodeIds={dismissedNodeIds}
+                    sourcePreview={sourcePreview}
+                    sourcePreviewError={sourcePreviewError}
+                    sourcePreviewLoadingKey={sourcePreviewLoadingKey}
+                    nodeCardRefs={nodeCardRefs}
+                    profileLabels={reviewProfileLabels}
+                    authorRoleColors={REVIEW_AUTHOR_ROLE_COLORS}
+                    severityColors={REVIEW_SEVERITY_COLORS}
+                    formatDateTime={formatDateTime}
+                    formatReviewRelation={formatReviewRelation}
+                    extractSourceRefs={extractSourceRefs}
+                    onPreviewSourceRef={previewSourceRef}
+                    onClearSourcePreview={() => setSourcePreview(null)}
+                    onFocusLinkedNode={focusLinkedNode}
+                    onReplyToNode={handleReplyToNode}
+                  />
                 </div>
               )}
             </DisclosureSection>
 
-            <DisclosureSection
-              label="Add Response"
-              defaultOpen={false}
-              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
-              contentClassName="space-y-2"
-            >
-              {!selectedRound ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a round before adding responses.
-                </div>
-              ) : (
-                <>
-                  {selectedRound.status === 'concluded' && (
-                    <div className="text-xs text-orange-600 dark:text-orange-400">
-                      This round is concluded. Re-open it to continue discussion.
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Kind
-                      <select
-                        value={newNodeKind}
-                        onChange={(e) => setNewNodeKind(e.target.value as ReviewNodeKind)}
-                        className={inputClassName}
-                      >
-                        <option value="review_comment">review_comment</option>
-                        <option value="agent_response">agent_response</option>
-                        <option value="note">note</option>
-                        <option value="conclusion">conclusion</option>
-                      </select>
-                    </label>
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Role
-                      <select
-                        value={newNodeAuthorRole}
-                        onChange={(e) => setNewNodeAuthorRole(e.target.value as ReviewAuthorRole)}
-                        className={inputClassName}
-                      >
-                        <option value="reviewer">reviewer</option>
-                        <option value="author">author</option>
-                        <option value="agent">agent</option>
-                        <option value="system">system</option>
-                      </select>
-                    </label>
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Severity
-                      <select
-                        value={newNodeSeverity}
-                        onChange={(e) => setNewNodeSeverity(e.target.value as NonNullable<PlanReviewNode['severity']> | '')}
-                        className={inputClassName}
-                      >
-                        <option value="">none</option>
-                        <option value="info">info</option>
-                        <option value="low">low</option>
-                        <option value="medium">medium</option>
-                        <option value="high">high</option>
-                        <option value="critical">critical</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                    Body
-                    <textarea
-                      ref={composeTextareaRef}
-                      value={newNodeBody}
-                      onChange={(e) => setNewNodeBody(e.target.value)}
-                      className={textAreaClassName}
-                      rows={5}
-                      placeholder="Add review feedback, response, or conclusion details..."
-                    />
-                  </label>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Target Node (optional)
-                      <select
-                        value={newNodeRefTargetId}
-                        onChange={(e) => setNewNodeRefTargetId(e.target.value)}
-                        className={inputClassName}
-                      >
-                        <option value="">none</option>
-                        {selectedRoundNodes.map((node, idx) => (
-                          <option key={node.id} value={node.id}>
-                            #{idx + 1} {node.authorRole}/{node.kind} {node.id.slice(0, 8)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Relation
-                      <select
-                        value={newNodeRefRelation}
-                        onChange={(e) => setNewNodeRefRelation(e.target.value as PlanReviewLink['relation'])}
-                        className={inputClassName}
-                      >
-                        {relationOptions.map((relation) => (
-                          <option key={relation.value} value={relation.value}>
-                            {relation.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Plan Anchor (optional)
-                      <input
-                        value={newNodeRefPlanAnchor}
-                        onChange={(e) => setNewNodeRefPlanAnchor(e.target.value)}
-                        className={inputClassName}
-                        placeholder="e.g. checkpoint:cp-2"
-                      />
-                    </label>
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Quote (optional)
-                      <input
-                        value={newNodeRefQuote}
-                        onChange={(e) => setNewNodeRefQuote(e.target.value)}
-                        className={inputClassName}
-                        placeholder="Short quoted context"
-                      />
-                    </label>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    onClick={() => void handleCreateNode()}
-                    disabled={creatingNode || selectedRound.status === 'concluded'}
-                  >
-                    {creatingNode ? 'Posting...' : 'Add Response'}
-                  </Button>
-                </>
-              )}
-            </DisclosureSection>
+            <PlanReviewResponseForm
+              inputClassName={inputClassName}
+              textAreaClassName={textAreaClassName}
+              selectedRoundStatus={selectedRound?.status ?? null}
+              selectedRoundNodes={selectedRoundNodes}
+              relationOptions={relationOptions}
+              composeTextareaRef={composeTextareaRef}
+              kind={newNodeKind}
+              authorRole={newNodeAuthorRole}
+              severity={newNodeSeverity}
+              body={newNodeBody}
+              refTargetId={newNodeRefTargetId}
+              refRelation={newNodeRefRelation}
+              refPlanAnchor={newNodeRefPlanAnchor}
+              refQuote={newNodeRefQuote}
+              creating={creatingNode}
+              onKindChange={setNewNodeKind}
+              onAuthorRoleChange={setNewNodeAuthorRole}
+              onSeverityChange={setNewNodeSeverity}
+              onBodyChange={setNewNodeBody}
+              onRefTargetIdChange={setNewNodeRefTargetId}
+              onRefRelationChange={setNewNodeRefRelation}
+              onRefPlanAnchorChange={setNewNodeRefPlanAnchor}
+              onRefQuoteChange={setNewNodeRefQuote}
+              onSubmit={() => void handleCreateNode()}
+            />
           </div>
         </div>
       </DisclosureSection>
 
       {/* Parent reference moved to lineage bar at top */}
 
-      {/* Plan markdown Ã¢â‚¬â€ collapsed by default */}
+      {/* Plan markdown - collapsed by default */}
       {detail.markdown && (
         <div>
           <button
@@ -3431,7 +2734,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   // Child plans (parentId set) are excluded from top-level and placed after their parent.
   const grouped = useMemo(() => {
     const map = new Map<string, PlanSummary[]>();
-    const childOf = new Map<string, PlanSummary[]>(); // parentId Ã¢â€ â€™ children
+    const childOf = new Map<string, PlanSummary[]>(); // parentId -> children
 
     for (const p of filteredPlans) {
       if (p.parentId) {
@@ -3446,7 +2749,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     return { byStage: map, childOf };
   }, [filteredPlans]);
 
-  // Build sidebar sections Ã¢â‚¬â€ grouped by stage, with children nested under parent
+  // Build sidebar sections - grouped by stage, with children nested under parent
   const sections = useMemo<SidebarContentLayoutSection[]>(() => {
     const result: SidebarContentLayoutSection[] = [];
 
@@ -3548,7 +2851,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     }
 
     if (sortBy !== 'stage') {
-      // Flat sorted list Ã¢â‚¬â€ no stage groups
+      // Flat sorted list - no stage groups
       const topLevel = unpinnedPlans.filter((p) => !p.parentId);
       if (topLevel.length > 0) {
         const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];

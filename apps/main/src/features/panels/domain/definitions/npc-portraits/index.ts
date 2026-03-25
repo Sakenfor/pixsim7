@@ -8,7 +8,7 @@ export default definePanel({
   component: NpcPortraits,
   category: 'game',
   tags: ['npc', 'portraits', 'expressions', 'preferences'],
-  icon: 'user',
+  icon: 'users',
   description: 'Configure NPC expressions mapped to assets',
   navigation: {
     featureIds: ['game'],

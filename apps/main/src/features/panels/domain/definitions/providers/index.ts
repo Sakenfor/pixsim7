@@ -12,7 +12,7 @@ export default definePanel({
   description: 'API provider settings and configuration',
   navigation: {
     featureIds: ['generation'],
-    modules: ['generation-page', 'settings-page'],
+    modules: ['generation-page', 'settings'],
     order: 50,
     openPreference: 'float-preferred',
   },

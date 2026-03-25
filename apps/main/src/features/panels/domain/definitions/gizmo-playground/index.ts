@@ -8,6 +8,8 @@ export default definePanel({
   title: 'Gizmo Playground',
   component: GizmoPlayground,
   category: 'tools',
+  panelRole: 'sub-panel',
+  browsable: false,
   tags: ['gizmos', 'lab', 'playground', 'canvas'],
   icon: 'play',
   description: 'Interactive playground for the selected gizmo',

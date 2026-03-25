@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 export interface SidebarNavSection<TChildId extends string = string> {
   id: string;
@@ -117,6 +117,48 @@ export function useSidebarNav<
   });
 
   const activeId = (activeChildId ?? activeSectionId) as TSectionId | TChildId;
+
+  // Track whether initial expansion / persisted restoration happened
+  const initialExpandDoneRef = useRef(sections.length > 0);
+  const restoredRef = useRef(
+    !!readPersistedId(storageKey, sections),
+  );
+
+  // When sections first populate after mount, apply defaultAllExpanded + deferred restoration
+  useEffect(() => {
+    if (sections.length === 0) return;
+
+    // Apply defaultAllExpanded once when sections first arrive (useState init missed them)
+    if (!initialExpandDoneRef.current) {
+      initialExpandDoneRef.current = true;
+      if (defaultAllExpanded) {
+        setExpandedSectionIds(
+          new Set(sections.filter((s) => s.children?.length).map((s) => s.id)),
+        );
+      }
+    }
+
+    // Re-attempt persisted ID restoration (couldn't validate against empty sections on mount)
+    if (!restoredRef.current && storageKey) {
+      const persisted = readPersistedId<TSectionId, TChildId>(storageKey, sections);
+      if (persisted) {
+        restoredRef.current = true;
+        const parent = childToParent.get(persisted);
+        if (parent) {
+          setActiveSectionId(parent as TSectionId);
+          setActiveChildId(persisted as TChildId);
+          // Ensure parent is expanded even if defaultAllExpanded already ran
+          setExpandedSectionIds((prev) => {
+            if (prev.has(parent)) return prev;
+            return new Set([...prev, parent]);
+          });
+        } else {
+          setActiveSectionId(persisted as TSectionId);
+          setActiveChildId(undefined);
+        }
+      }
+    }
+  }, [storageKey, sections, childToParent, defaultAllExpanded]);
 
   // Persist active id whenever it changes
   useEffect(() => {

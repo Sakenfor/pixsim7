@@ -15,7 +15,7 @@ import type { SettingGroup, SettingTab } from "@features/settings";
 
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 
-import type { PanelCategory } from "./panelConstants";
+import type { PanelCategory, PanelRole } from "./panelConstants";
 import type { PanelMetadata } from "./types";
 
 // Re-export PanelCategory for backwards compatibility
@@ -156,6 +156,14 @@ type SettingsSchema<T> = {
 export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
   id: string;
   category: PanelCategory;
+  /** Semantic role — what this panel *does* independent of its domain category. */
+  panelRole?: PanelRole;
+  /**
+   * Whether this panel appears in the main Panel Browser sidebar.
+   * Defaults to `true`.  Panels with `browsable: false` are still available
+   * via right-click "Add Panel" and programmatic APIs.
+   */
+  browsable?: boolean;
   tags: string[];
   description?: string;
   /**
@@ -374,9 +382,20 @@ export class PanelRegistry
 
   /**
    * Get panels that should appear in user-facing lists.
+   * Includes all non-internal panels (used by right-click "Add Panel").
    */
   getPublicPanels(): PanelDefinition[] {
     return this.getAll().filter((panel) => !panel.isInternal);
+  }
+
+  /**
+   * Get panels suitable for the main Panel Browser sidebar.
+   * Excludes internal panels and panels with `browsable: false`.
+   */
+  getBrowsablePanels(): PanelDefinition[] {
+    return this.getAll().filter(
+      (panel) => !panel.isInternal && panel.browsable !== false,
+    );
   }
 
   /**

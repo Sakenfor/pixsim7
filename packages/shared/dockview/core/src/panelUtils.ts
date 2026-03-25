@@ -186,6 +186,9 @@ export function addPanel(
     // cause "invalid location" errors from dockview internals.
     if (options.position) {
       try {
+        if (api.getPanel(instanceId)) {
+          return instanceId;
+        }
         api.addPanel({
           id: instanceId,
           component: panelId,
@@ -200,10 +203,27 @@ export function addPanel(
         return null;
       }
     } else {
-      // No position was specified yet dockview still rejected the panel —
-      // the internal grid/tab tree is likely corrupt from a bad fromJSON.
-      console.warn(`[addPanel] Failed to add "${panelId}" (corrupt layout state):`, err);
-      return null;
+      // No position was specified yet dockview still rejected the panel.
+      // Try one more time with an explicit absolute placement so dockview
+      // does not rely on potentially stale active-group state.
+      try {
+        if (api.getPanel(instanceId)) {
+          return instanceId;
+        }
+        api.addPanel({
+          id: instanceId,
+          component: panelId,
+          title,
+          params,
+          position: { direction: 'right' },
+          initialWidth: options.initialWidth,
+          initialHeight: options.initialHeight,
+        });
+      } catch (retryErr) {
+        // The internal grid/tab tree is likely corrupt from a bad fromJSON.
+        console.warn(`[addPanel] Failed to add "${panelId}" (corrupt layout state):`, retryErr);
+        return null;
+      }
     }
   }
 

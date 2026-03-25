@@ -1,4 +1,5 @@
 import { definePanel } from '../../../lib/definePanel';
+
 import { CompositionRolesPanel } from './CompositionRolesPanel';
 
 export { CompositionRolesPanel };
@@ -8,6 +9,8 @@ export default definePanel({
   title: 'Composition Roles',
   component: CompositionRolesPanel,
   category: 'generation',
+  panelRole: 'reference',
+  browsable: false,
   tags: ['composition', 'roles', 'tags', 'mappings', 'generation'],
   icon: 'layers',
   description: 'Browse composition role definitions and tag mappings',

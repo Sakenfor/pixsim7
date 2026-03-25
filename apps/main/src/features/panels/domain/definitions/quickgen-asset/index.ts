@@ -8,7 +8,7 @@ export default definePanel({
   component: QuickGenAssetPanel,
   category: 'generation',
   tags: ['generation', 'queue', 'asset', 'quickgen', 'control-center'],
-  icon: 'image',
+  icon: 'camera',
   description: 'Asset input panel for quick generation workflows',
   navigation: {
     featureIds: ['generation'],

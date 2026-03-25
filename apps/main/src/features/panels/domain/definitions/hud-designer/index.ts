@@ -7,7 +7,7 @@ export default definePanel({
   component: HudDesignerPanel,
   category: 'tools',
   tags: ['hud', 'designer', 'layout', 'ui', 'widgets'],
-  icon: 'layoutGrid',
+  icon: 'layout',
   description: 'Design HUD layouts using widget compositions',
   navigation: {
     featureIds: ['game'],

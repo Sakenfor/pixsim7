@@ -10,7 +10,7 @@ export default definePanel({
   component: ScenePlanPanel,
   category: 'game',
   tags: ['scene', 'plan', 'director', 'behavior', 'primitives', 'debug'],
-  icon: 'map',
+  icon: 'clipboardList',
   description:
     'Build a behavior-driven scene plan preview with canonical anchors, beats, and camera intent.',
   navigation: {
