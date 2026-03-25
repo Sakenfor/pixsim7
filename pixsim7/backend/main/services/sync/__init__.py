@@ -46,6 +46,6 @@ async def run_startup_syncs(db: AsyncSession) -> None:
         logger.info(
             "startup_sync_complete",
             sync_name="test_suites",
-            created=result.created,
-            updated=result.updated,
+            suites_created=result.created,
+            suites_updated=result.updated,
         )

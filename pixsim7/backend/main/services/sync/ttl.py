@@ -102,10 +102,10 @@ class TtlSync:
         logger.info(
             "ttl_sync_complete",
             sync_name=self.name,
-            created=outcome.created,
-            updated=outcome.updated,
-            removed=outcome.removed,
-            unchanged=outcome.unchanged,
+            suites_created=outcome.created,
+            suites_updated=outcome.updated,
+            suites_removed=outcome.removed,
+            suites_unchanged=outcome.unchanged,
         )
         return outcome
 
