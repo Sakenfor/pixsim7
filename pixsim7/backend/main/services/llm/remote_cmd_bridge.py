@@ -41,6 +41,7 @@ class RemoteAgent:
     connection_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     agent_type: str = "unknown"
     user_id: Optional[int] = None  # None = shared/admin bridge
+    run_id: Optional[str] = None
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     active_tasks: int = 0          # number of in-flight tasks
     current_task_id: Optional[str] = None  # most recent task (for heartbeat tracking)
@@ -80,6 +81,7 @@ class RemoteCommandBridge:
         bridge_client_id: Optional[str] = None,
         agent_type: str = "unknown",
         user_id: Optional[int] = None,
+        run_id: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
         bridge_id: Optional[str] = None,
     ) -> RemoteAgent:
@@ -99,6 +101,7 @@ class RemoteCommandBridge:
             websocket=websocket,
             agent_type=agent_type,
             user_id=user_id,
+            run_id=run_id,
             metadata=metadata or {},
         )
         agent.tasks_completed = tasks_completed

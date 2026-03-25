@@ -37,6 +37,7 @@ class CanonicalHeartbeat:
     """Immutable, typed heartbeat record."""
 
     session_id: str
+    run_id: Optional[str] = None
     agent_type: str = "claude"
     status: str = "active"
     action: str = ""

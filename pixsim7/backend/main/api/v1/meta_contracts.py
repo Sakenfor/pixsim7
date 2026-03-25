@@ -372,6 +372,7 @@ async def list_contract_endpoints(
 
 class AgentHeartbeatRequest(BaseModel):
     session_id: str = Field(..., description="Unique agent session identifier")
+    run_id: Optional[str] = Field(None, description="Run/invocation ID (from agent token)")
     agent_type: str = Field("claude", description="Agent type (claude, custom, etc.)")
     status: str = Field("active", description="active | paused | completed | errored")
     contract_id: Optional[str] = Field(None, description="Contract surface the agent is working on")
@@ -435,6 +436,7 @@ async def agent_heartbeat(
     # Persist to DB
     db.add(AgentActivityLog(
         session_id=payload.session_id,
+        run_id=payload.run_id,
         agent_type=payload.agent_type,
         status=payload.status,
         contract_id=payload.contract_id,
@@ -511,6 +513,7 @@ async def list_agent_sessions() -> AgentSessionsResponse:
 
 class AgentHistoryEntry(BaseModel):
     session_id: str
+    run_id: Optional[str] = None
     agent_type: str
     status: str
     contract_id: Optional[str] = None
@@ -548,6 +551,7 @@ class AgentStatsResponse(BaseModel):
 @router.get("/agents/history", response_model=AgentHistoryResponse)
 async def get_agent_history(
     session_id: Optional[str] = Query(None, description="Filter by session"),
+    run_id: Optional[str] = Query(None, description="Filter by run/invocation ID"),
     plan_id: Optional[str] = Query(None, description="Filter by plan"),
     contract_id: Optional[str] = Query(None, description="Filter by contract"),
     limit: int = Query(100, ge=1, le=500),
@@ -559,6 +563,8 @@ async def get_agent_history(
 
     if session_id:
         stmt = stmt.where(AgentActivityLog.session_id == session_id)
+    if run_id:
+        stmt = stmt.where(AgentActivityLog.run_id == run_id)
     if plan_id:
         stmt = stmt.where(AgentActivityLog.plan_id == plan_id)
     if contract_id:
@@ -573,6 +579,7 @@ async def get_agent_history(
         entries=[
             AgentHistoryEntry(
                 session_id=r.session_id,
+                run_id=r.run_id,
                 agent_type=r.agent_type,
                 status=r.status,
                 contract_id=r.contract_id,

@@ -228,6 +228,7 @@ class AgentActivityLog(SQLModel, table=True):
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     session_id: str = Field(max_length=120, index=True)
+    run_id: Optional[str] = Field(default=None, max_length=120, index=True)
     agent_type: str = Field(default="claude", max_length=64)
     status: str = Field(default="active", max_length=32)
     contract_id: Optional[str] = Field(default=None, max_length=120, index=True)

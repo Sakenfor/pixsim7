@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from dataclasses import dataclass
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pixsim7.backend.main.shared.config import settings
@@ -50,17 +51,23 @@ async def _resolve_user_id(token: str | None) -> int | None:
         return None
 
 
-async def _resolve_user_id_strict(token: str | None) -> int | None:
-    """Resolve user ID from JWT token, raising on invalid tokens."""
+@dataclass
+class _ResolvedToken:
+    user_id: int | None = None
+    run_id: str | None = None
+
+
+async def _resolve_token(token: str | None) -> _ResolvedToken:
+    """Resolve user ID and run_id from JWT token, raising on invalid tokens."""
     if not token:
-        return None
+        return _ResolvedToken()
     from pixsim7.backend.main.api.dependencies import get_auth_service
     from pixsim7.backend.main.shared.actor import RequestPrincipal
 
     auth_service = get_auth_service()
     payload = await auth_service.verify_token_claims(token, update_last_used=False)
     principal = RequestPrincipal.from_jwt_payload(payload)
-    return principal.user_id
+    return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id)
 
 
 def _is_local_websocket(websocket: WebSocket) -> bool:
@@ -378,6 +385,34 @@ async def _mark_bridge_instance_offline(
         )
 
 
+async def _complete_agent_run(run_id: str | None, status: str = "completed") -> None:
+    """Mark an AgentRun as ended when the bridge disconnects."""
+    if not run_id:
+        return
+    try:
+        from sqlalchemy import select
+
+        from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(AgentRun)
+                    .where(AgentRun.run_id == run_id, AgentRun.status == "running")
+                    .order_by(AgentRun.started_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if row:
+                row.status = status
+                row.ended_at = utcnow()
+                await db.commit()
+    except Exception as exc:
+        logger.warning("agent_run_complete_failed", run_id=run_id, error=str(exc))
+
+
 @router.websocket("/ws/agent-cmd")
 async def agent_cmd_websocket(
     websocket: WebSocket,
@@ -398,7 +433,9 @@ async def agent_cmd_websocket(
     With token: user-scoped bridge (serves only that user, with shared fallback).
     """
     try:
-        user_id = await _resolve_user_id_strict(token)
+        resolved = await _resolve_token(token)
+        user_id = resolved.user_id
+        run_id = resolved.run_id
     except Exception:
         await websocket.close(code=1008, reason="Invalid bridge token")
         return
@@ -429,6 +466,7 @@ async def agent_cmd_websocket(
         bridge_client_id=resolved_bridge_client_id,
         agent_type=agent_type,
         user_id=user_id,
+        run_id=run_id,
         metadata=metadata or None,
         bridge_id=bridge_id,
     )
@@ -519,6 +557,7 @@ async def agent_cmd_websocket(
             bridge_client_id=resolved_bridge_client_id,
             user_id=user_id,
         )
+        await _complete_agent_run(run_id)
     except Exception as exc:
         logger.warning(
             "agent_cmd_error",
@@ -531,3 +570,4 @@ async def agent_cmd_websocket(
             bridge_client_id=resolved_bridge_client_id,
             user_id=user_id,
         )
+        await _complete_agent_run(run_id, status="failed")

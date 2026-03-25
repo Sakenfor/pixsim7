@@ -193,18 +193,15 @@ class BridgeUserMembership(SQLModel, table=True):
 
 
 # ---------------------------------------------------------------------------
-# Agent Run â€” per-invocation tracking (stub, v1.1)
+# Agent Run -- per-invocation tracking
 # ---------------------------------------------------------------------------
 
 
 class AgentRun(SQLModel, table=True):
-    """A single agent run/invocation. Stub for v1.1 â€” designed but not yet populated.
+    """A single agent run/invocation.
 
-    TODO(v1.1):
-    - Populate on token mint (started_at = now, status = running)
-    - Update on agent disconnect or heartbeat timeout (ended_at, status)
-    - Compute summary from PlanEvent/Notification records for the run_id
-    - Wire into Writes tab for per-run grouping
+    Created on token mint (POST /dev/agent-tokens) when run_id is provided.
+    Updated on agent disconnect (ended_at, status -> completed/failed).
     """
 
     __tablename__ = "agent_runs"

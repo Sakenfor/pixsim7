@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_database
 from pixsim7.backend.main.domain import UserSession
+from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
 from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
 from pixsim7.backend.main.shared.config import settings
 
@@ -87,7 +88,20 @@ async def mint_agent_token(
                 user_agent=f"agent/{payload.agent_type}",
             )
         )
-        await db.commit()
+
+    # Create AgentRun record if run_id is provided
+    run_id = payload.run_id or claims.get("run_id")
+    if run_id:
+        db.add(
+            AgentRun(
+                profile_id=payload.agent_id,
+                run_id=run_id,
+                status="running",
+                token_jti=token_id,
+            )
+        )
+
+    await db.commit()
 
     return AgentTokenResponse(
         access_token=token,

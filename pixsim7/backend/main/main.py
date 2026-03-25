@@ -116,6 +116,7 @@ async def lifespan(app: FastAPI):
             async with get_async_session() as db:
                 db.add(AgentActivityLog(
                     session_id=hb.session_id,
+                    run_id=hb.run_id,
                     agent_type=hb.agent_type,
                     status=hb.status,
                     contract_id=hb.contract_id,
