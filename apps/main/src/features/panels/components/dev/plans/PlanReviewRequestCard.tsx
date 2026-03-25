@@ -260,33 +260,97 @@ export function PlanReviewRequestCard({
           </button>
         </div>
       )}
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <RequestActions
+        request={request}
+        dispatchingRequestId={dispatchingRequestId}
+        updatingRequestId={updatingRequestId}
+        onDispatchRequest={onDispatchRequest}
+        onUpdateRequestStatus={onUpdateRequestStatus}
+        onDismissRequest={onDismissRequest}
+      />
+    </div>
+  );
+}
+
+
+// -- Contextual action buttons ------------------------------------------------
+
+/** Status transitions and their meaning */
+const STATUS_ACTIONS: Record<
+  ReviewRequestStatus,
+  Array<{
+    to: ReviewRequestStatus;
+    label: string;
+    tooltip: string;
+  }>
+> = {
+  open: [
+    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this request -- no review needed' },
+  ],
+  in_progress: [
+    { to: 'fulfilled', label: 'Mark Fulfilled', tooltip: 'Mark as completed -- review is done' },
+    { to: 'open', label: 'Reopen', tooltip: 'Return to open -- agent stopped or needs retry' },
+    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this request' },
+  ],
+  fulfilled: [
+    { to: 'open', label: 'Reopen', tooltip: 'Reopen for another review pass' },
+  ],
+  cancelled: [
+    { to: 'open', label: 'Reopen', tooltip: 'Reopen this cancelled request' },
+  ],
+};
+
+function RequestActions({
+  request,
+  dispatchingRequestId,
+  updatingRequestId,
+  onDispatchRequest,
+  onUpdateRequestStatus,
+  onDismissRequest,
+}: {
+  request: ReviewRequestCardData;
+  dispatchingRequestId: string | null;
+  updatingRequestId: string | null;
+  onDispatchRequest: (r: ReviewRequestCardData) => void | Promise<void>;
+  onUpdateRequestStatus: (r: ReviewRequestCardData, s: ReviewRequestStatus) => void | Promise<void>;
+  onDismissRequest: (r: ReviewRequestCardData) => void | Promise<void>;
+}) {
+  const busy = updatingRequestId === request.id || dispatchingRequestId === request.id;
+  const actions = STATUS_ACTIONS[request.status] ?? [];
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {request.status === 'open' && (
         <Button
           size="sm"
           onClick={() => void onDispatchRequest(request)}
-          disabled={dispatchingRequestId === request.id || request.status !== 'open'}
+          disabled={busy}
+          title="Send this request to an available agent for review"
         >
           {dispatchingRequestId === request.id ? 'Dispatching...' : 'Dispatch'}
         </Button>
-        {(['open', 'in_progress', 'fulfilled', 'cancelled'] as const).map((statusValue) => (
-          <Button
-            key={`${request.id}:${statusValue}`}
-            size="sm"
-            onClick={() => void onUpdateRequestStatus(request, statusValue)}
-            disabled={updatingRequestId === request.id || dispatchingRequestId === request.id}
-          >
-            {request.status === statusValue ? `* ${statusValue}` : statusValue}
-          </Button>
-        ))}
+      )}
+      {actions.map((action) => (
+        <Button
+          key={`${request.id}:${action.to}`}
+          size="sm"
+          onClick={() => void onUpdateRequestStatus(request, action.to)}
+          disabled={busy}
+          title={action.tooltip}
+        >
+          {action.label}
+        </Button>
+      ))}
+      {request.status !== 'in_progress' && (
         <Button
           size="sm"
           onClick={() => void onDismissRequest(request)}
-          disabled={request.status === 'in_progress'}
-          title="Dismiss this request"
+          disabled={busy}
+          title="Hide this request from the list without changing its status"
         >
-          dismiss
+          Dismiss
         </Button>
-      </div>
+      )}
     </div>
   );
 }
