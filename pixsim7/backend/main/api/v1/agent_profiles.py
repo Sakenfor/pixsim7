@@ -183,7 +183,7 @@ class ChatSessionSummary(BaseModel):
 
 
 class BridgeAgentSummary(BaseModel):
-    agent_id: str
+    bridge_client_id: str
     connected_at: str
     busy: bool
     tasks_completed: int
@@ -260,7 +260,7 @@ async def agent_observability(
         pool_engines = pool.get("engines", [])
         sessions_raw = pool.get("sessions", [])
         return BridgeAgentSummary(
-            agent_id=a.agent_id,
+            bridge_client_id=a.bridge_client_id,
             connected_at=a.connected_at.isoformat(),
             busy=a.busy,
             tasks_completed=a.tasks_completed,
@@ -268,9 +268,9 @@ async def agent_observability(
             pool_sessions=sessions_raw if isinstance(sessions_raw, list) else [],
         )
 
-    bridge_map = {a.agent_id: a for a in bridge_agents}
+    bridge_map = {a.bridge_client_id: a for a in bridge_agents}
 
-    # 4. Join: profile.id matches bridge agent_id
+    # 4. Join: profile.id matches bridge client ID
     matched_ids: set[str] = set()
     entries = []
     for p in profiles:
@@ -290,7 +290,7 @@ async def agent_observability(
     # 5. Orphan bridges (no matching profile)
     orphans = [
         _build_bridge_summary(a) for a in bridge_agents
-        if a.agent_id not in matched_ids
+        if a.bridge_client_id not in matched_ids
     ]
 
     return AgentObservabilityResponse(

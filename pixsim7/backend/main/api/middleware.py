@@ -36,3 +36,5 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         finally:
             # Clear contextvars after request
             structlog.contextvars.clear_contextvars()
+            from pixsim7.backend.main.services.audit.context import clear_audit_context
+            clear_audit_context()

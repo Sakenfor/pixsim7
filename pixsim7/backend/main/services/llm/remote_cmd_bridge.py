@@ -30,9 +30,15 @@ logger = get_logger()
 
 @dataclass
 class RemoteAgent:
-    """A connected remote agent terminal."""
+    """A connected remote bridge client terminal.
+
+    Note: ``agent_id`` is a legacy field name and represents the stable
+    bridge client identity used by the WS bridge.
+    """
     agent_id: str
     websocket: WebSocket
+    bridge_id: Optional[str] = None
+    connection_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     agent_type: str = "unknown"
     user_id: Optional[int] = None  # None = shared/admin bridge
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -48,6 +54,11 @@ class RemoteAgent:
         """Backward compat — True if any task is active."""
         return self.active_tasks > 0
 
+    @property
+    def bridge_client_id(self) -> str:
+        """Canonical alias for the stable bridge client identity."""
+        return self.agent_id
+
 
 class RemoteCommandBridge:
     """Manages remote agent WebSocket connections and task dispatch."""
@@ -58,39 +69,62 @@ class RemoteCommandBridge:
         self._heartbeat_queues: Dict[str, asyncio.Queue] = {}  # task_id -> queue
         # Completed task results cache (task_id -> result dict, kept for 5 min)
         self._completed_results: Dict[str, Dict[str, Any]] = {}
-        # Active task tracking: agent_id -> {task_id, heartbeats}
+        # Active task tracking: task_id -> {_ts, bridge_id, bridge_client_id, user_id}
         self._active_tasks: Dict[str, Dict[str, Any]] = {}
         # Available models per engine (engine -> list of model dicts)
         self._engine_models: Dict[str, List[Dict[str, Any]]] = {}
 
-    async def connect(self, websocket: WebSocket, agent_id: str, agent_type: str = "unknown", user_id: Optional[int] = None, metadata: Optional[Dict[str, str]] = None) -> RemoteAgent:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        bridge_client_id: Optional[str] = None,
+        agent_type: str = "unknown",
+        user_id: Optional[int] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        bridge_id: Optional[str] = None,
+    ) -> RemoteAgent:
         """Register a new remote agent connection (or reconnect an existing one)."""
         await websocket.accept()
+        client_id = (bridge_client_id or "").strip()
+        if not client_id:
+            raise RuntimeError("Bridge client ID is required")
 
         # Reconnect: preserve stats from previous connection
-        old = self._agents.get(agent_id)
+        old = self._agents.get(client_id)
         tasks_completed = old.tasks_completed if old else 0
 
         agent = RemoteAgent(
-            agent_id=agent_id,
+            agent_id=client_id,
+            bridge_id=(bridge_id.strip() if isinstance(bridge_id, str) and bridge_id.strip() else None),
             websocket=websocket,
             agent_type=agent_type,
             user_id=user_id,
             metadata=metadata or {},
         )
         agent.tasks_completed = tasks_completed
-        self._agents[agent_id] = agent
+        self._agents[client_id] = agent
 
         if old:
-            logger.info("remote_agent_reconnected", agent_id=agent_id, tasks_completed=tasks_completed)
+            logger.info(
+                "remote_agent_reconnected",
+                bridge_client_id=client_id,
+                bridge_id=agent.bridge_id,
+                tasks_completed=tasks_completed,
+            )
         else:
-            logger.info("remote_agent_connected", agent_id=agent_id, agent_type=agent_type, user_id=user_id)
+            logger.info(
+                "remote_agent_connected",
+                bridge_client_id=client_id,
+                bridge_id=agent.bridge_id,
+                agent_type=agent_type,
+                user_id=user_id,
+            )
 
         # Build system prompt — always provide it so agents know the available APIs
         system_prompt = None
         try:
-            from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
-            system_prompt = _build_user_system_prompt()
+            from pixsim7.backend.main.api.v1.meta_contracts import build_user_system_prompt
+            system_prompt = build_user_system_prompt()
         except Exception as e:
             logger.warning("system_prompt_build_failed", error=str(e))
 
@@ -99,11 +133,12 @@ class RemoteCommandBridge:
         try:
             service_token = _mint_bridge_token(user_id)
         except Exception:
-            logger.warning("bridge_token_mint_failed", agent_id=agent_id)
+            logger.warning("bridge_token_mint_failed", bridge_client_id=client_id)
 
         welcome: dict = {
             "type": "connected",
-            "agent_id": agent_id,
+            "bridge_client_id": client_id,
+            "bridge_id": agent.bridge_id,
             "user_id": user_id,
             "message": "Connected to remote command bridge. Waiting for tasks.",
         }
@@ -116,11 +151,40 @@ class RemoteCommandBridge:
 
         return agent
 
-    def disconnect(self, agent_id: str) -> None:
+    def disconnect(
+        self,
+        bridge_client_id: str,
+        *,
+        websocket: Optional[WebSocket] = None,
+        connection_id: Optional[str] = None,
+    ) -> None:
         """Remove a disconnected agent."""
-        agent = self._agents.pop(agent_id, None)
+        agent = self._agents.get(bridge_client_id)
+        if not agent:
+            return
+        if websocket is not None and agent.websocket is not websocket:
+            logger.info(
+                "remote_agent_disconnect_stale_ignored",
+                bridge_client_id=bridge_client_id,
+                bridge_id=agent.bridge_id,
+            )
+            return
+        if connection_id is not None and agent.connection_id != connection_id:
+            logger.info(
+                "remote_agent_disconnect_stale_connection_ignored",
+                bridge_client_id=bridge_client_id,
+                bridge_id=agent.bridge_id,
+            )
+            return
+
+        agent = self._agents.pop(bridge_client_id, None)
         if agent:
-            logger.info("remote_agent_disconnected", agent_id=agent_id, tasks_completed=agent.tasks_completed)
+            logger.info(
+                "remote_agent_disconnected",
+                bridge_client_id=bridge_client_id,
+                bridge_id=agent.bridge_id,
+                tasks_completed=agent.tasks_completed,
+            )
             # Fail any pending task for this agent
             if agent.current_task_id and agent.current_task_id in self._pending_tasks:
                 future = self._pending_tasks.pop(agent.current_task_id)
@@ -151,14 +215,31 @@ class RemoteCommandBridge:
             return [a for a in self._agents.values() if a.user_id == user_id or a.user_id is None]
         return list(self._agents.values())
 
-    def get_agent(self, agent_id: str, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
-        """Get a connected agent by ID, optionally enforcing user visibility."""
-        agent = self._agents.get(agent_id)
+    def get_agent_by_bridge_client_id(
+        self,
+        bridge_client_id: str,
+        user_id: Optional[int] = None,
+    ) -> Optional[RemoteAgent]:
+        """Get a connected bridge client by ID, optionally enforcing user visibility."""
+        agent = self._agents.get(bridge_client_id)
         if agent is None:
             return None
         if user_id is not None and agent.user_id not in (None, user_id):
             return None
         return agent
+
+    def get_agent_by_bridge_id(self, bridge_id: str, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
+        """Get a connected agent by stable bridge UUID."""
+        target = (bridge_id or "").strip()
+        if not target:
+            return None
+        for agent in self._agents.values():
+            if (agent.bridge_id or "") != target:
+                continue
+            if user_id is not None and agent.user_id not in (None, user_id):
+                continue
+            return agent
+        return None
 
     @property
     def has_available(self) -> bool:
@@ -171,17 +252,30 @@ class RemoteCommandBridge:
     def connected_count(self) -> int:
         return len(self._agents)
 
-    def update_pool_status(self, agent_id: str, status: Dict[str, Any]) -> None:
-        """Update pool status for a connected agent."""
-        agent = self._agents.get(agent_id)
+    def update_bridge_pool_status(self, bridge_client_id: str, status: Dict[str, Any]) -> None:
+        """Update pool status for a connected bridge client."""
+        agent = self._agents.get(bridge_client_id)
         if agent:
             agent.pool_status = status
 
-    def update_agent_models(self, agent_id: str, models: List[Dict[str, Any]], engine: Optional[str] = None) -> None:
-        """Update available models. Stored per engine, not per agent."""
-        engine_key = engine or (self._agents[agent_id].agent_type if agent_id in self._agents else "unknown")
+    def update_bridge_models(
+        self,
+        bridge_client_id: str,
+        models: List[Dict[str, Any]],
+        engine: Optional[str] = None,
+    ) -> None:
+        """Update available models. Stored per engine, not per bridge client."""
+        engine_key = (
+            engine
+            or (self._agents[bridge_client_id].agent_type if bridge_client_id in self._agents else "unknown")
+        )
         self._engine_models[engine_key] = models
-        logger.info("engine_models_updated", engine=engine_key, count=len(models), agent_id=agent_id)
+        logger.info(
+            "engine_models_updated",
+            engine=engine_key,
+            count=len(models),
+            bridge_client_id=bridge_client_id,
+        )
 
     def get_available_models(self, agent_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get available models, optionally filtered by engine/agent_type."""
@@ -225,23 +319,43 @@ class RemoteCommandBridge:
             raise RuntimeError("No remote agents available")
         return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
 
-    async def dispatch_task_to_agent(
+    async def dispatch_task_to_bridge_client(
         self,
-        agent_id: str,
+        bridge_client_id: str,
         task_payload: Dict[str, Any],
         timeout: int = 120,
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Dispatch a task to a specific connected agent ID."""
-        target = (agent_id or "").strip()
+        """Dispatch a task to a specific connected bridge client ID."""
+        target = (bridge_client_id or "").strip()
         if not target:
-            raise RuntimeError("Target remote agent ID is required")
+            raise RuntimeError("Target bridge client ID is required")
 
-        agent = self.get_agent(target, user_id=user_id)
+        agent = self.get_agent_by_bridge_client_id(target, user_id=user_id)
         if not agent:
-            raise RuntimeError(f"Target remote agent '{target}' is not connected")
+            raise RuntimeError(f"Target bridge client '{target}' is not connected")
         if agent.busy:
-            raise RuntimeError(f"Target remote agent '{target}' is busy")
+            raise RuntimeError(f"Target bridge client '{target}' is busy")
+
+        return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
+
+    async def dispatch_task_to_bridge(
+        self,
+        bridge_id: str,
+        task_payload: Dict[str, Any],
+        timeout: int = 120,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Dispatch a task to a specific connected bridge UUID."""
+        target = (bridge_id or "").strip()
+        if not target:
+            raise RuntimeError("Target bridge ID is required")
+
+        agent = self.get_agent_by_bridge_id(target, user_id=user_id)
+        if not agent:
+            raise RuntimeError(f"Target bridge '{target}' is not connected")
+        if agent.busy:
+            raise RuntimeError(f"Target bridge '{target}' is busy")
 
         return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
 
@@ -255,6 +369,14 @@ class RemoteCommandBridge:
         task_id = str(uuid.uuid4())
         agent.active_tasks += 1
         agent.current_task_id = task_id
+        self._active_tasks[task_id] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_id": agent.bridge_id,
+            "bridge_client_id": agent.bridge_client_id,
+            "user_id": agent.user_id,
+            "action": "",
+            "detail": "",
+        }
 
         # Create future for the result
         loop = asyncio.get_event_loop()
@@ -294,6 +416,10 @@ class RemoteCommandBridge:
                             deadline = asyncio.get_event_loop().time() + timeout
 
             agent.tasks_completed += 1
+            if isinstance(result, dict):
+                result.setdefault("bridge_client_id", agent.bridge_client_id)
+                if agent.bridge_id:
+                    result.setdefault("bridge_id", agent.bridge_id)
             logger.info("remote_task_completed", task_id=task_id, agent_id=agent.agent_id)
 
             return result
@@ -306,14 +432,14 @@ class RemoteCommandBridge:
             agent.active_tasks = max(0, agent.active_tasks - 1)
             agent.current_task_id = None
 
-    def record_heartbeat(self, agent_id: str, data: Dict[str, Any]) -> None:
+    def record_heartbeat(self, bridge_client_id: str, data: Dict[str, Any]) -> None:
         """Update timestamp tracking and forward to heartbeat queue (if streaming).
 
         Activity state (action/detail) is tracked by AgentSessionRegistry,
         not here.  This method only maintains the timestamp needed for
         deadline extension in dispatch_task / dispatch_task_streaming.
         """
-        agent = self._agents.get(agent_id)
+        agent = self._agents.get(bridge_client_id)
         if not agent:
             return
         # Capture model info from heartbeat if provided
@@ -322,8 +448,15 @@ class RemoteCommandBridge:
             agent.metadata["model"] = model
         if agent.current_task_id:
             task_id = agent.current_task_id
-            # Timestamp-only tracking for deadline extension
-            self._active_tasks[task_id] = {"_ts": datetime.now(timezone.utc)}
+            # Timestamp-only tracking for deadline extension with user scoping
+            row = self._active_tasks.get(task_id) or {}
+            row["_ts"] = datetime.now(timezone.utc)
+            row.setdefault("bridge_id", agent.bridge_id)
+            row.setdefault("bridge_client_id", agent.bridge_client_id)
+            row.setdefault("user_id", agent.user_id)
+            row["action"] = data.get("action", row.get("action", ""))
+            row["detail"] = data.get("detail", row.get("detail", ""))
+            self._active_tasks[task_id] = row
             queue = self._heartbeat_queues.get(task_id)
             if queue:
                 try:
@@ -336,6 +469,7 @@ class RemoteCommandBridge:
         task_payload: Dict[str, Any],
         timeout: int = 120,
         user_id: Optional[int] = None,
+        bridge_client_id: Optional[str] = None,
     ):
         """
         Async generator that yields heartbeat dicts while waiting, then yields the result.
@@ -343,13 +477,31 @@ class RemoteCommandBridge:
         Each yielded dict has a "type" key: "heartbeat" for progress, "result" for final.
         Raises on timeout or error (same as dispatch_task).
         """
-        agent = self.get_available_agent(user_id=user_id)
-        if not agent:
-            raise RuntimeError("No remote agents available")
+        if bridge_client_id:
+            target = (bridge_client_id or "").strip()
+            if not target:
+                raise RuntimeError("Target bridge client ID is required")
+            agent = self.get_agent_by_bridge_client_id(target, user_id=user_id)
+            if not agent:
+                raise RuntimeError(f"Target bridge client '{target}' is not connected")
+            if agent.busy:
+                raise RuntimeError(f"Target bridge client '{target}' is busy")
+        else:
+            agent = self.get_available_agent(user_id=user_id)
+            if not agent:
+                raise RuntimeError("No remote agents available")
 
         task_id = str(uuid.uuid4())
         agent.active_tasks += 1
         agent.current_task_id = task_id
+        self._active_tasks[task_id] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_id": agent.bridge_id,
+            "bridge_client_id": agent.bridge_client_id,
+            "user_id": agent.user_id,
+            "action": "",
+            "detail": "",
+        }
 
         loop = asyncio.get_event_loop()
         future: asyncio.Future[Dict[str, Any]] = loop.create_future()
@@ -372,12 +524,17 @@ class RemoteCommandBridge:
                 remaining = deadline - asyncio.get_event_loop().time()
                 if remaining <= 0:
                     self._pending_tasks.pop(task_id, None)
+                    self._active_tasks.pop(task_id, None)
                     raise TimeoutError(f"Remote agent did not respond within {timeout}s")
 
                 # Check if result is ready
                 if future.done():
                     result = future.result()
                     agent.tasks_completed += 1
+                    if isinstance(result, dict):
+                        result.setdefault("bridge_client_id", agent.bridge_client_id)
+                        if agent.bridge_id:
+                            result.setdefault("bridge_id", agent.bridge_id)
                     result["type"] = "result"
                     yield result
                     return
@@ -401,12 +558,17 @@ class RemoteCommandBridge:
                 if future in done:
                     result = future.result()
                     agent.tasks_completed += 1
+                    if isinstance(result, dict):
+                        result.setdefault("bridge_client_id", agent.bridge_client_id)
+                        if agent.bridge_id:
+                            result.setdefault("bridge_id", agent.bridge_id)
                     result["type"] = "result"
                     yield result
                     return
 
         except asyncio.TimeoutError:
             self._pending_tasks.pop(task_id, None)
+            self._active_tasks.pop(task_id, None)
             raise TimeoutError(f"Remote agent did not respond within {timeout}s")
         finally:
             self._heartbeat_queues.pop(task_id, None)
@@ -472,26 +634,33 @@ class RemoteCommandBridge:
             if user_id is not None and agent.user_id != user_id and agent.user_id is not None:
                 continue
             if agent.busy and agent.current_task_id:
+                task_state = self._active_tasks.get(agent.current_task_id, {})
                 session = agent_session_registry.get_session(agent.agent_id)
                 return {
                     "task_id": agent.current_task_id,
-                    "agent_id": agent.agent_id,
+                    "bridge_id": agent.bridge_id,
+                    "bridge_client_id": agent.bridge_client_id,
                     "status": "active",
-                    "action": session.action if session else "",
-                    "detail": session.detail if session else "",
+                    "action": session.action if session else str(task_state.get("action", "") or ""),
+                    "detail": session.detail if session else str(task_state.get("detail", "") or ""),
                 }
 
         # Fallback: check for tasks with recent heartbeats (< 30s old)
         stale_keys = []
         for task_id, info in self._active_tasks.items():
+            info_user_id = info.get("user_id")
+            if user_id is not None and info_user_id not in (None, user_id):
+                continue
             ts = info.get("_ts")
             if ts and (now - ts).total_seconds() > 30:
                 stale_keys.append(task_id)
                 continue
+            task_bridge_client_id = str(info.get("bridge_client_id") or "")
             return {
                 "task_id": task_id,
                 "status": "active",
-                "agent_id": "",
+                "bridge_id": str(info.get("bridge_id") or "") or None,
+                "bridge_client_id": task_bridge_client_id or None,
                 "action": "",
                 "detail": "",
             }

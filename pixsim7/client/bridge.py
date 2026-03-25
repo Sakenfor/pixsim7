@@ -45,13 +45,13 @@ class Bridge:
         self._url = url
         # Derive agent_type from pool command name (e.g. "claude", "codex")
         self._agent_type = agent_type or pool._prefix or "claude"
+        self._bridge_client_id_file = self._resolve_bridge_client_id_file()
         self._bridge_client_id: Optional[str] = self._load_persistent_bridge_client_id()
         self._connected = False
         self._tasks_handled = 0
         self._mcp_config_path: Optional[str] = None
         self._token_file_path: Optional[str] = None
         self._system_prompt: Optional[str] = None
-        self._bridge_client_id_file = Path.home() / ".pixsim" / "bridge_id"
 
     @property
     def is_connected(self) -> bool:
@@ -61,9 +61,35 @@ class Bridge:
     def bridge_client_id(self) -> Optional[str]:
         return self._bridge_client_id
 
+    @staticmethod
+    def _normalize_bridge_id_namespace(raw: str) -> str:
+        text = str(raw or "").strip()
+        if not text:
+            return ""
+        normalized = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in text)
+        normalized = normalized.strip("_-")
+        return normalized[:64]
+
+    def _resolve_bridge_client_id_file(self) -> Path:
+        """Resolve persistent bridge-id path (supports namespaced future multi-bridge)."""
+        explicit = str(os.environ.get("PIXSIM_BRIDGE_ID_FILE") or "").strip()
+        if explicit:
+            try:
+                return Path(explicit).expanduser()
+            except Exception:
+                pass
+
+        namespace = self._normalize_bridge_id_namespace(
+            os.environ.get("PIXSIM_BRIDGE_ID_NAMESPACE") or ""
+        )
+        if namespace:
+            return Path.home() / ".pixsim" / f"bridge_id_{namespace}"
+
+        return Path.home() / ".pixsim" / "bridge_id"
+
     def _load_persistent_bridge_client_id(self) -> Optional[str]:
-        """Load stable bridge identity from ~/.pixsim/bridge_id if present."""
-        path = Path.home() / ".pixsim" / "bridge_id"
+        """Load stable bridge identity from configured bridge-id file if present."""
+        path = self._bridge_client_id_file
         try:
             raw = path.read_text(encoding="utf-8").strip()
         except OSError:

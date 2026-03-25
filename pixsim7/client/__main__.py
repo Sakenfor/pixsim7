@@ -17,10 +17,18 @@ import asyncio
 import sys
 
 
-def _cmd_bridge(args, claude_args: list[str]) -> None:
-    """Default: run the WebSocket bridge with Claude session pool."""
-    from pixsim7.client.agent_pool import AgentPool
+def _cmd_bridge(args, extra_args: list[str]) -> None:
+    """Default: run the WebSocket bridge with agent session pool."""
+    from pixsim7.client.agent_pool import AgentPool, detect_engines
     from pixsim7.client.bridge import Bridge
+
+    # Resolve engines: explicit --engines, or legacy --claude-command, or auto-detect
+    if args.engines:
+        engines = [e.strip() for e in args.engines.split(",") if e.strip()]
+    elif args.claude_command != "claude":
+        engines = [args.claude_command]  # explicit override
+    else:
+        engines = None  # auto-detect
 
     print()
     print("  ==================================")
@@ -28,19 +36,22 @@ def _cmd_bridge(args, claude_args: list[str]) -> None:
     print("  ==================================")
     print()
     resume = getattr(args, 'resume_session', None)
+    detected = engines or detect_engines()
 
     print(f"  Backend:    {args.url}")
+    print(f"  Engines:    {', '.join(detected)}")
     print(f"  Pool size:  {args.pool_size}")
     print(f"  Timeout:    {args.timeout}s")
     if resume:
         print(f"  Resume:     {resume}")
-    if claude_args:
-        print(f"  Claude args: {' '.join(claude_args)}")
+    if extra_args:
+        print(f"  Extra args: {' '.join(extra_args)}")
     print()
 
     pool = AgentPool(
         pool_size=args.pool_size,
-        extra_args=claude_args,
+        extra_args=extra_args,
+        engines=engines,
         command=args.claude_command,
         auto_restart=not args.no_auto_restart,
     )
@@ -55,7 +66,7 @@ def _cmd_bridge(args, claude_args: list[str]) -> None:
     async def run() -> None:
         started = await pool.start()
         if started == 0:
-            print("  No sessions started. Check that Claude CLI is installed.", file=sys.stderr)
+            print("  No agent sessions started. Check that agent CLIs are installed.", file=sys.stderr)
             return
 
         try:
@@ -139,12 +150,13 @@ def main() -> None:
     mcp_parser.add_argument("--scope", default="dev", choices=["user", "dev"], help="Tool scope")
     mcp_parser.add_argument("-o", "--output", help="Output file path (prints to stdout if omitted)")
 
-    # -- bridge (default) — uses remaining args for bridge + claude ----------
+    # -- bridge (default) — auto-detects available engines ----------
     parser.add_argument("--url", default="ws://localhost:8000/api/v1/ws/agent-cmd", help="Backend WebSocket URL")
-    parser.add_argument("--pool-size", type=int, default=1, help="Number of parallel Claude sessions (default: 1)")
+    parser.add_argument("--engines", default=None, help="Comma-separated agent engines (default: auto-detect). E.g. claude,codex")
+    parser.add_argument("--pool-size", type=int, default=1, help="Number of parallel sessions for the primary engine (default: 1)")
     parser.add_argument("--timeout", type=int, default=120, help="Task execution timeout in seconds (default: 120)")
-    parser.add_argument("--claude-command", default="claude", help="Claude CLI executable (default: claude)")
-    parser.add_argument("--resume-session", default=None, help="Claude session UUID to resume")
+    parser.add_argument("--claude-command", default="claude", help="[deprecated] Use --engines instead. Claude CLI executable path.")
+    parser.add_argument("--resume-session", default=None, help="Session UUID to resume")
     parser.add_argument("--no-auto-restart", action="store_true", help="Disable automatic restart of crashed sessions")
 
     args, claude_args = parser.parse_known_args()

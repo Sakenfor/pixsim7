@@ -50,7 +50,7 @@ class RequestPrincipal(BaseModel):
     # ── Agent-specific ───────────────────────────────────────────
 
     agent_id: Optional[str] = Field(default=None, description="Agent instance identifier.")
-    agent_type: Optional[str] = Field(default=None, description='E.g. "claude-cli", "codex".')
+    agent_type: Optional[str] = Field(default=None, description='E.g. "claude", "codex".')
     agent_label: Optional[str] = Field(default=None, description="Resolved profile display name.")
     run_id: Optional[str] = Field(default=None, description="Unique run/invocation ID.")
     plan_id: Optional[str] = Field(default=None, description="Plan being worked on.")
@@ -155,14 +155,28 @@ class RequestPrincipal(BaseModel):
 
         # ── Bridge / service token ──
         if purpose == "bridge":
+            raw_sub = payload.get("sub")
+            bridge_user_id = 0
+            try:
+                bridge_user_id = int(raw_sub) if raw_sub is not None else 0
+            except (TypeError, ValueError):
+                bridge_user_id = 0
+            if bridge_user_id < 0:
+                bridge_user_id = 0
+
+            is_user_scoped = bridge_user_id != 0
+            default_role = "user" if is_user_scoped else "admin"
+            default_admin = not is_user_scoped
             return cls(
-                id=0,
+                id=bridge_user_id,
                 principal_type="service",
-                role=payload.get("role", "admin"),
-                admin=bool(payload.get("is_admin", True)),
-                permissions=payload.get("permissions", []),
-                username="bridge",
-                email="bridge@service.local",
+                role=payload.get("role", default_role),
+                admin=bool(payload.get("is_admin", default_admin)),
+                permissions=list(payload.get("permissions") or []),
+                username=payload.get("username") or (None if is_user_scoped else "bridge"),
+                display_name=payload.get("display_name"),
+                email=payload.get("email") or (None if is_user_scoped else "bridge@service.local"),
+                active=bool(payload.get("is_active", True)),
             )
 
         # ── Regular user ──

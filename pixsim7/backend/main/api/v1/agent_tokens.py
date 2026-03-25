@@ -23,7 +23,7 @@ router = APIRouter(prefix="/dev/agent-tokens", tags=["dev", "agent-tokens"])
 
 class AgentTokenRequest(BaseModel):
     agent_id: str = Field(..., min_length=1, max_length=120, description="Stable agent instance ID.")
-    agent_type: str = Field(default="claude-cli", max_length=64, description="Agent flavor.")
+    agent_type: str = Field(default="unknown", max_length=64, description="Agent type (e.g. claude, codex).")
     scopes: Optional[list[str]] = Field(default=None, description="Allowed scopes (informational for v1).")
     on_behalf_of: Optional[int] = Field(default=None, description="User ID the agent acts for.")
     run_id: Optional[str] = Field(default=None, max_length=120, description="Run/invocation ID.")

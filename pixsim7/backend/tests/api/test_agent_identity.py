@@ -16,6 +16,7 @@ try:
     )
     from pixsim7.backend.main.api.v1.agent_tokens import router as agent_token_router
     from pixsim7.backend.main.api.v1.dev_plans import router as plans_router
+    from pixsim7.backend.main.api.v1.ws_agent_cmd import _resolve_user_id, _resolve_user_id_strict
     from pixsim7.backend.main.shared.actor import RequestPrincipal
     from pixsim7.backend.main.shared.auth import (
         create_agent_token,
@@ -243,6 +244,18 @@ class TestRequestPrincipal:
         assert p.source == "service:bridge"
         assert p.is_admin()
 
+    def test_from_jwt_bridge_token_user_scoped(self):
+        claims = {
+            "sub": "42", "purpose": "bridge",
+            "role": "user", "is_admin": False, "permissions": [],
+        }
+        p = RequestPrincipal.from_jwt_payload(claims)
+        assert p.is_service
+        assert p.id == 42
+        assert p.user_id == 42
+        assert p.source == "service:bridge"
+        assert not p.is_admin()
+
     def test_from_jwt_regular_user(self):
         claims = {
             "sub": "7", "username": "alice", "email": "a@b.com",
@@ -258,6 +271,64 @@ class TestRequestPrincipal:
 
 
 # ── Plan progress with agent context ────────────────────────────
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestWsBridgeIdentity:
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_id_from_agent_token_on_behalf_of(self, monkeypatch):
+        fake_auth = SimpleNamespace(
+            verify_token_claims=AsyncMock(
+                return_value={
+                    "sub": "0",
+                    "purpose": "agent",
+                    "principal_type": "agent",
+                    "agent_id": "assistant:code-helper",
+                    "on_behalf_of": 1,
+                    "permissions": [],
+                    "role": "agent",
+                }
+            )
+        )
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.dependencies.get_auth_service",
+            lambda: fake_auth,
+        )
+
+        user_id = await _resolve_user_id("fake-token")
+        assert user_id == 1
+        fake_auth.verify_token_claims.assert_awaited_once_with(
+            "fake-token",
+            update_last_used=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_id_invalid_token_non_strict_returns_none(self, monkeypatch):
+        fake_auth = SimpleNamespace(
+            verify_token_claims=AsyncMock(side_effect=RuntimeError("invalid token"))
+        )
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.dependencies.get_auth_service",
+            lambda: fake_auth,
+        )
+
+        user_id = await _resolve_user_id("bad-token")
+        assert user_id is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_id_invalid_token_strict_raises(self, monkeypatch):
+        fake_auth = SimpleNamespace(
+            verify_token_claims=AsyncMock(side_effect=RuntimeError("invalid token"))
+        )
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.dependencies.get_auth_service",
+            lambda: fake_auth,
+        )
+
+        with pytest.raises(RuntimeError):
+            await _resolve_user_id_strict("bad-token")
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")

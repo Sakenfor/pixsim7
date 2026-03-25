@@ -268,7 +268,7 @@ def create_email_verification_token(user_id: int) -> str:
 def create_agent_token(
     *,
     agent_id: str,
-    agent_type: str = "claude-cli",
+    agent_type: str = "unknown",
     scopes: Optional[list[str]] = None,
     on_behalf_of: Optional[int] = None,
     run_id: Optional[str] = None,
@@ -283,7 +283,7 @@ def create_agent_token(
 
     Args:
         agent_id:      Stable identifier for this agent instance.
-        agent_type:    Agent flavor ("claude-cli", "codex", etc.).
+        agent_type:    Agent flavor ("claude", "codex", etc.).
         scopes:        Optional list of allowed scopes (future enforcement).
         on_behalf_of:  User ID the agent acts on behalf of (optional).
         run_id:        Unique run/invocation ID.

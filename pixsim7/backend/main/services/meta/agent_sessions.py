@@ -127,6 +127,8 @@ class AgentSessionRegistry:
     def __init__(self) -> None:
         self._sessions: Dict[str, AgentSession] = {}
         self._persist_fn: PersistFn = None
+        # Track last persisted (action, detail) per session to avoid duplicate DB rows
+        self._last_persisted: Dict[str, tuple] = {}
 
     def set_persist(self, fn: PersistFn) -> None:
         """Set an async callback that persists each heartbeat to the DB.
@@ -150,11 +152,14 @@ class AgentSessionRegistry:
             metadata=dict(hb.metadata) if hb.metadata else None,
         )
         if self._persist_fn is not None and hb.action:
-            try:
-                import asyncio
-                asyncio.ensure_future(self._persist_fn(hb))
-            except RuntimeError:
-                pass  # no event loop — skip persistence silently
+            key = (hb.action, hb.detail, hb.contract_id, hb.plan_id)
+            if self._last_persisted.get(hb.session_id) != key:
+                self._last_persisted[hb.session_id] = key
+                try:
+                    import asyncio
+                    asyncio.ensure_future(self._persist_fn(hb))
+                except RuntimeError:
+                    pass  # no event loop — skip persistence silently
         return session
 
     def heartbeat(
@@ -259,6 +264,7 @@ class AgentSessionRegistry:
         ]
         for sid in stale:
             del self._sessions[sid]
+            self._last_persisted.pop(sid, None)
 
 
 # Global singleton

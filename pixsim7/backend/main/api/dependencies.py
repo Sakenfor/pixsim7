@@ -303,6 +303,10 @@ async def get_current_principal(
             except Exception:
                 pass
 
+    # Bind actor to request-scoped audit context for model-level hooks
+    from pixsim7.backend.main.services.audit.context import set_audit_actor
+    set_audit_actor(principal.source)
+
     return principal
 
 
