@@ -269,8 +269,15 @@ async def get_catalog(
     layer: Optional[str] = Query(None, description="Filter by layer (backend, frontend, scripts)"),
     category: Optional[str] = Query(None, description="Filter by category prefix"),
     kind: Optional[str] = Query(None, description="Filter by kind"),
+    db: AsyncSession = Depends(get_database),
 ) -> CatalogResponse:
-    """Live suite catalog — discovers TEST_SUITE dicts at request time."""
+    """Live suite catalog — discovers TEST_SUITE dicts at request time.
+
+    Also triggers a DB sync if stale so ``/suites`` stays consistent.
+    """
+    from pixsim7.backend.main.services.testing.sync import ensure_synced
+
+    await ensure_synced(db)
     suites = build_catalog()
 
     if layer:
@@ -395,10 +402,11 @@ async def sync_suites(
     Discovers TEST_SUITE dicts + static entries, then upserts to
     the ``test_suites`` table.  Stale DB entries are removed.
     """
-    from pixsim7.backend.main.services.testing.sync import sync_test_suites
+    from pixsim7.backend.main.services.testing.sync import sync_test_suites, _ttl
 
     result = await sync_test_suites(db)
     await db.commit()
+    _ttl.mark_fresh()
     return SyncResponse(
         created=result.created,
         updated=result.updated,
@@ -419,12 +427,15 @@ async def list_suites_from_db(
     kind: Optional[str] = Query(None, description="Filter by kind"),
     db: AsyncSession = Depends(get_database),
 ) -> CatalogResponse:
-    """Query test suites from DB (requires prior sync).
+    """Query test suites from DB, auto-syncing if stale.
 
-    Faster than ``/catalog`` (no filesystem scan).  Returns empty if
-    sync has never run.
+    Re-discovers from filesystem when last sync exceeds the TTL
+    (default 5 min), so new test files are picked up automatically.
     """
+    from pixsim7.backend.main.services.testing.sync import ensure_synced
     from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
+
+    await ensure_synced(db)
 
     stmt = select(TestSuiteRecord)
     if layer:

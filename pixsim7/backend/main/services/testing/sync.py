@@ -2,12 +2,14 @@
 
 Mirrors the plan sync pattern: TEST_SUITE dicts in Python files are the
 authoring surface, the DB is the query surface.  This module bridges them.
+
+Auto-sync: ``ensure_synced(db)`` uses the shared ``TtlSync`` (default 5 min)
+so new test files written by agents are picked up automatically.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select, delete
@@ -15,9 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
 from pixsim7.backend.main.services.testing.catalog import build_catalog
+from pixsim7.backend.main.services.sync.ttl import TtlSync
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 logger = logging.getLogger(__name__)
+
+_ttl = TtlSync("test_suites", ttl_seconds=300)
 
 
 @dataclass
@@ -32,12 +37,19 @@ class SyncResult:
         return self.created + self.updated + self.unchanged
 
 
+async def ensure_synced(db: AsyncSession):
+    """Re-sync if stale.  Delegates TTL gating to ``TtlSync``."""
+    return await _ttl.ensure_fresh(db, sync_test_suites)
+
+
 async def sync_test_suites(db: AsyncSession) -> SyncResult:
-    """Discover all test suites from filesystem + static defs and upsert to DB.
+    """Discover all test suites from filesystem and upsert to DB.
 
     - New suites → INSERT
     - Changed suites → UPDATE
     - DB suites not in catalog → DELETE (stale)
+
+    NOTE: Does **not** commit — the caller (or ``TtlSync``) handles that.
     """
     catalog = build_catalog()
     now = utcnow()
@@ -68,7 +80,7 @@ async def sync_test_suites(db: AsyncSession) -> SyncResult:
                 subcategory=suite.get("subcategory"),
                 covers=suite.get("covers"),
                 order=suite.get("order"),
-                source=_infer_source(suite),
+                source="discovered",
                 last_synced_at=now,
                 created_at=now,
                 updated_at=now,
@@ -85,7 +97,7 @@ async def sync_test_suites(db: AsyncSession) -> SyncResult:
             existing.subcategory = suite.get("subcategory")
             existing.covers = suite.get("covers")
             existing.order = suite.get("order")
-            existing.source = _infer_source(suite)
+            existing.source = "discovered"
             existing.last_synced_at = now
             existing.updated_at = now
             result.updated += 1
@@ -112,17 +124,6 @@ async def sync_test_suites(db: AsyncSession) -> SyncResult:
         suites_unchanged=result.unchanged,
     )
     return result
-
-
-def _infer_source(suite: dict[str, Any]) -> str:
-    """Infer whether a suite was discovered, static, or manually added."""
-    # Static suites from catalog.py don't have _discovered marker
-    # Discovered suites come from AST extraction
-    # For now, simple heuristic based on layer
-    path = suite.get("path", "")
-    if "apps/main/" in path:
-        return "static"  # Frontend suites are hardcoded
-    return "discovered"
 
 
 def _suite_changed(existing: TestSuiteRecord, catalog_entry: dict[str, Any]) -> bool:

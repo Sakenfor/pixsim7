@@ -1,5 +1,7 @@
 import { BaseRegistry, type Identifiable } from '@pixsim7/shared.ui.panels';
 
+import { pixsimClient } from '@lib/api';
+
 
 export type CanonicalTestProfileId = 'changed' | 'fast' | 'project-bundle' | 'full';
 export type BuiltInTestProfileId = CanonicalTestProfileId | 'backend' | 'frontend';
@@ -115,101 +117,9 @@ const BUILTIN_PROFILES: TestProfileDefinition[] = [
   },
 ];
 
-// Frontend suites stay here; backend/scripts suites self-register via
-// TEST_SUITE dicts in their Python files (discovered by discover_backend_suites.py).
-const BUILTIN_SUITES: TestSuiteDefinition[] = [
-  // --- Frontend ---
-  {
-    id: 'project-bundle-ui',
-    label: 'Project Bundle UI',
-    path: 'apps/main/src/lib/game/projectBundle/__tests__',
-    layer: 'frontend',
-    kind: 'integration',
-    category: 'frontend/project-bundle',
-    subcategory: 'all',
-    covers: ['apps/main/src/lib/game/projectBundle'],
-    order: 10,
-  },
-  {
-    id: 'project-bundle-lifecycle-ui',
-    label: 'Project Bundle Lifecycle UI',
-    path: 'apps/main/src/lib/game/projectBundle/__tests__/lifecycleRuntime.test.ts',
-    layer: 'frontend',
-    kind: 'integration',
-    category: 'frontend/project-bundle',
-    subcategory: 'lifecycle',
-    covers: [
-      'apps/main/src/lib/game/projectBundle/lifecycle.ts',
-      'apps/main/src/lib/game/projectBundle/service.ts',
-    ],
-    order: 15,
-  },
-  {
-    id: 'project-bundle-runtime-meta-ui',
-    label: 'Project Bundle Runtime Meta UI',
-    path: 'apps/main/src/lib/game/projectBundle/__tests__/runtimeMeta.test.ts',
-    layer: 'frontend',
-    kind: 'unit',
-    category: 'frontend/project-bundle',
-    subcategory: 'runtime-meta',
-    covers: ['apps/main/src/lib/game/projectBundle/runtimeMeta.ts'],
-    order: 16,
-  },
-  {
-    id: 'project-bundle-version-migration-ui',
-    label: 'Project Bundle Version Migration UI',
-    path: 'apps/main/src/lib/game/projectBundle/__tests__/versionMigration.test.ts',
-    layer: 'frontend',
-    kind: 'integration',
-    category: 'frontend/project-bundle',
-    subcategory: 'version-migration',
-    covers: [
-      'apps/main/src/lib/game/projectBundle/index.ts',
-      'apps/main/src/lib/game/projectBundle/service.ts',
-    ],
-    order: 17,
-  },
-  {
-    id: 'project-bundle-contributor-ui',
-    label: 'Project Bundle Contributor UI',
-    path: 'apps/main/src/lib/game/projectBundle/__tests__/contributorClass.test.ts',
-    layer: 'frontend',
-    kind: 'unit',
-    category: 'frontend/project-bundle',
-    subcategory: 'contributors',
-    covers: ['apps/main/src/lib/game/projectBundle/registry.ts'],
-    order: 18,
-  },
-  // --- Non-Python scripts entries (cannot self-register) ---
-  {
-    id: 'block-ops-primitive-projection-eval',
-    label: 'Block Ops Primitive Projection Eval',
-    path: 'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
-    layer: 'scripts',
-    kind: 'smoke',
-    category: 'scripts/block-ops',
-    subcategory: 'primitive-projection-eval',
-    covers: [
-      'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
-      'scripts/tests/block_ops/primitive_projection/eval_corpus.json',
-    ],
-    order: 54,
-  },
-  {
-    id: 'block-ops-primitive-projection-eval-medium',
-    label: 'Block Ops Primitive Projection Eval (Medium)',
-    path: 'scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json',
-    layer: 'scripts',
-    kind: 'smoke',
-    category: 'scripts/block-ops',
-    subcategory: 'primitive-projection-eval-medium',
-    covers: [
-      'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
-      'scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json',
-    ],
-    order: 55,
-  },
-];
+// Suites are now auto-discovered by the backend (GET /dev/testing/catalog).
+// syncSuitesFromBackend() populates the registry from the API at startup.
+// Previously hardcoded BUILTIN_SUITES have been removed.
 
 let builtinsRegistered = false;
 
@@ -277,15 +187,75 @@ export function ensureBuiltInTestCatalogRegistered(): void {
   BUILTIN_PROFILES.forEach((profile) => {
     registerTestProfile(profile);
   });
-  BUILTIN_SUITES.forEach((suite) => {
-    registerTestSuite(suite);
-  });
+
+  // Suites loaded async from backend — fire and forget on first call.
+  void syncSuitesFromBackend();
 
   builtinsRegistered = true;
+}
+
+interface CatalogApiResponse {
+  suite_count: number;
+  suites: Array<{
+    id: string;
+    label: string;
+    path: string;
+    layer: 'backend' | 'frontend' | 'scripts';
+    kind: string | null;
+    category: string | null;
+    subcategory: string | null;
+    covers: string[];
+    order: number | null;
+  }>;
+}
+
+let _suitesSynced = false;
+const _syncListeners: Array<() => void> = [];
+
+/** Fetch suites from the backend catalog and populate the registry. */
+export async function syncSuitesFromBackend(): Promise<void> {
+  if (_suitesSynced) return;
+  try {
+    const response = await pixsimClient.get<CatalogApiResponse>('/dev/testing/catalog');
+    for (const s of response.suites) {
+      registerTestSuite({
+        id: s.id,
+        label: s.label,
+        path: s.path,
+        layer: s.layer,
+        kind: (s.kind as TestSuiteKind) ?? undefined,
+        category: s.category ?? undefined,
+        subcategory: s.subcategory ?? undefined,
+        covers: s.covers,
+        order: s.order ?? undefined,
+      }, { force: true });
+    }
+    _suitesSynced = true;
+    _syncListeners.forEach((fn) => fn());
+    _syncListeners.length = 0;
+  } catch {
+    // Backend unavailable — registry stays empty until next attempt.
+    _suitesSynced = false;
+  }
+}
+
+/** Subscribe to suite sync completion. Returns unsubscribe function. */
+export function onSuitesSynced(fn: () => void): () => void {
+  if (_suitesSynced) {
+    fn();
+    return () => {};
+  }
+  _syncListeners.push(fn);
+  return () => {
+    const idx = _syncListeners.indexOf(fn);
+    if (idx >= 0) _syncListeners.splice(idx, 1);
+  };
 }
 
 export function resetTestCatalogForTesting(): void {
   testProfileRegistry.clear();
   testSuiteRegistry.clear();
   builtinsRegistered = false;
+  _suitesSynced = false;
+  _syncListeners.length = 0;
 }

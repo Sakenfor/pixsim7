@@ -22,12 +22,34 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 
+def _fake_db():
+    """Minimal async session stub with the methods the endpoint actually calls."""
+    _empty_result = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(
+            all=lambda: [],
+            first=lambda: None,
+        ),
+        scalar_one_or_none=lambda: None,
+        scalar=lambda: None,
+        first=lambda: None,
+        all=lambda: [],
+    )
+    ns = SimpleNamespace()
+    ns.commit = AsyncMock()
+    ns.flush = AsyncMock()
+    ns.execute = AsyncMock(return_value=_empty_result)
+    ns.add = lambda obj: None
+    ns.scalar_one_or_none = AsyncMock(return_value=None)
+    ns.scalar = AsyncMock(return_value=None)
+    return ns
+
+
 def _app(*, authenticated: bool = True, principal=None) -> "FastAPI":
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
     async def _db():
-        yield SimpleNamespace()
+        yield _fake_db()
 
     app.dependency_overrides[get_database] = _db
 
@@ -74,6 +96,7 @@ class TestDevPlansProgressEndpoint:
         update_result = SimpleNamespace(
             plan_id="plan-a",
             changes=[{"field": "checkpoints"}],
+            revision=None,
             commit_sha="abc123",
             new_scope=None,
         )
@@ -117,7 +140,7 @@ class TestDevPlansProgressEndpoint:
         else:
             assert evidence == ["existing-proof", "new-proof"]
         assert checkpoint["last_update"]["by"] == "user123"
-        assert updates["stage"] == "phase_1"
+        assert updates["stage"] == "implementation"  # normalize_plan_stage("phase_1")
         principal = kwargs["principal"]
         assert principal.source == "user:123"
         assert principal.id == 123
@@ -142,6 +165,7 @@ class TestDevPlansProgressEndpoint:
         update_result = SimpleNamespace(
             plan_id="plan-a",
             changes=[{"field": "checkpoints"}],
+            revision=None,
             commit_sha=None,
             new_scope=None,
         )
@@ -222,7 +246,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -261,7 +285,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -299,7 +323,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -386,7 +410,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -444,7 +468,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -482,7 +506,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -513,7 +537,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -546,7 +570,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -577,7 +601,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
         expanded = ["aaaaaaa1111111aaaaaaa1111111aaaaaaa1111111", "bbbbbbb2222222bbbbbbb2222222bbbbbbb2222222"]
 
@@ -686,7 +710,7 @@ class TestDevPlansProgressEndpoint:
             )
         )
         update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
         )
 
         payload = {
@@ -767,13 +791,15 @@ class TestDevPlansProgressEndpoint:
         update_result = SimpleNamespace(
             plan_id="plan-a",
             changes=[{"field": "checkpoints"}],
+            revision=None,
             commit_sha=None,
             new_scope=None,
         )
         suites_result = SimpleNamespace(
             scalars=lambda: SimpleNamespace(all=lambda: ["suite-registered"]),
         )
-        mock_db = SimpleNamespace(execute=AsyncMock(return_value=suites_result))
+        mock_db = _fake_db()
+        mock_db.execute = AsyncMock(return_value=suites_result)
         app.dependency_overrides[get_database] = lambda: mock_db
 
         payload = {

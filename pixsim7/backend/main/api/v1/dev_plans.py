@@ -176,6 +176,7 @@ from pixsim7.backend.main.api.v1.plans.helpers import (
     _evidence_key,
     _derive_checkpoint_points,
     _checkpoint_int,
+    _COMMIT_RANGE_RE,
     CHECKPOINT_STATUSES,
 )
 

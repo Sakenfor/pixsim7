@@ -10,75 +10,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .discovery import DiscoveredSuite, discover_suites
+from .discovery import DiscoveredSuite, discover_frontend_suites, discover_suites
 
 logger = logging.getLogger(__name__)
 
-# Frontend / non-Python suites that cannot self-register.
-# These are the only entries that stay hardcoded.
-_STATIC_SUITES: list[dict[str, Any]] = [
-    {
-        "id": "project-bundle-ui",
-        "label": "Project Bundle UI",
-        "path": "apps/main/src/lib/game/projectBundle/__tests__",
-        "layer": "frontend",
-        "kind": "integration",
-        "category": "frontend/project-bundle",
-        "subcategory": "all",
-        "covers": ["apps/main/src/lib/game/projectBundle"],
-        "order": 10,
-    },
-    {
-        "id": "project-bundle-lifecycle-ui",
-        "label": "Project Bundle Lifecycle UI",
-        "path": "apps/main/src/lib/game/projectBundle/__tests__/lifecycleRuntime.test.ts",
-        "layer": "frontend",
-        "kind": "integration",
-        "category": "frontend/project-bundle",
-        "subcategory": "lifecycle",
-        "covers": [
-            "apps/main/src/lib/game/projectBundle/lifecycle.ts",
-            "apps/main/src/lib/game/projectBundle/service.ts",
-        ],
-        "order": 15,
-    },
-    {
-        "id": "project-bundle-runtime-meta-ui",
-        "label": "Project Bundle Runtime Meta UI",
-        "path": "apps/main/src/lib/game/projectBundle/__tests__/runtimeMeta.test.ts",
-        "layer": "frontend",
-        "kind": "unit",
-        "category": "frontend/project-bundle",
-        "subcategory": "runtime-meta",
-        "covers": ["apps/main/src/lib/game/projectBundle/runtimeMeta.ts"],
-        "order": 16,
-    },
-    {
-        "id": "project-bundle-version-migration-ui",
-        "label": "Project Bundle Version Migration UI",
-        "path": "apps/main/src/lib/game/projectBundle/__tests__/versionMigration.test.ts",
-        "layer": "frontend",
-        "kind": "integration",
-        "category": "frontend/project-bundle",
-        "subcategory": "version-migration",
-        "covers": [
-            "apps/main/src/lib/game/projectBundle/index.ts",
-            "apps/main/src/lib/game/projectBundle/service.ts",
-        ],
-        "order": 17,
-    },
-    {
-        "id": "project-bundle-contributor-ui",
-        "label": "Project Bundle Contributor UI",
-        "path": "apps/main/src/lib/game/projectBundle/__tests__/contributorClass.test.ts",
-        "layer": "frontend",
-        "kind": "unit",
-        "category": "frontend/project-bundle",
-        "subcategory": "contributors",
-        "covers": ["apps/main/src/lib/game/projectBundle/registry.ts"],
-        "order": 18,
-    },
-]
+# Legacy _STATIC_SUITES removed — frontend suites are now auto-discovered
+# by discover_frontend_suites() which globs *.test.ts/*.test.tsx files.
 
 
 def _get_root() -> Path:
@@ -90,28 +27,29 @@ def _get_root() -> Path:
 def build_catalog(
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Build the full suite catalog: discovered + static, deduplicated, sorted."""
+    """Build the full suite catalog: backend + frontend discovered, deduplicated, sorted."""
     if root is None:
         root = _get_root()
 
-    discovered = discover_suites(root)
+    backend = discover_suites(root)
+    frontend = discover_frontend_suites(root)
+
     seen_ids: set[str] = set()
     all_suites: list[dict[str, Any]] = []
 
-    # Discovered suites take priority.
-    for suite in discovered:
+    # Backend-discovered suites first (have explicit TEST_SUITE metadata).
+    for suite in backend:
         if suite.id in seen_ids:
             continue
         seen_ids.add(suite.id)
         all_suites.append(suite.to_dict())
 
-    # Static suites fill in the rest.
-    for entry in _STATIC_SUITES:
-        suite_id = entry.get("id")
-        if suite_id in seen_ids:
+    # Frontend-discovered suites (glob + optional TEST_SUITE override).
+    for suite in frontend:
+        if suite.id in seen_ids:
             continue
-        seen_ids.add(suite_id)
-        all_suites.append(entry)
+        seen_ids.add(suite.id)
+        all_suites.append(suite.to_dict())
 
     # Stable sort by order then label.
     def _sort_key(s: dict[str, Any]) -> tuple[float, str]:
