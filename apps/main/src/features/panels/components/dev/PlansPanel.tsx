@@ -1043,9 +1043,17 @@ function PlanDetailView({
       .catch(() => setCoverage(null));
   }, [loadDetail, encodedPlanId]);
 
-  useEffect(() => {
-    void loadReviewGraph();
-  }, [loadReviewGraph]);
+  // Lazy-load review graph on first expand of the Review Loop section
+  const reviewGraphLoadedRef = useRef(false);
+  const onReviewSectionToggle = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen && !reviewGraphLoadedRef.current) {
+        reviewGraphLoadedRef.current = true;
+        void loadReviewGraph();
+      }
+    },
+    [loadReviewGraph],
+  );
 
   // Poll agent sessions while any review request is in_progress
   const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
@@ -1082,7 +1090,9 @@ function PlanDetailView({
 
   const handleUpdate = useCallback(() => {
     loadDetail();
-    void loadReviewGraph();
+    if (reviewGraphLoadedRef.current) {
+      void loadReviewGraph();
+    }
     onPlanChanged();
   }, [loadDetail, loadReviewGraph, onPlanChanged]);
 
@@ -2217,11 +2227,14 @@ function PlanDetailView({
       <DisclosureSection
         label="Review Loop"
         defaultOpen={false}
+        onToggle={onReviewSectionToggle}
         className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
         contentClassName="space-y-3 mt-2"
         badge={
           <span className="text-[10px] text-neutral-400">
-            {reviewGraph ? `${reviewGraph.rounds.length} rounds` : '0 rounds'}
+            {reviewGraph
+              ? `${reviewGraph.rounds.length} rounds`
+              : `${detail?.reviewRoundCount ?? 0} rounds`}
           </span>
         }
         actions={
