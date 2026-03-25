@@ -11,6 +11,8 @@ export default defineConfig({
       '/events': { target: 'http://localhost:8100', ws: true },
       '/health': 'http://localhost:8100',
       '/buildables': 'http://localhost:8100',
+      '/codegen': 'http://localhost:8100',
+      '/migrations': 'http://localhost:8100',
       '/settings': 'http://localhost:8100',
     },
   },

@@ -77,6 +77,8 @@ class Settings(BaseSettings):
             "http://localhost:5175",  # Admin panel (Vite)
             "http://localhost:8001",  # Backend API docs
             "http://localhost:8002",  # Admin panel
+            "http://localhost:8100",  # Launcher API / web UI
+            "http://localhost:3100",  # Launcher Vite dev server
         ],
         description="Allowed CORS origins"
     )

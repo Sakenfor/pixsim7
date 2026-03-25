@@ -20,9 +20,11 @@ interface LogLineProps {
   line: string
   meta: LogMeta | null
   fields: CompiledField[]
+  /** Called when a clickable field badge is clicked (e.g., request_id). */
+  onFieldClick?: (fieldName: string, value: string) => void
 }
 
-export function LogLine({ line, meta, fields }: LogLineProps) {
+export function LogLine({ line, meta, fields, onFieldClick }: LogLineProps) {
   const [expanded, setExpanded] = useState(false)
   const parsed = useMemo(() => parseLine(line), [line])
   const levelStyle = meta?.level_colors[parsed.level]
@@ -71,6 +73,7 @@ export function LogLine({ line, meta, fields }: LogLineProps) {
           fields={fields}
           meta={meta}
           parsedFields={parsed.fields}
+          onFieldClick={onFieldClick}
         />
       </div>
 
@@ -116,12 +119,13 @@ function LevelBadge({ level, color }: { level: string; color?: string }) {
 // ── Message with field highlighting ──
 
 function MessageContent({
-  message, fields, meta, parsedFields,
+  message, fields, meta, parsedFields, onFieldClick,
 }: {
   message: string
   fields: CompiledField[]
   meta: LogMeta | null
   parsedFields: Record<string, string>
+  onFieldClick?: (fieldName: string, value: string) => void
 }) {
   // Check for HTTP request pattern
   const method = parsedFields.method
@@ -136,7 +140,7 @@ function MessageContent({
       )}
 
       {/* Message text with field highlights */}
-      <HighlightedText text={message} fields={fields} meta={meta} />
+      <HighlightedText text={message} fields={fields} meta={meta} onFieldClick={onFieldClick} />
 
       {/* Duration badge if present */}
       {parsedFields.duration_ms && (
@@ -187,11 +191,12 @@ function HttpBadge({
 // ── Text with field highlights ──
 
 function HighlightedText({
-  text, fields, meta,
+  text, fields, meta, onFieldClick,
 }: {
   text: string
   fields: CompiledField[]
   meta: LogMeta | null
+  onFieldClick?: (fieldName: string, value: string) => void
 }) {
   const segments = useMemo(() => {
     if (!fields.length) return [{ type: 'text' as const, text }]
@@ -202,7 +207,7 @@ function HighlightedText({
     <>
       {segments.map((seg, i) =>
         seg.type === 'field' ? (
-          <FieldBadge key={i} {...seg} />
+          <FieldBadge key={i} {...seg} onFieldClick={onFieldClick} />
         ) : seg.type === 'error' ? (
           <span key={i} className="text-red-400 font-bold">{seg.text}</span>
         ) : (
@@ -216,24 +221,31 @@ function HighlightedText({
 // ── Clickable Field Badge ──
 
 function FieldBadge({
-  name, value, color, prefix, truncate,
+  name, value, color, prefix, truncate, onFieldClick,
 }: {
   name: string
   value: string
   color: string
   prefix?: string
   truncate?: number
+  onFieldClick?: (fieldName: string, value: string) => void
 }) {
   const display = truncate && truncate > 0 && value.length > truncate
     ? value.slice(0, truncate) + '...'
     : value
   const label = prefix ? `${prefix}:${display}` : `${name}=${display}`
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Don't toggle row expand
+    if (onFieldClick) onFieldClick(name, value)
+  }
+
   return (
     <span
       className="inline cursor-pointer hover:opacity-80"
-      title={`${name}: ${value}`}
+      title={`Click to filter by ${name}: ${value}`}
       style={{ color, textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+      onClick={handleClick}
     >
       {label}
     </span>

@@ -49,13 +49,21 @@ export function EmbeddedLogViewer() {
     } catch {}
   }, [serviceKey, paused])
 
+  // Reset lines only on service switch, not on pause toggle
   useEffect(() => {
     setLines([])
     fetchLogs()
+  }, [serviceKey])
+
+  // Polling: start/stop based on pause state
+  useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current)
-    if (!paused) pollRef.current = setInterval(fetchLogs, POLL_INTERVAL)
+    if (!paused) {
+      fetchLogs()
+      pollRef.current = setInterval(fetchLogs, POLL_INTERVAL)
+    }
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [serviceKey, fetchLogs, paused])
+  }, [paused, fetchLogs])
 
   useEffect(() => {
     if (autoScroll.current && containerRef.current) {
@@ -121,7 +129,8 @@ export function EmbeddedLogViewer() {
       {/* Log lines */}
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">
         {filteredLines.map((line, i) => (
-          <LogLine key={i} line={line} meta={meta} fields={fields} />
+          <LogLine key={i} line={line} meta={meta} fields={fields}
+            onFieldClick={(name, value) => setSearchFilter(`${name}=${value}`)} />
         ))}
       </div>
     </div>

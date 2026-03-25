@@ -196,7 +196,8 @@ export function DbLogViewer() {
           </div>
         )}
         {entries.map((entry) => (
-          <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields} />
+          <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
+            onFieldClick={(name, value) => setSearch(`${name}=${value}`)} />
         ))}
       </div>
     </div>

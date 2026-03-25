@@ -280,24 +280,10 @@ class LauncherWindow(
 
         self._init_ui()
 
-        # Restore selected service
-        if self.ui_state.selected_service and self.ui_state.selected_service in self.cards:
-            self._select_service(self.ui_state.selected_service)
-        elif self.services:
-            # Select first service by default
-            self._select_service(self.services[0].key)
-        # Nothing heavy until UI is visible
+        # Service selection is handled by React dashboard — no PySide6 cards.
+        self.selected_service_key = None
 
-        # Connect facade signals for health updates and process events.
-        # The facade's HealthManager runs in a background thread; the
-        # QtEventBridge re-emits events as Qt signals on the main thread.
-        self.facade.health_update.connect(self._update_service_health)
-        self.facade.process_started.connect(
-            lambda key, data: self._update_service_health(key, HealthStatus.STARTING))
-        self.facade.process_stopped.connect(
-            lambda key, data: self._update_service_health(key, HealthStatus.STOPPED))
-
-        # Defer start of health monitoring until after first paint.
+        # Start health monitoring (feeds state to the API for React to read).
         QTimer.singleShot(0, self.facade.start_all_managers)
 
         # Start embedded Launcher API after first paint to avoid blocking __init__.
@@ -663,25 +649,68 @@ class LauncherWindow(
 
 
     def _init_ui(self):
-        root = QHBoxLayout(self)
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+        from PySide6.QtWebEngineCore import QWebEngineSettings
+
+        root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(6)
-        self.splitter.setChildrenCollapsible(False)
-        root.addWidget(self.splitter)
 
-        left = self._build_left_panel()
-        self.splitter.addWidget(left)
+        self.webview = QWebEngineView()
+        settings = self.webview.settings()
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
 
-        right = self._build_right_panel()
-        self.splitter.addWidget(right)
+        # Disable persistent cache so F5 always loads fresh built files
+        from PySide6.QtWebEngineCore import QWebEngineProfile
+        profile = self.webview.page().profile()
+        profile.setHttpCacheType(QWebEngineProfile.NoCache)
 
-        # Set initial splitter sizes (left panel ~30%, right panel ~70%)
-        self.splitter.setSizes([350, 850])
+        root.addWidget(self.webview)
 
-        self._restore_console_ui_state()
+        # Store as console_webview for _reload_webviews / _toggle_webview_dev_mode
+        self.console_webview = self.webview
 
-        self._setup_connections()
+        # Load the React dashboard after the embedded API is up
+        def _load_dashboard():
+            from PySide6.QtCore import QUrl
+            is_dev = getattr(self, '_webview_dev_mode', False)
+            base = "http://localhost:3100" if is_dev else "http://localhost:8100"
+            self.webview.setUrl(QUrl(base))
+
+        QTimer.singleShot(1500, _load_dashboard)
+
+        # Dummy attributes for backward compat with mixins that check for widgets
+        self.cards = {}
+        self.log_view = type('_Dummy', (), {
+            'update_content': lambda *a, **k: None,
+            'append_html': lambda *a: None,
+            'clear': lambda: None,
+            'set_autoscroll': lambda *a: None,
+            'set_paused': lambda *a: None,
+            'is_paused': lambda: False,
+            'verticalScrollBar': lambda: type('_Bar', (), {'value': lambda: 0, 'valueChanged': type('_Sig', (), {'connect': lambda *a: None})()})(),
+        })()
+        self.log_service_label = type('_Dummy', (), {'setText': lambda *a: None})()
+        self.console_level_combo = type('_Dummy', (), {'currentText': lambda: 'All', 'findText': lambda *a: -1, 'setCurrentIndex': lambda *a: None})()
+        self.console_scope_actions = {}
+        self.console_search_input = type('_Dummy', (), {'text': lambda: '', 'setText': lambda *a: None, 'setFocus': lambda: None})()
+        self.console_style_checkbox = type('_Dummy', (), {'setChecked': lambda *a: None, 'isChecked': lambda: False})()
+        self.autoscroll_checkbox = type('_Dummy', (), {'setChecked': lambda *a: None, 'isChecked': lambda: False})()
+        self.pause_logs_button = type('_Dummy', (), {'setChecked': lambda *a: None, 'isChecked': lambda: False})()
+        self.btn_refresh_logs = QWidget()
+        self.btn_clear_logs = QWidget()
+        self.btn_attach_logs = QWidget()
+        self.notification_bar = None
+        self.status_label = type('_Dummy', (), {'setText': lambda *a: None})()
+        self.db_log_viewer = None
+        self.console_refresh_timer = QTimer(self)
+        self.last_log_hash = {}
+
+        # Keyboard shortcuts
+        from PySide6.QtGui import QShortcut, QKeySequence
+        QShortcut(QKeySequence('F5'), self).activated.connect(self._reload_webviews)
+        QShortcut(QKeySequence('Ctrl+Shift+R'), self).activated.connect(self._reload_ui)
+        QShortcut(QKeySequence('Ctrl+Shift+D'), self).activated.connect(self._toggle_webview_dev_mode)
 
     def _on_architecture_metrics_updated(self, metrics):
         """Handle architecture metrics update."""
@@ -709,7 +738,7 @@ class LauncherWindow(
             self.btn_settings.clicked.connect(self._open_settings)
         if hasattr(self, 'btn_reload_ui'):
             self.btn_reload_ui.clicked.connect(self._reload_webviews)
-            self.btn_reload_ui.setToolTip("Reload embedded webviews (Ctrl+Shift+R for full UI reload)")
+            self.btn_reload_ui.setToolTip("F5: Reload webviews | Ctrl+Shift+D: Toggle dev mode (Vite HMR) | Ctrl+Shift+R: Full UI reload")
         
         # Console log controls (may be dummy QWidgets when using embedded React viewer)
         if hasattr(getattr(self, 'btn_refresh_logs', None), 'clicked'):
@@ -723,10 +752,11 @@ class LauncherWindow(
         self.console_refresh_timer = QTimer(self)
         self.last_log_hash = {}
 
-        # Keyboard shortcuts for webview reload
+        # Keyboard shortcuts
         from PySide6.QtGui import QShortcut, QKeySequence
         QShortcut(QKeySequence('F5'), self).activated.connect(self._reload_webviews)
         QShortcut(QKeySequence('Ctrl+Shift+R'), self).activated.connect(self._reload_ui)
+        QShortcut(QKeySequence('Ctrl+Shift+D'), self).activated.connect(self._toggle_webview_dev_mode)
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
@@ -1137,22 +1167,44 @@ class LauncherWindow(
         # DB log auto-refresh is now handled by the React webview.
 
     def _reload_webviews(self):
-        """Reload all embedded React webviews (console, db-logs).
+        """Reload the main webview.
 
-        Use after editing React code and running pnpm build,
-        or to pick up /logs/meta changes without restarting the launcher.
+        Forces cache bypass by appending a timestamp query param.
         """
-        reloaded = []
-        for attr in ('console_webview', 'db_log_webview'):
-            wv = getattr(self, attr, None)
-            if wv is not None:
-                try:
-                    wv.reload()
-                    reloaded.append(attr)
-                except Exception:
-                    pass
-        if reloaded:
-            self.notify(f"Webviews reloaded ({len(reloaded)})", duration_ms=1500)
+        import time as _t
+        from PySide6.QtCore import QUrl
+        bust = f"_t={int(_t.time())}"
+        is_dev = getattr(self, '_webview_dev_mode', False)
+        base = "http://localhost:3100" if is_dev else "http://localhost:8100"
+
+        wv = getattr(self, 'webview', None)
+        if wv:
+            wv.setUrl(QUrl(f"{base}?{bust}"))
+
+    def _toggle_webview_dev_mode(self):
+        """Switch embedded webviews between built files (:8100) and Vite dev server (:3100).
+
+        When Vite dev server is running (pnpm --filter @pixsim7/launcher dev),
+        dev mode gives hot-reload — edits appear instantly without building.
+        """
+        from PySide6.QtCore import QUrl
+        import socket
+
+        is_dev = getattr(self, '_webview_dev_mode', False)
+
+        if not is_dev:
+            # Check if Vite dev server is running
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(("127.0.0.1", 3100)) != 0:
+                    self.notify("Vite dev server not running — start with: pnpm --filter @pixsim7/launcher dev", duration_ms=3000)
+                    return
+
+        self._webview_dev_mode = not is_dev
+        base = "http://localhost:3100" if self._webview_dev_mode else "http://localhost:8100"
+
+        wv = getattr(self, 'webview', None)
+        if wv:
+            wv.setUrl(QUrl(base))
 
     def _reload_ui(self):
         """Rebuild UI tabs and refresh settings without restarting launcher."""

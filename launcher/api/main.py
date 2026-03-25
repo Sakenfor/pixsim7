@@ -30,6 +30,7 @@ from .routes import (
     buildables_router,
     settings_router,
     codegen_router,
+    migrations_router,
 )
 from .dependencies import set_container
 
@@ -170,6 +171,7 @@ app.include_router(health_router)
 app.include_router(buildables_router)
 app.include_router(settings_router)
 app.include_router(codegen_router)
+app.include_router(migrations_router)
 
 
 # Serve the built React launcher UI if available.
@@ -198,6 +200,11 @@ if _LAUNCHER_DIST.is_dir() and (_LAUNCHER_DIST / "index.html").exists():
     @app.get("/db-logs", include_in_schema=False)
     async def db_logs():
         """Serve the DB log query viewer (SPA route)."""
+        return FileResponse(_index_html)
+
+    @app.get("/tools", include_in_schema=False)
+    async def tools():
+        """Serve the tools page (SPA route)."""
         return FileResponse(_index_html)
 else:
     @app.get("/", include_in_schema=False)
