@@ -915,6 +915,7 @@ function PlanDetailView({
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const [selectedRoundId, setSelectedRoundId] = useState('');
   const [newRoundNote, setNewRoundNote] = useState('');
+  const [showClosedIterations, setShowClosedIterations] = useState(false);
   const [creatingRound, setCreatingRound] = useState(false);
   const [roundStatusDraft, setRoundStatusDraft] = useState<ReviewRoundStatus>('open');
   const [roundNoteDraft, setRoundNoteDraft] = useState('');
@@ -1497,6 +1498,24 @@ function PlanDetailView({
       }
     },
     [encodedPlanId, loadReviewGraph, selectedRound],
+  );
+
+  const handleCloseRound = useCallback(
+    async (round: PlanReviewRound) => {
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        await pixsimClient.patch<PlanReviewRound>(
+          `/dev/plans/reviews/${encodedPlanId}/rounds/${encodeURIComponent(round.id)}`,
+          { status: 'concluded' },
+        );
+        setReviewNotice(`Closed iteration #${round.roundNumber}.`);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to close iteration'));
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
   );
 
   const handleSaveRoundState = useCallback(async () => {
@@ -2242,52 +2261,83 @@ function PlanDetailView({
               ) : reviewRounds.length === 0 ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">No iterations yet.</div>
               ) : (
-                <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                  {reviewRounds.map((round) => {
-                    const selected = round.id === selectedRoundId;
-                    return (
-                      <button
-                        key={round.id}
-                        onClick={() => setSelectedRoundId(round.id)}
-                        className={`w-full text-left p-2 rounded border text-xs ${
-                          selected
-                            ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
-                            : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                            Iteration #{round.roundNumber}
-                          </span>
-                          <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                            {ITERATION_STATUS_LABELS[round.status] ?? round.status}
-                          </Badge>
-                        </div>
-                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          {reviewNodeCountByRound.get(round.id) ?? 0} entries
-                          {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
-                        </div>
-                        {(round.actorAgentId || round.actorRunId || round.createdBy) && (
-                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                            {formatActorLabel(
-                              {
-                                principalType: round.actorPrincipalType,
-                                userId: round.actorUserId,
-                                agentId: round.actorAgentId,
-                                fallback: round.createdBy,
-                              },
-                              { profileLabels: reviewProfileLabels },
-                            )}
-                            {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
-                          </div>
-                        )}
-                        <div className="text-[10px] text-neutral-400 mt-0.5">
-                          {formatDateTime(round.updatedAt)}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                (() => {
+                  const closedCount = reviewRounds.filter((r) => r.status === 'concluded').length;
+                  const visibleRounds = showClosedIterations
+                    ? reviewRounds
+                    : reviewRounds.filter((r) => r.status !== 'concluded');
+                  return (
+                    <>
+                      <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                        {visibleRounds.map((round) => {
+                          const selected = round.id === selectedRoundId;
+                          return (
+                            <div
+                              key={round.id}
+                              className={`p-2 rounded border text-xs ${
+                                selected
+                                  ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
+                                  : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                              }`}
+                            >
+                              <button
+                                onClick={() => setSelectedRoundId(round.id)}
+                                className="w-full text-left"
+                              >
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                                    Iteration #{round.roundNumber}
+                                  </span>
+                                  <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
+                                    {ITERATION_STATUS_LABELS[round.status] ?? round.status}
+                                  </Badge>
+                                </div>
+                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  {reviewNodeCountByRound.get(round.id) ?? 0} entries
+                                  {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
+                                </div>
+                                {(round.actorAgentId || round.actorRunId || round.createdBy) && (
+                                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                    {formatActorLabel(
+                                      {
+                                        principalType: round.actorPrincipalType,
+                                        userId: round.actorUserId,
+                                        agentId: round.actorAgentId,
+                                        fallback: round.createdBy,
+                                      },
+                                      { profileLabels: reviewProfileLabels },
+                                    )}
+                                    {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+                                  </div>
+                                )}
+                                <div className="text-[10px] text-neutral-400 mt-0.5">
+                                  {formatDateTime(round.updatedAt)}
+                                </div>
+                              </button>
+                              {round.status !== 'concluded' && (
+                                <button
+                                  onClick={() => void handleCloseRound(round)}
+                                  className="mt-1 text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+                                  title="Close this iteration — no more activity expected"
+                                >
+                                  Close
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {closedCount > 0 && (
+                        <button
+                          onClick={() => setShowClosedIterations((v) => !v)}
+                          className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 mt-1"
+                        >
+                          {showClosedIterations ? 'Hide' : 'Show'} {closedCount} closed
+                        </button>
+                      )}
+                    </>
+                  );
+                })()
               )}
             </div>
 
