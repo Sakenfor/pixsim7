@@ -10,12 +10,9 @@ import {
   Badge,
   Button,
   DisclosureSection,
-  Dropdown,
-  DropdownItem,
   EmptyState,
   FilterPillGroup,
   type FilterPillOption,
-  Popover,
   SearchInput,
   SectionHeader,
   SidebarContentLayout,
@@ -29,861 +26,86 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
+import { ClickableBadge } from './plans/ClickableBadge';
+import { ParticipantEntry } from './plans/ParticipantEntry';
 import {
   CheckpointList,
   getCheckpointPointProgress,
-  type Checkpoint,
 } from './plans/PlanCheckpointList';
+import {
+  FALLBACK_PLAN_STAGE_OPTIONS,
+  PLAN_TYPE_ICONS,
+  PRIORITY_COLORS,
+  REVIEW_AUTHOR_ROLE_COLORS,
+  REVIEW_CAUSAL_RELATIONS,
+  REVIEW_RELATIONS,
+  REVIEW_REQUEST_DISPATCH_COLORS,
+  REVIEW_REQUEST_STATUS_COLORS,
+  REVIEW_ROUND_STATUS_COLORS,
+  REVIEW_SEVERITY_COLORS,
+  STAGE_BADGE_COLORS,
+  STAGE_ICONS,
+  STATUS_COLORS,
+  STATUS_DOT_CLASSES,
+  STATUS_ICONS,
+  STATUS_ORDER,
+} from './plans/planConstants';
 import { PlanReviewDiscussion } from './plans/PlanReviewDiscussion';
 import { PlanReviewRequestCard } from './plans/PlanReviewRequestCard';
 import { PlanReviewRequestForm } from './plans/PlanReviewRequestForm';
 import { PlanReviewResponseForm } from './plans/PlanReviewResponseForm';
+import type {
+  AgentSessionSnapshot,
+  AgentSessionsSnapshot,
+  PlanDetail,
+  PlanParticipantsResponse,
+  PlanRequest,
+  PlanRequestCreateRequest,
+  PlanRequestDispatchRequest,
+  PlanRequestDispatchResponse,
+  PlanReviewAssigneesResponse,
+  PlanReviewDispatchTickResponse,
+  PlanReviewGraphResponse,
+  PlanReviewNode,
+  PlanReviewNodeCreateRequest,
+  PlanReviewNodeCreateResponse,
+  PlanReviewRefInput,
+  PlanReviewRound,
+  PlanReviewRoundCreateRequest,
+  PlanReviewRoundUpdateRequest,
+  PlanStageOptionEntry,
+  PlanStagesResponse,
+  PlanSummary,
+  PlanUpdateResponse,
+  PlansIndexResponse,
+  ReviewAgentProfileEntry,
+  ReviewAgentProfileListResponse,
+  ReviewAuthorRole,
+  ReviewNodeKind,
+  ReviewRequestMode,
+  ReviewRequestQueuePolicy,
+  ReviewRequestStatus,
+  ReviewRoundStatus,
+  SourceRefMatch,
+  PlanSourcePreviewResponse,
+  PlanReviewLink,
+} from './plans/planTypes';
+import {
+  buildAssigneeOptionValue,
+  extractRevisionConflict,
+  extractSourceRefs,
+  formatDate,
+  formatDateTime,
+  formatReviewRelation,
+  isCanonicalPlanId,
+  parseAssigneeOptionValue,
+  stageLabelFromValue,
+  toErrorMessage,
+} from './plans/planUtils';
 
-// =============================================================================
-// Types
-// =============================================================================
 
-interface PlanTarget {
-  type: string;
-  id: string;
-  description: string;
-  paths?: string[];
-}
 
-interface PlanChildSummary {
-  id: string;
-  title: string;
-  status: string;
-  stage: string;
-  priority: string;
-}
 
-interface PlanSummary {
-  id: string;
-  documentId: string | null;
-  parentId: string | null;
-  title: string;
-  status: string;
-  stage: string;
-  owner: string;
-  lastUpdated: string;
-  priority: string;
-  summary: string;
-  scope: string;
-  planType: string;
-  visibility: string;
-  target: PlanTarget | null;
-  checkpoints: Checkpoint[] | null;
-  codePaths: string[];
-  companions: string[];
-  handoffs: string[];
-  tags: string[];
-  dependsOn: string[];
-  revision?: number | null;
-  reviewRoundCount?: number;
-  activeReviewRoundCount?: number;
-  children: PlanChildSummary[];
-}
-
-interface PlanDetail extends PlanSummary {
-  planPath: string;
-  markdown: string;
-}
-
-interface PlansIndexResponse {
-  version: string;
-  generatedAt: string | null;
-  plans: PlanSummary[];
-}
-
-interface PlanUpdateResponse {
-  planId: string;
-  changes: { field: string; old: string; new: string }[];
-  revision: number | null;
-  commitSha: string | null;
-  newScope: string | null;
-}
-
-interface PlanStageOptionEntry {
-  value: string;
-  label: string;
-  description: string;
-  aliases: string[];
-}
-
-interface PlanStagesResponse {
-  defaultStage: string;
-  stages: PlanStageOptionEntry[];
-}
-
-type ReviewRoundStatus = 'open' | 'changes_requested' | 'approved' | 'concluded';
-type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note';
-type ReviewAuthorRole = 'reviewer' | 'author' | 'agent' | 'system';
-type ReviewRequestStatus = 'open' | 'in_progress' | 'fulfilled' | 'cancelled';
-type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
-type ReviewRequestKind = 'review' | 'build' | 'research';
-type ReviewRequestMode = 'review_only' | 'propose_patch' | 'apply_patch';
-
-interface PlanReviewRound {
-  id: string;
-  planId: string;
-  roundNumber: number;
-  reviewRevision: number | null;
-  status: ReviewRoundStatus;
-  note: string | null;
-  conclusion: string | null;
-  createdBy: string | null;
-  actorPrincipalType: 'user' | 'agent' | 'service' | null;
-  actorAgentId: string | null;
-  actorRunId: string | null;
-  actorUserId: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface PlanReviewNode {
-  id: string;
-  planId: string;
-  roundId: string;
-  kind: ReviewNodeKind;
-  authorRole: ReviewAuthorRole;
-  body: string;
-  severity: 'info' | 'low' | 'medium' | 'high' | 'critical' | null;
-  planAnchor: Record<string, unknown> | null;
-  meta: Record<string, unknown> | null;
-  createdBy: string | null;
-  actorPrincipalType: 'user' | 'agent' | 'service' | null;
-  actorAgentId: string | null;
-  actorRunId: string | null;
-  actorUserId: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface PlanReviewLink {
-  id: string;
-  planId: string;
-  roundId: string;
-  sourceNodeId: string;
-  targetNodeId: string | null;
-  relation: 'replies_to' | 'addresses' | 'because_of' | 'supports' | 'contradicts' | 'supersedes';
-  sourceAnchor: Record<string, unknown> | null;
-  targetAnchor: Record<string, unknown> | null;
-  targetPlanAnchor: Record<string, unknown> | null;
-  quote: string | null;
-  meta: Record<string, unknown> | null;
-  createdBy: string | null;
-  createdAt: string;
-}
-
-interface PlanReviewGraphResponse {
-  planId: string;
-  rounds: PlanReviewRound[];
-  nodes: PlanReviewNode[];
-  links: PlanReviewLink[];
-  requests: PlanRequest[];
-}
-
-interface PlanReviewRoundCreateRequest {
-  round_number?: number;
-  review_revision?: number;
-  status?: 'open' | 'changes_requested' | 'approved';
-  note?: string;
-}
-
-interface PlanReviewRoundUpdateRequest {
-  status?: ReviewRoundStatus;
-  conclusion?: string;
-  note?: string;
-}
-
-interface PlanReviewRefInput {
-  relation: PlanReviewLink['relation'];
-  target_node_id?: string;
-  target_plan_anchor?: Record<string, unknown>;
-  quote?: string;
-}
-
-interface PlanReviewNodeCreateRequest {
-  round_id: string;
-  kind: ReviewNodeKind;
-  author_role: ReviewAuthorRole;
-  body: string;
-  severity?: NonNullable<PlanReviewNode['severity']>;
-  refs?: PlanReviewRefInput[];
-}
-
-interface PlanReviewNodeCreateResponse {
-  node: PlanReviewNode;
-  links: PlanReviewLink[];
-}
-
-interface PlanRequest {
-  id: string;
-  kind: string;
-  dismissed: boolean;
-  planId: string;
-  roundId: string | null;
-  title: string;
-  body: string;
-  status: ReviewRequestStatus;
-  targetMode: 'auto' | 'session' | 'recent_agent' | null;
-  targetAgentId: string | null;
-  targetAgentType: string | null;
-  targetSessionId: string | null;
-  preferredAgentId: string | null;
-  targetProfileId: string | null;
-  targetMethod: string | null;
-  targetModelId: string | null;
-  targetProvider: string | null;
-  reviewMode: ReviewRequestMode;
-  baseRevision: number | null;
-  queueIfBusy: boolean;
-  autoRerouteIfBusy: boolean;
-  dispatchState: 'assigned' | 'queued' | 'unassigned' | null;
-  dispatchReason: string | null;
-  requestedBy: string | null;
-  requestedByPrincipalType: 'user' | 'agent' | 'service' | null;
-  requestedByAgentId: string | null;
-  requestedByRunId: string | null;
-  requestedByUserId: number | null;
-  meta: Record<string, unknown> | null;
-  resolutionNote: string | null;
-  resolvedNodeId: string | null;
-  resolvedBy: string | null;
-  resolvedByPrincipalType: 'user' | 'agent' | 'service' | null;
-  resolvedByAgentId: string | null;
-  resolvedByRunId: string | null;
-  resolvedByUserId: number | null;
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt: string | null;
-}
-
-interface PlanRequestCreateRequest {
-  kind?: string;
-  round_id?: string;
-  title: string;
-  body: string;
-  target_mode?: 'auto' | 'session' | 'recent_agent';
-  target_agent_id?: string;
-  target_agent_type?: string;
-  target_session_id?: string;
-  preferred_agent_id?: string;
-  target_profile_id?: string;
-  target_method?: string;
-  target_model_id?: string;
-  target_provider?: string;
-  target_user_id?: number;
-  review_mode?: ReviewRequestMode;
-  base_revision?: number;
-  queue_if_busy?: boolean;
-  auto_reroute_if_busy?: boolean;
-}
-
-interface PlanRequestUpdateRequest {
-  status?: ReviewRequestStatus;
-  resolution_note?: string;
-  resolved_node_id?: string;
-}
-
-interface PlanRequestDispatchRequest {
-  timeout_seconds?: number;
-  spawn_if_missing?: boolean;
-  create_round_if_missing?: boolean;
-}
-
-interface PlanRequestDispatchResponse {
-  request: PlanRequest;
-  node: PlanReviewNode | null;
-  executed: boolean;
-  message: string;
-  durationMs: number | null;
-}
-
-interface PlanReviewDispatchTickItem {
-  planId: string;
-  requestId: string;
-  status: string;
-  executed: boolean;
-  message: string;
-  dispatchState: 'assigned' | 'queued' | 'unassigned' | null;
-  resolvedNodeId: string | null;
-}
-
-interface PlanReviewDispatchTickResponse {
-  attempted: number;
-  processed: number;
-  items: PlanReviewDispatchTickItem[];
-}
-
-interface PlanReviewPoolSession {
-  sessionId: string;
-  engine: string;
-  state: string;
-  cliModel: string | null;
-  messagesSent: number;
-  contextPct: number | null;
-}
-
-interface PlanReviewAssignee {
-  id: string;
-  label: string;
-  source: 'live' | 'recent' | 'delegated';
-  targetMode: 'session' | 'recent_agent';
-  bridgeId: string | null;
-  targetUserId: number | null;
-  targetSessionId: string | null;
-  agentId: string;
-  agentType: string | null;
-  busy: boolean;
-  availableNow: boolean;
-  activeTasks: number;
-  tasksCompleted: number;
-  connectedAt: string | null;
-  lastSeenAt: string | null;
-  modelId: string | null;
-  engines: string[];
-  poolSessions: PlanReviewPoolSession[];
-}
-
-interface PlanReviewAssigneesResponse {
-  planId: string;
-  generatedAt: string;
-  liveSessions: PlanReviewAssignee[];
-  recentAgents: PlanReviewAssignee[];
-}
-
-interface PlanParticipant {
-  id: string;
-  planId: string;
-  role: 'builder' | 'reviewer';
-  principalType: 'user' | 'agent' | 'service' | null;
-  agentId: string | null;
-  agentType: string | null;
-  profileId: string | null;
-  runId: string | null;
-  sessionId: string | null;
-  userId: number | null;
-  touches: number;
-  lastAction: string | null;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  meta: Record<string, unknown> | null;
-}
-
-interface PlanParticipantsResponse {
-  planId: string;
-  generatedAt: string;
-  participants: PlanParticipant[];
-  reviewers: PlanParticipant[];
-  builders: PlanParticipant[];
-}
-
-interface ReviewAgentProfileEntry {
-  id: string;
-  label: string;
-  agent_type: string;
-  model_id: string | null;
-  method: string | null;
-  config: Record<string, unknown> | null;
-  status: string;
-}
-
-interface ReviewAgentProfileListResponse {
-  profiles: ReviewAgentProfileEntry[];
-  total: number;
-}
-
-interface PlanSourcePreviewLine {
-  lineNumber: number;
-  text: string;
-}
-
-interface PlanSourcePreviewResponse {
-  planId: string;
-  path: string;
-  startLine: number;
-  endLine: number;
-  lines: PlanSourcePreviewLine[];
-}
-
-interface SourceRefMatch {
-  raw: string;
-  path: string;
-  startLine: number;
-  endLine: number;
-}
-
-interface AgentSessionActivity {
-  action: string;
-  detail: string;
-  timestamp: string;
-}
-
-interface AgentSessionSnapshot {
-  session_id: string;
-  agent_type: string;
-  status: string;
-  plan_id: string | null;
-  contract_id: string | null;
-  action: string;
-  detail: string;
-  recent_activity: AgentSessionActivity[];
-}
-
-interface AgentSessionsSnapshot {
-  active: AgentSessionSnapshot[];
-}
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const STATUS_ORDER = ['active', 'done', 'parked'] as const;
-
-const FALLBACK_PLAN_STAGE_OPTIONS: PlanStageOptionEntry[] = [
-  { value: 'backlog', label: 'Backlog', description: 'Known work not yet actively proposed.', aliases: [] },
-  { value: 'proposed', label: 'Proposed', description: 'Idea has scope, but implementation has not started.', aliases: [] },
-  { value: 'discovery', label: 'Discovery', description: 'Research, analysis, and requirement clarification.', aliases: [] },
-  { value: 'design', label: 'Design', description: 'Architecture/contract/design decisions are being finalized.', aliases: [] },
-  { value: 'implementation', label: 'Implementation', description: 'Code/content changes are actively being built.', aliases: [] },
-  { value: 'validation', label: 'Validation', description: 'Testing, verification, and stabilization before release.', aliases: [] },
-  { value: 'rollout', label: 'Rollout', description: 'Deployment, migration, and staged release execution.', aliases: [] },
-  { value: 'completed', label: 'Completed', description: 'Work is fully delivered and closed out.', aliases: [] },
-];
-
-const STAGE_ICONS: Record<string, string> = {
-  backlog: 'pause',
-  proposed: 'fileText',
-  discovery: 'search',
-  design: 'checkSquare',
-  implementation: 'code',
-  validation: 'search',
-  rollout: 'git-branch',
-  completed: 'checkCircle',
-  // Legacy values kept to avoid a visual regression while old rows are still in DB.
-  'design-approved': 'checkSquare',
-  'implementation-ready': 'code',
-  'in-progress': 'play',
-  complete: 'checkCircle',
-};
-
-const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  active: 'green',
-  done: 'blue',
-  parked: 'gray',
-  blocked: 'red',
-};
-
-const PRIORITY_COLORS: Record<string, 'red' | 'orange' | 'gray'> = {
-  high: 'red',
-  medium: 'orange',
-  low: 'gray',
-};
-
-const STATUS_ICONS: Record<string, string> = {
-  active: 'play',
-  done: 'checkCircle',
-  parked: 'pause',
-};
-
-const STATUS_DOT_CLASSES: Record<string, string> = {
-  active: 'bg-green-500',
-  done: 'bg-blue-400',
-  parked: 'bg-neutral-400',
-  blocked: 'bg-red-500',
-};
-
-const PLAN_TYPE_ICONS: Record<string, string> = {
-  feature: 'sparkles',
-  bugfix: 'wrench',
-  refactor: 'refreshCw',
-  exploration: 'search',
-  task: 'checkSquare',
-  proposal: 'fileText',
-};
-
-
-
-
-const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  backlog: 'gray',
-  proposed: 'gray',
-  discovery: 'blue',
-  design: 'blue',
-  implementation: 'orange',
-  validation: 'orange',
-  rollout: 'blue',
-  completed: 'green',
-  'implementation-ready': 'blue',
-  'in-progress': 'orange',
-  complete: 'green',
-};
-
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
-
-const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  open: 'blue',
-  changes_requested: 'orange',
-  approved: 'green',
-  concluded: 'gray',
-};
-
-const ITERATION_STATUS_LABELS: Record<ReviewRoundStatus, string> = {
-  open: 'Active',
-  changes_requested: 'Needs Action',
-  approved: 'Completed',
-  concluded: 'Closed',
-};
-
-const REVIEW_REQUEST_STATUS_COLORS: Record<ReviewRequestStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  open: 'blue',
-  in_progress: 'orange',
-  fulfilled: 'green',
-  cancelled: 'gray',
-};
-
-const REVIEW_REQUEST_DISPATCH_COLORS: Record<'assigned' | 'queued' | 'unassigned', 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  assigned: 'green',
-  queued: 'orange',
-  unassigned: 'gray',
-};
-
-const REVIEW_AUTHOR_ROLE_COLORS: Record<ReviewAuthorRole, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  reviewer: 'orange',
-  author: 'blue',
-  agent: 'green',
-  system: 'gray',
-};
-
-const REVIEW_SEVERITY_COLORS: Record<NonNullable<PlanReviewNode['severity']>, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
-  info: 'gray',
-  low: 'blue',
-  medium: 'orange',
-  high: 'red',
-  critical: 'red',
-};
-
-const REVIEW_RELATIONS: { value: PlanReviewLink['relation']; label: string; requiresTargetNode: boolean }[] = [
-  { value: 'replies_to', label: 'Replies To', requiresTargetNode: false },
-  { value: 'addresses', label: 'Addresses', requiresTargetNode: false },
-  { value: 'because_of', label: 'Because Of', requiresTargetNode: true },
-  { value: 'supports', label: 'Supports', requiresTargetNode: true },
-  { value: 'contradicts', label: 'Contradicts', requiresTargetNode: true },
-  { value: 'supersedes', label: 'Supersedes', requiresTargetNode: true },
-];
-
-const REVIEW_CAUSAL_RELATIONS = new Set<PlanReviewLink['relation']>([
-  'because_of',
-  'supports',
-  'contradicts',
-  'supersedes',
-]);
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function formatDateTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function toErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
-}
-
-interface PlanRevisionConflict {
-  expectedRevision: number;
-  currentRevision: number;
-}
-
-function extractRevisionConflict(err: unknown): PlanRevisionConflict | null {
-  const resp = (err as { response?: { status?: number; data?: { detail?: Record<string, unknown> } } })?.response;
-  if (resp?.status !== 409) return null;
-  const detail = resp.data?.detail;
-  if (detail?.error !== 'plan_revision_conflict') return null;
-  return {
-    expectedRevision: detail.expected_revision as number,
-    currentRevision: detail.current_revision as number,
-  };
-}
-
-function isCanonicalPlanId(value: string): boolean {
-  return PLAN_ID_RE.test(value);
-}
-
-function humanizeToken(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function stageLabelFromValue(stage: string, stageOptionsByValue: Map<string, PlanStageOptionEntry>): string {
-  const fromOptions = stageOptionsByValue.get(stage)?.label;
-  if (fromOptions) return fromOptions;
-  return stage
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .map(humanizeToken)
-    .join(' ');
-}
-
-const SOURCE_REF_RE = /([A-Za-z0-9_./\\-]+\.[A-Za-z0-9_]+):(\d+)(?:-(\d+))?/g;
-
-function extractSourceRefs(text: string): SourceRefMatch[] {
-  if (!text) return [];
-  const out: SourceRefMatch[] = [];
-  const seen = new Set<string>();
-
-  for (const match of text.matchAll(SOURCE_REF_RE)) {
-    const path = (match[1] ?? '').replace(/\\/g, '/');
-    const startRaw = match[2] ?? '';
-    const endRaw = match[3] ?? startRaw;
-    const startLine = Number.parseInt(startRaw, 10);
-    const endLine = Number.parseInt(endRaw, 10);
-    if (!path || !Number.isFinite(startLine) || !Number.isFinite(endLine)) continue;
-    if (startLine < 1 || endLine < startLine) continue;
-    const key = `${path}:${startLine}-${endLine}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      raw: `${path}:${startLine}${endLine !== startLine ? `-${endLine}` : ''}`,
-      path,
-      startLine,
-      endLine,
-    });
-  }
-
-  return out;
-}
-
-function formatReviewRelation(relation: PlanReviewLink['relation']): string {
-  return relation.replace(/_/g, ' ');
-}
-
-function buildAssigneeOptionValue(kind: 'live' | 'recent', id: string): string {
-  return `${kind}:${id}`;
-}
-
-function parseAssigneeOptionValue(value: string): { kind: 'live' | 'recent'; id: string } | null {
-  if (!value.includes(':')) return null;
-  const [kindRaw, ...rest] = value.split(':');
-  const id = rest.join(':').trim();
-  if (!id) return null;
-  if (kindRaw === 'live' || kindRaw === 'recent') {
-    return { kind: kindRaw, id };
-  }
-  return null;
-}
-
-// =============================================================================
-// Clickable Badge with Dropdown
-// =============================================================================
-
-function ClickableBadge({
-  value,
-  displayValue,
-  color,
-  options,
-  onSelect,
-  disabled,
-}: {
-  value: string;
-  displayValue?: string;
-  color: 'green' | 'blue' | 'gray' | 'orange' | 'red';
-  options: { value: string; label: string; color: 'green' | 'blue' | 'gray' | 'orange' | 'red' }[];
-  onSelect: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  return (
-    <span className="relative inline-flex">
-      <button
-        ref={triggerRef}
-        onClick={() => !disabled && setOpen((o) => !o)}
-        className="cursor-pointer hover:opacity-80 transition-opacity"
-        disabled={disabled}
-      >
-        <Badge color={color}>
-          {displayValue ?? value}
-          <Icon name="chevronDown" size={8} className="ml-0.5 inline-block opacity-50" />
-        </Badge>
-      </button>
-      <Dropdown
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        triggerRef={triggerRef}
-        minWidth="100px"
-      >
-        {options.map((opt) => (
-          <DropdownItem
-            key={opt.value}
-            onClick={() => {
-              onSelect(opt.value);
-              setOpen(false);
-            }}
-            icon={<Badge color={opt.color} className="text-[9px] !px-1">{opt.value === value ? '\u2713' : '\u00A0'}</Badge>}
-          >
-            {opt.label}
-          </DropdownItem>
-        ))}
-      </Dropdown>
-    </span>
-  );
-}
-
-function ParticipantEntry({
-  participant,
-  profileLabels,
-  open,
-  onToggle,
-}: {
-  participant: PlanParticipant;
-  profileLabels: ReadonlyMap<string, string>;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const label = formatActorLabel(
-    {
-      principalType: participant.principalType,
-      userId: participant.userId,
-      agentId: participant.agentId,
-      profileId: participant.profileId,
-    },
-    { profileLabels },
-  );
-  const profileLabel = participant.profileId
-    ? (profileLabels.get(participant.profileId) ?? participant.profileId)
-    : null;
-  const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
-  const summaryAction = participant.lastAction ? participant.lastAction.replace(/_/g, ' ') : null;
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={onToggle}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title="Click to view participant details"
-        className="flex w-full items-center justify-between gap-2 text-[11px] text-left group hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1 -mx-1 py-0.5 cursor-pointer"
-      >
-        <span className="flex min-w-0 items-center gap-1">
-          <span className="font-mono text-neutral-700 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:underline group-hover:decoration-dotted">
-            {label}
-          </span>
-          <span className="text-neutral-400 group-hover:text-blue-500">({participant.touches}x)</span>
-          {summaryAction && (
-            <span className="text-neutral-400 text-[10px] truncate">{summaryAction}</span>
-          )}
-        </span>
-        <Icon
-          name="chevronDown"
-          size={8}
-          className={`shrink-0 transition-transform text-neutral-400 group-hover:text-blue-500 ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      <Popover
-        anchor={triggerRef.current}
-        placement="bottom"
-        align="start"
-        open={open}
-        onClose={() => { if (open) onToggle(); }}
-        triggerRef={triggerRef}
-        className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 max-w-xs"
-      >
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">{label}</span>
-            <Badge color="gray" className="text-[9px]">{participant.role}</Badge>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
-            {participant.agentType && (
-              <>
-                <span className="text-neutral-400">Type</span>
-                <span className="text-neutral-600 dark:text-neutral-300">{participant.agentType}</span>
-              </>
-            )}
-            {participant.profileId && (
-              <>
-                <span className="text-neutral-400">Profile</span>
-                <span
-                  className="text-neutral-600 dark:text-neutral-300"
-                  title={profileLabel !== participant.profileId ? participant.profileId ?? undefined : undefined}
-                >
-                  {profileLabel}
-                </span>
-              </>
-            )}
-            <span className="text-neutral-400">Touches</span>
-            <span className="text-neutral-600 dark:text-neutral-300">{participant.touches}</span>
-            {participant.lastSeenAt && (
-              <>
-                <span className="text-neutral-400">Last seen</span>
-                <span className="text-neutral-600 dark:text-neutral-300">{formatDateTime(participant.lastSeenAt)}</span>
-              </>
-            )}
-            {participant.runId && (
-              <>
-                <span className="text-neutral-400">Run</span>
-                <button
-                  type="button"
-                  className="text-neutral-600 dark:text-neutral-300 font-mono truncate text-left hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
-                  title="Copy run ID"
-                  onClick={() => navigator.clipboard.writeText(participant.runId!)}
-                >
-                  {participant.runId}
-                </button>
-              </>
-            )}
-          </div>
-          <div>
-            <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-              Activity ({actionLog.length > 0 ? actionLog.length : participant.touches})
-            </div>
-            {actionLog.length > 0 ? (
-              <div className="space-y-0.5 max-h-40 overflow-y-auto">
-                {actionLog.map((entry, i) => (
-                  <div key={`${participant.id}:action:${i}`} className="flex items-center gap-2 text-[10px]">
-                    <span className="shrink-0 w-10 text-right text-neutral-400 font-mono">
-                      {new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="text-neutral-700 dark:text-neutral-300">{entry.action.replace(/_/g, ' ')}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[10px] text-neutral-400 italic">
-                {participant.touches} touch{participant.touches !== 1 ? 'es' : ''} recorded before activity tracking.
-                {participant.lastAction && <> Last: {participant.lastAction.replace(/_/g, ' ')}.</>}
-              </div>
-            )}
-          </div>
-        </div>
-      </Popover>
-    </>
-  );
-}
 
 function PlanDetailView({
   planId,
@@ -914,8 +136,9 @@ function PlanDetailView({
   const [reviewError, setReviewError] = useState('');
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const [selectedRoundId, setSelectedRoundId] = useState('');
+  const [newRoundStatus, setNewRoundStatus] = useState<'open' | 'changes_requested' | 'approved'>('open');
+  const [newRoundRevision, setNewRoundRevision] = useState('');
   const [newRoundNote, setNewRoundNote] = useState('');
-  const [showClosedIterations, setShowClosedIterations] = useState(false);
   const [creatingRound, setCreatingRound] = useState(false);
   const [roundStatusDraft, setRoundStatusDraft] = useState<ReviewRoundStatus>('open');
   const [roundNoteDraft, setRoundNoteDraft] = useState('');
@@ -940,7 +163,9 @@ function PlanDetailView({
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [newRequestAssignee, setNewRequestAssignee] = useState('auto');
   const [newRequestProfileId, setNewRequestProfileId] = useState('');
-  const [newRequestKind, setNewRequestKind] = useState<ReviewRequestKind>('review');
+  const [newRequestMethod, setNewRequestMethod] = useState('');
+  const [newRequestModelId, setNewRequestModelId] = useState('');
+  const [newRequestProvider, setNewRequestProvider] = useState('');
   const [newRequestMode, setNewRequestMode] = useState<ReviewRequestMode>('review_only');
   const [newRequestBaseRevision, setNewRequestBaseRevision] = useState('');
   const [newRequestQueuePolicy, setNewRequestQueuePolicy] = useState<ReviewRequestQueuePolicy>('auto_reroute');
@@ -1048,17 +273,9 @@ function PlanDetailView({
       .catch(() => setCoverage(null));
   }, [loadDetail, encodedPlanId]);
 
-  // Lazy-load review graph on first expand of the Agent Tasks section
-  const reviewGraphLoadedRef = useRef(false);
-  const onReviewSectionToggle = useCallback(
-    (isOpen: boolean) => {
-      if (isOpen && !reviewGraphLoadedRef.current) {
-        reviewGraphLoadedRef.current = true;
-        void loadReviewGraph();
-      }
-    },
-    [loadReviewGraph],
-  );
+  useEffect(() => {
+    void loadReviewGraph();
+  }, [loadReviewGraph]);
 
   // Poll agent sessions while any review request is in_progress
   const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
@@ -1095,9 +312,7 @@ function PlanDetailView({
 
   const handleUpdate = useCallback(() => {
     loadDetail();
-    if (reviewGraphLoadedRef.current) {
-      void loadReviewGraph();
-    }
+    void loadReviewGraph();
     onPlanChanged();
   }, [loadDetail, loadReviewGraph, onPlanChanged]);
 
@@ -1174,9 +389,6 @@ function PlanDetailView({
     () => planParticipants?.builders ?? [],
     [planParticipants?.builders],
   );
-
-  // Only one participant popover open at a time
-  const [openParticipantId, setOpenParticipantId] = useState<string | null>(null);
 
   useEffect(() => {
     if (reviewRounds.length === 0) {
@@ -1266,8 +478,21 @@ function PlanDetailView({
   const applyRequestProfileSelection = useCallback(
     (profileId: string) => {
       setNewRequestProfileId(profileId);
+      if (!profileId) return;
+      const profile = reviewProfileById.get(profileId);
+      if (!profile) return;
+      setNewRequestMethod(profile.method ?? '');
+      setNewRequestModelId(profile.model_id ?? '');
+      const config = profile.config && typeof profile.config === 'object' ? profile.config : null;
+      const providerRaw = config ? config['provider'] : null;
+      const providerIdRaw = config ? config['provider_id'] : null;
+      const providerValue =
+        (typeof providerRaw === 'string' && providerRaw.trim())
+          || (typeof providerIdRaw === 'string' && providerIdRaw.trim())
+          || '';
+      setNewRequestProvider(providerValue);
     },
-    [],
+    [reviewProfileById],
   );
 
   useEffect(() => {
@@ -1451,34 +676,40 @@ function PlanDetailView({
     setReviewError('');
     setReviewNotice(null);
     try {
-      const payload: PlanReviewRoundCreateRequest = { status: 'open' };
+      const payload: PlanReviewRoundCreateRequest = { status: newRoundStatus };
       const note = newRoundNote.trim();
       if (note) payload.note = note;
 
-      // Auto-populate revision from current plan state
-      if (detail?.revision != null) {
-        payload.review_revision = detail.revision;
+      const revisionRaw = newRoundRevision.trim();
+      if (revisionRaw) {
+        const parsed = Number.parseInt(revisionRaw, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          setReviewError('Round revision must be a positive integer.');
+          return;
+        }
+        payload.review_revision = parsed;
       }
 
       const round = await pixsimClient.post<PlanReviewRound>(
         `/dev/plans/reviews/${encodedPlanId}/rounds`,
         payload,
       );
+      setNewRoundRevision('');
       setNewRoundNote('');
       setSelectedRoundId(round.id);
-      setReviewNotice(`Created iteration #${round.roundNumber}.`);
+      setReviewNotice(`Created review round #${round.roundNumber}.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create iteration'));
+      setReviewError(toErrorMessage(err, 'Failed to create review round'));
     } finally {
       setCreatingRound(false);
     }
-  }, [detail?.revision, encodedPlanId, loadReviewGraph, newRoundNote]);
+  }, [encodedPlanId, loadReviewGraph, newRoundNote, newRoundRevision, newRoundStatus]);
 
   const handleUpdateRound = useCallback(
     async (payload: PlanReviewRoundUpdateRequest, successMessage: string) => {
       if (!selectedRound) {
-        setReviewError('Select an iteration first.');
+        setReviewError('Select a review round first.');
         return;
       }
       setUpdatingRound(true);
@@ -1492,7 +723,7 @@ function PlanDetailView({
         setReviewNotice(successMessage);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update iteration'));
+        setReviewError(toErrorMessage(err, 'Failed to update review round'));
       } finally {
         setUpdatingRound(false);
       }
@@ -1500,27 +731,9 @@ function PlanDetailView({
     [encodedPlanId, loadReviewGraph, selectedRound],
   );
 
-  const handleCloseRound = useCallback(
-    async (round: PlanReviewRound) => {
-      setReviewError('');
-      setReviewNotice(null);
-      try {
-        await pixsimClient.patch<PlanReviewRound>(
-          `/dev/plans/reviews/${encodedPlanId}/rounds/${encodeURIComponent(round.id)}`,
-          { status: 'concluded' },
-        );
-        setReviewNotice(`Closed iteration #${round.roundNumber}.`);
-        await loadReviewGraph();
-      } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to close iteration'));
-      }
-    },
-    [encodedPlanId, loadReviewGraph],
-  );
-
   const handleSaveRoundState = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select an iteration first.');
+      setReviewError('Select a review round first.');
       return;
     }
 
@@ -1530,7 +743,7 @@ function PlanDetailView({
     const currentConclusion = (selectedRound.conclusion ?? '').trim();
 
     if (roundStatusDraft === 'concluded' && !nextConclusion) {
-      setReviewError('Concluded iterations require a non-empty conclusion.');
+      setReviewError('Concluded rounds require a non-empty conclusion.');
       return;
     }
 
@@ -1542,11 +755,11 @@ function PlanDetailView({
     }
 
     if (!payload.status && payload.note === undefined && payload.conclusion === undefined) {
-      setReviewNotice('No iteration changes to save.');
+      setReviewNotice('No round changes to save.');
       return;
     }
 
-    await handleUpdateRound(payload, `Updated iteration #${selectedRound.roundNumber}.`);
+    await handleUpdateRound(payload, `Updated review round #${selectedRound.roundNumber}.`);
   }, [
     handleUpdateRound,
     roundConclusionDraft,
@@ -1557,11 +770,11 @@ function PlanDetailView({
 
   const handleCreateNode = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select an iteration first.');
+      setReviewError('Select a review round first.');
       return;
     }
     if (selectedRound.status === 'concluded') {
-      setReviewError('Iteration is concluded. Re-open it before adding new responses.');
+      setReviewError('Round is concluded. Re-open it before adding new responses.');
       return;
     }
 
@@ -1658,8 +871,7 @@ function PlanDetailView({
       const payload: PlanRequestCreateRequest = {
         title,
         body,
-        kind: newRequestKind,
-        review_mode: newRequestKind === 'review' ? newRequestMode : undefined,
+        review_mode: newRequestMode,
       };
       if (selectedRound) payload.round_id = selectedRound.id;
       const baseRevisionRaw = newRequestBaseRevision.trim();
@@ -1702,7 +914,13 @@ function PlanDetailView({
       payload.queue_if_busy = newRequestQueuePolicy === 'queue_next';
       payload.auto_reroute_if_busy = newRequestQueuePolicy === 'auto_reroute';
       const targetProfileId = newRequestProfileId.trim();
+      const targetMethod = newRequestMethod.trim();
+      const targetModelId = newRequestModelId.trim();
+      const targetProvider = newRequestProvider.trim();
       if (targetProfileId) payload.target_profile_id = targetProfileId;
+      if (targetMethod) payload.target_method = targetMethod;
+      if (targetModelId) payload.target_model_id = targetModelId;
+      if (targetProvider) payload.target_provider = targetProvider;
 
       const created = await pixsimClient.post<PlanRequest>(
         `/dev/plans/reviews/${encodedPlanId}/requests`,
@@ -1712,7 +930,9 @@ function PlanDetailView({
       setNewRequestBody('');
       setNewRequestAssignee('auto');
       setNewRequestProfileId('');
-      setNewRequestKind('review');
+      setNewRequestMethod('');
+      setNewRequestModelId('');
+      setNewRequestProvider('');
       setNewRequestMode('review_only');
       setNewRequestBaseRevision('');
 
@@ -1724,17 +944,17 @@ function PlanDetailView({
             { timeout_seconds: 240, create_round_if_missing: true, spawn_if_missing: false },
           );
           const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
-          setReviewNotice(`Task created & dispatched: ${result.message}${nodeSuffix}`);
+          setReviewNotice(`Request created & dispatched: ${result.message}${nodeSuffix}`);
         } catch {
-          setReviewNotice('Task created but auto-dispatch failed - dispatch manually.');
+          setReviewNotice('Request created but auto-dispatch failed - dispatch manually.');
         }
       } else {
         const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
-        setReviewNotice(`Agent task created${dispatchLabel}.`);
+        setReviewNotice(`Review request created${dispatchLabel}.`);
       }
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create agent task'));
+      setReviewError(toErrorMessage(err, 'Failed to create review request'));
     } finally {
       setCreatingRequest(false);
     }
@@ -1744,9 +964,11 @@ function PlanDetailView({
     loadReviewGraph,
     newRequestBody,
     newRequestAssignee,
-    newRequestKind,
+    newRequestMethod,
+    newRequestModelId,
     newRequestMode,
     newRequestProfileId,
+    newRequestProvider,
     newRequestQueuePolicy,
     newRequestBaseRevision,
     newRequestTitle,
@@ -1768,10 +990,10 @@ function PlanDetailView({
           `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
           payload,
         );
-        setReviewNotice(`Agent task '${request.title}' set to ${status}.`);
+        setReviewNotice(`Review request '${request.title}' set to ${status}.`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update agent task'));
+        setReviewError(toErrorMessage(err, 'Failed to update review request'));
       } finally {
         setUpdatingRequestId(null);
       }
@@ -1791,7 +1013,7 @@ function PlanDetailView({
         );
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dismiss agent task'));
+        setReviewError(toErrorMessage(err, 'Failed to dismiss review request'));
       }
     },
     [encodedPlanId, loadReviewGraph],
@@ -1817,7 +1039,7 @@ function PlanDetailView({
         setReviewNotice(`${result.message}${nodeSuffix}`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dispatch agent task'));
+        setReviewError(toErrorMessage(err, 'Failed to dispatch review request'));
       } finally {
         setDispatchingRequestId(null);
       }
@@ -1840,10 +1062,10 @@ function PlanDetailView({
           spawn_if_missing: false,
         },
       );
-      setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open tasks.`);
+      setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open requests.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to dispatch open agent tasks'));
+      setReviewError(toErrorMessage(err, 'Failed to dispatch open review requests'));
     } finally {
       setDispatchingTick(false);
     }
@@ -2043,8 +1265,6 @@ function PlanDetailView({
                       key={participant.id}
                       participant={participant}
                       profileLabels={reviewProfileLabels}
-                      open={openParticipantId === participant.id}
-                      onToggle={() => setOpenParticipantId((prev) => prev === participant.id ? null : participant.id)}
                     />
                   ))}
                   {builderParticipants.length === 0 && (
@@ -2062,8 +1282,6 @@ function PlanDetailView({
                       key={participant.id}
                       participant={participant}
                       profileLabels={reviewProfileLabels}
-                      open={openParticipantId === participant.id}
-                      onToggle={() => setOpenParticipantId((prev) => prev === participant.id ? null : participant.id)}
                     />
                   ))}
                   {reviewerParticipants.length === 0 && (
@@ -2220,16 +1438,13 @@ function PlanDetailView({
       )}
 
       <DisclosureSection
-        label="Agent Tasks"
+        label="Review Loop"
         defaultOpen={false}
-        onToggle={onReviewSectionToggle}
         className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
         contentClassName="space-y-3 mt-2"
         badge={
           <span className="text-[10px] text-neutral-400">
-            {reviewGraph
-              ? `${reviewGraph.rounds.length} iterations`
-              : `${detail?.reviewRoundCount ?? 0} iterations`}
+            {reviewGraph ? `${reviewGraph.rounds.length} rounds` : '0 rounds'}
           </span>
         }
         actions={
@@ -2254,115 +1469,102 @@ function PlanDetailView({
           <div className="space-y-3">
             <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2">
               <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Iterations
+                Review Rounds
               </div>
               {loadingReviews && reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading task data...</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading review graph...</div>
               ) : reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">No iterations yet.</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">No review rounds yet.</div>
               ) : (
-                (() => {
-                  const closedCount = reviewRounds.filter((r) => r.status === 'concluded').length;
-                  const visibleRounds = showClosedIterations
-                    ? reviewRounds
-                    : reviewRounds.filter((r) => r.status !== 'concluded');
-                  return (
-                    <>
-                      <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                        {visibleRounds.map((round) => {
-                          const selected = round.id === selectedRoundId;
-                          return (
-                            <div
-                              key={round.id}
-                              className={`p-2 rounded border text-xs ${
-                                selected
-                                  ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
-                                  : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                              }`}
-                            >
-                              <div className="flex items-start gap-1">
-                                <button
-                                  onClick={() => setSelectedRoundId(round.id)}
-                                  className="flex-1 text-left min-w-0"
-                                >
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                                      Iteration #{round.roundNumber}
-                                    </span>
-                                    <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                                      {ITERATION_STATUS_LABELS[round.status] ?? round.status}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                    {reviewNodeCountByRound.get(round.id) ?? 0} entries
-                                    {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
-                                  </div>
-                                  {(round.actorAgentId || round.actorRunId || round.createdBy) && (
-                                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                      {formatActorLabel(
-                                        {
-                                          principalType: round.actorPrincipalType,
-                                          userId: round.actorUserId,
-                                          agentId: round.actorAgentId,
-                                          fallback: round.createdBy,
-                                        },
-                                        { profileLabels: reviewProfileLabels },
-                                      )}
-                                      {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
-                                    </div>
-                                  )}
-                                  <div className="text-[10px] text-neutral-400 mt-0.5">
-                                    {formatDateTime(round.updatedAt)}
-                                  </div>
-                                </button>
-                                {round.status !== 'concluded' && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); void handleCloseRound(round); }}
-                                    className="shrink-0 p-1 text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                                    title="Archive this iteration"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                      <polyline points="3 6 5 6 21 6" />
-                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    </svg>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {closedCount > 0 && (
-                        <button
-                          onClick={() => setShowClosedIterations((v) => !v)}
-                          className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 mt-1"
-                        >
-                          {showClosedIterations ? 'Hide' : 'Show'} {closedCount} closed
-                        </button>
-                      )}
-                    </>
-                  );
-                })()
+                <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                  {reviewRounds.map((round) => {
+                    const selected = round.id === selectedRoundId;
+                    return (
+                      <button
+                        key={round.id}
+                        onClick={() => setSelectedRoundId(round.id)}
+                        className={`w-full text-left p-2 rounded border text-xs ${
+                          selected
+                            ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                            Round #{round.roundNumber}
+                          </span>
+                          <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
+                            {round.status}
+                          </Badge>
+                        </div>
+                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {reviewNodeCountByRound.get(round.id) ?? 0} nodes
+                          {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
+                        </div>
+                        {(round.actorAgentId || round.actorRunId || round.createdBy) && (
+                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            {formatActorLabel(
+                              {
+                                principalType: round.actorPrincipalType,
+                                userId: round.actorUserId,
+                                agentId: round.actorAgentId,
+                                fallback: round.createdBy,
+                              },
+                              { profileLabels: reviewProfileLabels },
+                            )}
+                            {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-neutral-400 mt-0.5">
+                          {formatDateTime(round.updatedAt)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
             <DisclosureSection
-              label="Start New Iteration"
+              label="Start New Round"
               defaultOpen={false}
               className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
               contentClassName="space-y-2"
             >
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                  Status
+                  <select
+                    value={newRoundStatus}
+                    onChange={(e) => setNewRoundStatus(e.target.value as 'open' | 'changes_requested' | 'approved')}
+                    className={inputClassName}
+                  >
+                    <option value="open">open</option>
+                    <option value="changes_requested">changes_requested</option>
+                    <option value="approved">approved</option>
+                  </select>
+                </label>
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                  Revision
+                  <input
+                    value={newRoundRevision}
+                    onChange={(e) => setNewRoundRevision(e.target.value)}
+                    className={inputClassName}
+                    placeholder="optional"
+                  />
+                </label>
+              </div>
               <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
                 Note
                 <input
                   value={newRoundNote}
                   onChange={(e) => setNewRoundNote(e.target.value)}
                   className={inputClassName}
-                  placeholder="Optional context for this iteration"
+                  placeholder="Optional context for this round"
                 />
               </label>
               <Button size="sm" onClick={() => void handleCreateRound()} disabled={creatingRound}>
-                {creatingRound ? 'Creating...' : 'Create Iteration'}
+                {creatingRound ? 'Creating...' : 'Create Round'}
               </Button>
             </DisclosureSection>
           </div>
@@ -2371,11 +1573,11 @@ function PlanDetailView({
             <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  {selectedRound ? `Iteration #${selectedRound.roundNumber}` : 'Iteration State'}
+                  {selectedRound ? `Round #${selectedRound.roundNumber}` : 'Round State'}
                 </span>
                 {selectedRound && (
                   <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
-                    {ITERATION_STATUS_LABELS[selectedRound.status] ?? selectedRound.status}
+                    {selectedRound.status}
                   </Badge>
                 )}
                 {selectedRound?.reviewRevision != null && (
@@ -2387,7 +1589,7 @@ function PlanDetailView({
 
               {!selectedRound ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select an iteration to inspect responses.
+                  Select a review round to inspect responses.
                 </div>
               ) : (
                 <>
@@ -2399,10 +1601,10 @@ function PlanDetailView({
                         onChange={(e) => setRoundStatusDraft(e.target.value as ReviewRoundStatus)}
                         className={inputClassName}
                       >
-                        <option value="open">Active</option>
-                        <option value="changes_requested">Needs Action</option>
-                        <option value="approved">Completed</option>
-                        <option value="concluded">Closed</option>
+                        <option value="open">open</option>
+                        <option value="changes_requested">changes_requested</option>
+                        <option value="approved">approved</option>
+                        <option value="concluded">concluded</option>
                       </select>
                     </label>
                     <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
@@ -2411,7 +1613,7 @@ function PlanDetailView({
                         value={roundNoteDraft}
                         onChange={(e) => setRoundNoteDraft(e.target.value)}
                         className={inputClassName}
-                        placeholder="Optional iteration note"
+                        placeholder="Optional round note"
                       />
                     </label>
                   </div>
@@ -2428,7 +1630,7 @@ function PlanDetailView({
 
                   <div className="flex items-center gap-2">
                     <Button size="sm" onClick={() => void handleSaveRoundState()} disabled={updatingRound}>
-                      {updatingRound ? 'Saving...' : 'Save Iteration State'}
+                      {updatingRound ? 'Saving...' : 'Save Round State'}
                     </Button>
                     <span className="text-[10px] text-neutral-400">
                       Updated {formatDateTime(selectedRound.updatedAt)}
@@ -2439,7 +1641,7 @@ function PlanDetailView({
             </div>
 
             <DisclosureSection
-              label="Agent Tasks"
+              label="Review Requests"
               defaultOpen
               className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
               contentClassName="space-y-2"
@@ -2459,7 +1661,7 @@ function PlanDetailView({
 
               {selectedRoundRequests.length === 0 ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No agent tasks yet.
+                  No review requests yet.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -2491,7 +1693,9 @@ function PlanDetailView({
                 title={newRequestTitle}
                 body={newRequestBody}
                 profileId={newRequestProfileId}
-                kind={newRequestKind}
+                method={newRequestMethod}
+                provider={newRequestProvider}
+                modelId={newRequestModelId}
                 mode={newRequestMode}
                 baseRevision={newRequestBaseRevision}
                 assignee={newRequestAssignee}
@@ -2507,7 +1711,9 @@ function PlanDetailView({
                 onTitleChange={setNewRequestTitle}
                 onBodyChange={setNewRequestBody}
                 onProfileChange={applyRequestProfileSelection}
-                onKindChange={setNewRequestKind}
+                onMethodChange={setNewRequestMethod}
+                onProviderChange={setNewRequestProvider}
+                onModelIdChange={setNewRequestModelId}
                 onModeChange={setNewRequestMode}
                 onBaseRevisionChange={setNewRequestBaseRevision}
                 onAssigneeChange={setNewRequestAssignee}
@@ -2527,11 +1733,11 @@ function PlanDetailView({
             >
               {!selectedRound ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select an iteration to view discussion.
+                  Select a review round to view discussion.
                 </div>
               ) : selectedRoundNodes.length === 0 ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No responses yet in this iteration.
+                  No responses yet in this round.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[24rem] overflow-y-auto pr-1">
@@ -2837,7 +2043,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             {reviewCount > 0 && (
               <span
                 className={`flex items-center gap-0.5 ${activeReviews > 0 ? '' : 'opacity-50'}`}
-                title={`${reviewCount} iteration${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
+                title={`${reviewCount} review round${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
               >
                 <Icon name="messageSquare" size={9} />
                 <span className="text-[9px] leading-none">
