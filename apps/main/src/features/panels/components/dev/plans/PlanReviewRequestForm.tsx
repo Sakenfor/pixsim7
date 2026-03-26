@@ -42,9 +42,6 @@ interface PlanReviewRequestFormProps {
   title: string;
   body: string;
   profileId: string;
-  method: string;
-  provider: string;
-  modelId: string;
   mode: ReviewRequestMode;
   baseRevision: string;
   assignee: string;
@@ -60,9 +57,6 @@ interface PlanReviewRequestFormProps {
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onProfileChange: (value: string) => void;
-  onMethodChange: (value: string) => void;
-  onProviderChange: (value: string) => void;
-  onModelIdChange: (value: string) => void;
   onModeChange: (value: ReviewRequestMode) => void;
   onBaseRevisionChange: (value: string) => void;
   onAssigneeChange: (value: string) => void;
@@ -76,9 +70,6 @@ export function PlanReviewRequestForm({
   title,
   body,
   profileId,
-  method,
-  provider,
-  modelId,
   mode,
   baseRevision,
   assignee,
@@ -94,9 +85,6 @@ export function PlanReviewRequestForm({
   onTitleChange,
   onBodyChange,
   onProfileChange,
-  onMethodChange,
-  onProviderChange,
-  onModelIdChange,
   onModeChange,
   onBaseRevisionChange,
   onAssigneeChange,
@@ -124,7 +112,7 @@ export function PlanReviewRequestForm({
       </label>
       <label
         className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="Select an agent profile to use its preconfigured provider, model, and method"
+        title="Agent profile defines the provider, model, and delivery method for this review"
       >
         Agent Profile
         <select
@@ -132,7 +120,7 @@ export function PlanReviewRequestForm({
           onChange={(e) => onProfileChange(e.target.value)}
           className={inputClassName}
         >
-          <option value="">Custom (manual provider/model)</option>
+          <option value="">Select a profile...</option>
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
               {profile.label} ({profile.id})
@@ -140,50 +128,10 @@ export function PlanReviewRequestForm({
           ))}
         </select>
       </label>
-      {!profileId && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <label
-            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-            title="Delivery method: remote (bridge agent) or local"
-          >
-            Method
-            <input
-              value={method}
-              onChange={(e) => onMethodChange(e.target.value)}
-              className={inputClassName}
-              placeholder="remote"
-            />
-          </label>
-          <label
-            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-            title="LLM provider to use (e.g. anthropic, openai)"
-          >
-            Provider
-            <input
-              value={provider}
-              onChange={(e) => onProviderChange(e.target.value)}
-              className={inputClassName}
-              placeholder="anthropic"
-            />
-          </label>
-          <label
-            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-            title="Specific model ID to use for the review"
-          >
-            Model
-            <input
-              value={modelId}
-              onChange={(e) => onModelIdChange(e.target.value)}
-              className={inputClassName}
-              placeholder="claude-3-7-sonnet"
-            />
-          </label>
-        </div>
-      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label
           className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-          title="review_only: comment only. propose_patch: suggest changes. apply_patch: directly edit the plan."
+          title="Review Only: comment only. Propose Patch: suggest changes. Apply Patch: directly edit the plan."
         >
           Review Mode
           <select
@@ -322,9 +270,14 @@ export function PlanReviewRequestForm({
           placeholder="What should the reviewer verify or challenge?"
         />
       </label>
-      <Button size="sm" onClick={() => void onSubmit()} disabled={creating}>
+      <Button size="sm" onClick={() => void onSubmit()} disabled={creating || !profileId}>
         {creating ? 'Creating...' : 'Create Review Request'}
       </Button>
+      {!profileId && (
+        <div className="text-[10px] text-amber-600 dark:text-amber-400">
+          Select an agent profile to enable submission.
+        </div>
+      )}
     </DisclosureSection>
   );
 }

@@ -933,9 +933,6 @@ function PlanDetailView({
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [newRequestAssignee, setNewRequestAssignee] = useState('auto');
   const [newRequestProfileId, setNewRequestProfileId] = useState('');
-  const [newRequestMethod, setNewRequestMethod] = useState('');
-  const [newRequestModelId, setNewRequestModelId] = useState('');
-  const [newRequestProvider, setNewRequestProvider] = useState('');
   const [newRequestMode, setNewRequestMode] = useState<ReviewRequestMode>('review_only');
   const [newRequestBaseRevision, setNewRequestBaseRevision] = useState('');
   const [newRequestQueuePolicy, setNewRequestQueuePolicy] = useState<ReviewRequestQueuePolicy>('auto_reroute');
@@ -1261,21 +1258,8 @@ function PlanDetailView({
   const applyRequestProfileSelection = useCallback(
     (profileId: string) => {
       setNewRequestProfileId(profileId);
-      if (!profileId) return;
-      const profile = reviewProfileById.get(profileId);
-      if (!profile) return;
-      setNewRequestMethod(profile.method ?? '');
-      setNewRequestModelId(profile.model_id ?? '');
-      const config = profile.config && typeof profile.config === 'object' ? profile.config : null;
-      const providerRaw = config ? config['provider'] : null;
-      const providerIdRaw = config ? config['provider_id'] : null;
-      const providerValue =
-        (typeof providerRaw === 'string' && providerRaw.trim())
-          || (typeof providerIdRaw === 'string' && providerIdRaw.trim())
-          || '';
-      setNewRequestProvider(providerValue);
     },
-    [reviewProfileById],
+    [],
   );
 
   useEffect(() => {
@@ -1697,13 +1681,7 @@ function PlanDetailView({
       payload.queue_if_busy = newRequestQueuePolicy === 'queue_next';
       payload.auto_reroute_if_busy = newRequestQueuePolicy === 'auto_reroute';
       const targetProfileId = newRequestProfileId.trim();
-      const targetMethod = newRequestMethod.trim();
-      const targetModelId = newRequestModelId.trim();
-      const targetProvider = newRequestProvider.trim();
       if (targetProfileId) payload.target_profile_id = targetProfileId;
-      if (targetMethod) payload.target_method = targetMethod;
-      if (targetModelId) payload.target_model_id = targetModelId;
-      if (targetProvider) payload.target_provider = targetProvider;
 
       const created = await pixsimClient.post<PlanRequest>(
         `/dev/plans/reviews/${encodedPlanId}/requests`,
@@ -1713,9 +1691,6 @@ function PlanDetailView({
       setNewRequestBody('');
       setNewRequestAssignee('auto');
       setNewRequestProfileId('');
-      setNewRequestMethod('');
-      setNewRequestModelId('');
-      setNewRequestProvider('');
       setNewRequestMode('review_only');
       setNewRequestBaseRevision('');
 
@@ -1747,11 +1722,8 @@ function PlanDetailView({
     loadReviewGraph,
     newRequestBody,
     newRequestAssignee,
-    newRequestMethod,
-    newRequestModelId,
     newRequestMode,
     newRequestProfileId,
-    newRequestProvider,
     newRequestQueuePolicy,
     newRequestBaseRevision,
     newRequestTitle,
@@ -2483,9 +2455,6 @@ function PlanDetailView({
                 title={newRequestTitle}
                 body={newRequestBody}
                 profileId={newRequestProfileId}
-                method={newRequestMethod}
-                provider={newRequestProvider}
-                modelId={newRequestModelId}
                 mode={newRequestMode}
                 baseRevision={newRequestBaseRevision}
                 assignee={newRequestAssignee}
@@ -2501,9 +2470,6 @@ function PlanDetailView({
                 onTitleChange={setNewRequestTitle}
                 onBodyChange={setNewRequestBody}
                 onProfileChange={applyRequestProfileSelection}
-                onMethodChange={setNewRequestMethod}
-                onProviderChange={setNewRequestProvider}
-                onModelIdChange={setNewRequestModelId}
                 onModeChange={setNewRequestMode}
                 onBaseRevisionChange={setNewRequestBaseRevision}
                 onAssigneeChange={setNewRequestAssignee}
