@@ -1,9 +1,3 @@
-/**
- * ClickableBadge - A badge with a dropdown for inline value selection.
- *
- * Extracted from PlansPanel.tsx.
- */
-
 import { Badge, Dropdown, DropdownItem } from '@pixsim7/shared.ui';
 import { useRef, useState } from 'react';
 

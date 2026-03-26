@@ -1,9 +1,3 @@
-/**
- * ParticipantEntry - Displays a plan participant with an expandable popover.
- *
- * Extracted from PlansPanel.tsx.
- */
-
 import { Badge, Popover } from '@pixsim7/shared.ui';
 import { useRef, useState } from 'react';
 

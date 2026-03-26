@@ -1,9 +1,3 @@
-/**
- * Constants for the Plans panel system.
- *
- * Extracted from PlansPanel.tsx for reuse across plan sub-components.
- */
-
 import type {
   PlanReviewLink,
   PlanReviewNode,
@@ -12,10 +6,6 @@ import type {
   ReviewRequestStatus,
   ReviewRoundStatus,
 } from './planTypes';
-
-// ---------------------------------------------------------------------------
-// Status / stage ordering
-// ---------------------------------------------------------------------------
 
 export const STATUS_ORDER = ['active', 'done', 'parked'] as const;
 
@@ -29,10 +19,6 @@ export const FALLBACK_PLAN_STAGE_OPTIONS: PlanStageOptionEntry[] = [
   { value: 'rollout', label: 'Rollout', description: 'Deployment, migration, and staged release execution.', aliases: [] },
   { value: 'completed', label: 'Completed', description: 'Work is fully delivered and closed out.', aliases: [] },
 ];
-
-// ---------------------------------------------------------------------------
-// Icon maps
-// ---------------------------------------------------------------------------
 
 export const STAGE_ICONS: Record<string, string> = {
   backlog: 'pause',
@@ -101,10 +87,6 @@ export const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'ora
 
 export const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
 
-// ---------------------------------------------------------------------------
-// Review color maps
-// ---------------------------------------------------------------------------
-
 export const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   open: 'blue',
   changes_requested: 'orange',
@@ -139,10 +121,6 @@ export const REVIEW_SEVERITY_COLORS: Record<NonNullable<PlanReviewNode['severity
   high: 'red',
   critical: 'red',
 };
-
-// ---------------------------------------------------------------------------
-// Review relations
-// ---------------------------------------------------------------------------
 
 export const REVIEW_RELATIONS: { value: PlanReviewLink['relation']; label: string; requiresTargetNode: boolean }[] = [
   { value: 'replies_to', label: 'Replies To', requiresTargetNode: false },

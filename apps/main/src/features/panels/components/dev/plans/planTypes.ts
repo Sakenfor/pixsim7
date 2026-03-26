@@ -1,17 +1,7 @@
-/**
- * Type definitions for the Plans panel system.
- *
- * Extracted from PlansPanel.tsx for reuse across plan sub-components.
- */
-
 import type { Checkpoint } from './PlanCheckpointList';
 
-// Re-export so consumers can import Checkpoint from here too
+// Re-export Checkpoint so consumers don't need a separate import
 export type { Checkpoint };
-
-// ---------------------------------------------------------------------------
-// Plan core types
-// ---------------------------------------------------------------------------
 
 export interface PlanTarget {
   type: string;
@@ -74,10 +64,6 @@ export interface PlanUpdateResponse {
   newScope: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Stage options
-// ---------------------------------------------------------------------------
-
 export interface PlanStageOptionEntry {
   value: string;
   label: string;
@@ -89,10 +75,6 @@ export interface PlanStagesResponse {
   defaultStage: string;
   stages: PlanStageOptionEntry[];
 }
-
-// ---------------------------------------------------------------------------
-// Review types
-// ---------------------------------------------------------------------------
 
 export type ReviewRoundStatus = 'open' | 'changes_requested' | 'approved' | 'concluded';
 export type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note';
@@ -195,10 +177,6 @@ export interface PlanReviewNodeCreateResponse {
   links: PlanReviewLink[];
 }
 
-// ---------------------------------------------------------------------------
-// Review requests
-// ---------------------------------------------------------------------------
-
 export interface PlanRequest {
   id: string;
   kind: string;
@@ -282,10 +260,6 @@ export interface PlanRequestDispatchResponse {
   durationMs: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Dispatch tick
-// ---------------------------------------------------------------------------
-
 export interface PlanReviewDispatchTickItem {
   planId: string;
   requestId: string;
@@ -301,10 +275,6 @@ export interface PlanReviewDispatchTickResponse {
   processed: number;
   items: PlanReviewDispatchTickItem[];
 }
-
-// ---------------------------------------------------------------------------
-// Review pool / assignees
-// ---------------------------------------------------------------------------
 
 export interface PlanReviewPoolSession {
   sessionId: string;
@@ -343,10 +313,6 @@ export interface PlanReviewAssigneesResponse {
   recentAgents: PlanReviewAssignee[];
 }
 
-// ---------------------------------------------------------------------------
-// Participants
-// ---------------------------------------------------------------------------
-
 export interface PlanParticipant {
   id: string;
   planId: string;
@@ -373,10 +339,6 @@ export interface PlanParticipantsResponse {
   builders: PlanParticipant[];
 }
 
-// ---------------------------------------------------------------------------
-// Agent profiles
-// ---------------------------------------------------------------------------
-
 export interface ReviewAgentProfileEntry {
   id: string;
   label: string;
@@ -391,10 +353,6 @@ export interface ReviewAgentProfileListResponse {
   profiles: ReviewAgentProfileEntry[];
   total: number;
 }
-
-// ---------------------------------------------------------------------------
-// Source preview
-// ---------------------------------------------------------------------------
 
 export interface PlanSourcePreviewLine {
   lineNumber: number;
@@ -416,10 +374,6 @@ export interface SourceRefMatch {
   endLine: number;
 }
 
-// ---------------------------------------------------------------------------
-// Agent sessions
-// ---------------------------------------------------------------------------
-
 export interface AgentSessionActivity {
   action: string;
   detail: string;
@@ -440,10 +394,6 @@ export interface AgentSessionSnapshot {
 export interface AgentSessionsSnapshot {
   active: AgentSessionSnapshot[];
 }
-
-// ---------------------------------------------------------------------------
-// Revision conflict
-// ---------------------------------------------------------------------------
 
 export interface PlanRevisionConflict {
   expectedRevision: number;

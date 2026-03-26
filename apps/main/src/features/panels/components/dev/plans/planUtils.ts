@@ -1,20 +1,5 @@
-/**
- * Pure utility functions for the Plans panel system.
- *
- * Extracted from PlansPanel.tsx for reuse across plan sub-components.
- */
-
+import type { PlanRevisionConflict, PlanStageOptionEntry, SourceRefMatch } from './planTypes';
 import { PLAN_ID_RE } from './planConstants';
-import type {
-  PlanReviewLink,
-  PlanRevisionConflict,
-  PlanStageOptionEntry,
-  SourceRefMatch,
-} from './planTypes';
-
-// ---------------------------------------------------------------------------
-// Date formatting
-// ---------------------------------------------------------------------------
 
 export function formatDate(iso: string): string {
   if (!iso) return '';
@@ -36,10 +21,6 @@ export function formatDateTime(iso: string): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Error helpers
-// ---------------------------------------------------------------------------
-
 export function toErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
@@ -54,10 +35,6 @@ export function extractRevisionConflict(err: unknown): PlanRevisionConflict | nu
     currentRevision: detail.current_revision as number,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Plan ID / label helpers
-// ---------------------------------------------------------------------------
 
 export function isCanonicalPlanId(value: string): boolean {
   return PLAN_ID_RE.test(value);
@@ -78,11 +55,7 @@ export function stageLabelFromValue(stage: string, stageOptionsByValue: Map<stri
     .join(' ');
 }
 
-// ---------------------------------------------------------------------------
-// Source reference extraction
-// ---------------------------------------------------------------------------
-
-export const SOURCE_REF_RE = /([A-Za-z0-9_./\\-]+\.[A-Za-z0-9_]+):(\d+)(?:-(\d+))?/g;
+const SOURCE_REF_RE = /([A-Za-z0-9_./\\-]+\.[A-Za-z0-9_]+):(\d+)(?:-(\d+))?/g;
 
 export function extractSourceRefs(text: string): SourceRefMatch[] {
   if (!text) return [];
@@ -111,17 +84,9 @@ export function extractSourceRefs(text: string): SourceRefMatch[] {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Review relation formatting
-// ---------------------------------------------------------------------------
-
-export function formatReviewRelation(relation: PlanReviewLink['relation']): string {
+export function formatReviewRelation(relation: string): string {
   return relation.replace(/_/g, ' ');
 }
-
-// ---------------------------------------------------------------------------
-// Assignee option encoding
-// ---------------------------------------------------------------------------
 
 export function buildAssigneeOptionValue(kind: 'live' | 'recent', id: string): string {
   return `${kind}:${id}`;
