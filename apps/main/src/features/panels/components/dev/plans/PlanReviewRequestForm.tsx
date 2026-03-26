@@ -1,4 +1,6 @@
 import { Button, DisclosureSection } from '@pixsim7/shared.ui';
+import { useMemo } from 'react';
+
 
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
@@ -91,6 +93,21 @@ export function PlanReviewRequestForm({
   onQueuePolicyChange,
   onSubmit,
 }: PlanReviewRequestFormProps) {
+  // Parse assignee value to extract agent and session parts
+  const selectedAgentId = useMemo(() => {
+    if (assignee === 'auto') return 'auto';
+    // assignee format: "live:<agentId>" or "recent:<agentId>"
+    const parts = assignee.split(':');
+    return parts.length >= 2 ? parts.slice(1).join(':') : assignee;
+  }, [assignee]);
+
+  const selectedAgent = useMemo(
+    () => liveAssignees.find((a) => a.agentId === selectedAgentId),
+    [liveAssignees, selectedAgentId],
+  );
+
+  const sessions = selectedAgent?.poolSessions ?? [];
+
   return (
     <DisclosureSection
       label="New Request"
@@ -98,6 +115,7 @@ export function PlanReviewRequestForm({
       className="rounded border border-neutral-200 dark:border-neutral-700 p-2"
       contentClassName="space-y-2"
     >
+      {/* Title */}
       <label
         className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
         title="Short description of what you want the reviewer to check"
@@ -110,24 +128,127 @@ export function PlanReviewRequestForm({
           placeholder="e.g. Re-review after fixes"
         />
       </label>
-      <label
-        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="Agent profile defines the provider, model, and delivery method for this review"
-      >
-        Agent Profile
-        <select
-          value={profileId}
-          onChange={(e) => onProfileChange(e.target.value)}
-          className={inputClassName}
+
+      {/* ── Routing: Profile → Agent → Session ────────────────── */}
+      <div className="space-y-1.5 rounded border border-neutral-150 dark:border-neutral-700/50 p-2 bg-neutral-50/50 dark:bg-neutral-800/30">
+        <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+          Routing
+        </div>
+
+        {/* Level 1: Profile */}
+        <label
+          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+          title="Agent profile defines the provider, model, and instructions for this review"
         >
-          <option value="">Select a profile...</option>
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.label} ({profile.id})
-            </option>
-          ))}
-        </select>
-      </label>
+          Profile
+          <select
+            value={profileId}
+            onChange={(e) => {
+              onProfileChange(e.target.value);
+              onAssigneeChange('auto');  // reset agent when profile changes
+            }}
+            className={inputClassName}
+          >
+            <option value="">Select a profile...</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Level 2: Agent (only when profile selected) */}
+        {profileId && (
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block pl-3 border-l-2 border-neutral-200 dark:border-neutral-700"
+            title="Which connected agent runs this. Auto lets the dispatcher pick the best available."
+          >
+            Agent
+            <select
+              value={assignee}
+              onChange={(e) => onAssigneeChange(e.target.value)}
+              className={inputClassName}
+            >
+              <option value="auto">Auto (best available)</option>
+              {liveAssignees.map((agent) => {
+                const displayLabel = (agent.label || '').trim() || formatActorLabel(
+                  { principalType: 'agent', agentId: agent.agentId },
+                  { profileLabels },
+                );
+                const parts = [
+                  displayLabel,
+                  agent.source === 'delegated' && typeof agent.targetUserId === 'number'
+                    ? `user #${agent.targetUserId}`
+                    : '',
+                  agent.busy ? 'busy' : 'idle',
+                  agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
+                ].filter(Boolean).join(' \u00b7 ');
+                return (
+                  <option key={`live:${agent.agentId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
+                    {parts}
+                  </option>
+                );
+              })}
+              {recentAssignees.length > 0 && (
+                <optgroup label="Recent">
+                  {recentAssignees.map((option) => (
+                    <option key={`recent:${option.agentId}`} value={buildAssigneeOptionValue('recent', option.agentId)}>
+                      {formatActorLabel(
+                        { principalType: 'agent', agentId: option.agentId },
+                        { profileLabels },
+                      )}
+                      {option.tasksCompleted > 0 ? ` \u00b7 ${option.tasksCompleted} done` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+        )}
+
+        {/* Level 3: Session (only when a specific agent is selected and has sessions) */}
+        {profileId && selectedAgent && sessions.length > 0 && (
+          <div
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 pl-6 border-l-2 border-neutral-200 dark:border-neutral-700"
+          >
+            <div className="text-[10px] text-neutral-400 dark:text-neutral-500 mb-0.5" title="Active sessions for this agent">
+              Sessions
+            </div>
+            <div className="space-y-0.5">
+              {sessions.map((s) => {
+                const parts: string[] = [];
+                if (s.cliModel) parts.push(s.cliModel);
+                parts.push(s.state);
+                if (s.messagesSent > 0) parts.push(`${s.messagesSent} msg`);
+                if (s.contextPct != null) parts.push(`ctx ${s.contextPct}%`);
+                return (
+                  <div key={s.sessionId} className="flex items-center gap-1.5 text-[10px]">
+                    <span
+                      className={`inline-block w-1.5 h-1.5 rounded-full ${
+                        s.state === 'active' ? 'bg-green-500' : 'bg-neutral-400'
+                      }`}
+                    />
+                    <span className="text-neutral-600 dark:text-neutral-300 font-mono">
+                      {s.sessionId.slice(0, 12)}
+                    </span>
+                    <span className="text-neutral-400">{parts.join(' \u00b7 ')}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {loadingAssignees && (
+          <div className="text-[10px] text-neutral-400 pl-3">Loading agents...</div>
+        )}
+        {loadingProfiles && (
+          <div className="text-[10px] text-neutral-400">Loading profiles...</div>
+        )}
+      </div>
+
+      {/* ── Review settings ───────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label
           className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
@@ -157,106 +278,27 @@ export function PlanReviewRequestForm({
           />
         </label>
       </div>
-      <label
-        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="Choose which agent handles the review. Auto lets the dispatcher pick the best available."
-      >
-        Assignee
-        <select
-          value={assignee}
-          onChange={(e) => onAssigneeChange(e.target.value)}
-          className={inputClassName}
-        >
-          <option value="auto">Auto (dispatcher)</option>
-          {liveAssignees.map((agent) => {
-            const displayLabel = (agent.label || '').trim() || formatActorLabel(
-              { principalType: 'agent', agentId: agent.agentId },
-              { profileLabels },
-            );
-            const agentLabel = [
-              displayLabel,
-              agent.source === 'delegated' && typeof agent.targetUserId === 'number'
-                ? `delegated user #${agent.targetUserId}`
-                : '',
-              agent.engines?.join('/') || agent.agentType,
-              agent.busy ? 'busy' : 'idle',
-              agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
-            ].filter(Boolean).join(' - ');
 
-            if (agent.poolSessions && agent.poolSessions.length > 0) {
-              return (
-                <optgroup key={`live:${agent.agentId}`} label={agentLabel}>
-                  <option value={buildAssigneeOptionValue('live', agent.agentId)}>
-                    Any session (auto)
-                  </option>
-                  {agent.poolSessions.map((poolSession) => {
-                    const parts = [poolSession.sessionId];
-                    if (poolSession.cliModel) parts.push(poolSession.cliModel);
-                    parts.push(poolSession.state);
-                    if (poolSession.messagesSent > 0) parts.push(`${poolSession.messagesSent} msg`);
-                    if (poolSession.contextPct != null) parts.push(`ctx ${poolSession.contextPct}%`);
-                    return (
-                      <option key={`live:${poolSession.sessionId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
-                        {'-> '}{parts.join(' - ')}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              );
-            }
-
-            return (
-              <option key={`live:${agent.agentId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
-                {agentLabel}
-              </option>
-            );
-          })}
-          {recentAssignees.length > 0 && (
-            <optgroup label="Recent Reviewers">
-              {recentAssignees.map((option) => {
-                const parts = [
-                  formatActorLabel(
-                    { principalType: 'agent', agentId: option.agentId },
-                    { profileLabels },
-                  ),
-                ];
-                if (option.agentType) parts.push(option.agentType);
-                if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
-                return (
-                  <option key={`recent:${option.agentId}`} value={buildAssigneeOptionValue('recent', option.agentId)}>
-                    {parts.join(' - ')}
-                  </option>
-                );
-              })}
-            </optgroup>
-          )}
-        </select>
-      </label>
-      <label
-        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="What to do if the chosen agent is busy"
-      >
-        Queue Policy
-        <select
-          value={queuePolicy}
-          onChange={(e) => onQueuePolicyChange(e.target.value as ReviewRequestQueuePolicy)}
-          className={inputClassName}
+      {/* Queue policy — only relevant when a specific agent is chosen */}
+      {assignee !== 'auto' && (
+        <label
+          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+          title="What to do if the chosen agent is busy"
         >
-          <option value="auto_reroute">Auto reroute if busy (recommended)</option>
-          <option value="start_now">Start now only</option>
-          <option value="queue_next">Queue next if busy</option>
-        </select>
-      </label>
-      {loadingAssignees && (
-        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-          Refreshing live assignees...
-        </div>
+          If Busy
+          <select
+            value={queuePolicy}
+            onChange={(e) => onQueuePolicyChange(e.target.value as ReviewRequestQueuePolicy)}
+            className={inputClassName}
+          >
+            <option value="auto_reroute">Reroute to another agent</option>
+            <option value="queue_next">Queue until free</option>
+            <option value="start_now">Fail if busy</option>
+          </select>
+        </label>
       )}
-      {loadingProfiles && (
-        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-          Refreshing agent profiles...
-        </div>
-      )}
+
+      {/* Body */}
       <label
         className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
         title="Detailed instructions for the reviewer"
@@ -270,6 +312,7 @@ export function PlanReviewRequestForm({
           placeholder="What should the reviewer verify or challenge?"
         />
       </label>
+
       <Button size="sm" onClick={() => void onSubmit()} disabled={creating || !profileId}>
         {creating ? 'Creating...' : 'Create Review Request'}
       </Button>
