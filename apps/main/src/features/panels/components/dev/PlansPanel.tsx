@@ -2280,49 +2280,54 @@ function PlanDetailView({
                                   : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
                               }`}
                             >
-                              <button
-                                onClick={() => setSelectedRoundId(round.id)}
-                                className="w-full text-left"
-                              >
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                                    Iteration #{round.roundNumber}
-                                  </span>
-                                  <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                                    {ITERATION_STATUS_LABELS[round.status] ?? round.status}
-                                  </Badge>
-                                </div>
-                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                  {reviewNodeCountByRound.get(round.id) ?? 0} entries
-                                  {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
-                                </div>
-                                {(round.actorAgentId || round.actorRunId || round.createdBy) && (
-                                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                    {formatActorLabel(
-                                      {
-                                        principalType: round.actorPrincipalType,
-                                        userId: round.actorUserId,
-                                        agentId: round.actorAgentId,
-                                        fallback: round.createdBy,
-                                      },
-                                      { profileLabels: reviewProfileLabels },
-                                    )}
-                                    {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
-                                  </div>
-                                )}
-                                <div className="text-[10px] text-neutral-400 mt-0.5">
-                                  {formatDateTime(round.updatedAt)}
-                                </div>
-                              </button>
-                              {round.status !== 'concluded' && (
+                              <div className="flex items-start gap-1">
                                 <button
-                                  onClick={() => void handleCloseRound(round)}
-                                  className="mt-1 text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-                                  title="Close this iteration — no more activity expected"
+                                  onClick={() => setSelectedRoundId(round.id)}
+                                  className="flex-1 text-left min-w-0"
                                 >
-                                  Close
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                                      Iteration #{round.roundNumber}
+                                    </span>
+                                    <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
+                                      {ITERATION_STATUS_LABELS[round.status] ?? round.status}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                    {reviewNodeCountByRound.get(round.id) ?? 0} entries
+                                    {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
+                                  </div>
+                                  {(round.actorAgentId || round.actorRunId || round.createdBy) && (
+                                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                      {formatActorLabel(
+                                        {
+                                          principalType: round.actorPrincipalType,
+                                          userId: round.actorUserId,
+                                          agentId: round.actorAgentId,
+                                          fallback: round.createdBy,
+                                        },
+                                        { profileLabels: reviewProfileLabels },
+                                      )}
+                                      {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+                                    </div>
+                                  )}
+                                  <div className="text-[10px] text-neutral-400 mt-0.5">
+                                    {formatDateTime(round.updatedAt)}
+                                  </div>
                                 </button>
-                              )}
+                                {round.status !== 'concluded' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); void handleCloseRound(round); }}
+                                    className="shrink-0 p-1 text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                                    title="Archive this iteration"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                      <polyline points="3 6 5 6 21 6" />
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
