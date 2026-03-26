@@ -1843,7 +1843,7 @@ def _list_live_bridge_agents(
         rows.append(
             {
                 "bridge_id": getattr(agent, "bridge_id", None),
-                "agent_id": agent.agent_id,
+                "agent_id": agent.bridge_client_id,
                 "agent_type": agent.agent_type,
                 "user_id": agent.user_id,
                 "busy": bool(agent.busy),
