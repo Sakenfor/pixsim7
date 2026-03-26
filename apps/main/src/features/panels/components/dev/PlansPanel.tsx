@@ -121,6 +121,7 @@ type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note
 type ReviewAuthorRole = 'reviewer' | 'author' | 'agent' | 'system';
 type ReviewRequestStatus = 'open' | 'in_progress' | 'fulfilled' | 'cancelled';
 type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
+type ReviewRequestKind = 'review' | 'build' | 'research';
 type ReviewRequestMode = 'review_only' | 'propose_patch' | 'apply_patch';
 
 interface PlanReviewRound {
@@ -933,6 +934,7 @@ function PlanDetailView({
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [newRequestAssignee, setNewRequestAssignee] = useState('auto');
   const [newRequestProfileId, setNewRequestProfileId] = useState('');
+  const [newRequestKind, setNewRequestKind] = useState<ReviewRequestKind>('review');
   const [newRequestMode, setNewRequestMode] = useState<ReviewRequestMode>('review_only');
   const [newRequestBaseRevision, setNewRequestBaseRevision] = useState('');
   const [newRequestQueuePolicy, setNewRequestQueuePolicy] = useState<ReviewRequestQueuePolicy>('auto_reroute');
@@ -1040,7 +1042,7 @@ function PlanDetailView({
       .catch(() => setCoverage(null));
   }, [loadDetail, encodedPlanId]);
 
-  // Lazy-load review graph on first expand of the Review Loop section
+  // Lazy-load review graph on first expand of the Agent Tasks section
   const reviewGraphLoadedRef = useRef(false);
   const onReviewSectionToggle = useCallback(
     (isOpen: boolean) => {
@@ -1638,7 +1640,8 @@ function PlanDetailView({
       const payload: PlanRequestCreateRequest = {
         title,
         body,
-        review_mode: newRequestMode,
+        kind: newRequestKind,
+        review_mode: newRequestKind === 'review' ? newRequestMode : undefined,
       };
       if (selectedRound) payload.round_id = selectedRound.id;
       const baseRevisionRaw = newRequestBaseRevision.trim();
@@ -1691,6 +1694,7 @@ function PlanDetailView({
       setNewRequestBody('');
       setNewRequestAssignee('auto');
       setNewRequestProfileId('');
+      setNewRequestKind('review');
       setNewRequestMode('review_only');
       setNewRequestBaseRevision('');
 
@@ -1722,6 +1726,7 @@ function PlanDetailView({
     loadReviewGraph,
     newRequestBody,
     newRequestAssignee,
+    newRequestKind,
     newRequestMode,
     newRequestProfileId,
     newRequestQueuePolicy,
@@ -2197,7 +2202,7 @@ function PlanDetailView({
       )}
 
       <DisclosureSection
-        label="Review Loop"
+        label="Agent Tasks"
         defaultOpen={false}
         onToggle={onReviewSectionToggle}
         className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
@@ -2455,6 +2460,7 @@ function PlanDetailView({
                 title={newRequestTitle}
                 body={newRequestBody}
                 profileId={newRequestProfileId}
+                kind={newRequestKind}
                 mode={newRequestMode}
                 baseRevision={newRequestBaseRevision}
                 assignee={newRequestAssignee}
@@ -2470,6 +2476,7 @@ function PlanDetailView({
                 onTitleChange={setNewRequestTitle}
                 onBodyChange={setNewRequestBody}
                 onProfileChange={applyRequestProfileSelection}
+                onKindChange={setNewRequestKind}
                 onModeChange={setNewRequestMode}
                 onBaseRevisionChange={setNewRequestBaseRevision}
                 onAssigneeChange={setNewRequestAssignee}

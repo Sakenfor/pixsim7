@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 export type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
+export type ReviewRequestKind = 'review' | 'build' | 'research';
 export type ReviewRequestMode = 'review_only' | 'propose_patch' | 'apply_patch';
 
 export interface ReviewRequestProfileOption {
@@ -44,6 +45,7 @@ interface PlanReviewRequestFormProps {
   title: string;
   body: string;
   profileId: string;
+  kind: ReviewRequestKind;
   mode: ReviewRequestMode;
   baseRevision: string;
   assignee: string;
@@ -59,6 +61,7 @@ interface PlanReviewRequestFormProps {
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onProfileChange: (value: string) => void;
+  onKindChange: (value: ReviewRequestKind) => void;
   onModeChange: (value: ReviewRequestMode) => void;
   onBaseRevisionChange: (value: string) => void;
   onAssigneeChange: (value: string) => void;
@@ -72,6 +75,7 @@ export function PlanReviewRequestForm({
   title,
   body,
   profileId,
+  kind,
   mode,
   baseRevision,
   assignee,
@@ -87,6 +91,7 @@ export function PlanReviewRequestForm({
   onTitleChange,
   onBodyChange,
   onProfileChange,
+  onKindChange,
   onModeChange,
   onBaseRevisionChange,
   onAssigneeChange,
@@ -248,36 +253,54 @@ export function PlanReviewRequestForm({
         )}
       </div>
 
-      {/* ── Review settings ───────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <label
-          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-          title="Review Only: comment only. Propose Patch: suggest changes. Apply Patch: directly edit the plan."
+      {/* ── Task settings ─────────────────────────────────────── */}
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="What kind of work to dispatch: review the plan, build/implement it, or research a question"
+      >
+        Task Kind
+        <select
+          value={kind}
+          onChange={(e) => onKindChange(e.target.value as ReviewRequestKind)}
+          className={inputClassName}
         >
-          Review Mode
-          <select
-            value={mode}
-            onChange={(e) => onModeChange(e.target.value as ReviewRequestMode)}
-            className={inputClassName}
+          <option value="review">Review -- analyze and comment on the plan</option>
+          <option value="build">Build -- implement the plan or a checkpoint</option>
+          <option value="research">Research -- investigate a question and report back</option>
+        </select>
+      </label>
+
+      {kind === 'review' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+            title="Review Only: comment only. Propose Patch: suggest changes. Apply Patch: directly edit the plan."
           >
-            <option value="review_only">Review Only</option>
-            <option value="propose_patch">Propose Patch</option>
-            <option value="apply_patch">Apply Patch</option>
-          </select>
-        </label>
-        <label
-          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-          title="Plan revision the patch is based on. Required for patch modes to detect conflicts."
-        >
-          Base Revision
-          <input
-            value={baseRevision}
-            onChange={(e) => onBaseRevisionChange(e.target.value)}
-            className={inputClassName}
-            placeholder={mode === 'review_only' ? 'optional' : 'required for patch modes'}
-          />
-        </label>
-      </div>
+            Review Mode
+            <select
+              value={mode}
+              onChange={(e) => onModeChange(e.target.value as ReviewRequestMode)}
+              className={inputClassName}
+            >
+              <option value="review_only">Review Only</option>
+              <option value="propose_patch">Propose Patch</option>
+              <option value="apply_patch">Apply Patch</option>
+            </select>
+          </label>
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+            title="Plan revision the patch is based on. Required for patch modes to detect conflicts."
+          >
+            Base Revision
+            <input
+              value={baseRevision}
+              onChange={(e) => onBaseRevisionChange(e.target.value)}
+              className={inputClassName}
+              placeholder={mode === 'review_only' ? 'optional' : 'required for patch modes'}
+            />
+          </label>
+        </div>
+      )}
 
       {/* Queue policy — only relevant when a specific agent is chosen */}
       {assignee !== 'auto' && (
