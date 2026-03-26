@@ -94,11 +94,23 @@ class AssistantChatBridge {
           if (event.type === 'heartbeat') {
             const action = (event.action as string) || '';
             const detail = (event.detail as string) || '';
-            request.activity = detail || action || 'Working...';
-            // Deduplicate consecutive identical entries
-            const last = request.thinkingLog[request.thinkingLog.length - 1];
-            if (!last || last.action !== action || last.detail !== detail) {
-              request.thinkingLog.push({ action, detail, timestamp: Date.now() });
+            request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
+            // Skip generic/low-value heartbeats from the log
+            const text = detail || action;
+            const isGeneric = !text || text === 'thinking' || text === 'active' || action === 'processing_task';
+            if (!isGeneric) {
+              const last = request.thinkingLog[request.thinkingLog.length - 1];
+              const lastText = last ? (last.detail || last.action) : '';
+              const prefix = text.slice(0, 50);
+              const lastPrefix = lastText.slice(0, 50);
+              // Deduplicate: skip if text shares a 50-char prefix with the last entry
+              if (!last || (prefix !== lastPrefix && !lastPrefix.startsWith(prefix) && !prefix.startsWith(lastPrefix))) {
+                request.thinkingLog.push({ action, detail, timestamp: Date.now() });
+              } else if (text.length > lastText.length) {
+                // Keep the longer version
+                last.detail = detail;
+                last.action = action;
+              }
             }
             this._notify();
           } else if (event.type === 'result') {

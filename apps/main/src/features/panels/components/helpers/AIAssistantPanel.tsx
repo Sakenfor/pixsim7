@@ -202,7 +202,11 @@ function loadTabMessages(tabId: string): ChatMessage[] {
 }
 
 function persistTabMessages(tabId: string, messages: ChatMessage[]) {
-  try { localStorage.setItem(msgKey(tabId), JSON.stringify(messages.slice(-50))); }
+  try {
+    // Don't persist transient error messages (network errors, cancellations)
+    const persistable = messages.filter((m) => m.role !== 'error');
+    localStorage.setItem(msgKey(tabId), JSON.stringify(persistable.slice(-50)));
+  }
   catch { /* ignore */ }
 }
 
@@ -285,15 +289,29 @@ function renderMarkdown(text: string): React.ReactNode[] {
 }
 
 function inlineFormat(text: string): React.ReactNode {
-  const regex = /(\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*)/g;
+  // Order matters: longer/more specific patterns first
+  const regex = /(\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*|"([^"]{2,})"|((?:\/|[A-Z]:\\)[\w./\\-]+(?:\.\w+)?(?::[\d]+)?))/g;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    if (match[2]) parts.push(<strong key={parts.length}>{match[2]}</strong>);
-    else if (match[3]) parts.push(<code key={parts.length} className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[11px] font-mono">{match[3]}</code>);
-    else if (match[4]) parts.push(<em key={parts.length}>{match[4]}</em>);
+    if (match[2]) {
+      // **bold**
+      parts.push(<strong key={parts.length}>{match[2]}</strong>);
+    } else if (match[3]) {
+      // `inline code`
+      parts.push(<code key={parts.length} className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[11px] font-mono text-blue-700 dark:text-blue-300">{match[3]}</code>);
+    } else if (match[4]) {
+      // *italic*
+      parts.push(<em key={parts.length}>{match[4]}</em>);
+    } else if (match[5]) {
+      // "quoted string"
+      parts.push(<span key={parts.length} className="text-amber-700 dark:text-amber-300">&quot;{match[5]}&quot;</span>);
+    } else if (match[6]) {
+      // file path (e.g. /foo/bar.ts:42 or C:\foo\bar.py)
+      parts.push(<code key={parts.length} className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[11px] font-mono text-emerald-700 dark:text-emerald-300">{match[6]}</code>);
+    }
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
@@ -667,25 +685,64 @@ function ActionPicker({ open, onClose, onSelect, disabled }: {
 // Thinking Block â€" collapsible heartbeat log
 // =============================================================================
 
-function ThinkingBlock({ entries, live }: { entries: Array<{ action: string; detail: string }>; live?: boolean }) {
+function dedupeEntries(entries: Array<{ action: string; detail: string }>): Array<{ action: string; detail: string }> {
+  const result: Array<{ action: string; detail: string }> = [];
+  for (const e of entries) {
+    const text = e.detail || e.action || '';
+    if (!text) continue;
+    // Filter out generic status noise
+    const lower = text.toLowerCase();
+    if (lower === 'status: active' || lower === 'status: idle' || lower === 'thinking...' || lower === 'thinking' || lower === 'active') continue;
+    const prev = result[result.length - 1];
+    const prevText = prev ? (prev.detail || prev.action || '') : '';
+    // Skip if shares a 50-char prefix with the previous entry (truncation variants)
+    const prefix = text.slice(0, 50);
+    const prevPrefix = prevText.slice(0, 50);
+    if (prev && prefix === prevPrefix) {
+      // Keep the longer version
+      if (text.length > prevText.length) result[result.length - 1] = e;
+      continue;
+    }
+    result.push(e);
+  }
+  return result;
+}
+
+function ThinkingBlock({ entries, live, userMessage }: { entries: Array<{ action: string; detail: string }>; live?: boolean; userMessage?: string }) {
   const [expanded, setExpanded] = useState(live ?? false);
-  if (entries.length === 0) return null;
+  // entries is mutated in place by the bridge singleton, so key on length for recalc
+  const deduped = useMemo(() => {
+    const filtered = dedupeEntries(entries);
+    if (!userMessage) return filtered;
+    // Filter out echoed user message (agent echoes prompt in heartbeat)
+    const userPrefix = userMessage.slice(0, 50).toLowerCase();
+    return filtered.filter((e) => {
+      const text = (e.detail || e.action || '').toLowerCase();
+      return !text.startsWith(userPrefix);
+    });
+  }, [entries, entries.length, userMessage]);
+  if (deduped.length === 0 && !live) return null;
 
   return (
     <div className="mb-1.5">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+        className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
       >
         <Icon name={live ? 'loader' : 'cpu'} size={10} className={live ? 'animate-spin' : ''} />
-        <span>{live ? 'Thinking...' : `${entries.length} steps`}</span>
-        <Icon name="chevronRight" size={8} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        <span>{live ? 'Thinking...' : `${deduped.length} step${deduped.length !== 1 ? 's' : ''}`}</span>
+        {deduped.length > 0 && (
+          <span className={`text-[9px] px-1 py-0.5 rounded ${expanded ? 'bg-accent/10 text-accent' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'}`}>
+            {expanded ? 'hide' : 'show'}
+          </span>
+        )}
       </button>
       {expanded && (
-        <div className="mt-1 pl-3 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-0.5 max-h-[200px] overflow-y-auto">
-          {entries.map((e, i) => (
-            <div key={i} className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-              {e.detail || e.action || 'Working...'}
+        <div className="mt-1.5 pl-3 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-1 max-h-[240px] overflow-y-auto">
+          {deduped.map((e, i) => (
+            <div key={i} className="flex gap-2 text-[10px] leading-relaxed py-1 px-1.5 rounded bg-neutral-50 dark:bg-neutral-800/50">
+              <span className="text-neutral-400 dark:text-neutral-500 font-mono shrink-0 select-none">{i + 1}</span>
+              <span className="text-neutral-600 dark:text-neutral-300">{e.detail || e.action}</span>
             </div>
           ))}
         </div>
@@ -698,7 +755,7 @@ function ThinkingBlock({ entries, live }: { entries: Array<{ action: string; det
 // Message Bubble
 // =============================================================================
 
-function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => void }) {
+function MessageBubble({ msg, onRetry, userMessage }: { msg: ChatMessage; onRetry?: () => void; userMessage?: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
@@ -723,7 +780,7 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => voi
           : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
       }`}>
         {msg.role === 'assistant' && msg.thinkingLog && msg.thinkingLog.length > 0 && (
-          <ThinkingBlock entries={msg.thinkingLog} />
+          <ThinkingBlock entries={msg.thinkingLog} userMessage={userMessage} />
         )}
         {msg.role === 'assistant' ? <MarkdownText text={msg.text} /> : <pre className="whitespace-pre-wrap text-xs font-sans leading-relaxed">{msg.text}</pre>}
         <div className="flex items-center gap-2 mt-1">
@@ -1128,7 +1185,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
         if (prevSessionId) {
-          setMessages((m) => [...m, { role: 'system', text: 'New session â€" previous conversation not available', timestamp: new Date() }]);
+          setMessages((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
         }
       } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
         setMessages((prev) => {
@@ -1172,7 +1229,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     if (connected > 0 && prev === 0 && sawDisconnectRef.current && messages.length > 0) {
       const label = tab.sessionId
-        ? 'Reconnected â€" resuming conversation'
+        ? 'Reconnected — resuming conversation'
         : 'Bridge connected';
       setMessages((m) => [...m, { role: 'system', text: label, timestamp: new Date() }]);
     } else if (connected === 0 && prev > 0 && messages.length > 0) {
@@ -1319,22 +1376,21 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             </Button>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} onRetry={msg.role === 'error' ? retryLast : undefined} />
-        ))}
+        {messages.map((msg, i) => {
+          // Find preceding user message for echo filtering in thinking steps
+          const prevUserMsg = msg.role === 'assistant' ? messages.slice(0, i).findLast((m) => m.role === 'user')?.text : undefined;
+          return <MessageBubble key={i} msg={msg} onRetry={msg.role === 'error' ? retryLast : undefined} userMessage={prevUserMsg} />;
+        })}
         {sending && (
           <div className="flex justify-start gap-2 items-end">
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 max-w-[85%]">
               {bridgeReq && bridgeReq.thinkingLog.length > 0 && (
-                <ThinkingBlock entries={bridgeReq.thinkingLog} live />
+                <ThinkingBlock entries={bridgeReq.thinkingLog} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
               )}
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-                {activity && <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]">{activity}</span>}
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
             <button
@@ -1581,9 +1637,24 @@ export function AIAssistantPanel() {
 
   useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
-  // Poll bridge
+  // Poll bridge — auto-reconnect if it drops unexpectedly (e.g. backend restart)
+  const bridgeWasConnectedRef = useRef(false);
+  const bridgeManualStopRef = useRef(false);
   useEffect(() => {
-    const poll = () => { pixsimClient.get<BridgeStatus>('/meta/agents/bridge').then(setBridge).catch(() => setBridge(null)); };
+    const poll = () => {
+      pixsimClient.get<BridgeStatus>('/meta/agents/bridge').then((status) => {
+        const wasConnected = bridgeWasConnectedRef.current;
+        const isConnected = status.connected > 0;
+        bridgeWasConnectedRef.current = isConnected;
+
+        if (wasConnected && !isConnected && !bridgeManualStopRef.current) {
+          // Bridge dropped unexpectedly — auto-reconnect
+          pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {});
+        }
+        if (isConnected) bridgeManualStopRef.current = false;
+        setBridge(status);
+      }).catch(() => setBridge(null));
+    };
     poll();
     const interval = setInterval(poll, 8_000);
     return () => clearInterval(interval);
@@ -1730,7 +1801,7 @@ export function AIAssistantPanel() {
           )}
           {connected > 0 ? (
             <button
-              onClick={() => { pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
+              onClick={() => { bridgeManualStopRef.current = true; pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
               className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
               title="Connected - click to disconnect"
             />
