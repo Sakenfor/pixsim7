@@ -110,7 +110,10 @@ export function PlanReviewRequestForm({
       className="rounded border border-neutral-200 dark:border-neutral-700 p-2"
       contentClassName="space-y-2"
     >
-      <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="Short description of what you want the reviewer to check"
+      >
         Title
         <input
           value={title}
@@ -119,14 +122,17 @@ export function PlanReviewRequestForm({
           placeholder="e.g. Re-review after fixes"
         />
       </label>
-      <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-        Agent Profile (optional)
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="Select an agent profile to use its preconfigured provider, model, and method"
+      >
+        Agent Profile
         <select
           value={profileId}
           onChange={(e) => onProfileChange(e.target.value)}
           className={inputClassName}
         >
-          <option value="">none</option>
+          <option value="">Custom (manual provider/model)</option>
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
               {profile.label} ({profile.id})
@@ -134,49 +140,66 @@ export function PlanReviewRequestForm({
           ))}
         </select>
       </label>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-          Method (optional)
-          <input
-            value={method}
-            onChange={(e) => onMethodChange(e.target.value)}
-            className={inputClassName}
-            placeholder="remote"
-          />
-        </label>
-        <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-          Provider (optional)
-          <input
-            value={provider}
-            onChange={(e) => onProviderChange(e.target.value)}
-            className={inputClassName}
-            placeholder="anthropic"
-          />
-        </label>
-        <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-          Model (optional)
-          <input
-            value={modelId}
-            onChange={(e) => onModelIdChange(e.target.value)}
-            className={inputClassName}
-            placeholder="claude-3-7-sonnet"
-          />
-        </label>
-      </div>
+      {!profileId && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+            title="Delivery method: remote (bridge agent) or local"
+          >
+            Method
+            <input
+              value={method}
+              onChange={(e) => onMethodChange(e.target.value)}
+              className={inputClassName}
+              placeholder="remote"
+            />
+          </label>
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+            title="LLM provider to use (e.g. anthropic, openai)"
+          >
+            Provider
+            <input
+              value={provider}
+              onChange={(e) => onProviderChange(e.target.value)}
+              className={inputClassName}
+              placeholder="anthropic"
+            />
+          </label>
+          <label
+            className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+            title="Specific model ID to use for the review"
+          >
+            Model
+            <input
+              value={modelId}
+              onChange={(e) => onModelIdChange(e.target.value)}
+              className={inputClassName}
+              placeholder="claude-3-7-sonnet"
+            />
+          </label>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+        <label
+          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+          title="review_only: comment only. propose_patch: suggest changes. apply_patch: directly edit the plan."
+        >
           Review Mode
           <select
             value={mode}
             onChange={(e) => onModeChange(e.target.value as ReviewRequestMode)}
             className={inputClassName}
           >
-            <option value="review_only">review_only</option>
-            <option value="propose_patch">propose_patch</option>
-            <option value="apply_patch">apply_patch</option>
+            <option value="review_only">Review Only</option>
+            <option value="propose_patch">Propose Patch</option>
+            <option value="apply_patch">Apply Patch</option>
           </select>
         </label>
-        <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+        <label
+          className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+          title="Plan revision the patch is based on. Required for patch modes to detect conflicts."
+        >
           Base Revision
           <input
             value={baseRevision}
@@ -186,7 +209,10 @@ export function PlanReviewRequestForm({
           />
         </label>
       </div>
-      <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="Choose which agent handles the review. Auto lets the dispatcher pick the best available."
+      >
         Assignee
         <select
           value={assignee}
@@ -258,7 +284,10 @@ export function PlanReviewRequestForm({
           )}
         </select>
       </label>
-      <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="What to do if the chosen agent is busy"
+      >
         Queue Policy
         <select
           value={queuePolicy}
@@ -280,7 +309,10 @@ export function PlanReviewRequestForm({
           Refreshing agent profiles...
         </div>
       )}
-      <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+      <label
+        className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
+        title="Detailed instructions for the reviewer"
+      >
         Body
         <textarea
           value={body}
