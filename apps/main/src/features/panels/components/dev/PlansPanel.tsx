@@ -530,6 +530,13 @@ const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | '
   concluded: 'gray',
 };
 
+const ITERATION_STATUS_LABELS: Record<ReviewRoundStatus, string> = {
+  open: 'Active',
+  changes_requested: 'Needs Action',
+  approved: 'Completed',
+  concluded: 'Closed',
+};
+
 const REVIEW_REQUEST_STATUS_COLORS: Record<ReviewRequestStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   open: 'blue',
   in_progress: 'orange',
@@ -907,8 +914,6 @@ function PlanDetailView({
   const [reviewError, setReviewError] = useState('');
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const [selectedRoundId, setSelectedRoundId] = useState('');
-  const [newRoundStatus, setNewRoundStatus] = useState<'open' | 'changes_requested' | 'approved'>('open');
-  const [newRoundRevision, setNewRoundRevision] = useState('');
   const [newRoundNote, setNewRoundNote] = useState('');
   const [creatingRound, setCreatingRound] = useState(false);
   const [roundStatusDraft, setRoundStatusDraft] = useState<ReviewRoundStatus>('open');
@@ -1445,25 +1450,19 @@ function PlanDetailView({
     setReviewError('');
     setReviewNotice(null);
     try {
-      const payload: PlanReviewRoundCreateRequest = { status: newRoundStatus };
+      const payload: PlanReviewRoundCreateRequest = { status: 'open' };
       const note = newRoundNote.trim();
       if (note) payload.note = note;
 
-      const revisionRaw = newRoundRevision.trim();
-      if (revisionRaw) {
-        const parsed = Number.parseInt(revisionRaw, 10);
-        if (!Number.isFinite(parsed) || parsed < 1) {
-          setReviewError('Iteration revision must be a positive integer.');
-          return;
-        }
-        payload.review_revision = parsed;
+      // Auto-populate revision from current plan state
+      if (detail?.revision != null) {
+        payload.review_revision = detail.revision;
       }
 
       const round = await pixsimClient.post<PlanReviewRound>(
         `/dev/plans/reviews/${encodedPlanId}/rounds`,
         payload,
       );
-      setNewRoundRevision('');
       setNewRoundNote('');
       setSelectedRoundId(round.id);
       setReviewNotice(`Created iteration #${round.roundNumber}.`);
@@ -1473,7 +1472,7 @@ function PlanDetailView({
     } finally {
       setCreatingRound(false);
     }
-  }, [encodedPlanId, loadReviewGraph, newRoundNote, newRoundRevision, newRoundStatus]);
+  }, [detail?.revision, encodedPlanId, loadReviewGraph, newRoundNote]);
 
   const handleUpdateRound = useCallback(
     async (payload: PlanReviewRoundUpdateRequest, successMessage: string) => {
@@ -2261,7 +2260,7 @@ function PlanDetailView({
                             Iteration #{round.roundNumber}
                           </span>
                           <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                            {round.status}
+                            {ITERATION_STATUS_LABELS[round.status] ?? round.status}
                           </Badge>
                         </div>
                         <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
@@ -2298,29 +2297,6 @@ function PlanDetailView({
               className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
               contentClassName="space-y-2"
             >
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                  Status
-                  <select
-                    value={newRoundStatus}
-                    onChange={(e) => setNewRoundStatus(e.target.value as 'open' | 'changes_requested' | 'approved')}
-                    className={inputClassName}
-                  >
-                    <option value="open">open</option>
-                    <option value="changes_requested">changes_requested</option>
-                    <option value="approved">approved</option>
-                  </select>
-                </label>
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                  Revision
-                  <input
-                    value={newRoundRevision}
-                    onChange={(e) => setNewRoundRevision(e.target.value)}
-                    className={inputClassName}
-                    placeholder="optional"
-                  />
-                </label>
-              </div>
               <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
                 Note
                 <input
@@ -2344,7 +2320,7 @@ function PlanDetailView({
                 </span>
                 {selectedRound && (
                   <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
-                    {selectedRound.status}
+                    {ITERATION_STATUS_LABELS[selectedRound.status] ?? selectedRound.status}
                   </Badge>
                 )}
                 {selectedRound?.reviewRevision != null && (
@@ -2368,10 +2344,10 @@ function PlanDetailView({
                         onChange={(e) => setRoundStatusDraft(e.target.value as ReviewRoundStatus)}
                         className={inputClassName}
                       >
-                        <option value="open">open</option>
-                        <option value="changes_requested">changes_requested</option>
-                        <option value="approved">approved</option>
-                        <option value="concluded">concluded</option>
+                        <option value="open">Active</option>
+                        <option value="changes_requested">Needs Action</option>
+                        <option value="approved">Completed</option>
+                        <option value="concluded">Closed</option>
                       </select>
                     </label>
                     <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
