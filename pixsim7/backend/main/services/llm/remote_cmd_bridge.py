@@ -44,7 +44,8 @@ class RemoteAgent:
     run_id: Optional[str] = None
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     active_tasks: int = 0          # number of in-flight tasks
-    current_task_id: Optional[str] = None  # most recent task (for heartbeat tracking)
+    current_task_ids: set = field(default_factory=set)  # in-flight task IDs (for heartbeat routing)
+    max_concurrent: int = 4        # max concurrent tasks before considered fully busy
     tasks_completed: int = 0
     metadata: Dict[str, str] = field(default_factory=dict)
     available_models: List[Dict[str, Any]] = field(default_factory=list)
@@ -52,7 +53,7 @@ class RemoteAgent:
 
     @property
     def busy(self) -> bool:
-        return self.active_tasks > 0
+        return self.active_tasks >= self.max_concurrent
 
 
 class RemoteCommandBridge:
@@ -182,28 +183,29 @@ class RemoteCommandBridge:
                 bridge_id=agent.bridge_id,
                 tasks_completed=agent.tasks_completed,
             )
-            # Fail any pending task for this agent
-            if agent.current_task_id and agent.current_task_id in self._pending_tasks:
-                future = self._pending_tasks.pop(agent.current_task_id)
-                if not future.done():
+            # Fail all pending tasks for this agent
+            for tid in list(agent.current_task_ids):
+                future = self._pending_tasks.pop(tid, None)
+                if future and not future.done():
                     future.set_exception(ConnectionError("Remote agent disconnected"))
+                self._active_tasks.pop(tid, None)
 
     def get_available_agent(self, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
-        """Get a connected, non-busy agent.
+        """Get a connected agent with remaining capacity.
 
         Resolution order:
         1. User's own bridge (if user_id provided and user has one)
-        2. Shared/admin bridge — least-busy (fewest tasks completed)
+        2. Shared/admin bridge — least-loaded (fewest active tasks)
         """
         if user_id is not None:
             # First try user's own bridge
             for agent in self._agents.values():
                 if not agent.busy and agent.user_id == user_id:
                     return agent
-        # Fall back to shared bridges, pick least-busy
+        # Fall back to shared bridges, pick least-loaded
         shared = [a for a in self._agents.values() if not a.busy and a.user_id is None]
         if shared:
-            return min(shared, key=lambda a: a.tasks_completed)
+            return min(shared, key=lambda a: a.active_tasks)
         return None
 
     def get_agents(self, user_id: Optional[int] = None) -> List[RemoteAgent]:
@@ -365,7 +367,7 @@ class RemoteCommandBridge:
     ) -> Dict[str, Any]:
         task_id = str(uuid.uuid4())
         agent.active_tasks += 1
-        agent.current_task_id = task_id
+        agent.current_task_ids.add(task_id)
         self._active_tasks[task_id] = {
             "_ts": datetime.now(timezone.utc),
             "bridge_id": agent.bridge_id,
@@ -427,7 +429,7 @@ class RemoteCommandBridge:
             raise TimeoutError(f"Remote agent did not respond within {timeout}s")
         finally:
             agent.active_tasks = max(0, agent.active_tasks - 1)
-            agent.current_task_id = None
+            agent.current_task_ids.discard(task_id)
 
     def record_heartbeat(self, bridge_client_id: str, data: Dict[str, Any]) -> None:
         """Update timestamp tracking and forward to heartbeat queue (if streaming).
@@ -435,6 +437,10 @@ class RemoteCommandBridge:
         Activity state (action/detail) is tracked by AgentSessionRegistry,
         not here.  This method only maintains the timestamp needed for
         deadline extension in dispatch_task / dispatch_task_streaming.
+
+        If the heartbeat includes a ``task_id``, it is routed to that specific
+        task's queue.  Otherwise it is broadcast to all in-flight task queues
+        for the agent (backward-compatible with clients that don't send task_id).
         """
         agent = self._agents.get(bridge_client_id)
         if not agent:
@@ -443,11 +449,18 @@ class RemoteCommandBridge:
         model = data.get("model")
         if isinstance(model, str) and model:
             agent.metadata["model"] = model
-        if agent.current_task_id:
-            task_id = agent.current_task_id
-            # Timestamp-only tracking for deadline extension with user scoping
+
+        # Determine which task(s) to route this heartbeat to
+        explicit_task_id = data.get("task_id")
+        if explicit_task_id and explicit_task_id in agent.current_task_ids:
+            target_task_ids = [explicit_task_id]
+        else:
+            target_task_ids = list(agent.current_task_ids)
+
+        now = datetime.now(timezone.utc)
+        for task_id in target_task_ids:
             row = self._active_tasks.get(task_id) or {}
-            row["_ts"] = datetime.now(timezone.utc)
+            row["_ts"] = now
             row.setdefault("bridge_id", agent.bridge_id)
             row.setdefault("bridge_client_id", agent.bridge_client_id)
             row.setdefault("user_id", agent.user_id)
@@ -490,7 +503,7 @@ class RemoteCommandBridge:
 
         task_id = str(uuid.uuid4())
         agent.active_tasks += 1
-        agent.current_task_id = task_id
+        agent.current_task_ids.add(task_id)
         self._active_tasks[task_id] = {
             "_ts": datetime.now(timezone.utc),
             "bridge_id": agent.bridge_id,
@@ -570,14 +583,14 @@ class RemoteCommandBridge:
         finally:
             self._heartbeat_queues.pop(task_id, None)
             # If the task is still pending (SSE dropped but agent still working),
-            # keep agent.current_task_id so heartbeats continue to be tracked.
+            # keep task_id in current_task_ids so heartbeats continue to be tracked.
             # resolve_task/fail_task will clean up when the result arrives.
             if future.done():
                 agent.active_tasks = max(0, agent.active_tasks - 1)
-                agent.current_task_id = None
+                agent.current_task_ids.discard(task_id)
             else:
                 # SSE dropped mid-task — leave task_id for heartbeat tracking
-                # but mark agent as not-busy so new requests can use it
+                # but decrement active_tasks so new requests can use this agent
                 # (the pending future will be resolved when the result arrives via WS)
                 agent.active_tasks = max(0, agent.active_tasks - 1)
 
@@ -590,8 +603,7 @@ class RemoteCommandBridge:
 
         # Clean up agent tracking (may be stale from dropped SSE)
         for agent in self._agents.values():
-            if agent.current_task_id == task_id:
-                agent.current_task_id = None
+            agent.current_task_ids.discard(task_id)
 
         future = self._pending_tasks.pop(task_id, None)
         if future and not future.done():
@@ -606,8 +618,7 @@ class RemoteCommandBridge:
 
         # Clean up agent tracking
         for agent in self._agents.values():
-            if agent.current_task_id == task_id:
-                agent.current_task_id = None
+            agent.current_task_ids.discard(task_id)
 
         future = self._pending_tasks.pop(task_id, None)
         if future and not future.done():
@@ -626,21 +637,30 @@ class RemoteCommandBridge:
 
         now = datetime.now(timezone.utc)
 
-        # Primary: check dispatch state
+        # Primary: check dispatch state — return most recent active task
         for agent in self._agents.values():
             if user_id is not None and agent.user_id != user_id and agent.user_id is not None:
                 continue
-            if agent.busy and agent.current_task_id:
-                task_state = self._active_tasks.get(agent.current_task_id, {})
-                session = agent_session_registry.get_session(agent.bridge_client_id)
-                return {
-                    "task_id": agent.current_task_id,
-                    "bridge_id": agent.bridge_id,
-                    "bridge_client_id": agent.bridge_client_id,
-                    "status": "active",
-                    "action": session.action if session else str(task_state.get("action", "") or ""),
-                    "detail": session.detail if session else str(task_state.get("detail", "") or ""),
-                }
+            if agent.active_tasks > 0 and agent.current_task_ids:
+                # Pick the most recently dispatched task (by timestamp)
+                best_tid = None
+                best_ts = None
+                for tid in agent.current_task_ids:
+                    ts = (self._active_tasks.get(tid) or {}).get("_ts")
+                    if best_ts is None or (ts and ts > best_ts):
+                        best_tid = tid
+                        best_ts = ts
+                if best_tid:
+                    task_state = self._active_tasks.get(best_tid, {})
+                    session = agent_session_registry.get_session(agent.bridge_client_id)
+                    return {
+                        "task_id": best_tid,
+                        "bridge_id": agent.bridge_id,
+                        "bridge_client_id": agent.bridge_client_id,
+                        "status": "active",
+                        "action": session.action if session else str(task_state.get("action", "") or ""),
+                        "detail": session.detail if session else str(task_state.get("detail", "") or ""),
+                    }
 
         # Fallback: check for tasks with recent heartbeats (< 30s old)
         stale_keys = []

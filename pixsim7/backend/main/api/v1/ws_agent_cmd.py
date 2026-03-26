@@ -55,10 +55,11 @@ async def _resolve_user_id(token: str | None) -> int | None:
 class _ResolvedToken:
     user_id: int | None = None
     run_id: str | None = None
+    agent_id: str | None = None  # profile ID from token claims (e.g. "profile-mn4kk11k")
 
 
 async def _resolve_token(token: str | None) -> _ResolvedToken:
-    """Resolve user ID and run_id from JWT token, raising on invalid tokens."""
+    """Resolve user ID, run_id, and agent_id from JWT token, raising on invalid tokens."""
     if not token:
         return _ResolvedToken()
     from pixsim7.backend.main.api.dependencies import get_auth_service
@@ -67,7 +68,7 @@ async def _resolve_token(token: str | None) -> _ResolvedToken:
     auth_service = get_auth_service()
     payload = await auth_service.verify_token_claims(token, update_last_used=False)
     principal = RequestPrincipal.from_jwt_payload(payload)
-    return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id)
+    return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id, agent_id=principal.agent_id)
 
 
 def _is_local_websocket(websocket: WebSocket) -> bool:
@@ -413,6 +414,53 @@ async def _complete_agent_run(run_id: str | None, status: str = "completed") -> 
         logger.warning("agent_run_complete_failed", run_id=run_id, error=str(exc))
 
 
+def _sync_cli_sessions_from_pool(
+    sessions: list | None,
+    user_id: int | None,
+    agent_type: str | None,
+    profile_id: str | None = None,
+) -> None:
+    """Upsert ChatSession records from bridge pool_status session data.
+
+    This makes CLI sessions visible in the AI Assistant's resume picker
+    and chat session list — same as sessions created through the frontend.
+
+    If ``profile_id`` is provided (from the bridge's token claims), sessions
+    are linked to that agent profile in the UI.
+    """
+    if not sessions or not isinstance(sessions, list) or user_id is None:
+        return
+
+    import asyncio
+
+    for sess in sessions:
+        if not isinstance(sess, dict):
+            continue
+        cli_session_id = (sess.get("cli_session_id") or "").strip()
+        if not cli_session_id:
+            continue
+        messages_sent = int(sess.get("messages_sent") or 0)
+        if messages_sent < 1:
+            continue  # No messages yet — skip
+
+        # Infer engine from agent_type, stripping "-cli" suffix
+        engine = agent_type or "agent"
+        if engine.endswith("-cli"):
+            engine = engine.rsplit("-", 1)[0]  # "claude-cli" -> "claude"
+
+        try:
+            from pixsim7.backend.main.api.v1.meta_contracts import _upsert_chat_session
+            asyncio.ensure_future(_upsert_chat_session(
+                session_id=cli_session_id,
+                user_id=user_id,
+                engine=engine,
+                label=f"CLI session ({cli_session_id[:8]})",
+                profile_id=profile_id,
+            ))
+        except Exception:
+            pass
+
+
 @router.websocket("/ws/agent-cmd")
 async def agent_cmd_websocket(
     websocket: WebSocket,
@@ -436,6 +484,7 @@ async def agent_cmd_websocket(
         resolved = await _resolve_token(token)
         user_id = resolved.user_id
         run_id = resolved.run_id
+        token_profile_id = resolved.agent_id  # profile from token claims
     except Exception:
         await websocket.close(code=1008, reason="Invalid bridge token")
         return
@@ -506,11 +555,16 @@ async def agent_cmd_websocket(
                 # Canonical heartbeat -> single authority for activity state
                 try:
                     from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry, from_ws_heartbeat
+                    # Prefer explicit task_id from heartbeat data (concurrent tasks),
+                    # fall back to most recent task for backward compat
+                    hb_task_id = data.get("task_id")
+                    if not hb_task_id and agent.current_task_ids:
+                        hb_task_id = next(iter(agent.current_task_ids))
                     hb = from_ws_heartbeat(
                         agent_id=resolved_bridge_client_id,
                         agent_type=agent_type,
                         data=data,
-                        task_id=agent.current_task_id,
+                        task_id=hb_task_id,
                     )
                     agent_session_registry.record(hb)
                 except Exception:
@@ -538,6 +592,13 @@ async def agent_cmd_websocket(
                     bridge_client_id=resolved_bridge_client_id,
                     user_id=user_id,
                     pool_status=data if isinstance(data, dict) else None,
+                )
+                # Track CLI sessions as ChatSession records
+                _sync_cli_sessions_from_pool(
+                    sessions=data.get("sessions") if isinstance(data, dict) else None,
+                    user_id=user_id,
+                    agent_type=agent_type,
+                    profile_id=token_profile_id,
                 )
 
             elif msg_type == "pong":

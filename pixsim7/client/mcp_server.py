@@ -251,13 +251,154 @@ async def _init_tools() -> None:
     )
 
 
+# ── Built-in tools (not from contracts) ──────────────────────────
+
+_REGISTER_SESSION_TOOL = types.Tool(
+    name="register_session",
+    description=(
+        "Register the current CLI session with the backend so it appears "
+        "in the AI Assistant's session list. Call this at the start of a "
+        "session to make it trackable and resumable."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "label": {
+                "type": "string",
+                "description": "Short label describing this session (e.g. 'refactor auth middleware')",
+            },
+            "session_id": {
+                "type": "string",
+                "description": "Optional stable ID. Defaults to a generated one if omitted.",
+            },
+        },
+    },
+)
+
+
+def _decode_token_claims(token: str) -> dict:
+    """Decode JWT claims without verification."""
+    if not token:
+        return {}
+    try:
+        import base64
+        parts = token.split(".")
+        if len(parts) < 2:
+            return {}
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        return {}
+
+
+def _extract_profile_from_token(token: str) -> str | None:
+    """Extract agent_id (profile ID) from JWT claims."""
+    return _decode_token_claims(token).get("agent_id")
+
+
+def _extract_agent_type(token: str) -> str:
+    """Extract agent_type from JWT claims, falling back to 'agent'."""
+    return _decode_token_claims(token).get("agent_type") or "agent"
+
+
+# Background heartbeat state
+_heartbeat_task: asyncio.Task | None = None
+_registered_session_id: str | None = None
+
+
+async def _heartbeat_loop(session_id: str, agent_type: str) -> None:
+    """Send periodic heartbeats so the session shows as active in the UI."""
+    while True:
+        try:
+            await asyncio.sleep(30)
+            token = _get_token()
+            if not token:
+                continue
+            client = _get_client()
+            await client.post(
+                "/api/v1/meta/agents/heartbeat",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "session_id": session_id,
+                    "agent_type": agent_type,
+                    "status": "active",
+                    "action": "cli_session",
+                    "detail": "CLI session active (MCP)",
+                },
+            )
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            pass  # Non-fatal — retry next cycle
+
+
+async def _handle_register_session(arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Register this CLI session with the backend and start heartbeat."""
+    global _heartbeat_task, _registered_session_id
+    import uuid as _uuid
+
+    token = _get_token()
+    if not token:
+        return [types.TextContent(type="text", text="No API token available — cannot register session.")]
+
+    profile_id = _extract_profile_from_token(token)
+    agent_type = _extract_agent_type(token)
+    session_id = arguments.get("session_id") or _registered_session_id or str(_uuid.uuid4())
+    label = arguments.get("label") or f"CLI session ({session_id[:8]})"
+
+    result = await _proxy(
+        method="POST",
+        path="/api/v1/meta/agents/register-chat-session",
+        body={
+            "session_id": session_id,
+            "engine": agent_type,
+            "label": label,
+            "profile_id": profile_id,
+            "source": "mcp",
+        },
+    )
+
+    # Start background heartbeat (replaces any existing one)
+    if _heartbeat_task and not _heartbeat_task.done():
+        _heartbeat_task.cancel()
+    _registered_session_id = session_id
+    _heartbeat_task = asyncio.create_task(_heartbeat_loop(session_id, agent_type))
+    print(f"[pixsim-mcp] Heartbeat started for session {session_id[:8]}", file=sys.stderr)
+
+    return result
+
+
 # ── Handlers ──────────────────────────────────────────────────────
 
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
-    return _dynamic_tools
+    return [_REGISTER_SESSION_TOOL] + _dynamic_tools
+
+
+async def _signal_tool_activity(tool_name: str) -> None:
+    """Fire-and-forget heartbeat on tool use — keeps session alive and visible."""
+    if not _registered_session_id:
+        return
+    token = _get_token()
+    if not token:
+        return
+    try:
+        client = _get_client()
+        await client.post(
+            "/api/v1/meta/agents/heartbeat",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "session_id": _registered_session_id,
+                "agent_type": _extract_agent_type(token),
+                "status": "active",
+                "action": "tool_use",
+                "detail": tool_name,
+            },
+        )
+    except Exception:
+        pass
 
 
 @server.call_tool()
@@ -265,6 +406,13 @@ async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[types.TextContent]:
     await _init_tools()
+
+    # Signal activity on every tool call (fire-and-forget)
+    asyncio.ensure_future(_signal_tool_activity(name))
+
+    # Built-in tools
+    if name == "register_session":
+        return await _handle_register_session(arguments)
 
     # Generic escape-hatch tool
     if name == "call_api":

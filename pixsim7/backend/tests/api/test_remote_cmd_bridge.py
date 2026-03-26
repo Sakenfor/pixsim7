@@ -49,7 +49,8 @@ def _make_agent(
         user_id=user_id,
     )
     agent.active_tasks = 1 if busy else 0
-    agent.current_task_id = task_id
+    if task_id:
+        agent.current_task_ids.add(task_id)
     return agent
 
 
@@ -191,7 +192,7 @@ class TestTaskLifecycle:
         # Active task cleaned up
         assert "task-1" not in bridge._active_tasks
         # Agent task_id cleaned up
-        assert agent.current_task_id is None
+        assert "task-1" not in agent.current_task_ids
 
     @pytest.mark.asyncio
     async def test_fail_caches_error(self):
@@ -209,7 +210,7 @@ class TestTaskLifecycle:
         assert future.done()
         assert "task-1" in bridge._completed_results
         assert bridge._completed_results["task-1"]["error"] == "timeout"
-        assert agent.current_task_id is None
+        assert "task-1" not in agent.current_task_ids
 
     def test_pop_completed_result(self):
         bridge = RemoteCommandBridge()
@@ -307,7 +308,7 @@ class TestDisconnect:
         bridge = RemoteCommandBridge()
         ws = AsyncMock()
         agent = await bridge.connect(ws, bridge_client_id="a1")
-        agent.current_task_id = "task-1"
+        agent.current_task_ids.add("task-1")
 
         loop = asyncio.get_event_loop()
         future = loop.create_future()

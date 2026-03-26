@@ -547,6 +547,7 @@ class Bridge:
         user_text = msg.get("instruction") or msg.get("prompt", "")
         await ws.send(json.dumps({
             "type": "heartbeat",
+            "task_id": task_id,
             "status": "active",
             "action": "processing_task",
             "detail": user_text[:100],
@@ -573,6 +574,7 @@ class Bridge:
                 try:
                     await ws.send(json.dumps({
                         "type": "heartbeat",
+                        "task_id": task_id,
                         "status": "active",
                         "action": event_type,
                         "detail": detail,
@@ -591,6 +593,7 @@ class Bridge:
                     try:
                         await ws.send(json.dumps({
                             "type": "heartbeat",
+                            "task_id": task_id,
                             "status": "active",
                             "action": "processing_task",
                             "detail": last_detail,

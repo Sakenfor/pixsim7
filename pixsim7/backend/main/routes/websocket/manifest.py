@@ -8,11 +8,13 @@ from fastapi import APIRouter
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.api.v1.websocket import router as _ws_router
 from pixsim7.backend.main.api.v1.ws_agent_cmd import router as _agent_cmd_router
+from pixsim7.backend.main.api.v1.ws_chat import router as _ws_chat_router
 
-# Merge both routers
+# Merge all WS routers
 router = APIRouter()
 router.include_router(_ws_router)
 router.include_router(_agent_cmd_router)
+router.include_router(_ws_chat_router)
 
 manifest = PluginManifest(
     id="websocket",

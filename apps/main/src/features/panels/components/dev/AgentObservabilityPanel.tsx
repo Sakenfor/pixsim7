@@ -1521,6 +1521,16 @@ interface ObservabilityResponse {
   agents: ObservabilityEntry[];
   total_profiles: number;
   bridges: BridgeSummary[];
+  active_session_profile_ids?: string[];
+}
+
+interface AgentEditFormState {
+  label: string;
+  description: string;
+  icon: string;
+  agent_type: string;
+  system_prompt: string;
+  audience: string;
 }
 
 /** Read profile IDs that have open chat tabs (from AI Assistant localStorage). */
@@ -1545,6 +1555,31 @@ function AgentsView() {
   const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
   const [copied, setCopied] = useState(false);
   const [openTabProfiles, setOpenTabProfiles] = useState<ReadonlySet<string>>(getOpenTabProfileIds);
+  const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
+  const [showCreateProfile, setShowCreateProfile] = useState(false);
+  const [newProfileId, setNewProfileId] = useState('');
+  const [newProfileLabel, setNewProfileLabel] = useState('');
+  const [newProfileDescription, setNewProfileDescription] = useState('');
+  const [newProfileIcon, setNewProfileIcon] = useState('');
+  const [newProfileAgentType, setNewProfileAgentType] = useState('claude');
+  const [newProfileMethod, setNewProfileMethod] = useState('remote');
+  const [newProfileModelId, setNewProfileModelId] = useState('');
+  const [newProfileReasoningEffort, setNewProfileReasoningEffort] = useState('');
+  const [newProfileSystemPrompt, setNewProfileSystemPrompt] = useState('');
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [createProfileError, setCreateProfileError] = useState<string | null>(null);
+  const [editProfile, setEditProfile] = useState<AgentProfileEntry | null>(null);
+  const [editForm, setEditForm] = useState<AgentEditFormState>({
+    label: '',
+    description: '',
+    icon: '',
+    agent_type: '',
+    system_prompt: '',
+    audience: '',
+  });
+  const [deleteTarget, setDeleteTarget] = useState<AgentProfileEntry | null>(null);
+  const [profileActionError, setProfileActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -1586,6 +1621,127 @@ function AgentsView() {
       setCopied(false);
     } catch { /* handled by client */ }
   };
+
+  const handleArchiveChatSession = useCallback(async (sessionId: string, label: string) => {
+    if (archivingSessionId) return;
+    const display = label.trim() || 'session';
+    if (!confirm(`Archive session "${display}"?`)) return;
+    setSessionActionError(null);
+    setArchivingSessionId(sessionId);
+    try {
+      await pixsimClient.delete(`/meta/agents/chat-sessions/${sessionId}`);
+      await load();
+    } catch {
+      setSessionActionError(`Failed to archive "${display}".`);
+    } finally {
+      setArchivingSessionId(null);
+    }
+  }, [archivingSessionId, load]);
+
+  const resetCreateProfileForm = useCallback(() => {
+    setNewProfileId('');
+    setNewProfileLabel('');
+    setNewProfileDescription('');
+    setNewProfileIcon('');
+    setNewProfileAgentType('claude');
+    setNewProfileMethod('remote');
+    setNewProfileModelId('');
+    setNewProfileReasoningEffort('');
+    setNewProfileSystemPrompt('');
+    setCreateProfileError(null);
+  }, []);
+
+  const handleCreateProfile = useCallback(async () => {
+    if (creatingProfile || !newProfileLabel.trim()) return;
+    setCreatingProfile(true);
+    setCreateProfileError(null);
+    try {
+      const slug = newProfileId.trim() || `profile-${Date.now().toString(36)}`;
+      const config = newProfileReasoningEffort ? { reasoning_effort: newProfileReasoningEffort } : null;
+      await pixsimClient.post('/dev/agent-profiles', {
+        id: slug,
+        label: newProfileLabel.trim(),
+        description: newProfileDescription.trim() || null,
+        icon: newProfileIcon.trim() || null,
+        system_prompt: newProfileSystemPrompt.trim() || null,
+        agent_type: newProfileAgentType,
+        method: newProfileMethod || null,
+        model_id: newProfileModelId.trim() || null,
+        config,
+        audience: 'user',
+      });
+      setShowCreateProfile(false);
+      resetCreateProfileForm();
+      await load();
+      setExpandedId(slug);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create profile';
+      setCreateProfileError(message);
+    } finally {
+      setCreatingProfile(false);
+    }
+  }, [
+    creatingProfile,
+    newProfileLabel,
+    newProfileId,
+    newProfileReasoningEffort,
+    newProfileDescription,
+    newProfileIcon,
+    newProfileSystemPrompt,
+    newProfileAgentType,
+    newProfileMethod,
+    newProfileModelId,
+    resetCreateProfileForm,
+    load,
+  ]);
+
+  const openEditProfile = useCallback((profile: AgentProfileEntry) => {
+    setProfileActionError(null);
+    setEditProfile(profile);
+    setEditForm({
+      label: profile.label,
+      description: profile.description || '',
+      icon: profile.icon || '',
+      agent_type: profile.agent_type,
+      system_prompt: profile.system_prompt || '',
+      audience: profile.audience,
+    });
+  }, []);
+
+  const handleSaveEditProfile = useCallback(async () => {
+    if (!editProfile) return;
+    const updates: Record<string, unknown> = {};
+    if (editForm.label !== editProfile.label) updates.label = editForm.label;
+    if (editForm.description !== (editProfile.description || '')) updates.description = editForm.description || null;
+    if (editForm.icon !== (editProfile.icon || '')) updates.icon = editForm.icon || null;
+    if (editForm.agent_type !== editProfile.agent_type) updates.agent_type = editForm.agent_type;
+    if (editForm.system_prompt !== (editProfile.system_prompt || '')) updates.system_prompt = editForm.system_prompt || null;
+    if (editForm.audience !== editProfile.audience) updates.audience = editForm.audience;
+    if (Object.keys(updates).length === 0) {
+      setEditProfile(null);
+      return;
+    }
+    setProfileActionError(null);
+    try {
+      await pixsimClient.patch(`/dev/agent-profiles/${editProfile.id}`, updates);
+      setEditProfile(null);
+      await load();
+    } catch {
+      setProfileActionError(`Failed to update "${editProfile.label}".`);
+    }
+  }, [editProfile, editForm, load]);
+
+  const handleDeleteProfile = useCallback(async () => {
+    if (!deleteTarget) return;
+    setProfileActionError(null);
+    try {
+      await pixsimClient.delete(`/dev/agent-profiles/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      setProfileActionError(`Failed to archive "${deleteTarget.label}".`);
+    }
+  }, [deleteTarget, load]);
 
   const allBridges = data?.bridges ?? [];
   const hasBridge = allBridges.length > 0;
@@ -1641,6 +1797,12 @@ function AgentsView() {
       {bridgeAction && bridgeAction !== 'starting' && bridgeAction !== 'stopping' && (
         <div className="text-xs text-neutral-500">{bridgeAction}</div>
       )}
+      {sessionActionError && (
+        <div className="text-xs text-red-600 dark:text-red-400">{sessionActionError}</div>
+      )}
+      {profileActionError && (
+        <div className="text-xs text-red-600 dark:text-red-400">{profileActionError}</div>
+      )}
 
       {/* Minted token display */}
       {mintedToken && (
@@ -1659,13 +1821,30 @@ function AgentsView() {
       )}
 
       {/* Agent profiles */}
-      <SectionHeader>{data?.total_profiles ?? 0} Agents</SectionHeader>
+      <SectionHeader
+        trailing={(
+          <Button
+            size="sm"
+            onClick={() => {
+              resetCreateProfileForm();
+              setShowCreateProfile(true);
+            }}
+          >
+            <Icon name="plus" size={10} />
+            New profile
+          </Button>
+        )}
+      >
+        {data?.total_profiles ?? 0} Agents
+      </SectionHeader>
 
       <div className="space-y-2">
         {(data?.agents ?? []).map((entry) => {
           const { profile: p, recent_sessions: sessions } = entry;
           const expanded = expandedId === p.id;
           const hasOpenTab = openTabProfiles.has(p.id);
+          const hasActiveSession = data?.active_session_profile_ids?.includes(p.id) ?? false;
+          const isLive = hasOpenTab || hasActiveSession;
 
           return (
             <div key={p.id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
@@ -1675,7 +1854,7 @@ function AgentsView() {
                 className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 <div className={`w-2 h-2 rounded-full shrink-0 ${
-                  hasOpenTab ? 'bg-green-500 animate-pulse-subtle'
+                  isLive ? 'bg-green-500 animate-pulse-subtle'
                     : p.status === 'paused' ? 'bg-yellow-500'
                     : 'bg-neutral-400'
                 }`} />
@@ -1698,6 +1877,16 @@ function AgentsView() {
                     <Button size="sm" variant="ghost" onClick={() => handleMintToken(p.id)} title="Mint CLI token">
                       <Icon name="key" size={10} />
                     </Button>
+                    {!p.is_global && (
+                      <Button size="sm" variant="ghost" onClick={() => openEditProfile(p)} title="Edit profile">
+                        <Icon name="edit" size={10} />
+                      </Button>
+                    )}
+                    {!p.is_global && p.status !== 'archived' && (
+                      <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(p)} title="Archive profile">
+                        <Icon name="trash" size={10} />
+                      </Button>
+                    )}
                   </div>
 
                   {/* Sessions */}
@@ -1728,6 +1917,17 @@ function AgentsView() {
                               >
                                 <Icon name="play" size={10} />
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleArchiveChatSession(s.id, s.label);
+                                }}
+                                disabled={archivingSessionId === s.id}
+                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Archive session"
+                              >
+                                <Icon name="trash2" size={10} />
+                              </button>
                             </div>
                           );
                         })}
@@ -1753,6 +1953,186 @@ function AgentsView() {
           <EmptyState message="Loading..." icon={<Icon name="loader" size={20} />} />
         </div>
       )}
+
+      <Modal
+        isOpen={showCreateProfile}
+        onClose={() => {
+          if (creatingProfile) return;
+          setShowCreateProfile(false);
+        }}
+        title="New Profile"
+        size="sm"
+      >
+        <div className="space-y-2">
+          <input
+            value={newProfileId}
+            onChange={(e) => setNewProfileId(e.target.value)}
+            placeholder="ID (slug, optional)"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <input
+            value={newProfileLabel}
+            onChange={(e) => setNewProfileLabel(e.target.value)}
+            placeholder="Name *"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <input
+            value={newProfileDescription}
+            onChange={(e) => setNewProfileDescription(e.target.value)}
+            placeholder="Description"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <input
+            value={newProfileIcon}
+            onChange={(e) => setNewProfileIcon(e.target.value)}
+            placeholder="Icon (e.g. sparkles, code, cpu)"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <div className="flex gap-1.5">
+            <select
+              value={newProfileAgentType}
+              onChange={(e) => setNewProfileAgentType(e.target.value)}
+              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="custom">Custom</option>
+            </select>
+            <select
+              value={newProfileMethod}
+              onChange={(e) => setNewProfileMethod(e.target.value)}
+              className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="remote">CMD (bridge)</option>
+              <option value="api">API (direct)</option>
+            </select>
+          </div>
+          <input
+            value={newProfileModelId}
+            onChange={(e) => setNewProfileModelId(e.target.value)}
+            placeholder="Model override (optional)"
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <select
+            value={newProfileReasoningEffort}
+            onChange={(e) => setNewProfileReasoningEffort(e.target.value)}
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="">Effort (default)</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            {newProfileAgentType === 'claude' && <option value="max">Max</option>}
+            {newProfileAgentType === 'codex' && <option value="xhigh">Extra High</option>}
+          </select>
+          <textarea
+            value={newProfileSystemPrompt}
+            onChange={(e) => setNewProfileSystemPrompt(e.target.value)}
+            placeholder="Persona / system prompt"
+            rows={3}
+            className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          {createProfileError && (
+            <div className="text-[10px] text-red-500">{createProfileError}</div>
+          )}
+          <div className="flex gap-1.5 justify-end">
+            <button
+              onClick={() => {
+                if (creatingProfile) return;
+                setShowCreateProfile(false);
+              }}
+              className="px-2 py-1 text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-50"
+              disabled={creatingProfile}
+            >
+              Cancel
+            </button>
+            <Button size="sm" onClick={() => void handleCreateProfile()} disabled={creatingProfile || !newProfileLabel.trim()}>
+              {creatingProfile ? 'Creating...' : 'Create'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!editProfile} onClose={() => setEditProfile(null)} title={`Edit: ${editProfile?.label || ''}`} size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Label</label>
+            <input
+              value={editForm.label}
+              onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+              className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Description</label>
+            <input
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              placeholder="Optional description"
+              className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Icon</label>
+            <input
+              value={editForm.icon}
+              onChange={(e) => setEditForm({ ...editForm, icon: e.target.value })}
+              placeholder="Icon name (e.g. cpu, sparkles, code)"
+              className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            />
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Type</label>
+              <select
+                value={editForm.agent_type}
+                onChange={(e) => setEditForm({ ...editForm, agent_type: e.target.value })}
+                className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              >
+                <option value="claude">claude</option>
+                <option value="assistant">assistant</option>
+                <option value="codex">codex</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Audience</label>
+              <select
+                value={editForm.audience}
+                onChange={(e) => setEditForm({ ...editForm, audience: e.target.value })}
+                className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              >
+                <option value="user">user</option>
+                <option value="dev">dev</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">System Prompt</label>
+            <textarea
+              rows={4}
+              value={editForm.system_prompt}
+              onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
+              placeholder="Optional system prompt / instructions"
+              className="w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 resize-y"
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-1">
+            <Button size="sm" onClick={() => setEditProfile(null)}>Cancel</Button>
+            <Button size="sm" onClick={() => void handleSaveEditProfile()} disabled={!editForm.label.trim()}>Save</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onConfirm={() => void handleDeleteProfile()}
+        onCancel={() => setDeleteTarget(null)}
+        title="Delete Profile"
+        message={`Archive "${deleteTarget?.label}"? It will no longer appear in profile lists or be usable for token minting.`}
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }
@@ -2289,11 +2669,6 @@ export function AgentObservabilityPanel() {
 
   const sections = useMemo<SidebarContentLayoutSection[]>(() => [
     {
-      id: 'profiles',
-      label: 'Profiles',
-      icon: <Icon name="user" size={12} />,
-    },
-    {
       id: 'graph',
       label: 'Contract Graph',
       icon: <Icon name="graph" size={12} />,
@@ -2337,7 +2712,8 @@ export function AgentObservabilityPanel() {
       content = <AgentsView />;
       break;
     case 'profiles':
-      content = <ProfilesView />;
+      // Backward compatibility with persisted nav state from previous builds.
+      content = <AgentsView />;
       break;
     case 'graph':
       content = <ContractGraphView />;

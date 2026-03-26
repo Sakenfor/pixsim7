@@ -1,11 +1,11 @@
 /**
- * Assistant Chat Bridge — manages SSE requests outside React lifecycle.
+ * Assistant Chat Bridge — manages chat via WebSocket with SSE fallback.
  *
- * When a message is sent, the SSE fetch runs here (not in the component).
- * If the panel unmounts mid-request, the fetch continues. On remount,
- * the component picks up the pending request or completed result.
+ * Primary transport: WebSocket at /ws/chat (persistent, reconnects on page reload).
+ * Fallback: HTTP POST + SSE at /meta/agents/bridge/send-stream.
  *
- * This is a module-level singleton — survives panel close/open and HMR.
+ * The bridge is a module-level singleton — survives panel close/open and HMR.
+ * Multiple tabs are multiplexed on a single WS connection via tab_id.
  */
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 
@@ -24,6 +24,8 @@ export interface BridgeRequest {
   thinkingLog: ThinkingEntry[];
   result: BridgeResult | null;
   abort: AbortController;
+  /** Server-assigned task ID — used for reconnect after page reload */
+  taskId?: string;
 }
 
 export interface BridgeResult {
@@ -33,24 +35,217 @@ export interface BridgeResult {
   duration_ms?: number;
   bridge_session_id?: string;
   thinkingLog?: ThinkingEntry[];
+  reconnected?: boolean;
 }
 
 type Listener = () => void;
+
+// ── WebSocket URL derivation ──
+
+function computeChatWsUrl(token: string | null): string {
+  try {
+    const base = new URL(API_BASE_URL);
+    base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+    base.pathname = base.pathname.replace(/\/$/, '') + '/ws/chat';
+    base.search = '';
+    base.hash = '';
+    if (token) base.searchParams.set('token', token);
+    return base.toString();
+  } catch {
+    // Fallback
+    const proto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `${proto}//${host}:8000/api/v1/ws/chat${tokenParam}`;
+  }
+}
+
+// ── Heartbeat dedup helper ──
+
+function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): void {
+  const text = detail || action;
+  const isGeneric = !text || text === 'thinking' || text === 'active';
+  if (isGeneric) return;
+  const last = log[log.length - 1];
+  const lastText = last ? (last.detail || last.action) : '';
+  const prefix = text.slice(0, 50);
+  const lastPrefix = lastText.slice(0, 50);
+  if (!last || (prefix !== lastPrefix && !lastPrefix.startsWith(prefix) && !prefix.startsWith(lastPrefix))) {
+    log.push({ action, detail, timestamp: Date.now() });
+  } else if (text.length > lastText.length) {
+    last.detail = detail;
+    last.action = action;
+  }
+}
 
 class AssistantChatBridge {
   /** Active or recently completed requests, keyed by tab ID */
   private _requests = new Map<string, BridgeRequest>();
   private _listeners: Listener[] = [];
 
-  /** Start an SSE request for a tab. Runs independently of component lifecycle. */
-  async send(tabId: string, body: Record<string, unknown>): Promise<void> {
-    // Abort any existing request for this tab
-    this._requests.get(tabId)?.abort.abort();
+  // ── WebSocket state ──
+  private _ws: WebSocket | null = null;
+  private _wsConnected = false;
+  private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _wsPingTimer: ReturnType<typeof setInterval> | null = null;
+  private _wsConnecting = false;
+  private _wsToken: string | null = null;
 
-    const abort = new AbortController();
-    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort };
-    this._requests.set(tabId, request);
-    this._notify();
+  // ── WebSocket lifecycle ──
+
+  private async _ensureWs(): Promise<boolean> {
+    if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) return true;
+    if (this._wsConnecting) {
+      // Wait for current connection attempt
+      return new Promise<boolean>((resolve) => {
+        const check = () => {
+          if (this._wsConnected) { resolve(true); return; }
+          if (!this._wsConnecting) { resolve(false); return; }
+          setTimeout(check, 100);
+        };
+        setTimeout(check, 100);
+      });
+    }
+    return this._connectWs();
+  }
+
+  private async _connectWs(): Promise<boolean> {
+    this._wsConnecting = true;
+    try {
+      const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
+      this._wsToken = token;
+      const url = computeChatWsUrl(token);
+
+      return new Promise<boolean>((resolve) => {
+        const ws = new WebSocket(url);
+        this._ws = ws;
+
+        const timeout = setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            ws.close();
+            this._wsConnecting = false;
+            resolve(false);
+          }
+        }, 5000);
+
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          this._wsConnected = true;
+          this._wsConnecting = false;
+          // Start ping keepalive
+          this._wsPingTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+          }, 30000);
+          resolve(true);
+        };
+
+        ws.onmessage = (event) => {
+          if (event.data === 'pong') return;
+          this._onWsMessage(event.data);
+        };
+
+        ws.onerror = () => {
+          clearTimeout(timeout);
+          this._wsConnected = false;
+          this._wsConnecting = false;
+          resolve(false);
+        };
+
+        ws.onclose = () => {
+          this._wsConnected = false;
+          this._wsConnecting = false;
+          if (this._wsPingTimer) { clearInterval(this._wsPingTimer); this._wsPingTimer = null; }
+          // Auto-reconnect if there are pending requests
+          this._scheduleReconnect();
+        };
+      });
+    } catch {
+      this._wsConnecting = false;
+      return false;
+    }
+  }
+
+  private _scheduleReconnect(): void {
+    if (this._wsReconnectTimer) return;
+    // Only reconnect if there are pending/streaming requests
+    const hasPending = Array.from(this._requests.values()).some(
+      (r) => r.status === 'pending' || r.status === 'streaming',
+    );
+    if (!hasPending) return;
+
+    this._wsReconnectTimer = setTimeout(async () => {
+      this._wsReconnectTimer = null;
+      const ok = await this._connectWs();
+      if (ok) {
+        // Reattach to in-flight tasks
+        for (const [, req] of this._requests) {
+          if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
+            this._ws?.send(JSON.stringify({
+              type: 'reconnect',
+              tab_id: req.tabId,
+              task_id: req.taskId,
+            }));
+          }
+        }
+      } else {
+        this._scheduleReconnect();
+      }
+    }, 5000);
+  }
+
+  private _onWsMessage(raw: string): void {
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(raw); } catch { return; }
+
+    const type = data.type as string;
+    const tabId = (data.tab_id as string) || '';
+
+    if (type === 'connected') return; // Welcome message, no action needed
+
+    const request = this._requests.get(tabId);
+    if (!request) return;
+
+    if (type === 'heartbeat') {
+      const action = (data.action as string) || '';
+      const detail = (data.detail as string) || '';
+      // Capture task_id for reconnect support
+      if (data.task_id && !request.taskId) {
+        request.taskId = data.task_id as string;
+      }
+      request.status = 'streaming';
+      request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
+      appendHeartbeat(request.thinkingLog, action, detail);
+      this._notify();
+    } else if (type === 'result') {
+      request.status = data.ok ? 'completed' : 'error';
+      request.activity = null;
+      request.result = {
+        ok: !!data.ok,
+        response: data.response as string | undefined,
+        error: data.error as string | undefined,
+        duration_ms: data.duration_ms as number | undefined,
+        bridge_session_id: data.bridge_session_id as string | undefined,
+        thinkingLog: request.thinkingLog,
+        reconnected: data.reconnected as boolean | undefined,
+      };
+      this._notify();
+    } else if (type === 'error') {
+      request.status = 'error';
+      request.activity = null;
+      request.result = {
+        ok: false,
+        error: (data.error as string) || 'Unknown error',
+        thinkingLog: request.thinkingLog,
+      };
+      this._notify();
+    }
+  }
+
+  // ── SSE fallback (same as original implementation) ──
+
+  private async _sendViaSSE(tabId: string, body: Record<string, unknown>): Promise<void> {
+    const request = this._requests.get(tabId);
+    if (!request) return;
 
     try {
       const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
@@ -61,7 +256,7 @@ class AssistantChatBridge {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
-        signal: abort.signal,
+        signal: request.abort.signal,
       });
 
       if (!response.ok || !response.body) {
@@ -95,23 +290,7 @@ class AssistantChatBridge {
             const action = (event.action as string) || '';
             const detail = (event.detail as string) || '';
             request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
-            // Skip generic/low-value heartbeats from the log
-            const text = detail || action;
-            const isGeneric = !text || text === 'thinking' || text === 'active' || action === 'processing_task';
-            if (!isGeneric) {
-              const last = request.thinkingLog[request.thinkingLog.length - 1];
-              const lastText = last ? (last.detail || last.action) : '';
-              const prefix = text.slice(0, 50);
-              const lastPrefix = lastText.slice(0, 50);
-              // Deduplicate: skip if text shares a 50-char prefix with the last entry
-              if (!last || (prefix !== lastPrefix && !lastPrefix.startsWith(prefix) && !prefix.startsWith(lastPrefix))) {
-                request.thinkingLog.push({ action, detail, timestamp: Date.now() });
-              } else if (text.length > lastText.length) {
-                // Keep the longer version
-                last.detail = detail;
-                last.action = action;
-              }
-            }
+            appendHeartbeat(request.thinkingLog, action, detail);
             this._notify();
           } else if (event.type === 'result') {
             request.status = 'completed';
@@ -125,7 +304,6 @@ class AssistantChatBridge {
         }
       }
 
-      // Stream ended without a result event
       if (request.status === 'streaming') {
         request.status = 'error';
         request.result = { ok: false, error: 'Stream ended without result', thinkingLog: request.thinkingLog };
@@ -143,9 +321,45 @@ class AssistantChatBridge {
     }
   }
 
+  // ── Public API (unchanged interface) ──
+
+  /** Send a message for a tab. Uses WebSocket primary, SSE fallback. */
+  async send(tabId: string, body: Record<string, unknown>): Promise<void> {
+    // Abort any existing request for this tab
+    this._requests.get(tabId)?.abort.abort();
+
+    const abort = new AbortController();
+    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort };
+    this._requests.set(tabId, request);
+    this._notify();
+
+    // Try WebSocket first
+    const wsOk = await this._ensureWs();
+    if (wsOk && this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({
+        type: 'message',
+        tab_id: tabId,
+        ...body,
+      }));
+      // Result arrives via _onWsMessage — nothing more to do here
+      return;
+    }
+
+    // Fallback to SSE
+    await this._sendViaSSE(tabId, body);
+  }
+
   /** Cancel an active request */
   cancel(tabId: string): void {
     this._requests.get(tabId)?.abort.abort();
+    // If using WS, there's no server-side cancel yet — just mark as cancelled locally
+    const req = this._requests.get(tabId);
+    if (req && (req.status === 'pending' || req.status === 'streaming')) {
+      req.status = 'error';
+      req.activity = null;
+      req.result = { ok: false, error: 'cancelled' };
+      this._notify();
+    }
   }
 
   /** Get the current request for a tab (if any) */
@@ -170,7 +384,6 @@ class AssistantChatBridge {
   }
 
   getSnapshot(): number {
-    // Changes whenever any request updates
     let hash = 0;
     for (const [, req] of this._requests) {
       hash += req.status.length + (req.activity?.length ?? 0) + req.thinkingLog.length;

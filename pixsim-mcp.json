@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "pixsim": {
+      "command": "C:\\Users\\Stefan\\anaconda3\\python.exe",
+      "args": [
+        "G:/code/pixsim7/pixsim7/client/mcp_server.py"
+      ],
+      "env": {
+        "PIXSIM_API_URL": "http://localhost:8000",
+        "PIXSIM_SCOPE": "dev"
+      }
+    }
+  }
+}

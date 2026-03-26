@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_current_user_optional, get_database
@@ -1299,11 +1299,29 @@ async def _resolve_send_context(
 async def list_chat_sessions(
     engine: Optional[str] = Query(None, description="Filter by engine (claude, codex, api)"),
     limit: int = Query(20, ge=1, le=100),
+    include_empty: bool = Query(False, description="Include sessions with zero messages"),
     user: Optional[Any] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_database),
 ) -> Dict[str, Any]:
     """List recent chat sessions for the /resume picker, scoped by engine."""
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    if not include_empty:
+        # Remove stale startup placeholders ("CLI session (...)") with no messages.
+        prune_stmt = (
+            update(ChatSession)
+            .where(ChatSession.status == "active")
+            .where(ChatSession.message_count == 0)
+            .where(ChatSession.label.like("CLI session (%"))
+            .values(status="archived")
+        )
+        if user:
+            prune_stmt = prune_stmt.where(or_(ChatSession.user_id == user.id, ChatSession.user_id == 0))
+        if engine:
+            prune_stmt = prune_stmt.where(ChatSession.engine == engine)
+        prune_result = await db.execute(prune_stmt)
+        if (getattr(prune_result, "rowcount", 0) or 0) > 0:
+            await db.commit()
 
     stmt = (
         select(ChatSession)
@@ -1311,10 +1329,11 @@ async def list_chat_sessions(
     )
     if user:
         # Include user's own sessions + shared sessions (user_id=0)
-        from sqlalchemy import or_
         stmt = stmt.where(or_(ChatSession.user_id == user.id, ChatSession.user_id == 0))
     if engine:
         stmt = stmt.where(ChatSession.engine == engine)
+    if not include_empty:
+        stmt = stmt.where(ChatSession.message_count > 0)
     stmt = stmt.order_by(ChatSession.last_used_at.desc()).limit(limit)
 
     sessions = (await db.execute(stmt)).scalars().all()
@@ -1351,6 +1370,54 @@ async def archive_chat_session(
     session.status = "archived"
     await db.commit()
     return {"ok": True}
+
+
+class RegisterSessionRequest(BaseModel):
+    session_id: str = Field(..., description="Session UUID to register")
+    engine: str = Field("claude", description="Agent engine")
+    label: str = Field("CLI session", description="Display label")
+    profile_id: Optional[str] = Field(None, description="Agent profile ID to associate")
+    source: Optional[str] = Field(None, description="Registration source (mcp, hook, etc.)")
+
+
+@router.post("/agents/register-chat-session")
+async def register_chat_session(
+    payload: RegisterSessionRequest,
+    _user: Optional[Any] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Register a CLI session for tracking (idempotent).
+
+    Called by the MCP server on startup so standalone CLI sessions
+    appear in the AI Assistant's session list and resume picker.
+    """
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+    # principal.user_id returns on_behalf_of for agent tokens, id for users
+    user_id = 0
+    if _user:
+        user_id = getattr(_user, 'user_id', None) or getattr(_user, 'id', 0) or 0
+
+    existing = await db.get(ChatSession, payload.session_id)
+    if existing:
+        existing.last_used_at = utcnow()
+        if payload.profile_id and not existing.profile_id:
+            existing.profile_id = payload.profile_id
+        await db.commit()
+        return {"ok": True, "created": False, "session_id": existing.id}
+
+    session = ChatSession(
+        id=payload.session_id,
+        user_id=user_id,
+        engine=payload.engine,
+        profile_id=payload.profile_id,
+        label=payload.label or "CLI session",
+        message_count=0,
+    )
+    db.add(session)
+    await db.commit()
+    return {"ok": True, "created": True, "session_id": session.id}
 
 
 @router.get("/agents/system-prompt-preview")
@@ -1548,12 +1615,14 @@ async def send_message_to_agent_stream(
 
     agent = remote_cmd_bridge.get_available_agent(user_id=ctx.user_id)
     if not agent:
+        # All bridges at capacity — check if any are connected at all
         agents = remote_cmd_bridge.get_agents(user_id=ctx.user_id)
-        agent = agents[0] if agents else None
-    if not agent:
-        async def _err2():
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge available for your account.'})}\n\n"
-        return StreamingResponse(_err2(), media_type="text/event-stream")
+        if not agents:
+            async def _err2():
+                yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge available for your account.'})}\n\n"
+            return StreamingResponse(_err2(), media_type="text/event-stream")
+        # Bridges exist but all at max capacity — pick least-loaded
+        agent = min(agents, key=lambda a: a.active_tasks)
 
     from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as _build_payload
     effective_token = payload.user_token or (ctx.raw_token if ctx.raw_token and ctx.user_id is not None else None)

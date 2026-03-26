@@ -200,6 +200,7 @@ class AgentObservabilityResponse(BaseModel):
     agents: list[AgentObservabilityEntry]
     total_profiles: int
     bridges: list[BridgeAgentSummary] = []
+    active_session_profile_ids: list[str] = []  # profile IDs with active heartbeat sessions
 
 
 @router.get("/observability", response_model=AgentObservabilityResponse)
@@ -211,10 +212,12 @@ async def agent_observability(
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
     # 1. Load active profiles (same filter as list endpoint)
+    # principal.user_id returns on_behalf_of for agent tokens, id for users
+    effective_uid = principal.user_id or principal.id
     stmt = (
         select(AgentProfile)
         .where(AgentProfile.status != "archived")
-        .where(or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0))
+        .where(or_(AgentProfile.user_id == effective_uid, AgentProfile.user_id == 0))
         .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
     )
     profiles = (await db.execute(stmt)).scalars().all()
@@ -278,10 +281,26 @@ async def agent_observability(
     # 5. Build bridge summaries (separate from profiles — bridges are shared dispatchers)
     bridge_summaries = [_build_bridge_summary(a) for a in bridge_agents]
 
+    # 6. Find profile IDs with active heartbeat sessions
+    active_profile_ids: list[str] = []
+    try:
+        from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
+        active_session_ids = [s.session_id for s in agent_session_registry.get_active()]
+        if active_session_ids:
+            active_sessions = (await db.execute(
+                select(ChatSession.profile_id)
+                .where(ChatSession.id.in_(active_session_ids))
+                .where(ChatSession.profile_id.isnot(None))
+            )).scalars().all()
+            active_profile_ids = list(set(pid for pid in active_sessions if pid))
+    except Exception:
+        pass
+
     return AgentObservabilityResponse(
         agents=entries,
         total_profiles=len(profiles),
         bridges=bridge_summaries,
+        active_session_profile_ids=active_profile_ids,
     )
 
 
