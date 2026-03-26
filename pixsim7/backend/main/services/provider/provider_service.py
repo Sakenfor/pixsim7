@@ -888,6 +888,7 @@ class ProviderService:
 
         # Pixverse image status batch fast-path (per-poll cache): one image list
         # call can satisfy many IMAGE_TO_IMAGE checks on the same account.
+        _BATCH_FAILED_SENTINEL = "batch_failed"
         if (
             poll_cache is not None
             and submission.provider_id == "pixverse"
@@ -904,6 +905,7 @@ class ProviderService:
                         limit=200,
                         offset=0,
                     )
+                    poll_cache[cache_key] = status_map
                 except Exception as batch_err:
                     logger.debug(
                         "pixverse_image_status_batch_failed",
@@ -911,8 +913,10 @@ class ProviderService:
                         account_id=account.id,
                         error=str(batch_err),
                     )
-                    status_map = {}
-                poll_cache[cache_key] = status_map
+                    # Mark as failed so we don't retry the batch for every
+                    # image in this poll cycle, but don't cache an empty dict
+                    # that would look like "batch succeeded, image not found".
+                    poll_cache[cache_key] = _BATCH_FAILED_SENTINEL
 
             if isinstance(status_map, dict):
                 cached_result = status_map.get(str(submission.provider_job_id))
@@ -927,8 +931,11 @@ class ProviderService:
                 operation_type=operation_type,
             )
 
-        # Pixverse image fallback: bypass message list after a threshold.
-        # Skip when provider_job_id is null (job was never submitted to provider).
+        # Pixverse image fallback: use the direct image list to bypass the
+        # message endpoint which acts as a notification consumer — completed
+        # IDs can be acked by the Pixverse website tab and never appear in
+        # the message list our SDK polls.  Trigger early (45-90s) so we
+        # don't wait minutes for the progressive search to find the image.
         if (
             submission.provider_id == "pixverse"
             and operation_type in get_image_operations()
@@ -941,7 +948,7 @@ class ProviderService:
             if submission.payload and isinstance(submission.payload, dict):
                 model = submission.payload.get("model")
             model_name = str(model or "").lower()
-            threshold_seconds = 180 if ("qwen" in model_name or "seedream" in model_name) else 420
+            threshold_seconds = 45 if ("qwen" in model_name or "seedream" in model_name) else 90
             elapsed_seconds = (datetime.now(timezone.utc) - submission.submitted_at).total_seconds()
 
             if elapsed_seconds >= threshold_seconds:

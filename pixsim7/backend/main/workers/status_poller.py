@@ -146,6 +146,13 @@ _POLL_CONCURRENCY_DEGRADED = 4
 _POLL_CONCURRENCY_DEGRADE_THRESHOLD = 5
 _transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
 
+# Non-transient poll errors (auth, session, API) get a few retries before
+# failing the generation.  This prevents a single auth hiccup from orphaning
+# a generation that is still running on the provider's side.
+_NON_TRANSIENT_POLL_MAX_FAILURES = 3
+_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC: tuple[int, ...] = (15, 30, 60)
+_non_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
+
 
 def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
     current: BaseException | None = error
@@ -250,17 +257,42 @@ def _record_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, i
 def _clear_transient_poll_backoff(key: str | None) -> None:
     if key:
         _transient_poll_backoff.pop(key, None)
+        _non_transient_poll_backoff.pop(key, None)
 
 
 def _prune_transient_poll_backoff(*, now_mono: float) -> None:
     stale_before = now_mono - _TRANSIENT_POLL_PRUNE_STALE_SEC
-    stale_keys = [
-        key
-        for key, state in _transient_poll_backoff.items()
-        if state.cooldown_until_mono <= now_mono and state.last_failure_mono <= stale_before
-    ]
-    for key in stale_keys:
-        _transient_poll_backoff.pop(key, None)
+    for backoff_dict in (_transient_poll_backoff, _non_transient_poll_backoff):
+        stale_keys = [
+            key
+            for key, state in backoff_dict.items()
+            if state.cooldown_until_mono <= now_mono and state.last_failure_mono <= stale_before
+        ]
+        for key in stale_keys:
+            backoff_dict.pop(key, None)
+
+
+def _record_non_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
+    """Record a non-transient poll error and return (failure_count, backoff_seconds)."""
+    state = _non_transient_poll_backoff.setdefault(key, _TransientPollBackoffState())
+    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
+        state.failures = 0
+    state.failures += 1
+    state.last_failure_mono = now_mono
+    backoff_index = min(state.failures - 1, len(_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC) - 1)
+    delay_sec = int(_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC[backoff_index])
+    state.cooldown_until_mono = now_mono + delay_sec
+    return state.failures, delay_sec
+
+
+def _get_non_transient_poll_backoff_remaining(key: str, *, now_mono: float) -> float:
+    state = _non_transient_poll_backoff.get(key)
+    if state is None:
+        return 0.0
+    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
+        state.failures = 0
+    remaining = state.cooldown_until_mono - now_mono
+    return remaining if remaining > 0 else 0.0
 
 
 def _active_transient_poll_backoffs(*, now_mono: float) -> int:
@@ -1177,13 +1209,14 @@ async def _poll_single_generation(
                     account_id=account.id,
                     provider_job_id=submission.provider_job_id,
                 )
-                cooldown_remaining = _get_transient_poll_backoff_remaining(
-                    transient_backoff_key,
-                    now_mono=time.monotonic(),
+                _now_mono = time.monotonic()
+                cooldown_remaining = max(
+                    _get_transient_poll_backoff_remaining(transient_backoff_key, now_mono=_now_mono),
+                    _get_non_transient_poll_backoff_remaining(transient_backoff_key, now_mono=_now_mono),
                 )
                 if cooldown_remaining > 0:
                     logger.debug(
-                        "provider_check_transient_backoff_skip",
+                        "provider_check_backoff_skip",
                         generation_id=generation.id,
                         submission_id=submission.id,
                         provider_job_id=submission.provider_job_id,
@@ -1451,14 +1484,37 @@ async def _poll_single_generation(
                     )
 
                 # Provider error during status check (auth, session, API).
-                # Fail the generation so the auto-retry handler can re-queue
-                # it with a fresh session.  Leaving it in PROCESSING forever
-                # blocks the account's capacity counter.
+                # Retry a few times with backoff before failing — a single
+                # auth hiccup shouldn't orphan a generation that the provider
+                # is still processing.
+                _nt_key = transient_backoff_key or str(generation.id)
+                failure_count, delay_sec = _record_non_transient_poll_backoff(
+                    _nt_key, now_mono=time.monotonic(),
+                )
+
+                if failure_count < _NON_TRANSIENT_POLL_MAX_FAILURES:
+                    logger.warning(
+                        "provider_check_error_non_transient_retry",
+                        generation_id=generation.id,
+                        error=str(e),
+                        error_type=e.__class__.__name__,
+                        error_code=getattr(e, "error_code", None),
+                        non_transient_failures=failure_count,
+                        max_failures=_NON_TRANSIENT_POLL_MAX_FAILURES,
+                        backoff_s=delay_sec,
+                    )
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
                 logger.warning(
                     "provider_check_error_failing",
                     generation_id=generation.id,
                     error=str(e),
                     error_type=e.__class__.__name__,
+                    non_transient_failures=failure_count,
                 )
                 try:
                     await generation_service.mark_failed(
