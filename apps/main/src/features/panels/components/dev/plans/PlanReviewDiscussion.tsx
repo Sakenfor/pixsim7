@@ -158,7 +158,7 @@ export function PlanReviewDiscussion({
               {node.authorRole}
             </Badge>
             <Badge color="gray" className="text-[9px]">
-              {node.kind}
+              {node.kind === 'review_comment' ? 'comment' : node.kind === 'agent_response' ? 'response' : node.kind}
             </Badge>
             {node.severity && (
               <Badge color={severityColors[node.severity]} className="text-[9px]">
@@ -280,8 +280,8 @@ export function PlanReviewDiscussion({
                         title="Jump to referenced node"
                       >
                         to <code className="font-mono">{targetNodeOrder ? `#${targetNodeOrder}` : targetNode.id.slice(0, 8)}</code>{' '}
-                        ({targetNode.authorRole}/{targetNode.kind}
-                        {targetInDifferentRound ? `, round #${targetRoundNumber ?? '?'}` : ''})
+                        ({targetNode.authorRole}/{targetNode.kind === 'review_comment' ? 'comment' : targetNode.kind === 'agent_response' ? 'response' : targetNode.kind}
+                        {targetInDifferentRound ? `, iteration #${targetRoundNumber ?? '?'}` : ''})
                       </button>
                     ) : link.targetPlanAnchor ? (
                       <span>

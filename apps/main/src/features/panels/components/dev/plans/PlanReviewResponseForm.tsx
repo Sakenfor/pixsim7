@@ -73,13 +73,13 @@ export function PlanReviewResponseForm({
     >
       {!selectedRoundStatus ? (
         <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          Select a round before adding responses.
+          Select an iteration before adding responses.
         </div>
       ) : (
         <>
           {selectedRoundStatus === 'concluded' && (
             <div className="text-xs text-orange-600 dark:text-orange-400">
-              This round is concluded. Re-open it to continue discussion.
+              This iteration is concluded. Re-open it to continue discussion.
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -90,8 +90,8 @@ export function PlanReviewResponseForm({
                 onChange={(e) => onKindChange(e.target.value as ReviewResponseNodeKind)}
                 className={inputClassName}
               >
-                <option value="review_comment">review_comment</option>
-                <option value="agent_response">agent_response</option>
+                <option value="review_comment">comment</option>
+                <option value="agent_response">response</option>
                 <option value="note">note</option>
                 <option value="conclusion">conclusion</option>
               </select>
@@ -149,7 +149,7 @@ export function PlanReviewResponseForm({
                 <option value="">none</option>
                 {selectedRoundNodes.map((node, idx) => (
                   <option key={node.id} value={node.id}>
-                    #{idx + 1} {node.authorRole}/{node.kind} {node.id.slice(0, 8)}
+                    #{idx + 1} {node.authorRole}/{node.kind === 'review_comment' ? 'comment' : node.kind === 'agent_response' ? 'response' : node.kind} {node.id.slice(0, 8)}
                   </option>
                 ))}
               </select>

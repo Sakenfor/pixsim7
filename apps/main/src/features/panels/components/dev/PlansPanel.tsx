@@ -1453,7 +1453,7 @@ function PlanDetailView({
       if (revisionRaw) {
         const parsed = Number.parseInt(revisionRaw, 10);
         if (!Number.isFinite(parsed) || parsed < 1) {
-          setReviewError('Round revision must be a positive integer.');
+          setReviewError('Iteration revision must be a positive integer.');
           return;
         }
         payload.review_revision = parsed;
@@ -1466,10 +1466,10 @@ function PlanDetailView({
       setNewRoundRevision('');
       setNewRoundNote('');
       setSelectedRoundId(round.id);
-      setReviewNotice(`Created review round #${round.roundNumber}.`);
+      setReviewNotice(`Created iteration #${round.roundNumber}.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create review round'));
+      setReviewError(toErrorMessage(err, 'Failed to create iteration'));
     } finally {
       setCreatingRound(false);
     }
@@ -1478,7 +1478,7 @@ function PlanDetailView({
   const handleUpdateRound = useCallback(
     async (payload: PlanReviewRoundUpdateRequest, successMessage: string) => {
       if (!selectedRound) {
-        setReviewError('Select a review round first.');
+        setReviewError('Select an iteration first.');
         return;
       }
       setUpdatingRound(true);
@@ -1492,7 +1492,7 @@ function PlanDetailView({
         setReviewNotice(successMessage);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update review round'));
+        setReviewError(toErrorMessage(err, 'Failed to update iteration'));
       } finally {
         setUpdatingRound(false);
       }
@@ -1502,7 +1502,7 @@ function PlanDetailView({
 
   const handleSaveRoundState = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select a review round first.');
+      setReviewError('Select an iteration first.');
       return;
     }
 
@@ -1512,7 +1512,7 @@ function PlanDetailView({
     const currentConclusion = (selectedRound.conclusion ?? '').trim();
 
     if (roundStatusDraft === 'concluded' && !nextConclusion) {
-      setReviewError('Concluded rounds require a non-empty conclusion.');
+      setReviewError('Concluded iterations require a non-empty conclusion.');
       return;
     }
 
@@ -1524,11 +1524,11 @@ function PlanDetailView({
     }
 
     if (!payload.status && payload.note === undefined && payload.conclusion === undefined) {
-      setReviewNotice('No round changes to save.');
+      setReviewNotice('No iteration changes to save.');
       return;
     }
 
-    await handleUpdateRound(payload, `Updated review round #${selectedRound.roundNumber}.`);
+    await handleUpdateRound(payload, `Updated iteration #${selectedRound.roundNumber}.`);
   }, [
     handleUpdateRound,
     roundConclusionDraft,
@@ -1539,11 +1539,11 @@ function PlanDetailView({
 
   const handleCreateNode = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select a review round first.');
+      setReviewError('Select an iteration first.');
       return;
     }
     if (selectedRound.status === 'concluded') {
-      setReviewError('Round is concluded. Re-open it before adding new responses.');
+      setReviewError('Iteration is concluded. Re-open it before adding new responses.');
       return;
     }
 
@@ -1706,17 +1706,17 @@ function PlanDetailView({
             { timeout_seconds: 240, create_round_if_missing: true, spawn_if_missing: false },
           );
           const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
-          setReviewNotice(`Request created & dispatched: ${result.message}${nodeSuffix}`);
+          setReviewNotice(`Task created & dispatched: ${result.message}${nodeSuffix}`);
         } catch {
-          setReviewNotice('Request created but auto-dispatch failed - dispatch manually.');
+          setReviewNotice('Task created but auto-dispatch failed - dispatch manually.');
         }
       } else {
         const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
-        setReviewNotice(`Review request created${dispatchLabel}.`);
+        setReviewNotice(`Agent task created${dispatchLabel}.`);
       }
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create review request'));
+      setReviewError(toErrorMessage(err, 'Failed to create agent task'));
     } finally {
       setCreatingRequest(false);
     }
@@ -1750,10 +1750,10 @@ function PlanDetailView({
           `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
           payload,
         );
-        setReviewNotice(`Review request '${request.title}' set to ${status}.`);
+        setReviewNotice(`Agent task '${request.title}' set to ${status}.`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update review request'));
+        setReviewError(toErrorMessage(err, 'Failed to update agent task'));
       } finally {
         setUpdatingRequestId(null);
       }
@@ -1773,7 +1773,7 @@ function PlanDetailView({
         );
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dismiss review request'));
+        setReviewError(toErrorMessage(err, 'Failed to dismiss agent task'));
       }
     },
     [encodedPlanId, loadReviewGraph],
@@ -1799,7 +1799,7 @@ function PlanDetailView({
         setReviewNotice(`${result.message}${nodeSuffix}`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dispatch review request'));
+        setReviewError(toErrorMessage(err, 'Failed to dispatch agent task'));
       } finally {
         setDispatchingRequestId(null);
       }
@@ -1822,10 +1822,10 @@ function PlanDetailView({
           spawn_if_missing: false,
         },
       );
-      setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open requests.`);
+      setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open tasks.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to dispatch open review requests'));
+      setReviewError(toErrorMessage(err, 'Failed to dispatch open agent tasks'));
     } finally {
       setDispatchingTick(false);
     }
@@ -2210,8 +2210,8 @@ function PlanDetailView({
         badge={
           <span className="text-[10px] text-neutral-400">
             {reviewGraph
-              ? `${reviewGraph.rounds.length} rounds`
-              : `${detail?.reviewRoundCount ?? 0} rounds`}
+              ? `${reviewGraph.rounds.length} iterations`
+              : `${detail?.reviewRoundCount ?? 0} iterations`}
           </span>
         }
         actions={
@@ -2236,12 +2236,12 @@ function PlanDetailView({
           <div className="space-y-3">
             <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2">
               <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Review Rounds
+                Iterations
               </div>
               {loadingReviews && reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading review graph...</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading task data...</div>
               ) : reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">No review rounds yet.</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">No iterations yet.</div>
               ) : (
                 <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
                   {reviewRounds.map((round) => {
@@ -2258,14 +2258,14 @@ function PlanDetailView({
                       >
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                            Round #{round.roundNumber}
+                            Iteration #{round.roundNumber}
                           </span>
                           <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
                             {round.status}
                           </Badge>
                         </div>
                         <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          {reviewNodeCountByRound.get(round.id) ?? 0} nodes
+                          {reviewNodeCountByRound.get(round.id) ?? 0} entries
                           {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
                         </div>
                         {(round.actorAgentId || round.actorRunId || round.createdBy) && (
@@ -2293,7 +2293,7 @@ function PlanDetailView({
             </div>
 
             <DisclosureSection
-              label="Start New Round"
+              label="Start New Iteration"
               defaultOpen={false}
               className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
               contentClassName="space-y-2"
@@ -2327,11 +2327,11 @@ function PlanDetailView({
                   value={newRoundNote}
                   onChange={(e) => setNewRoundNote(e.target.value)}
                   className={inputClassName}
-                  placeholder="Optional context for this round"
+                  placeholder="Optional context for this iteration"
                 />
               </label>
               <Button size="sm" onClick={() => void handleCreateRound()} disabled={creatingRound}>
-                {creatingRound ? 'Creating...' : 'Create Round'}
+                {creatingRound ? 'Creating...' : 'Create Iteration'}
               </Button>
             </DisclosureSection>
           </div>
@@ -2340,7 +2340,7 @@ function PlanDetailView({
             <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  {selectedRound ? `Round #${selectedRound.roundNumber}` : 'Round State'}
+                  {selectedRound ? `Iteration #${selectedRound.roundNumber}` : 'Iteration State'}
                 </span>
                 {selectedRound && (
                   <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
@@ -2356,7 +2356,7 @@ function PlanDetailView({
 
               {!selectedRound ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a review round to inspect responses.
+                  Select an iteration to inspect responses.
                 </div>
               ) : (
                 <>
@@ -2380,7 +2380,7 @@ function PlanDetailView({
                         value={roundNoteDraft}
                         onChange={(e) => setRoundNoteDraft(e.target.value)}
                         className={inputClassName}
-                        placeholder="Optional round note"
+                        placeholder="Optional iteration note"
                       />
                     </label>
                   </div>
@@ -2397,7 +2397,7 @@ function PlanDetailView({
 
                   <div className="flex items-center gap-2">
                     <Button size="sm" onClick={() => void handleSaveRoundState()} disabled={updatingRound}>
-                      {updatingRound ? 'Saving...' : 'Save Round State'}
+                      {updatingRound ? 'Saving...' : 'Save Iteration State'}
                     </Button>
                     <span className="text-[10px] text-neutral-400">
                       Updated {formatDateTime(selectedRound.updatedAt)}
@@ -2408,7 +2408,7 @@ function PlanDetailView({
             </div>
 
             <DisclosureSection
-              label="Review Requests"
+              label="Agent Tasks"
               defaultOpen
               className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
               contentClassName="space-y-2"
@@ -2428,7 +2428,7 @@ function PlanDetailView({
 
               {selectedRoundRequests.length === 0 ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No review requests yet.
+                  No agent tasks yet.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -2496,11 +2496,11 @@ function PlanDetailView({
             >
               {!selectedRound ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a review round to view discussion.
+                  Select an iteration to view discussion.
                 </div>
               ) : selectedRoundNodes.length === 0 ? (
                 <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No responses yet in this round.
+                  No responses yet in this iteration.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[24rem] overflow-y-auto pr-1">
@@ -2806,7 +2806,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             {reviewCount > 0 && (
               <span
                 className={`flex items-center gap-0.5 ${activeReviews > 0 ? '' : 'opacity-50'}`}
-                title={`${reviewCount} review round${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
+                title={`${reviewCount} iteration${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
               >
                 <Icon name="messageSquare" size={9} />
                 <span className="text-[9px] leading-none">

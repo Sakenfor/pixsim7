@@ -115,7 +115,7 @@ export function PlanReviewRequestForm({
 
   return (
     <DisclosureSection
-      label="New Request"
+      label="New Task"
       defaultOpen={false}
       className="rounded border border-neutral-200 dark:border-neutral-700 p-2"
       contentClassName="space-y-2"
@@ -123,7 +123,7 @@ export function PlanReviewRequestForm({
       {/* Title */}
       <label
         className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="Short description of what you want the reviewer to check"
+        title="Short description of the task"
       >
         Title
         <input
@@ -324,7 +324,7 @@ export function PlanReviewRequestForm({
       {/* Body */}
       <label
         className="text-[11px] text-neutral-600 dark:text-neutral-400 block"
-        title="Detailed instructions for the reviewer"
+        title="Detailed instructions for the agent"
       >
         Body
         <textarea
@@ -332,12 +332,12 @@ export function PlanReviewRequestForm({
           onChange={(e) => onBodyChange(e.target.value)}
           className={textAreaClassName}
           rows={3}
-          placeholder="What should the reviewer verify or challenge?"
+          placeholder="What should the agent do? Be specific about scope and acceptance criteria."
         />
       </label>
 
       <Button size="sm" onClick={() => void onSubmit()} disabled={creating || !profileId}>
-        {creating ? 'Creating...' : 'Create Review Request'}
+        {creating ? 'Creating...' : 'Create Task'}
       </Button>
       {!profileId && (
         <div className="text-[10px] text-amber-600 dark:text-amber-400">

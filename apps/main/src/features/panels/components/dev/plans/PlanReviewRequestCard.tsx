@@ -128,7 +128,7 @@ export function PlanReviewRequestCard({
         )}
         {request.roundId && (
           <Badge color="gray" className="text-[9px]">
-            round-bound
+            iteration-bound
           </Badge>
         )}
         <span className="text-[10px] text-neutral-400">{formatDateTime(request.createdAt)}</span>
@@ -285,18 +285,18 @@ const STATUS_ACTIONS: Record<
   }>
 > = {
   open: [
-    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this request -- no review needed' },
+    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this task -- no longer needed' },
   ],
   in_progress: [
-    { to: 'fulfilled', label: 'Mark Fulfilled', tooltip: 'Mark as completed -- review is done' },
+    { to: 'fulfilled', label: 'Mark Fulfilled', tooltip: 'Mark as completed -- task is done' },
     { to: 'open', label: 'Reopen', tooltip: 'Return to open -- agent stopped or needs retry' },
-    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this request' },
+    { to: 'cancelled', label: 'Cancel', tooltip: 'Cancel this task' },
   ],
   fulfilled: [
-    { to: 'open', label: 'Reopen', tooltip: 'Reopen for another review pass' },
+    { to: 'open', label: 'Reopen', tooltip: 'Reopen for another pass' },
   ],
   cancelled: [
-    { to: 'open', label: 'Reopen', tooltip: 'Reopen this cancelled request' },
+    { to: 'open', label: 'Reopen', tooltip: 'Reopen this cancelled task' },
   ],
 };
 
@@ -325,7 +325,7 @@ function RequestActions({
           size="sm"
           onClick={() => void onDispatchRequest(request)}
           disabled={busy}
-          title="Send this request to an available agent for review"
+          title="Send this task to an available agent"
         >
           {dispatchingRequestId === request.id ? 'Dispatching...' : 'Dispatch'}
         </Button>
@@ -346,7 +346,7 @@ function RequestActions({
           size="sm"
           onClick={() => void onDismissRequest(request)}
           disabled={busy}
-          title="Hide this request from the list without changing its status"
+          title="Hide this task from the list without changing its status"
         >
           Dismiss
         </Button>
