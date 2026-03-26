@@ -7,7 +7,6 @@
  */
 
 import {
-  Badge,
   Button,
   EmptyState,
   FilterPillGroup,
@@ -36,7 +35,6 @@ import {
   PLAN_TYPE_ICONS,
   STAGE_ICONS,
   stageLabelFromValue,
-  STATUS_COLORS,
   STATUS_DOT_CLASSES,
   STATUS_ICONS,
   STATUS_ORDER,
