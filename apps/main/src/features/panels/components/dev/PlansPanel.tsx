@@ -22,16 +22,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
-import { PlanDetailView } from './plans/PlanDetailView';
 import {
   FALLBACK_PLAN_STAGE_OPTIONS,
   PLAN_TYPE_ICONS,
-  STAGE_BADGE_COLORS,
   STAGE_ICONS,
   STATUS_DOT_CLASSES,
   STATUS_ICONS,
   STATUS_ORDER,
 } from './plans/planConstants';
+import { PlanDetailView } from './plans/PlanDetailView';
 import type {
   PlanStageOptionEntry,
   PlanStagesResponse,
