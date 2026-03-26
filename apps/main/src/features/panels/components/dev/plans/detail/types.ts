@@ -1,7 +1,14 @@
-import type { Checkpoint } from './PlanCheckpointList';
+/**
+ * Shared types and constants for PlanDetailView sub-components.
+ *
+ * Extracted from PlansPanel.tsx during split — no logic changes.
+ */
 
-// Re-export Checkpoint so consumers don't need a separate import
-export type { Checkpoint };
+import type { Checkpoint } from '../PlanCheckpointList';
+
+// =============================================================================
+// Types
+// =============================================================================
 
 export interface PlanTarget {
   type: string;
@@ -398,4 +405,245 @@ export interface AgentSessionsSnapshot {
 export interface PlanRevisionConflict {
   expectedRevision: number;
   currentRevision: number;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+export const STATUS_ORDER = ['active', 'done', 'parked'] as const;
+
+export const FALLBACK_PLAN_STAGE_OPTIONS: PlanStageOptionEntry[] = [
+  { value: 'backlog', label: 'Backlog', description: 'Known work not yet actively proposed.', aliases: [] },
+  { value: 'proposed', label: 'Proposed', description: 'Idea has scope, but implementation has not started.', aliases: [] },
+  { value: 'discovery', label: 'Discovery', description: 'Research, analysis, and requirement clarification.', aliases: [] },
+  { value: 'design', label: 'Design', description: 'Architecture/contract/design decisions are being finalized.', aliases: [] },
+  { value: 'implementation', label: 'Implementation', description: 'Code/content changes are actively being built.', aliases: [] },
+  { value: 'validation', label: 'Validation', description: 'Testing, verification, and stabilization before release.', aliases: [] },
+  { value: 'rollout', label: 'Rollout', description: 'Deployment, migration, and staged release execution.', aliases: [] },
+  { value: 'completed', label: 'Completed', description: 'Work is fully delivered and closed out.', aliases: [] },
+];
+
+export const STAGE_ICONS: Record<string, string> = {
+  backlog: 'pause',
+  proposed: 'fileText',
+  discovery: 'search',
+  design: 'checkSquare',
+  implementation: 'code',
+  validation: 'search',
+  rollout: 'git-branch',
+  completed: 'checkCircle',
+  // Legacy values kept to avoid a visual regression while old rows are still in DB.
+  'design-approved': 'checkSquare',
+  'implementation-ready': 'code',
+  'in-progress': 'play',
+  complete: 'checkCircle',
+};
+
+export const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  active: 'green',
+  done: 'blue',
+  parked: 'gray',
+  blocked: 'red',
+};
+
+export const PRIORITY_COLORS: Record<string, 'red' | 'orange' | 'gray'> = {
+  high: 'red',
+  medium: 'orange',
+  low: 'gray',
+};
+
+export const STATUS_ICONS: Record<string, string> = {
+  active: 'play',
+  done: 'checkCircle',
+  parked: 'pause',
+};
+
+export const STATUS_DOT_CLASSES: Record<string, string> = {
+  active: 'bg-green-500',
+  done: 'bg-blue-400',
+  parked: 'bg-neutral-400',
+  blocked: 'bg-red-500',
+};
+
+export const PLAN_TYPE_ICONS: Record<string, string> = {
+  feature: 'sparkles',
+  bugfix: 'wrench',
+  refactor: 'refreshCw',
+  exploration: 'search',
+  task: 'checkSquare',
+  proposal: 'fileText',
+};
+
+export const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  backlog: 'gray',
+  proposed: 'gray',
+  discovery: 'blue',
+  design: 'blue',
+  implementation: 'orange',
+  validation: 'orange',
+  rollout: 'blue',
+  completed: 'green',
+  'implementation-ready': 'blue',
+  'in-progress': 'orange',
+  complete: 'green',
+};
+
+export const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
+
+export const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  open: 'blue',
+  changes_requested: 'orange',
+  approved: 'green',
+  concluded: 'gray',
+};
+
+export const REVIEW_REQUEST_STATUS_COLORS: Record<ReviewRequestStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  open: 'blue',
+  in_progress: 'orange',
+  fulfilled: 'green',
+  cancelled: 'gray',
+};
+
+export const REVIEW_REQUEST_DISPATCH_COLORS: Record<'assigned' | 'queued' | 'unassigned', 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  assigned: 'green',
+  queued: 'orange',
+  unassigned: 'gray',
+};
+
+export const REVIEW_AUTHOR_ROLE_COLORS: Record<ReviewAuthorRole, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  reviewer: 'orange',
+  author: 'blue',
+  agent: 'green',
+  system: 'gray',
+};
+
+export const REVIEW_SEVERITY_COLORS: Record<NonNullable<PlanReviewNode['severity']>, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  info: 'gray',
+  low: 'blue',
+  medium: 'orange',
+  high: 'red',
+  critical: 'red',
+};
+
+export const REVIEW_RELATIONS: { value: PlanReviewLink['relation']; label: string; requiresTargetNode: boolean }[] = [
+  { value: 'replies_to', label: 'Replies To', requiresTargetNode: false },
+  { value: 'addresses', label: 'Addresses', requiresTargetNode: false },
+  { value: 'because_of', label: 'Because Of', requiresTargetNode: true },
+  { value: 'supports', label: 'Supports', requiresTargetNode: true },
+  { value: 'contradicts', label: 'Contradicts', requiresTargetNode: true },
+  { value: 'supersedes', label: 'Supersedes', requiresTargetNode: true },
+];
+
+export const REVIEW_CAUSAL_RELATIONS = new Set<PlanReviewLink['relation']>([
+  'because_of',
+  'supports',
+  'contradicts',
+  'supersedes',
+]);
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+export function formatDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+export function formatDateTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function toErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+export function extractRevisionConflict(err: unknown): PlanRevisionConflict | null {
+  const resp = (err as { response?: { status?: number; data?: { detail?: Record<string, unknown> } } })?.response;
+  if (resp?.status !== 409) return null;
+  const detail = resp.data?.detail;
+  if (detail?.error !== 'plan_revision_conflict') return null;
+  return {
+    expectedRevision: detail.expected_revision as number,
+    currentRevision: detail.current_revision as number,
+  };
+}
+
+export function isCanonicalPlanId(value: string): boolean {
+  return PLAN_ID_RE.test(value);
+}
+
+export function humanizeToken(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export function stageLabelFromValue(stage: string, stageOptionsByValue: Map<string, PlanStageOptionEntry>): string {
+  const fromOptions = stageOptionsByValue.get(stage)?.label;
+  if (fromOptions) return fromOptions;
+  return stage
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map(humanizeToken)
+    .join(' ');
+}
+
+const SOURCE_REF_RE = /([A-Za-z0-9_./\\-]+\.[A-Za-z0-9_]+):(\d+)(?:-(\d+))?/g;
+
+export function extractSourceRefs(text: string): SourceRefMatch[] {
+  if (!text) return [];
+  const out: SourceRefMatch[] = [];
+  const seen = new Set<string>();
+
+  for (const match of text.matchAll(SOURCE_REF_RE)) {
+    const path = (match[1] ?? '').replace(/\\/g, '/');
+    const startRaw = match[2] ?? '';
+    const endRaw = match[3] ?? startRaw;
+    const startLine = Number.parseInt(startRaw, 10);
+    const endLine = Number.parseInt(endRaw, 10);
+    if (!path || !Number.isFinite(startLine) || !Number.isFinite(endLine)) continue;
+    if (startLine < 1 || endLine < startLine) continue;
+    const key = `${path}:${startLine}-${endLine}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      raw: `${path}:${startLine}${endLine !== startLine ? `-${endLine}` : ''}`,
+      path,
+      startLine,
+      endLine,
+    });
+  }
+
+  return out;
+}
+
+export function formatReviewRelation(relation: PlanReviewLink['relation']): string {
+  return relation.replace(/_/g, ' ');
+}
+
+export function buildAssigneeOptionValue(kind: 'live' | 'recent', id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function parseAssigneeOptionValue(value: string): { kind: 'live' | 'recent'; id: string } | null {
+  if (!value.includes(':')) return null;
+  const [kindRaw, ...rest] = value.split(':');
+  const id = rest.join(':').trim();
+  if (!id) return null;
+  if (kindRaw === 'live' || kindRaw === 'recent') {
+    return { kind: kindRaw, id };
+  }
+  return null;
 }

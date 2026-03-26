@@ -1,39 +1,28 @@
-import {
-  Badge,
-  Button,
-  DisclosureSection,
-  EmptyState,
-  SectionHeader,
-} from '@pixsim7/shared.ui';
+/**
+ * PlanDetailView — orchestrator component.
+ *
+ * Holds all useState, useCallback, useMemo, useEffect hooks.
+ * Delegates rendering to PlanDetailHeader, PlanDetailSections,
+ * and PlanAgentTasksSection.
+ *
+ * Extracted from PlansPanel.tsx during split — no logic changes.
+ */
+
+import { EmptyState } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
-import { formatActorLabel } from '@lib/identity/actorDisplay';
 
-import { CheckpointList, getCheckpointPointProgress } from './PlanCheckpointList';
-import { ClickableBadge } from './ClickableBadge';
-import { ParticipantEntry } from './ParticipantEntry';
-import { PlanReviewDiscussion } from './PlanReviewDiscussion';
-import { PlanReviewRequestCard } from './PlanReviewRequestCard';
-import { PlanReviewRequestForm } from './PlanReviewRequestForm';
-import { PlanReviewResponseForm } from './PlanReviewResponseForm';
-import {
-  PRIORITY_COLORS,
-  REVIEW_AUTHOR_ROLE_COLORS,
-  REVIEW_CAUSAL_RELATIONS,
-  REVIEW_RELATIONS,
-  REVIEW_REQUEST_DISPATCH_COLORS,
-  REVIEW_REQUEST_STATUS_COLORS,
-  REVIEW_ROUND_STATUS_COLORS,
-  REVIEW_SEVERITY_COLORS,
-  STAGE_BADGE_COLORS,
-  STATUS_COLORS,
-} from './planConstants';
+import { PlanAgentTasksSection } from './PlanAgentTasksSection';
+import { PlanDetailHeader } from './PlanDetailHeader';
+import { PlanDetailSections } from './PlanDetailSections';
 import type {
   AgentSessionSnapshot,
   AgentSessionsSnapshot,
   PlanDetail,
+  PlanParticipantsResponse,
+  PlanReviewAssigneesResponse,
   PlanReviewGraphResponse,
   PlanReviewLink,
   PlanReviewNode,
@@ -47,9 +36,8 @@ import type {
   PlanRequestCreateRequest,
   PlanRequestDispatchRequest,
   PlanRequestDispatchResponse,
-  PlanReviewAssigneesResponse,
+  PlanRequestUpdateRequest,
   PlanReviewDispatchTickResponse,
-  PlanParticipantsResponse,
   PlanSourcePreviewResponse,
   PlanStageOptionEntry,
   PlanUpdateResponse,
@@ -61,18 +49,14 @@ import type {
   ReviewRequestQueuePolicy,
   ReviewRoundStatus,
   SourceRefMatch,
-} from './planTypes';
+} from './types';
 import {
-  buildAssigneeOptionValue,
   extractRevisionConflict,
-  extractSourceRefs,
-  formatDate,
-  formatDateTime,
-  formatReviewRelation,
   parseAssigneeOptionValue,
-  stageLabelFromValue,
+  REVIEW_CAUSAL_RELATIONS,
+  REVIEW_RELATIONS,
   toErrorMessage,
-} from './planUtils';
+} from './types';
 
 export function PlanDetailView({
   planId,
@@ -545,13 +529,13 @@ export function PlanDetailView({
   }, [reviewGraph?.links, selectedRoundId, selectedRoundNodes]);
 
   const selectedRoundThread = useMemo(() => {
-    const nodeById = new Map(selectedRoundNodes.map((node) => [node.id, node]));
+    const nodeByIdLocal = new Map(selectedRoundNodes.map((node) => [node.id, node]));
     const childrenByParent = new Map<string, PlanReviewNode[]>();
     const childIds = new Set<string>();
 
     for (const node of selectedRoundNodes) {
       const parentId = selectedRoundThreadRefByChild.get(node.id)?.parentId;
-      if (!parentId || !nodeById.has(parentId)) continue;
+      if (!parentId || !nodeByIdLocal.has(parentId)) continue;
       childIds.add(node.id);
       const siblings = childrenByParent.get(parentId) ?? [];
       siblings.push(node);
@@ -943,7 +927,7 @@ export function PlanDetailView({
   ]);
 
   const handleUpdateRequestStatus = useCallback(
-    async (request: PlanRequest, status: ReviewRequestStatus) => {
+    async (request: PlanRequest, status: 'open' | 'in_progress' | 'fulfilled' | 'cancelled') => {
       if (request.status === status) return;
       setUpdatingRequestId(request.id);
       setReviewError('');
@@ -1066,737 +1050,141 @@ export function PlanDetailView({
 
   if (!detail) return null;
 
-  const pointProgressRows = detail.checkpoints
-    ?.map((cp) => getCheckpointPointProgress(cp))
-    .filter((progress): progress is { done: number; total: number } => progress !== null) ?? [];
-  const donePoints = pointProgressRows.reduce((sum, progress) => sum + progress.done, 0);
-  const totalPoints = pointProgressRows.reduce((sum, progress) => sum + progress.total, 0);
-  const overallPointsProgress = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : null;
-  const totalSteps = detail.checkpoints?.reduce((sum, cp) => sum + (cp.steps?.length ?? 0), 0) ?? 0;
-  const doneSteps = detail.checkpoints?.reduce((sum, cp) => sum + (cp.steps?.filter((s) => s.done).length ?? 0), 0) ?? 0;
-  const overallStepProgress = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : null;
-  const overallProgress = overallPointsProgress ?? overallStepProgress;
-  const overallProgressLabel = overallPointsProgress !== null
-    ? `${donePoints}/${totalPoints} pts`
-    : `${doneSteps}/${totalSteps} steps`;
-
-  const statusOptions = [
-    { value: 'active', label: 'Active', color: 'green' as const },
-    { value: 'parked', label: 'Parked', color: 'gray' as const },
-    { value: 'done', label: 'Done', color: 'blue' as const },
-    { value: 'blocked', label: 'Blocked', color: 'red' as const },
-  ];
-
-  const priorityOptions = [
-    { value: 'high', label: 'High', color: 'red' as const },
-    { value: 'normal', label: 'Normal', color: 'orange' as const },
-    { value: 'low', label: 'Low', color: 'gray' as const },
-  ];
-  const stageBadgeOptions = stageOptions.map((stage) => ({
-    value: stage.value,
-    label: stage.label,
-    color: STAGE_BADGE_COLORS[stage.value] ?? 'gray',
-  }));
-  const stageLabel = stageLabelFromValue(detail.stage, stageOptionsByValue);
-
   return (
     <div className="p-4 space-y-4">
-      {/* Plan lineage - parent -> this -> children */}
-      {(detail.parentId || detail.children.length > 0) && (
-        <div className="flex items-center gap-1 flex-wrap text-[10px]">
-          {detail.parentId && (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigatePlan?.(detail.parentId!)}
-                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
-                title={detail.parentId}
-              >
-                {detail.parentId}
-              </button>
-              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
-            </>
-          )}
-          <span className="font-medium text-neutral-700 dark:text-neutral-300 truncate max-w-[200px]">
-            {detail.title}
-          </span>
-          {detail.children.map((child) => (
-            <span key={child.id} className="flex items-center gap-1">
-              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
-              <button
-                type="button"
-                onClick={() => onNavigatePlan?.(child.id)}
-                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
-                title={`${child.title} (${child.status})`}
-              >
-                {child.title}
-              </button>
-              <Badge color={STATUS_COLORS[child.status] ?? 'gray'} className="text-[9px]">{child.status}</Badge>
-            </span>
-          ))}
-        </div>
-      )}
+      <PlanDetailHeader
+        detail={detail}
+        stageOptions={stageOptions}
+        stageOptionsByValue={stageOptionsByValue}
+        updating={updating}
+        lastResult={lastResult}
+        onApplyUpdate={(updates) => void applyUpdate(updates)}
+        onNavigatePlan={onNavigatePlan}
+      />
 
-      {/* Header with clickable status/priority badges */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            {detail.title}
-          </h2>
-          <ClickableBadge
-            value={detail.status}
-            color={STATUS_COLORS[detail.status] ?? 'gray'}
-            options={statusOptions}
-            onSelect={(v) => void applyUpdate({ status: v })}
-            disabled={updating}
-          />
-          <ClickableBadge
-            value={detail.priority}
-            color={PRIORITY_COLORS[detail.priority] ?? 'gray'}
-            options={priorityOptions}
-            onSelect={(v) => void applyUpdate({ priority: v })}
-            disabled={updating}
-          />
-          <ClickableBadge
-            value={detail.stage}
-            displayValue={stageLabel}
-            color={STAGE_BADGE_COLORS[detail.stage] ?? 'gray'}
-            options={stageBadgeOptions}
-            onSelect={(v) => void applyUpdate({ stage: v })}
-            disabled={updating}
-          />
-          <Badge color="gray" className="text-[10px]">{detail.planType}</Badge>
-          {detail.visibility !== 'public' && (
-            <Badge color={detail.visibility === 'private' ? 'orange' : 'blue'} className="text-[10px]">
-              {detail.visibility}
-            </Badge>
-          )}
-        </div>
-        <div className="text-sm text-neutral-500 dark:text-neutral-400">{detail.summary}</div>
-        {lastResult && (
-          <div className={`text-xs mt-1 ${lastResult.startsWith('Failed') ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-            {lastResult}
-          </div>
-        )}
-      </div>
+      <PlanDetailSections
+        detail={detail}
+        forgeUrlTemplate={forgeUrlTemplate}
+        loadingParticipants={loadingParticipants}
+        planParticipants={planParticipants}
+        reviewerParticipants={reviewerParticipants}
+        builderParticipants={builderParticipants}
+        reviewProfileLabels={reviewProfileLabels}
+        coverage={coverage}
+        planExpanded={planExpanded}
+        onTogglePlanExpanded={() => setPlanExpanded((e) => !e)}
+        onNavigatePlan={onNavigatePlan}
+        sourcePreview={sourcePreview}
+        sourcePreviewError={sourcePreviewError}
+        onClearSourcePreview={() => setSourcePreview(null)}
+      />
 
-      {/* Compact metadata row */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
-        <span className="flex items-center gap-1">
-          <Icon name="user" size={11} className="text-neutral-400" />
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.owner}</span>
-        </span>
-        <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-        <span>Stage: <span className="font-medium text-neutral-700 dark:text-neutral-300">{stageLabel}</span></span>
-        {overallProgress !== null ? (
-          <>
-            <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-            <span>{overallProgress}% <span className="text-neutral-400">({overallProgressLabel})</span></span>
-          </>
-        ) : (
-          <>
-            <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-            <span>{detail.scope}</span>
-          </>
-        )}
-        <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-        <span>{formatDate(detail.lastUpdated)}</span>
-      </div>
-
-      {(loadingParticipants || (planParticipants?.participants.length ?? 0) > 0) && (
-        <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
-          <SectionHeader
-            trailing={(
-              <span className="text-[10px] text-neutral-400">
-                {loadingParticipants
-                  ? 'Refreshing...'
-                  : `${planParticipants?.participants.length ?? 0} tracked`}
-              </span>
-            )}
-          >
-            Participants
-          </SectionHeader>
-          {!loadingParticipants && (planParticipants?.participants.length ?? 0) === 0 ? (
-            <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-              No attributed participants yet.
-            </div>
-          ) : (
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Builders ({builderParticipants.length})
-                </div>
-                <div className="space-y-1">
-                  {builderParticipants.map((participant) => (
-                    <ParticipantEntry
-                      key={participant.id}
-                      participant={participant}
-                      profileLabels={reviewProfileLabels}
-                    />
-                  ))}
-                  {builderParticipants.length === 0 && (
-                    <div className="text-[11px] text-neutral-400">None</div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Reviewers ({reviewerParticipants.length})
-                </div>
-                <div className="space-y-1">
-                  {reviewerParticipants.map((participant) => (
-                    <ParticipantEntry
-                      key={participant.id}
-                      participant={participant}
-                      profileLabels={reviewProfileLabels}
-                    />
-                  ))}
-                  {reviewerParticipants.length === 0 && (
-                    <div className="text-[11px] text-neutral-400">None</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Target */}
-      {detail.target && (
-        <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
-          <SectionHeader>Target</SectionHeader>
-          <div className="mt-1 flex items-center gap-2 text-xs">
-            <Badge color="blue" className="text-[10px]">{detail.target.type}</Badge>
-            <span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.target.id}</span>
-          </div>
-          <div className="text-xs text-neutral-500 mt-1">{detail.target.description}</div>
-          {detail.target.paths && detail.target.paths.length > 0 && (
-            <div className="mt-1 space-y-0.5">
-              {detail.target.paths.map((p) => (
-                <div key={p} className="text-[10px] text-neutral-400 font-mono">{p}</div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Checkpoints */}
-      {detail.checkpoints && detail.checkpoints.length > 0 && (
-        <CheckpointList checkpoints={detail.checkpoints} forgeUrlTemplate={forgeUrlTemplate} />
-      )}
-
-      {/* Tags */}
-      {detail.tags.length > 0 && (
-        <div>
-          <SectionHeader>Tags</SectionHeader>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {detail.tags.map((tag) => (
-              <Badge key={tag} color="gray" className="text-[10px]">{tag}</Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Code paths */}
-      {detail.codePaths.length > 0 && (
-        <div>
-          <SectionHeader>Code Paths ({detail.codePaths.length})</SectionHeader>
-          <div className="mt-1 space-y-0.5">
-            {detail.codePaths.map((p) => (
-              <div key={p} className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
-                {p}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Companions & Handoffs & Dependencies */}
-      {(detail.companions.length > 0 || detail.handoffs.length > 0 || detail.dependsOn.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {detail.companions.length > 0 && (
-            <div>
-              <SectionHeader>Companions ({detail.companions.length})</SectionHeader>
-              <div className="mt-1 space-y-0.5">
-                {detail.companions.map((c) => (
-                  <div key={c} className="text-xs text-neutral-600 dark:text-neutral-400">{c}</div>
-                ))}
-              </div>
-            </div>
-          )}
-          {detail.handoffs.length > 0 && (
-            <div>
-              <SectionHeader>Handoffs ({detail.handoffs.length})</SectionHeader>
-              <div className="mt-1 space-y-0.5">
-                {detail.handoffs.map((h) => (
-                  <div key={h} className="text-xs text-neutral-600 dark:text-neutral-400">{h}</div>
-                ))}
-              </div>
-            </div>
-          )}
-          {detail.dependsOn.length > 0 && (
-            <div>
-              <SectionHeader>Depends On</SectionHeader>
-              <div className="mt-1 space-y-0.5">
-                {detail.dependsOn.map((d) => (
-                  <div key={d} className="text-xs text-neutral-600 dark:text-neutral-400">{d}</div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sub-plans moved to lineage bar at top */}
-
-      {/* Test Coverage */}
-      {coverage && (coverage.explicit_suites.length > 0 || coverage.auto_discovered.length > 0) && (
-        <DisclosureSection
-          label="Test Coverage"
-          defaultOpen={false}
-          className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
-          contentClassName="space-y-2 mt-2"
-          badge={
-            <span className="text-[10px] text-neutral-400">
-              {coverage.explicit_suites.length + coverage.auto_discovered.length} suite{coverage.explicit_suites.length + coverage.auto_discovered.length !== 1 ? 's' : ''}
-            </span>
-          }
-        >
-          {coverage.explicit_suites.length > 0 && (
-            <div>
-              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Linked suites
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {coverage.explicit_suites.map((id) => (
-                  <Badge key={id} color="purple" className="text-[9px]">{id}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          {coverage.auto_discovered.length > 0 && (
-            <div>
-              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Auto-discovered ({coverage.auto_discovered.length})
-              </div>
-              <div className="space-y-1">
-                {coverage.auto_discovered.map((suite) => (
-                  <div key={suite.suite_id} className="flex items-start gap-2 text-[11px]">
-                    <Badge color="green" className="text-[9px] shrink-0">{suite.kind || 'test'}</Badge>
-                    <div className="min-w-0">
-                      <span className="font-medium text-neutral-700 dark:text-neutral-300">{suite.suite_label}</span>
-                      {suite.matched_paths.length > 0 && (
-                        <div className="text-[9px] text-neutral-400 truncate">
-                          {suite.matched_paths[0]}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {coverage.code_paths.length > 0 && (
-            <div className="text-[9px] text-neutral-400 mt-1">
-              Scanning {coverage.code_paths.length} code path{coverage.code_paths.length !== 1 ? 's' : ''}
-            </div>
-          )}
-        </DisclosureSection>
-      )}
-
-      <DisclosureSection
-        label="Review Loop"
-        defaultOpen={false}
-        className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
-        contentClassName="space-y-3 mt-2"
-        badge={
-          <span className="text-[10px] text-neutral-400">
-            {reviewGraph ? `${reviewGraph.rounds.length} rounds` : '0 rounds'}
-          </span>
-        }
-        actions={
-          <Button size="sm" onClick={() => void loadReviewGraph()} disabled={loadingReviews}>
-            {loadingReviews ? 'Refreshing...' : 'Refresh'}
-          </Button>
-        }
-      >
-
-        {reviewError && (
-          <div className="text-xs text-red-600 dark:text-red-400">
-            {reviewError}
-          </div>
-        )}
-        {reviewNotice && !reviewError && (
-          <div className="text-xs text-green-600 dark:text-green-400">
-            {reviewNotice}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-          <div className="space-y-3">
-            <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2">
-              <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Review Rounds
-              </div>
-              {loadingReviews && reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading review graph...</div>
-              ) : reviewRounds.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">No review rounds yet.</div>
-              ) : (
-                <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                  {reviewRounds.map((round) => {
-                    const selected = round.id === selectedRoundId;
-                    return (
-                      <button
-                        key={round.id}
-                        onClick={() => setSelectedRoundId(round.id)}
-                        className={`w-full text-left p-2 rounded border text-xs ${
-                          selected
-                            ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
-                            : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                            Round #{round.roundNumber}
-                          </span>
-                          <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                            {round.status}
-                          </Badge>
-                        </div>
-                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          {reviewNodeCountByRound.get(round.id) ?? 0} nodes
-                          {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
-                        </div>
-                        {(round.actorAgentId || round.actorRunId || round.createdBy) && (
-                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                            {formatActorLabel(
-                              {
-                                principalType: round.actorPrincipalType,
-                                userId: round.actorUserId,
-                                agentId: round.actorAgentId,
-                                fallback: round.createdBy,
-                              },
-                              { profileLabels: reviewProfileLabels },
-                            )}
-                            {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
-                          </div>
-                        )}
-                        <div className="text-[10px] text-neutral-400 mt-0.5">
-                          {formatDateTime(round.updatedAt)}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <DisclosureSection
-              label="Start New Round"
-              defaultOpen={false}
-              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
-              contentClassName="space-y-2"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                  Status
-                  <select
-                    value={newRoundStatus}
-                    onChange={(e) => setNewRoundStatus(e.target.value as 'open' | 'changes_requested' | 'approved')}
-                    className={inputClassName}
-                  >
-                    <option value="open">open</option>
-                    <option value="changes_requested">changes_requested</option>
-                    <option value="approved">approved</option>
-                  </select>
-                </label>
-                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                  Revision
-                  <input
-                    value={newRoundRevision}
-                    onChange={(e) => setNewRoundRevision(e.target.value)}
-                    className={inputClassName}
-                    placeholder="optional"
-                  />
-                </label>
-              </div>
-              <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                Note
-                <input
-                  value={newRoundNote}
-                  onChange={(e) => setNewRoundNote(e.target.value)}
-                  className={inputClassName}
-                  placeholder="Optional context for this round"
-                />
-              </label>
-              <Button size="sm" onClick={() => void handleCreateRound()} disabled={creatingRound}>
-                {creatingRound ? 'Creating...' : 'Create Round'}
-              </Button>
-            </DisclosureSection>
-          </div>
-
-          <div className="space-y-3 xl:col-span-2">
-            <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  {selectedRound ? `Round #${selectedRound.roundNumber}` : 'Round State'}
-                </span>
-                {selectedRound && (
-                  <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
-                    {selectedRound.status}
-                  </Badge>
-                )}
-                {selectedRound?.reviewRevision != null && (
-                  <Badge color="gray" className="text-[9px]">
-                    rev {selectedRound.reviewRevision}
-                  </Badge>
-                )}
-              </div>
-
-              {!selectedRound ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a review round to inspect responses.
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                      Status
-                      <select
-                        value={roundStatusDraft}
-                        onChange={(e) => setRoundStatusDraft(e.target.value as ReviewRoundStatus)}
-                        className={inputClassName}
-                      >
-                        <option value="open">open</option>
-                        <option value="changes_requested">changes_requested</option>
-                        <option value="approved">approved</option>
-                        <option value="concluded">concluded</option>
-                      </select>
-                    </label>
-                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
-                      Note
-                      <input
-                        value={roundNoteDraft}
-                        onChange={(e) => setRoundNoteDraft(e.target.value)}
-                        className={inputClassName}
-                        placeholder="Optional round note"
-                      />
-                    </label>
-                  </div>
-
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
-                    Conclusion (required when status=concluded)
-                    <textarea
-                      value={roundConclusionDraft}
-                      onChange={(e) => setRoundConclusionDraft(e.target.value)}
-                      className={textAreaClassName}
-                      rows={2}
-                    />
-                  </label>
-
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={() => void handleSaveRoundState()} disabled={updatingRound}>
-                      {updatingRound ? 'Saving...' : 'Save Round State'}
-                    </Button>
-                    <span className="text-[10px] text-neutral-400">
-                      Updated {formatDateTime(selectedRound.updatedAt)}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <DisclosureSection
-              label="Review Requests"
-              defaultOpen
-              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
-              contentClassName="space-y-2"
-              badge={
-                <Badge color="gray" className="text-[9px]">{selectedRoundRequests.length}</Badge>
-              }
-              actions={
-                <Button
-                  size="sm"
-                  onClick={() => void handleDispatchTick()}
-                  disabled={dispatchingTick || !selectedRoundRequests.some((request) => request.status === 'open')}
-                >
-                  {dispatchingTick ? 'Dispatching...' : 'Dispatch Open'}
-                </Button>
-              }
-            >
-
-              {selectedRoundRequests.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No review requests yet.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                  {selectedRoundRequests.filter((r) => !r.dismissed).map((request) => (
-                    <PlanReviewRequestCard
-                      key={request.id}
-                      request={request}
-                      profileLabels={reviewProfileLabels}
-                      requestStatusColors={REVIEW_REQUEST_STATUS_COLORS}
-                      requestDispatchColors={REVIEW_REQUEST_DISPATCH_COLORS}
-                      agentSessions={agentSessions}
-                      nodeById={nodeById}
-                      selectedRoundNodeOrder={selectedRoundNodeOrder}
-                      dispatchingRequestId={dispatchingRequestId}
-                      updatingRequestId={updatingRequestId}
-                      onDispatchRequest={handleDispatchRequest}
-                      onUpdateRequestStatus={handleUpdateRequestStatus}
-                      onDismissRequest={handleDismissRequest}
-                      onFocusNode={focusLinkedNode}
-                      formatDateTime={formatDateTime}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <PlanReviewRequestForm
-                inputClassName={inputClassName}
-                textAreaClassName={textAreaClassName}
-                title={newRequestTitle}
-                body={newRequestBody}
-                profileId={newRequestProfileId}
-                method={newRequestMethod}
-                provider={newRequestProvider}
-                modelId={newRequestModelId}
-                mode={newRequestMode}
-                baseRevision={newRequestBaseRevision}
-                assignee={newRequestAssignee}
-                queuePolicy={newRequestQueuePolicy}
-                creating={creatingRequest}
-                loadingAssignees={loadingAssignees}
-                loadingProfiles={loadingProfiles}
-                profiles={reviewProfiles}
-                liveAssignees={liveAssigneeOptions}
-                recentAssignees={recentAssigneeOptions}
-                profileLabels={reviewProfileLabels}
-                buildAssigneeOptionValue={buildAssigneeOptionValue}
-                onTitleChange={setNewRequestTitle}
-                onBodyChange={setNewRequestBody}
-                onProfileChange={applyRequestProfileSelection}
-                onMethodChange={setNewRequestMethod}
-                onProviderChange={setNewRequestProvider}
-                onModelIdChange={setNewRequestModelId}
-                onModeChange={setNewRequestMode}
-                onBaseRevisionChange={setNewRequestBaseRevision}
-                onAssigneeChange={setNewRequestAssignee}
-                onQueuePolicyChange={setNewRequestQueuePolicy}
-                onSubmit={() => void handleCreateRequest()}
-              />
-            </DisclosureSection>
-
-            <DisclosureSection
-              label="Discussion"
-              defaultOpen
-              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
-              contentClassName="space-y-2"
-              badge={
-                <Badge color="gray" className="text-[9px]">{selectedRoundNodes.length}</Badge>
-              }
-            >
-              {!selectedRound ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a review round to view discussion.
-                </div>
-              ) : selectedRoundNodes.length === 0 ? (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                  No responses yet in this round.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[24rem] overflow-y-auto pr-1">
-                  <PlanReviewDiscussion
-                    roots={selectedRoundThread.roots}
-                    childrenByParent={selectedRoundThread.childrenByParent}
-                    threadRefByChild={selectedRoundThreadRefByChild}
-                    linksBySource={selectedRoundLinksBySource}
-                    selectedRoundId={selectedRoundId}
-                    nodeById={nodeById}
-                    nodeOrderById={selectedRoundNodeOrder}
-                    roundNumberById={reviewRoundNumberById}
-                    focusedNodeId={focusedNodeId}
-                    dismissedNodeIds={dismissedNodeIds}
-                    sourcePreview={sourcePreview}
-                    sourcePreviewError={sourcePreviewError}
-                    sourcePreviewLoadingKey={sourcePreviewLoadingKey}
-                    nodeCardRefs={nodeCardRefs}
-                    profileLabels={reviewProfileLabels}
-                    authorRoleColors={REVIEW_AUTHOR_ROLE_COLORS}
-                    severityColors={REVIEW_SEVERITY_COLORS}
-                    formatDateTime={formatDateTime}
-                    formatReviewRelation={formatReviewRelation}
-                    extractSourceRefs={extractSourceRefs}
-                    onPreviewSourceRef={previewSourceRef}
-                    onClearSourcePreview={() => setSourcePreview(null)}
-                    onFocusLinkedNode={focusLinkedNode}
-                    onReplyToNode={handleReplyToNode}
-                  />
-                </div>
-              )}
-            </DisclosureSection>
-
-            <PlanReviewResponseForm
-              inputClassName={inputClassName}
-              textAreaClassName={textAreaClassName}
-              selectedRoundStatus={selectedRound?.status ?? null}
-              selectedRoundNodes={selectedRoundNodes}
-              relationOptions={relationOptions}
-              composeTextareaRef={composeTextareaRef}
-              kind={newNodeKind}
-              authorRole={newNodeAuthorRole}
-              severity={newNodeSeverity}
-              body={newNodeBody}
-              refTargetId={newNodeRefTargetId}
-              refRelation={newNodeRefRelation}
-              refPlanAnchor={newNodeRefPlanAnchor}
-              refQuote={newNodeRefQuote}
-              creating={creatingNode}
-              onKindChange={setNewNodeKind}
-              onAuthorRoleChange={setNewNodeAuthorRole}
-              onSeverityChange={setNewNodeSeverity}
-              onBodyChange={setNewNodeBody}
-              onRefTargetIdChange={setNewNodeRefTargetId}
-              onRefRelationChange={setNewNodeRefRelation}
-              onRefPlanAnchorChange={setNewNodeRefPlanAnchor}
-              onRefQuoteChange={setNewNodeRefQuote}
-              onSubmit={() => void handleCreateNode()}
-            />
-          </div>
-        </div>
-      </DisclosureSection>
+      <PlanAgentTasksSection
+        reviewGraph={reviewGraph}
+        loadingReviews={loadingReviews}
+        reviewError={reviewError}
+        reviewNotice={reviewNotice}
+        reviewRounds={reviewRounds}
+        selectedRoundId={selectedRoundId}
+        selectedRound={selectedRound}
+        reviewNodeCountByRound={reviewNodeCountByRound}
+        reviewProfileLabels={reviewProfileLabels}
+        onSelectRound={setSelectedRoundId}
+        onLoadReviewGraph={loadReviewGraph}
+        newRoundStatus={newRoundStatus}
+        newRoundRevision={newRoundRevision}
+        newRoundNote={newRoundNote}
+        creatingRound={creatingRound}
+        onNewRoundStatusChange={setNewRoundStatus}
+        onNewRoundRevisionChange={setNewRoundRevision}
+        onNewRoundNoteChange={setNewRoundNote}
+        onCreateRound={() => void handleCreateRound()}
+        roundStatusDraft={roundStatusDraft}
+        roundNoteDraft={roundNoteDraft}
+        roundConclusionDraft={roundConclusionDraft}
+        updatingRound={updatingRound}
+        onRoundStatusDraftChange={setRoundStatusDraft}
+        onRoundNoteDraftChange={setRoundNoteDraft}
+        onRoundConclusionDraftChange={setRoundConclusionDraft}
+        onSaveRoundState={() => void handleSaveRoundState()}
+        selectedRoundRequests={selectedRoundRequests}
+        dispatchingRequestId={dispatchingRequestId}
+        updatingRequestId={updatingRequestId}
+        dispatchingTick={dispatchingTick}
+        agentSessions={agentSessions}
+        nodeById={nodeById}
+        selectedRoundNodeOrder={selectedRoundNodeOrder}
+        onDispatchRequest={(r) => void handleDispatchRequest(r)}
+        onUpdateRequestStatus={(r, s) => void handleUpdateRequestStatus(r, s)}
+        onDismissRequest={(r) => void handleDismissRequest(r)}
+        onDispatchTick={() => void handleDispatchTick()}
+        focusLinkedNode={focusLinkedNode}
+        newRequestTitle={newRequestTitle}
+        newRequestBody={newRequestBody}
+        newRequestProfileId={newRequestProfileId}
+        newRequestMethod={newRequestMethod}
+        newRequestModelId={newRequestModelId}
+        newRequestProvider={newRequestProvider}
+        newRequestMode={newRequestMode}
+        newRequestBaseRevision={newRequestBaseRevision}
+        newRequestAssignee={newRequestAssignee}
+        newRequestQueuePolicy={newRequestQueuePolicy}
+        creatingRequest={creatingRequest}
+        loadingAssignees={loadingAssignees}
+        loadingProfiles={loadingProfiles}
+        reviewProfiles={reviewProfiles}
+        liveAssigneeOptions={liveAssigneeOptions}
+        recentAssigneeOptions={recentAssigneeOptions}
+        onNewRequestTitleChange={setNewRequestTitle}
+        onNewRequestBodyChange={setNewRequestBody}
+        onApplyRequestProfileSelection={applyRequestProfileSelection}
+        onNewRequestMethodChange={setNewRequestMethod}
+        onNewRequestProviderChange={setNewRequestProvider}
+        onNewRequestModelIdChange={setNewRequestModelId}
+        onNewRequestModeChange={setNewRequestMode}
+        onNewRequestBaseRevisionChange={setNewRequestBaseRevision}
+        onNewRequestAssigneeChange={setNewRequestAssignee}
+        onNewRequestQueuePolicyChange={setNewRequestQueuePolicy}
+        onCreateRequest={() => void handleCreateRequest()}
+        selectedRoundNodes={selectedRoundNodes}
+        selectedRoundThread={selectedRoundThread}
+        selectedRoundThreadRefByChild={selectedRoundThreadRefByChild}
+        selectedRoundLinksBySource={selectedRoundLinksBySource}
+        reviewRoundNumberById={reviewRoundNumberById}
+        focusedNodeId={focusedNodeId}
+        dismissedNodeIds={dismissedNodeIds}
+        sourcePreview={sourcePreview}
+        sourcePreviewError={sourcePreviewError}
+        sourcePreviewLoadingKey={sourcePreviewLoadingKey}
+        nodeCardRefs={nodeCardRefs}
+        onPreviewSourceRef={previewSourceRef}
+        onClearSourcePreview={() => setSourcePreview(null)}
+        onReplyToNode={handleReplyToNode}
+        composeTextareaRef={composeTextareaRef}
+        newNodeKind={newNodeKind}
+        newNodeAuthorRole={newNodeAuthorRole}
+        newNodeSeverity={newNodeSeverity}
+        newNodeBody={newNodeBody}
+        newNodeRefTargetId={newNodeRefTargetId}
+        newNodeRefRelation={newNodeRefRelation}
+        newNodeRefPlanAnchor={newNodeRefPlanAnchor}
+        newNodeRefQuote={newNodeRefQuote}
+        creatingNode={creatingNode}
+        relationOptions={relationOptions}
+        onNewNodeKindChange={setNewNodeKind}
+        onNewNodeAuthorRoleChange={setNewNodeAuthorRole}
+        onNewNodeSeverityChange={setNewNodeSeverity}
+        onNewNodeBodyChange={setNewNodeBody}
+        onNewNodeRefTargetIdChange={setNewNodeRefTargetId}
+        onNewNodeRefRelationChange={setNewNodeRefRelation}
+        onNewNodeRefPlanAnchorChange={setNewNodeRefPlanAnchor}
+        onNewNodeRefQuoteChange={setNewNodeRefQuote}
+        onCreateNode={() => void handleCreateNode()}
+        inputClassName={inputClassName}
+        textAreaClassName={textAreaClassName}
+      />
 
       {/* Parent reference moved to lineage bar at top */}
-
-      {/* Plan markdown - collapsed by default */}
-      {detail.markdown && (
-        <div>
-          <button
-            onClick={() => setPlanExpanded((e) => !e)}
-            className="flex items-center gap-1.5 w-full text-left group"
-          >
-            <Icon
-              name="chevronRight"
-              size={12}
-              className={`text-neutral-400 transition-transform ${planExpanded ? 'rotate-90' : ''}`}
-            />
-            <SectionHeader
-              trailing={
-                <code className="text-[10px] text-neutral-400">{detail.planPath}</code>
-              }
-            >
-              Full Plan
-            </SectionHeader>
-          </button>
-          {planExpanded && (
-            <pre className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-md text-xs whitespace-pre-wrap overflow-auto max-h-[32rem] leading-relaxed">
-              {detail.markdown}
-            </pre>
-          )}
-        </div>
-      )}
     </div>
   );
 }

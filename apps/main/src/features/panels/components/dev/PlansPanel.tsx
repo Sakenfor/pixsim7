@@ -7,10 +7,11 @@
  */
 
 import {
+  Badge,
   Button,
   EmptyState,
-  type FilterPillOption,
   FilterPillGroup,
+  type FilterPillOption,
   SearchInput,
   SidebarContentLayout,
   type SidebarContentLayoutSection,
@@ -22,22 +23,24 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
-import {
-  FALLBACK_PLAN_STAGE_OPTIONS,
-  PLAN_TYPE_ICONS,
-  STAGE_ICONS,
-  STATUS_DOT_CLASSES,
-  STATUS_ICONS,
-  STATUS_ORDER,
-} from './plans/planConstants';
-import { PlanDetailView } from './plans/PlanDetailView';
+import { PlanDetailView } from './plans/detail';
 import type {
   PlanStageOptionEntry,
   PlanStagesResponse,
   PlanSummary,
   PlansIndexResponse,
-} from './plans/planTypes';
-import { isCanonicalPlanId, stageLabelFromValue } from './plans/planUtils';
+} from './plans/detail/types';
+import {
+  FALLBACK_PLAN_STAGE_OPTIONS,
+  isCanonicalPlanId,
+  PLAN_TYPE_ICONS,
+  STAGE_ICONS,
+  stageLabelFromValue,
+  STATUS_COLORS,
+  STATUS_DOT_CLASSES,
+  STATUS_ICONS,
+  STATUS_ORDER,
+} from './plans/detail/types';
 
 // =============================================================================
 // Main Component
