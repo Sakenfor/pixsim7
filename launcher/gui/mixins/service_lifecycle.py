@@ -61,6 +61,14 @@ class ServiceLifecycleMixin:
             return
 
         self._clear_auto_restart_state(key, clear_cooldown=True)
+
+        # Clear previous log buffer on start/restart (if enabled)
+        if getattr(self.ui_state, 'clear_logs_on_restart', True):
+            try:
+                state.log_buffer.clear()
+            except Exception:
+                pass
+
         if self.facade.start_service(key):
             self._refresh_console_logs()
             if _launcher_logger:

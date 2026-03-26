@@ -273,6 +273,7 @@ class UIState:
 
     # General settings
     stop_services_on_exit: bool = False  # If True, stops all services when closing launcher
+    clear_logs_on_restart: bool = True  # Clear service log buffer when starting/restarting
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
     worker_debug_flags: str = ""        # Worker debug categories (comma-separated)

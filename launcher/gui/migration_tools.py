@@ -16,7 +16,42 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 ALEMBIC_INI = os.path.join(ROOT, 'alembic.ini')
 
 
-def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
+def discover_databases() -> list[dict]:
+    """Discover all alembic configs in the project root.
+
+    Returns a list of dicts: {"id": "main", "config": "/path/alembic.ini", "label": "Main", "db_url": "..."}
+    """
+    import glob
+    import configparser
+    configs = sorted(glob.glob(os.path.join(ROOT, 'alembic*.ini')))
+    dbs = []
+    for path in configs:
+        cp = configparser.ConfigParser()
+        cp.read(path)
+        section = 'alembic' if cp.has_section('alembic') else None
+        if not section:
+            continue
+        fname = os.path.basename(path)
+        if fname == 'alembic.ini':
+            db_id = 'main'
+            label = 'Main'
+        else:
+            # alembic_blocks.ini → id=blocks, label=Blocks
+            db_id = fname.replace('alembic_', '').replace('.ini', '')
+            label = db_id.replace('_', ' ').title()
+        db_url = cp.get(section, 'sqlalchemy.url', fallback='')
+        script_loc = cp.get(section, 'script_location', fallback='')
+        dbs.append({
+            "id": db_id,
+            "config": path,
+            "label": label,
+            "db_url": db_url,
+            "script_location": script_loc,
+        })
+    return dbs
+
+
+def _run_alembic(*args: str, timeout: int = 60, config: str | None = None) -> tuple[int, str, str]:
     """
     Run alembic command with proper error handling and validation.
 
@@ -29,9 +64,11 @@ def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
     Returns:
         Tuple of (return_code, stdout, stderr)
     """
+    ini_path = config or ALEMBIC_INI
+
     # Pre-flight checks
-    if not os.path.exists(ALEMBIC_INI):
-        return 1, "", f"ERROR: alembic.ini not found at {ALEMBIC_INI}. Check your repository setup."
+    if not os.path.exists(ini_path):
+        return 1, "", f"ERROR: alembic config not found at {ini_path}."
 
     # Try python -m alembic first (works in virtual environments)
     # Fall back to direct alembic command if module not found
@@ -45,14 +82,14 @@ def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
         )
         if test_result.returncode == 0:
             # Use python -m alembic (best for venvs)
-            cmd = [sys.executable, '-m', 'alembic', '-c', ALEMBIC_INI, *args]
+            cmd = [sys.executable, '-m', 'alembic', '-c', ini_path, *args]
         else:
             raise FileNotFoundError("alembic module not found")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         # Fall back to direct alembic command
         if not shutil.which('alembic'):
             return 1, "", "ERROR: alembic not found. Please ensure alembic is installed: pip install alembic"
-        cmd = ['alembic', '-c', ALEMBIC_INI, *args]
+        cmd = ['alembic', '-c', ini_path, *args]
 
     try:
         proc = subprocess.Popen(

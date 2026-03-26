@@ -67,7 +67,28 @@ export async function getBuildables(): Promise<Buildable[]> {
   return items
 }
 
+export interface BuildResult {
+  ok: boolean
+  exit_code: number
+  duration_ms: number
+  stdout: string
+  stderr: string
+}
+
+export async function buildPackage(packageName: string): Promise<BuildResult> {
+  const res = await fetch(`/buildables/${encodeURIComponent(packageName)}/build`, { method: 'POST' })
+  return res.json()
+}
+
 // ── Migrations ──
+
+export interface MigrationDatabase {
+  id: string
+  label: string
+  config: string
+  db_url: string
+  script_location: string
+}
 
 export interface MigrationNode {
   revision: string
@@ -76,6 +97,8 @@ export interface MigrationNode {
 }
 
 export interface MigrationStatus {
+  db_id: string
+  label: string
   current_revision: string
   heads: string
   pending: MigrationNode[]
@@ -88,19 +111,21 @@ export interface MigrationResult {
   error?: string
 }
 
-export async function getMigrationStatus(): Promise<MigrationStatus> {
-  const res = await fetch('/migrations/status')
+export async function getMigrationDatabases(): Promise<MigrationDatabase[]> {
+  const res = await fetch('/migrations/databases')
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.databases ?? []
+}
+
+export async function getMigrationStatus(dbId: string = 'main'): Promise<MigrationStatus> {
+  const res = await fetch(`/migrations/status?db_id=${dbId}`)
   if (!res.ok) throw new Error('Failed to get migration status')
   return res.json()
 }
 
-export async function runMigrationAction(action: 'upgrade' | 'downgrade' | 'stamp' | 'merge'): Promise<MigrationResult> {
-  const res = await fetch(`/migrations/${action}`, { method: 'POST' })
-  return res.json()
-}
-
-export async function getMigrationHistory(): Promise<MigrationResult> {
-  const res = await fetch('/migrations/history')
+export async function runMigrationAction(action: 'upgrade' | 'downgrade' | 'stamp' | 'merge', dbId: string = 'main'): Promise<MigrationResult> {
+  const res = await fetch(`/migrations/${action}?db_id=${dbId}`, { method: 'POST' })
   return res.json()
 }
 

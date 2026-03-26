@@ -4,11 +4,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getCodegenTasks, runCodegenTask, getBuildables,
-  getMigrationStatus, runMigrationAction, getMigrationHistory,
+  getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
+  getMigrationDatabases, getMigrationStatus, runMigrationAction,
   getSettings, saveSettings,
-  type CodegenTask, type CodegenRunResult, type Buildable,
-  type MigrationStatus, type MigrationResult,
+  type CodegenTask, type CodegenRunResult, type Buildable, type BuildResult,
+  type MigrationDatabase, type MigrationStatus, type MigrationResult,
 } from '../api/tools'
 
 type Section = 'codegen' | 'migrations' | 'buildables' | 'settings'
@@ -102,72 +102,91 @@ function CodegenSection() {
 // ── Migrations ──
 
 function MigrationsSection() {
-  const [status, setStatus] = useState<MigrationStatus | null>(null)
+  const [databases, setDatabases] = useState<MigrationDatabase[]>([])
+  const [statuses, setStatuses] = useState<Record<string, MigrationStatus>>({})
   const [actionResult, setActionResult] = useState<MigrationResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loadingDb, setLoadingDb] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    try { setStatus(await getMigrationStatus()) } finally { setLoading(false) }
+  useEffect(() => { getMigrationDatabases().then(setDatabases) }, [])
+
+  // Fetch status for all databases on mount
+  useEffect(() => {
+    databases.forEach((db) => {
+      getMigrationStatus(db.id).then((s) =>
+        setStatuses((prev) => ({ ...prev, [db.id]: s }))
+      ).catch(() => {})
+    })
+  }, [databases])
+
+  const refreshDb = useCallback(async (dbId: string) => {
+    try {
+      const s = await getMigrationStatus(dbId)
+      setStatuses((prev) => ({ ...prev, [dbId]: s }))
+    } catch {}
   }, [])
 
-  useEffect(() => { refresh() }, [])
-
-  const runAction = useCallback(async (action: 'upgrade' | 'downgrade' | 'stamp' | 'merge') => {
-    setLoading(true)
+  const runAction = useCallback(async (action: 'upgrade' | 'downgrade' | 'stamp' | 'merge', dbId: string) => {
+    setLoadingDb(dbId)
     setActionResult(null)
     try {
-      const result = await runMigrationAction(action)
+      const result = await runMigrationAction(action, dbId)
       setActionResult(result)
-      await refresh()
+      await refreshDb(dbId)
     } finally {
-      setLoading(false)
+      setLoadingDb(null)
     }
-  }, [refresh])
+  }, [refreshDb])
 
   return (
-    <div className="p-3 space-y-3">
-      {/* Status */}
-      <div className="bg-surface-secondary rounded border border-border p-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-bold text-gray-200">Database Migration Status</h3>
-          <button onClick={refresh} disabled={loading} className="px-2 py-0.5 text-[10px] rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">
-            {loading ? '...' : 'Refresh'}
-          </button>
-        </div>
-        {status ? (
-          <div className="space-y-1 text-[11px]">
-            <div><span className="text-gray-500">Current:</span> <span className="text-gray-200 font-mono">{status.current_revision}</span></div>
-            <div><span className="text-gray-500">Heads:</span> <span className="text-gray-200 font-mono">{status.heads}</span></div>
-            {status.pending.length > 0 && (
-              <div>
-                <span className="text-amber-400">Pending migrations ({status.pending.length}):</span>
-                <div className="mt-1 space-y-0.5 pl-2">
-                  {status.pending.map((m) => (
-                    <div key={m.revision} className="text-[10px] font-mono">
-                      <span className="text-gray-400">{m.revision.slice(0, 12)}</span>
-                      <span className="text-gray-300 ml-1">{m.message}</span>
-                      {m.is_head && <span className="text-green-400 ml-1">(head)</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {status.pending.length === 0 && <div className="text-green-400 text-[10px]">Up to date</div>}
-            {status.pending_error && <div className="text-red-400 text-[10px]">{status.pending_error}</div>}
-          </div>
-        ) : (
-          <div className="text-gray-500 text-[10px]">{loading ? 'Loading...' : 'Failed to load status'}</div>
-        )}
-      </div>
+    <div className="p-3 space-y-2">
+      {databases.map((db) => {
+        const status = statuses[db.id]
+        const busy = loadingDb === db.id
+        const hasPending = (status?.pending?.length ?? 0) > 0
+        const dotColor = !status ? 'bg-gray-500' : hasPending ? 'bg-amber-500' : 'bg-green-500'
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button onClick={() => runAction('upgrade')} disabled={loading} className="px-3 py-1.5 text-xs rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white">Upgrade Head</button>
-        <button onClick={() => runAction('downgrade')} disabled={loading} className="px-3 py-1.5 text-xs rounded bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 text-white">Downgrade -1</button>
-        <button onClick={() => runAction('stamp')} disabled={loading} className="px-3 py-1.5 text-xs rounded bg-blue-700 hover:bg-blue-600 disabled:bg-gray-700 text-white">Stamp Head</button>
-        <button onClick={() => runAction('merge')} disabled={loading} className="px-3 py-1.5 text-xs rounded bg-purple-700 hover:bg-purple-600 disabled:bg-gray-700 text-white">Merge Heads</button>
-      </div>
+        return (
+          <div key={db.id} className="bg-surface-secondary rounded border border-border p-3">
+            {/* Card header */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-gray-200">{db.label}</div>
+                <div className="text-[10px] text-gray-500 font-mono truncate">{db.db_url}</div>
+              </div>
+              <button onClick={() => refreshDb(db.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-400">↻</button>
+            </div>
+
+            {/* Status */}
+            {status ? (
+              <div className="space-y-0.5 text-[10px] mb-2">
+                <div>
+                  <span className="text-gray-500">Rev:</span>{' '}
+                  <span className="text-gray-300 font-mono">{status.current_revision}</span>
+                </div>
+                {hasPending ? (
+                  <div className="text-amber-400">
+                    {status.pending.length} pending migration{status.pending.length > 1 ? 's' : ''}
+                  </div>
+                ) : (
+                  <div className="text-green-400">Up to date</div>
+                )}
+                {status.pending_error && <div className="text-red-400">{status.pending_error}</div>}
+              </div>
+            ) : (
+              <div className="text-[10px] text-gray-500 mb-2">Loading...</div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-1">
+              <button onClick={() => runAction('upgrade', db.id)} disabled={busy} className="px-2 py-0.5 text-[9px] rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white">Upgrade</button>
+              <button onClick={() => runAction('downgrade', db.id)} disabled={busy} className="px-2 py-0.5 text-[9px] rounded bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 text-white">Down</button>
+              <button onClick={() => runAction('stamp', db.id)} disabled={busy} className="px-2 py-0.5 text-[9px] rounded bg-blue-700 hover:bg-blue-600 disabled:bg-gray-700 text-white">Stamp</button>
+              <button onClick={() => runAction('merge', db.id)} disabled={busy} className="px-2 py-0.5 text-[9px] rounded bg-purple-700 hover:bg-purple-600 disabled:bg-gray-700 text-white">Merge</button>
+            </div>
+          </div>
+        )
+      })}
 
       {actionResult && <ResultBox result={actionResult} />}
     </div>
@@ -178,18 +197,95 @@ function MigrationsSection() {
 
 function BuildablesSection() {
   const [buildables, setBuildables] = useState<Buildable[]>([])
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [buildingPkg, setBuildingPkg] = useState<string | null>(null)
+  const [buildResult, setBuildResult] = useState<BuildResult | null>(null)
+  const [filterCategory, setFilterCategory] = useState('')
+
   useEffect(() => { getBuildables().then(setBuildables) }, [])
 
+  const categories = [...new Set(buildables.map((b) => b.category).filter(Boolean))] as string[]
+  const filtered = filterCategory ? buildables.filter((b) => b.category === filterCategory) : buildables
+
+  const handleBuild = useCallback(async (pkg: string) => {
+    setBuildingPkg(pkg)
+    setBuildResult(null)
+    try {
+      setBuildResult(await buildPackage(pkg))
+    } finally {
+      setBuildingPkg(null)
+    }
+  }, [])
+
   return (
-    <div className="p-3 grid grid-cols-2 gap-1.5">
-      {buildables.map((b) => (
-        <div key={b.id} className="px-3 py-2 bg-surface-secondary rounded border border-border">
-          <div className="text-xs font-medium text-gray-200">{b.title}</div>
-          <div className="text-[10px] text-gray-500 truncate">{b.description}</div>
-          <div className="text-[10px] text-gray-600 mt-1 font-mono">{b.command} {b.args.join(' ')}</div>
-          {b.category && <span className="text-[9px] px-1 rounded bg-purple-900/30 text-purple-400 mt-1 inline-block">{b.category}</span>}
+    <div className="p-3 space-y-2">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 text-[10px]">
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px]"
+        >
+          <option value="">All ({buildables.length})</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>{c} ({buildables.filter((b) => b.category === c).length})</option>
+          ))}
+        </select>
+        <div className="flex-1" />
+        <button onClick={() => setViewMode('cards')} className={`px-1.5 py-0.5 rounded ${viewMode === 'cards' ? 'bg-blue-900/30 text-blue-400' : 'text-gray-500'}`}>Cards</button>
+        <button onClick={() => setViewMode('list')} className={`px-1.5 py-0.5 rounded ${viewMode === 'list' ? 'bg-blue-900/30 text-blue-400' : 'text-gray-500'}`}>List</button>
+      </div>
+
+      {/* Build result */}
+      {buildResult && <ResultBox result={buildResult} />}
+
+      {/* Cards view */}
+      {viewMode === 'cards' && (
+        <div className="space-y-1.5">
+          {filtered.map((b) => (
+            <div key={b.id} className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded border border-border">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-gray-200">{b.title}</span>
+                  {b.category && <span className="text-[9px] px-1 rounded bg-purple-900/30 text-purple-400">{b.category}</span>}
+                  {b.tags.filter((t) => t !== b.category).map((t) => (
+                    <span key={t} className="text-[9px] px-1 rounded bg-blue-900/20 text-blue-400">{t}</span>
+                  ))}
+                </div>
+                {b.description && <div className="text-[10px] text-gray-500 truncate mt-0.5">{b.description}</div>}
+                <div className="text-[10px] text-gray-600 font-mono mt-0.5">{b.directory}</div>
+              </div>
+              <button
+                onClick={() => handleBuild(b.package)}
+                disabled={!!buildingPkg}
+                className="px-2.5 py-1 text-[10px] rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white shrink-0"
+              >
+                {buildingPkg === b.package ? 'Building...' : 'Build'}
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* List view */}
+      {viewMode === 'list' && (
+        <div className="space-y-0.5">
+          {filtered.map((b) => (
+            <div key={b.id} className="flex items-center gap-2 px-2 py-1 hover:bg-surface-hover rounded text-[11px]">
+              <span className="text-gray-200 w-40 truncate font-medium">{b.title}</span>
+              <span className="text-gray-500 w-20 truncate">{b.category}</span>
+              <span className="text-gray-600 font-mono flex-1 truncate">{b.directory}</span>
+              <button
+                onClick={() => handleBuild(b.package)}
+                disabled={!!buildingPkg}
+                className="px-2 py-0.5 text-[9px] rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white shrink-0"
+              >
+                {buildingPkg === b.package ? '...' : 'Build'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -225,6 +321,7 @@ function SettingsSection() {
       <div className="bg-surface-secondary rounded border border-border p-3 space-y-2">
         <h3 className="text-xs font-bold text-gray-200 mb-2">Launcher Settings</h3>
         {toggle('stop_services_on_exit', 'Stop services when launcher exits')}
+        {toggle('clear_logs_on_restart', 'Clear logs on service start/restart')}
         {toggle('sql_logging_enabled', 'SQL query logging')}
         {toggle('backend_debug_enabled', 'Backend debug mode (LOG_LEVEL=DEBUG)')}
         {toggle('auto_refresh_logs', 'Auto-refresh DB logs')}

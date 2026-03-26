@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@types/react-window": "^2.0.0",
+    "flexlayout-react": "^0.8.19",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-window": "^2.2.7",
