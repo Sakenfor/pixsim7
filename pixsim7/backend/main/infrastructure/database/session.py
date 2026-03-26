@@ -34,8 +34,8 @@ _sql_logging_enabled = (
 async_engine = create_async_engine(
     settings.async_database_url,
     echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
-    pool_size=20,
-    max_overflow=40,
+    pool_size=8,
+    max_overflow=12,
     pool_pre_ping=True,  # Test connections before using
     pool_recycle=3600,   # Recycle connections after 1 hour
 )
@@ -55,8 +55,8 @@ AsyncSessionLocal = async_sessionmaker(
 async_log_engine = create_async_engine(
     settings.async_log_database_url,
     echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
-    pool_size=10,  # Smaller pool for logs
-    max_overflow=20,
+    pool_size=4,
+    max_overflow=8,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
@@ -76,8 +76,8 @@ AsyncLogSessionLocal = async_sessionmaker(
 async_blocks_engine = create_async_engine(
     settings.async_blocks_database_url,
     echo=_sql_logging_enabled,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=3,
+    max_overflow=5,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
@@ -97,8 +97,8 @@ AsyncBlocksSessionLocal = async_sessionmaker(
 sync_engine = create_engine(
     settings.database_url,
     echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
-    pool_size=10,
-    max_overflow=20,
+    pool_size=3,
+    max_overflow=5,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
