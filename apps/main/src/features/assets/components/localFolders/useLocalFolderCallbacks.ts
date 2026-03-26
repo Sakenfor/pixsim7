@@ -9,19 +9,18 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
 import { resolveLocalUploadState } from '../../lib/localAssetState';
-import { localAssetToAssetModel } from '../../lib/localAssetToAssetModel';
 import { extractUploadError, notifyGalleryOfUpdatedAsset, resolveProviderLabel } from '../../lib/uploadActions';
 import type { AssetModel } from '../../models/asset';
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAssetModel } from '../../types/localFolderMeta';
 
 import type { HashFilterState, UploadFilterState } from './constants';
 
 export interface UseLocalFolderCallbacksParams {
   controller: LocalFoldersController;
-  openLocalAsset: (
-    asset: LocalAsset,
+  openLocalAssetModel: (
+    asset: LocalAssetModel,
     previewUrl: string | undefined,
-    viewerItems: LocalAsset[],
+    viewerItems: LocalAssetModel[],
     previews: Record<string, string>,
     fullUrl?: string,
   ) => void;
@@ -29,7 +28,7 @@ export interface UseLocalFolderCallbacksParams {
 
 export function useLocalFolderCallbacks({
   controller,
-  openLocalAsset,
+  openLocalAssetModel,
 }: UseLocalFolderCallbacksParams) {
   const toast = useToast();
   const {
@@ -46,13 +45,13 @@ export function useLocalFolderCallbacks({
   const controllerUploadOne = controller.uploadOne;
   const controllerUploadOneToLibrary = controller.uploadOneToLibrary;
 
-  const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
+  const getAssetKey = useCallback((asset: LocalAssetModel) => asset.key, []);
   const getPreviewUrl = useCallback(
-    (asset: LocalAsset) => controllerPreviews[asset.key],
+    (asset: LocalAssetModel) => controllerPreviews[asset.key],
     [controllerPreviews]
   );
   const getMediaType = useCallback(
-    (asset: LocalAsset): 'video' | 'image' => (asset.kind === 'video' ? 'video' : 'image'),
+    (asset: LocalAssetModel): 'video' | 'image' => (asset.kind === 'video' ? 'video' : 'image'),
     []
   );
 
@@ -66,7 +65,7 @@ export function useLocalFolderCallbacks({
     return counts;
   }, [controller.assets]);
 
-  const getDescription = useCallback((asset: LocalAsset) => {
+  const getDescription = useCallback((asset: LocalAssetModel) => {
     const parts = [asset.name];
 
     if (asset.size) {
@@ -86,7 +85,7 @@ export function useLocalFolderCallbacks({
   }, []);
 
   const getTags = useCallback(
-    (asset: LocalAsset) => {
+    (asset: LocalAssetModel) => {
       const tags: string[] = [];
 
       const folderPath = asset.relativePath.split('/').slice(0, -1).join('/');
@@ -123,17 +122,17 @@ export function useLocalFolderCallbacks({
   );
 
   const getCreatedAt = useCallback(
-    (asset: LocalAsset) => new Date(asset.lastModified || Date.now()).toISOString(),
+    (asset: LocalAssetModel) => new Date(asset.lastModified || Date.now()).toISOString(),
     []
   );
 
   const getUploadState = useCallback(
-    (asset: LocalAsset): AssetUploadState =>
+    (asset: LocalAssetModel): AssetUploadState =>
       resolveLocalUploadState(asset, controller.uploadStatus),
     [controller.uploadStatus]
   );
 
-  const getUploadFilterState = useCallback((asset: LocalAsset): UploadFilterState => {
+  const getUploadFilterState = useCallback((asset: LocalAssetModel): UploadFilterState => {
     const state = getUploadState(asset);
     if (state === 'success') return 'uploaded';
     if (state === 'uploading') return 'uploading';
@@ -141,7 +140,7 @@ export function useLocalFolderCallbacks({
     return 'pending';
   }, [getUploadState]);
 
-  const getHashFilterState = useCallback((asset: LocalAsset): HashFilterState => {
+  const getHashFilterState = useCallback((asset: LocalAssetModel): HashFilterState => {
     if (!asset.sha256) {
       return controller.hashingProgress ? 'hashing' : 'unhashed';
     }
@@ -150,7 +149,7 @@ export function useLocalFolderCallbacks({
   }, [controller.hashingProgress, shaDuplicates]);
 
   const getHashStatus = useCallback(
-    (asset: LocalAsset): 'unique' | 'duplicate' | 'hashing' | undefined => {
+    (asset: LocalAssetModel): 'unique' | 'duplicate' | 'hashing' | undefined => {
       if (resolveLocalUploadState(asset, controller.uploadStatus) === 'success') return undefined;
       if (!asset.sha256) {
         return controller.hashingProgress ? 'hashing' : undefined;
@@ -163,8 +162,8 @@ export function useLocalFolderCallbacks({
 
   const openAssetInViewer = useCallback(
     async (
-      asset: LocalAsset,
-      viewerItems: LocalAsset[],
+      asset: LocalAssetModel,
+      viewerItems: LocalAssetModel[],
       resolvedPreviewUrl?: string,
     ) => {
       const previewUrl = resolvedPreviewUrl || controllerPreviews[asset.key];
@@ -177,13 +176,13 @@ export function useLocalFolderCallbacks({
       } catch {
         // Fall back to preview URL if file access fails
       }
-      openLocalAsset(asset, previewUrl, viewerItems, controllerPreviews, fullUrl);
+      openLocalAssetModel(asset, previewUrl, viewerItems, controllerPreviews, fullUrl);
     },
-    [openLocalAsset, controllerPreviews, controllerGetFileForAsset]
+    [openLocalAssetModel, controllerPreviews, controllerGetFileForAsset]
   );
 
   const handleUpload = useCallback(
-    (asset: LocalAsset) => {
+    (asset: LocalAssetModel) => {
       if (controllerUploadOneToLibrary) {
         return controllerUploadOneToLibrary(asset);
       }
@@ -193,7 +192,7 @@ export function useLocalFolderCallbacks({
   );
 
   const handleUploadToProvider = useCallback(
-    async (asset: LocalAsset, providerId: string) => {
+    async (asset: LocalAssetModel, providerId: string) => {
       try {
         let assetId: number | undefined;
         if (providerId === 'library') {
@@ -222,11 +221,11 @@ export function useLocalFolderCallbacks({
   );
 
   const getIsFavorite = useCallback(
-    (asset: LocalAsset) => controller.favoriteStatus[asset.key] ?? false,
+    (asset: LocalAssetModel) => controller.favoriteStatus[asset.key] ?? false,
     [controller.favoriteStatus],
   );
 
-  const handleToggleFavorite = useCallback(async (asset: LocalAsset) => {
+  const handleToggleFavorite = useCallback(async (asset: LocalAssetModel) => {
     const wasFavorite = controller.favoriteStatus[asset.key] ?? false;
     const needsLibrarySave = !asset.last_upload_asset_id;
 
@@ -245,12 +244,12 @@ export function useLocalFolderCallbacks({
     }
   }, [controller, toast]);
 
-  const toGenerationInputAsset = useCallback((asset: LocalAsset): AssetModel => {
-    return localAssetToAssetModel(asset, {
-      previewUrl: controllerPreviews[asset.key],
-      defaultProviderId: controller.providerId,
-    });
-  }, [controller.providerId, controllerPreviews]);
+  const toGenerationInputAsset = useCallback((asset: LocalAssetModel): AssetModel => {
+    // LocalAssetModel IS an AssetModel — just enrich with current blob preview URL
+    const preview = controllerPreviews[asset.key];
+    if (!preview) return asset;
+    return { ...asset, previewUrl: preview, thumbnailUrl: preview };
+  }, [controllerPreviews]);
 
   const generationHandlers = useMemo(() => ({
     onImageToImage: queueImageToImage,
@@ -268,7 +267,7 @@ export function useLocalFolderCallbacks({
     quickGenerate,
   ]);
 
-  const getLocalMediaCardActions = useCallback((asset: LocalAsset): MediaCardActions => {
+  const getLocalMediaCardActions = useCallback((asset: LocalAssetModel): MediaCardActions => {
     const assetModel = toGenerationInputAsset(asset);
     const isUploaded = typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0;
 

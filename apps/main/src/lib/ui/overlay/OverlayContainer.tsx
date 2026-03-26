@@ -136,11 +136,20 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 
   // Handle collision detection — only for ungrouped widgets (stacked widgets
   // are already positioned by their flex container and don't need adjustment).
+  const collisionDetectionEnabled = !!config.collisionDetection;
+
+  // Clear adjusted positions when collision detection is disabled.
+  // Separate from the main collision effect to avoid re-running collision setup
+  // when positions are cleared.
   useEffect(() => {
-    if (!config.collisionDetection || !containerRef.current) {
-      setAdjustedPositions(new Map());
-      return;
+    if (!collisionDetectionEnabled) {
+      setAdjustedPositions((prev) => (prev.size === 0 ? prev : new Map()));
     }
+  }, [collisionDetectionEnabled]);
+
+  useEffect(() => {
+    if (!collisionDetectionEnabled) return;
+    if (!containerRef.current) return;
 
     const containerEl = containerRef.current;
     let debounceId: ReturnType<typeof setTimeout> | null = null;
@@ -180,7 +189,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       if (debounceId !== null) clearTimeout(debounceId);
       observer?.disconnect();
     };
-  }, [ungrouped, config.collisionDetection]);
+  }, [ungrouped, collisionDetectionEnabled]);
 
   // Create widget context
   const context: WidgetContext = useMemo(

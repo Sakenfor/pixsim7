@@ -1,4 +1,4 @@
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAssetModel } from '../../types/localFolderMeta';
 
 import { ROOT_SUBFOLDER_VALUE, SUBFOLDER_VALUE_SEPARATOR } from './constants';
 
@@ -24,7 +24,7 @@ export function parseSubfolderValue(raw: string): { folderId: string; directory:
   return { folderId, directory };
 }
 
-export function isAssetInFolderScope(asset: LocalAsset, folderPath: string): boolean {
+export function isAssetInFolderScope(asset: LocalAssetModel, folderPath: string): boolean {
   if (folderPath === asset.folderId) {
     return !asset.relativePath.includes('/');
   }

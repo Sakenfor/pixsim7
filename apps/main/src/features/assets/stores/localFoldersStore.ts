@@ -11,7 +11,13 @@ import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreference
 import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 import { debugFlags } from '@lib/utils/debugFlags';
 
+import { generateThumbnailOffThread } from '../lib/thumbnailWorker';
 import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
+import {
+  type LocalAssetModel,
+  type LocalFolderMeta,
+  buildLocalAssetModel,
+} from '../types/localFolderMeta';
 
 // --- Backend sync types ---
 type SyncedFolderMeta = {
@@ -69,7 +75,10 @@ type ScanningState = {
 type LocalFoldersState = {
   supported: boolean;
   folders: FolderEntry[];
-  assets: Record<string, LocalAsset>; // key -> asset
+  /** Canonical AssetModel for each local asset, keyed by local key */
+  assets: Record<string, LocalAssetModel>;
+  /** Sidecar metadata for hash/upload/file access, keyed by local key */
+  localMeta: Record<string, LocalFolderMeta>;
   adding: boolean;
   loading: boolean; // Prevents concurrent loadPersisted calls
   scanning: ScanningState;  // Progress indicator for folder scanning
@@ -80,12 +89,11 @@ type LocalFoldersState = {
   removeFolder: (id: string) => Promise<void>;
   refreshFolder: (id: string, silent?: boolean) => Promise<void>;
   loadPersisted: () => Promise<void>;
-  getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
+  getFileForAsset: (keyOrAsset: string | LocalAssetModel) => Promise<File | undefined>;
   updateAssetHash: (assetKey: string, sha256: string, file: File) => Promise<void>;
   updateAssetHashesBatch: (updates: Array<{ assetKey: string; sha256: string; file: File }>) => Promise<void>;
   getUploadRecordByHash: (sha256: string) => Promise<UploadRecord | undefined>;
   setUploadRecordByHash: (sha256: string, record: UploadRecord) => Promise<void>;
-  // Task 104: Update upload history for an asset
   updateAssetUploadStatus: (
     assetKey: string,
     status: 'success' | 'error',
@@ -172,14 +180,10 @@ function getAssetsMetaKey(folderId: string): string {
   return `${STORAGE_KEY_PREFIX}_assets_meta_${getUserNamespace()}_${folderId}`;
 }
 
-function getThumbnailKey(asset: LocalAsset): string {
-  // Use asset key + file size as cache key.  Avoid lastModified because
-  // refreshFolder re-scans from disk and can report a different timestamp,
-  // orphaning the cached thumbnail and forcing a slow re-generate.
-  // Size is a cheap proxy: if the file content actually changed the size
-  // almost certainly differs, and a re-add / folder refresh clears state anyway.
-  const version = asset.size ?? 0;
-  return `${STORAGE_KEY_PREFIX}_thumb_${getUserNamespace()}_${asset.key}_${version}`;
+function getThumbnailKey(asset: { key?: string; _localKey?: string; size?: number; fileSizeBytes?: number | null }): string {
+  const assetKey = asset._localKey ?? asset.key ?? '';
+  const version = asset.size ?? asset.fileSizeBytes ?? 0;
+  return `${STORAGE_KEY_PREFIX}_thumb_${getUserNamespace()}_${assetKey}_${version}`;
 }
 
 function getUploadsKey(): string {
@@ -381,8 +385,8 @@ async function scanFolderChunked(
   prefix = '',
   stats = { scanned: 0, found: 0 },
   options?: ScanOptions,
-): Promise<LocalAsset[]> {
-  const out: LocalAsset[] = [];
+): Promise<LocalFolderMeta[]> {
+  const out: LocalFolderMeta[] = [];
   const metadataMode = options?.metadataMode ?? 'full';
   try {
     // @ts-expect-error: for-await supported in handles
@@ -437,29 +441,18 @@ async function scanFolderChunked(
           }
         }
 
-        // Create FolderCandidate (with legacy LocalAsset compatibility)
-        const candidate: LocalAsset = {
-          // AssetCandidate fields
-          id: candidateId,
+        const meta: LocalFolderMeta = {
+          key: candidateId,
           name,
           kind,
           size,
           lastModified,
-          source: {
-            type: 'folder',
-            folderId: id,
-            relativePath: rel,
-            handleKey: candidateId, // Use ID as handle reference
-          },
-
-          // Legacy LocalAsset compatibility fields
-          key: candidateId,
           folderId: id,
           relativePath: rel,
           fileHandle: fh, // Transient, not persisted
         };
 
-        out.push(candidate);
+        out.push(meta);
         stats.found++;
       }
 
@@ -477,8 +470,7 @@ async function scanFolderChunked(
   return out;
 }
 
-// Legacy sync version for backward compatibility
-async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
+async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalFolderMeta[]> {
   return scanFolderChunked(id, handle, undefined, depth, prefix);
 }
 
@@ -505,59 +497,37 @@ async function getFileHandle(root: DirHandle, relativePath: string): Promise<Fil
   }
 }
 
-// Load assets from cache and reconstruct file handles
-async function loadCachedAssets(id: string): Promise<LocalAsset[]> {
+// Load assets from cache and reconstruct as LocalFolderMeta
+async function loadCachedAssets(id: string): Promise<LocalFolderMeta[]> {
   try {
     const cached = await idbGet<AssetMeta[]>(getAssetsKey(id));
     if (!cached) return [];
 
-    // For large folders, reconstructing FileSystemFileHandle for every asset on
-    // startup is very expensive. Instead, return lightweight assets without
-    // fileHandle and let callers resolve handles lazily when needed.
-    return cached.map((meta) => {
-      // Migrate v1 format to v2 (AssetCandidate format)
-      if (!meta.source) {
-        // Legacy v1 format - create source metadata
-        const candidateId = meta.key || `${meta.folderId}:${meta.relativePath}`;
-        return {
-          id: candidateId,
-          name: meta.name,
-          kind: meta.kind,
-          size: meta.size,
-          lastModified: meta.lastModified,
-          source: {
-            type: 'folder' as const,
-            folderId: meta.folderId || id,
-            relativePath: meta.relativePath || '',
-            handleKey: candidateId,
-          },
-          // Hash metadata (v2 fields)
-          sha256: meta.sha256,
-          sha256_computed_at: meta.sha256_computed_at,
-          sha256_file_size: meta.sha256_file_size,
-          sha256_last_modified: meta.sha256_last_modified,
-          // Upload tracking (migrate old field names)
-          last_upload_status: meta.last_upload_status || meta.lastUploadStatus,
-          last_upload_note: meta.last_upload_note || meta.lastUploadNote,
-          last_upload_at: meta.last_upload_at || meta.lastUploadAt,
-          last_upload_provider_id: meta.last_upload_provider_id,
-          last_upload_asset_id: meta.last_upload_asset_id,
-          // Legacy compatibility
-          key: candidateId,
-          folderId: meta.folderId || id,
-          relativePath: meta.relativePath || '',
-          fileHandle: undefined,
-        } as LocalAsset;
-      }
+    return cached.map((raw): LocalFolderMeta => {
+      // Support both v1 (legacy) and v2 (AssetCandidate) cache formats
+      const key = raw.key || raw.id || `${raw.folderId}:${raw.relativePath}`;
+      const folderId = raw.folderId || (raw.source ? raw.source.folderId : id);
+      const relativePath = raw.relativePath || (raw.source ? raw.source.relativePath : '');
 
-      // V2 format - just add legacy fields
       return {
-        ...meta,
-        key: meta.id,
-        folderId: meta.source.folderId,
-        relativePath: meta.source.relativePath,
-        fileHandle: undefined,
-      } as LocalAsset;
+        key,
+        name: raw.name,
+        kind: raw.kind,
+        size: raw.size,
+        lastModified: raw.lastModified,
+        folderId,
+        relativePath,
+        // No fileHandle from cache — resolved lazily
+        sha256: raw.sha256,
+        sha256_computed_at: raw.sha256_computed_at,
+        sha256_file_size: raw.sha256_file_size,
+        sha256_last_modified: raw.sha256_last_modified,
+        last_upload_status: raw.last_upload_status || raw.lastUploadStatus,
+        last_upload_note: raw.last_upload_note || raw.lastUploadNote,
+        last_upload_at: raw.last_upload_at || raw.lastUploadAt,
+        last_upload_provider_id: raw.last_upload_provider_id,
+        last_upload_asset_id: raw.last_upload_asset_id,
+      };
     });
   } catch (e) {
     console.warn('loadCachedAssets error', e);
@@ -565,50 +535,60 @@ async function loadCachedAssets(id: string): Promise<LocalAsset[]> {
   }
 }
 
-// Save assets to cache (v2: AssetCandidate format with backward compatibility)
-async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
+// Save local folder metadata to IndexedDB cache
+async function cacheLocalMeta(id: string, metas: LocalFolderMeta[]): Promise<void> {
   try {
-    const meta: AssetMeta[] = assets.map(a => ({
-      // V2 AssetCandidate fields
-      id: a.id,
-      name: a.name,
-      kind: a.kind,
-      size: a.size,
-      lastModified: a.lastModified,
-      source: a.source,
-
-      // Hash metadata
-      sha256: a.sha256,
-      sha256_computed_at: a.sha256_computed_at,
-      sha256_file_size: a.sha256_file_size,
-      sha256_last_modified: a.sha256_last_modified,
-
-      // Upload tracking
-      last_upload_status: a.last_upload_status,
-      last_upload_note: a.last_upload_note,
-      last_upload_at: a.last_upload_at,
-      last_upload_provider_id: a.last_upload_provider_id,
-      last_upload_asset_id: a.last_upload_asset_id,
-
-      // Legacy compatibility (for rollback)
-      key: a.key,
-      folderId: a.folderId,
-      relativePath: a.relativePath,
-      lastUploadStatus: a.last_upload_status as 'success' | 'error' | undefined,
-      lastUploadNote: a.last_upload_note,
-      lastUploadAt: a.last_upload_at,
+    const serialized: AssetMeta[] = metas.map(m => ({
+      id: m.key,
+      name: m.name,
+      kind: m.kind,
+      size: m.size,
+      lastModified: m.lastModified,
+      source: { type: 'folder' as const, folderId: m.folderId, relativePath: m.relativePath, handleKey: m.key },
+      sha256: m.sha256,
+      sha256_computed_at: m.sha256_computed_at,
+      sha256_file_size: m.sha256_file_size,
+      sha256_last_modified: m.sha256_last_modified,
+      last_upload_status: m.last_upload_status,
+      last_upload_note: m.last_upload_note,
+      last_upload_at: m.last_upload_at,
+      last_upload_provider_id: m.last_upload_provider_id,
+      last_upload_asset_id: m.last_upload_asset_id,
+      // Legacy compat fields (for rollback to older code)
+      key: m.key,
+      folderId: m.folderId,
+      relativePath: m.relativePath,
+      lastUploadStatus: m.last_upload_status as 'success' | 'error' | undefined,
+      lastUploadNote: m.last_upload_note,
+      lastUploadAt: m.last_upload_at,
     }));
     const now = Date.now();
     await Promise.all([
-      idbSet(getAssetsKey(id), meta),
+      idbSet(getAssetsKey(id), serialized),
       idbSet<FolderAssetCacheMeta>(getAssetsMetaKey(id), {
         cachedAt: now,
-        assetCount: meta.length,
+        assetCount: serialized.length,
       }),
     ]);
   } catch (e) {
-    console.warn('cacheAssets error', e);
+    console.warn('cacheLocalMeta error', e);
   }
+}
+
+/**
+ * Merge an array of LocalFolderMeta into the store's dual maps.
+ * Converts each meta to a LocalAssetModel and returns both records for a batch set().
+ */
+function buildDualMaps(
+  items: LocalFolderMeta[],
+): { assets: Record<string, LocalAssetModel>; localMeta: Record<string, LocalFolderMeta> } {
+  const assets: Record<string, LocalAssetModel> = {};
+  const localMeta: Record<string, LocalFolderMeta> = {};
+  for (const m of items) {
+    localMeta[m.key] = m;
+    assets[m.key] = buildLocalAssetModel(m);
+  }
+  return { assets, localMeta };
 }
 
 // Hash metadata updates can happen in large bursts; persist them in short batches
@@ -632,13 +612,13 @@ function scheduleHashBackendSync(folderId: string): void {
 
     void (async () => {
       try {
-        const folderAssets = Object.values(useLocalFolders.getState().assets)
-          .filter((a) => a.folderId === folderId && a.sha256);
-        const manifest: HashManifestEntry[] = folderAssets.map((a) => ({
-          relativePath: a.relativePath,
-          sha256: a.sha256!,
-          fileSize: a.sha256_file_size ?? undefined,
-          lastModified: a.sha256_last_modified ?? undefined,
+        const folderMetas = Object.values(useLocalFolders.getState().localMeta)
+          .filter((m) => m.folderId === folderId && m.sha256);
+        const manifest: HashManifestEntry[] = folderMetas.map((m) => ({
+          relativePath: m.relativePath,
+          sha256: m.sha256!,
+          fileSize: m.sha256_file_size ?? undefined,
+          lastModified: m.sha256_last_modified ?? undefined,
         }));
         await putHashManifest(folderId, manifest);
         debugFlags.debug('localFolders', 'Synced hash manifest to backend:', folderId, manifest.length, 'entries');
@@ -661,9 +641,9 @@ function scheduleHashCacheFlush(folderId: string): void {
     pendingHashCacheFlushTimers.delete(folderId);
     void (async () => {
       try {
-        const folderAssets = Object.values(useLocalFolders.getState().assets)
-          .filter((asset) => asset.folderId === folderId);
-        await cacheAssets(folderId, folderAssets);
+        const folderMetas = Object.values(useLocalFolders.getState().localMeta)
+          .filter((m) => m.folderId === folderId);
+        await cacheLocalMeta(folderId, folderMetas);
       } catch (e) {
         console.warn('Failed to flush hash cache for folder', folderId, e);
       }
@@ -715,6 +695,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   supported: isFSASupported(),
   folders: [],
   assets: {},
+  localMeta: {},
   adding: false,
   loading: false,
   scanning: null,
@@ -791,12 +772,12 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }),
         );
 
-        const allCachedAssets: Record<string, LocalAsset> = {};
+        const allCachedMetas: LocalFolderMeta[] = [];
         const foldersNeedingScan: FolderEntry[] = [];
         const staleCachedFolderIds: string[] = [];
         for (const { folder, items, cacheMeta } of cacheResults) {
           if (items.length > 0) {
-            for (const a of items) allCachedAssets[a.key] = a;
+            allCachedMetas.push(...items);
             const cachedAt = cacheMeta?.cachedAt ?? 0;
             const isStale = !cachedAt || (now - cachedAt) >= BACKGROUND_REFRESH_MIN_INTERVAL_MS;
             if (isStale) {
@@ -808,8 +789,12 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         }
 
         // Single state update for all cached assets
-        if (Object.keys(allCachedAssets).length > 0) {
-          set(s => ({ assets: { ...s.assets, ...allCachedAssets } }));
+        if (allCachedMetas.length > 0) {
+          const dual = buildDualMaps(allCachedMetas);
+          set(s => ({
+            assets: { ...s.assets, ...dual.assets },
+            localMeta: { ...s.localMeta, ...dual.localMeta },
+          }));
         }
 
         // Refresh stale cached folders in the background, sequentially.
@@ -865,16 +850,20 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
                 }
               }
 
-              void cacheAssets(f.id, items);
+              void cacheLocalMeta(f.id, items);
               return items;
             }),
           );
-          const scannedAssets: Record<string, LocalAsset> = {};
+          const allScannedMetas: LocalFolderMeta[] = [];
           for (const items of scanResults) {
-            for (const a of items) scannedAssets[a.key] = a;
+            allScannedMetas.push(...items);
           }
-          if (Object.keys(scannedAssets).length > 0) {
-            set(s => ({ assets: { ...s.assets, ...scannedAssets } }));
+          if (allScannedMetas.length > 0) {
+            const dual = buildDualMaps(allScannedMetas);
+            set(s => ({
+              assets: { ...s.assets, ...dual.assets },
+              localMeta: { ...s.localMeta, ...dual.localMeta },
+            }));
           }
         }
       }
@@ -933,8 +922,12 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         set({ scanning: { folderId: id, ...progress } });
       }, 5);
 
-      set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
-      await cacheAssets(id, items);
+      const dual = buildDualMaps(items);
+      set(s => ({
+        assets: { ...s.assets, ...dual.assets },
+        localMeta: { ...s.localMeta, ...dual.localMeta },
+      }));
+      await cacheLocalMeta(id, items);
 
       // Sync folder list to backend for recovery
       void syncFoldersToBackend(folders);
@@ -950,7 +943,12 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
 
   removeFolder: async (id: string) => {
     const remain = get().folders.filter(f => f.id !== id);
-    set({ folders: remain, assets: Object.fromEntries(Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'))) });
+    const prefix = id + ':';
+    set({
+      folders: remain,
+      assets: Object.fromEntries(Object.entries(get().assets).filter(([k]) => !k.startsWith(prefix))),
+      localMeta: Object.fromEntries(Object.entries(get().localMeta).filter(([k]) => !k.startsWith(prefix))),
+    });
     await idbSet(getFoldersKey(), remain);
     const pendingHashFlush = pendingHashCacheFlushTimers.get(id);
     if (pendingHashFlush) {
@@ -982,23 +980,17 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
 
-    const currentAssets = get().assets;
+    const currentMeta = get().localMeta;
     let existingMetadataByKey: Map<string, { size?: number; lastModified?: number }> | undefined;
     if (silent) {
-      // Silent refresh runs on startup/background. Reuse cached metadata for
-      // unchanged keys to avoid costly getFile() per file.
       existingMetadataByKey = new Map();
       const folderPrefix = `${id}:`;
-      for (const [key, asset] of Object.entries(currentAssets)) {
+      for (const [key, m] of Object.entries(currentMeta)) {
         if (!key.startsWith(folderPrefix)) continue;
-        existingMetadataByKey.set(key, {
-          size: asset.size,
-          lastModified: asset.lastModified,
-        });
+        existingMetadataByKey.set(key, { size: m.size, lastModified: m.lastModified });
       }
     }
 
-    // Use chunked scanner - only show progress if not silent (background refresh)
     if (!silent) {
       set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
     }
@@ -1022,13 +1014,11 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       set({ scanning: null });
     }
 
-    // Preserve upload history for any assets that already exist in state
-    const merged = items.map((item) => {
-      const existing = currentAssets[item.key];
+    // Preserve hash + upload metadata from existing entries
+    const merged = items.map((item): LocalFolderMeta => {
+      const existing = currentMeta[item.key];
       if (!existing) return item;
 
-      // Preserve hash metadata only when file metadata still matches.
-      // This prevents dropping hashes on every refresh while avoiding stale hashes.
       const canReuseHash = (
         typeof item.size === 'number' &&
         typeof item.lastModified === 'number' &&
@@ -1053,25 +1043,29 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       };
     });
 
-    // replace entries belonging to this folder
-    const others = Object.entries(currentAssets).filter(([k]) => !k.startsWith(id + ':'));
+    // Replace entries belonging to this folder
+    const prefix = id + ':';
+    const dual = buildDualMaps(merged);
+    const otherAssets = Object.entries(get().assets).filter(([k]) => !k.startsWith(prefix));
+    const otherMeta = Object.entries(currentMeta).filter(([k]) => !k.startsWith(prefix));
     set({
-      assets: {
-        ...Object.fromEntries(others),
-        ...Object.fromEntries(merged.map(a => [a.key, a])),
-      },
+      assets: { ...Object.fromEntries(otherAssets), ...dual.assets },
+      localMeta: { ...Object.fromEntries(otherMeta), ...dual.localMeta },
     });
-    await cacheAssets(f.id, merged);
+    await cacheLocalMeta(f.id, merged);
   },
 
-  getFileForAsset: async (asset: LocalAsset) => {
+  getFileForAsset: async (keyOrAsset: string | LocalAssetModel) => {
     try {
-      if (asset.fileHandle) {
-        return await asset.fileHandle.getFile();
+      const key = typeof keyOrAsset === 'string' ? keyOrAsset : keyOrAsset._localKey;
+      const meta = get().localMeta[key];
+      if (!meta) return undefined;
+      if (meta.fileHandle) {
+        return await meta.fileHandle.getFile();
       }
-      const folder = get().folders.find(f => f.id === asset.folderId);
+      const folder = get().folders.find(f => f.id === meta.folderId);
       if (!folder) return undefined;
-      const handle = await getFileHandle(folder.handle, asset.relativePath);
+      const handle = await getFileHandle(folder.handle, meta.relativePath);
       if (!handle) return undefined;
       return await handle.getFile();
     } catch {
@@ -1086,25 +1080,30 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   updateAssetHashesBatch: async (updates) => {
     if (!updates.length) return;
 
+    const currentMeta = get().localMeta;
     const currentAssets = get().assets;
+    const nextMeta = { ...currentMeta };
     const nextAssets = { ...currentAssets };
     const touchedFolders = new Set<string>();
 
     for (const update of updates) {
-      const asset = nextAssets[update.assetKey];
-      if (!asset) continue;
+      const meta = nextMeta[update.assetKey];
+      if (!meta) continue;
 
-      nextAssets[update.assetKey] = {
-        ...asset,
+      const updatedMeta: LocalFolderMeta = {
+        ...meta,
         sha256: update.sha256,
         sha256_computed_at: Date.now(),
         sha256_file_size: update.file.size,
         sha256_last_modified: update.file.lastModified,
       };
-      touchedFolders.add(asset.folderId);
+      nextMeta[update.assetKey] = updatedMeta;
+      // Rebuild AssetModel with updated sha256
+      nextAssets[update.assetKey] = buildLocalAssetModel(updatedMeta);
+      touchedFolders.add(meta.folderId);
     }
 
-    set({ assets: nextAssets });
+    set({ assets: nextAssets, localMeta: nextMeta });
 
     for (const folderId of touchedFolders) {
       scheduleHashCacheFlush(folderId);
@@ -1122,29 +1121,28 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     await setUploadRecords(records);
   },
 
-  // Task 104: Update upload history for an asset and persist to cache
   updateAssetUploadStatus: async (assetKey, status, note, metadata) => {
-    const asset = get().assets[assetKey];
-    if (!asset) return;
+    const meta = get().localMeta[assetKey];
+    if (!meta) return;
 
-    // Update in-memory asset
-    const updated = {
-      ...asset,
+    const updatedMeta: LocalFolderMeta = {
+      ...meta,
       last_upload_status: status,
       last_upload_note: note,
       last_upload_at: Date.now(),
-      last_upload_provider_id: metadata?.providerId ?? asset.last_upload_provider_id,
-      last_upload_asset_id: metadata?.assetId ?? asset.last_upload_asset_id,
+      last_upload_provider_id: metadata?.providerId ?? meta.last_upload_provider_id,
+      last_upload_asset_id: metadata?.assetId ?? meta.last_upload_asset_id,
     };
 
     set(s => ({
-      assets: { ...s.assets, [assetKey]: updated },
+      localMeta: { ...s.localMeta, [assetKey]: updatedMeta },
+      assets: { ...s.assets, [assetKey]: buildLocalAssetModel(updatedMeta) },
     }));
 
     // Persist to cache so it survives page reload
-    const folderId = asset.folderId;
-    const folderAssets = Object.values(get().assets).filter(a => a.folderId === folderId);
-    await cacheAssets(folderId, folderAssets);
+    const folderId = meta.folderId;
+    const folderMetas = Object.values(get().localMeta).filter(m => m.folderId === folderId);
+    await cacheLocalMeta(folderId, folderMetas);
   },
 
   dismissMissingFolders: () => {
@@ -1163,7 +1161,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
  * asset key and lastModified timestamp so updated files naturally invalidate
  * old thumbnails.
  */
-export async function getLocalThumbnailBlob(asset: LocalAsset): Promise<Blob | undefined> {
+export async function getLocalThumbnailBlob(asset: LocalAsset | LocalAssetModel): Promise<Blob | undefined> {
   const key = getThumbnailKey(asset);
   try {
     return await idbGet<Blob>(key);
@@ -1172,7 +1170,7 @@ export async function getLocalThumbnailBlob(asset: LocalAsset): Promise<Blob | u
   }
 }
 
-export async function setLocalThumbnailBlob(asset: LocalAsset, blob: Blob): Promise<void> {
+export async function setLocalThumbnailBlob(asset: LocalAsset | LocalAssetModel, blob: Blob): Promise<void> {
   const key = getThumbnailKey(asset);
   try {
     await idbSet<Blob>(key, blob);
@@ -1264,21 +1262,28 @@ async function generateVideoThumbnail(file: File): Promise<Blob | null> {
 }
 
 export async function generateThumbnail(file: File): Promise<Blob | null> {
-  // Handle videos
+  // Handle videos (must stay on main thread — needs <video> element)
   if (file.type.startsWith('video/')) {
     return generateVideoThumbnail(file);
   }
 
-  // Handle images
+  // Handle images — prefer off-thread worker to avoid janking the UI
   if (!file.type.startsWith('image/')) {
     return null;
   }
 
+  // Try worker first (decode + resize + encode off main thread)
   try {
-    // Create an image bitmap for efficient processing
+    const workerResult = await generateThumbnailOffThread(file);
+    if (workerResult) return workerResult;
+  } catch {
+    // Worker unavailable or failed — fall through to main-thread path
+  }
+
+  // Main-thread fallback
+  try {
     const bitmap = await createImageBitmap(file);
 
-    // Calculate new dimensions maintaining aspect ratio
     let width = bitmap.width;
     let height = bitmap.height;
 
@@ -1292,7 +1297,6 @@ export async function generateThumbnail(file: File): Promise<Blob | null> {
       }
     }
 
-    // Use OffscreenCanvas if available (better performance), otherwise fallback
     if (typeof OffscreenCanvas !== 'undefined') {
       const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext('2d');
@@ -1303,7 +1307,6 @@ export async function generateThumbnail(file: File): Promise<Blob | null> {
 
       return await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
     } else {
-      // Fallback for browsers without OffscreenCanvas
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;

@@ -1,14 +1,14 @@
 /**
  * Client-side grouping engine for Local Folders assets.
  *
- * Groups LocalAsset[] by various dimensions (subfolder, media type, extension, date)
+ * Groups LocalAssetModel[] by various dimensions (subfolder, media type, extension, date)
  * and produces AssetGroup[] compatible with the gallery's GroupFolderTile / GroupListRow.
  */
 
 import type { AssetGroup } from '../components/groupHelpers';
 import { GROUP_PREVIEW_LIMIT } from '../components/groupHelpers';
 import type { AssetModel } from '../hooks/useAssets';
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,25 +28,25 @@ export const LOCAL_GROUP_BY_OPTIONS: { value: LocalGroupBy | 'none'; label: stri
 // Key extraction per dimension
 // ---------------------------------------------------------------------------
 
-function getSubfolderKey(asset: LocalAsset): string {
+function getSubfolderKey(asset: LocalAssetModel): string {
   const rel = asset.relativePath || asset.source?.relativePath || '';
   const lastSep = rel.lastIndexOf('/');
   if (lastSep <= 0) return '__root__';
   return rel.slice(0, lastSep);
 }
 
-function getMediaTypeKey(asset: LocalAsset): string {
+function getMediaTypeKey(asset: LocalAssetModel): string {
   return asset.kind || 'other';
 }
 
-function getExtensionKey(asset: LocalAsset): string {
+function getExtensionKey(asset: LocalAssetModel): string {
   const name = asset.name || '';
   const dotIdx = name.lastIndexOf('.');
   if (dotIdx < 0) return '(no extension)';
   return name.slice(dotIdx).toLowerCase();
 }
 
-function getDateKey(asset: LocalAsset): string {
+function getDateKey(asset: LocalAssetModel): string {
   const ts = asset.lastModified;
   if (!ts) return 'Unknown date';
   const d = new Date(ts);
@@ -57,7 +57,7 @@ function getDateKey(asset: LocalAsset): string {
   return `${year}-${month}-${day}`;
 }
 
-export function extractGroupKey(asset: LocalAsset, groupBy: LocalGroupBy): string {
+export function extractGroupKey(asset: LocalAssetModel, groupBy: LocalGroupBy): string {
   switch (groupBy) {
     case 'subfolder':
       return getSubfolderKey(asset);
@@ -109,11 +109,11 @@ export function getLocalGroupLabel(groupBy: LocalGroupBy, key: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a minimal AssetModel from a LocalAsset + optional blob/preview URL
+ * Creates a minimal AssetModel from a LocalAssetModel + optional blob/preview URL
  * so GroupPreviewCell / GroupFolderTile can render previews.
  */
 export function localAssetToPreviewShim(
-  asset: LocalAsset,
+  asset: LocalAssetModel,
   blobUrl?: string,
   idx = 0,
 ): AssetModel {
@@ -132,7 +132,7 @@ export function localAssetToPreviewShim(
     storedKey: null,
     isArchived: false,
     syncStatus: 'remote',
-    providerAssetId: asset.id || asset.key || '',
+    providerAssetId: asset.key || String(asset.id),
     providerId: 'local',
     userId: 0,
     description: asset.name,
@@ -140,19 +140,19 @@ export function localAssetToPreviewShim(
 }
 
 // ---------------------------------------------------------------------------
-// Bucketing (shared by groupLocalAssets and eager preview logic)
+// Bucketing (shared by groupLocalAssetModels and eager preview logic)
 // ---------------------------------------------------------------------------
 
 /**
- * Bucket assets by a grouping dimension. Returns a Map<groupKey, LocalAsset[]>.
+ * Bucket assets by a grouping dimension. Returns a Map<groupKey, LocalAssetModel[]>.
  * Shared between the full grouping function and callers that only need buckets
  * (e.g. to collect preview keys for eager loading).
  */
-export function bucketLocalAssets(
-  assets: LocalAsset[],
+export function bucketLocalAssetModels(
+  assets: LocalAssetModel[],
   groupBy: LocalGroupBy,
-): Map<string, LocalAsset[]> {
-  const buckets = new Map<string, LocalAsset[]>();
+): Map<string, LocalAssetModel[]> {
+  const buckets = new Map<string, LocalAssetModel[]>();
   for (const asset of assets) {
     const key = extractGroupKey(asset, groupBy);
     let bucket = buckets.get(key);
@@ -177,19 +177,19 @@ export function buildFavoriteGroupKey(groupBy: LocalGroupBy, groupKey: string): 
 // Main grouping function
 // ---------------------------------------------------------------------------
 
-export interface GroupLocalAssetsOptions {
+export interface GroupLocalAssetModelsOptions {
   /** Map from asset key → blob/preview URL for preview shims */
   previewUrls?: Map<string, string>;
   /** Get preview URL for a single asset */
-  getPreviewUrl?: (asset: LocalAsset) => string | undefined;
+  getPreviewUrl?: (asset: LocalAssetModel) => string | undefined;
 }
 
-export function groupLocalAssets(
-  assets: LocalAsset[],
+export function groupLocalAssetModels(
+  assets: LocalAssetModel[],
   groupBy: LocalGroupBy,
-  opts?: GroupLocalAssetsOptions,
+  opts?: GroupLocalAssetModelsOptions,
 ): AssetGroup[] {
-  const buckets = bucketLocalAssets(assets, groupBy);
+  const buckets = bucketLocalAssetModels(assets, groupBy);
 
   const groups: AssetGroup[] = [];
 

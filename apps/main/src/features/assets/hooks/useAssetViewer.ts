@@ -8,8 +8,8 @@
 import { useCallback, useEffect } from 'react';
 
 import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
-import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
-import type { LocalAsset } from '../stores/localFoldersStore';
+import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 /**
  * Registers a navigation scope with the asset viewer while the component is mounted.
@@ -24,19 +24,25 @@ export function useViewerScopeSync(
   const registerScope = useAssetViewerStore((s) => s.registerScope);
   const unregisterScope = useAssetViewerStore((s) => s.unregisterScope);
 
+  // Sync scope data when it changes (registerScope upserts)
   useEffect(() => {
     if (enabled && assets.length > 0) {
       registerScope(scopeId, label, assets);
     }
+  }, [enabled, scopeId, label, assets, registerScope]);
+
+  // Unregister only on unmount or when disabled/scopeId changes
+  useEffect(() => {
     return () => {
       unregisterScope(scopeId);
     };
-  }, [enabled, scopeId, label, assets, registerScope, unregisterScope]);
+   
+  }, [scopeId, unregisterScope]);
 }
 
 interface UseAssetViewerOptions {
   source: 'gallery' | 'local';
-  localMetadataResolver?: (asset: LocalAsset) => Partial<ViewerAsset['metadata']>;
+  localMetadataResolver?: (asset: LocalAssetModel) => Partial<ViewerAsset['metadata']>;
 }
 
 export function useAssetViewer(options: UseAssetViewerOptions) {
@@ -55,22 +61,24 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
   );
 
   /**
-   * Convert local asset to ViewerAsset
+   * Convert local asset to ViewerAsset.
+   * Uses `source: 'local'` so the viewer/mask overlay knows this is from local folders.
    */
   const localAssetToViewer = useCallback(
-    (asset: LocalAsset, previewUrl?: string, fullUrl?: string): ViewerAsset => ({
+    (asset: LocalAssetModel, previewUrl?: string, fullUrl?: string): ViewerAsset => ({
       id: asset.key,
-      name: asset.name,
-      type: asset.kind === 'video' ? 'video' : 'image',
-      url: previewUrl || '',
+      name: asset.description || asset.key,
+      type: asset.mediaType === 'video' ? 'video' : 'image',
+      url: previewUrl || asset.previewUrl || '',
       fullUrl,
       source: 'local',
+      _assetModel: asset,
       metadata: {
         path: asset.relativePath,
-        size: asset.size,
+        size: asset.size ?? asset.fileSizeBytes ?? undefined,
         createdAt: asset.lastModified
           ? new Date(asset.lastModified).toISOString()
-          : undefined,
+          : asset.createdAt,
         folderId: asset.folderId,
         ...(localMetadataResolver?.(asset) ?? {}),
       },
@@ -95,9 +103,9 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    */
   const openLocalAsset = useCallback(
     (
-      asset: LocalAsset,
+      asset: LocalAssetModel,
       previewUrl: string | undefined,
-      allAssets?: LocalAsset[],
+      allAssets?: LocalAssetModel[],
       previews?: Record<string, string>,
       fullUrl?: string
     ) => {
@@ -121,7 +129,7 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
   );
 
   const updateLocalList = useCallback(
-    (assets: LocalAsset[], previews?: Record<string, string>) => {
+    (assets: LocalAssetModel[], previews?: Record<string, string>) => {
       updateAssetList(
         assets.map((a) => localAssetToViewer(a, previews?.[a.key]))
       );

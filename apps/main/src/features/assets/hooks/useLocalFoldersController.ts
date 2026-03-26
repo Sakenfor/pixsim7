@@ -38,6 +38,7 @@ import {
   generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
+import type { LocalAssetModel, LocalFolderMeta } from '../types/localFolderMeta';
 
 /** Placeholder folder that needs to be re-added */
 export type MissingFolder = {
@@ -65,7 +66,7 @@ const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
 };
 
 const PREVIEW_LOAD_CONCURRENCY = 4;
-const PREVIEW_STATE_FLUSH_DELAY_MS = 24;
+const PREVIEW_STATE_FLUSH_DELAY_MS = 80;
 const GLOBAL_PREVIEW_CACHE_MAX_ENTRIES = 1200;
 const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 80;
 
@@ -81,7 +82,7 @@ const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 80;
 const globalBlobUrlCache = new Map<string, { url: string; original: boolean }>();
 const globalLoadingKeys = new Set<string>();
 
-function isAssetDirectlyInFolderPath(asset: LocalAsset, folderPath: string): boolean {
+function isAssetDirectlyInFolderPath(asset: LocalAsset | LocalAssetModel, folderPath: string): boolean {
   // Root folder selected: path is just folderId
   if (folderPath === asset.folderId) {
     // Only show files directly under the root folder here.
@@ -111,6 +112,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     supported,
     folders: rawFolders,
     assets: assetsRecord,
+    localMeta: localMetaRecord,
     loadPersisted,
     addFolder,
     removeFolder,
@@ -127,6 +129,11 @@ export function useLocalFoldersController(): LocalFoldersController {
     missingFolderNames,
     dismissMissingFolders,
   } = useLocalFolders();
+
+  const getLocalMeta = useCallback(
+    (key: string): LocalFolderMeta | undefined => localMetaRecord[key],
+    [localMetaRecord],
+  );
   const userId = useAuthStore((state) => state.user?.id);
 
   // Local folder settings
@@ -175,6 +182,9 @@ export function useLocalFoldersController(): LocalFoldersController {
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
   const previewActiveLoadsRef = useRef(0);
   const previewWaitersRef = useRef<Array<() => void>>([]);
+  // Generation counter: bumped when view changes (group page, drill-in, etc.)
+  // Stale preview loads bail out early so the queue drains quickly.
+  const previewGenRef = useRef(0);
 
   // Track which selected folder scopes have completed local SHA computation
   const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
@@ -539,7 +549,10 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [selectedFolderPath, filteredAssetsScopeSignature, autoHashOnSelect, hashChunkSize, getFileForAsset, updateAssetHashesBatch, manualHashRequest]);
 
   useEffect(() => {
-    if (!autoCheckBackend) return;
+    // backendCheckTrigger > 0 means user clicked "Check library" manually — always run.
+    // Otherwise respect the autoCheckBackend setting.
+    const isManualTrigger = backendCheckTrigger > 0;
+    if (!autoCheckBackend && !isManualTrigger) return;
     if (hashingProgress && hashingProgress.done < hashingProgress.total) {
       // Hashing mutates many assets rapidly; defer backend checks until hash run settles.
       return;
@@ -824,6 +837,17 @@ export function useLocalFoldersController(): LocalFoldersController {
     return false; // 'thumbnail' mode
   }, []);
 
+  // Drain pending preview waiters so stale loads don't monopolise I/O.
+  // Bumps generation counter so QUEUED loads bail after acquiring a slot.
+  // In-flight loads (already past the gen check) finish normally and cache
+  // their result — throwing away completed work caused thumbnails to appear
+  // missing on view changes.
+  const cancelPendingPreviews = useCallback(() => {
+    previewGenRef.current++;
+    const waiters = previewWaitersRef.current.splice(0);
+    for (const resolve of waiters) resolve();
+  }, []);
+
   // Load preview for an asset.
   // Uses refs for guards instead of `previews` state so the callback identity stays stable.
   // This prevents O(n²) IntersectionObserver churn (every preview load was changing the
@@ -833,6 +857,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (!asset) return;
 
     const wantOriginal = shouldUseOriginal(asset);
+    const gen = previewGenRef.current;
 
     // Check if already loaded (via ref or global cache) or currently loading.
     // If a cached entry exists but was produced by a different preview mode
@@ -842,6 +867,11 @@ export function useLocalFoldersController(): LocalFoldersController {
     const globalEntry = globalBlobUrlCache.get(asset.key);
     if (globalEntry && globalEntry.original === wantOriginal) {
       touchGlobalBlobCacheEntry(asset.key);
+      // Ensure this instance's state has the URL (may be missing after view change)
+      if (!blobUrlsRef.current.has(asset.key)) {
+        blobUrlsRef.current.set(asset.key, globalEntry.url);
+        queuePreviewStatePatch(asset.key, globalEntry.url);
+      }
       return;
     }
 
@@ -866,6 +896,8 @@ export function useLocalFoldersController(): LocalFoldersController {
         isOriginal = true;
         await acquirePreviewSlot();
         acquiredSlot = true;
+        // Bail if a newer preview batch has started (avoids stale disk reads)
+        if (gen !== previewGenRef.current) return;
 
         const file = await getFileForAsset(asset);
         if (file) {
@@ -887,6 +919,8 @@ export function useLocalFoldersController(): LocalFoldersController {
         if (!url) {
           await acquirePreviewSlot();
           acquiredSlot = true;
+          // Bail if a newer preview batch has started (avoids stale disk reads)
+          if (gen !== previewGenRef.current) return;
 
           const file = await getFileForAsset(asset);
           if (!file) return;
@@ -1230,5 +1264,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     hashFolder,
     hashAssets,
     recheckBackend,
+    getLocalMeta,
+    cancelPendingPreviews,
   };
 }

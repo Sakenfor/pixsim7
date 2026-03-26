@@ -18,7 +18,7 @@ import { authService } from '@lib/auth';
 import { Icon } from '@lib/icons';
 // import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
-import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
+import { useAssets, useLocalFolders, type AssetModel, type ViewerAsset } from '@features/assets';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
 import { useGenerationSettingsStore, getRegisteredSettingsStores } from '@features/generation';
@@ -997,6 +997,15 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
             sourceAssetIdForUpload = srcResult.asset_id;
             autoSavedSourceAssetIdRef.current = srcResult.asset_id;
             await notifyGalleryOfNewAsset(srcResult.asset_id);
+
+            // Update local folder store so the card reflects the library link
+            if (asset.source === 'local') {
+              const localAssetKey = String(asset.id);
+              useLocalFolders.getState().updateAssetUploadStatus(
+                localAssetKey, 'success', 'Auto-saved via mask overlay',
+                { assetId: srcResult.asset_id, providerId: 'library' },
+              );
+            }
           }
         } catch (err) {
           console.warn('[MaskOverlay] Failed to auto-save source asset to library:', err);

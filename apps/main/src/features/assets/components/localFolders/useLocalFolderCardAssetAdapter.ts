@@ -1,20 +1,20 @@
 import { useLinkedCardAssetAdapter } from '@features/assets/lib/useLinkedCardAssetAdapter';
 import type { AssetModel } from '@features/assets/models/asset';
-import type { LocalAsset } from '@features/assets/stores/localFoldersStore';
+import type { LocalAssetModel } from '@features/assets/types/localFolderMeta';
 
 interface UseLocalFolderCardAssetAdapterOptions {
-  visibleAssets: LocalAsset[];
-  toFallbackAsset: (asset: LocalAsset) => AssetModel;
+  visibleAssets: LocalAssetModel[];
+  toFallbackAsset: (asset: LocalAssetModel) => AssetModel;
 }
 
-function getLinkedAssetId(asset: LocalAsset): number | null {
+function getLinkedAssetId(asset: LocalAssetModel): number | null {
   return typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0
     ? asset.last_upload_asset_id
     : null;
 }
 
 function mergeLinkedWithLocal(
-  localAsset: LocalAsset,
+  localAsset: LocalAssetModel,
   linkedAsset: AssetModel,
   fallbackAsset: AssetModel,
 ): AssetModel {
@@ -75,7 +75,7 @@ export function useLocalFolderCardAssetAdapter({
   visibleAssets,
   toFallbackAsset,
 }: UseLocalFolderCardAssetAdapterOptions) {
-  return useLinkedCardAssetAdapter<LocalAsset>({
+  return useLinkedCardAssetAdapter<LocalAssetModel>({
     visibleItems: visibleAssets,
     getItemKey: (asset) => asset.key,
     getLinkedAssetId,

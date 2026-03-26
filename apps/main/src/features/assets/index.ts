@@ -123,8 +123,17 @@ export {
   getLocalThumbnailBlob,
   setLocalThumbnailBlob,
   generateThumbnail,
+  /** @deprecated Use LocalAssetModel instead */
   type LocalAsset,
 } from './stores/localFoldersStore';
+
+export {
+  type LocalAssetModel,
+  type LocalFolderMeta,
+  buildLocalAssetModel,
+  isLocalAssetModel,
+  hashStringToStableNegativeId,
+} from './types/localFolderMeta';
 
 export {
   useMediaSettingsStore,

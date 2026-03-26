@@ -12,7 +12,7 @@ import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sou
 
 import type { UploadAssetResponse } from '@lib/api/upload';
 
-import type { LocalAsset } from '@features/assets';
+import type { LocalAssetModel, LocalFolderMeta } from '@features/assets';
 
 export type LocalSourceId = 'local-fs';
 
@@ -50,10 +50,14 @@ export type FolderWithMissing = {
   isMissing: boolean;
 };
 
-export interface LocalFoldersController extends FolderSourceController<LocalAsset> {
+export interface LocalFoldersController extends FolderSourceController<LocalAssetModel> {
   // Override source to use the legacy SourceInfo type for backward compatibility
-  // The controller also provides the new SourceIdentity-compatible structure
   source: SourceIdentity & SourceInfo;
+
+  /** Access local-only sidecar metadata (hash tracking, upload tracking, file handles) */
+  getLocalMeta: (key: string) => LocalFolderMeta | undefined;
+  /** Cancel queued preview loads (call on page/view change to prevent stale I/O) */
+  cancelPendingPreviews?: () => void;
 
   // Local-specific: load persisted folders on mount
   loadPersisted: () => void;
@@ -79,22 +83,17 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   recheckBackend: () => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
-  /** Combined list of real folders + missing folder placeholders */
   foldersWithMissing: FolderWithMissing[];
-  /** Names of folders that are missing locally but exist in backend */
   missingFolderNames: string[];
-  /** Trigger folder picker to restore a missing folder */
   restoreMissingFolder: (folderName: string) => Promise<void>;
-  /** Dismiss the missing folders warning */
   dismissMissingFolders: () => void;
 
-  /** Upload one asset to a specific provider (bypasses default provider setting).
-   *  Returns the upload response (includes asset_id) when available. */
-  uploadOneToProvider: (asset: LocalAsset | string, providerId: string) => Promise<UploadAssetResponse | null>;
-  /** Upload one asset explicitly to library (ignores default provider setting) */
-  uploadOneToLibrary: (asset: LocalAsset | string) => Promise<void>;
+  /** Upload one asset to a specific provider */
+  uploadOneToProvider: (asset: LocalAssetModel | string, providerId: string) => Promise<UploadAssetResponse | null>;
+  /** Upload one asset explicitly to library */
+  uploadOneToLibrary: (asset: LocalAssetModel | string) => Promise<void>;
 
-  // Local favorites (maps local asset key -> favorite state in backend library)
+  // Local favorites
   favoriteStatus: Record<string, boolean>;
-  toggleFavoriteOne: (asset: LocalAsset | string) => Promise<void>;
+  toggleFavoriteOne: (asset: LocalAssetModel | string) => Promise<void>;
 }

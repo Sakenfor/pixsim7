@@ -11,7 +11,7 @@ import type { LocalFoldersController } from '@/types/localSources';
 import { useAssetViewer } from '../hooks/useAssetViewer';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 import {
   ALL_ASSETS_SCROLL_SCOPE,
@@ -73,7 +73,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   const getFolderFilterLabel = useCallback((folderId: string) => {
     return getFolderLabel(folderId);
   }, [getFolderLabel]);
-  const isAssetInFavoriteFolder = useCallback((asset: LocalAsset) => {
+  const isAssetInFavoriteFolder = useCallback((asset: LocalAssetModel) => {
     if (favoriteFoldersSet.size === 0) return false;
     if (favoriteFoldersSet.has(asset.folderId)) return true;
 
@@ -90,7 +90,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     }
     return false;
   }, [favoriteFoldersSet]);
-  const getSubfolderValue = useCallback((asset: LocalAsset) => {
+  const getSubfolderValue = useCallback((asset: LocalAssetModel) => {
     return makeSubfolderValue(asset.folderId, getDirectoryFromRelativePath(asset.relativePath));
   }, []);
   const getSubfolderLabelFromValue = useCallback((value: string) => {
@@ -98,7 +98,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     if (!parsed) return value;
     return parsed.directory || '(root)';
   }, []);
-  const getSubfolderLabelForAsset = useCallback((asset: LocalAsset) => {
+  const getSubfolderLabelForAsset = useCallback((asset: LocalAssetModel) => {
     return getSubfolderLabelFromValue(getSubfolderValue(asset));
   }, [getSubfolderLabelFromValue, getSubfolderValue]);
   const getScopedFolderIds = useCallback((filterState: ClientFilterState): string[] => {
@@ -117,7 +117,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   }, [favoriteRootFolderIds]);
 
   const localMetadataResolver = useCallback(
-    (asset: LocalAsset) => ({
+    (asset: LocalAssetModel) => ({
       folderName: folderNames[asset.folderId],
       assetId:
         typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0
@@ -127,7 +127,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     }),
     [folderNames, controller.providerId]
   );
-  const { openLocalAsset, localAssetToViewer } = useAssetViewer({
+  const { openLocalAsset: openLocalAssetModel, localAssetToViewer } = useAssetViewer({
     source: 'local',
     localMetadataResolver,
   });
@@ -140,7 +140,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   // --- Callbacks hook ---
   const callbacks = useLocalFolderCallbacks({
     controller,
-    openLocalAsset,
+    openLocalAssetModel,
   });
 
   // --- Hashing labels ---

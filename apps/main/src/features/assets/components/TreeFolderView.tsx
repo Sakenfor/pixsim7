@@ -3,20 +3,20 @@ import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { Icons } from '@lib/icons';
 
 import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 type TreeNode = {
   name: string;
   path: string;
   type: 'folder' | 'file';
   children?: TreeNode[];
-  asset?: LocalAsset;
+  asset?: LocalAssetModel;
   count?: number; // file count for folders
 };
 
 // Build tree grouped by folder ID first
 function buildTree(
-  assets: LocalAsset[],
+  assets: LocalAssetModel[],
   folderNames: Record<string, string>,
   folderOrder?: string[]
 ): TreeNode {
@@ -27,7 +27,7 @@ function buildTree(
     if (!acc[asset.folderId]) acc[asset.folderId] = [];
     acc[asset.folderId].push(asset);
     return acc;
-  }, {} as Record<string, LocalAsset[]>);
+  }, {} as Record<string, LocalAssetModel[]>);
 
   // Helper to sort: folders first, then alphabetically by name
   function sortNodes(nodes?: TreeNode[]): void {
@@ -124,11 +124,11 @@ function buildTree(
 type TreeNodeViewProps = {
   node: TreeNode;
   level: number;
-  onFileClick?: (asset: LocalAsset, previewUrl?: string) => void;
-  onPreview?: (asset: LocalAsset) => void;
+  onFileClick?: (asset: LocalAssetModel, previewUrl?: string) => void;
+  onPreview?: (asset: LocalAssetModel) => void;
   previews: Record<string, string>;
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
-  onUpload?: (asset: LocalAsset) => void;
+  onUpload?: (asset: LocalAssetModel) => void;
   providerId?: string;
   compactMode?: boolean;
   selectedFolderPath?: string;
@@ -352,13 +352,13 @@ function TreeNodeView({
 }
 
 type TreeFolderViewProps = {
-  assets: LocalAsset[];
+  assets: LocalAssetModel[];
   folderNames: Record<string, string>; // folderId -> folder name
-  onFileClick?: (asset: LocalAsset, previewUrl?: string) => void;
-  onPreview?: (asset: LocalAsset) => void;
+  onFileClick?: (asset: LocalAssetModel, previewUrl?: string) => void;
+  onPreview?: (asset: LocalAssetModel) => void;
   previews: Record<string, string>;
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
-  onUpload?: (asset: LocalAsset) => void;
+  onUpload?: (asset: LocalAssetModel) => void;
   providerId?: string;
   // New props for folder selection mode
   compactMode?: boolean; // If true, show compact tree without file previews

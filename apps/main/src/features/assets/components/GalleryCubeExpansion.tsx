@@ -5,7 +5,7 @@ import type { ExpansionComponentProps } from '@features/cubes';
 
 import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
 import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 /**
  * Simple hash function to convert string key to numeric ID.
@@ -27,10 +27,10 @@ function GalleryCubeThumbnail({
   selected,
   onSelect,
 }: {
-  asset: LocalAsset;
+  asset: LocalAssetModel;
   previews: Record<string, string>;
   selected: boolean;
-  onSelect: (asset: LocalAsset, previewUrl: string) => void;
+  onSelect: (asset: LocalAssetModel, previewUrl: string) => void;
 }) {
   const resolvedPreview = useLocalAssetPreview(asset, previews);
 
@@ -93,7 +93,7 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
 
   const assetCount = assets.length;
 
-  const handleAssetClick = (asset: LocalAsset, previewUrl: string) => {
+  const handleAssetClick = (asset: LocalAssetModel, previewUrl: string) => {
     // Only select image/video assets (not audio/other)
     if (asset.kind !== 'image' && asset.kind !== 'video') return;
 

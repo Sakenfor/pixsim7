@@ -2,6 +2,7 @@ export const CONTENT_SCROLL_BY_SCOPE_KEY = 'ps7_localFolders_content_scroll_by_s
 export const GROUP_MODE_KEY = 'ps7_localFolders_group_mode';
 export const FILTER_STATE_KEY = 'ps7_localFolders_filter_state';
 export const PAGE_KEY = 'ps7_localFolders_page';
+export const DRILLED_GROUP_KEY = 'ps7_localFolders_drilledGroup';
 export const ALL_ASSETS_SCROLL_SCOPE = '__all__';
 export const SUBFOLDER_VALUE_SEPARATOR = '::';
 export const ROOT_SUBFOLDER_VALUE = '__root__';

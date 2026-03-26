@@ -5,7 +5,7 @@ import type {
   ClientFilterState,
 } from '@features/gallery/lib/useClientFilters';
 
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAssetModel } from '../../types/localFolderMeta';
 
 import type { HashFilterState, UploadFilterState } from './constants';
 
@@ -13,12 +13,12 @@ export interface BuildLocalFilterDefsDeps {
   getFolderLabel: (folderId: string) => string;
   getFolderFilterLabel: (folderId: string) => string;
   isFavoriteRootFolder: (folderId: string) => boolean;
-  isAssetInFavoriteFolder: (asset: LocalAsset) => boolean;
+  isAssetInFavoriteFolder: (asset: LocalAssetModel) => boolean;
   getScopedFolderIds: (filterState: ClientFilterState) => string[];
-  getSubfolderValue: (asset: LocalAsset) => string;
-  getSubfolderLabelForAsset: (asset: LocalAsset) => string;
-  getUploadFilterState: (asset: LocalAsset) => UploadFilterState;
-  getHashFilterState: (asset: LocalAsset) => HashFilterState;
+  getSubfolderValue: (asset: LocalAssetModel) => string;
+  getSubfolderLabelForAsset: (asset: LocalAssetModel) => string;
+  getUploadFilterState: (asset: LocalAssetModel) => UploadFilterState;
+  getHashFilterState: (asset: LocalAssetModel) => HashFilterState;
   favoriteStatus: Record<string, boolean>;
   /** Render hash / favorite action buttons for a folder filter option. */
   renderFolderOptionExtra?: (folderId: string) => ReactNode;
@@ -26,7 +26,7 @@ export interface BuildLocalFilterDefsDeps {
   renderSubfolderOptionExtra?: (subfolderValue: string) => ReactNode;
 }
 
-export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilterDef<LocalAsset>[] {
+export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilterDef<LocalAssetModel>[] {
   const {
     getFolderLabel,
     getFolderFilterLabel,

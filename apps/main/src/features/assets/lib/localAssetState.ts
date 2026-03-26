@@ -1,6 +1,6 @@
 import type { AssetUploadState } from '@/components/media/AssetGallery';
 
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAssetModel } from '../types/localFolderMeta';
 
 export type LocalUploadStatusMap = Readonly<Record<string, AssetUploadState | undefined>>;
 
@@ -12,7 +12,7 @@ function isAssetUploadState(value: unknown): value is AssetUploadState {
 }
 
 export function resolveLocalUploadState(
-  asset: Pick<LocalAsset, 'key' | 'last_upload_status'>,
+  asset: Pick<LocalAssetModel, 'key' | 'last_upload_status'>,
   uploadStatusMap: LocalUploadStatusMap,
 ): AssetUploadState {
   const inMemoryState = uploadStatusMap[asset.key];

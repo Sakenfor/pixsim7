@@ -27,7 +27,7 @@ import {
 } from '../../lib/localAssetState';
 import {
   buildFavoriteGroupKey,
-  bucketLocalAssets,
+  bucketLocalAssetModels,
   getLocalGroupLabel,
   localAssetToPreviewShim,
   type LocalGroupBy,
@@ -36,12 +36,13 @@ import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import type { AssetModel } from '../../models/asset';
 import type { ViewerAsset } from '../../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAssetModel } from '../../types/localFolderMeta';
 import { GroupFolderTile, GroupListRow } from '../GroupCards';
-import { GROUP_PAGE_SIZE, GROUP_PREVIEW_LIMIT, sortGroups } from '../groupHelpers';
+import { GROUP_PAGE_SIZE, GROUP_PREVIEW_LIMIT, sortGroups, type AssetGroup } from '../groupHelpers';
 import { PaginationStrip } from '../shared/PaginationStrip';
 
 import {
+  DRILLED_GROUP_KEY,
   FILTER_STATE_KEY,
   LOCAL_MEDIA_CARD_PRESET,
   PAGE_KEY,
@@ -55,37 +56,37 @@ type LocalGroupSummary = {
   label: string;
   count: number;
   latestTimestamp: number;
-  previewSeedAssets: LocalAsset[];
+  previewSeedAssets: LocalAssetModel[];
 };
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
-  localFilterDefs: ClientFilterDef<LocalAsset>[];
+  localFilterDefs: ClientFilterDef<LocalAssetModel>[];
   favoriteFoldersSet: ReadonlySet<string>;
   layout: 'masonry' | 'grid';
   cardSize: number;
   contentScrollRef: RefObject<HTMLDivElement | null>;
   // Callbacks from useLocalFolderCallbacks
-  getAssetKey: (asset: LocalAsset) => string;
-  getPreviewUrl: (asset: LocalAsset) => string | undefined;
-  getMediaType: (asset: LocalAsset) => 'video' | 'image';
-  getDescription: (asset: LocalAsset) => string;
-  getTags: (asset: LocalAsset) => string[];
-  getCreatedAt: (asset: LocalAsset) => string;
-  getUploadState: (asset: LocalAsset) => AssetUploadState;
-  getHashStatus: (asset: LocalAsset) => 'unique' | 'duplicate' | 'hashing' | undefined;
-  openAssetInViewer: (asset: LocalAsset, viewerItems: LocalAsset[], resolvedPreviewUrl?: string) => Promise<void>;
-  handleUpload: (asset: LocalAsset) => void;
-  handleUploadToProvider: (asset: LocalAsset, providerId: string) => Promise<void>;
-  getIsFavorite: (asset: LocalAsset) => boolean;
-  handleToggleFavorite: (asset: LocalAsset) => Promise<void>;
-  getLocalMediaCardActions: (asset: LocalAsset) => MediaCardActions;
-  toGenerationInputAsset: (asset: LocalAsset) => AssetModel;
+  getAssetKey: (asset: LocalAssetModel) => string;
+  getPreviewUrl: (asset: LocalAssetModel) => string | undefined;
+  getMediaType: (asset: LocalAssetModel) => 'video' | 'image';
+  getDescription: (asset: LocalAssetModel) => string;
+  getTags: (asset: LocalAssetModel) => string[];
+  getCreatedAt: (asset: LocalAssetModel) => string;
+  getUploadState: (asset: LocalAssetModel) => AssetUploadState;
+  getHashStatus: (asset: LocalAssetModel) => 'unique' | 'duplicate' | 'hashing' | undefined;
+  openAssetInViewer: (asset: LocalAssetModel, viewerItems: LocalAssetModel[], resolvedPreviewUrl?: string) => Promise<void>;
+  handleUpload: (asset: LocalAssetModel) => void;
+  handleUploadToProvider: (asset: LocalAssetModel, providerId: string) => Promise<void>;
+  getIsFavorite: (asset: LocalAssetModel) => boolean;
+  handleToggleFavorite: (asset: LocalAssetModel) => Promise<void>;
+  getLocalMediaCardActions: (asset: LocalAssetModel) => MediaCardActions;
+  toGenerationInputAsset: (asset: LocalAssetModel) => AssetModel;
   // Grouping helpers
-  getSubfolderValue: (asset: LocalAsset) => string;
-  getSubfolderLabelForAsset: (asset: LocalAsset) => string;
+  getSubfolderValue: (asset: LocalAssetModel) => string;
+  getSubfolderLabelForAsset: (asset: LocalAssetModel) => string;
   // Viewer scope sync
-  localAssetToViewer: (asset: LocalAsset, previewUrl?: string) => ViewerAsset;
+  localAssetToViewer: (asset: LocalAssetModel, previewUrl?: string) => ViewerAsset;
   isViewerOpen: boolean;
 }
 
@@ -150,8 +151,17 @@ export function LocalFoldersContent({
 
   const hasActiveGrouping = hasFolderScope && localGroupBy !== 'none';
 
-  // --- Drill-down state for group navigation ---
-  const [drilledGroupKey, setDrilledGroupKey] = useState<string | null>(null);
+  // --- Drill-down state for group navigation (persisted in sessionStorage) ---
+  const [drilledGroupKey, setDrilledGroupKeyRaw] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(DRILLED_GROUP_KEY) || null; } catch { return null; }
+  });
+  const setDrilledGroupKey = useCallback((key: string | null) => {
+    setDrilledGroupKeyRaw(key);
+    try {
+      if (key) sessionStorage.setItem(DRILLED_GROUP_KEY, key);
+      else sessionStorage.removeItem(DRILLED_GROUP_KEY);
+    } catch { /* quota */ }
+  }, []);
   const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
   const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
 
@@ -186,8 +196,8 @@ export function LocalFoldersContent({
 
   // --- Group bucket cache: computed once per active scope and reused for drill-in ---
   const groupBuckets = useMemo(() => {
-    if (!hasActiveGrouping) return new Map<string, LocalAsset[]>();
-    return bucketLocalAssets(filteredItems, localGroupBy as LocalGroupBy);
+    if (!hasActiveGrouping) return new Map<string, LocalAssetModel[]>();
+    return bucketLocalAssetModels(filteredItems, localGroupBy as LocalGroupBy);
   }, [hasActiveGrouping, filteredItems, localGroupBy]);
 
   // --- Group summaries: stable metadata independent of preview URL churn ---
@@ -217,21 +227,57 @@ export function LocalFoldersContent({
     return summaries;
   }, [hasActiveGrouping, groupBuckets, localGroupBy]);
 
-  // --- Group overview: lightweight preview hydration on top of cached summaries ---
-  const groups = useMemo(() => {
+  // --- Group overview: stable group shapes + incremental preview hydration ---
+  // The heavy group structure (keys, labels, counts, seed assets) only recomputes
+  // when buckets change. Preview URLs are layered on top in a second pass.
+  // To avoid re-rendering ALL tiles when a single thumbnail loads, we keep a
+  // ref cache of hydrated groups and only replace entries whose preview URLs
+  // actually changed — React sees the same object reference for unchanged tiles.
+  const stableGroups = useMemo(() => {
     if (!showGroupOverview || groupSummaries.length === 0) return [];
-
     return groupSummaries.map((summary) => ({
       key: summary.key,
       label: summary.label,
       count: summary.count,
       latestTimestamp: summary.latestTimestamp,
-      previewAssets: summary.previewSeedAssets.map((asset, idx) =>
-        localAssetToPreviewShim(asset, getPreviewUrl(asset), idx),
-      ),
+      seeds: summary.previewSeedAssets,
     }));
-  }, [showGroupOverview, groupSummaries, getPreviewUrl]);
+  }, [showGroupOverview, groupSummaries]);
 
+  const hydratedGroupCacheRef = useRef(new Map<string, { urlKey: string; group: (typeof stableGroups)[0] & { previewAssets: AssetModel[] } }>());
+
+  const groups = useMemo(() => {
+    const cache = hydratedGroupCacheRef.current;
+    // Clear stale entries if stableGroups changed (different set of group keys)
+    if (stableGroups.length === 0) { cache.clear(); return []; }
+    const currentKeys = new Set(stableGroups.map(g => g.key));
+    for (const k of cache.keys()) { if (!currentKeys.has(k)) cache.delete(k); }
+
+    return stableGroups.map((g) => {
+      // Build a cheap signature of which preview URLs this group would get
+      const urlKey = g.seeds.map(a => getPreviewUrl(a) || '').join('|');
+      const cached = cache.get(g.key);
+      if (cached && cached.urlKey === urlKey) return cached.group;
+
+      const hydrated = {
+        ...g,
+        previewAssets: g.seeds.map((asset, idx) =>
+          localAssetToPreviewShim(asset, getPreviewUrl(asset), idx),
+        ),
+      };
+      cache.set(g.key, { urlKey, group: hydrated });
+      return hydrated;
+    });
+  }, [stableGroups, getPreviewUrl]);
+
+  // Sort from stableGroups (doesn't change on preview load) so downstream
+  // pagination and eager preload key collection remain stable.
+  const sortedStableGroups = useMemo(() => {
+    if (stableGroups.length === 0) return [];
+    return sortGroups(stableGroups as unknown as AssetGroup[], localGroupSort);
+  }, [stableGroups, localGroupSort]);
+
+  // Hydrated sorted groups for rendering (changes when preview URLs change)
   const sortedGroups = useMemo(() => {
     if (groups.length === 0) return [];
     return sortGroups(groups, localGroupSort);
@@ -274,21 +320,29 @@ export function LocalFoldersContent({
     [favoriteGroups],
   );
 
-  const favoriteSortedGroups = useMemo(() => {
-    if (sortedGroups.length === 0) return [];
-    if (favoriteGroupSet.size === 0) return sortedGroups;
+  // Stable sort order for pagination + eager preload (doesn't change on preview load)
+  const stableFavoriteSortedKeys = useMemo(() => {
+    if (sortedStableGroups.length === 0) return [];
+    if (favoriteGroupSet.size === 0) return sortedStableGroups.map(g => g.key);
     const gb = localGroupBy as LocalGroupBy;
-    const favs: typeof sortedGroups = [];
-    const rest: typeof sortedGroups = [];
-    for (const g of sortedGroups) {
+    const favKeys: string[] = [];
+    const restKeys: string[] = [];
+    for (const g of sortedStableGroups) {
       if (favoriteGroupSet.has(buildFavoriteGroupKey(gb, g.key))) {
-        favs.push(g);
+        favKeys.push(g.key);
       } else {
-        rest.push(g);
+        restKeys.push(g.key);
       }
     }
-    return [...favs, ...rest];
-  }, [sortedGroups, favoriteGroupSet, localGroupBy]);
+    return [...favKeys, ...restKeys];
+  }, [sortedStableGroups, favoriteGroupSet, localGroupBy]);
+
+  // Hydrated groups in the same order for rendering
+  const favoriteSortedGroups = useMemo(() => {
+    if (stableFavoriteSortedKeys.length === 0) return [];
+    const groupMap = new Map(sortedGroups.map(g => [g.key, g]));
+    return stableFavoriteSortedKeys.map(k => groupMap.get(k)).filter(Boolean) as typeof sortedGroups;
+  }, [stableFavoriteSortedKeys, sortedGroups]);
 
   // --- Group overview pagination ---
   const [groupPage, setGroupPage] = useState(1);
@@ -307,32 +361,77 @@ export function LocalFoldersContent({
   }, [favoriteSortedGroups, groupPage]);
   const showGroupPagination = favoriteSortedGroups.length > GROUP_PAGE_SIZE;
 
-  // --- Eagerly pre-load previews for current + next page of group tiles ---
-  const groupPreviewKeys = useMemo(() => {
-    if (!showGroupOverview || favoriteSortedGroups.length === 0) return [];
-    // Current page + one page lookahead so page transitions are instant
+  // --- Eagerly pre-load previews for visible group tiles ---
+  // Two passes: first pass loads 1 preview per group on the current page (fast
+  // visual fill), second pass backfills remaining previews per group.
+  // cancelPendingPreviews() drains the queue on page/view changes so stale
+  // loads don't pile up.
+  // Collect preview keys from stableGroups (NOT from hydrated groups) so the
+  // key list doesn't change every time a thumbnail finishes loading.
+  const stableGroupMap = useMemo(
+    () => new Map(stableGroups.map(g => [g.key, g])),
+    [stableGroups],
+  );
+
+  const { primaryKeys: groupPreviewKeysPrimary, secondaryKeys: groupPreviewKeysSecondary } = useMemo(() => {
+    if (!showGroupOverview || stableFavoriteSortedKeys.length === 0) {
+      return { primaryKeys: [] as string[], secondaryKeys: [] as string[] };
+    }
     const start = (groupPage - 1) * GROUP_PAGE_SIZE;
-    const end = Math.min(start + GROUP_PAGE_SIZE * 2, favoriteSortedGroups.length);
-    const keysSet = new Set<string>();
+    const end = Math.min(start + GROUP_PAGE_SIZE, stableFavoriteSortedKeys.length);
+    const primary: string[] = [];
+    const secondary: string[] = [];
     for (let i = start; i < end; i++) {
-      for (const pa of favoriteSortedGroups[i].previewAssets) {
-        if (pa.providerAssetId) keysSet.add(pa.providerAssetId);
+      const sg = stableGroupMap.get(stableFavoriteSortedKeys[i]);
+      if (!sg) continue;
+      for (let j = 0; j < sg.seeds.length; j++) {
+        const assetKey = sg.seeds[j].key;
+        if (!assetKey) continue;
+        if (j === 0) primary.push(assetKey);
+        else secondary.push(assetKey);
       }
     }
-    return Array.from(keysSet);
-  }, [showGroupOverview, favoriteSortedGroups, groupPage]);
+    return { primaryKeys: primary, secondaryKeys: secondary };
+  }, [showGroupOverview, stableFavoriteSortedKeys, stableGroupMap, groupPage]);
+
+  // Use refs for controller callbacks so the effect only re-fires when the
+  // key lists actually change, not on every render.
+  const loadPreviewRef = useRef(controller.loadPreview);
+  loadPreviewRef.current = controller.loadPreview;
+  const cancelPendingPreviewsRef = useRef(controller.cancelPendingPreviews);
+  cancelPendingPreviewsRef.current = controller.cancelPendingPreviews;
+
+  // Stabilize key lists: the memo produces new array refs when upstream state
+  // changes (e.g. hash updates), but the actual key VALUES are the same.
+  // Join into a string so the effect only fires when keys truly change.
+  const primaryKeysRef = useRef(groupPreviewKeysPrimary);
+  const secondaryKeysRef = useRef(groupPreviewKeysSecondary);
+  primaryKeysRef.current = groupPreviewKeysPrimary;
+  secondaryKeysRef.current = groupPreviewKeysSecondary;
+  const primaryKeysSignature = groupPreviewKeysPrimary.join('\n');
+  const secondaryKeysSignature = groupPreviewKeysSecondary.join('\n');
 
   useEffect(() => {
-    if (groupPreviewKeys.length === 0) return;
-    // Debounce eager preloads so quick drill-in / back / next-group navigation
-    // doesn't enqueue a large backlog for a transient group overview.
-    const timer = setTimeout(() => {
-      for (const key of groupPreviewKeys) {
-        controller.loadPreview(key);
+    const primary = primaryKeysRef.current;
+    const secondary = secondaryKeysRef.current;
+    if (primary.length === 0 && secondary.length === 0) return;
+    // Cancel stale preview queue from previous page/view
+    cancelPendingPreviewsRef.current?.();
+    // First pass: 1 preview per group (fills tiles quickly)
+    const timer1 = setTimeout(() => {
+      for (const key of primary) {
+        loadPreviewRef.current(key);
       }
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [groupPreviewKeys, controller]);
+    }, 100);
+    // Second pass: remaining previews (backfill)
+    const timer2 = setTimeout(() => {
+      for (const key of secondary) {
+        loadPreviewRef.current(key);
+      }
+    }, 400);
+    return () => { clearTimeout(timer1); clearTimeout(timer2); };
+   
+  }, [primaryKeysSignature, secondaryKeysSignature]);
 
   // --- Pagination (persisted) — used for flat view and drilled-in view ---
   const itemsForPaging = showGroupOverview ? [] : (showDrilledView ? drilledItems : filteredItems);
@@ -355,7 +454,7 @@ export function LocalFoldersContent({
   const groupByFn = useMemo(() => {
     if (hasActiveGrouping) return undefined;
     if (!hasFolderScope) return undefined;
-    return (asset: LocalAsset) => getSubfolderValue(asset);
+    return (asset: LocalAssetModel) => getSubfolderValue(asset);
   }, [hasActiveGrouping, hasFolderScope, getSubfolderValue]);
 
   // Build a label map from pageItems so getGroupLabel can resolve keys
@@ -481,7 +580,7 @@ export function LocalFoldersContent({
 
   // --- Gallery onOpen wrapper ---
   const handleOpen = useCallback(
-    (asset: LocalAsset, resolvedPreviewUrl?: string) => {
+    (asset: LocalAssetModel, resolvedPreviewUrl?: string) => {
       const viewerItems = showDrilledView ? drilledItems : filteredItems;
       return openAssetInViewer(asset, viewerItems, resolvedPreviewUrl);
     },
@@ -515,7 +614,7 @@ export function LocalFoldersContent({
   );
 
   // --- Render gallery (shared between flat & drilled views) ---
-  const renderAssetGallery = (assets: LocalAsset[]) => (
+  const renderAssetGallery = (assets: LocalAssetModel[]) => (
     <AssetGallery
       assets={assets}
       getAssetKey={getAssetKey}
