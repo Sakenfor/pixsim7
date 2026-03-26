@@ -128,21 +128,23 @@ class ChatSession(SQLModel, table=True):
 class BridgeInstance(SQLModel, table=True):
     """Durable bridge identity + lifecycle state.
 
-    ``agent_id`` (legacy name; bridge_client_id) is the user/client-provided
-    stable ID used by the WS bridge.
+    Bridges are shared task dispatchers — they are NOT 1:1 with agent profiles.
+    A single bridge can route tasks for any agent profile.
+
+    ``bridge_client_id`` is the client-provided stable ID (e.g. ``shared-40de2327``).
     ``id`` is the backend-assigned UUID used as canonical bridge identity.
     """
 
     __tablename__ = "bridge_instances"
     __table_args__ = (
-        Index("idx_bridge_instances_agent_id", "agent_id", unique=True),
+        Index("idx_bridge_instances_bridge_client_id", "bridge_client_id", unique=True),
         Index("idx_bridge_instances_user_status", "user_id", "status"),
         Index("idx_bridge_instances_last_seen", "last_seen_at"),
         {"schema": PLATFORM_SCHEMA},
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    agent_id: str = Field(max_length=120)
+    bridge_client_id: str = Field(max_length=120)
     user_id: Optional[int] = Field(default=None, index=True)  # None = shared/admin bridge
     agent_type: str = Field(default="unknown", max_length=64)
     status: str = Field(default="online", max_length=32, index=True)  # online | offline

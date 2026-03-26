@@ -193,16 +193,13 @@ class BridgeAgentSummary(BaseModel):
 
 class AgentObservabilityEntry(BaseModel):
     profile: dict  # AgentProfileResponse
-    online: bool
-    bridge_agent: Optional[BridgeAgentSummary] = None
     recent_sessions: list[ChatSessionSummary] = []
 
 
 class AgentObservabilityResponse(BaseModel):
     agents: list[AgentObservabilityEntry]
-    total_online: int
     total_profiles: int
-    orphan_bridges: list[BridgeAgentSummary] = []
+    bridges: list[BridgeAgentSummary] = []
 
 
 @router.get("/observability", response_model=AgentObservabilityResponse)
@@ -268,36 +265,23 @@ async def agent_observability(
             pool_sessions=sessions_raw if isinstance(sessions_raw, list) else [],
         )
 
-    bridge_map = {a.bridge_client_id: a for a in bridge_agents}
-
-    # 4. Join: profile.id matches bridge client ID
-    matched_ids: set[str] = set()
-    entries = []
-    for p in profiles:
-        ba = bridge_map.get(p.id)
-        if ba:
-            matched_ids.add(p.id)
-        entries.append(AgentObservabilityEntry(
+    # 4. Build profile entries (sorted by label)
+    entries = [
+        AgentObservabilityEntry(
             profile=_to_response(p),
-            online=ba is not None,
-            bridge_agent=_build_bridge_summary(ba) if ba else None,
             recent_sessions=sessions_by_profile.get(p.id, []),
-        ))
-
-    # Sort: online first, then by label
-    entries.sort(key=lambda e: (not e.online, e.profile["label"].lower()))
-
-    # 5. Orphan bridges (no matching profile)
-    orphans = [
-        _build_bridge_summary(a) for a in bridge_agents
-        if a.bridge_client_id not in matched_ids
+        )
+        for p in profiles
     ]
+    entries.sort(key=lambda e: e.profile["label"].lower())
+
+    # 5. Build bridge summaries (separate from profiles — bridges are shared dispatchers)
+    bridge_summaries = [_build_bridge_summary(a) for a in bridge_agents]
 
     return AgentObservabilityResponse(
         agents=entries,
-        total_online=len(matched_ids),
         total_profiles=len(profiles),
-        orphan_bridges=orphans,
+        bridges=bridge_summaries,
     )
 
 
@@ -672,12 +656,12 @@ async def mint_profile_token(
 # ── Compat: /assistants read-through ────────────────────────────
 
 
-async def resolve_profile_for_bridge(
+async def resolve_agent_profile(
     db: AsyncSession,
     user_id: int,
     profile_id: Optional[str] = None,
 ) -> Optional[AgentProfile]:
-    """Resolve which profile to use for the bridge send path.
+    """Resolve an agent profile by ID, falling back to defaults.
 
     Priority: explicit profile_id > user's default > global default > first available.
     """

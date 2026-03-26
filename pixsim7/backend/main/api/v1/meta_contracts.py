@@ -1260,8 +1260,8 @@ async def _resolve_send_context(
     profile_prompt: Optional[str] = None
     profile_config: Optional[dict] = None
     try:
-        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
-        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
+        from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+        profile = await resolve_agent_profile(db, user_id or 0, payload.assistant_id)
         if profile:
             if not payload.skip_persona:
                 profile_prompt = profile.system_prompt
@@ -1372,8 +1372,8 @@ async def get_system_prompt_preview(
 
     if profile_id:
         try:
-            from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
-            profile = await resolve_profile_for_bridge(db, user.id if user else 0, profile_id)
+            from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+            profile = await resolve_agent_profile(db, user.id if user else 0, profile_id)
             if profile and profile.system_prompt:
                 persona = profile.system_prompt
         except Exception:
@@ -1695,6 +1695,8 @@ async def _upsert_chat_session(
                 existing.last_used_at = utcnow()
                 if label and label != existing.label:
                     existing.label = label
+                if profile_id is not None:
+                    existing.profile_id = profile_id
                 if scope_key is not None:
                     existing.scope_key = scope_key
                 if last_plan_id is not None:
@@ -1939,7 +1941,7 @@ def _is_local_agent(agent: "RemoteAgent") -> bool:
     except Exception:
         pass
     # Server-managed bridges are always local
-    return agent.agent_id.startswith("shared-") or agent.user_id is None
+    return agent.bridge_client_id.startswith("shared-") or agent.user_id is None
 
 
 async def _fetch_asset_images_b64(

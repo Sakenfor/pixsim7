@@ -42,7 +42,7 @@ def _make_agent(
 ) -> RemoteAgent:
     ws = AsyncMock()
     agent = RemoteAgent(
-        agent_id=agent_id,
+        bridge_client_id=agent_id,
         websocket=ws,
         bridge_id=bridge_id,
         agent_type="claude-cli",

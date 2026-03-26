@@ -32,10 +32,10 @@ logger = get_logger()
 class RemoteAgent:
     """A connected remote bridge client terminal.
 
-    Note: ``agent_id`` is a legacy field name and represents the stable
-    bridge client identity used by the WS bridge.
+    Bridges are shared dispatchers — they route tasks for any agent profile,
+    not just one.
     """
-    agent_id: str
+    bridge_client_id: str
     websocket: WebSocket
     bridge_id: Optional[str] = None
     connection_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -52,13 +52,7 @@ class RemoteAgent:
 
     @property
     def busy(self) -> bool:
-        """Backward compat — True if any task is active."""
         return self.active_tasks > 0
-
-    @property
-    def bridge_client_id(self) -> str:
-        """Canonical alias for the stable bridge client identity."""
-        return self.agent_id
 
 
 class RemoteCommandBridge:
@@ -96,7 +90,7 @@ class RemoteCommandBridge:
         tasks_completed = old.tasks_completed if old else 0
 
         agent = RemoteAgent(
-            agent_id=client_id,
+            bridge_client_id=client_id,
             bridge_id=(bridge_id.strip() if isinstance(bridge_id, str) and bridge_id.strip() else None),
             websocket=websocket,
             agent_type=agent_type,
@@ -395,7 +389,7 @@ class RemoteCommandBridge:
                 **task_payload,
             })
 
-            logger.info("remote_task_dispatched", task_id=task_id, agent_id=agent.agent_id)
+            logger.info("remote_task_dispatched", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
             # Wait for result. If heartbeats are still arriving, treat the task as active
             # and extend the deadline (same behavior as streaming dispatch).
@@ -423,7 +417,7 @@ class RemoteCommandBridge:
                 result.setdefault("bridge_client_id", agent.bridge_client_id)
                 if agent.bridge_id:
                     result.setdefault("bridge_id", agent.bridge_id)
-            logger.info("remote_task_completed", task_id=task_id, agent_id=agent.agent_id)
+            logger.info("remote_task_completed", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
             return result
 
@@ -518,7 +512,7 @@ class RemoteCommandBridge:
                 "timeout": timeout,
                 **task_payload,
             })
-            logger.info("remote_task_dispatched", task_id=task_id, agent_id=agent.agent_id)
+            logger.info("remote_task_dispatched", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
             hb_queue = self._heartbeat_queues[task_id]
             deadline = asyncio.get_event_loop().time() + timeout
@@ -638,7 +632,7 @@ class RemoteCommandBridge:
                 continue
             if agent.busy and agent.current_task_id:
                 task_state = self._active_tasks.get(agent.current_task_id, {})
-                session = agent_session_registry.get_session(agent.agent_id)
+                session = agent_session_registry.get_session(agent.bridge_client_id)
                 return {
                     "task_id": agent.current_task_id,
                     "bridge_id": agent.bridge_id,

@@ -94,10 +94,10 @@ async def _resolve_llm_profile(
     effective_id = profile_id or _DEFAULT_PROFILE_ID
     try:
         from pixsim7.backend.main.api.v1.agent_profiles import (
-            resolve_profile_for_bridge,
+            resolve_agent_profile,
         )
 
-        profile = await resolve_profile_for_bridge(db, 0, effective_id)
+        profile = await resolve_agent_profile(db, 0, effective_id)
         if profile:
             return profile.system_prompt, profile.model_id
     except Exception:

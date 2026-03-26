@@ -184,7 +184,7 @@ async def _upsert_bridge_instance(
         async with AsyncSessionLocal() as db:
             row = (
                 await db.execute(
-                    select(BridgeInstance).where(BridgeInstance.agent_id == bridge_client_id)
+                    select(BridgeInstance).where(BridgeInstance.bridge_client_id == bridge_client_id)
                 )
             ).scalar_one_or_none()
 
@@ -196,7 +196,7 @@ async def _upsert_bridge_instance(
                 if model:
                     meta["model"] = model
                 row = BridgeInstance(
-                    agent_id=bridge_client_id,
+                    bridge_client_id=bridge_client_id,
                     user_id=user_id,
                     agent_type=agent_type or "unknown",
                     status="online",
@@ -279,7 +279,7 @@ async def _touch_bridge_instance(
             if row is None:
                 row = (
                     await db.execute(
-                        select(BridgeInstance).where(BridgeInstance.agent_id == bridge_client_id)
+                        select(BridgeInstance).where(BridgeInstance.bridge_client_id == bridge_client_id)
                     )
                 ).scalar_one_or_none()
             if row is None:
@@ -357,7 +357,7 @@ async def _mark_bridge_instance_offline(
             if row is None:
                 row = (
                     await db.execute(
-                        select(BridgeInstance).where(BridgeInstance.agent_id == bridge_client_id)
+                        select(BridgeInstance).where(BridgeInstance.bridge_client_id == bridge_client_id)
                     )
                 ).scalar_one_or_none()
             if row is None:

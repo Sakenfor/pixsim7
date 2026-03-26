@@ -131,10 +131,18 @@ const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
 const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
 const MSG_KEY_PREFIX = 'ai-assistant:msg:';
 const INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
+const RESUME_SESSION_EVENT = 'ai-assistant:resume-session';
 
 interface InjectPromptDetail {
   prompt: string;
   mode?: 'replace' | 'append';
+}
+
+interface ResumeSessionDetail {
+  sessionId: string;
+  engine: string;
+  label: string;
+  profileId?: string | null;
 }
 
 function loadTabs(): ChatTab[] {
@@ -1634,6 +1642,34 @@ export function AIAssistantPanel() {
   useEffect(() => {
     if (tabs.length === 0) createTab();
   }, [tabs.length, createTab]);
+
+  // Listen for resume-session events from other panels (e.g. Agent Observability)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ResumeSessionDetail>).detail;
+      if (!detail?.sessionId) return;
+      const id = createTabId();
+      const profile = detail.profileId ? profiles.find((p) => p.id === detail.profileId) : undefined;
+      const newTab: ChatTab = {
+        id,
+        label: detail.label || 'Resumed',
+        sessionId: detail.sessionId,
+        profileId: detail.profileId ?? null,
+        engine: (detail.engine || 'claude') as AgentEngine,
+        modelOverride: null,
+        usePersona: true,
+        customInstructions: '',
+        focusAreas: [],
+        injectToken: Boolean(detail.profileId),
+        createdAt: new Date().toISOString(),
+      };
+      if (profile) newTab.label = detail.label || profile.label;
+      setTabs((prev) => [newTab, ...prev]);
+      setActiveTab(id);
+    };
+    window.addEventListener(RESUME_SESSION_EVENT, handler);
+    return () => window.removeEventListener(RESUME_SESSION_EVENT, handler);
+  }, [profiles, setActiveTab]);
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-neutral-950">

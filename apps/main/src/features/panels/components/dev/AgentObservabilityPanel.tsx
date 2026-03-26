@@ -1496,17 +1496,17 @@ const PROFILE_STATUS_COLORS: Record<string, 'green' | 'gray' | 'orange'> = {
 // Agents View — unified profile + sessions + live bridge state
 // =============================================================================
 
+interface BridgeSummary {
+  bridge_client_id: string;
+  connected_at: string;
+  busy: boolean;
+  tasks_completed: number;
+  engines: string[];
+  pool_sessions: PoolSession[];
+}
+
 interface ObservabilityEntry {
   profile: AgentProfileEntry;
-  online: boolean;
-  bridge_agent: {
-    bridge_client_id: string;
-    connected_at: string;
-    busy: boolean;
-    tasks_completed: number;
-    engines: string[];
-    pool_sessions: PoolSession[];
-  } | null;
   recent_sessions: {
     id: string;
     engine: string;
@@ -1519,10 +1519,23 @@ interface ObservabilityEntry {
 
 interface ObservabilityResponse {
   agents: ObservabilityEntry[];
-  total_online: number;
   total_profiles: number;
-  orphan_bridges: ObservabilityEntry['bridge_agent'][];
+  bridges: BridgeSummary[];
 }
+
+/** Read profile IDs that have open chat tabs (from AI Assistant localStorage). */
+function getOpenTabProfileIds(): ReadonlySet<string> {
+  try {
+    const raw = localStorage.getItem('ai-assistant:tabs');
+    if (!raw) return new Set();
+    const tabs = JSON.parse(raw) as { profileId?: string | null }[];
+    const ids = new Set<string>();
+    for (const t of tabs) { if (t.profileId) ids.add(t.profileId); }
+    return ids;
+  } catch { return new Set(); }
+}
+
+const RECENT_SESSION_MS = 60 * 60 * 1000; // 1 hour
 
 function AgentsView() {
   const [data, setData] = useState<ObservabilityResponse | null>(null);
@@ -1531,12 +1544,14 @@ function AgentsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
   const [copied, setCopied] = useState(false);
+  const [openTabProfiles, setOpenTabProfiles] = useState<ReadonlySet<string>>(getOpenTabProfileIds);
 
   const load = useCallback(async () => {
     try {
       const res = await pixsimClient.get<ObservabilityResponse>('/dev/agent-profiles/observability');
       setData(res);
     } catch { /* ignore */ }
+    setOpenTabProfiles(getOpenTabProfileIds());
   }, []);
 
   useEffect(() => { void load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
@@ -1572,8 +1587,8 @@ function AgentsView() {
     } catch { /* handled by client */ }
   };
 
-  const totalOnline = data?.total_online ?? 0;
-  const hasBridge = totalOnline > 0 || (data?.orphan_bridges?.length ?? 0) > 0;
+  const allBridges = data?.bridges ?? [];
+  const hasBridge = allBridges.length > 0;
 
   return (
     <div className="p-4 space-y-4">
@@ -1598,16 +1613,28 @@ function AgentsView() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <Badge color="green" className="text-[10px]">connected</Badge>
-          <span className="text-[10px] text-neutral-400">
-            {totalOnline} agent{totalOnline !== 1 ? 's' : ''} online
-          </span>
-          <div className="ml-auto">
-            <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
-              {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop'}
-            </Button>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge color="green" className="text-[10px]">connected</Badge>
+            <span className="text-[10px] text-neutral-400">
+              {allBridges.length} bridge{allBridges.length !== 1 ? 's' : ''}
+            </span>
+            <div className="ml-auto">
+              <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
+                {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop'}
+              </Button>
+            </div>
           </div>
+          {allBridges.map((ba) => (
+            <div key={ba.bridge_client_id} className="px-3 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+              <span className="font-mono text-neutral-500">{ba.bridge_client_id}</span>
+              {ba.engines.map((e) => (
+                <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{e}</Badge>
+              ))}
+              <span className="text-neutral-400 ml-auto">{ba.tasks_completed} tasks</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1636,9 +1663,9 @@ function AgentsView() {
 
       <div className="space-y-2">
         {(data?.agents ?? []).map((entry) => {
-          const { profile: p, online, bridge_agent: ba, recent_sessions: sessions } = entry;
+          const { profile: p, recent_sessions: sessions } = entry;
           const expanded = expandedId === p.id;
-          const engineColor = (e: string) => e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray';
+          const hasOpenTab = openTabProfiles.has(p.id);
 
           return (
             <div key={p.id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
@@ -1647,16 +1674,17 @@ function AgentsView() {
                 onClick={() => setExpandedId(expanded ? null : p.id)}
                 className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
-                <div className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : p.status === 'paused' ? 'bg-yellow-500' : 'bg-neutral-400'}`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                  hasOpenTab ? 'bg-green-500 animate-pulse-subtle'
+                    : p.status === 'paused' ? 'bg-yellow-500'
+                    : 'bg-neutral-400'
+                }`} />
                 {p.icon && <Icon name={p.icon as import('@lib/icons').IconName} size={12} className="shrink-0 text-neutral-500" />}
                 <span className="text-xs font-medium truncate">{p.label}</span>
-                {ba?.engines.map((e) => (
-                  <Badge key={e} color={engineColor(e)} className="text-[9px]">{e}</Badge>
-                ))}
-                {!ba && <Badge color="gray" className="text-[9px]">{p.agent_type}</Badge>}
+                <Badge color="gray" className="text-[9px]">{p.agent_type}</Badge>
                 {p.model_id && <span className="text-[9px] text-neutral-400 truncate max-w-[80px]">{p.model_id.split(':').pop()}</span>}
                 <span className="ml-auto text-[9px] text-neutral-400 shrink-0">
-                  {ba ? `${ba.tasks_completed} tasks` : sessions.length > 0 ? `${sessions.length} sessions` : ''}
+                  {sessions.length > 0 ? `${sessions.length} session${sessions.length !== 1 ? 's' : ''}` : ''}
                 </span>
                 <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} className="text-neutral-400 shrink-0" />
               </button>
@@ -1672,52 +1700,43 @@ function AgentsView() {
                     </Button>
                   </div>
 
-                  {/* Live pool sessions */}
-                  {ba && ba.pool_sessions.length > 0 && (
-                    <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                      {ba.pool_sessions.map((ps) => {
-                        const engine = ps.session_id.split('-')[0] || 'unknown';
-                        return (
-                          <div key={ps.session_id} className="px-3 py-1.5 flex items-center gap-2 text-[10px]">
-                            <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : ps.state === 'errored' ? 'red' : 'gray'} className="text-[9px] min-w-[38px] text-center">
-                              {ps.state}
-                            </Badge>
-                            <Badge color={engineColor(engine)} className="text-[9px]">{engine}</Badge>
-                            {ps.cli_model && <span className="text-neutral-500 font-medium">{ps.cli_model}</span>}
-                            <span className="text-neutral-400">{ps.messages_sent}/{ps.messages_received} msg</span>
-                            {ps.errors > 0 && <span className="text-red-400" title={ps.last_error || undefined}>{ps.errors} err</span>}
-                            {ps.context_pct != null && (
-                              <span className={`font-mono ${ps.context_pct > 80 ? 'text-orange-400' : ps.context_pct > 50 ? 'text-yellow-400' : 'text-neutral-400'}`}
-                                title={`${ps.total_tokens.toLocaleString()} / ${ps.context_window.toLocaleString()} tokens`}>
-                                ctx {ps.context_pct}%
-                              </span>
-                            )}
-                            {ps.last_activity && <span className="text-neutral-400 ml-auto">{formatTimestamp(ps.last_activity)}</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Recent sessions */}
+                  {/* Sessions */}
                   {sessions.length > 0 && (
                     <div className="px-3 py-1.5">
-                      <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Recent Sessions</div>
+                      <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Sessions</div>
                       <div className="space-y-0.5">
-                        {sessions.map((s) => (
-                          <div key={s.id} className="flex items-center gap-2 text-[10px] py-0.5">
-                            <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
-                            <span className="text-neutral-500 truncate flex-1">{s.label}</span>
-                            <span className="text-neutral-400">{s.message_count} msg</span>
-                            <span className="text-neutral-400">{formatTimestamp(s.last_used_at)}</span>
-                          </div>
-                        ))}
+                        {sessions.map((s) => {
+                          const elapsed = Date.now() - new Date(s.last_used_at).getTime();
+                          const isRecent = elapsed < RECENT_SESSION_MS;
+                          return (
+                            <div key={s.id} className="group/session flex items-center gap-2 text-[10px] py-0.5">
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRecent ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
+                              <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
+                              <span className="text-neutral-500 truncate flex-1">{s.label}</span>
+                              <span className="text-neutral-400">{s.message_count} msg</span>
+                              <span className="text-neutral-400">{formatTimestamp(s.last_used_at)}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.dispatchEvent(new CustomEvent('ai-assistant:resume-session', {
+                                    detail: { sessionId: s.id, engine: s.engine, label: s.label, profileId: p.id },
+                                  }));
+                                  openWorkspacePanel('ai-assistant');
+                                }}
+                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-accent transition-opacity shrink-0"
+                                title="Resume in AI Assistant"
+                              >
+                                <Icon name="play" size={10} />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
                   {/* Empty state */}
-                  {!ba && sessions.length === 0 && (
+                  {sessions.length === 0 && (
                     <div className="px-3 py-2 text-[10px] text-neutral-400">No sessions yet</div>
                   )}
                 </div>
@@ -1727,24 +1746,7 @@ function AgentsView() {
         })}
       </div>
 
-      {/* Orphan bridges */}
-      {(data?.orphan_bridges?.length ?? 0) > 0 && (
-        <>
-          <SectionHeader>Unlinked Bridges</SectionHeader>
-          <div className="space-y-1">
-            {data!.orphan_bridges.map((ba) => ba && (
-              <div key={ba.bridge_client_id} className="px-3 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                <span className="font-mono text-neutral-500">{ba.bridge_client_id}</span>
-                {ba.engines.map((e) => (
-                  <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{e}</Badge>
-                ))}
-                <span className="text-neutral-400 ml-auto">{ba.tasks_completed} tasks</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      {/* Orphan bridges are now shown inline in the Bridge section above */}
 
       {!data && (
         <div className="flex items-center justify-center py-8">
