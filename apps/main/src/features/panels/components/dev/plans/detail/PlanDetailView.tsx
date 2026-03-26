@@ -87,15 +87,14 @@ export function PlanDetailView({
   const [reviewError, setReviewError] = useState('');
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const [selectedRoundId, setSelectedRoundId] = useState('');
-  const [newRoundStatus, setNewRoundStatus] = useState<'open' | 'changes_requested' | 'approved'>('open');
-  const [newRoundRevision, setNewRoundRevision] = useState('');
   const [newRoundNote, setNewRoundNote] = useState('');
+  const [showClosedIterations, setShowClosedIterations] = useState(false);
   const [creatingRound, setCreatingRound] = useState(false);
   const [roundStatusDraft, setRoundStatusDraft] = useState<ReviewRoundStatus>('open');
   const [roundNoteDraft, setRoundNoteDraft] = useState('');
   const [roundConclusionDraft, setRoundConclusionDraft] = useState('');
   const [updatingRound, setUpdatingRound] = useState(false);
-  const [newNodeKind, setNewNodeKind] = useState<ReviewNodeKind>('review_comment');
+  const [newNodeKind, setNewNodeKind] = useState<ReviewNodeKind>('comment');
   const [newNodeAuthorRole, setNewNodeAuthorRole] = useState<ReviewAuthorRole>('reviewer');
   const [newNodeSeverity, setNewNodeSeverity] = useState<NonNullable<PlanReviewNode['severity']> | ''>('');
   const [newNodeBody, setNewNodeBody] = useState('');
@@ -228,7 +227,7 @@ export function PlanDetailView({
     void loadReviewGraph();
   }, [loadReviewGraph]);
 
-  // Poll agent sessions while any review request is in_progress
+  // Poll agent sessions while any agent task is in_progress
   const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
   const hasInProgressRequests = useMemo(
     () => (reviewGraph?.requests ?? []).some((r) => r.status === 'in_progress'),
@@ -627,40 +626,32 @@ export function PlanDetailView({
     setReviewError('');
     setReviewNotice(null);
     try {
-      const payload: PlanReviewRoundCreateRequest = { status: newRoundStatus };
+      const payload: PlanReviewRoundCreateRequest = { status: 'open' };
       const note = newRoundNote.trim();
       if (note) payload.note = note;
-
-      const revisionRaw = newRoundRevision.trim();
-      if (revisionRaw) {
-        const parsed = Number.parseInt(revisionRaw, 10);
-        if (!Number.isFinite(parsed) || parsed < 1) {
-          setReviewError('Round revision must be a positive integer.');
-          return;
-        }
-        payload.review_revision = parsed;
+      if (detail?.revision != null) {
+        payload.review_revision = detail.revision;
       }
 
       const round = await pixsimClient.post<PlanReviewRound>(
         `/dev/plans/reviews/${encodedPlanId}/rounds`,
         payload,
       );
-      setNewRoundRevision('');
       setNewRoundNote('');
       setSelectedRoundId(round.id);
-      setReviewNotice(`Created review round #${round.roundNumber}.`);
+      setReviewNotice(`Created iteration #${round.roundNumber}.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create review round'));
+      setReviewError(toErrorMessage(err, 'Failed to create iteration'));
     } finally {
       setCreatingRound(false);
     }
-  }, [encodedPlanId, loadReviewGraph, newRoundNote, newRoundRevision, newRoundStatus]);
+  }, [detail?.revision, encodedPlanId, loadReviewGraph, newRoundNote]);
 
   const handleUpdateRound = useCallback(
     async (payload: PlanReviewRoundUpdateRequest, successMessage: string) => {
       if (!selectedRound) {
-        setReviewError('Select a review round first.');
+        setReviewError('Select a iteration first.');
         return;
       }
       setUpdatingRound(true);
@@ -674,7 +665,7 @@ export function PlanDetailView({
         setReviewNotice(successMessage);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update review round'));
+        setReviewError(toErrorMessage(err, 'Failed to update iteration'));
       } finally {
         setUpdatingRound(false);
       }
@@ -682,9 +673,27 @@ export function PlanDetailView({
     [encodedPlanId, loadReviewGraph, selectedRound],
   );
 
+  const handleCloseRound = useCallback(
+    async (round: PlanReviewRound) => {
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        await pixsimClient.patch<PlanReviewRound>(
+          `/dev/plans/reviews/${encodedPlanId}/rounds/${encodeURIComponent(round.id)}`,
+          { status: 'concluded' },
+        );
+        setReviewNotice(`Closed iteration #${round.roundNumber}.`);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to close iteration'));
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
+  );
+
   const handleSaveRoundState = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select a review round first.');
+      setReviewError('Select a iteration first.');
       return;
     }
 
@@ -694,7 +703,7 @@ export function PlanDetailView({
     const currentConclusion = (selectedRound.conclusion ?? '').trim();
 
     if (roundStatusDraft === 'concluded' && !nextConclusion) {
-      setReviewError('Concluded rounds require a non-empty conclusion.');
+      setReviewError('Concluded iterations require a non-empty conclusion.');
       return;
     }
 
@@ -706,11 +715,11 @@ export function PlanDetailView({
     }
 
     if (!payload.status && payload.note === undefined && payload.conclusion === undefined) {
-      setReviewNotice('No round changes to save.');
+      setReviewNotice('No iteration changes to save.');
       return;
     }
 
-    await handleUpdateRound(payload, `Updated review round #${selectedRound.roundNumber}.`);
+    await handleUpdateRound(payload, `Updated iteration #${selectedRound.roundNumber}.`);
   }, [
     handleUpdateRound,
     roundConclusionDraft,
@@ -721,11 +730,11 @@ export function PlanDetailView({
 
   const handleCreateNode = useCallback(async () => {
     if (!selectedRound) {
-      setReviewError('Select a review round first.');
+      setReviewError('Select a iteration first.');
       return;
     }
     if (selectedRound.status === 'concluded') {
-      setReviewError('Round is concluded. Re-open it before adding new responses.');
+      setReviewError('Iteration is concluded. Re-open it before adding new responses.');
       return;
     }
 
@@ -901,11 +910,11 @@ export function PlanDetailView({
         }
       } else {
         const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
-        setReviewNotice(`Review request created${dispatchLabel}.`);
+        setReviewNotice(`Agent task created${dispatchLabel}.`);
       }
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to create review request'));
+      setReviewError(toErrorMessage(err, 'Failed to create agent task'));
     } finally {
       setCreatingRequest(false);
     }
@@ -941,10 +950,10 @@ export function PlanDetailView({
           `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
           payload,
         );
-        setReviewNotice(`Review request '${request.title}' set to ${status}.`);
+        setReviewNotice(`Agent task '${request.title}' set to ${status}.`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to update review request'));
+        setReviewError(toErrorMessage(err, 'Failed to update agent task'));
       } finally {
         setUpdatingRequestId(null);
       }
@@ -964,7 +973,7 @@ export function PlanDetailView({
         );
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dismiss review request'));
+        setReviewError(toErrorMessage(err, 'Failed to dismiss agent task'));
       }
     },
     [encodedPlanId, loadReviewGraph],
@@ -990,7 +999,7 @@ export function PlanDetailView({
         setReviewNotice(`${result.message}${nodeSuffix}`);
         await loadReviewGraph();
       } catch (err) {
-        setReviewError(toErrorMessage(err, 'Failed to dispatch review request'));
+        setReviewError(toErrorMessage(err, 'Failed to dispatch agent task'));
       } finally {
         setDispatchingRequestId(null);
       }
@@ -1016,7 +1025,7 @@ export function PlanDetailView({
       setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open requests.`);
       await loadReviewGraph();
     } catch (err) {
-      setReviewError(toErrorMessage(err, 'Failed to dispatch open review requests'));
+      setReviewError(toErrorMessage(err, 'Failed to dispatch open agent tasks'));
     } finally {
       setDispatchingTick(false);
     }
@@ -1091,14 +1100,13 @@ export function PlanDetailView({
         reviewProfileLabels={reviewProfileLabels}
         onSelectRound={setSelectedRoundId}
         onLoadReviewGraph={loadReviewGraph}
-        newRoundStatus={newRoundStatus}
-        newRoundRevision={newRoundRevision}
         newRoundNote={newRoundNote}
         creatingRound={creatingRound}
-        onNewRoundStatusChange={setNewRoundStatus}
-        onNewRoundRevisionChange={setNewRoundRevision}
+        showClosedIterations={showClosedIterations}
+        onToggleShowClosed={() => setShowClosedIterations((v) => !v)}
         onNewRoundNoteChange={setNewRoundNote}
         onCreateRound={() => void handleCreateRound()}
+        onCloseRound={handleCloseRound}
         roundStatusDraft={roundStatusDraft}
         roundNoteDraft={roundNoteDraft}
         roundConclusionDraft={roundConclusionDraft}

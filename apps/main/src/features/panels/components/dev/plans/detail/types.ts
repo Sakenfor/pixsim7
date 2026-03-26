@@ -84,7 +84,7 @@ export interface PlanStagesResponse {
 }
 
 export type ReviewRoundStatus = 'open' | 'changes_requested' | 'approved' | 'concluded';
-export type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note';
+export type ReviewNodeKind = 'comment' | 'agent_response' | 'conclusion' | 'note';
 export type ReviewAuthorRole = 'reviewer' | 'author' | 'agent' | 'system';
 export type ReviewRequestStatus = 'open' | 'in_progress' | 'fulfilled' | 'cancelled';
 export type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
@@ -496,6 +496,13 @@ export const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'bl
   changes_requested: 'orange',
   approved: 'green',
   concluded: 'gray',
+};
+
+export const ITERATION_STATUS_LABELS: Record<ReviewRoundStatus, string> = {
+  open: 'Active',
+  changes_requested: 'Needs Action',
+  approved: 'Completed',
+  concluded: 'Closed',
 };
 
 export const REVIEW_REQUEST_STATUS_COLORS: Record<ReviewRequestStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {

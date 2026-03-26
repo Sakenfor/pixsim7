@@ -1,5 +1,5 @@
 /**
- * PlanAgentTasksSection — the "Review Loop" DisclosureSection and all its
+ * PlanAgentTasksSection — the "Agent Tasks" DisclosureSection and all its
  * inner content: iterations list, new iteration form, selected iteration state
  * form, agent tasks/requests, dispatch tick, new task form, discussion, and
  * compose form.
@@ -20,6 +20,7 @@ import { PlanReviewDiscussion } from '../PlanReviewDiscussion';
 import { PlanReviewRequestCard } from '../PlanReviewRequestCard';
 import { PlanReviewRequestForm } from '../PlanReviewRequestForm';
 import { PlanReviewResponseForm } from '../PlanReviewResponseForm';
+
 import type {
   AgentSessionSnapshot,
   PlanReviewAssignee,
@@ -45,6 +46,7 @@ import {
   REVIEW_AUTHOR_ROLE_COLORS,
   REVIEW_REQUEST_DISPATCH_COLORS,
   REVIEW_REQUEST_STATUS_COLORS,
+  ITERATION_STATUS_LABELS,
   REVIEW_ROUND_STATUS_COLORS,
   REVIEW_SEVERITY_COLORS,
 } from './types';
@@ -70,14 +72,13 @@ export interface PlanAgentTasksSectionProps {
   onLoadReviewGraph: () => Promise<void>;
 
   // New round form
-  newRoundStatus: 'open' | 'changes_requested' | 'approved';
-  newRoundRevision: string;
   newRoundNote: string;
   creatingRound: boolean;
-  onNewRoundStatusChange: (status: 'open' | 'changes_requested' | 'approved') => void;
-  onNewRoundRevisionChange: (value: string) => void;
+  showClosedIterations: boolean;
+  onToggleShowClosed: () => void;
   onNewRoundNoteChange: (value: string) => void;
   onCreateRound: () => void;
+  onCloseRound?: (round: PlanReviewRound) => void | Promise<void>;
 
   // Selected round state form
   roundStatusDraft: ReviewRoundStatus;
@@ -197,14 +198,13 @@ export function PlanAgentTasksSection({
   reviewProfileLabels,
   onSelectRound,
   onLoadReviewGraph,
-  newRoundStatus,
-  newRoundRevision,
   newRoundNote,
   creatingRound,
-  onNewRoundStatusChange,
-  onNewRoundRevisionChange,
+  showClosedIterations,
+  onToggleShowClosed,
   onNewRoundNoteChange,
   onCreateRound,
+  onCloseRound,
   roundStatusDraft,
   roundNoteDraft,
   roundConclusionDraft,
@@ -291,7 +291,7 @@ export function PlanAgentTasksSection({
 }: PlanAgentTasksSectionProps) {
   return (
     <DisclosureSection
-      label="Review Loop"
+      label="Agent Tasks"
       defaultOpen={false}
       className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
       contentClassName="space-y-3 mt-2"
@@ -322,102 +322,113 @@ export function PlanAgentTasksSection({
         <div className="space-y-3">
           <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2">
             <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-              Review Rounds
+              Iterations
             </div>
             {loadingReviews && reviewRounds.length === 0 ? (
-              <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading review graph...</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading task data...</div>
             ) : reviewRounds.length === 0 ? (
-              <div className="text-xs text-neutral-500 dark:text-neutral-400">No review rounds yet.</div>
-            ) : (
-              <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                {reviewRounds.map((round) => {
-                  const selected = round.id === selectedRoundId;
-                  return (
-                    <button
-                      key={round.id}
-                      onClick={() => onSelectRound(round.id)}
-                      className={`w-full text-left p-2 rounded border text-xs ${
-                        selected
-                          ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
-                          : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                          Round #{round.roundNumber}
-                        </span>
-                        <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
-                          {round.status}
-                        </Badge>
-                      </div>
-                      <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                        {reviewNodeCountByRound.get(round.id) ?? 0} nodes
-                        {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
-                      </div>
-                      {(round.actorAgentId || round.actorRunId || round.createdBy) && (
-                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          {formatActorLabel(
-                            {
-                              principalType: round.actorPrincipalType,
-                              userId: round.actorUserId,
-                              agentId: round.actorAgentId,
-                              fallback: round.createdBy,
-                            },
-                            { profileLabels: reviewProfileLabels },
-                          )}
-                          {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">No iterations yet.</div>
+            ) : (() => {
+              const closedCount = reviewRounds.filter((r) => r.status === 'concluded').length;
+              const visibleRounds = showClosedIterations
+                ? reviewRounds
+                : reviewRounds.filter((r) => r.status !== 'concluded');
+              return (
+                <>
+                  <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                    {visibleRounds.map((round) => {
+                      const selected = round.id === selectedRoundId;
+                      return (
+                        <div
+                          key={round.id}
+                          className={`p-2 rounded border text-xs ${
+                            selected
+                              ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
+                              : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                          }`}
+                        >
+                          <div className="flex items-start gap-1">
+                            <button
+                              onClick={() => onSelectRound(round.id)}
+                              className="flex-1 text-left min-w-0"
+                            >
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                                  Iteration #{round.roundNumber}
+                                </span>
+                                <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
+                                  {ITERATION_STATUS_LABELS[round.status] ?? round.status}
+                                </Badge>
+                              </div>
+                              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                {reviewNodeCountByRound.get(round.id) ?? 0} entries
+                                {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
+                              </div>
+                              {(round.actorAgentId || round.actorRunId || round.createdBy) && (
+                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  {formatActorLabel(
+                                    {
+                                      principalType: round.actorPrincipalType,
+                                      userId: round.actorUserId,
+                                      agentId: round.actorAgentId,
+                                      fallback: round.createdBy,
+                                    },
+                                    { profileLabels: reviewProfileLabels },
+                                  )}
+                                  {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+                                </div>
+                              )}
+                              <div className="text-[10px] text-neutral-400 mt-0.5">
+                                {formatDateTime(round.updatedAt)}
+                              </div>
+                            </button>
+                            {round.status !== 'concluded' && onCloseRound && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void onCloseRound(round); }}
+                                className="shrink-0 p-1 text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                                title="Archive this iteration"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
-                      <div className="text-[10px] text-neutral-400 mt-0.5">
-                        {formatDateTime(round.updatedAt)}
-                      </div>
+                      );
+                    })}
+                  </div>
+                  {closedCount > 0 && (
+                    <button
+                      onClick={onToggleShowClosed}
+                      className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 mt-1"
+                    >
+                      {showClosedIterations ? 'Hide' : 'Show'} {closedCount} closed
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <DisclosureSection
-            label="Start New Round"
+            label="Start New Iteration"
             defaultOpen={false}
             className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
             contentClassName="space-y-2"
           >
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                Status
-                <select
-                  value={newRoundStatus}
-                  onChange={(e) => onNewRoundStatusChange(e.target.value as 'open' | 'changes_requested' | 'approved')}
-                  className={inputClassName}
-                >
-                  <option value="open">open</option>
-                  <option value="changes_requested">changes_requested</option>
-                  <option value="approved">approved</option>
-                </select>
-              </label>
-              <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                Revision
-                <input
-                  value={newRoundRevision}
-                  onChange={(e) => onNewRoundRevisionChange(e.target.value)}
-                  className={inputClassName}
-                  placeholder="optional"
-                />
-              </label>
-            </div>
             <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
               Note
               <input
                 value={newRoundNote}
                 onChange={(e) => onNewRoundNoteChange(e.target.value)}
                 className={inputClassName}
-                placeholder="Optional context for this round"
+                placeholder="Optional context for this iteration"
               />
             </label>
             <Button size="sm" onClick={onCreateRound} disabled={creatingRound}>
-              {creatingRound ? 'Creating...' : 'Create Round'}
+              {creatingRound ? 'Creating...' : 'Create Iteration'}
             </Button>
           </DisclosureSection>
         </div>
@@ -426,11 +437,11 @@ export function PlanAgentTasksSection({
           <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                {selectedRound ? `Round #${selectedRound.roundNumber}` : 'Round State'}
+                {selectedRound ? `Iteration #${selectedRound.roundNumber}` : 'Iteration State'}
               </span>
               {selectedRound && (
                 <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
-                  {selectedRound.status}
+                  {ITERATION_STATUS_LABELS[selectedRound.status] ?? selectedRound.status}
                 </Badge>
               )}
               {selectedRound?.reviewRevision != null && (
@@ -442,7 +453,7 @@ export function PlanAgentTasksSection({
 
             {!selectedRound ? (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                Select a review round to inspect responses.
+                Select a iteration to inspect responses.
               </div>
             ) : (
               <>
@@ -454,10 +465,10 @@ export function PlanAgentTasksSection({
                       onChange={(e) => onRoundStatusDraftChange(e.target.value as ReviewRoundStatus)}
                       className={inputClassName}
                     >
-                      <option value="open">open</option>
-                      <option value="changes_requested">changes_requested</option>
-                      <option value="approved">approved</option>
-                      <option value="concluded">concluded</option>
+                      <option value="open">Active</option>
+                      <option value="changes_requested">Needs Action</option>
+                      <option value="approved">Completed</option>
+                      <option value="concluded">Closed</option>
                     </select>
                   </label>
                   <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
@@ -483,7 +494,7 @@ export function PlanAgentTasksSection({
 
                 <div className="flex items-center gap-2">
                   <Button size="sm" onClick={onSaveRoundState} disabled={updatingRound}>
-                    {updatingRound ? 'Saving...' : 'Save Round State'}
+                    {updatingRound ? 'Saving...' : 'Save Iteration State'}
                   </Button>
                   <span className="text-[10px] text-neutral-400">
                     Updated {formatDateTime(selectedRound.updatedAt)}
@@ -494,7 +505,7 @@ export function PlanAgentTasksSection({
           </div>
 
           <DisclosureSection
-            label="Review Requests"
+            label="Agent Tasks"
             defaultOpen
             className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
             contentClassName="space-y-2"
@@ -514,7 +525,7 @@ export function PlanAgentTasksSection({
 
             {selectedRoundRequests.length === 0 ? (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                No review requests yet.
+                No agent tasks yet.
               </div>
             ) : (
               <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -586,7 +597,7 @@ export function PlanAgentTasksSection({
           >
             {!selectedRound ? (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                Select a review round to view discussion.
+                Select a iteration to view discussion.
               </div>
             ) : selectedRoundNodes.length === 0 ? (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
