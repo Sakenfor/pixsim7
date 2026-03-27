@@ -1350,8 +1350,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
     if (tab.focusAreas.length > 0) body.focus = tab.focusAreas;
     const scope = extractReferenceScope(text);
-    if (scope.scopeKey) body.scope_key = scope.scopeKey;
-    if (scope.scopeKey) body.session_policy = 'scoped';
+    // Each tab gets its own scoped session — prevents new tabs from reusing
+    // another tab's Claude process with stale conversation history.
+    // @plan: scope overrides the tab scope when present.
+    body.scope_key = scope.scopeKey || `tab:${tab.id}`;
+    body.session_policy = 'scoped';
     if (scope.planId) {
       body.context = { plan_id: scope.planId };
     }
