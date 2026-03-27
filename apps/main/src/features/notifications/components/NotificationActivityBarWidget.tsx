@@ -12,8 +12,8 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
+import { navigateToAgentProfile, navigateToPlan } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
-import { navigateToAgentProfile } from '@features/workspace';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
@@ -358,18 +358,16 @@ export function NotificationActivityBarWidget() {
 
   const handleNavigate = useCallback(
     (n: NotificationItem) => {
+      if (n.refType === 'plan' && n.refId) {
+        navigateToPlan(n.refId);
+        setPanelOpen(false);
+        return;
+      }
       const target = getNavigationTarget(n);
       if (target) {
-        // Pre-seed plan selection so PlansPanel navigates to the specific plan
-        const context: Record<string, any> = {};
-        if (n.refType === 'plan' && n.refId) {
-          try { localStorage.setItem('plans-panel:nav', `plan:${n.refId}`); } catch { /* ignore */ }
-          context.targetPlanId = n.refId;
-        }
         openFloatingPanel(target.panelId as any, {
           width: target.width ?? 800,
           height: target.height ?? 500,
-          context,
         });
         setPanelOpen(false);
       }
