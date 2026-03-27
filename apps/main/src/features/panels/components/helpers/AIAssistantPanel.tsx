@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
-import { formatActorLabel } from '@lib/identity/actorDisplay';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
 import { chatBridge } from './assistantChatBridge';
