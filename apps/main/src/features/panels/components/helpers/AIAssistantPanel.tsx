@@ -1356,18 +1356,16 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       body.context = { plan_id: scope.planId };
     }
 
-    // Auto-inject token: mint one for the active profile and include it
+    // Auto-inject token: mint one for the active profile and include it.
+    // Token flows two ways: (1) body.user_token → bridge writes to MCP token file
+    // for automatic tool auth, (2) bridge prepends it to the first message so the
+    // agent is aware it has a token (useful for non-MCP use cases).
     if (tab.injectToken && tab.profileId) {
       try {
         const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${tab.profileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
         body.user_token = res.access_token;
       } catch (err) {
         console.warn('[ai-assistant] Token mint failed for profile', tab.profileId, err);
-        setMessages((prev) => [...prev, {
-          role: 'error' as const,
-          text: `Token auto-inject failed for ${tab.profileId} — sending without agent token`,
-          timestamp: new Date(),
-        }]);
       }
     }
 

@@ -598,6 +598,12 @@ class Bridge:
                 preamble_parts.append(f"[System context]\n{self._system_prompt}")
             if meta["profile_prompt"]:
                 preamble_parts.append(f"[Persona: {meta['profile_prompt']}]")
+            if user_token:
+                preamble_parts.append(
+                    f"[Agent Token]\n"
+                    f"Use this token for PixSim MCP tools. Your MCP tools are already configured with it.\n"
+                    f"Token: {user_token}"
+                )
             if preamble_parts:
                 prompt = "\n\n".join(preamble_parts) + "\n\n" + prompt
 
