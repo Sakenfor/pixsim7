@@ -869,8 +869,8 @@ function ActiveSessionsView() {
                 <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Badge color={STATUS_COLORS[session.status] ?? 'gray'}>{session.status}</Badge>
-                    <span className="font-mono text-xs">{session.session_id}</span>
-                    <Badge color="gray" className="text-[10px]">{session.agent_type}</Badge>
+                    <Badge color={session.agent_type === 'claude' ? 'blue' : session.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{session.agent_type}</Badge>
+                    <span className="font-mono text-[10px] text-neutral-400">{session.session_id.slice(0, 12)}</span>
                   </div>
                   <span className="text-[10px] text-neutral-400">{formatDuration(session.duration_seconds)}</span>
                 </div>
@@ -992,14 +992,13 @@ function HistoryEntryRow({ entry, allEntries }: {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
       >
-        <Icon name={ACTION_ICONS[entry.action] ?? 'activity'} size={12} className="shrink-0 text-neutral-400 mt-0.5" />
+        <Icon name={ACTION_ICONS[entry.action] ?? 'activity'} size={12} className={`shrink-0 mt-0.5 ${entry.agent_type === 'claude' ? 'text-blue-400' : entry.agent_type === 'codex' ? 'text-violet-400' : 'text-neutral-400'}`} />
         <Badge color={STATUS_COLORS[entry.status] ?? 'gray'} className="text-[10px] shrink-0">
           {HISTORY_ACTION_LABELS[entry.action] || entry.action || entry.status}
         </Badge>
         <div className="flex-1 min-w-0">
-          <span className="font-mono text-neutral-500">{entry.session_id.slice(0, 16)}</span>
           {(entry.contract_id || entry.plan_id) && (
-            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {entry.contract_id && (
                 <Badge color="blue" className="text-[9px]">{entry.contract_id}</Badge>
               )}
@@ -1492,6 +1491,115 @@ function GroupedWriteRow({
     </div>
   );
 }
+
+// =============================================================================
+// Summaries View — work_summary entries from agent_activity_log
+// =============================================================================
+
+interface SummaryEntry {
+  session_id: string;
+  run_id: string | null;
+  agent_type: string;
+  plan_id: string | null;
+  detail: string | null;
+  metadata: Record<string, string> | null;
+  timestamp: string;
+}
+
+function SummariesView() {
+  const [entries, setEntries] = useState<SummaryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    pixsimClient
+      .get<{ entries: SummaryEntry[]; total: number }>('/meta/agents/history', {
+        params: { action: 'work_summary', limit: 50 },
+      })
+      .then((r) => setEntries(r.entries || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="Loading summaries..." icon={<Icon name="loader" size={20} />} />
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="No work summaries yet" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 space-y-2">
+      <div className="text-[10px] text-neutral-400 mb-2">{entries.length} summaries</div>
+      {entries.map((e, i) => {
+        const expanded = expandedIdx === i;
+        const commitSha = e.metadata?.commit;
+        return (
+          <div key={`${e.timestamp}-${i}`} className="rounded border border-neutral-200 dark:border-neutral-800">
+            <button
+              onClick={() => setExpandedIdx(expanded ? null : i)}
+              className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+            >
+              <Icon
+                name="fileText"
+                size={12}
+                className={`shrink-0 mt-0.5 ${e.agent_type === 'claude' ? 'text-blue-400' : 'text-violet-400'}`}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 flex-wrap">
+                  {e.plan_id && (
+                    <Badge color="green" className="text-[9px]">plan:{e.plan_id}</Badge>
+                  )}
+                  {commitSha && (
+                    <Badge color="gray" className="text-[9px] font-mono">{commitSha}</Badge>
+                  )}
+                </div>
+                {e.detail && (
+                  expanded
+                    ? <FormattedSummary text={e.detail} className="text-neutral-500 mt-1 text-xs" />
+                    : <div className="text-neutral-500 mt-0.5 truncate">{e.detail}</div>
+                )}
+              </div>
+              <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(e.timestamp)}</span>
+              <Icon name="chevronRight" size={10} className={`shrink-0 text-neutral-400 transition-transform mt-0.5 ${expanded ? 'rotate-90' : ''}`} />
+            </button>
+
+            {expanded && (
+              <div className="border-t border-neutral-100 dark:border-neutral-800 px-2 py-1.5 space-y-1">
+                <div className="flex items-center gap-2 text-[10px] text-neutral-400">
+                  <span>Session: {e.session_id.slice(0, 12)}</span>
+                  {e.run_id && <span>Run: {e.run_id.slice(0, 8)}</span>}
+                </div>
+                {e.plan_id && (
+                  <button
+                    onClick={() => navigateToPlan(e.plan_id!)}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1"
+                  >
+                    <Icon name="externalLink" size={10} />
+                    Open plan
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// =============================================================================
+// Writes / Audit View
+// =============================================================================
 
 function WritesView() {
   const [data, setData] = useState<AgentWritesResponse | null>(null);
@@ -2897,6 +3005,11 @@ export function AgentObservabilityPanel({ context }: { context?: { focusAgentId?
       icon: <Icon name="clock" size={12} />,
     },
     {
+      id: 'summaries',
+      label: 'Summaries',
+      icon: <Icon name="fileText" size={12} />,
+    },
+    {
       id: 'writes',
       label: 'Audit',
       icon: <Icon name="edit" size={12} />,
@@ -2933,6 +3046,9 @@ export function AgentObservabilityPanel({ context }: { context?: { focusAgentId?
       break;
     case 'history':
       content = <HistoryView />;
+      break;
+    case 'summaries':
+      content = <SummariesView />;
       break;
     case 'writes':
       content = <WritesView />;
