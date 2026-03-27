@@ -556,6 +556,7 @@ async def get_agent_history(
     run_id: Optional[str] = Query(None, description="Filter by run/invocation ID"),
     plan_id: Optional[str] = Query(None, description="Filter by plan"),
     contract_id: Optional[str] = Query(None, description="Filter by contract"),
+    action: Optional[str] = Query(None, description="Filter by action (e.g. work_summary, tool_use)"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
@@ -571,6 +572,8 @@ async def get_agent_history(
         stmt = stmt.where(AgentActivityLog.plan_id == plan_id)
     if contract_id:
         stmt = stmt.where(AgentActivityLog.contract_id == contract_id)
+    if action:
+        stmt = stmt.where(AgentActivityLog.action == action)
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar() or 0

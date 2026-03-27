@@ -1557,6 +1557,8 @@ function AgentsView() {
   const [openTabProfiles, setOpenTabProfiles] = useState<ReadonlySet<string>>(getOpenTabProfileIds);
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
+  const [summariesSessionId, setSummariesSessionId] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<{ detail: string; timestamp: string; plan_id?: string }[]>([]);
   const [showCreateProfile, setShowCreateProfile] = useState(false);
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileLabel, setNewProfileLabel] = useState('');
@@ -1637,6 +1639,23 @@ function AgentsView() {
       setArchivingSessionId(null);
     }
   }, [archivingSessionId, load]);
+
+  const handleViewSummaries = useCallback(async (sessionId: string) => {
+    if (summariesSessionId === sessionId) {
+      setSummariesSessionId(null);
+      return;
+    }
+    try {
+      const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; plan_id?: string }[] }>(
+        '/meta/agents/history', { params: { session_id: sessionId, action: 'work_summary', limit: 20 } },
+      );
+      setSummaries(res.entries ?? []);
+      setSummariesSessionId(sessionId);
+    } catch {
+      setSummaries([]);
+      setSummariesSessionId(sessionId);
+    }
+  }, [summariesSessionId]);
 
   const resetCreateProfileForm = useCallback(() => {
     setNewProfileId('');
@@ -1920,6 +1939,16 @@ function AgentsView() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  void handleViewSummaries(s.id);
+                                }}
+                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-accent transition-opacity shrink-0"
+                                title="View work summaries"
+                              >
+                                <Icon name="fileText" size={10} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   void handleArchiveChatSession(s.id, s.label);
                                 }}
                                 disabled={archivingSessionId === s.id}
@@ -2133,6 +2162,23 @@ function AgentsView() {
         confirmText="Delete"
         variant="danger"
       />
+
+      {/* Work Summaries Modal */}
+      <Modal isOpen={!!summariesSessionId} onClose={() => setSummariesSessionId(null)} title="Work Summaries" size="sm">
+        <div className="space-y-3 max-h-[400px] overflow-y-auto">
+          {summaries.length === 0 ? (
+            <div className="text-sm text-neutral-400 italic py-4 text-center">No work summaries for this session</div>
+          ) : summaries.map((entry, i) => (
+            <div key={i} className="border-b border-neutral-100 dark:border-neutral-800 pb-2 last:border-0">
+              <div className="text-sm text-neutral-700 dark:text-neutral-200">{entry.detail}</div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xs text-neutral-400">{formatTimestamp(entry.timestamp)}</span>
+                {entry.plan_id && <Badge color="blue" className="text-[9px]">plan:{entry.plan_id}</Badge>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
