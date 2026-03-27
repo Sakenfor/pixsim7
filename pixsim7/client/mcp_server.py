@@ -462,13 +462,17 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     points_delta = arguments.get("points_delta") or 0
     evidence = arguments.get("evidence") or []
 
-    # Auto-detect HEAD commit
+    # Auto-detect HEAD commit (async to avoid blocking the event loop)
     head_sha: str | None = None
     try:
-        import subprocess
-        head_sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True,
-        ).strip()
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "HEAD",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+        if proc.returncode == 0 and stdout:
+            head_sha = stdout.decode().strip()
     except Exception:
         pass
 
