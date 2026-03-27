@@ -1409,6 +1409,8 @@ async def register_chat_session(
         existing.last_used_at = utcnow()
         if payload.profile_id and not existing.profile_id:
             existing.profile_id = payload.profile_id
+        if payload.label and payload.label != existing.label:
+            existing.label = payload.label
         await db.commit()
         return {"ok": True, "created": False, "session_id": existing.id}
 

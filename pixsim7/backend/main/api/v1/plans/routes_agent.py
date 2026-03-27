@@ -61,9 +61,20 @@ class AgentPlanSummary(BaseModel):
     dependsOn: List[str] = Field(default_factory=list)
 
 
+class WorkSummaryEntry(BaseModel):
+    session_id: str
+    detail: str
+    plan_id: Optional[str] = None
+    timestamp: str
+
+
 class AgentContextResponse(BaseModel):
     assignment: Optional[AgentPlanContext] = None
     activePlans: List[AgentPlanSummary] = Field(default_factory=list)
+    recentWorkSummaries: List[WorkSummaryEntry] = Field(
+        default_factory=list,
+        description="Recent work summaries from previous agent sessions on the assigned plan. Provides continuity across sessions.",
+    )
     availableActions: List[Dict[str, str]] = Field(default_factory=list)
     discovery: Dict[str, str] = Field(
         default_factory=lambda: {
@@ -132,9 +143,36 @@ async def get_agent_context(
             ],
         )
 
+    # Fetch recent work summaries for the assigned plan (or all plans if none assigned)
+    work_summaries: List[WorkSummaryEntry] = []
+    try:
+        from pixsim7.backend.main.domain.docs.models import AgentActivityLog
+        summary_stmt = (
+            select(AgentActivityLog)
+            .where(AgentActivityLog.action == "work_summary")
+            .order_by(AgentActivityLog.timestamp.desc())
+            .limit(10)
+        )
+        if target:
+            summary_stmt = summary_stmt.where(AgentActivityLog.plan_id == target.id)
+        summary_rows = (await db.execute(summary_stmt)).scalars().all()
+        work_summaries = [
+            WorkSummaryEntry(
+                session_id=r.session_id or "",
+                detail=r.detail or "",
+                plan_id=r.plan_id,
+                timestamp=r.timestamp.isoformat() if r.timestamp else "",
+            )
+            for r in summary_rows
+            if r.detail
+        ]
+    except Exception:
+        pass
+
     return AgentContextResponse(
         assignment=assignment,
         activePlans=active_plans,
+        recentWorkSummaries=work_summaries,
         availableActions=[
             {
                 "action": "create_plan",

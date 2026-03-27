@@ -443,7 +443,24 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     except Exception as e:
         results.append(f"Activity log failed: {e}")
 
-    # 2. Update plan checkpoint (if plan_id + checkpoint_id provided)
+    # 2. Update session label to latest summary
+    if session_id != "unregistered":
+        try:
+            await _proxy(
+                method="POST",
+                path="/api/v1/meta/agents/register-chat-session",
+                body={
+                    "session_id": session_id,
+                    "engine": agent_type,
+                    "label": summary[:60],
+                    "profile_id": profile_id,
+                    "source": "mcp",
+                },
+            )
+        except Exception:
+            pass
+
+    # 3. Update plan checkpoint (if plan_id + checkpoint_id provided)
     if plan_id and checkpoint_id:
         try:
             body: dict[str, Any] = {
