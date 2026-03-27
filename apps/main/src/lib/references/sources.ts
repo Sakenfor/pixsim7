@@ -8,20 +8,24 @@ import { pixsimClient } from '@lib/api/client';
 
 import { referenceRegistry } from './registry';
 
+const _STATUS_ORDER: Record<string, number> = { active: 0, done: 1, parked: 2 };
+
 referenceRegistry.register({
   type: 'plan',
   icon: 'clipboard',
   label: 'Plans',
   fetch: () =>
     pixsimClient
-      .get<{ plans: Array<{ id: string; title: string; status: string; stage?: string }> }>('/dev/plans')
+      .get<{ plans: Array<{ id: string; title: string; status: string; stage?: string }> }>('/dev/plans', { params: { limit: 200, include_hidden: false } })
       .then((r) =>
-        (r.plans || []).map((p) => ({
-          type: 'plan' as const,
-          id: p.id,
-          label: p.title,
-          detail: `${p.status}${p.stage ? ` · ${p.stage}` : ''}`,
-        })),
+        (r.plans || [])
+          .sort((a, b) => (_STATUS_ORDER[a.status] ?? 9) - (_STATUS_ORDER[b.status] ?? 9))
+          .map((p) => ({
+            type: 'plan' as const,
+            id: p.id,
+            label: p.title,
+            detail: `${p.status}${p.stage ? ` · ${p.stage}` : ''}`,
+          })),
       )
       .catch(() => []),
 });
