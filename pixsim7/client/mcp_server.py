@@ -139,12 +139,20 @@ def _unique_tool_name(base_name: str, seen: set[str]) -> str:
     return f"{base_name}_{index}"
 
 
+# Contracts always included regardless of focus — fundamental agent capabilities
+_CORE_CONTRACTS: frozenset[str] = frozenset({
+    "plans.management",
+    "project.files",
+})
+
+
 def _parse_scope() -> tuple[str | None, set[str]]:
     """Parse PIXSIM_SCOPE into audience filter and contract ID allowlist.
 
     Returns (audience, contract_ids):
     - "user" or "dev" → audience filter, no contract filtering
     - "prompts_authoring,blocks_discovery" → no audience, contract allowlist
+      (core contracts are always included automatically)
     - empty → no filtering at all
     """
     raw = API_SCOPE.strip()
@@ -154,6 +162,7 @@ def _parse_scope() -> tuple[str | None, set[str]]:
         return raw, set()
     # Comma-separated contract IDs (dot or underscore form both accepted)
     ids = {s.strip().replace("_", ".") for s in raw.split(",") if s.strip()}
+    ids |= _CORE_CONTRACTS  # always include core
     return None, ids
 
 
