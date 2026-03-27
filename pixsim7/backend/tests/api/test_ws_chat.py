@@ -304,6 +304,48 @@ class TestWsChatAuth:
                 assert data["user_id"] == 42
 
 
+# ── Cancel ────────────────────────────────────────────────────────
+
+class TestWsChatCancel:
+    """Server-side cancel via WS."""
+
+    def test_cancel_returns_cancelled_result(self):
+        app = _app()
+        client = TestClient(app)
+        patches = _debug_patches(user_id=1)
+        with patches[0], patches[1], patches[2]:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                # Cancel a tab (even with no active dispatch) — always acks
+                ws.send_text(json.dumps({
+                    "type": "cancel", "tab_id": "t1",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["tab_id"] == "t1"
+                assert data["ok"] is False
+                assert data["error"] == "cancelled"
+
+    def test_cancel_nonexistent_tab_acks(self):
+        """Cancel for a tab with no active dispatch still returns ack."""
+        app = _app()
+        client = TestClient(app)
+        patches = _debug_patches(user_id=1)
+        with patches[0], patches[1], patches[2]:
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "cancel", "tab_id": "no-such-tab",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["tab_id"] == "no-such-tab"
+                assert data["error"] == "cancelled"
+                # Connection still alive
+                ws.send_text("ping")
+                assert ws.receive_text() == "pong"
+
+
 # ── Tab multiplexing ─────────────────────────────────────────────
 
 class TestWsChatMultiplex:

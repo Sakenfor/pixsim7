@@ -253,6 +253,43 @@ async def _init_tools() -> None:
 
 # ── Built-in tools (not from contracts) ──────────────────────────
 
+_LOG_WORK_TOOL = types.Tool(
+    name="log_work",
+    description=(
+        "Log a work summary for the current session. Call this when you finish "
+        "a meaningful piece of work — the summary is stored in the session's "
+        "activity log and optionally updates a plan checkpoint. This helps "
+        "track what was accomplished and provides continuity across sessions."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "What was accomplished (1-3 sentences). Focus on outcomes, not process.",
+            },
+            "plan_id": {
+                "type": "string",
+                "description": "Plan ID to update (e.g. 'unified-task-agent-architecture'). Optional.",
+            },
+            "checkpoint_id": {
+                "type": "string",
+                "description": "Checkpoint to update progress on. Required if plan_id is provided.",
+            },
+            "points_delta": {
+                "type": "integer",
+                "description": "Points to add to checkpoint progress. Optional.",
+            },
+            "evidence": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "File paths or git commit SHAs as evidence. Optional.",
+            },
+        },
+        "required": ["summary"],
+    },
+)
+
 _REGISTER_SESSION_TOOL = types.Tool(
     name="register_session",
     description=(
@@ -368,13 +405,82 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
     return result
 
 
+async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Log a work summary to activity log and optionally update plan checkpoint."""
+    summary = (arguments.get("summary") or "").strip()
+    if not summary:
+        return [types.TextContent(type="text", text="Summary is required.")]
+
+    token = _get_token()
+    if not token:
+        return [types.TextContent(type="text", text="No API token available.")]
+
+    agent_type = _extract_agent_type(token)
+    session_id = _registered_session_id or "unregistered"
+    plan_id = (arguments.get("plan_id") or "").strip() or None
+    checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
+    points_delta = arguments.get("points_delta") or 0
+    evidence = arguments.get("evidence") or []
+
+    results: list[str] = []
+
+    # 1. Write to activity log (heartbeat endpoint with action=work_summary)
+    try:
+        client = _get_client()
+        await client.post(
+            "/api/v1/meta/agents/heartbeat",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "session_id": session_id,
+                "agent_type": agent_type,
+                "status": "active",
+                "action": "work_summary",
+                "detail": summary,
+                "plan_id": plan_id,
+            },
+        )
+        results.append(f"Activity logged for session {session_id[:8]}")
+    except Exception as e:
+        results.append(f"Activity log failed: {e}")
+
+    # 2. Update plan checkpoint (if plan_id + checkpoint_id provided)
+    if plan_id and checkpoint_id:
+        try:
+            body: dict[str, Any] = {
+                "checkpoint_id": checkpoint_id,
+                "note": summary,
+            }
+            if points_delta:
+                body["points_delta"] = points_delta
+            if evidence:
+                body["append_evidence"] = [
+                    {"kind": "git_commit" if len(e) in (7, 8, 40) and all(c in "0123456789abcdef" for c in e.lower()) else "file_path", "ref": e}
+                    for e in evidence
+                ]
+
+            resp = await _proxy(
+                method="POST",
+                path=f"/api/v1/dev/plans/progress/{plan_id}",
+                body=body,
+            )
+            resp_text = resp[0].text if resp else ""
+            if '"checkpoint"' in resp_text or '"checkpointId"' in resp_text:
+                results.append(f"Plan {plan_id} checkpoint '{checkpoint_id}' updated")
+            else:
+                results.append(f"Plan update response: {resp_text[:200]}")
+        except Exception as e:
+            results.append(f"Plan update failed: {e}")
+
+    return [types.TextContent(type="text", text="\n".join(results))]
+
+
 # ── Handlers ──────────────────────────────────────────────────────
 
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
-    return [_REGISTER_SESSION_TOOL] + _dynamic_tools
+    return [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools
 
 
 async def _signal_tool_activity(tool_name: str) -> None:
@@ -413,6 +519,8 @@ async def handle_call_tool(
     # Built-in tools
     if name == "register_session":
         return await _handle_register_session(arguments)
+    if name == "log_work":
+        return await _handle_log_work(arguments)
 
     # Generic escape-hatch tool
     if name == "call_api":

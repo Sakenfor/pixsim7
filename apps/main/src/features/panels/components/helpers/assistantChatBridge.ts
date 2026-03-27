@@ -351,8 +351,12 @@ class AssistantChatBridge {
 
   /** Cancel an active request */
   cancel(tabId: string): void {
+    // SSE path: abort the fetch
     this._requests.get(tabId)?.abort.abort();
-    // If using WS, there's no server-side cancel yet — just mark as cancelled locally
+    // WS path: send cancel to server so it stops the dispatch task
+    if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'cancel', tab_id: tabId }));
+    }
     const req = this._requests.get(tabId);
     if (req && (req.status === 'pending' || req.status === 'streaming')) {
       req.status = 'error';

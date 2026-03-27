@@ -439,6 +439,17 @@ async def websocket_chat(
                 # Auto-cleanup when done
                 task.add_done_callback(lambda t, tid=tab_id: active_dispatches.pop(tid, None))
 
+            elif msg_type == "cancel":
+                tab_id = data.get("tab_id", "")
+                existing = active_dispatches.pop(tab_id, None)
+                if existing and not existing.done():
+                    existing.cancel()
+                # Always ack so client knows server processed the cancel
+                await websocket.send_json({
+                    "type": "result", "tab_id": tab_id,
+                    "ok": False, "error": "cancelled",
+                })
+
             elif msg_type == "reconnect":
                 tab_id = data.get("tab_id", "")
                 task = asyncio.create_task(
