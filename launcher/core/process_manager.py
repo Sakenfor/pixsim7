@@ -330,11 +330,8 @@ class ProcessManager:
                 try:
                     port = self._extract_port_from_url(definition.health_url)
                     if port:
-                        # Get ALL PIDs on this port (important for uvicorn --reload)
                         detected_pids = self._detect_all_pids_by_port(port)
                         if detected_pids:
-                            # Kill all detected PIDs
-                            # On Windows, always use force for external processes (they often don't respond to graceful)
                             force_kill = True if os.name == 'nt' else (not graceful)
                             for pid in detected_pids:
                                 self._kill_process_tree(pid, force=force_kill)
@@ -349,6 +346,26 @@ class ProcessManager:
                                 data={"detected_pids": detected_pids}
                             ))
                             return True
+                except Exception:
+                    pass
+
+            # Worker services: detect by command line pattern
+            if 'worker' in service_key:
+                try:
+                    worker_pids = self._detect_worker_pids(service_key)
+                    if worker_pids:
+                        for pid in worker_pids:
+                            self._kill_process_tree(pid, force=True)
+                        state.status = ServiceStatus.STOPPED
+                        state.health = HealthStatus.STOPPED
+                        state.pid = None
+                        state.detected_pid = None
+                        self._emit_event(ProcessEvent(
+                            service_key=service_key,
+                            event_type="stopped",
+                            data={"worker_pids": worker_pids}
+                        ))
+                        return True
                 except Exception:
                     pass
 
@@ -527,6 +544,60 @@ class ProcessManager:
                                     pids.append(pid)
                             except ValueError:
                                 pass
+        except Exception:
+            pass
+        return pids
+
+    def _detect_worker_pids(self, service_key: str) -> List[int]:
+        """Detect ARQ worker PIDs by scanning process command lines.
+
+        Uses PowerShell Get-CimInstance on Windows (wmic is deprecated).
+        """
+        pids: List[int] = []
+        patterns = {
+            'worker': ['arq_worker.WorkerSettings', 'arq_worker', '-m arq'],
+            'simulation-worker': ['SimulationWorkerSettings', 'simulation'],
+        }
+        search_terms = patterns.get(service_key, [service_key])
+
+        try:
+            if os.name == 'nt':
+                ps_cmd = (
+                    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+                    "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
+                )
+                result = subprocess.run(
+                    ['powershell', '-NoProfile', '-Command', ps_cmd],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        line = line.strip()
+                        if '|' not in line:
+                            continue
+                        pid_str, cmdline = line.split('|', 1)
+                        if any(term in cmdline for term in search_terms):
+                            try:
+                                pid = int(pid_str.strip())
+                                if pid != os.getpid():
+                                    pids.append(pid)
+                            except ValueError:
+                                pass
+            else:
+                result = subprocess.run(
+                    ['ps', 'aux'], capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        if any(term in line for term in search_terms):
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                try:
+                                    pid = int(parts[1])
+                                    if pid != os.getpid():
+                                        pids.append(pid)
+                                except ValueError:
+                                    pass
         except Exception:
             pass
         return pids

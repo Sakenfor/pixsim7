@@ -5,12 +5,20 @@
 
 // ── Codegen ──
 
+export interface CodegenServiceDep {
+  service: string
+  label: string
+  reason: string
+}
+
 export interface CodegenTask {
   id: string
   description: string
   script: string
   supports_check: boolean
   groups: string[]
+  requires_service?: CodegenServiceDep | null
+  service_running?: boolean
 }
 
 export interface CodegenRunResult {
@@ -22,14 +30,15 @@ export interface CodegenRunResult {
   stderr: string
 }
 
-let _codegenCache: CodegenTask[] | null = null
+let _codegenCache: { tasks: CodegenTask[]; ts: number } | null = null
+const CODEGEN_CACHE_TTL = 15_000  // 15s — service_running status changes
 
 export async function getCodegenTasks(): Promise<CodegenTask[]> {
-  if (_codegenCache) return _codegenCache
+  if (_codegenCache && Date.now() - _codegenCache.ts < CODEGEN_CACHE_TTL) return _codegenCache.tasks
   const res = await fetch('/codegen/tasks')
-  if (!res.ok) return []
+  if (!res.ok) return _codegenCache?.tasks ?? []
   const tasks: CodegenTask[] = (await res.json()).tasks ?? []
-  _codegenCache = tasks
+  _codegenCache = { tasks, ts: Date.now() }
   return tasks
 }
 
@@ -111,17 +120,31 @@ export interface MigrationResult {
   error?: string
 }
 
+let _dbCache: MigrationDatabase[] | null = null
+
 export async function getMigrationDatabases(): Promise<MigrationDatabase[]> {
+  if (_dbCache) return _dbCache
   const res = await fetch('/migrations/databases')
   if (!res.ok) return []
-  const data = await res.json()
-  return data.databases ?? []
+  const dbs: MigrationDatabase[] = (await res.json()).databases ?? []
+  _dbCache = dbs
+  return dbs
 }
 
-export async function getMigrationStatus(dbId: string = 'main'): Promise<MigrationStatus> {
+const _statusCache = new Map<string, MigrationStatus>()
+
+export async function getMigrationStatus(dbId: string = 'main', fresh = false): Promise<MigrationStatus> {
+  if (!fresh && _statusCache.has(dbId)) return _statusCache.get(dbId)!
   const res = await fetch(`/migrations/status?db_id=${dbId}`)
   if (!res.ok) throw new Error('Failed to get migration status')
-  return res.json()
+  const status: MigrationStatus = await res.json()
+  _statusCache.set(dbId, status)
+  return status
+}
+
+/** Invalidate cached status for a database (call after running an action). */
+export function invalidateMigrationStatus(dbId: string) {
+  _statusCache.delete(dbId)
 }
 
 export async function runMigrationAction(action: 'upgrade' | 'downgrade' | 'stamp' | 'merge', dbId: string = 'main'): Promise<MigrationResult> {

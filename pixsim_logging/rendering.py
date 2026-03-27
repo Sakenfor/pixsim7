@@ -36,13 +36,72 @@ DEFAULT_LEVEL_COLOR = "#d4d4d4"
 # ── Service colors ───────────────────────────────────────────────────
 
 SERVICE_COLORS = {
-    "api":       "#81C784",
-    "worker":    "#64B5F6",
-    "launcher":  "#FFD54F",
-    "game":      "#BA68C8",
+    "api":          "#81C784",
+    "worker":       "#64B5F6",
+    "launcher":     "#FFD54F",
+    "game":         "#BA68C8",
+    "events.bus":   "#FF8A65",
+    "startup":      "#AED581",
+    "middleware":    "#90CAF9",
+    "websocket":    "#CE93D8",
+    "arq.worker":   "#4DD0E1",
 }
 
 DEFAULT_SERVICE_COLOR = "#B0BEC5"
+
+# Prefix-based color matching for dynamic services like "provider.pixverse"
+SERVICE_PREFIX_COLORS = {
+    "provider":  "#4DD0E1",
+    "service":   "#FFB74D",
+    "plugin":    "#A5D6A7",
+    "middleware": "#90CAF9",
+}
+
+# Palette for auto-coloring unknown services via hash
+_AUTO_PALETTE = [
+    "#F48FB1", "#CE93D8", "#9FA8DA", "#90CAF9", "#80DEEA",
+    "#80CBC4", "#A5D6A7", "#C5E1A5", "#E6EE9C", "#FFF59D",
+    "#FFE082", "#FFCC80", "#FFAB91", "#BCAAA4", "#B0BEC5",
+]
+
+
+def service_color(name: str) -> str:
+    """Get color for a service name — exact match, prefix match, or auto-hash."""
+    if name in SERVICE_COLORS:
+        return SERVICE_COLORS[name]
+    # Prefix match: "provider.pixverse" → provider color
+    prefix = name.split(".")[0] if "." in name else name.split("_")[0]
+    if prefix in SERVICE_PREFIX_COLORS:
+        return SERVICE_PREFIX_COLORS[prefix]
+    # Auto-hash to palette
+    h = sum(ord(c) for c in name) % len(_AUTO_PALETTE)
+    return _AUTO_PALETTE[h]
+
+
+# ── Event category colors ────────────────────────────────────────────
+
+EVENT_CATEGORY_COLORS = {
+    "http_request":     "#90CAF9",   # blue — HTTP
+    "cron:":            "#FFD54F",   # yellow — scheduled tasks
+    "generation_":      "#CE93D8",   # purple — generation pipeline
+    "provider_":        "#4DD0E1",   # cyan — provider calls
+    "auth_":            "#EF9A9A",   # red — auth events
+    "asset_":           "#FFCC80",   # orange — asset operations
+    "job_":             "#A5D6A7",   # green — job lifecycle
+    "startup":          "#AED581",   # light green — init
+    "shutdown":         "#EF5350",   # red — shutdown
+}
+
+
+def event_color(name: str) -> str | None:
+    """Get accent color for an event name, or None for default."""
+    if name in EVENT_CATEGORY_COLORS:
+        return EVENT_CATEGORY_COLORS[name]
+    for prefix, color in EVENT_CATEGORY_COLORS.items():
+        if prefix.endswith(":") or prefix.endswith("_"):
+            if name.startswith(prefix):
+                return color
+    return None
 
 
 # ── HTTP status colors ──────────────────────────────────────────────
@@ -121,6 +180,9 @@ def get_rendering_metadata() -> dict:
     _cache = {
         "level_colors": LEVEL_COLORS,
         "service_colors": SERVICE_COLORS,
+        "service_prefix_colors": SERVICE_PREFIX_COLORS,
+        "service_auto_palette": _AUTO_PALETTE,
+        "event_category_colors": EVENT_CATEGORY_COLORS,
         "http_status_colors": HTTP_STATUS_COLORS,
         "component_colors": COMPONENT_COLORS,
         "fields": field_registry.as_dicts(),

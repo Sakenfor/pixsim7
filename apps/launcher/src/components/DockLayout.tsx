@@ -166,18 +166,18 @@ export function DockLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-surface text-gray-100">
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-h-0">
         <Layout
           model={modelRef.current}
           factory={factory}
           onModelChange={handleModelChange}
         />
       </div>
-      <div className="flex items-center border-t border-border">
+      <div className="flex items-center border-t border-border shrink-0 h-7 bg-surface-secondary">
         <StatusBar />
         <button
           onClick={resetLayout}
-          className="px-2 py-0.5 text-[9px] text-gray-500 hover:text-gray-300 mr-2"
+          className="px-2 py-0.5 text-[9px] text-gray-500 hover:text-gray-300 mr-2 shrink-0"
           title="Reset panel layout to default"
         >
           Reset Layout

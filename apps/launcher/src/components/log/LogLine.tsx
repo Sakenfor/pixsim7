@@ -24,13 +24,47 @@ interface LogLineProps {
   onFieldClick?: (fieldName: string, value: string) => void
 }
 
+/** Resolve service color: exact → prefix → hash to palette */
+function resolveServiceColor(name: string, meta: LogMeta | null): string {
+  if (!meta) return '#B0BEC5'
+  // Exact match
+  if (meta.service_colors[name]) return meta.service_colors[name]
+  // Prefix match
+  const prefix = name.includes('.') ? name.split('.')[0] : name.split('_')[0]
+  const prefixColors = (meta as any).service_prefix_colors as Record<string, string> | undefined
+  if (prefixColors?.[prefix]) return prefixColors[prefix]
+  // Auto-hash to palette
+  const palette = (meta as any).service_auto_palette as string[] | undefined
+  if (palette?.length) {
+    const h = [...name].reduce((s, c) => s + c.charCodeAt(0), 0) % palette.length
+    return palette[h]
+  }
+  return '#B0BEC5'
+}
+
+/** Resolve event category color */
+function resolveEventColor(message: string, meta: LogMeta | null): string | undefined {
+  const eventColors = (meta as any).event_category_colors as Record<string, string> | undefined
+  if (!eventColors) return undefined
+  // Extract event name (first word, or ARQ task name)
+  const arqMatch = /[\d.]+s\s*[→←]\s*(\S+)/.exec(message)
+  const eventName = arqMatch ? arqMatch[1].replace(/[()]+$/, '') : message.split(/\s/)[0]
+  if (!eventName) return undefined
+  // Exact match
+  if (eventColors[eventName]) return eventColors[eventName]
+  // Prefix match (keys ending with : or _)
+  for (const [prefix, color] of Object.entries(eventColors)) {
+    if ((prefix.endsWith(':') || prefix.endsWith('_')) && eventName.startsWith(prefix)) return color
+  }
+  return undefined
+}
+
 export function LogLine({ line, meta, fields, onFieldClick }: LogLineProps) {
   const [expanded, setExpanded] = useState(false)
   const parsed = useMemo(() => parseLine(line), [line])
   const levelStyle = meta?.level_colors[parsed.level]
-  const serviceColor = parsed.service
-    ? (meta?.service_colors[parsed.service] ?? '#B0BEC5')
-    : null
+  const serviceColor = parsed.service ? resolveServiceColor(parsed.service, meta) : null
+  const eventColor = resolveEventColor(parsed.message, meta)
   const hasDetails = Object.keys(parsed.fields).length > 0
 
   return (
@@ -74,6 +108,7 @@ export function LogLine({ line, meta, fields, onFieldClick }: LogLineProps) {
           meta={meta}
           parsedFields={parsed.fields}
           onFieldClick={onFieldClick}
+          eventColor={eventColor}
         />
       </div>
 
@@ -119,13 +154,14 @@ function LevelBadge({ level, color }: { level: string; color?: string }) {
 // ── Message with field highlighting ──
 
 function MessageContent({
-  message, fields, meta, parsedFields, onFieldClick,
+  message, fields, meta, parsedFields, onFieldClick, eventColor,
 }: {
   message: string
   fields: CompiledField[]
   meta: LogMeta | null
   parsedFields: Record<string, string>
   onFieldClick?: (fieldName: string, value: string) => void
+  eventColor?: string
 }) {
   // Check for HTTP request pattern
   const method = parsedFields.method
@@ -139,8 +175,9 @@ function MessageContent({
         <HttpBadge method={method} path={path} statusCode={statusCode} meta={meta} />
       )}
 
-      {/* Message text with field highlights */}
-      <HighlightedText text={message} fields={fields} meta={meta} onFieldClick={onFieldClick} />
+      {/* Event name (colored) + remaining message with field highlights */}
+      {eventColor ? <EventColoredMessage text={message} eventColor={eventColor} fields={fields} meta={meta} onFieldClick={onFieldClick} />
+        : <HighlightedText text={message} fields={fields} meta={meta} onFieldClick={onFieldClick} />}
 
       {/* Duration badge if present */}
       {parsedFields.duration_ms && (
@@ -149,6 +186,30 @@ function MessageContent({
         </span>
       )}
     </span>
+  )
+}
+
+// ── Event-colored message ──
+
+function EventColoredMessage({
+  text, eventColor, fields, meta, onFieldClick,
+}: {
+  text: string
+  eventColor: string
+  fields: CompiledField[]
+  meta: LogMeta | null
+  onFieldClick?: (fieldName: string, value: string) => void
+}) {
+  // Split at first space to get event name vs rest
+  const spaceIdx = text.indexOf(' ')
+  const eventName = spaceIdx > 0 ? text.slice(0, spaceIdx) : text
+  const rest = spaceIdx > 0 ? text.slice(spaceIdx) : ''
+
+  return (
+    <>
+      <span style={{ color: eventColor, fontWeight: 600 }}>{eventName}</span>
+      {rest && <HighlightedText text={rest} fields={fields} meta={meta} onFieldClick={onFieldClick} />}
+    </>
   )
 }
 

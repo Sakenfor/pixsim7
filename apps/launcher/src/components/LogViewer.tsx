@@ -7,18 +7,31 @@ import { VirtualLogList } from './log'
 const POLL_INTERVAL = 2000
 
 /** Extract unique event names and domains from log lines (for dynamic filter dropdowns). */
+// ARQ timing prefix: "1.02s → cron:task()" or "0.01s ← cron:task ●"
+const ARQ_EVENT_RE = /[\d.]+s\s*[→←]\s*(\S+)/
+
+function extractEventName(message: string): string | null {
+  // Try ARQ format first: "1.02s → cron:run_automation_loops()"
+  const arqMatch = ARQ_EVENT_RE.exec(message)
+  if (arqMatch) return arqMatch[1].replace(/[()]+$/, '') // strip trailing ()
+
+  // Standard: first word (skip if looks like a number/timing)
+  const first = message.split(/\s/)[0]
+  if (!first || first.length < 3 || first.length > 40) return null
+  if (first.includes('=')) return null
+  if (/^\d/.test(first)) return null  // skip "1.02s", "127.0.0.1", etc.
+  return first
+}
+
 function discoverFilters(lines: string[]) {
   const eventCounts = new Map<string, number>()
   const domainCounts = new Map<string, number>()
-  // Sample last 300 lines for performance
   const sample = lines.length > 300 ? lines.slice(-300) : lines
   for (const line of sample) {
     const parsed = parseLine(line)
     if (parsed.message) {
-      const ev = parsed.message.split(/\s/)[0]
-      if (ev && ev.length > 2 && ev.length < 40 && !ev.includes('=')) {
-        eventCounts.set(ev, (eventCounts.get(ev) ?? 0) + 1)
-      }
+      const ev = extractEventName(parsed.message)
+      if (ev) eventCounts.set(ev, (eventCounts.get(ev) ?? 0) + 1)
     }
     if (parsed.fields.domain) {
       const d = parsed.fields.domain
@@ -77,7 +90,7 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     if (searchFilter && !line.toLowerCase().includes(searchFilter.toLowerCase())) return false
     if (eventFilter) {
       const parsed = parseLine(line)
-      const ev = parsed.message?.split(/\s/)[0] ?? ''
+      const ev = extractEventName(parsed.message ?? '')
       if (ev !== eventFilter) return false
     }
     if (domainFilter && !line.includes(`domain=${domainFilter}`)) return false
@@ -93,7 +106,7 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Filter toolbar */}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border text-[11px] shrink-0 flex-wrap">
         <span className="text-gray-400 font-medium mr-1">{title}</span>
@@ -137,7 +150,7 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
       </div>
 
       {/* Log lines (virtualized) */}
-      <div className="flex-1 bg-surface min-h-0">
+      <div className="flex-1 bg-surface min-h-0 overflow-hidden">
         {loading && filteredLines.length === 0 && <div className="text-gray-500 py-4 px-3">Loading logs...</div>}
         {filteredLines.length > 0 && (
           <VirtualLogList
@@ -145,8 +158,14 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
             meta={meta}
             fields={fields}
             onFieldClick={(name, value) => {
-              setSearchFilter(`${name}=${value}`)
-              onFieldClick?.(name, value)
+              // Traceable fields (request_id, job_id, etc.) → open trace panel
+              const traceableFields = new Set(['request_id', 'job_id', 'provider_id', 'generation_id', 'user_id', 'submission_id'])
+              if (traceableFields.has(name) && onFieldClick) {
+                onFieldClick(name, value)
+              } else {
+                // Other fields → filter in search
+                setSearchFilter(`${name}=${value}`)
+              }
             }}
           />
         )}

@@ -22,6 +22,37 @@ from dotenv import load_dotenv
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
 load_dotenv(_env_path)
 
+
+def _ensure_launcher_cors():
+    """Ensure launcher origins are in CORS_ORIGINS env var and .env file."""
+    needed = {"http://localhost:8100", "http://localhost:3100"}
+    current = os.environ.get("CORS_ORIGINS", "")
+    current_set = set(o.strip() for o in current.split(",") if o.strip()) if current else set()
+    missing = needed - current_set
+    if not missing:
+        return
+    # Update env var for this process (affects backend if started from launcher)
+    updated = ",".join(sorted(current_set | needed))
+    os.environ["CORS_ORIGINS"] = updated
+    # Also patch .env file so backend picks it up on restart
+    try:
+        if os.path.exists(_env_path):
+            content = open(_env_path, "r", encoding="utf-8").read()
+            if "CORS_ORIGINS=" in content:
+                import re
+                def _add_origins(m):
+                    existing = m.group(1)
+                    origins = set(o.strip() for o in existing.split(",") if o.strip())
+                    origins |= needed
+                    return "CORS_ORIGINS=" + ",".join(sorted(origins))
+                content = re.sub(r"^CORS_ORIGINS=(.+)$", _add_origins, content, count=1, flags=re.MULTILINE)
+                open(_env_path, "w", encoding="utf-8").write(content)
+    except Exception:
+        pass
+
+
+_ensure_launcher_cors()
+
 try:
     from .services import build_services_from_manifests, ServiceDef
     from .config import (
@@ -162,7 +193,7 @@ class LauncherWindow(
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('PixSim7 Launcher')
+        self._update_window_title()
 
         # Log launcher startup
         if _launcher_logger:
@@ -706,11 +737,17 @@ class LauncherWindow(
         self.console_refresh_timer = QTimer(self)
         self.last_log_hash = {}
 
-        # Keyboard shortcuts
+        # Keyboard shortcuts — ApplicationShortcut context so they work
+        # even when QWebEngineView has focus.
         from PySide6.QtGui import QShortcut, QKeySequence
-        QShortcut(QKeySequence('F5'), self).activated.connect(self._reload_webviews)
-        QShortcut(QKeySequence('Ctrl+Shift+R'), self).activated.connect(self._reload_ui)
-        QShortcut(QKeySequence('Ctrl+Shift+D'), self).activated.connect(self._toggle_webview_dev_mode)
+        for key, slot in [
+            ('F5', self._reload_webviews),
+            ('Ctrl+Shift+R', self._reload_ui),
+            ('Ctrl+Shift+D', self._toggle_webview_dev_mode),
+        ]:
+            sc = QShortcut(QKeySequence(key), self)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc.activated.connect(slot)
 
     def _on_architecture_metrics_updated(self, metrics):
         """Handle architecture metrics update."""
@@ -751,12 +788,6 @@ class LauncherWindow(
         # Console refresh timer — disabled when using embedded React viewer.
         self.console_refresh_timer = QTimer(self)
         self.last_log_hash = {}
-
-        # Keyboard shortcuts
-        from PySide6.QtGui import QShortcut, QKeySequence
-        QShortcut(QKeySequence('F5'), self).activated.connect(self._reload_webviews)
-        QShortcut(QKeySequence('Ctrl+Shift+R'), self).activated.connect(self._reload_ui)
-        QShortcut(QKeySequence('Ctrl+Shift+D'), self).activated.connect(self._toggle_webview_dev_mode)
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
@@ -1166,6 +1197,11 @@ class LauncherWindow(
 
         # DB log auto-refresh is now handled by the React webview.
 
+    def _update_window_title(self):
+        is_dev = getattr(self, '_webview_dev_mode', False)
+        mode = " [DEV :3100]" if is_dev else " [:8100]"
+        self.setWindowTitle(f"PixSim7 Launcher{mode}")
+
     def _reload_webviews(self):
         """Reload the main webview.
 
@@ -1205,6 +1241,7 @@ class LauncherWindow(
         wv = getattr(self, 'webview', None)
         if wv:
             wv.setUrl(QUrl(base))
+        self._update_window_title()
 
     def _reload_ui(self):
         """Rebuild UI tabs and refresh settings without restarting launcher."""

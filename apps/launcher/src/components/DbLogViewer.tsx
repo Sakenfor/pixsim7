@@ -122,7 +122,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
 
   return (
-    <div className="h-screen flex flex-col bg-surface text-gray-100">
+    <div className="h-full flex flex-col overflow-hidden bg-surface text-gray-100">
       {/* Filter toolbar */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-border shrink-0">
         {/* Presets dropdown */}
@@ -198,8 +198,12 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         {entries.map((entry) => (
           <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
             onFieldClick={(name, value) => {
-              setSearch(`${name}=${value}`)
-              onFieldClick?.(name, value)
+              const traceableFields = new Set(['request_id', 'job_id', 'provider_id', 'generation_id', 'user_id', 'submission_id'])
+              if (traceableFields.has(name) && onFieldClick) {
+                onFieldClick(name, value)
+              } else {
+                setSearch(`${name}=${value}`)
+              }
             }} />
         ))}
       </div>

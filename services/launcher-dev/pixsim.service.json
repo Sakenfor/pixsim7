@@ -1,0 +1,14 @@
+{
+  "id": "launcher-dev",
+  "type": "frontend",
+  "name": "Launcher Dev (Vite)",
+  "description": "Vite HMR dev server for the launcher React UI",
+  "command": "pnpm",
+  "args": ["--filter", "@pixsim7/launcher", "dev"],
+  "port_env": "LAUNCHER_DEV_PORT",
+  "default_port": 3100,
+  "health_endpoint": "/",
+  "tags": ["launcher", "dev"],
+  "auto_start": false,
+  "enabled": true
+}

@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
-  getMigrationDatabases, getMigrationStatus, runMigrationAction,
+  getMigrationDatabases, getMigrationStatus, runMigrationAction, invalidateMigrationStatus,
   getSettings, saveSettings,
   type CodegenTask, type CodegenRunResult, type Buildable, type BuildResult,
   type MigrationDatabase, type MigrationStatus, type MigrationResult,
@@ -59,7 +59,12 @@ function CodegenSection() {
   const [runResult, setRunResult] = useState<CodegenRunResult | null>(null)
   const [running, setRunning] = useState<string | null>(null)
 
-  useEffect(() => { getCodegenTasks().then(setTasks) }, [])
+  // Fetch on mount + refresh every 15s (service_running status changes)
+  useEffect(() => {
+    getCodegenTasks().then(setTasks)
+    const interval = setInterval(() => getCodegenTasks().then(setTasks), 15_000)
+    return () => clearInterval(interval)
+  }, [])
 
   const run = useCallback(async (taskId: string, check: boolean) => {
     setRunning(taskId)
@@ -73,27 +78,36 @@ function CodegenSection() {
 
   return (
     <div className="p-3 space-y-2">
-      {tasks.map((task) => (
-        <div key={task.id} className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded border border-border">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-gray-200">{task.id}</div>
-            <div className="text-[10px] text-gray-500 truncate">{task.description}</div>
-            {task.groups.length > 0 && (
-              <div className="flex gap-1 mt-0.5">
+      {tasks.map((task) => {
+        const dep = task.requires_service
+        const depOk = task.service_running !== false
+        return (
+          <div key={task.id} className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded border border-border">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-gray-200">{task.id}</span>
                 {task.groups.map((g) => <span key={g} className="text-[9px] px-1 rounded bg-blue-900/30 text-blue-400">{g}</span>)}
               </div>
-            )}
+              <div className="text-[10px] text-gray-500 truncate">{task.description}</div>
+              {dep && (
+                <div className={`text-[9px] mt-0.5 flex items-center gap-1 ${depOk ? 'text-green-500' : 'text-amber-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${depOk ? 'bg-green-500' : 'bg-amber-500'}`} />
+                  Requires {dep.label}
+                  {!depOk && <span className="text-gray-500">— start it first</span>}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {task.supports_check && (
+                <button onClick={() => run(task.id, true)} disabled={!!running || !depOk} className="px-2 py-1 text-[10px] rounded bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 disabled:text-gray-500 text-white">Check</button>
+              )}
+              <button onClick={() => run(task.id, false)} disabled={!!running || !depOk} className="px-2 py-1 text-[10px] rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 text-white">
+                {running === task.id ? 'Running...' : 'Run'}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-1 shrink-0">
-            {task.supports_check && (
-              <button onClick={() => run(task.id, true)} disabled={!!running} className="px-2 py-1 text-[10px] rounded bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 text-white">Check</button>
-            )}
-            <button onClick={() => run(task.id, false)} disabled={!!running} className="px-2 py-1 text-[10px] rounded bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white">
-              {running === task.id ? 'Running...' : 'Run'}
-            </button>
-          </div>
-        </div>
-      ))}
+        )
+      })}
       {runResult && <ResultBox result={runResult} />}
     </div>
   )
@@ -109,7 +123,7 @@ function MigrationsSection() {
 
   useEffect(() => { getMigrationDatabases().then(setDatabases) }, [])
 
-  // Fetch status for all databases on mount
+  // Fetch status for all databases on mount (uses cache)
   useEffect(() => {
     databases.forEach((db) => {
       getMigrationStatus(db.id).then((s) =>
@@ -120,7 +134,8 @@ function MigrationsSection() {
 
   const refreshDb = useCallback(async (dbId: string) => {
     try {
-      const s = await getMigrationStatus(dbId)
+      invalidateMigrationStatus(dbId)
+      const s = await getMigrationStatus(dbId, true)
       setStatuses((prev) => ({ ...prev, [dbId]: s }))
     } catch {}
   }, [])
@@ -131,6 +146,7 @@ function MigrationsSection() {
     try {
       const result = await runMigrationAction(action, dbId)
       setActionResult(result)
+      invalidateMigrationStatus(dbId)
       await refreshDb(dbId)
     } finally {
       setLoadingDb(null)
@@ -316,10 +332,38 @@ function SettingsSection() {
     </label>
   )
 
+  const isDev = location.port === '3100'
+
+  const toggleDevMode = () => {
+    if (isDev) {
+      // Switch back to prod — always safe
+      window.location.href = 'http://localhost:8100' + window.location.pathname + window.location.hash
+      return
+    }
+    // In embedded PySide6: use Ctrl+Shift+D which does the port check.
+    // In browser: try to navigate (user knows what they're doing).
+    const isEmbedded = navigator.userAgent.includes('QtWebEngine')
+    if (isEmbedded) {
+      alert('Use Ctrl+Shift+D to toggle dev mode.\nThe launcher checks if Vite is running first.')
+    } else {
+      window.location.href = 'http://localhost:3100' + window.location.pathname + window.location.hash
+    }
+  }
+
   return (
     <div className="p-3 space-y-3">
       <div className="bg-surface-secondary rounded border border-border p-3 space-y-2">
         <h3 className="text-xs font-bold text-gray-200 mb-2">Launcher Settings</h3>
+
+        {/* Dev mode toggle */}
+        <label className="flex items-center gap-2 text-[11px]">
+          <input type="checkbox" checked={isDev} onChange={toggleDevMode} className="rounded" />
+          <span className="text-gray-300">Dev mode (Vite HMR on :3100)</span>
+          {isDev && <span className="text-amber-400 text-[9px]">● DEV</span>}
+        </label>
+
+        <div className="border-t border-border my-2" />
+
         {toggle('stop_services_on_exit', 'Stop services when launcher exits')}
         {toggle('clear_logs_on_restart', 'Clear logs on service start/restart')}
         {toggle('sql_logging_enabled', 'SQL query logging')}
