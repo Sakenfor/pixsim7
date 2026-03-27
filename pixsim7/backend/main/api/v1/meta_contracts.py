@@ -434,7 +434,7 @@ async def agent_heartbeat(
     )
 
     # Persist to DB only for meaningful actions (not idle keepalive)
-    _KEEPALIVE_ACTIONS = {"cli_session", "processing_task", "mcp_session", ""}
+    _KEEPALIVE_ACTIONS = {"cli_session", "processing_task", "mcp_session", "tool_use", ""}
     if payload.action not in _KEEPALIVE_ACTIONS:
         db.add(AgentActivityLog(
             session_id=payload.session_id,
