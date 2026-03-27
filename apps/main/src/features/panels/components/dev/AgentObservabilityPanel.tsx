@@ -1547,7 +1547,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [summariesSessionId, setSummariesSessionId] = useState<string | null>(null);
-  const [summaries, setSummaries] = useState<{ detail: string; timestamp: string; plan_id?: string }[]>([]);
+  const [summaries, setSummaries] = useState<{ detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string }[]>([]);
   const [showCreateProfile, setShowCreateProfile] = useState(false);
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileLabel, setNewProfileLabel] = useState('');
@@ -1639,7 +1639,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
       return;
     }
     try {
-      const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; plan_id?: string }[] }>(
+      const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string }[] }>(
         '/meta/agents/history', { params: { session_id: sessionId, action: 'work_summary', limit: 20 } },
       );
       setSummaries(res.entries ?? []);
@@ -2163,16 +2163,35 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
       />
 
       {/* Work Summaries Modal */}
-      <Modal isOpen={!!summariesSessionId} onClose={() => setSummariesSessionId(null)} title="Work Summaries" size="sm">
-        <div className="space-y-3 max-h-[400px] overflow-y-auto">
+      <Modal isOpen={!!summariesSessionId} onClose={() => setSummariesSessionId(null)} title="Work Summaries" size="md">
+        <div className="space-y-3 max-h-[500px] overflow-y-auto">
           {summaries.length === 0 ? (
             <div className="text-sm text-neutral-400 italic py-4 text-center">No work summaries for this session</div>
           ) : summaries.map((entry, i) => (
-            <div key={i} className="border-b border-neutral-100 dark:border-neutral-800 pb-2 last:border-0">
-              <div className="text-sm text-neutral-700 dark:text-neutral-200">{entry.detail}</div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-neutral-400">{formatTimestamp(entry.timestamp)}</span>
-                {entry.plan_id && <Badge color="blue" className="text-[9px]">plan:{entry.plan_id}</Badge>}
+            <div key={i} className="border-b border-neutral-100 dark:border-neutral-800 pb-3 last:border-0">
+              <div className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{entry.detail}</div>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <span className="text-[10px] text-neutral-400">{formatTimestamp(entry.timestamp)}</span>
+                {entry.agent_type && (
+                  <Badge color={entry.agent_type === 'claude' ? 'blue' : entry.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[9px]">
+                    {entry.agent_type}
+                  </Badge>
+                )}
+                {entry.plan_id && (
+                  <button
+                    onClick={() => {
+                      setSummariesSessionId(null);
+                      openWorkspacePanel('plans');
+                      setTimeout(() => window.dispatchEvent(new CustomEvent('plans:navigate', { detail: { planId: entry.plan_id } })), 200);
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                  >
+                    plan:{entry.plan_id}
+                  </button>
+                )}
+                {entry.contract_id && (
+                  <Badge color="gray" className="text-[9px]">{entry.contract_id}</Badge>
+                )}
               </div>
             </div>
           ))}
