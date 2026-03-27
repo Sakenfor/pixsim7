@@ -924,6 +924,28 @@ function ActiveSessionsView() {
 // History View
 // =============================================================================
 
+const ACTION_ICONS: Record<string, import('@lib/icons').IconName> = {
+  work_summary: 'fileText',
+  tool_use: 'wrench',
+  checkpoint_progress: 'checkCircle',
+  plan_update: 'edit',
+  review_comment: 'messageSquare',
+  agent_response: 'messageSquare',
+  created: 'plus',
+  updated: 'edit',
+  deleted: 'trash2',
+  status_changed: 'refreshCw',
+};
+
+const HISTORY_ACTION_LABELS: Record<string, string> = {
+  work_summary: 'Summary',
+  tool_use: 'Tool Use',
+  checkpoint_progress: 'Progress',
+  plan_update: 'Plan Update',
+  review_comment: 'Review',
+  agent_response: 'Response',
+};
+
 function HistoryEntryRow({ entry, allEntries }: {
   entry: AgentHistoryEntry;
   allEntries: AgentHistoryEntry[];
@@ -970,8 +992,9 @@ function HistoryEntryRow({ entry, allEntries }: {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
       >
+        <Icon name={ACTION_ICONS[entry.action] ?? 'activity'} size={12} className="shrink-0 text-neutral-400 mt-0.5" />
         <Badge color={STATUS_COLORS[entry.status] ?? 'gray'} className="text-[10px] shrink-0">
-          {entry.action || entry.status}
+          {HISTORY_ACTION_LABELS[entry.action] || entry.action || entry.status}
         </Badge>
         <div className="flex-1 min-w-0">
           <span className="font-mono text-neutral-500">{entry.session_id.slice(0, 16)}</span>
@@ -986,7 +1009,9 @@ function HistoryEntryRow({ entry, allEntries }: {
             </div>
           )}
           {entry.detail && (
-            <div className={`text-neutral-500 mt-0.5 ${expanded ? '' : 'truncate'}`}>{entry.detail}</div>
+            expanded && entry.action === 'work_summary'
+              ? <FormattedSummary text={entry.detail} className="text-neutral-500 mt-0.5 text-xs" />
+              : <div className={`text-neutral-500 mt-0.5 ${expanded ? '' : 'truncate'}`}>{entry.detail}</div>
           )}
         </div>
         <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
@@ -1045,6 +1070,7 @@ function HistoryEntryRow({ entry, allEntries }: {
 function HistoryView() {
   const [data, setData] = useState<AgentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     pixsimClient
@@ -1052,6 +1078,31 @@ function HistoryView() {
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  const actionCounts = useMemo(() => {
+    if (!data) return {};
+    const counts: Record<string, number> = {};
+    for (const e of data.entries) {
+      const key = e.action || 'other';
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }, [data]);
+
+  const filteredEntries = useMemo(() => {
+    if (!data) return [];
+    if (activeFilters.size === 0) return data.entries;
+    return data.entries.filter((e) => activeFilters.has(e.action || 'other'));
+  }, [data, activeFilters]);
+
+  const toggleFilter = useCallback((action: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(action)) next.delete(action);
+      else next.add(action);
+      return next;
+    });
   }, []);
 
   if (loading) {
@@ -1072,9 +1123,33 @@ function HistoryView() {
 
   return (
     <div className="p-4 space-y-2">
-      <SectionHeader>{data.total} total entries (showing {data.entries.length})</SectionHeader>
+      <div className="flex items-center gap-2 flex-wrap">
+        <SectionHeader className="mr-auto">{filteredEntries.length} of {data.total} entries</SectionHeader>
+        {Object.entries(actionCounts).map(([action, count]) => {
+          const isActive = activeFilters.has(action);
+          const icon = ACTION_ICONS[action] ?? 'activity';
+          const label = HISTORY_ACTION_LABELS[action] || action;
+          return (
+            <button
+              key={action}
+              onClick={() => toggleFilter(action)}
+              className={`flex items-center gap-1 text-[10px] rounded-full px-2 py-0.5 border transition-colors ${
+                isActive
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                  : activeFilters.size > 0
+                    ? 'border-neutral-200 text-neutral-400 dark:border-neutral-700 dark:text-neutral-500'
+                    : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'
+              }`}
+            >
+              <Icon name={icon} size={10} />
+              {label}
+              <span className="text-[9px] opacity-70">{count}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="space-y-1">
-        {data.entries.map((entry, i) => (
+        {filteredEntries.map((entry, i) => (
           <HistoryEntryRow
             key={`${entry.session_id}-${entry.timestamp}-${i}`}
             entry={entry}
