@@ -523,6 +523,7 @@ class AgentHistoryEntry(BaseModel):
     action: str
     detail: Optional[str] = None
     endpoint: Optional[str] = None
+    metadata: Optional[Dict[str, str]] = None
     timestamp: str
 
 
@@ -592,6 +593,7 @@ async def get_agent_history(
                 action=r.action,
                 detail=r.detail,
                 endpoint=r.endpoint,
+                metadata=r.extra if isinstance(r.extra, dict) else None,
                 timestamp=r.timestamp.isoformat() if r.timestamp else "",
             )
             for r in rows

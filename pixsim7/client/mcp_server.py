@@ -431,17 +431,35 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
         return [types.TextContent(type="text", text="No API token available.")]
 
     agent_type = _extract_agent_type(token)
+    profile_id = _extract_profile_from_token(token)
     session_id = _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
     checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
     points_delta = arguments.get("points_delta") or 0
     evidence = arguments.get("evidence") or []
 
+    # Auto-detect HEAD commit
+    head_sha: str | None = None
+    try:
+        import subprocess
+        head_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except Exception:
+        pass
+
+    # Auto-add HEAD to evidence if not already present
+    if head_sha and head_sha not in evidence:
+        evidence = list(evidence) + [head_sha]
+
     results: list[str] = []
 
     # 1. Write to activity log (heartbeat endpoint with action=work_summary)
     try:
         client = _get_client()
+        metadata: dict[str, str] = {}
+        if head_sha:
+            metadata["commit"] = head_sha[:8]
         await client.post(
             "/api/v1/meta/agents/heartbeat",
             headers={"Authorization": f"Bearer {token}"},
@@ -452,6 +470,7 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
                 "action": "work_summary",
                 "detail": summary,
                 "plan_id": plan_id,
+                "metadata": metadata or None,
             },
         )
         results.append(f"Activity logged for session {session_id[:8]}")

@@ -1547,7 +1547,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [summariesSessionId, setSummariesSessionId] = useState<string | null>(null);
-  const [summaries, setSummaries] = useState<{ detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string }[]>([]);
+  const [summaries, setSummaries] = useState<{ detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string; metadata?: Record<string, string> }[]>([]);
   const [showCreateProfile, setShowCreateProfile] = useState(false);
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileLabel, setNewProfileLabel] = useState('');
@@ -1639,7 +1639,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
       return;
     }
     try {
-      const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string }[] }>(
+      const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; plan_id?: string; agent_type?: string; contract_id?: string; session_id?: string; metadata?: Record<string, string> }[] }>(
         '/meta/agents/history', { params: { session_id: sessionId, action: 'work_summary', limit: 20 } },
       );
       setSummaries(res.entries ?? []);
@@ -2191,6 +2191,12 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                 )}
                 {entry.contract_id && (
                   <Badge color="gray" className="text-[9px]">{entry.contract_id}</Badge>
+                )}
+                {entry.metadata?.commit && (
+                  <span className="text-[9px] font-mono text-neutral-400" title={`Commit: ${entry.metadata.commit}`}>
+                    <Icon name="gitBranch" size={9} className="inline mr-0.5" />
+                    {entry.metadata.commit}
+                  </span>
                 )}
               </div>
             </div>
