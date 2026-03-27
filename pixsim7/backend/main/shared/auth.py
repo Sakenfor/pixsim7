@@ -297,7 +297,7 @@ def create_agent_token(
         "sub": "0",
         "purpose": "agent",
         "principal_type": "agent",
-        "agent_id": agent_id,
+        "profile_id": agent_id,  # canonical name; from_jwt_payload reads both profile_id and agent_id
         "agent_type": agent_type,
         "role": "agent",
         "is_admin": False,

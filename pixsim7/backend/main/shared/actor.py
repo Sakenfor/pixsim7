@@ -49,7 +49,7 @@ class RequestPrincipal(BaseModel):
 
     # ── Agent-specific ───────────────────────────────────────────
 
-    agent_id: Optional[str] = Field(default=None, description="Agent profile ID (from JWT agent_id claim). Alias: profile_id.")
+    profile_id: Optional[str] = Field(default=None, description="Agent profile ID. JWT claim: agent_id (legacy name).")
     agent_type: Optional[str] = Field(default=None, description='E.g. "claude", "codex".')
     agent_label: Optional[str] = Field(default=None, description="Resolved profile display name.")
     run_id: Optional[str] = Field(default=None, description="Unique run/invocation ID.")
@@ -87,7 +87,7 @@ class RequestPrincipal(BaseModel):
     def source(self) -> str:
         """Canonical source tag for notifications / audit."""
         if self.principal_type == "agent":
-            return f"agent:{self.agent_id or 'unknown'}"
+            return f"agent:{self.profile_id or 'unknown'}"
         if self.principal_type == "service":
             return "service:bridge"
         return f"user:{self.id}"
@@ -95,20 +95,20 @@ class RequestPrincipal(BaseModel):
     @property
     def actor_display_name(self) -> str:
         if self.principal_type == "agent":
-            label = self.agent_label or self.agent_id or "agent"
+            label = self.agent_label or self.profile_id or "agent"
             if self.on_behalf_of_name:
                 return f"{label} ({self.on_behalf_of_name})"
             return label
         return self.display_name or self.username or f"user:{self.id}"
 
     @property
-    def profile_id(self) -> Optional[str]:
-        """Agent profile ID — canonical alias for agent_id."""
-        return self.agent_id
+    def agent_id(self) -> Optional[str]:
+        """Backward-compat alias for profile_id."""
+        return self.profile_id
 
-    @profile_id.setter
-    def profile_id(self, value: Optional[str]) -> None:
-        self.agent_id = value
+    @agent_id.setter
+    def agent_id(self, value: Optional[str]) -> None:
+        self.profile_id = value
 
     @property
     def user_id(self) -> Optional[int]:
@@ -120,8 +120,8 @@ class RequestPrincipal(BaseModel):
     def audit_dict(self) -> dict:
         """Compact dict for embedding in JSON audit fields."""
         d: dict[str, Any] = {"principal_type": self.principal_type, "source": self.source}
-        if self.agent_id:
-            d["agent_id"] = self.agent_id
+        if self.profile_id:
+            d["profile_id"] = self.profile_id
         if self.run_id:
             d["run_id"] = self.run_id
         if self.plan_id:
@@ -138,7 +138,7 @@ class RequestPrincipal(BaseModel):
         cls,
         payload: dict,
         *,
-        x_agent_id: Optional[str] = None,
+        x_agent_id: Optional[str] = None,  # legacy header name, means profile_id
         x_run_id: Optional[str] = None,
         x_plan_id: Optional[str] = None,
     ) -> RequestPrincipal:
@@ -148,10 +148,11 @@ class RequestPrincipal(BaseModel):
 
         # ── Agent token ──
         if purpose == "agent" or ptype == "agent":
+            resolved_profile_id = payload.get("profile_id") or payload.get("agent_id") or x_agent_id or "unknown"
             return cls(
                 id=0,
                 principal_type="agent",
-                agent_id=payload.get("agent_id") or x_agent_id or "unknown",
+                profile_id=resolved_profile_id,
                 agent_type=payload.get("agent_type"),
                 run_id=payload.get("run_id") or x_run_id,
                 plan_id=payload.get("plan_id") or x_plan_id,
@@ -159,7 +160,7 @@ class RequestPrincipal(BaseModel):
                 role="agent",
                 admin=False,
                 permissions=payload.get("permissions", []),
-                username=f"agent:{payload.get('agent_id', 'unknown')}",
+                username=f"agent:{resolved_profile_id}",
             )
 
         # ── Bridge / service token ──
@@ -208,7 +209,7 @@ class RequestPrincipal(BaseModel):
         # User token with agent headers → hybrid agent
         if x_agent_id:
             principal.principal_type = "agent"
-            principal.agent_id = x_agent_id
+            principal.profile_id = x_agent_id
             principal.run_id = x_run_id
             principal.plan_id = x_plan_id
             principal.on_behalf_of = user_id
