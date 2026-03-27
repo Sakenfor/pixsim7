@@ -52,6 +52,8 @@ class Bridge:
         self._mcp_config_path: Optional[str] = None
         self._token_file_path: Optional[str] = None
         self._system_prompt: Optional[str] = None
+        # Cache: frozenset of focus contract IDs -> MCP config temp file path
+        self._mcp_config_cache: dict[frozenset[str], str] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -323,9 +325,27 @@ class Bridge:
             except asyncio.TimeoutError:
                 proc.kill()
 
-    def _ensure_mcp_config(self, scope: str = "dev", token: str = "") -> Optional[str]:
-        """Generate MCP config file pointing to the pixsim MCP server."""
-        if self._mcp_config_path and os.path.exists(self._mcp_config_path):
+    def _ensure_mcp_config(
+        self,
+        scope: str = "dev",
+        token: str = "",
+        focus: list[str] | None = None,
+    ) -> Optional[str]:
+        """Generate MCP config file pointing to the pixsim MCP server.
+
+        If ``focus`` is provided (list of contract IDs), generates a scoped
+        config that only exposes those contracts.  Focused configs are cached
+        by contract-set so repeated calls with the same focus reuse the file.
+        """
+        # Focused config: check cache first
+        if focus:
+            cache_key = frozenset(focus)
+            cached = self._mcp_config_cache.get(cache_key)
+            if cached and os.path.exists(cached):
+                return cached
+
+        # Default (unfocused) config: reuse if already generated
+        if not focus and self._mcp_config_path and os.path.exists(self._mcp_config_path):
             return self._mcp_config_path
 
         # Derive HTTP base URL from WebSocket URL
@@ -344,11 +364,17 @@ class Bridge:
         mcp_python_cmd, mcp_python_prefix = self._resolve_mcp_python()
 
         # Create a token file that the bridge updates per-request
-        # and the MCP server reads on each API call (fresh auth)
-        token_fd, token_file = tempfile.mkstemp(suffix=".token", prefix="pixsim-mcp-")
-        with os.fdopen(token_fd, "w") as f:
-            f.write(token)  # Seed with the bridge service token
-        self._token_file_path = token_file
+        # and the MCP server reads on each API call (fresh auth).
+        # Only create one token file (shared across configs).
+        if not self._token_file_path:
+            token_fd, token_file = tempfile.mkstemp(suffix=".token", prefix="pixsim-mcp-")
+            with os.fdopen(token_fd, "w") as f:
+                f.write(token)  # Seed with the bridge service token
+            self._token_file_path = token_file
+
+        # PIXSIM_SCOPE: focused configs get comma-separated contract IDs,
+        # default config gets audience scope ("user"/"dev").
+        mcp_scope = ",".join(focus) if focus else scope
 
         config = {
             "mcpServers": {
@@ -358,8 +384,8 @@ class Bridge:
                     "env": {
                         "PIXSIM_API_URL": api_base,
                         "PIXSIM_API_TOKEN": token,
-                        "PIXSIM_TOKEN_FILE": token_file,
-                        "PIXSIM_SCOPE": scope,
+                        "PIXSIM_TOKEN_FILE": self._token_file_path,
+                        "PIXSIM_SCOPE": mcp_scope,
                         "PYTHONIOENCODING": "utf-8",
                     },
                 }
@@ -371,18 +397,22 @@ class Bridge:
         with os.fdopen(fd, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Also register with Codex's global MCP config (if codex is available)
-        self._ensure_codex_mcp(
-            mcp_server_script,
-            api_base,
-            token,
-            token_file,
-            scope,
-            mcp_python_cmd=mcp_python_cmd,
-            mcp_python_prefix=mcp_python_prefix,
-        )
+        if focus:
+            self._mcp_config_cache[frozenset(focus)] = path
+            client_log(f"MCP config (focused {mcp_scope}): {path}")
+        else:
+            # Also register with Codex's global MCP config (if codex is available)
+            self._ensure_codex_mcp(
+                mcp_server_script,
+                api_base,
+                token,
+                self._token_file_path,
+                scope,
+                mcp_python_cmd=mcp_python_cmd,
+                mcp_python_prefix=mcp_python_prefix,
+            )
+            self._mcp_config_path = path
 
-        self._mcp_config_path = path
         return path
 
     @staticmethod
@@ -494,13 +524,57 @@ class Bridge:
         except Exception as e:
             client_log(f"Failed to register Codex MCP: {e}", error=True)
 
+    @staticmethod
+    def _extract_task_meta(msg: dict) -> dict:
+        """Extract routing and heartbeat metadata from a task payload.
+
+        Centralises the scattered msg.get() calls so adding new fields
+        means one touch-point instead of five.
+        """
+        _str = lambda key: str(msg.get(key) or "").strip() or None  # noqa: E731
+
+        ctx = msg.get("context") or {}
+        scope_key = _str("scope_key")
+        plan_id = ctx.get("plan_id") if isinstance(ctx, dict) else None
+        if not plan_id and scope_key and scope_key.startswith("plan:"):
+            plan_id = scope_key[5:]
+
+        focus_raw = msg.get("focus")
+        focus = (
+            [str(f).strip() for f in focus_raw if str(f).strip()]
+            if isinstance(focus_raw, list) and focus_raw
+            else None
+        )
+
+        model = _str("model")
+        if model and model.lower() == "default":
+            model = None
+        elif model and ":" in model:
+            model = model.split(":", 1)[1]  # strip provider prefix
+
+        profile_config = msg.get("profile_config") or {}
+
+        return {
+            "bridge_session_id": msg.get("bridge_session_id"),
+            "session_policy": _str("session_policy"),
+            "scope_key": scope_key,
+            "engine": msg.get("engine"),
+            "model": model,
+            "reasoning_effort": profile_config.get("reasoning_effort"),
+            "focus": focus,
+            "task_kind": _str("task_kind"),
+            "plan_id": plan_id,
+            "profile_prompt": msg.get("profile_prompt"),
+        }
+
     async def _handle_task(self, ws, msg: dict) -> None:
         """Handle an incoming task from the backend."""
         task_id = msg.get("task_id", "?")
         task_type = msg.get("task", "unknown")
         prompt = msg.get("instruction") or msg.get("prompt", "")
 
-        client_log(f"[task:{task_id[:8]}] {task_type}: engine={msg.get('engine')} model={msg.get('model')} prompt={prompt[:60]}...")
+        meta = self._extract_task_meta(msg)
+        client_log(f"[task:{task_id[:8]}] {task_type}: engine={meta['engine']} model={meta['model']} prompt={prompt[:60]}...")
 
         # Write per-request user token so MCP server uses fresh auth
         user_token = msg.get("user_token")
@@ -511,44 +585,31 @@ class Bridge:
             except OSError:
                 pass
 
-        # Session ID for conversation affinity / resume
-        bridge_session_id = msg.get("bridge_session_id")
-        session_policy = str(msg.get("session_policy") or "").strip().lower() or None
-        scope_key = str(msg.get("scope_key") or "").strip() or None
-
-        # Engine override (claude, codex, etc.)
-        engine = msg.get("engine")
-
-        # Model override from agent profile (e.g. "anthropic:haiku" → "haiku")
-        model_override = msg.get("model")
-        if model_override and model_override.lower() == "default":
-            model_override = None  # "default" means use CLI's default
-        elif model_override and ":" in model_override:
-            # Strip provider prefix (e.g. "anthropic:haiku" → "haiku")
-            model_override = model_override.split(":", 1)[1]
-
-        # Reasoning effort from profile config
-        profile_config = msg.get("profile_config") or {}
-        reasoning_effort = profile_config.get("reasoning_effort")
+        # Per-session MCP config from focus areas
+        mcp_config_override = (
+            self._ensure_mcp_config(focus=meta["focus"]) if meta["focus"] else None
+        )
 
         # On first message of a new conversation, inject system context + persona.
         # Resumed conversations already have these in history.
-        if not bridge_session_id:
+        if not meta["bridge_session_id"]:
             preamble_parts: list[str] = []
             if self._system_prompt:
                 preamble_parts.append(f"[System context]\n{self._system_prompt}")
-            profile_prompt = msg.get("profile_prompt")
-            if profile_prompt:
-                preamble_parts.append(f"[Persona: {profile_prompt}]")
+            if meta["profile_prompt"]:
+                preamble_parts.append(f"[Persona: {meta['profile_prompt']}]")
             if preamble_parts:
                 prompt = "\n\n".join(preamble_parts) + "\n\n" + prompt
 
         # Report busy (use original user text, not persona-prefixed prompt)
         user_text = msg.get("instruction") or msg.get("prompt", "")
+        hb_base: dict[str, object] = {"type": "heartbeat", "task_id": task_id, "status": "active"}
+        if meta["plan_id"]:
+            hb_base["plan_id"] = meta["plan_id"]
+        if meta["task_kind"]:
+            hb_base["task_kind"] = meta["task_kind"]
         await ws.send(json.dumps({
-            "type": "heartbeat",
-            "task_id": task_id,
-            "status": "active",
+            **hb_base,
             "action": "processing_task",
             "detail": user_text[:100],
         }))
@@ -573,9 +634,7 @@ class Bridge:
             async def send_progress(event_type: str, detail: str):
                 try:
                     await ws.send(json.dumps({
-                        "type": "heartbeat",
-                        "task_id": task_id,
-                        "status": "active",
+                        **hb_base,
                         "action": event_type,
                         "detail": detail,
                     }))
@@ -592,9 +651,7 @@ class Bridge:
                         break
                     try:
                         await ws.send(json.dumps({
-                            "type": "heartbeat",
-                            "task_id": task_id,
-                            "status": "active",
+                            **hb_base,
                             "action": "processing_task",
                             "detail": last_detail,
                         }))
@@ -611,12 +668,13 @@ class Bridge:
             try:
                 session_id, response = await self._pool.send_message(
                     prompt, timeout=timeout, images=images, on_progress=on_progress,
-                    bridge_session_id=bridge_session_id,
-                    engine=engine,
-                    model=model_override,
-                    reasoning_effort=reasoning_effort,
-                    session_policy=session_policy,
-                    scope_key=scope_key,
+                    bridge_session_id=meta["bridge_session_id"],
+                    engine=meta["engine"],
+                    model=meta["model"],
+                    reasoning_effort=meta["reasoning_effort"],
+                    session_policy=meta["session_policy"],
+                    scope_key=meta["scope_key"],
+                    mcp_config_path=mcp_config_override,
                 )
                 self._tasks_handled += 1
 

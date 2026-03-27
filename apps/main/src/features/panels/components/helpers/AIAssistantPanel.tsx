@@ -87,7 +87,6 @@ interface ChatTab {
 
 interface ReferenceScope {
   planId: string | null;
-  contractId: string | null;
   scopeKey: string | null;
 }
 
@@ -99,27 +98,17 @@ function normalizeReferenceId(raw: string | null | undefined): string | null {
 
 function extractReferenceScope(text: string): ReferenceScope {
   let planId: string | null = null;
-  let contractId: string | null = null;
   const planRegex = /@plan:([^\s]+)/gi;
-  const contractRegex = /@contract:([^\s]+)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = planRegex.exec(text)) !== null) {
     const normalized = normalizeReferenceId(match[1]);
     if (normalized) planId = normalized;
   }
-  while ((match = contractRegex.exec(text)) !== null) {
-    const normalized = normalizeReferenceId(match[1]);
-    if (normalized) contractId = normalized;
-  }
 
-  const scopeKey = planId
-    ? `plan:${planId}`
-    : contractId
-      ? `contract:${contractId}`
-      : null;
+  const scopeKey = planId ? `plan:${planId}` : null;
 
-  return { planId, contractId, scopeKey };
+  return { planId, contractId: null, scopeKey };
 }
 
 // =============================================================================
@@ -470,6 +459,9 @@ interface ChatSessionEntry {
   last_used_at: string;
 }
 
+const RESUME_SESSION_PAGE_SIZE = 50;
+const RESUME_SESSION_MAX_LIMIT = 300;
+
 function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
   onResume: (sessionId: string, engine: string, label: string) => void;
   profileId?: string | null;
@@ -477,16 +469,37 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 }) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
+  const [limit, setLimit] = useState<number>(RESUME_SESSION_PAGE_SIZE);
+  const [loading, setLoading] = useState(false);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('');
   const [profileOnly, setProfileOnly] = useState(!!profileId);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    pixsimClient.get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params: { limit: 30 } })
-      .then((r) => setSessions(r.sessions))
-      .catch(() => {});
+    if (!open) {
+      setLimit(RESUME_SESSION_PAGE_SIZE);
+      setLoading(false);
+      setActionError(null);
+      return;
+    }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setActionError(null);
+    pixsimClient
+      .get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', {
+        params: { limit, include_empty: false },
+      })
+      .then((r) => { if (!cancelled) setSessions(r.sessions || []); })
+      .catch(() => { if (!cancelled) setSessions([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, limit]);
 
   useEffect(() => {
     if (!open) return;
@@ -501,6 +514,23 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
     if (profileOnly && profileId) list = list.filter((s) => s.profile_id === profileId);
     return list;
   }, [sessions, filter, profileOnly, profileId]);
+  const canLoadMore = !loading && sessions.length >= limit && limit < RESUME_SESSION_MAX_LIMIT;
+
+  const archiveSession = useCallback(async (session: ChatSessionEntry) => {
+    if (archivingId) return;
+    const label = session.label.trim() || `${session.engine} session`;
+    if (!confirm(`Archive session "${label}"?`)) return;
+    setActionError(null);
+    setArchivingId(session.id);
+    try {
+      await pixsimClient.delete(`/meta/agents/chat-sessions/${session.id}`);
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+    } catch {
+      setActionError(`Failed to archive "${label}".`);
+    } finally {
+      setArchivingId(null);
+    }
+  }, [archivingId]);
 
   return (
     <div className="relative" ref={ref}>
@@ -531,7 +561,14 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
             )}
           </div>
 
-          {filtered.length === 0 && (
+          {loading && sessions.length === 0 && (
+            <div className="p-3 text-center text-[11px] text-neutral-500">Loading sessions...</div>
+          )}
+          {actionError && (
+            <div className="px-3 py-1.5 text-[10px] text-red-500 border-b border-neutral-100 dark:border-neutral-800">{actionError}</div>
+          )}
+
+          {!loading && filtered.length === 0 && (
             <div className="p-3 text-center text-[11px] text-neutral-500">No sessions found</div>
           )}
 
@@ -548,36 +585,66 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
               ? s.scope_key
               : null;
             return (
-              <button
+              <div
                 key={s.id}
-                onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0"
+                className="group w-full flex items-center gap-1 px-1 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800"
               >
-                <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
-                  <div className="text-[9px] text-neutral-400">
-                    {sessionProfileLabel ? `${sessionProfileLabel} - ` : ''}
-                    {s.message_count} msgs - {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                      {s.last_contract_id && (
-                        <Badge color="blue" className="text-[8px]">{s.last_contract_id}</Badge>
-                      )}
-                      {s.last_plan_id && (
-                        <Badge color="green" className="text-[8px]">plan:{s.last_plan_id}</Badge>
-                      )}
-                      {scopeKeyChip && (
-                        <Badge color="gray" className="text-[8px]">{scopeKeyChip}</Badge>
-                      )}
+                <button
+                  onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+                  className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
+                >
+                  <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
+                    <div className="text-[9px] text-neutral-400">
+                      {sessionProfileLabel ? `${sessionProfileLabel} - ` : ''}
+                      {s.message_count} msgs - {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
-                  )}
-                </div>
-                <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
-              </button>
+                    {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                        {s.last_contract_id && (
+                          <Badge color="blue" className="text-[8px]">{s.last_contract_id}</Badge>
+                        )}
+                        {s.last_plan_id && (
+                          <Badge color="green" className="text-[8px]">plan:{s.last_plan_id}</Badge>
+                        )}
+                        {scopeKeyChip && (
+                          <Badge color="gray" className="text-[8px]">{scopeKeyChip}</Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void archiveSession(s);
+                  }}
+                  disabled={archivingId === s.id}
+                  className="shrink-0 w-6 h-6 rounded text-neutral-400 hover:text-red-500 hover:bg-white dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 transition"
+                  title="Archive session"
+                >
+                  <Icon name="trash2" size={10} />
+                </button>
+              </div>
             );
           })}
+
+          {canLoadMore && (
+            <button
+              onClick={() => setLimit((prev) => Math.min(prev + RESUME_SESSION_PAGE_SIZE, RESUME_SESSION_MAX_LIMIT))}
+              className="w-full px-3 py-2 text-[10px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-t border-neutral-100 dark:border-neutral-800"
+            >
+              Load more sessions
+            </button>
+          )}
+          {loading && sessions.length > 0 && (
+            <div className="px-3 py-2 text-center text-[10px] text-neutral-500 border-t border-neutral-100 dark:border-neutral-800">
+              Loading...
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1288,11 +1355,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     const scope = extractReferenceScope(text);
     if (scope.scopeKey) body.scope_key = scope.scopeKey;
     if (scope.scopeKey) body.session_policy = 'scoped';
-    if (scope.planId || scope.contractId) {
-      body.context = {
-        ...(scope.planId ? { plan_id: scope.planId } : {}),
-        ...(scope.contractId ? { contract_id: scope.contractId } : {}),
-      };
+    if (scope.planId) {
+      body.context = { plan_id: scope.planId };
     }
 
     // Auto-inject token: mint one for the active profile and include it

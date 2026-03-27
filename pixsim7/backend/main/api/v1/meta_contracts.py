@@ -99,6 +99,7 @@ class AgentPresence(BaseModel):
     action: str
     detail: str
     plan_id: Optional[str] = None
+    task_kind: Optional[str] = None
     duration_seconds: int = 0
 
 
@@ -209,15 +210,7 @@ def _discover_game_route_group_contracts(
         paths = sorted(group_meta["paths"])
 
         agents_on_contract = [
-            AgentPresence(
-                session_id=s.session_id,
-                agent_type=s.agent_type,
-                status=s.status,
-                action=s.action,
-                detail=s.detail,
-                plan_id=s.plan_id,
-                duration_seconds=s.duration_seconds,
-            )
+            AgentPresence(**s.to_presence())
             for s in active_sessions
             if s.contract_id == contract_id
         ]
@@ -302,15 +295,7 @@ async def list_contract_endpoints(
             continue
 
         agents_on_contract = [
-            AgentPresence(
-                session_id=s.session_id,
-                agent_type=s.agent_type,
-                status=s.status,
-                action=s.action,
-                detail=s.detail,
-                plan_id=s.plan_id,
-                duration_seconds=s.duration_seconds,
-            )
+            AgentPresence(**s.to_presence())
             for s in active_sessions
             if s.contract_id == c.id
         ]

@@ -27,24 +27,6 @@ referenceRegistry.register({
 });
 
 referenceRegistry.register({
-  type: 'contract',
-  icon: 'compass',
-  label: 'Contracts',
-  fetch: () =>
-    pixsimClient
-      .get<{ contracts: Array<{ id: string; name: string; summary: string }> }>('/meta/contracts')
-      .then((r) =>
-        (r.contracts || []).map((c) => ({
-          type: 'contract' as const,
-          id: c.id,
-          label: c.name,
-          detail: c.summary,
-        })),
-      )
-      .catch(() => []),
-});
-
-referenceRegistry.register({
   type: 'world',
   icon: 'globe',
   label: 'Worlds',

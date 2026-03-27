@@ -343,11 +343,7 @@ _TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled
 _REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
 _REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
 _REVIEW_REQUEST_MODES: Set[str] = frozenset({"review_only", "propose_patch", "apply_patch"})
-_PLAN_REQUEST_KIND_ALIASES: Dict[str, str] = {
-    "review": "review",
-    "build": "review",
-    "research": "review",
-}
+PLAN_REQUEST_KINDS: Set[str] = frozenset({"review", "build", "research"})
 from pixsim7.backend.main.shared.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
 
 
@@ -1161,14 +1157,9 @@ async def _run_review_request_via_api(
 
 
 def _normalize_plan_request_kind(kind: Optional[str]) -> str:
-    """Map request kinds to registered executor keys.
-
-    ``build`` and ``research`` currently reuse the review executor.
-    """
+    """Validate and normalize a plan request kind string."""
     raw = str(kind or "review").strip().lower()
-    if not raw:
-        raw = "review"
-    return _PLAN_REQUEST_KIND_ALIASES.get(raw, raw)
+    return raw if raw in PLAN_REQUEST_KINDS else raw  # unknown kinds rejected by executor lookup
 
 
 async def _execute_plan_request_kind_review(
@@ -1239,6 +1230,8 @@ async def _execute_plan_request_kind_review(
 PlanRequestKindExecutor = Callable[..., Awaitable[Dict[str, Any]]]
 _PLAN_REQUEST_KIND_EXECUTORS: Dict[str, PlanRequestKindExecutor] = {
     "review": _execute_plan_request_kind_review,
+    "build": _execute_plan_request_kind_review,    # same executor for now — distinct key for future differentiation
+    "research": _execute_plan_request_kind_review,  # same executor for now — distinct key for future differentiation
 }
 
 

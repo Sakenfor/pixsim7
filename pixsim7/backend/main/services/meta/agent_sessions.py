@@ -28,7 +28,7 @@ SESSION_TIMEOUT_SECONDS = 120  # expire after 2 minutes of no heartbeat
 _KNOWN_HB_FIELDS: FrozenSet[str] = frozenset({
     "type", "status", "action", "detail",
     "contract_id", "plan_id", "endpoint",
-    "model", "task_id",
+    "model", "task_id", "task_kind",
 })
 
 
@@ -44,6 +44,7 @@ class CanonicalHeartbeat:
     detail: str = ""
     contract_id: Optional[str] = None
     plan_id: Optional[str] = None
+    task_kind: Optional[str] = None  # "review", "build", "research", or free-form for non-plan work
     endpoint: Optional[str] = None
     task_id: Optional[str] = None
     model: Optional[str] = None
@@ -70,6 +71,7 @@ def from_ws_heartbeat(
         detail=data.get("detail", ""),
         contract_id=data.get("contract_id"),
         plan_id=data.get("plan_id"),
+        task_kind=data.get("task_kind"),
         endpoint=data.get("endpoint"),
         task_id=task_id,
         model=model_raw if isinstance(model_raw, str) and model_raw else None,
@@ -89,6 +91,7 @@ class AgentActivity:
     contract_id: Optional[str] = None
     endpoint: Optional[str] = None
     plan_id: Optional[str] = None
+    task_kind: Optional[str] = None
     action: str = ""  # e.g. "reading_plan", "editing_code", "running_codegen"
     detail: str = ""  # free-form detail
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -103,6 +106,7 @@ class AgentSession:
     last_heartbeat: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "active"  # active, paused, completed, errored
     plan_id: Optional[str] = None
+    task_kind: Optional[str] = None  # "review", "build", "research", or free-form
     contract_id: Optional[str] = None
     action: str = ""
     detail: str = ""
@@ -117,6 +121,19 @@ class AgentSession:
     @property
     def duration_seconds(self) -> int:
         return int((self.last_heartbeat - self.started_at).total_seconds())
+
+    def to_presence(self) -> Dict[str, Any]:
+        """Convert to AgentPresence-compatible dict for API responses."""
+        return {
+            "session_id": self.session_id,
+            "agent_type": self.agent_type,
+            "status": self.status,
+            "action": self.action,
+            "detail": self.detail,
+            "plan_id": self.plan_id,
+            "task_kind": self.task_kind,
+            "duration_seconds": self.duration_seconds,
+        }
 
 
 PersistFn = Optional[Any]  # Callable[[CanonicalHeartbeat], Awaitable[None]] — loose to avoid import issues
@@ -148,6 +165,7 @@ class AgentSessionRegistry:
             contract_id=hb.contract_id,
             endpoint=hb.endpoint,
             plan_id=hb.plan_id,
+            task_kind=hb.task_kind,
             action=hb.action,
             detail=hb.detail,
             metadata=dict(hb.metadata) if hb.metadata else None,
@@ -171,6 +189,7 @@ class AgentSessionRegistry:
         contract_id: Optional[str] = None,
         endpoint: Optional[str] = None,
         plan_id: Optional[str] = None,
+        task_kind: Optional[str] = None,
         action: str = "",
         detail: str = "",
         metadata: Optional[Dict[str, str]] = None,
@@ -192,6 +211,7 @@ class AgentSessionRegistry:
         session.last_heartbeat = now
         session.status = status
         session.plan_id = plan_id
+        session.task_kind = task_kind or session.task_kind  # sticky — once set, persists until overwritten
         session.contract_id = contract_id
         session.action = action
         session.detail = detail
@@ -204,6 +224,7 @@ class AgentSessionRegistry:
                 contract_id=contract_id,
                 endpoint=endpoint,
                 plan_id=plan_id,
+                task_kind=task_kind,
                 action=action,
                 detail=detail,
                 timestamp=now,

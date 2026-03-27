@@ -35,7 +35,7 @@ except ImportError:
 API_URL = os.environ.get("PIXSIM_API_URL", "http://localhost:8000")
 API_TOKEN = os.environ.get("PIXSIM_API_TOKEN", "")
 API_TOKEN_FILE = os.environ.get("PIXSIM_TOKEN_FILE", "")  # Per-request token file
-API_SCOPE = os.environ.get("PIXSIM_SCOPE", "")  # "user" or "dev"; empty = all
+API_SCOPE = os.environ.get("PIXSIM_SCOPE", "")  # "user", "dev", or comma-separated contract IDs; empty = all
 
 
 def _get_token() -> str:
@@ -139,6 +139,24 @@ def _unique_tool_name(base_name: str, seen: set[str]) -> str:
     return f"{base_name}_{index}"
 
 
+def _parse_scope() -> tuple[str | None, set[str]]:
+    """Parse PIXSIM_SCOPE into audience filter and contract ID allowlist.
+
+    Returns (audience, contract_ids):
+    - "user" or "dev" → audience filter, no contract filtering
+    - "prompts_authoring,blocks_discovery" → no audience, contract allowlist
+    - empty → no filtering at all
+    """
+    raw = API_SCOPE.strip()
+    if not raw:
+        return None, set()
+    if raw in ("user", "dev"):
+        return raw, set()
+    # Comma-separated contract IDs (dot or underscore form both accepted)
+    ids = {s.strip().replace("_", ".") for s in raw.split(",") if s.strip()}
+    return None, ids
+
+
 async def _fetch_contracts() -> list[dict]:
     """Fetch contracts from meta API. Returns empty list on failure."""
     try:
@@ -146,15 +164,20 @@ async def _fetch_contracts() -> list[dict]:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         client = _get_client()
 
+        audience, contract_ids = _parse_scope()
         params = {}
-        if API_SCOPE:
-            params["audience"] = API_SCOPE
+        if audience:
+            params["audience"] = audience
         resp = await client.get("/api/v1/meta/contracts", params=params, headers=headers)
         if resp.status_code != 200:
             print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
             return []
         data = resp.json()
-        return data.get("contracts", [])
+        contracts = data.get("contracts", [])
+        if contract_ids:
+            contracts = [c for c in contracts if c.get("id", "") in contract_ids]
+            print(f"[pixsim-mcp] Scope filter: {len(contracts)} contracts from {contract_ids}", file=sys.stderr)
+        return contracts
     except Exception as e:
         print(f"[pixsim-mcp] Failed to fetch meta contracts: {e}", file=sys.stderr)
         return []

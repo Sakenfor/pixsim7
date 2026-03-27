@@ -134,7 +134,14 @@ class AgentPool:
         self._drop_indexes_for_session(oldest.session_id)
         return True
 
-    async def _spawn_session(self, command: str, resume_session_id: str | None = None, model: str | None = None, reasoning_effort: str | None = None) -> AgentCmdSession:
+    async def _spawn_session(
+        self,
+        command: str,
+        resume_session_id: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        mcp_config_path: str | None = None,
+    ) -> AgentCmdSession:
         """Spawn a new on-demand session (for a non-default engine or resume)."""
         if len(self._sessions) >= self._max_sessions:
             if not await self._evict_oldest_idle():
@@ -154,7 +161,7 @@ class AgentPool:
             extra_args=self._extra_args,
             command=command,
             system_prompt=self._system_prompt,
-            mcp_config_path=self._mcp_config_path,
+            mcp_config_path=mcp_config_path or self._mcp_config_path,
             resume_session_id=resume_session_id,
             model=model,
             reasoning_effort=reasoning_effort,
@@ -196,6 +203,7 @@ class AgentPool:
         command: str,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        mcp_config_path: str | None = None,
     ) -> AgentCmdSession:
         """Find or create a scoped session bound to ``scope_key``."""
         existing = self._find_by_scope_key(scope_key)
@@ -208,6 +216,7 @@ class AgentPool:
             command=command,
             model=model,
             reasoning_effort=reasoning_effort,
+            mcp_config_path=mcp_config_path,
         )
         self._scope_key_index[scope_key] = session.session_id
         return session
@@ -286,6 +295,7 @@ class AgentPool:
         reasoning_effort: str | None = None,
         session_policy: str | None = None,
         scope_key: str | None = None,
+        mcp_config_path: str | None = None,
     ) -> tuple[str, str]:
         """
         Route a message to a session.
@@ -294,6 +304,7 @@ class AgentPool:
         (or spawns one with --resume). Otherwise picks any available session.
         Engine overrides which command to use (e.g. "codex" instead of default "claude").
         Model overrides the default model for new sessions.
+        mcp_config_path overrides the pool-wide MCP config for newly spawned sessions.
         Returns (session_id, response).
         """
         command = engine or self._command
@@ -306,7 +317,7 @@ class AgentPool:
         if bridge_session_id:
             session = await self._get_or_create_for_session_id(bridge_session_id, command=command)
         elif policy == "ephemeral":
-            session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort)
+            session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort, mcp_config_path=mcp_config_path)
             ephemeral = True
         elif policy == "scoped" and scope:
             session = await self._get_or_create_for_scope_key(
@@ -314,11 +325,12 @@ class AgentPool:
                 command=command,
                 model=model,
                 reasoning_effort=reasoning_effort,
+                mcp_config_path=mcp_config_path,
             )
         else:
             # When a specific model or reasoning effort is requested, spawn a dedicated session
             if model or reasoning_effort:
-                session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort)
+                session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort, mcp_config_path=mcp_config_path)
             else:
                 # Match engine: prefer an existing ready session, otherwise spawn one
                 session = self.get_available(command=command)

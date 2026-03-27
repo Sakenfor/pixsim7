@@ -35,11 +35,14 @@ pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="backend deps not 
 
 
 class TestPlanRequestKindRegistry:
-    def test_kind_aliases_normalize_to_review(self):
+    def test_kind_normalization(self):
+        """Each kind normalizes to itself, defaults to review."""
         assert _normalize_plan_request_kind("review") == "review"
-        assert _normalize_plan_request_kind("build") == "review"
-        assert _normalize_plan_request_kind("research") == "review"
+        assert _normalize_plan_request_kind("build") == "build"
+        assert _normalize_plan_request_kind("research") == "research"
         assert _normalize_plan_request_kind(" REVIEW ") == "review"
+        assert _normalize_plan_request_kind(None) == "review"
+        assert _normalize_plan_request_kind("") == "review"
 
     @pytest.mark.asyncio
     async def test_dispatch_rejects_unknown_kind(self):

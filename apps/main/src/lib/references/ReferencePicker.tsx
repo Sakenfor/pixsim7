@@ -27,7 +27,7 @@ export function ReferencePicker({
   items,
   onSelect,
   visible,
-  maxResults = 10,
+  maxResults = 25,
 }: ReferencePickerProps) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
