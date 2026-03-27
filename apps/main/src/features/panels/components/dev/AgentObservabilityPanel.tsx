@@ -1079,21 +1079,25 @@ function HistoryView() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Exclude work_summary — those have their own Summaries section
+  const entries = useMemo(() => {
+    if (!data) return [];
+    return data.entries.filter((e) => e.action !== 'work_summary');
+  }, [data]);
+
   const actionCounts = useMemo(() => {
-    if (!data) return {};
     const counts: Record<string, number> = {};
-    for (const e of data.entries) {
+    for (const e of entries) {
       const key = e.action || 'other';
       counts[key] = (counts[key] || 0) + 1;
     }
     return counts;
-  }, [data]);
+  }, [entries]);
 
   const filteredEntries = useMemo(() => {
-    if (!data) return [];
-    if (activeFilters.size === 0) return data.entries;
-    return data.entries.filter((e) => activeFilters.has(e.action || 'other'));
-  }, [data, activeFilters]);
+    if (activeFilters.size === 0) return entries;
+    return entries.filter((e) => activeFilters.has(e.action || 'other'));
+  }, [entries, activeFilters]);
 
   const toggleFilter = useCallback((action: string) => {
     setActiveFilters((prev) => {
