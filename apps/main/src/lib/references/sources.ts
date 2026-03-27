@@ -13,6 +13,7 @@ const _STATUS_ORDER: Record<string, number> = { active: 0, done: 1, parked: 2 };
 referenceRegistry.register({
   type: 'plan',
   icon: 'clipboard',
+  color: 'text-blue-400',
   label: 'Plans',
   fetch: () =>
     pixsimClient
@@ -33,6 +34,7 @@ referenceRegistry.register({
 referenceRegistry.register({
   type: 'world',
   icon: 'globe',
+  color: 'text-emerald-400',
   label: 'Worlds',
   fetch: () =>
     pixsimClient
@@ -51,6 +53,7 @@ referenceRegistry.register({
 referenceRegistry.register({
   type: 'project',
   icon: 'folder',
+  color: 'text-amber-400',
   label: 'Projects',
   fetch: () =>
     pixsimClient

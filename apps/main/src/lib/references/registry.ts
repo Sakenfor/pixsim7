@@ -31,6 +31,8 @@ export interface ReferenceSourceRegistration {
   type: string;
   /** Icon for the picker dropdown */
   icon: IconName;
+  /** Tailwind color class for chips and icons (e.g. 'text-blue-400'). Defaults to neutral. */
+  color?: string;
   /** Human label for the source category */
   label: string;
   /** Fetch items for this source. Called lazily on first @ trigger. */
@@ -57,6 +59,10 @@ class ReferenceRegistry {
 
   getIcon(type: string): IconName {
     return this._sources.get(type)?.icon ?? 'link';
+  }
+
+  getColor(type: string): string {
+    return this._sources.get(type)?.color ?? 'text-neutral-400';
   }
 
   /** Subscribe to registry changes (for React useSyncExternalStore) */

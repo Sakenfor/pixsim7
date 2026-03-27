@@ -87,19 +87,22 @@ export function ReferencePicker({
               <Icon name="x" size={8} className="ml-0.5 opacity-60" />
             </button>
           ) : (
-            sources.map((src) => (
-              <button
-                key={src.type}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setTypeFilter(src.type);
-                }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-              >
-                <Icon name={src.icon} size={10} />
-                {src.label}
-              </button>
-            ))
+            sources.map((src) => {
+              const color = referenceRegistry.getColor(src.type);
+              return (
+                <button
+                  key={src.type}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setTypeFilter(src.type);
+                  }}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors ${color}`}
+                >
+                  <Icon name={src.icon} size={10} />
+                  {src.label}
+                </button>
+              );
+            })
           )}
         </div>
       )}
@@ -121,7 +124,7 @@ export function ReferencePicker({
           <Icon
             name={referenceRegistry.getIcon(item.type)}
             size={11}
-            className="shrink-0 text-neutral-400"
+            className={`shrink-0 ${referenceRegistry.getColor(item.type)}`}
           />
           <div className="flex-1 min-w-0">
             <div className="truncate font-medium">{item.label}</div>
