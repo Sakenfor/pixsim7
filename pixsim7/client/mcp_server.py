@@ -338,6 +338,21 @@ def _extract_agent_type(token: str) -> str:
     return _decode_token_claims(token).get("agent_type") or "agent"
 
 
+def _derive_stable_session_id(token: str) -> str:
+    """Derive a deterministic session ID from the token's unique claims.
+
+    Uses run_id (unique per token mint) + profile_id. Same token reused
+    across claude restarts = same session. Different token = different session.
+    Falls back to jti (JWT ID) if run_id is absent.
+    """
+    import hashlib
+    claims = _decode_token_claims(token)
+    unique_key = claims.get("run_id") or claims.get("jti") or ""
+    profile_id = claims.get("agent_id") or "unknown"
+    raw = f"{profile_id}:{unique_key}"
+    return f"mcp-{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
+
+
 # Background heartbeat state
 _heartbeat_task: asyncio.Task | None = None
 _registered_session_id: str | None = None
@@ -380,7 +395,7 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
 
     profile_id = _extract_profile_from_token(token)
     agent_type = _extract_agent_type(token)
-    session_id = arguments.get("session_id") or _registered_session_id or str(_uuid.uuid4())
+    session_id = arguments.get("session_id") or _registered_session_id or _derive_stable_session_id(token)
     label = arguments.get("label") or f"CLI session ({session_id[:8]})"
 
     result = await _proxy(
