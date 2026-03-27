@@ -634,14 +634,21 @@ async def _adaptive_provider_concurrency_record_limit_error(
     lower_after_rejects = _adaptive_provider_concurrency_lower_after_consecutive_rejects()
     now_ts = int(datetime.now(timezone.utc).timestamp())
     last_error_ts = int(state.get("last_error_at_ts") or 0)
-    # Immediately clamp effective cap to observed provider limit on the first
-    # in-cap reject.  But don't cascade further if another reject arrives
-    # within a short window — multiple in-flight jobs getting rejected
-    # simultaneously would otherwise drive the cap down to 1.
-    # The probe mechanism recovers the cap if the drop was too aggressive.
+    # Only lower the effective cap after multiple consecutive in-cap rejects
+    # at the same level.  A single spurious 500044 from the provider (e.g.
+    # Pixverse bug triggered by filtered content) should not tank throughput.
+    # The cascade guard still prevents multiple simultaneous rejects from
+    # driving the cap to 1 within a short window.
     _CAP_LOWER_COOLDOWN_SECONDS = 10
+    _MIN_IN_CAP_REJECTS_BEFORE_LOWER = 3
     recently_lowered = (now_ts - last_error_ts) < _CAP_LOWER_COOLDOWN_SECONDS
-    if not is_probe_level_reject and existing_effective > 1 and not recently_lowered:
+    enough_evidence = consecutive_in_cap_rejects >= _MIN_IN_CAP_REJECTS_BEFORE_LOWER
+    if (
+        not is_probe_level_reject
+        and existing_effective > 1
+        and not recently_lowered
+        and enough_evidence
+    ):
         new_effective = _clamp_provider_cap(
             min(existing_effective, observed_cap), configured_cap
         )

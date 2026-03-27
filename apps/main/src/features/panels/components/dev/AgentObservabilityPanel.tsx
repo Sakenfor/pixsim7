@@ -1534,18 +1534,6 @@ interface AgentEditFormState {
   audience: string;
 }
 
-/** Read profile IDs that have open chat tabs (from AI Assistant localStorage). */
-function getOpenTabProfileIds(): ReadonlySet<string> {
-  try {
-    const raw = localStorage.getItem('ai-assistant:tabs');
-    if (!raw) return new Set();
-    const tabs = JSON.parse(raw) as { profileId?: string | null }[];
-    const ids = new Set<string>();
-    for (const t of tabs) { if (t.profileId) ids.add(t.profileId); }
-    return ids;
-  } catch { return new Set(); }
-}
-
 const RECENT_SESSION_MS = 60 * 60 * 1000; // 1 hour
 
 function AgentsView() {
@@ -1555,7 +1543,6 @@ function AgentsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
   const [copied, setCopied] = useState(false);
-  const [openTabProfiles, setOpenTabProfiles] = useState<ReadonlySet<string>>(getOpenTabProfileIds);
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [summariesSessionId, setSummariesSessionId] = useState<string | null>(null);
@@ -1589,7 +1576,6 @@ function AgentsView() {
       const res = await pixsimClient.get<ObservabilityResponse>('/dev/agent-profiles/observability');
       setData(res);
     } catch { /* ignore */ }
-    setOpenTabProfiles(getOpenTabProfileIds());
   }, []);
 
   useEffect(() => { void load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
@@ -1862,9 +1848,8 @@ function AgentsView() {
         {(data?.agents ?? []).map((entry) => {
           const { profile: p, recent_sessions: sessions } = entry;
           const expanded = expandedId === p.id;
-          const hasOpenTab = openTabProfiles.has(p.id);
           const hasActiveSession = sessions.some((s) => data?.active_session_ids?.includes(s.id));
-          const isLive = hasOpenTab || hasActiveSession;
+          const isLive = hasActiveSession;
 
           return (
             <div key={p.id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
