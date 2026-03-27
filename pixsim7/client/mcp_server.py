@@ -505,19 +505,23 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     except Exception as e:
         results.append(f"Activity log failed: {e}")
 
-    # 2. Update session label to latest summary
+    # 2. Update session with latest summary and plan context
     if session_id != "unregistered":
         try:
+            session_update: dict[str, Any] = {
+                "session_id": session_id,
+                "engine": agent_type,
+                "label": summary[:60],
+                "profile_id": profile_id,
+                "source": "mcp",
+            }
+            if plan_id:
+                session_update["last_plan_id"] = plan_id
+                session_update["scope_key"] = f"plan:{plan_id}"
             await _proxy(
                 method="POST",
                 path="/api/v1/meta/agents/register-chat-session",
-                body={
-                    "session_id": session_id,
-                    "engine": agent_type,
-                    "label": summary[:60],
-                    "profile_id": profile_id,
-                    "source": "mcp",
-                },
+                body=session_update,
             )
         except Exception:
             pass

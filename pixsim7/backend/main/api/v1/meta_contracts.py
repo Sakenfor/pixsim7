@@ -1370,6 +1370,8 @@ class RegisterSessionRequest(BaseModel):
     label: str = Field("CLI session", description="Display label")
     profile_id: Optional[str] = Field(None, description="Agent profile ID to associate")
     source: Optional[str] = Field(None, description="Registration source (mcp, hook, etc.)")
+    scope_key: Optional[str] = Field(None, description="Scope key for session affinity (e.g. plan:my-plan)")
+    last_plan_id: Optional[str] = Field(None, description="Plan ID being worked on")
 
 
 @router.post("/agents/register-chat-session")
@@ -1378,40 +1380,30 @@ async def register_chat_session(
     _user: Optional[Any] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_database),
 ) -> Dict[str, Any]:
-    """Register a CLI session for tracking (idempotent).
+    """Register or update a CLI session for tracking (idempotent).
 
-    Called by the MCP server on startup so standalone CLI sessions
-    appear in the AI Assistant's session list and resume picker.
+    Called by the MCP server on startup and by ``log_work`` on each summary.
+    Uses the same ``_upsert_chat_session`` as the bridge path so both
+    produce identical ChatSession records.
     """
-    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
-    from pixsim7.backend.main.shared.datetime_utils import utcnow
-
-    # principal.user_id returns on_behalf_of for agent tokens, id for users
     user_id = 0
     if _user:
         user_id = getattr(_user, 'user_id', None) or getattr(_user, 'id', 0) or 0
 
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
     existing = await db.get(ChatSession, payload.session_id)
-    if existing:
-        existing.last_used_at = utcnow()
-        if payload.profile_id and not existing.profile_id:
-            existing.profile_id = payload.profile_id
-        if payload.label and payload.label != existing.label:
-            existing.label = payload.label
-        await db.commit()
-        return {"ok": True, "created": False, "session_id": existing.id}
+    created = existing is None
 
-    session = ChatSession(
-        id=payload.session_id,
+    await _upsert_chat_session(
+        session_id=payload.session_id,
         user_id=user_id,
         engine=payload.engine,
-        profile_id=payload.profile_id,
         label=payload.label or "CLI session",
-        message_count=0,
+        profile_id=payload.profile_id,
+        scope_key=payload.scope_key,
+        last_plan_id=payload.last_plan_id,
     )
-    db.add(session)
-    await db.commit()
-    return {"ok": True, "created": True, "session_id": session.id}
+    return {"ok": True, "created": created, "session_id": payload.session_id}
 
 
 @router.get("/agents/system-prompt-preview")
