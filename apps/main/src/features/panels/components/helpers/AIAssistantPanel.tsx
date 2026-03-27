@@ -573,11 +573,8 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
           )}
 
           {filtered.map((s) => {
-            const sessionProfileLabel = s.profile_id
-              ? formatActorLabel(
-                  { profileId: s.profile_id, agentId: s.profile_id },
-                  { profileLabels },
-                )
+            const sessionProfileLabel = s.profile_id && profileLabels?.get(s.profile_id)
+              ? profileLabels.get(s.profile_id)!
               : null;
             const scopeKeyChip = s.scope_key
               && !(s.last_plan_id && s.scope_key === `plan:${s.last_plan_id}`)
@@ -593,12 +590,12 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                   onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
                   className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
                 >
-                  <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
+                  <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className={`shrink-0 ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
+                    <div className={`text-[11px] truncate ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{s.label}</div>
                     <div className="text-[9px] text-neutral-400">
-                      {sessionProfileLabel ? `${sessionProfileLabel} - ` : ''}
-                      {s.message_count} msgs - {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {sessionProfileLabel ? `${sessionProfileLabel} · ` : ''}
+                      {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-1">
@@ -614,7 +611,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       </div>
                     )}
                   </div>
-                  <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
+                  <span className={`text-[8px] uppercase shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`}>{s.engine}</span>
                 </button>
                 <button
                   onClick={(e) => {
@@ -1364,8 +1361,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       try {
         const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${tab.profileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
         body.user_token = res.access_token;
-      } catch {
-        // Non-fatal â€" send without token
+      } catch (err) {
+        console.warn('[ai-assistant] Token mint failed for profile', tab.profileId, err);
+        setMessages((prev) => [...prev, {
+          role: 'error' as const,
+          text: `Token auto-inject failed for ${tab.profileId} — sending without agent token`,
+          timestamp: new Date(),
+        }]);
       }
     }
 
@@ -1473,7 +1475,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
         <ReferencePicker query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
-        <div className="flex gap-1.5 items-end">
+        <div className="group/input flex gap-1.5 items-end">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
             className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             title="Browse actions">
@@ -1645,13 +1647,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             />
           </div>
 
-          {/* Session ID â€" copy button */}
+          {/* Session ID â€" copy button, visible on hover */}
           {tab.sessionId && (
             <button
               onClick={() => {
                 navigator.clipboard.writeText(tab.sessionId!);
               }}
-              className="shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+              className="shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 opacity-0 group-hover/input:opacity-100 transition-all"
               title={`Session: ${tab.sessionId}\nClick to copy`}
             >
               <Icon name="hash" size={10} />
