@@ -152,6 +152,73 @@ function navigateToPlan(planId: string) {
   openWorkspacePanel('dev-tool:plans');
 }
 
+/** Lightweight markdown renderer for work summaries. */
+function FormattedSummary({ text, className }: { text: string; className?: string }) {
+  const nodes = useMemo(() => {
+    const lines = text.split('\n');
+    const result: React.ReactNode[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i++; continue; }
+
+      // Headings
+      const hm = line.match(/^(#{1,3})\s+(.+)/);
+      if (hm) {
+        const cls = hm[1].length === 1 ? 'font-bold' : hm[1].length === 2 ? 'font-semibold' : 'font-medium';
+        result.push(<div key={result.length} className={cls}>{summaryInline(hm[2])}</div>);
+        i++; continue;
+      }
+
+      // Bullet list
+      if (line.match(/^\s*[-*]\s/)) {
+        const items: string[] = [];
+        while (i < lines.length && lines[i].match(/^\s*[-*]\s/)) { items.push(lines[i].replace(/^\s*[-*]\s/, '')); i++; }
+        result.push(<ul key={result.length} className="list-disc pl-4 space-y-0.5">{items.map((it, j) => <li key={j}>{summaryInline(it)}</li>)}</ul>);
+        continue;
+      }
+
+      // Numbered list (1. or (1))
+      if (line.match(/^\s*(\d+[.)]\s|\(\d+\)\s)/)) {
+        const items: string[] = [];
+        while (i < lines.length && lines[i].match(/^\s*(\d+[.)]\s|\(\d+\)\s)/)) {
+          items.push(lines[i].replace(/^\s*(\d+[.)]\s|\(\d+\)\s)/, '')); i++;
+        }
+        result.push(<ol key={result.length} className="list-decimal pl-4 space-y-0.5">{items.map((it, j) => <li key={j}>{summaryInline(it)}</li>)}</ol>);
+        continue;
+      }
+
+      // Paragraph — also handle inline (1), (2) patterns
+      const expanded = line.replace(/\s*\((\d+)\)\s*/g, '\n($1) ').trim();
+      if (expanded.includes('\n')) {
+        const sublines = expanded.split('\n');
+        result.push(<div key={result.length} className="space-y-0.5">{sublines.map((sl, j) => <div key={j}>{summaryInline(sl)}</div>)}</div>);
+      } else {
+        result.push(<p key={result.length}>{summaryInline(line)}</p>);
+      }
+      i++;
+    }
+    return result;
+  }, [text]);
+
+  return <div className={`${className ?? ''} space-y-1`}>{nodes}</div>;
+}
+
+function summaryInline(text: string): React.ReactNode {
+  const regex = /(\*\*(.+?)\*\*|`([^`]+)`)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    if (match[2]) parts.push(<strong key={parts.length}>{match[2]}</strong>);
+    else if (match[3]) parts.push(<code key={parts.length} className="px-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[10px] font-mono">{match[3]}</code>);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts.length > 0 ? <>{parts}</> : text;
+}
+
 function PlanLink({ planId }: { planId: string }) {
   return (
     <button
@@ -2169,7 +2236,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
             <div className="text-sm text-neutral-400 italic py-4 text-center">No work summaries for this session</div>
           ) : summaries.map((entry, i) => (
             <div key={i} className="border-b border-neutral-100 dark:border-neutral-800 pb-3 last:border-0">
-              <div className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{entry.detail}</div>
+              <FormattedSummary text={entry.detail} className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed" />
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 <span className="text-[10px] text-neutral-400">{formatTimestamp(entry.timestamp)}</span>
                 {entry.agent_type && (
