@@ -27,11 +27,14 @@ export function OperationIconButton({
   onSelect,
   disabled,
   providerId,
+  textMode,
 }: {
   operationType: string;
   onSelect: (op: string) => void;
   disabled?: boolean;
   providerId?: string;
+  /** When true, renders as outline/ghost to indicate text-only generation. */
+  textMode?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -47,12 +50,13 @@ export function OperationIconButton({
   return (
     <div ref={ref} className="relative">
       <IconButton
-        bg={color}
+        bg={textMode ? undefined : color}
         size="lg"
         icon={<Icon name={icon} size={14} />}
         onClick={() => setOpen(o => !o)}
         disabled={disabled}
-        title={label}
+        title={textMode ? `${label} (text-only — no asset input)` : label}
+        style={textMode ? { color, boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}
       />
 
       {open && (

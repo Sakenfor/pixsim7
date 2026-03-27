@@ -63,7 +63,7 @@ export interface GenerationSettingsState {
   operationType: OperationType;
   prompt: string;
   promptMap: Record<string, string>;
-  providerId?: string;
+  providerId: string;
   generating: boolean;
   uiState: Record<string, any>;
 
@@ -74,7 +74,7 @@ export interface GenerationSettingsState {
   // ── Session actions ──
   setOperationType: (op: OperationType) => void;
   setPrompt: (value: string) => void;
-  setProvider: (id?: string) => void;
+  setProvider: (id: string) => void;
   setGenerating: (value: boolean) => void;
   setUiState: (key: string, value: any) => void;
 
@@ -108,7 +108,7 @@ export function createGenerationSettingsStore(
         operationType: 'image_to_video' as OperationType,
         prompt: '',
         promptMap: {},
-        providerId: undefined,
+        providerId: 'pixverse',
         generating: false,
         uiState: {},
         showSettings: true,
@@ -374,7 +374,7 @@ export function createGenerationSettingsStore(
           paramsPerModel: {},
           prompt: '',
           promptMap: {},
-          providerId: undefined,
+          providerId: 'pixverse',
           generating: false,
           uiState: {},
           showSettings: true,

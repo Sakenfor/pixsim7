@@ -19,7 +19,7 @@ export interface GenerationSessionFields {
   prompt: string;
   /** Per provider+operation prompt storage — composite key `${providerId}::${operationType}` */
   promptMap?: Record<string, string>;
-  providerId?: string;
+  providerId: string;
   generating: boolean;
   /** Generic bag for persisted UI state (burst count, combination strategy, etc.) */
   uiState: Record<string, any>;
@@ -31,7 +31,7 @@ export interface GenerationSessionFields {
 export interface GenerationSessionActions {
   setOperationType: (op: OperationType) => void;
   setPrompt: (value: string) => void;
-  setProvider: (id?: string) => void;
+  setProvider: (id: string) => void;
   setGenerating: (value: boolean) => void;
   setUiState: (key: string, value: any) => void;
   reset: () => void;
@@ -53,7 +53,7 @@ export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   operationType: "image_to_video",
   prompt: "",
   promptMap: {},
-  providerId: undefined,
+  providerId: 'pixverse',
   generating: false,
   uiState: {},
 };

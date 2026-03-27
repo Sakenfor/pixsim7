@@ -201,12 +201,10 @@ export function useGenerationWorkbench(
   // Session and settings are now the same store — single hydration flag
   const hasHydrated = useSettingsStore((s) => s._hasHydrated);
 
+  // providerId is always set (no more Auto/undefined). Model inference is a
+  // fallback only for callers that override providerId with undefined.
   const inferredProviderId = useProviderIdForModel(dynamicParams?.model as string | undefined);
-  const resolvedProviderId = useMemo(() => {
-    if (providerId) return providerId;
-    if (inferredProviderId) return inferredProviderId;
-    return 'pixverse';
-  }, [providerId, inferredProviderId]);
+  const resolvedProviderId = providerId || inferredProviderId || 'pixverse';
 
   // Provider and specs (capability registry is cached, survives remounts)
   const { providers } = useProviders();

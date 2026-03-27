@@ -220,7 +220,7 @@ export function GenerationSettingsPanel({
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
   const switchProviderInputs = useInputStore(s => s.switchProviderInputs);
-  const [perProviderInputs] = usePersistedScopeState('perProviderInputs', false);
+  const [perProviderInputs] = usePersistedScopeState('perProviderInputs', false, { stable: true });
 
   // Burst mode - persisted in session store uiState
   const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
@@ -249,8 +249,10 @@ export function GenerationSettingsPanel({
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  // Input count from scoped store
+  // Input count and current index from scoped store
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
+  const currentIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
+  const isOnEmptySlot = inputCount === 0 || (inputCount > 0 && currentIndex > inputCount);
   // Read preferred provider directly from state slice for reliable reactivity
   // (getPreferredProviderId uses get() internally which can cause stale selector reads)
   const preferredProviderId = useContextHubOverridesStore(
@@ -366,17 +368,17 @@ export function GenerationSettingsPanel({
         <div className="flex gap-1 items-center">
           {showProvider && (
             <ProviderIconButton
-              providerId={providerId}
+              providerId={inferredProviderId}
               providers={workbench.providers}
               onSelect={(id) => {
                 // Save/restore inputs per provider when enabled
-                if (perProviderInputs) {
-                  switchProviderInputs(operationType, providerId, id);
+                if (perProviderInputs && inferredProviderId !== id) {
+                  switchProviderInputs(operationType, inferredProviderId, id);
                 }
                 // setProvider handles prompt + param save/restore atomically
                 setProvider(id);
                 // Auto-switch operation if current one isn't supported by the new provider
-                if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
+                if (!providerCapabilityRegistry.supportsOperation(id, operationType)) {
                   const fallback = OPERATION_TYPES.find(
                     (op) => OPERATION_METADATA[op].icon && OPERATION_METADATA[op].color
                       && providerCapabilityRegistry.supportsOperation(id, op),
@@ -393,6 +395,7 @@ export function GenerationSettingsPanel({
               onSelect={(op) => setOperationType(op as OperationType)}
               disabled={generating}
               providerId={inferredProviderId}
+              textMode={isOnEmptySlot && (operationType === 'image_to_video' || operationType === 'image_to_image')}
             />
           )}
           {showTargetButton && (
@@ -599,25 +602,33 @@ export function GenerationSettingsPanel({
               )}
             </button>
             {/* "Current only" split — visible when multiple inputs queued */}
-            {onGenerateCurrentOnly && inputCount > 1 && (
-              <button
-                onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
-                disabled={generating || !canGenerate}
-                className={clsx(
-                  'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  generating || !canGenerate
-                    ? 'text-white bg-neutral-400'
-                    : error
-                    ? 'text-white bg-red-600 hover:bg-red-700'
-                    : btn.primary
-                )}
-                style={{ transition: 'none', animation: 'none' }}
-                title={isBurstMode ? `Generate ${burstCount}x with selected input only` : 'Generate with selected input only'}
-              >
-                <Icon name="image" size={11} />
-              </button>
-            )}
+            {onGenerateCurrentOnly && inputCount > 1 && (() => {
+              const currentOnlyIsText = isOnEmptySlot && (operationType === 'image_to_video' || operationType === 'image_to_image');
+              const t2Label = operationType === 'image_to_video' ? 'text-to-video' : 'text-to-image';
+              return (
+                <button
+                  onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
+                  disabled={generating || !canGenerate}
+                  className={clsx(
+                    'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    generating || !canGenerate
+                      ? 'text-white bg-neutral-400'
+                      : error
+                      ? 'text-white bg-red-600 hover:bg-red-700'
+                      : btn.primary
+                  )}
+                  style={{ transition: 'none', animation: 'none' }}
+                  title={currentOnlyIsText
+                    ? `Generate as ${t2Label}${isBurstMode ? ` (${burstCount}x)` : ''}`
+                    : isBurstMode ? `Generate ${burstCount}x with selected input only` : 'Generate with selected input only'}
+                >
+                  {currentOnlyIsText
+                    ? <span className="text-[8px] px-0.5">T</span>
+                    : <Icon name="image" size={11} />}
+                </button>
+              );
+            })()}
             {/* Burst stepper area */}
             <div
               className={clsx(

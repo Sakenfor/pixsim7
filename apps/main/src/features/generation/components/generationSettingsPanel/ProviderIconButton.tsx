@@ -2,7 +2,7 @@ import { IconButton } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useState, useRef } from 'react';
 
-import { PROVIDER_BRANDS, AUTO_BRAND, DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
+import { PROVIDER_BRANDS, DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
 
 /** Compact provider badge with dropdown picker. */
 export function ProviderIconButton({
@@ -11,16 +11,16 @@ export function ProviderIconButton({
   onSelect,
   disabled,
 }: {
-  providerId: string | undefined;
+  providerId: string;
   providers: { id: string; name: string }[];
-  onSelect: (id: string | undefined) => void;
+  onSelect: (id: string) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
 
-  const brand = providerId ? (PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: providerId.slice(0, 2) }) : AUTO_BRAND;
+  const brand = PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: providerId.slice(0, 2) };
 
   return (
     <div ref={ref} className="relative">
@@ -30,23 +30,11 @@ export function ProviderIconButton({
         icon={<span className="text-[10px] font-bold">{brand.short}</span>}
         onClick={() => setOpen(o => !o)}
         disabled={disabled}
-        title={providerId ?? 'Auto'}
+        title={providerId}
       />
 
       {open && (
         <div className={DROPDOWN_MENU_CLS}>
-          <button
-            type="button"
-            onClick={() => { onSelect(undefined); setOpen(false); }}
-            className={clsx(DROPDOWN_ITEM_CLS, !providerId && 'font-semibold')}
-          >
-            <span
-              className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0"
-              style={{ backgroundColor: AUTO_BRAND.color }}
-            >{AUTO_BRAND.short}</span>
-            Auto
-          </button>
-
           {providers.map(p => {
             const b = PROVIDER_BRANDS[p.id] ?? { color: '#6B7280', short: p.id.slice(0, 2) };
             return (

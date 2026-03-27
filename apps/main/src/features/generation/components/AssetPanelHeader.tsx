@@ -86,7 +86,7 @@ export function AssetPanelHeader({
 
   // ── Settings popover state ─────────────────────────────────────────
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
-  const [perProviderInputs, setPerProviderInputs] = usePersistedScopeState('perProviderInputs', false);
+  const [perProviderInputs, setPerProviderInputs] = usePersistedScopeState('perProviderInputs', false, { stable: true });
 
   // ── History panel toggle ───────────────────────────────────────────
   useEffect(() => {

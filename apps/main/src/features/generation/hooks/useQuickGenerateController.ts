@@ -27,6 +27,7 @@ import {
   prepareEachBackendExecutionPayload,
 } from '../lib/eachBackendExecution';
 import { prepareEachExecutionItems } from '../lib/eachExecutionItems';
+import { ensureInputsUploaded } from '../lib/ensureInputsUploaded';
 import { planFanoutGroups } from '../lib/fanoutPlanner';
 import {
   normalizeFanoutRunOptions,
@@ -639,10 +640,9 @@ export function useQuickGenerateController() {
 
     const effectiveOperationType = getFallbackOperation(activeOperationType, hasAssetInput);
 
-    // Sync UI operation selector when fallback changes the effective type (e.g. i2v → t2v)
-    if (effectiveOperationType !== activeOperationType) {
-      setOperationType(effectiveOperationType);
-    }
+    // Don't switch the UI operation — the user chose i2v/i2i intentionally.
+    // The effective type is only used for the API call; the UI stays on the
+    // user's chosen operation so the prompt and param scoping aren't disrupted.
 
     return {
       finalPrompt: buildResult.finalPrompt,
@@ -982,6 +982,14 @@ export function useQuickGenerateController() {
       effectiveCurrentInput = currentInput;
     }
 
+    // Auto-upload any local-only assets (blob: URLs can't reach the backend)
+    effectiveInputs = await ensureInputsUploaded(effectiveInputs);
+    // Refresh currentInput ref in case it was patched with a real asset ID
+    if (effectiveCurrentInput) {
+      const patched = effectiveInputs.find((i: any) => i.id === effectiveCurrentInput.id);
+      if (patched) effectiveCurrentInput = patched;
+    }
+
     await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
 
     // Template handling:
@@ -1295,7 +1303,9 @@ export function useQuickGenerateController() {
     setId?: string;
     fanoutOptions?: Partial<FanoutRunOptions>;
   }) => {
-    const { currentInputs } = getInputState();
+    let { currentInputs } = getInputState();
+    // Auto-upload any local-only assets before building each-generation requests
+    currentInputs = await ensureInputsUploaded(currentInputs);
     const fanout = normalizeFanoutRunOptions({
       strategy: options?.strategy,
       setId: options?.setId,
