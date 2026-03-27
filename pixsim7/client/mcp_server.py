@@ -329,7 +329,7 @@ def _decode_token_claims(token: str) -> dict:
 
 
 def _extract_profile_from_token(token: str) -> str | None:
-    """Extract agent_id (profile ID) from JWT claims."""
+    """Extract profile ID from JWT agent_id claim."""
     return _decode_token_claims(token).get("agent_id")
 
 
@@ -348,8 +348,8 @@ def _derive_stable_session_id(token: str) -> str:
     import hashlib
     claims = _decode_token_claims(token)
     unique_key = claims.get("run_id") or claims.get("jti") or ""
-    profile_id = claims.get("agent_id") or "unknown"
-    raw = f"{profile_id}:{unique_key}"
+    profile = claims.get("agent_id") or "unknown"  # JWT claim is "agent_id", means profile_id
+    raw = f"{profile}:{unique_key}"
     return f"mcp-{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
 
 

@@ -49,7 +49,7 @@ class RequestPrincipal(BaseModel):
 
     # ── Agent-specific ───────────────────────────────────────────
 
-    agent_id: Optional[str] = Field(default=None, description="Agent instance identifier.")
+    agent_id: Optional[str] = Field(default=None, description="Agent profile ID (from JWT agent_id claim). Alias: profile_id.")
     agent_type: Optional[str] = Field(default=None, description='E.g. "claude", "codex".')
     agent_label: Optional[str] = Field(default=None, description="Resolved profile display name.")
     run_id: Optional[str] = Field(default=None, description="Unique run/invocation ID.")
@@ -100,6 +100,15 @@ class RequestPrincipal(BaseModel):
                 return f"{label} ({self.on_behalf_of_name})"
             return label
         return self.display_name or self.username or f"user:{self.id}"
+
+    @property
+    def profile_id(self) -> Optional[str]:
+        """Agent profile ID — canonical alias for agent_id."""
+        return self.agent_id
+
+    @profile_id.setter
+    def profile_id(self, value: Optional[str]) -> None:
+        self.agent_id = value
 
     @property
     def user_id(self) -> Optional[int]:

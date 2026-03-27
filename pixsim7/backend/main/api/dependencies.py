@@ -285,10 +285,10 @@ async def get_current_principal(
 
     # Enrich agent principals with profile label + delegating user name
     if principal.is_agent:
-        if principal.agent_id:
+        if principal.profile_id:
             try:
                 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
-                profile = await auth_service.db.get(AgentProfile, principal.agent_id)
+                profile = await auth_service.db.get(AgentProfile, principal.profile_id)
                 if profile:
                     principal.agent_label = profile.label
             except Exception:

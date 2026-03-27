@@ -55,7 +55,7 @@ async def _resolve_user_id(token: str | None) -> int | None:
 class _ResolvedToken:
     user_id: int | None = None
     run_id: str | None = None
-    agent_id: str | None = None  # profile ID from token claims (e.g. "profile-mn4kk11k")
+    profile_id: str | None = None  # agent profile ID from token claims (e.g. "profile-mn4kk11k")
 
 
 async def _resolve_token(token: str | None) -> _ResolvedToken:
@@ -68,7 +68,7 @@ async def _resolve_token(token: str | None) -> _ResolvedToken:
     auth_service = get_auth_service()
     payload = await auth_service.verify_token_claims(token, update_last_used=False)
     principal = RequestPrincipal.from_jwt_payload(payload)
-    return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id, agent_id=principal.agent_id)
+    return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id, profile_id=principal.profile_id)
 
 
 def _is_local_websocket(websocket: WebSocket) -> bool:
@@ -484,7 +484,7 @@ async def agent_cmd_websocket(
         resolved = await _resolve_token(token)
         user_id = resolved.user_id
         run_id = resolved.run_id
-        token_profile_id = resolved.agent_id  # profile from token claims
+        token_profile_id = resolved.profile_id
     except Exception:
         await websocket.close(code=1008, reason="Invalid bridge token")
         return
