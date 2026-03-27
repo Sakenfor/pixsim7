@@ -14,6 +14,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
+import { useAuthStore } from '@/stores/authStore';
+
 import { PlanAgentTasksSection } from './PlanAgentTasksSection';
 import { PlanDetailHeader } from './PlanDetailHeader';
 import { PlanDetailSections } from './PlanDetailSections';
@@ -64,19 +66,30 @@ export function PlanDetailView({
   onNavigatePlan,
   forgeUrlTemplate,
   stageOptions,
+  view = 'plan',
 }: {
   planId: string;
   onPlanChanged: () => void;
   onNavigatePlan?: (planId: string) => void;
   forgeUrlTemplate?: string | null;
   stageOptions: PlanStageOptionEntry[];
+  view?: 'plan' | 'tasks';
 }) {
+  const currentUserId = useAuthStore((state) =>
+    state.user?.id != null ? Number(state.user.id) : null,
+  );
+  const currentUsername = useAuthStore((state) => state.user?.username ?? null);
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
+  const [contentView, setContentView] = useState<'full' | 'checkpoints' | 'tasks'>(
+    view === 'tasks' ? 'tasks' : 'full',
+  );
+  const [showSummaries, setShowSummaries] = useState(false);
+  const [planSummaries, setPlanSummaries] = useState<{ detail: string; timestamp: string; agent_type?: string; session_id?: string }[]>([]);
   const [coverage, setCoverage] = useState<{
     code_paths: string[];
     explicit_suites: string[];
@@ -227,6 +240,10 @@ export function PlanDetailView({
     void loadReviewGraph();
   }, [loadReviewGraph]);
 
+  useEffect(() => {
+    setContentView(view === 'tasks' ? 'tasks' : 'full');
+  }, [planId, view]);
+
   // Poll agent sessions while any agent task is in_progress
   const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
   const hasInProgressRequests = useMemo(
@@ -259,6 +276,21 @@ export function PlanDetailView({
     const interval = setInterval(() => { void loadReviewGraph(); }, 10_000);
     return () => clearInterval(interval);
   }, [hasInProgressRequests, loadReviewGraph]);
+
+  // Load work summaries for this plan when toggled on
+  useEffect(() => {
+    if (!showSummaries || !detail) { setPlanSummaries([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await pixsimClient.get<{ entries: { detail: string; timestamp: string; agent_type?: string; session_id?: string }[] }>(
+          '/meta/agents/history', { params: { plan_id: detail.id, action: 'work_summary', limit: 30 } },
+        );
+        if (!cancelled) setPlanSummaries(res.entries ?? []);
+      } catch { if (!cancelled) setPlanSummaries([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [showSummaries, detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdate = useCallback(() => {
     loadDetail();
@@ -691,6 +723,24 @@ export function PlanDetailView({
     [encodedPlanId, loadReviewGraph],
   );
 
+  const handleReopenRound = useCallback(
+    async (round: PlanReviewRound) => {
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        await pixsimClient.patch<PlanReviewRound>(
+          `/dev/plans/reviews/${encodedPlanId}/rounds/${encodeURIComponent(round.id)}`,
+          { status: 'open' },
+        );
+        setReviewNotice(`Re-opened iteration #${round.roundNumber}.`);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to re-open iteration'));
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
+  );
+
   const handleSaveRoundState = useCallback(async () => {
     if (!selectedRound) {
       setReviewError('Select a iteration first.');
@@ -1071,126 +1121,207 @@ export function PlanDetailView({
         onNavigatePlan={onNavigatePlan}
       />
 
-      <PlanDetailSections
-        detail={detail}
-        forgeUrlTemplate={forgeUrlTemplate}
-        loadingParticipants={loadingParticipants}
-        planParticipants={planParticipants}
-        reviewerParticipants={reviewerParticipants}
-        builderParticipants={builderParticipants}
-        reviewProfileLabels={reviewProfileLabels}
-        coverage={coverage}
-        planExpanded={planExpanded}
-        onTogglePlanExpanded={() => setPlanExpanded((e) => !e)}
-        onNavigatePlan={onNavigatePlan}
-        sourcePreview={sourcePreview}
-        sourcePreviewError={sourcePreviewError}
-        onClearSourcePreview={() => setSourcePreview(null)}
-      />
+      <div className="space-y-4 min-w-0">
+        <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            View
+          </span>
+          {([
+            { id: 'full', label: 'Full Plan' },
+            { id: 'checkpoints', label: 'Checkpoints' },
+            { id: 'tasks', label: 'Tasks' },
+          ] as const).map((option) => {
+            const active = contentView === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setContentView(option.id)}
+                className={`text-xs rounded-md border px-2 py-1 transition-colors ${
+                  active
+                    ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                    : 'border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
+          <button
+            type="button"
+            onClick={() => setShowSummaries((v) => !v)}
+            className={`text-xs rounded-md border px-2 py-1 transition-colors flex items-center gap-1 ${
+              showSummaries
+                ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                : 'border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <Icon name="fileText" size={11} />
+            Summaries
+          </button>
+        </div>
 
-      <PlanAgentTasksSection
-        reviewGraph={reviewGraph}
-        loadingReviews={loadingReviews}
-        reviewError={reviewError}
-        reviewNotice={reviewNotice}
-        reviewRounds={reviewRounds}
-        selectedRoundId={selectedRoundId}
-        selectedRound={selectedRound}
-        reviewNodeCountByRound={reviewNodeCountByRound}
-        reviewProfileLabels={reviewProfileLabels}
-        onSelectRound={setSelectedRoundId}
-        onLoadReviewGraph={loadReviewGraph}
-        newRoundNote={newRoundNote}
-        creatingRound={creatingRound}
-        showClosedIterations={showClosedIterations}
-        onToggleShowClosed={() => setShowClosedIterations((v) => !v)}
-        onNewRoundNoteChange={setNewRoundNote}
-        onCreateRound={() => void handleCreateRound()}
-        onCloseRound={handleCloseRound}
-        roundStatusDraft={roundStatusDraft}
-        roundNoteDraft={roundNoteDraft}
-        roundConclusionDraft={roundConclusionDraft}
-        updatingRound={updatingRound}
-        onRoundStatusDraftChange={setRoundStatusDraft}
-        onRoundNoteDraftChange={setRoundNoteDraft}
-        onRoundConclusionDraftChange={setRoundConclusionDraft}
-        onSaveRoundState={() => void handleSaveRoundState()}
-        selectedRoundRequests={selectedRoundRequests}
-        dispatchingRequestId={dispatchingRequestId}
-        updatingRequestId={updatingRequestId}
-        dispatchingTick={dispatchingTick}
-        agentSessions={agentSessions}
-        nodeById={nodeById}
-        selectedRoundNodeOrder={selectedRoundNodeOrder}
-        onDispatchRequest={(r) => void handleDispatchRequest(r)}
-        onUpdateRequestStatus={(r, s) => void handleUpdateRequestStatus(r, s)}
-        onDismissRequest={(r) => void handleDismissRequest(r)}
-        onDispatchTick={() => void handleDispatchTick()}
-        focusLinkedNode={focusLinkedNode}
-        newRequestTitle={newRequestTitle}
-        newRequestBody={newRequestBody}
-        newRequestProfileId={newRequestProfileId}
-        newRequestMethod={newRequestMethod}
-        newRequestModelId={newRequestModelId}
-        newRequestProvider={newRequestProvider}
-        newRequestMode={newRequestMode}
-        newRequestBaseRevision={newRequestBaseRevision}
-        newRequestAssignee={newRequestAssignee}
-        newRequestQueuePolicy={newRequestQueuePolicy}
-        creatingRequest={creatingRequest}
-        loadingAssignees={loadingAssignees}
-        loadingProfiles={loadingProfiles}
-        reviewProfiles={reviewProfiles}
-        liveAssigneeOptions={liveAssigneeOptions}
-        recentAssigneeOptions={recentAssigneeOptions}
-        onNewRequestTitleChange={setNewRequestTitle}
-        onNewRequestBodyChange={setNewRequestBody}
-        onApplyRequestProfileSelection={applyRequestProfileSelection}
-        onNewRequestMethodChange={setNewRequestMethod}
-        onNewRequestProviderChange={setNewRequestProvider}
-        onNewRequestModelIdChange={setNewRequestModelId}
-        onNewRequestModeChange={setNewRequestMode}
-        onNewRequestBaseRevisionChange={setNewRequestBaseRevision}
-        onNewRequestAssigneeChange={setNewRequestAssignee}
-        onNewRequestQueuePolicyChange={setNewRequestQueuePolicy}
-        onCreateRequest={() => void handleCreateRequest()}
-        selectedRoundNodes={selectedRoundNodes}
-        selectedRoundThread={selectedRoundThread}
-        selectedRoundThreadRefByChild={selectedRoundThreadRefByChild}
-        selectedRoundLinksBySource={selectedRoundLinksBySource}
-        reviewRoundNumberById={reviewRoundNumberById}
-        focusedNodeId={focusedNodeId}
-        dismissedNodeIds={dismissedNodeIds}
-        sourcePreview={sourcePreview}
-        sourcePreviewError={sourcePreviewError}
-        sourcePreviewLoadingKey={sourcePreviewLoadingKey}
-        nodeCardRefs={nodeCardRefs}
-        onPreviewSourceRef={previewSourceRef}
-        onClearSourcePreview={() => setSourcePreview(null)}
-        onReplyToNode={handleReplyToNode}
-        composeTextareaRef={composeTextareaRef}
-        newNodeKind={newNodeKind}
-        newNodeAuthorRole={newNodeAuthorRole}
-        newNodeSeverity={newNodeSeverity}
-        newNodeBody={newNodeBody}
-        newNodeRefTargetId={newNodeRefTargetId}
-        newNodeRefRelation={newNodeRefRelation}
-        newNodeRefPlanAnchor={newNodeRefPlanAnchor}
-        newNodeRefQuote={newNodeRefQuote}
-        creatingNode={creatingNode}
-        relationOptions={relationOptions}
-        onNewNodeKindChange={setNewNodeKind}
-        onNewNodeAuthorRoleChange={setNewNodeAuthorRole}
-        onNewNodeSeverityChange={setNewNodeSeverity}
-        onNewNodeBodyChange={setNewNodeBody}
-        onNewNodeRefTargetIdChange={setNewNodeRefTargetId}
-        onNewNodeRefRelationChange={setNewNodeRefRelation}
-        onNewNodeRefPlanAnchorChange={setNewNodeRefPlanAnchor}
-        onNewNodeRefQuoteChange={setNewNodeRefQuote}
-        onCreateNode={() => void handleCreateNode()}
-        inputClassName={inputClassName}
-        textAreaClassName={textAreaClassName}
-      />
+        {contentView !== 'tasks' ? (
+          <PlanDetailSections
+            detail={detail}
+            viewMode={contentView === 'checkpoints' ? 'checkpoints' : 'full'}
+            forgeUrlTemplate={forgeUrlTemplate}
+            loadingParticipants={loadingParticipants}
+            planParticipants={planParticipants}
+            reviewerParticipants={reviewerParticipants}
+            builderParticipants={builderParticipants}
+            reviewProfileLabels={reviewProfileLabels}
+            coverage={coverage}
+            planExpanded={planExpanded}
+            onTogglePlanExpanded={() => setPlanExpanded((e) => !e)}
+            onNavigatePlan={onNavigatePlan}
+            sourcePreview={sourcePreview}
+            sourcePreviewError={sourcePreviewError}
+            onClearSourcePreview={() => setSourcePreview(null)}
+          />
+        ) : (
+          <PlanAgentTasksSection
+            reviewGraph={reviewGraph}
+            loadingReviews={loadingReviews}
+            reviewError={reviewError}
+            reviewNotice={reviewNotice}
+            reviewRounds={reviewRounds}
+            selectedRoundId={selectedRoundId}
+            selectedRound={selectedRound}
+            reviewNodeCountByRound={reviewNodeCountByRound}
+            reviewProfileLabels={reviewProfileLabels}
+            onSelectRound={setSelectedRoundId}
+            onLoadReviewGraph={loadReviewGraph}
+            newRoundNote={newRoundNote}
+            creatingRound={creatingRound}
+            showClosedIterations={showClosedIterations}
+            onToggleShowClosed={() => setShowClosedIterations((v) => !v)}
+            onNewRoundNoteChange={setNewRoundNote}
+            onCreateRound={() => void handleCreateRound()}
+            onCloseRound={handleCloseRound}
+            onReopenRound={handleReopenRound}
+            currentUserId={currentUserId}
+            currentUsername={currentUsername}
+            roundStatusDraft={roundStatusDraft}
+            roundNoteDraft={roundNoteDraft}
+            roundConclusionDraft={roundConclusionDraft}
+            updatingRound={updatingRound}
+            onRoundStatusDraftChange={setRoundStatusDraft}
+            onRoundNoteDraftChange={setRoundNoteDraft}
+            onRoundConclusionDraftChange={setRoundConclusionDraft}
+            onSaveRoundState={() => void handleSaveRoundState()}
+            selectedRoundRequests={selectedRoundRequests}
+            dispatchingRequestId={dispatchingRequestId}
+            updatingRequestId={updatingRequestId}
+            dispatchingTick={dispatchingTick}
+            agentSessions={agentSessions}
+            nodeById={nodeById}
+            selectedRoundNodeOrder={selectedRoundNodeOrder}
+            onDispatchRequest={(r) => void handleDispatchRequest(r)}
+            onUpdateRequestStatus={(r, s) => void handleUpdateRequestStatus(r, s)}
+            onDismissRequest={(r) => void handleDismissRequest(r)}
+            onDispatchTick={() => void handleDispatchTick()}
+            focusLinkedNode={focusLinkedNode}
+            newRequestTitle={newRequestTitle}
+            newRequestBody={newRequestBody}
+            newRequestProfileId={newRequestProfileId}
+            newRequestMethod={newRequestMethod}
+            newRequestModelId={newRequestModelId}
+            newRequestProvider={newRequestProvider}
+            newRequestMode={newRequestMode}
+            newRequestBaseRevision={newRequestBaseRevision}
+            newRequestAssignee={newRequestAssignee}
+            newRequestQueuePolicy={newRequestQueuePolicy}
+            creatingRequest={creatingRequest}
+            loadingAssignees={loadingAssignees}
+            loadingProfiles={loadingProfiles}
+            reviewProfiles={reviewProfiles}
+            liveAssigneeOptions={liveAssigneeOptions}
+            recentAssigneeOptions={recentAssigneeOptions}
+            onNewRequestTitleChange={setNewRequestTitle}
+            onNewRequestBodyChange={setNewRequestBody}
+            onApplyRequestProfileSelection={applyRequestProfileSelection}
+            onNewRequestMethodChange={setNewRequestMethod}
+            onNewRequestProviderChange={setNewRequestProvider}
+            onNewRequestModelIdChange={setNewRequestModelId}
+            onNewRequestModeChange={setNewRequestMode}
+            onNewRequestBaseRevisionChange={setNewRequestBaseRevision}
+            onNewRequestAssigneeChange={setNewRequestAssignee}
+            onNewRequestQueuePolicyChange={setNewRequestQueuePolicy}
+            onCreateRequest={() => void handleCreateRequest()}
+            selectedRoundNodes={selectedRoundNodes}
+            selectedRoundThread={selectedRoundThread}
+            selectedRoundThreadRefByChild={selectedRoundThreadRefByChild}
+            selectedRoundLinksBySource={selectedRoundLinksBySource}
+            reviewRoundNumberById={reviewRoundNumberById}
+            focusedNodeId={focusedNodeId}
+            dismissedNodeIds={dismissedNodeIds}
+            sourcePreview={sourcePreview}
+            sourcePreviewError={sourcePreviewError}
+            sourcePreviewLoadingKey={sourcePreviewLoadingKey}
+            nodeCardRefs={nodeCardRefs}
+            onPreviewSourceRef={previewSourceRef}
+            onClearSourcePreview={() => setSourcePreview(null)}
+            onReplyToNode={handleReplyToNode}
+            composeTextareaRef={composeTextareaRef}
+            newNodeKind={newNodeKind}
+            newNodeAuthorRole={newNodeAuthorRole}
+            newNodeSeverity={newNodeSeverity}
+            newNodeBody={newNodeBody}
+            newNodeRefTargetId={newNodeRefTargetId}
+            newNodeRefRelation={newNodeRefRelation}
+            newNodeRefPlanAnchor={newNodeRefPlanAnchor}
+            newNodeRefQuote={newNodeRefQuote}
+            creatingNode={creatingNode}
+            relationOptions={relationOptions}
+            onNewNodeKindChange={setNewNodeKind}
+            onNewNodeAuthorRoleChange={setNewNodeAuthorRole}
+            onNewNodeSeverityChange={setNewNodeSeverity}
+            onNewNodeBodyChange={setNewNodeBody}
+            onNewNodeRefTargetIdChange={setNewNodeRefTargetId}
+            onNewNodeRefRelationChange={setNewNodeRefRelation}
+            onNewNodeRefPlanAnchorChange={setNewNodeRefPlanAnchor}
+            onNewNodeRefQuoteChange={setNewNodeRefQuote}
+            onCreateNode={() => void handleCreateNode()}
+            inputClassName={inputClassName}
+            textAreaClassName={textAreaClassName}
+          />
+        )}
+
+        {/* Work Summaries section (togglable, shown alongside any view) */}
+        {showSummaries && (
+          <div className="rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+            <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2">
+              <Icon name="fileText" size={12} className="text-neutral-500" />
+              <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Work Summaries</span>
+              <span className="text-[10px] text-neutral-400 ml-auto">{planSummaries.length} entries</span>
+            </div>
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[400px] overflow-y-auto">
+              {planSummaries.length === 0 ? (
+                <div className="px-3 py-4 text-xs text-neutral-400 italic text-center">
+                  No work summaries logged for this plan yet
+                </div>
+              ) : planSummaries.map((entry, i) => (
+                <div key={i} className="px-3 py-2.5">
+                  <div className="text-xs text-neutral-700 dark:text-neutral-200 leading-relaxed">{entry.detail}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-neutral-400">{new Date(entry.timestamp).toLocaleString()}</span>
+                    {entry.agent_type && (
+                      <span className={`text-[9px] px-1 rounded ${entry.agent_type === 'claude' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}`}>
+                        {entry.agent_type}
+                      </span>
+                    )}
+                    {entry.session_id && (
+                      <span className="text-[9px] text-neutral-400 font-mono">{entry.session_id.slice(0, 12)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Parent reference moved to lineage bar at top */}
     </div>
