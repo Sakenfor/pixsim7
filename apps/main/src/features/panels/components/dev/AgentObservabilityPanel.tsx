@@ -1522,6 +1522,7 @@ interface ObservabilityResponse {
   total_profiles: number;
   bridges: BridgeSummary[];
   active_session_profile_ids?: string[];
+  active_session_ids?: string[];
 }
 
 interface AgentEditFormState {
@@ -1862,7 +1863,7 @@ function AgentsView() {
           const { profile: p, recent_sessions: sessions } = entry;
           const expanded = expandedId === p.id;
           const hasOpenTab = openTabProfiles.has(p.id);
-          const hasActiveSession = data?.active_session_profile_ids?.includes(p.id) ?? false;
+          const hasActiveSession = sessions.some((s) => data?.active_session_ids?.includes(s.id));
           const isLive = hasOpenTab || hasActiveSession;
 
           return (
@@ -1916,9 +1917,11 @@ function AgentsView() {
                         {sessions.map((s) => {
                           const elapsed = Date.now() - new Date(s.last_used_at).getTime();
                           const isRecent = elapsed < RECENT_SESSION_MS;
+                          const isActiveHeartbeat = data?.active_session_ids?.includes(s.id) ?? false;
+                          const sessionLive = isRecent || isActiveHeartbeat;
                           return (
                             <div key={s.id} className="group/session flex items-center gap-2 text-[10px] py-0.5">
-                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRecent ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${sessionLive ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
                               <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
                               <span className="text-neutral-500 truncate flex-1">{s.label}</span>
                               <span className="text-neutral-400">{s.message_count} msg</span>

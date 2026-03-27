@@ -201,6 +201,7 @@ class AgentObservabilityResponse(BaseModel):
     total_profiles: int
     bridges: list[BridgeAgentSummary] = []
     active_session_profile_ids: list[str] = []  # profile IDs with active heartbeat sessions
+    active_session_ids: list[str] = []  # session IDs with active heartbeats
 
 
 @router.get("/observability", response_model=AgentObservabilityResponse)
@@ -281,18 +282,19 @@ async def agent_observability(
     # 5. Build bridge summaries (separate from profiles — bridges are shared dispatchers)
     bridge_summaries = [_build_bridge_summary(a) for a in bridge_agents]
 
-    # 6. Find profile IDs with active heartbeat sessions
+    # 6. Find active heartbeat sessions and their profile IDs
     active_profile_ids: list[str] = []
+    active_sess_ids: list[str] = []
     try:
         from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
-        active_session_ids = [s.session_id for s in agent_session_registry.get_active()]
-        if active_session_ids:
-            active_sessions = (await db.execute(
-                select(ChatSession.profile_id)
-                .where(ChatSession.id.in_(active_session_ids))
-                .where(ChatSession.profile_id.isnot(None))
-            )).scalars().all()
-            active_profile_ids = list(set(pid for pid in active_sessions if pid))
+        registry_session_ids = [s.session_id for s in agent_session_registry.get_active()]
+        if registry_session_ids:
+            rows = (await db.execute(
+                select(ChatSession.id, ChatSession.profile_id)
+                .where(ChatSession.id.in_(registry_session_ids))
+            )).all()
+            active_sess_ids = [r[0] for r in rows if r[0]]
+            active_profile_ids = list(set(r[1] for r in rows if r[1]))
     except Exception:
         pass
 
@@ -301,6 +303,7 @@ async def agent_observability(
         total_profiles=len(profiles),
         bridges=bridge_summaries,
         active_session_profile_ids=active_profile_ids,
+        active_session_ids=active_sess_ids,
     )
 
 
