@@ -136,7 +136,11 @@ class CategoriesListResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _display_name(user: User) -> str:
+def _display_name(user) -> str:
+    # If user is a RequestPrincipal with actor_display_name (agent tokens),
+    # use the composite name (e.g. "Claude Plan Writer (stefan)").
+    if hasattr(user, "actor_display_name"):
+        return user.actor_display_name
     return user.display_name or user.username or f"user:{user.id}"
 
 
@@ -295,7 +299,12 @@ def _to_response(
 ) -> dict:
     title, body = _render_notification_content(n, plan_titles=plan_titles)
     actor_name = n.actor_name
-    if n.actor_user_id is not None:
+    is_agent = isinstance(n.source, str) and n.source.startswith("agent:")
+    if n.actor_user_id is not None and not is_agent:
+        # For user-sourced notifications, refresh display name from DB.
+        # For agent-sourced, preserve the stored composite name
+        # (e.g. "Claude Plan Writer (stefan)") instead of overwriting
+        # with just the delegating user's name.
         actor_name = actor_names.get(n.actor_user_id, actor_name)
 
     return {

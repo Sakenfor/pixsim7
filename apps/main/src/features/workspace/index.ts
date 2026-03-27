@@ -52,4 +52,4 @@ export {
 
 // Dockview helpers
 export { resolveWorkspaceDockview } from "./lib/resolveWorkspaceDockview";
-export { openWorkspacePanel, openFloatingWorkspacePanel } from "./lib/openPanel";
+export { openWorkspacePanel, openFloatingWorkspacePanel, navigateToPlan, navigateToAgentProfile } from "./lib/openPanel";

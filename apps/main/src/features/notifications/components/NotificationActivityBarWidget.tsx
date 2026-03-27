@@ -13,6 +13,7 @@ import { Icon } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import { navigateToAgentProfile } from '@features/workspace';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
@@ -158,6 +159,35 @@ function NotificationBody({
   );
 }
 
+// ── Actor label with clickable agent name ────────────────────────
+
+function ActorLabelWithAgent({ label, source }: { label: string; source: string }) {
+  if (!source.startsWith('agent:')) return <>{label}</>;
+
+  // Backend stores composite names like "Claude Plan Writer (stefan)".
+  // Split into agent part and user part to make agent clickable.
+  const parenMatch = label.match(/^(.+?)\s*\(([^)]+)\)$/);
+  if (!parenMatch) return <>{label}</>;
+
+  const [, agentName, userName] = parenMatch;
+  const agentId = source.slice('agent:'.length);
+
+  return (
+    <>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          navigateToAgentProfile(agentId);
+        }}
+        className="text-blue-400 hover:text-blue-300 hover:underline"
+      >
+        {agentName}
+      </button>
+      {' '}({userName})
+    </>
+  );
+}
+
 // ── Navigation ───────────────────────────────────────────────────
 
 /** Map refType to a panel ID or action. Returns null if no navigation. */
@@ -276,7 +306,12 @@ function NotificationPanel({
                         )}
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] text-neutral-500">
-                            {actorLabel ? <>{actorLabel} &middot; </> : null}
+                            {actorLabel ? (
+                              <>
+                                <ActorLabelWithAgent label={actorLabel} source={n.source} />
+                                {' '}&middot;{' '}
+                              </>
+                            ) : null}
                             {formatTimeAgo(n.createdAt)}
                           </span>
                           {n.refType && n.refId && (

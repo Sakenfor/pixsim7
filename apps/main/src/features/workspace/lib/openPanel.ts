@@ -22,3 +22,27 @@ export function openFloatingWorkspacePanel(
 ): void {
   panelPlacementCoordinator.openFloatingPanel(panelId, options);
 }
+
+// ── Entity navigation helpers ────────────────────────────────────
+// Typed recipes for "open panel X, land on section Y, focus entity Z".
+// Single-instance panels are focused if already open; context is merged.
+
+/** Open the Plans panel and navigate to a specific plan. */
+export function navigateToPlan(planId: string): void {
+  try { localStorage.setItem('plans-panel:nav', `plan:${planId}`); } catch { /* */ }
+  useWorkspaceStore.getState().openFloatingPanel('dev-tool:plans', {
+    width: 900,
+    height: 600,
+    context: { targetPlanId: planId },
+  });
+}
+
+/** Open the Agent Observability panel and expand a specific agent profile. */
+export function navigateToAgentProfile(agentId: string): void {
+  try { localStorage.setItem('agent-observability:nav', 'agents'); } catch { /* */ }
+  useWorkspaceStore.getState().openFloatingPanel('dev-tool:agent-observability', {
+    width: 900,
+    height: 600,
+    context: { focusAgentId: agentId },
+  });
+}

@@ -1904,25 +1904,31 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                   {sessions.length > 0 && (
                     <div className="px-3 py-1.5">
                       <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Sessions</div>
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {sessions.map((s) => {
                           const elapsed = Date.now() - new Date(s.last_used_at).getTime();
                           const isRecent = elapsed < RECENT_SESSION_MS;
                           const isActiveHeartbeat = data?.active_session_ids?.includes(s.id) ?? false;
                           const sessionLive = isRecent || isActiveHeartbeat;
                           return (
-                            <div key={s.id} className="group/session flex items-center gap-2 text-[10px] py-0.5">
-                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${sessionLive ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
-                              <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
+                            <div key={s.id} className="group/session flex items-center gap-2 text-[11px] py-1">
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${sessionLive ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
+                              <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{s.engine}</Badge>
                               <span className="text-neutral-500 truncate flex-1">{s.label}</span>
-                              {s.message_count > 0 && <span className="text-neutral-400">{s.message_count} msg</span>}
+                              {s.message_count > 0 && (
+                                <span className="flex items-center gap-1 text-neutral-400" title={`${s.message_count} messages`}>
+                                  <Icon name="messageSquare" size={11} />
+                                  <span>{s.message_count}</span>
+                                </span>
+                              )}
                               {(s.summary_count ?? 0) > 0 && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); void handleViewSummaries(s.id); }}
-                                  className="text-neutral-400 hover:text-accent transition-colors"
+                                  className="flex items-center gap-1 text-neutral-400 hover:text-accent transition-colors"
                                   title="View work summaries"
                                 >
-                                  {s.summary_count} {s.summary_count === 1 ? 'summary' : 'summaries'}
+                                  <Icon name="fileText" size={11} />
+                                  <span>{s.summary_count}</span>
                                 </button>
                               )}
                               <span className="text-neutral-400">{formatTimestamp(s.last_used_at)}</span>
@@ -1934,20 +1940,10 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                                   }));
                                   openWorkspacePanel('ai-assistant');
                                 }}
-                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-accent transition-opacity shrink-0"
+                                className="text-neutral-400 hover:text-accent shrink-0"
                                 title="Resume in AI Assistant"
                               >
-                                <Icon name="play" size={10} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleViewSummaries(s.id);
-                                }}
-                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-accent transition-opacity shrink-0"
-                                title="View work summaries"
-                              >
-                                <Icon name="fileText" size={10} />
+                                <Icon name="play" size={12} />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1955,10 +1951,10 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                                   void handleArchiveChatSession(s.id, s.label);
                                 }}
                                 disabled={archivingSessionId === s.id}
-                                className="opacity-0 group-hover/session:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="text-neutral-400 hover:text-red-500 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                                 title="Archive session"
                               >
-                                <Icon name="trash2" size={10} />
+                                <Icon name="trash2" size={12} />
                               </button>
                             </div>
                           );
@@ -2200,6 +2196,7 @@ interface EditFormState {
   audience: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for backward compat, may be re-enabled
 function ProfilesView() {
   const [profiles, setProfiles] = useState<AgentProfileEntry[]>([]);
   const [loading, setLoading] = useState(true);
