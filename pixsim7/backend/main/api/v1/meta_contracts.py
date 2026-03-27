@@ -433,21 +433,23 @@ async def agent_heartbeat(
         metadata=payload.metadata,
     )
 
-    # Persist to DB
-    db.add(AgentActivityLog(
-        session_id=payload.session_id,
-        run_id=payload.run_id,
-        agent_type=payload.agent_type,
-        status=payload.status,
-        contract_id=payload.contract_id,
-        plan_id=payload.plan_id,
-        action=payload.action,
-        detail=payload.detail or None,
-        endpoint=payload.endpoint,
-        extra=payload.metadata,
-        timestamp=utcnow(),
-    ))
-    await db.commit()
+    # Persist to DB only for meaningful actions (not idle keepalive)
+    _KEEPALIVE_ACTIONS = {"cli_session", "processing_task", "mcp_session", ""}
+    if payload.action not in _KEEPALIVE_ACTIONS:
+        db.add(AgentActivityLog(
+            session_id=payload.session_id,
+            run_id=payload.run_id,
+            agent_type=payload.agent_type,
+            status=payload.status,
+            contract_id=payload.contract_id,
+            plan_id=payload.plan_id,
+            action=payload.action,
+            detail=payload.detail or None,
+            endpoint=payload.endpoint,
+            extra=payload.metadata,
+            timestamp=utcnow(),
+        ))
+        await db.commit()
 
     return AgentHeartbeatResponse(
         session_id=session.session_id,
