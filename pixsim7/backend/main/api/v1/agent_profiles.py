@@ -178,6 +178,7 @@ class ChatSessionSummary(BaseModel):
     engine: str
     label: str
     message_count: int
+    summary_count: int = 0
     last_used_at: str
     created_at: str
 
@@ -235,6 +236,24 @@ async def agent_observability(
             .limit(200)  # reasonable cap
         )
         sessions = (await db.execute(sess_stmt)).scalars().all()
+        session_ids = [s.id for s in sessions]
+
+        # Count work summaries per session
+        summary_counts: dict[str, int] = {}
+        if session_ids:
+            try:
+                from pixsim7.backend.main.domain.docs.models import AgentActivityLog
+                from sqlalchemy import func as sa_func
+                count_rows = (await db.execute(
+                    select(AgentActivityLog.session_id, sa_func.count())
+                    .where(AgentActivityLog.session_id.in_(session_ids))
+                    .where(AgentActivityLog.action == "work_summary")
+                    .group_by(AgentActivityLog.session_id)
+                )).all()
+                summary_counts = {r[0]: r[1] for r in count_rows}
+            except Exception:
+                pass
+
         for s in sessions:
             pid = s.profile_id
             if pid and pid not in sessions_by_profile:
@@ -245,6 +264,7 @@ async def agent_observability(
                     engine=s.engine,
                     label=s.label,
                     message_count=s.message_count,
+                    summary_count=summary_counts.get(s.id, 0),
                     last_used_at=s.last_used_at.isoformat() if s.last_used_at else "",
                     created_at=s.created_at.isoformat() if s.created_at else "",
                 ))

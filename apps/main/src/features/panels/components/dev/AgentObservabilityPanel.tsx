@@ -1512,6 +1512,7 @@ interface ObservabilityEntry {
     engine: string;
     label: string;
     message_count: number;
+    summary_count?: number;
     last_used_at: string;
     created_at: string;
   }[];
@@ -1536,11 +1537,11 @@ interface AgentEditFormState {
 
 const RECENT_SESSION_MS = 60 * 60 * 1000; // 1 hour
 
-function AgentsView() {
+function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
   const [data, setData] = useState<ObservabilityResponse | null>(null);
   const [bridgeAction, setBridgeAction] = useState('');
   const [skipPermissions, setSkipPermissions] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(focusAgentId ?? null);
   const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
   const [copied, setCopied] = useState(false);
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null);
@@ -1579,6 +1580,11 @@ function AgentsView() {
   }, []);
 
   useEffect(() => { void load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
+
+  // Auto-expand profile when navigated from notification or cross-panel link
+  useEffect(() => {
+    if (focusAgentId) setExpandedId(focusAgentId);
+  }, [focusAgentId]);
 
   const startServerBridge = useCallback(async () => {
     setBridgeAction('starting');
@@ -1909,7 +1915,16 @@ function AgentsView() {
                               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${sessionLive ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
                               <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
                               <span className="text-neutral-500 truncate flex-1">{s.label}</span>
-                              <span className="text-neutral-400">{s.message_count} msg</span>
+                              {s.message_count > 0 && <span className="text-neutral-400">{s.message_count} msg</span>}
+                              {(s.summary_count ?? 0) > 0 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); void handleViewSummaries(s.id); }}
+                                  className="text-neutral-400 hover:text-accent transition-colors"
+                                  title="View work summaries"
+                                >
+                                  {s.summary_count} {s.summary_count === 1 ? 'summary' : 'summaries'}
+                                </button>
+                              )}
                               <span className="text-neutral-400">{formatTimestamp(s.last_used_at)}</span>
                               <button
                                 onClick={(e) => {
@@ -2698,7 +2713,7 @@ function SendMessageView() {
 // Main Component
 // =============================================================================
 
-export function AgentObservabilityPanel() {
+export function AgentObservabilityPanel({ context }: { context?: { focusAgentId?: string; [key: string]: any } } = {}) {
   const { theme: variant } = useTheme();
 
   const sections = useMemo<SidebarContentLayoutSection[]>(() => [
@@ -2743,11 +2758,11 @@ export function AgentObservabilityPanel() {
   let content: React.ReactNode;
   switch (nav.activeId) {
     case 'agents':
-      content = <AgentsView />;
+      content = <AgentsView focusAgentId={context?.focusAgentId} />;
       break;
     case 'profiles':
       // Backward compatibility with persisted nav state from previous builds.
-      content = <AgentsView />;
+      content = <AgentsView focusAgentId={context?.focusAgentId} />;
       break;
     case 'graph':
       content = <ContractGraphView />;
