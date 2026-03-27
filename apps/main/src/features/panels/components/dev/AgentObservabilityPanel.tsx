@@ -1073,31 +1073,29 @@ function HistoryView() {
 
   useEffect(() => {
     pixsimClient
-      .get<AgentHistoryResponse>('/meta/agents/history', { params: { limit: 100 } })
+      .get<AgentHistoryResponse>('/meta/agents/history', {
+        params: { limit: 100, exclude_action: 'work_summary' },
+      })
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  // Exclude work_summary — those have their own Summaries section
-  const entries = useMemo(() => {
-    if (!data) return [];
-    return data.entries.filter((e) => e.action !== 'work_summary');
-  }, [data]);
-
   const actionCounts = useMemo(() => {
+    if (!data) return {};
     const counts: Record<string, number> = {};
-    for (const e of entries) {
+    for (const e of data.entries) {
       const key = e.action || 'other';
       counts[key] = (counts[key] || 0) + 1;
     }
     return counts;
-  }, [entries]);
+  }, [data]);
 
   const filteredEntries = useMemo(() => {
-    if (activeFilters.size === 0) return entries;
-    return entries.filter((e) => activeFilters.has(e.action || 'other'));
-  }, [entries, activeFilters]);
+    if (!data) return [];
+    if (activeFilters.size === 0) return data.entries;
+    return data.entries.filter((e) => activeFilters.has(e.action || 'other'));
+  }, [data, activeFilters]);
 
   const toggleFilter = useCallback((action: string) => {
     setActiveFilters((prev) => {
