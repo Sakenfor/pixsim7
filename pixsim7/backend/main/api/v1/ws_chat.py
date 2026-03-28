@@ -127,8 +127,12 @@ async def _handle_message(
                         profile_prompt = profile.system_prompt
                     if profile.model_id:
                         model = profile.model_id
-                    if profile.config:
-                        profile_config = profile.config
+                    # Build profile_config from first-class fields + legacy config dict
+                    merged_config = dict(profile.config or {})
+                    if profile.reasoning_effort:
+                        merged_config["reasoning_effort"] = profile.reasoning_effort
+                    if merged_config:
+                        profile_config = merged_config
     except Exception:
         pass
 

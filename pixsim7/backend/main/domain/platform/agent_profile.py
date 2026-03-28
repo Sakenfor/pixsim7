@@ -46,6 +46,7 @@ class AgentProfile(SQLModel, table=True):
         description="System prompt / instructions appended to base prompt.",
     )
     model_id: Optional[str] = Field(default=None, max_length=100)
+    reasoning_effort: Optional[str] = Field(default=None, max_length=20)  # low, medium, high
     method: Optional[str] = Field(default=None, max_length=20)
     audience: str = Field(default="user", max_length=20)
     allowed_contracts: Optional[List[str]] = Field(

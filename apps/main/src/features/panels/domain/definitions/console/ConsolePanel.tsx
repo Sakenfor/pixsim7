@@ -6,9 +6,10 @@
  */
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { Icon } from "@lib/icons";
+
 import { useConsoleStore } from "@lib/dev/console";
 import { pixsim } from "@lib/dev/console";
+import { Icon } from "@lib/icons";
 
 /**
  * Get completions for a partial path in the pixsim namespace

@@ -41,6 +41,7 @@ class AgentProfileResponse(BaseModel):
     agent_type: str
     system_prompt: Optional[str] = None
     model_id: Optional[str] = None
+    reasoning_effort: Optional[str] = None
     method: Optional[str] = None
     audience: str = "user"
     allowed_contracts: Optional[List[str]] = None
@@ -67,6 +68,7 @@ class AgentProfileCreateRequest(BaseModel):
     agent_type: str = Field(default="claude", max_length=64)
     system_prompt: Optional[str] = None
     model_id: Optional[str] = Field(None, max_length=100)
+    reasoning_effort: Optional[str] = Field(None, max_length=20)
     method: Optional[str] = Field(None, max_length=20)
     audience: str = Field(default="user", max_length=20)
     allowed_contracts: Optional[List[str]] = None
@@ -82,6 +84,7 @@ class AgentProfileUpdateRequest(BaseModel):
     agent_type: Optional[str] = Field(None, max_length=64)
     system_prompt: Optional[str] = None
     model_id: Optional[str] = Field(None, max_length=100)
+    reasoning_effort: Optional[str] = Field(None, max_length=20)
     method: Optional[str] = Field(None, max_length=20)
     audience: Optional[str] = Field(None, max_length=20)
     allowed_contracts: Optional[List[str]] = None
@@ -123,6 +126,7 @@ def _to_response(p: AgentProfile) -> dict:
         "agent_type": p.agent_type,
         "system_prompt": p.system_prompt,
         "model_id": p.model_id,
+        "reasoning_effort": p.reasoning_effort,
         "method": p.method,
         "audience": p.audience,
         "allowed_contracts": p.allowed_contracts,
