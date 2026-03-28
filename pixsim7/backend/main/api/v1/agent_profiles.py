@@ -203,6 +203,7 @@ class AgentObservabilityResponse(BaseModel):
     bridges: list[BridgeAgentSummary] = []
     active_session_profile_ids: list[str] = []  # profile IDs with active heartbeat sessions
     active_session_ids: list[str] = []  # session IDs with active heartbeats
+    idle_session_ids: list[str] = []    # session IDs connected but idle (no real activity)
 
 
 @router.get("/observability", response_model=AgentObservabilityResponse)
@@ -302,19 +303,28 @@ async def agent_observability(
     # 5. Build bridge summaries (separate from profiles — bridges are shared dispatchers)
     bridge_summaries = [_build_bridge_summary(a) for a in bridge_agents]
 
-    # 6. Find active heartbeat sessions and their profile IDs
+    # 6. Find active/idle heartbeat sessions and their profile IDs
     active_profile_ids: list[str] = []
     active_sess_ids: list[str] = []
+    idle_sess_ids: list[str] = []
     try:
         from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
-        registry_session_ids = [s.session_id for s in agent_session_registry.get_active()]
-        if registry_session_ids:
+        all_sessions = agent_session_registry.get_active()
+        active_registry = [s for s in all_sessions if not s.is_idle]
+        idle_registry = [s for s in all_sessions if s.is_idle]
+
+        all_registry_ids = [s.session_id for s in all_sessions]
+        if all_registry_ids:
             rows = (await db.execute(
                 select(ChatSession.id, ChatSession.profile_id)
-                .where(ChatSession.id.in_(registry_session_ids))
+                .where(ChatSession.id.in_(all_registry_ids))
             )).all()
-            active_sess_ids = [r[0] for r in rows if r[0]]
-            active_profile_ids = list(set(r[1] for r in rows if r[1]))
+            id_to_profile = {r[0]: r[1] for r in rows if r[0]}
+            active_sess_ids = [s.session_id for s in active_registry if s.session_id in id_to_profile]
+            idle_sess_ids = [s.session_id for s in idle_registry if s.session_id in id_to_profile]
+            active_profile_ids = list(set(
+                id_to_profile[sid] for sid in active_sess_ids if id_to_profile.get(sid)
+            ))
     except Exception:
         pass
 
@@ -324,6 +334,7 @@ async def agent_observability(
         bridges=bridge_summaries,
         active_session_profile_ids=active_profile_ids,
         active_session_ids=active_sess_ids,
+        idle_session_ids=idle_sess_ids,
     )
 
 

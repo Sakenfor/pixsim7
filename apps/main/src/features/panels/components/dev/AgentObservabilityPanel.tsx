@@ -2107,7 +2107,15 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
           const { profile: p, recent_sessions: sessions } = entry;
           const expanded = expandedId === p.id;
           const hasActiveSession = sessions.some((s) => data?.active_session_ids?.includes(s.id));
-          const isLive = hasActiveSession;
+          const hasIdleSession = !hasActiveSession && sessions.some((s) => (data as any)?.idle_session_ids?.includes(s.id));
+          const dotColor = hasActiveSession
+            ? 'bg-green-500 animate-pulse-subtle'
+            : hasIdleSession
+              ? 'bg-yellow-500'
+              : p.status === 'paused'
+                ? 'bg-yellow-500'
+                : 'bg-neutral-400';
+          const dotTitle = hasActiveSession ? 'Active' : hasIdleSession ? 'Idle' : p.status === 'paused' ? 'Paused' : 'Offline';
 
           return (
             <div key={p.id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
@@ -2116,11 +2124,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                 onClick={() => setExpandedId(expanded ? null : p.id)}
                 className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
-                <div className={`w-2 h-2 rounded-full shrink-0 ${
-                  isLive ? 'bg-green-500 animate-pulse-subtle'
-                    : p.status === 'paused' ? 'bg-yellow-500'
-                    : 'bg-neutral-400'
-                }`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} title={dotTitle} />
                 {p.icon && <Icon name={p.icon as import('@lib/icons').IconName} size={12} className="shrink-0 text-neutral-500" />}
                 <span className="text-xs font-medium truncate">{p.label}</span>
                 <Badge color="gray" className="text-[9px]">{p.agent_type}</Badge>

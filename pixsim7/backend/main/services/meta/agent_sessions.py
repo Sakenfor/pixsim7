@@ -22,6 +22,8 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 SESSION_TIMEOUT_SECONDS = 120  # expire after 2 minutes of no heartbeat
+IDLE_THRESHOLD_SECONDS = 300   # idle after 5 minutes without real activity
+_KEEPALIVE_ACTIONS: FrozenSet[str] = frozenset({"cli_session", ""})
 
 # ── Canonical heartbeat contract ─────────────────────────────────
 
@@ -104,6 +106,7 @@ class AgentSession:
     agent_type: str = "claude"  # claude, custom, etc.
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_heartbeat: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_real_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "active"  # active, paused, completed, errored
     plan_id: Optional[str] = None
     task_kind: Optional[str] = None  # "review", "build", "research", or free-form
@@ -119,6 +122,20 @@ class AgentSession:
         return elapsed > SESSION_TIMEOUT_SECONDS
 
     @property
+    def is_idle(self) -> bool:
+        elapsed = (datetime.now(timezone.utc) - self.last_real_activity).total_seconds()
+        return elapsed > IDLE_THRESHOLD_SECONDS
+
+    @property
+    def effective_status(self) -> str:
+        """Status with idle detection: 'idle' if connected but no real activity."""
+        if self.is_expired:
+            return "expired"
+        if self.is_idle and self.status == "active":
+            return "idle"
+        return self.status
+
+    @property
     def duration_seconds(self) -> int:
         return int((self.last_heartbeat - self.started_at).total_seconds())
 
@@ -127,7 +144,7 @@ class AgentSession:
         return {
             "session_id": self.session_id,
             "agent_type": self.agent_type,
-            "status": self.status,
+            "status": self.effective_status,
             "action": self.action,
             "detail": self.detail,
             "plan_id": self.plan_id,
@@ -209,6 +226,8 @@ class AgentSessionRegistry:
             logger.info("agent_session_started", session_id=session_id, agent_type=agent_type)
 
         session.last_heartbeat = now
+        if action not in _KEEPALIVE_ACTIONS:
+            session.last_real_activity = now
         session.status = status
         session.plan_id = plan_id
         session.task_kind = task_kind or session.task_kind  # sticky — once set, persists until overwritten
