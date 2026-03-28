@@ -462,7 +462,7 @@ const RESUME_SESSION_PAGE_SIZE = 50;
 const RESUME_SESSION_MAX_LIMIT = 300;
 
 function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
-  onResume: (sessionId: string, engine: string, label: string) => void;
+  onResume: (sessionId: string, engine: string, label: string, profileId: string | null) => void;
   profileId?: string | null;
   profileLabels?: ReadonlyMap<string, string>;
 }) {
@@ -586,7 +586,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                 className="group w-full flex items-center gap-1 px-1 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800"
               >
                 <button
-                  onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null); setOpen(false); }}
                   className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
                 >
                   <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className={`shrink-0 ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`} />
@@ -660,7 +660,7 @@ const _ENGINE_COLORS: Record<string, string> = {
 function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
   profileLabels?: ReadonlyMap<string, string>;
-  onResume: (sessionId: string, engine: string, label: string) => void;
+  onResume: (sessionId: string, engine: string, label: string, profileId: string | null) => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -703,7 +703,7 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
               return (
                 <button
                   key={s.id}
-                  onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null); setOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                 >
                   <Icon
@@ -1519,8 +1519,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <InlineResumePicker
               profileId={tab.profileId}
               profileLabels={profileLabelMap}
-              onResume={(sessionId, engine, label) => {
-                onUpdateTab({ sessionId, engine: (engine || tab.engine) as AgentEngine, label: label || tab.label });
+              onResume={(sessionId, engine, label, resumeProfileId) => {
+                onUpdateTab({
+                  sessionId,
+                  engine: (engine || tab.engine) as AgentEngine,
+                  label: label || tab.label,
+                  ...(resumeProfileId ? { profileId: resumeProfileId } : {}),
+                });
               }}
             />
           </div>
@@ -1941,9 +1946,9 @@ export function AIAssistantPanel() {
           <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
             <Icon name="plus" size={12} />
           </button>
-          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label) => {
+          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId) => {
             const id = createTabId();
-            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, customInstructions: '', focusAreas: [], injectToken: false, createdAt: new Date().toISOString() };
+            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: resumeProfileId, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, customInstructions: '', focusAreas: [], injectToken: Boolean(resumeProfileId), createdAt: new Date().toISOString() };
             setTabs((prev) => [newTab, ...prev]);
             setActiveTab(id);
           }} />
