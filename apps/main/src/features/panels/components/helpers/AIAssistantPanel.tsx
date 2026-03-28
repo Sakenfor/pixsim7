@@ -214,6 +214,28 @@ function createTabId(): string {
   return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Build a ChatTab from a session record. Single source of truth for resume. */
+function buildResumedTab(session: {
+  id: string;
+  engine: string;
+  label: string;
+  profile_id?: string | null;
+}): ChatTab {
+  return {
+    id: createTabId(),
+    label: session.label || 'Resumed',
+    sessionId: session.id,
+    profileId: session.profile_id ?? null,
+    engine: (session.engine || 'claude') as AgentEngine,
+    modelOverride: null,
+    usePersona: true,
+    customInstructions: '',
+    focusAreas: [],
+    injectToken: Boolean(session.profile_id),
+    createdAt: new Date().toISOString(),
+  };
+}
+
 // =============================================================================
 // Lightweight Markdown Renderer
 // =============================================================================
@@ -1520,11 +1542,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               profileId={tab.profileId}
               profileLabels={profileLabelMap}
               onResume={(sessionId, engine, label, resumeProfileId) => {
+                const resumed = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId });
                 onUpdateTab({
-                  sessionId,
-                  engine: (engine || tab.engine) as AgentEngine,
-                  label: label || tab.label,
-                  ...(resumeProfileId ? { profileId: resumeProfileId } : {}),
+                  sessionId: resumed.sessionId,
+                  engine: resumed.engine,
+                  label: resumed.label,
+                  profileId: resumed.profileId,
+                  injectToken: resumed.injectToken,
                 });
               }}
             />
@@ -1881,24 +1905,15 @@ export function AIAssistantPanel() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ResumeSessionDetail>).detail;
       if (!detail?.sessionId) return;
-      const id = createTabId();
       const profile = detail.profileId ? profiles.find((p) => p.id === detail.profileId) : undefined;
-      const newTab: ChatTab = {
-        id,
-        label: detail.label || 'Resumed',
-        sessionId: detail.sessionId,
-        profileId: detail.profileId ?? null,
-        engine: (detail.engine || 'claude') as AgentEngine,
-        modelOverride: null,
-        usePersona: true,
-        customInstructions: '',
-        focusAreas: [],
-        injectToken: Boolean(detail.profileId),
-        createdAt: new Date().toISOString(),
-      };
-      if (profile) newTab.label = detail.label || profile.label;
+      const newTab = buildResumedTab({
+        id: detail.sessionId,
+        engine: detail.engine,
+        label: profile?.label || detail.label,
+        profile_id: detail.profileId,
+      });
       setTabs((prev) => [newTab, ...prev]);
-      setActiveTab(id);
+      setActiveTab(newTab.id);
     };
     window.addEventListener(RESUME_SESSION_EVENT, handler);
     return () => window.removeEventListener(RESUME_SESSION_EVENT, handler);
@@ -1947,10 +1962,9 @@ export function AIAssistantPanel() {
             <Icon name="plus" size={12} />
           </button>
           <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId) => {
-            const id = createTabId();
-            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: resumeProfileId, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, customInstructions: '', focusAreas: [], injectToken: Boolean(resumeProfileId), createdAt: new Date().toISOString() };
+            const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId });
             setTabs((prev) => [newTab, ...prev]);
-            setActiveTab(id);
+            setActiveTab(newTab.id);
           }} />
           {connected === 0 && (
             <button
