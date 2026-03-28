@@ -209,9 +209,12 @@ class CodexAppServerProtocol(AgentProtocol):
             # Non-default model — apply safe default since user's config.toml
             # reasoning effort (e.g. xhigh) may not be supported by this model
             cmd.extend(["-c", f"model_reasoning_effort={self.BRIDGE_CONFIG_DEFAULTS['model_reasoning_effort']}"])
-        # No CLI flags for system prompt or MCP — configured globally in ~/.codex/config.toml.
-        # Per-session MCP configs and focus-driven tool filtering are not supported for Codex;
-        # mcp_config_path is ignored. Use `codex mcp add/remove` for global MCP changes.
+        # No CLI flags for system prompt or MCP per invocation.
+        # MCP is configured globally in ~/.codex/config.toml (or project .codex/config.toml).
+        # Codex supports enabled_tools/disabled_tools and per-server env vars, but config
+        # changes require server restart. Focus-driven tool filtering would need config.toml
+        # rewrite — not implemented; mcp_config_path is ignored. System prompt is injected
+        # via message preamble in the bridge, not via CLI flag.
         return cmd
 
     def build_message_payload(self, message, images=None):
