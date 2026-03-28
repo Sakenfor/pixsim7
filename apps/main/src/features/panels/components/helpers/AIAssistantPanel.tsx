@@ -651,6 +651,12 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 // Inline Resume Picker (empty chat state)
 // =============================================================================
 
+const _ENGINE_COLORS: Record<string, string> = {
+  claude: 'text-blue-400',
+  codex: 'text-violet-400',
+  api: 'text-amber-400',
+};
+
 function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
   profileLabels?: ReadonlyMap<string, string>;
@@ -659,11 +665,12 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const load = useCallback(() => {
     if (fetched) return;
     setLoading(true);
-    const params: Record<string, unknown> = { engine: 'claude', limit: 10, include_empty: false };
+    const params: Record<string, unknown> = { limit: 15, include_empty: false };
     if (profileId) params.profile_id = profileId;
     pixsimClient.get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params })
       .then((r) => setSessions((r.sessions || []).filter((s) => s.message_count > 0)))
@@ -671,7 +678,6 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
       .finally(() => { setLoading(false); setFetched(true); });
   }, [profileId, fetched]);
 
-  // Fetch on mount
   useEffect(() => { load(); }, [load]);
 
   if (!fetched || sessions.length === 0) return null;
@@ -679,32 +685,46 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
   return (
     <div className="flex justify-center">
       <div className="relative">
-        <select
-          onChange={(e) => {
-            const s = sessions.find((s) => s.id === e.target.value);
-            if (s) onResume(s.id, s.engine, s.label);
-          }}
-          defaultValue=""
+        <button
+          onClick={() => setOpen(!open)}
           disabled={loading}
-          className="appearance-none pl-6 pr-8 py-1 text-[10px] rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1 text-[10px] rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
         >
-          <option value="" disabled>Resume a session ({sessions.length})</option>
-          {sessions.map((s) => {
-            const profile = s.profile_id && profileLabels?.get(s.profile_id);
-            const meta = [
-              profile || s.profile_id,
-              s.engine !== 'claude' ? s.engine : null,
-              `${s.message_count} msgs`,
-            ].filter(Boolean).join(' · ');
-            return (
-              <option key={s.id} value={s.id}>
-                {s.label} ({meta})
-              </option>
-            );
-          })}
-        </select>
-        <Icon name="rotateCcw" size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-        <Icon name="chevronDown" size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+          <Icon name="rotateCcw" size={10} />
+          Resume a session ({sessions.length})
+          <Icon name="chevronDown" size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+
+        {open && (
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
+            {sessions.map((s) => {
+              const profileName = s.profile_id && profileLabels?.get(s.profile_id);
+              const engineColor = _ENGINE_COLORS[s.engine] ?? 'text-neutral-400';
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  <Icon
+                    name={s.engine === 'codex' ? 'terminal' : s.engine === 'api' ? 'zap' : 'messageSquare'}
+                    size={11}
+                    className={`shrink-0 ${engineColor}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200 truncate">{s.label}</div>
+                    <div className="flex items-center gap-1 text-[9px] text-neutral-400">
+                      {profileName && <span className={engineColor}>{profileName}</span>}
+                      {s.engine !== 'claude' && <span>{s.engine}</span>}
+                      <span>{s.message_count} msgs</span>
+                      {s.last_plan_id && <span className="text-green-500">plan:{s.last_plan_id}</span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
