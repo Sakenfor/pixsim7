@@ -1763,6 +1763,7 @@ interface ObservabilityEntry {
     id: string;
     engine: string;
     label: string;
+    source?: string | null;
     message_count: number;
     summary_count?: number;
     last_used_at: string;
@@ -2165,11 +2166,23 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                           const elapsed = Date.now() - new Date(s.last_used_at).getTime();
                           const isRecent = elapsed < RECENT_SESSION_MS;
                           const isActiveHeartbeat = data?.active_session_ids?.includes(s.id) ?? false;
-                          const sessionLive = isRecent || isActiveHeartbeat;
+                          const isIdleHeartbeat = (data as any)?.idle_session_ids?.includes(s.id) ?? false;
+                          const sessionDot = isActiveHeartbeat ? 'bg-green-500'
+                            : isIdleHeartbeat ? 'bg-yellow-500'
+                            : isRecent ? 'bg-green-500'
+                            : 'bg-neutral-300 dark:bg-neutral-600';
+                          const sourceIcon = s.source === 'chat' ? 'messageSquare'
+                            : s.source === 'mcp' ? 'terminal'
+                            : s.source === 'mcp-auto' ? 'cpu'
+                            : s.source === 'bridge' ? 'link'
+                            : null;
                           return (
                             <div key={s.id} className="group/session flex items-center gap-2 text-[11px] py-1">
-                              <div className={`w-2 h-2 rounded-full shrink-0 ${sessionLive ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${sessionDot}`} />
                               <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{s.engine}</Badge>
+                              {sourceIcon && (
+                                <Icon name={sourceIcon} size={10} className="shrink-0 text-neutral-400" title={`Source: ${s.source}`} />
+                              )}
                               <span className="text-neutral-500 truncate flex-1">{s.label}</span>
                               {s.message_count > 0 && (
                                 <span className="flex items-center gap-1 text-neutral-400" title={`${s.message_count} messages`}>
