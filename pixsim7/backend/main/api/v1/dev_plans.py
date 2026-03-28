@@ -63,6 +63,7 @@ from pixsim7.backend.main.services.docs.plan_write import (
 )
 from pixsim7.backend.main.services.docs.plan_stages import (
     CANONICAL_PLAN_STAGES,
+    CANONICAL_PLAN_TYPES,
     DEFAULT_PLAN_STAGE,
     normalize_plan_stage,
     plan_stage_options,
@@ -187,7 +188,7 @@ async def list_plans(
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
     priority: Optional[str] = Query(None, description="Filter by priority (high, normal, low)"),
-    plan_type: Optional[str] = Query(None, description="Filter by plan type (feature, bugfix, refactor, exploration, task, proposal)"),
+    plan_type: Optional[str] = Query(None, description=f"Filter by plan type ({', '.join(CANONICAL_PLAN_TYPES)})"),
     tag: Optional[str] = Query(None, description="Filter by tag (plans containing this tag)"),
     include_hidden: bool = Query(False, description="Include archived and removed plans (hidden by default)"),
     limit: int = Query(100, ge=1, le=500, description="Max plans to return"),
@@ -254,9 +255,16 @@ async def list_plans(
 class PlanCreateRequest(BaseModel):
     id: str = Field(..., min_length=1, max_length=120, description="Unique plan ID (slug)")
     title: str = Field(..., min_length=1, max_length=255)
-    plan_type: Literal["proposal", "feature", "bugfix", "refactor", "exploration", "task"] = Field(
-        "feature", description="proposal | feature | bugfix | refactor | exploration | task"
+    plan_type: str = Field(
+        "feature", description=f"{' | '.join(CANONICAL_PLAN_TYPES)}"
     )
+
+    @field_validator("plan_type")
+    @classmethod
+    def _validate_plan_type(cls, v: str) -> str:
+        if v not in CANONICAL_PLAN_TYPES:
+            raise ValueError(f"Invalid plan_type '{v}'. Allowed: {', '.join(CANONICAL_PLAN_TYPES)}")
+        return v
     status: Literal["active", "parked", "done", "blocked"] = Field(
         "active", description="active | parked | done | blocked"
     )
@@ -508,7 +516,7 @@ class PlanUpdateRequest(BaseModel):
     owner: Optional[str] = Field(None, description="Owner / lane")
     priority: Optional[str] = Field(None, description="high | normal | low")
     task_scope: Optional[str] = Field(None, description="plan | user | system")
-    plan_type: Optional[str] = Field(None, description="proposal | feature | bugfix | refactor | exploration | task")
+    plan_type: Optional[str] = Field(None, description=f"{' | '.join(CANONICAL_PLAN_TYPES)}")
     summary: Optional[str] = Field(None, description="Plan summary")
     markdown: Optional[str] = Field(None, description="Plan markdown content")
     visibility: Optional[str] = Field(None, description="private | shared | public")

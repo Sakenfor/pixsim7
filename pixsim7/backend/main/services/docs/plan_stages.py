@@ -1,9 +1,20 @@
-"""Canonical plan stage definitions and normalization helpers."""
+"""Canonical plan taxonomy: stages, types, and normalization helpers."""
 
 from __future__ import annotations
 
 import re
 from typing import Dict, List
+
+CANONICAL_PLAN_TYPES: tuple[str, ...] = (
+    "proposal",
+    "feature",
+    "bugfix",
+    "refactor",
+    "exploration",
+    "task",
+    "strategy",
+    "reference",
+)
 
 CANONICAL_PLAN_STAGES: tuple[str, ...] = (
     "backlog",
