@@ -177,6 +177,7 @@ class ChatSessionSummary(BaseModel):
     id: str
     engine: str
     label: str
+    source: Optional[str] = None  # chat, mcp, mcp-auto, bridge
     message_count: int
     summary_count: int = 0
     last_used_at: str
@@ -264,6 +265,7 @@ async def agent_observability(
                     id=s.id,
                     engine=s.engine,
                     label=s.label,
+                    source=getattr(s, "source", None),
                     message_count=s.message_count,
                     summary_count=summary_counts.get(s.id, 0),
                     last_used_at=s.last_used_at.isoformat() if s.last_used_at else "",

@@ -1439,6 +1439,7 @@ async def register_chat_session(
         profile_id=payload.profile_id,
         scope_key=payload.scope_key,
         last_plan_id=payload.last_plan_id,
+        source=payload.source,
     )
     return {"ok": True, "created": created, "session_id": payload.session_id}
 
@@ -1774,6 +1775,7 @@ async def _upsert_chat_session(
     last_plan_id: Optional[str] = None,
     last_contract_id: Optional[str] = None,
     increment_messages: bool = False,
+    source: Optional[str] = None,
 ) -> None:
     """Create or update a chat session record (fire-and-forget).
 
@@ -1801,6 +1803,8 @@ async def _upsert_chat_session(
                     existing.last_plan_id = last_plan_id
                 if last_contract_id is not None:
                     existing.last_contract_id = last_contract_id
+                if source and not existing.source:
+                    existing.source = source  # set once, don't overwrite
             else:
                 db.add(ChatSession(
                     id=session_id,
@@ -1811,6 +1815,7 @@ async def _upsert_chat_session(
                     last_plan_id=last_plan_id,
                     last_contract_id=last_contract_id,
                     label=label or "Untitled",
+                    source=source,
                     message_count=1 if increment_messages else 0,
                 ))
             await db.commit()

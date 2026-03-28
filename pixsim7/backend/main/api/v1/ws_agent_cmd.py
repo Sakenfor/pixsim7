@@ -456,6 +456,7 @@ def _sync_cli_sessions_from_pool(
                 engine=engine,
                 label=f"CLI session ({cli_session_id[:8]})",
                 profile_id=profile_id,
+                source="bridge",
             ))
         except Exception:
             pass

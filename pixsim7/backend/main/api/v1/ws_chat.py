@@ -230,6 +230,7 @@ async def _handle_message(
                         last_plan_id=chat_plan_id,
                         last_contract_id=chat_contract_id,
                         increment_messages=True,
+                        source="chat",
                     ))
 
                 await websocket.send_json({

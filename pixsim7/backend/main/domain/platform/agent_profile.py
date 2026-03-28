@@ -114,6 +114,7 @@ class ChatSession(SQLModel, table=True):
     last_plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
     last_contract_id: Optional[str] = Field(default=None, max_length=120, index=True)
     label: str = Field(default="Untitled", max_length=255)
+    source: Optional[str] = Field(default=None, max_length=32)  # chat, mcp, mcp-auto, bridge
     message_count: int = Field(default=0)
     last_used_at: datetime = Field(default_factory=utcnow)
     created_at: datetime = Field(default_factory=utcnow)
