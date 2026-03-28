@@ -651,8 +651,9 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 // Inline Resume Picker (empty chat state)
 // =============================================================================
 
-function InlineResumePicker({ profileId, onResume }: {
+function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
+  profileLabels?: ReadonlyMap<string, string>;
   onResume: (sessionId: string, engine: string, label: string) => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
@@ -688,11 +689,19 @@ function InlineResumePicker({ profileId, onResume }: {
           className="appearance-none pl-6 pr-8 py-1 text-[10px] rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
         >
           <option value="" disabled>Resume a session ({sessions.length})</option>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label} — {s.message_count} msgs
-            </option>
-          ))}
+          {sessions.map((s) => {
+            const profile = s.profile_id && profileLabels?.get(s.profile_id);
+            const meta = [
+              profile || s.profile_id,
+              s.engine !== 'claude' ? s.engine : null,
+              `${s.message_count} msgs`,
+            ].filter(Boolean).join(' · ');
+            return (
+              <option key={s.id} value={s.id}>
+                {s.label} ({meta})
+              </option>
+            );
+          })}
         </select>
         <Icon name="rotateCcw" size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
         <Icon name="chevronDown" size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
@@ -1281,6 +1290,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
   const [input, setInput] = useState(() => loadTabDraft(tab.id));
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
+  const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
 
   // Sending state derived from the bridge singleton (survives unmount)
   useSyncExternalStore(chatBridge.subscribe.bind(chatBridge), chatBridge.getSnapshot.bind(chatBridge));
@@ -1488,6 +1498,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             </div>
             <InlineResumePicker
               profileId={tab.profileId}
+              profileLabels={profileLabelMap}
               onResume={(sessionId, engine, label) => {
                 onUpdateTab({ sessionId, engine: (engine || tab.engine) as AgentEngine, label: label || tab.label });
               }}
