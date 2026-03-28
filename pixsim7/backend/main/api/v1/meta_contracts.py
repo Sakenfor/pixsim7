@@ -12,6 +12,7 @@ which contracts and plans agents are currently working on.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -33,7 +34,7 @@ from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/meta", tags=["meta"])
-CONTRACTS_INDEX_VERSION = "2026-03-17.5"
+CONTRACTS_INDEX_VERSION = "2026-03-28.1"
 
 
 # =============================================================================
@@ -58,6 +59,10 @@ class EndpointAvailabilityEntry(BaseModel):
 
 class ContractEndpointEntry(BaseModel):
     id: str
+    tool_name: str = Field(
+        ...,
+        description="Canonical MCP tool name for this endpoint.",
+    )
     method: str
     path: str
     summary: str
@@ -130,6 +135,13 @@ class ContractIndexEntry(BaseModel):
         default_factory=list,
         description="Individual endpoints when contract is an endpoint group.",
     )
+    tool_names: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Canonical MCP tool names exposed by this contract. "
+            "Use for focused tool allowlists."
+        ),
+    )
     active_agents: List[AgentPresence] = Field(
         default_factory=list,
         description="Agents currently working on this contract surface.",
@@ -156,6 +168,17 @@ def _slugify_contract_token(value: str) -> str:
     token = "".join(ch if ch.isalnum() else "_" for ch in str(value or "").strip().lower())
     token = token.strip("_")
     return token or "unknown"
+
+
+def _sanitize_tool_fragment(value: str) -> str:
+    normalized = str(value or "").strip().lower().replace(".", "_").replace("/", "_")
+    normalized = re.sub(r"[^a-z0-9_]+", "_", normalized)
+    normalized = normalized.strip("_")
+    return normalized or "endpoint"
+
+
+def _make_tool_name(contract_id: str, endpoint_id: str) -> str:
+    return f"{_sanitize_tool_fragment(contract_id)}__{_sanitize_tool_fragment(endpoint_id)}"
 
 
 def _discover_game_route_group_contracts(
@@ -300,6 +323,31 @@ async def list_contract_endpoints(
             if s.contract_id == c.id
         ]
 
+        sub_endpoints: List[ContractEndpointEntry] = []
+        tool_names: List[str] = []
+        for ep in c.sub_endpoints:
+            availability = _resolve_endpoint_availability(c.id, ep.id, ep.availability)
+            tool_name = _make_tool_name(c.id, ep.id)
+            sub_endpoints.append(
+                ContractEndpointEntry(
+                    id=ep.id,
+                    tool_name=tool_name,
+                    method=ep.method,
+                    path=ep.path,
+                    summary=ep.summary,
+                    auth_required=c.auth_required if ep.auth_required is None else ep.auth_required,
+                    requires_admin=ep.requires_admin,
+                    permissions=ep.permissions,
+                    availability=availability,
+                    input_schema=ep.input_schema,
+                    output_schema=ep.output_schema,
+                    tags=ep.tags,
+                )
+            )
+            # Match MCP dynamic tool registration behavior.
+            if ep.path.startswith("/") and availability.status != "disabled":
+                tool_names.append(tool_name)
+
         contracts.append(ContractIndexEntry(
             id=c.id,
             name=c.name,
@@ -311,22 +359,8 @@ async def list_contract_endpoints(
             audience=c.audience,
             provides=c.provides,
             relates_to=c.relates_to,
-            sub_endpoints=[
-                ContractEndpointEntry(
-                    id=ep.id, method=ep.method,
-                    path=ep.path, summary=ep.summary,
-                    auth_required=c.auth_required if ep.auth_required is None else ep.auth_required,
-                    requires_admin=ep.requires_admin,
-                    permissions=ep.permissions,
-                    availability=_resolve_endpoint_availability(
-                        c.id, ep.id, ep.availability
-                    ),
-                    input_schema=ep.input_schema,
-                    output_schema=ep.output_schema,
-                    tags=ep.tags,
-                )
-                for ep in c.sub_endpoints
-            ],
+            sub_endpoints=sub_endpoints,
+            tool_names=tool_names,
             active_agents=agents_on_contract,
         ))
 
@@ -1739,8 +1773,13 @@ async def _upsert_chat_session(
     scope_key: Optional[str] = None,
     last_plan_id: Optional[str] = None,
     last_contract_id: Optional[str] = None,
+    increment_messages: bool = False,
 ) -> None:
-    """Create or update a chat session record (fire-and-forget)."""
+    """Create or update a chat session record (fire-and-forget).
+
+    ``increment_messages`` should only be True for actual user↔agent
+    message turns — not for registration, log_work, or metadata updates.
+    """
     try:
         from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
@@ -1749,7 +1788,8 @@ async def _upsert_chat_session(
         async with AsyncSessionLocal() as db:
             existing = await db.get(ChatSession, session_id)
             if existing:
-                existing.message_count += 1
+                if increment_messages:
+                    existing.message_count += 1
                 existing.last_used_at = utcnow()
                 if label and label != existing.label:
                     existing.label = label
@@ -1771,7 +1811,7 @@ async def _upsert_chat_session(
                     last_plan_id=last_plan_id,
                     last_contract_id=last_contract_id,
                     label=label or "Untitled",
-                    message_count=1,
+                    message_count=1 if increment_messages else 0,
                 ))
             await db.commit()
     except Exception as e:

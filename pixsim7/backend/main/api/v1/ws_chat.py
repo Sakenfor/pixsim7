@@ -229,6 +229,7 @@ async def _handle_message(
                         scope_key=chat_scope_key,
                         last_plan_id=chat_plan_id,
                         last_contract_id=chat_contract_id,
+                        increment_messages=True,
                     ))
 
                 await websocket.send_json({
