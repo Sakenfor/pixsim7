@@ -209,7 +209,9 @@ class CodexAppServerProtocol(AgentProtocol):
             # Non-default model — apply safe default since user's config.toml
             # reasoning effort (e.g. xhigh) may not be supported by this model
             cmd.extend(["-c", f"model_reasoning_effort={self.BRIDGE_CONFIG_DEFAULTS['model_reasoning_effort']}"])
-        # No CLI flags for system prompt or MCP — configured globally
+        # No CLI flags for system prompt or MCP — configured globally in ~/.codex/config.toml.
+        # Per-session MCP configs and focus-driven tool filtering are not supported for Codex;
+        # mcp_config_path is ignored. Use `codex mcp add/remove` for global MCP changes.
         return cmd
 
     def build_message_payload(self, message, images=None):
@@ -234,7 +236,8 @@ class CodexAppServerProtocol(AgentProtocol):
 
     def parse_event(self, raw):
         """Parse JSON-RPC notifications from app-server."""
-        method = raw.get("method", "")
+        method = str(raw.get("method", "") or "")
+        method_norm = method.replace(".", "/")
         params = raw.get("params", {})
         rid = raw.get("id")
 
@@ -249,6 +252,16 @@ class CodexAppServerProtocol(AgentProtocol):
 
         # Response to turn/start (id >= 2) — ack
         if rid is not None and rid >= 2 and "result" in raw:
+            result_obj = raw.get("result")
+            if isinstance(result_obj, dict):
+                status = str(result_obj.get("status", "")).strip().lower()
+                if status in {"completed", "done", "ok"} or result_obj.get("done") is True:
+                    text = (
+                        str(result_obj.get("text", "") or "")
+                        or str(result_obj.get("response", "") or "")
+                        or str(result_obj.get("output", "") or "")
+                    )
+                    return ParsedEvent(kind="result", text=text, raw=raw)
             return ParsedEvent(kind="other", raw=raw)
 
         # Error responses
@@ -256,31 +269,48 @@ class CodexAppServerProtocol(AgentProtocol):
             return ParsedEvent(kind="error", text=raw["error"].get("message", ""), raw=raw)
 
         # Codex internal error event — contains the actual error message
-        if method == "codex/event/error":
+        if method_norm == "codex/event/error":
             msg = params.get("msg", params)
             message = msg.get("message", "") if isinstance(msg, dict) else str(msg)
             return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
 
         # Streaming text deltas
-        if method == "item/agentMessage/delta":
-            return ParsedEvent(kind="progress", text=params.get("delta", ""), raw=raw)
+        if method_norm in {"item/agentMessage/delta", "item/agent_message/delta"}:
+            delta = params.get("delta")
+            if not isinstance(delta, str):
+                delta = params.get("text", "")
+            return ParsedEvent(kind="progress", text=str(delta or ""), raw=raw)
 
         # Agent message completed — contains full text
-        if method == "item/completed":
+        if method_norm == "item/completed":
             item = params.get("item", {})
-            if item.get("type") == "agentMessage":
-                return ParsedEvent(kind="progress", text=item.get("text", ""), raw=raw)
+            item_type = str(item.get("type", "") or "")
+            if item_type in {"agentMessage", "agent_message"}:
+                return ParsedEvent(kind="progress", text=str(item.get("text", "") or ""), raw=raw)
+            if item_type in {"toolCall", "tool_call"}:
+                tool_name = str(item.get("name", "") or "?")
+                return ParsedEvent(kind="progress", text=f"Using tool: {tool_name}", raw=raw)
 
         # Turn completed — final event
-        if method == "turn/completed":
+        if method_norm in {"turn/completed", "turn/complete"}:
             return ParsedEvent(kind="result", text="", duration_ms=0, raw=raw)
 
         # Turn started
-        if method == "turn/started":
+        if method_norm in {"turn/started", "turn/start"}:
             return ParsedEvent(kind="progress", text="Thinking...", raw=raw)
 
+        # Terminal turn errors
+        if method_norm in {"turn/failed", "turn/error", "turn/cancelled", "turn/aborted"}:
+            detail = (
+                str(params.get("error", "") or "")
+                or str(params.get("message", "") or "")
+                or str(params.get("detail", "") or "")
+                or "turn failed"
+            )
+            return ParsedEvent(kind="error", text=f"Codex turn failed: {detail[:300]}", raw=raw)
+
         # MCP startup progress
-        if method == "codex/event/mcp_startup_update":
+        if method_norm == "codex/event/mcp_startup_update":
             msg = params.get("msg", params)
             server = msg.get("server", "unknown")
             status = msg.get("status", {})
@@ -296,7 +326,7 @@ class CodexAppServerProtocol(AgentProtocol):
                 return ParsedEvent(kind="progress", text=f"MCP cancelled: {server}", raw=raw)
 
         # MCP startup summary
-        if method == "codex/event/mcp_startup_complete":
+        if method_norm == "codex/event/mcp_startup_complete":
             msg = params.get("msg", params)
             ready = msg.get("ready", []) or []
             failed = msg.get("failed", []) or []
@@ -311,7 +341,7 @@ class CodexAppServerProtocol(AgentProtocol):
             return ParsedEvent(kind="progress", text="MCP startup complete (no servers ready)", raw=raw)
 
         # Thread status
-        if method == "thread/status/changed":
+        if method_norm == "thread/status/changed":
             status = params.get("status", "")
             # status can be a string ("active") or dict ({"type": "systemError"})
             if isinstance(status, dict):
