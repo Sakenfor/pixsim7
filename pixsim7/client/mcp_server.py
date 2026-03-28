@@ -599,11 +599,48 @@ async def _signal_tool_activity(tool_name: str) -> None:
         pass
 
 
+async def _auto_register_if_needed() -> None:
+    """Auto-register session on first tool call if not already registered.
+
+    Ensures every MCP session is tracked — even if the agent never
+    explicitly calls register_session. Uses token claims to derive
+    session ID and profile, then starts the heartbeat loop.
+    """
+    global _heartbeat_task, _registered_session_id
+    if _registered_session_id:
+        return
+    token = _get_token()
+    if not token:
+        return
+    try:
+        session_id = _derive_stable_session_id(token)
+        profile_id = _extract_profile_from_token(token)
+        agent_type = _extract_agent_type(token)
+        await _proxy(
+            method="POST",
+            path="/api/v1/meta/agents/register-chat-session",
+            body={
+                "session_id": session_id,
+                "engine": agent_type,
+                "label": f"Auto-registered ({session_id[:8]})",
+                "profile_id": profile_id,
+                "source": "mcp-auto",
+            },
+        )
+        _registered_session_id = session_id
+        if not _heartbeat_task or _heartbeat_task.done():
+            _heartbeat_task = asyncio.create_task(_heartbeat_loop(session_id, agent_type))
+        print(f"[pixsim-mcp] Auto-registered session {session_id[:8]}", file=sys.stderr)
+    except Exception:
+        pass  # Non-fatal — tool call proceeds regardless
+
+
 @server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[types.TextContent]:
     await _init_tools()
+    await _auto_register_if_needed()
 
     # Signal activity on every tool call (fire-and-forget)
     asyncio.ensure_future(_signal_tool_activity(name))
