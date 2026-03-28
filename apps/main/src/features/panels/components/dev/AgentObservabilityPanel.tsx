@@ -1512,13 +1512,27 @@ function SummariesView() {
   const [entries, setEntries] = useState<SummaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [sessionProfiles, setSessionProfiles] = useState<Map<string, { label: string; engine: string; profile_id: string | null }>>(new Map());
 
   useEffect(() => {
-    pixsimClient
-      .get<{ entries: SummaryEntry[]; total: number }>('/meta/agents/history', {
-        params: { action: 'work_summary', limit: 50 },
+    Promise.all([
+      pixsimClient
+        .get<{ entries: SummaryEntry[]; total: number }>('/meta/agents/history', {
+          params: { action: 'work_summary', limit: 50 },
+        }),
+      pixsimClient
+        .get<{ sessions: Array<{ id: string; label: string; engine: string; profile_id: string | null }> }>(
+          '/meta/agents/chat-sessions', { params: { limit: 100, include_empty: true } },
+        ).catch(() => ({ sessions: [] })),
+    ])
+      .then(([history, sessions]) => {
+        setEntries(history.entries || []);
+        const map = new Map<string, { label: string; engine: string; profile_id: string | null }>();
+        for (const s of sessions.sessions || []) {
+          map.set(s.id, { label: s.label, engine: s.engine, profile_id: s.profile_id });
+        }
+        setSessionProfiles(map);
       })
-      .then((r) => setEntries(r.entries || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -1545,6 +1559,8 @@ function SummariesView() {
       {entries.map((e, i) => {
         const expanded = expandedIdx === i;
         const commitSha = e.metadata?.commit;
+        const sessionInfo = sessionProfiles.get(e.session_id);
+        const engineColor = _ENGINE_COLORS[sessionInfo?.engine ?? e.agent_type] ?? 'text-neutral-400';
         return (
           <div key={`${e.timestamp}-${i}`} className="rounded border border-neutral-200 dark:border-neutral-800">
             <button
@@ -1554,10 +1570,13 @@ function SummariesView() {
               <Icon
                 name="fileText"
                 size={12}
-                className={`shrink-0 mt-0.5 ${e.agent_type === 'claude' ? 'text-blue-400' : 'text-violet-400'}`}
+                className={`shrink-0 mt-0.5 ${engineColor}`}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 flex-wrap">
+                  {sessionInfo && (
+                    <span className={`text-[9px] font-medium ${engineColor}`}>{sessionInfo.label}</span>
+                  )}
                   {e.plan_id && (
                     <Badge color="green" className="text-[9px]">plan:{e.plan_id}</Badge>
                   )}
@@ -1575,23 +1594,43 @@ function SummariesView() {
               <Icon name="chevronRight" size={10} className={`shrink-0 text-neutral-400 transition-transform mt-0.5 ${expanded ? 'rotate-90' : ''}`} />
             </button>
 
-            {expanded && (
-              <div className="border-t border-neutral-100 dark:border-neutral-800 px-2 py-1.5 space-y-1">
-                <div className="flex items-center gap-2 text-[10px] text-neutral-400">
-                  <span>Session: {e.session_id.slice(0, 12)}</span>
-                  {e.run_id && <span>Run: {e.run_id.slice(0, 8)}</span>}
+            {expanded && (() => {
+              const sessionInfo = sessionProfiles.get(e.session_id);
+              const engineColor = _ENGINE_COLORS[sessionInfo?.engine ?? e.agent_type] ?? 'text-neutral-400';
+              return (
+                <div className="border-t border-neutral-100 dark:border-neutral-800 px-2 py-1.5 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-neutral-400 flex-wrap">
+                    {sessionInfo ? (
+                      <button
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('ai-assistant:resume-session', {
+                            detail: { sessionId: e.session_id, engine: sessionInfo.engine, label: sessionInfo.label, profileId: sessionInfo.profile_id },
+                          }));
+                          openWorkspacePanel('ai-assistant');
+                        }}
+                        className={`flex items-center gap-1 hover:underline ${engineColor}`}
+                      >
+                        <Icon name="messageSquare" size={10} />
+                        {sessionInfo.label}
+                      </button>
+                    ) : (
+                      <span>Session: {e.session_id.slice(0, 12)}</span>
+                    )}
+                    {e.run_id && <span>Run: {e.run_id.slice(0, 8)}</span>}
+                  </div>
+                  {e.plan_id && (
+                    <button
+                      onClick={() => navigateToPlan(e.plan_id!)}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1"
+                    >
+                      <Icon name="externalLink" size={10} />
+                      Open plan
+                    </button>
+                  )}
                 </div>
-                {e.plan_id && (
-                  <button
-                    onClick={() => navigateToPlan(e.plan_id!)}
-                    className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1"
-                  >
-                    <Icon name="externalLink" size={10} />
-                    Open plan
-                  </button>
-                )}
-              </div>
-            )}
+              );
+            })()}
           </div>
         );
       })}
