@@ -165,7 +165,9 @@ class Bridge:
 
     async def _connect_and_serve(self) -> None:
         """Single connection session."""
-        ws_url = f"{self._url}?agent_type={self._agent_type}"
+        # Append query params — use & if URL already has ? (e.g. ?token=...)
+        sep = "&" if "?" in self._url else "?"
+        ws_url = f"{self._url}{sep}agent_type={self._agent_type}"
         # Reconnect with same identity so backend maps back to the same bridge client
         if self._bridge_client_id:
             ws_url += f"&bridge_client_id={self._bridge_client_id}"
