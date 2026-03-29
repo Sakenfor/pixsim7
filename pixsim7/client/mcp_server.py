@@ -476,6 +476,8 @@ def _derive_stable_session_id(token: str) -> str:
 # Background heartbeat state
 _heartbeat_task: asyncio.Task | None = None
 _registered_session_id: str | None = None
+# Profile resolved during auto-registration — used for token refresh
+_resolved_profile_id: str | None = None
 
 
 async def _heartbeat_loop(session_id: str, agent_type: str) -> None:
@@ -506,7 +508,7 @@ async def _heartbeat_loop(session_id: str, agent_type: str) -> None:
 
 async def _handle_register_session(arguments: dict[str, Any]) -> list[types.TextContent]:
     """Register this CLI session with the backend and start heartbeat."""
-    global _heartbeat_task, _registered_session_id
+    global _heartbeat_task, _registered_session_id, _resolved_profile_id
     import uuid as _uuid
 
     # Bridge-managed sessions: chat flow handles registration
@@ -535,6 +537,16 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
             "source": "mcp",
         },
     )
+
+    # Capture backend-resolved profile_id for token refresh
+    if result and result[0].text:
+        try:
+            resp_data = json.loads(result[0].text)
+            resolved = resp_data.get("profile_id")
+            if resolved and isinstance(resolved, str):
+                _resolved_profile_id = resolved
+        except (json.JSONDecodeError, IndexError):
+            pass
 
     # Start background heartbeat (replaces any existing one)
     if _heartbeat_task and not _heartbeat_task.done():
@@ -699,11 +711,14 @@ async def _auto_register_if_needed() -> None:
     explicitly calls register_session. Uses token claims to derive
     session ID and profile, then starts the heartbeat loop.
 
+    The backend resolves a default profile if the token doesn't carry one.
+    The resolved profile_id is captured for token refresh.
+
     Bridge-managed sessions (PIXSIM_TOKEN_FILE set) are skipped — the
     chat flow in ws_chat.py already creates the ChatSession record and
     the bridge sends session-level heartbeats.
     """
-    global _heartbeat_task, _registered_session_id
+    global _heartbeat_task, _registered_session_id, _resolved_profile_id
     if _registered_session_id:
         return
     # Bridge-managed: chat flow handles ChatSession creation + bridge sends heartbeats
@@ -717,7 +732,7 @@ async def _auto_register_if_needed() -> None:
         session_id = _derive_stable_session_id(token)
         profile_id = _extract_profile_from_token(token)
         agent_type = _extract_agent_type(token)
-        await _proxy(
+        results = await _proxy(
             method="POST",
             path="/api/v1/meta/agents/register-chat-session",
             body={
@@ -729,9 +744,23 @@ async def _auto_register_if_needed() -> None:
             },
         )
         _registered_session_id = session_id
+
+        # Capture the backend-resolved profile_id for token refresh
+        if results and results[0].text:
+            try:
+                resp_data = json.loads(results[0].text)
+                resolved = resp_data.get("profile_id")
+                if resolved and isinstance(resolved, str):
+                    _resolved_profile_id = resolved
+            except (json.JSONDecodeError, IndexError):
+                pass
+
         if not _heartbeat_task or _heartbeat_task.done():
             _heartbeat_task = asyncio.create_task(_heartbeat_loop(session_id, agent_type))
-        print(f"[pixsim-mcp] Auto-registered session {session_id[:8]}", file=sys.stderr)
+        label = f"{session_id[:8]}"
+        if _resolved_profile_id:
+            label += f" (profile: {_resolved_profile_id})"
+        print(f"[pixsim-mcp] Auto-registered session {label}", file=sys.stderr)
     except Exception:
         pass  # Non-fatal — tool call proceeds regardless
 
@@ -828,7 +857,11 @@ async def _try_refresh_token() -> str | None:
 
     expired, claims = _get_expired_token_claims()
     purpose = claims.get("purpose", "")
-    profile_id = claims.get("profile_id") or claims.get("agent_id")
+    profile_id = (
+        claims.get("profile_id")
+        or claims.get("agent_id")
+        or _resolved_profile_id  # from auto-registration
+    )
 
     login_token = _get_login_token()
     if not login_token:
@@ -837,11 +870,10 @@ async def _try_refresh_token() -> str | None:
     new_token: str | None = None
 
     if profile_id:
-        # Agent token — mint a fresh one via the profile endpoint
+        # Has a profile — mint a proper agent token via the profile endpoint
         new_token = await _mint_via_profile(profile_id, login_token)
-    elif purpose == "bridge" or not profile_id:
-        # Bridge token or unknown — the login token itself is a valid auth token.
-        # Use it directly as the API token (it has the user's full permissions).
+    if not new_token:
+        # No profile or mint failed — fall back to login token directly
         new_token = login_token
 
     if not new_token:

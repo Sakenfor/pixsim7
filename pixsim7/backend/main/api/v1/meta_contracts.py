@@ -1548,7 +1548,12 @@ async def register_chat_session(
         last_plan_id=payload.last_plan_id,
         source=payload.source,
     )
-    return {"ok": True, "created": created, "session_id": payload.session_id}
+    return {
+        "ok": True,
+        "created": created,
+        "session_id": payload.session_id,
+        "profile_id": resolved_profile_id,
+    }
 
 
 @router.get("/agents/system-prompt-preview")
