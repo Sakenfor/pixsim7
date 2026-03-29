@@ -415,7 +415,7 @@ export function GenerationSettingsPanel({
                   ? 'bg-accent border-accent text-accent-text'
                   : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'
               )}
-              title={isTargeted ? 'Targeted for quick add' : 'Target this quick generate for quick add'}
+              title={isTargeted ? 'Targeted for generation actions' : 'Target this widget for generation actions (quick add, gestures, etc.)'}
             >
               <Icon name="target" size={12} />
             </button>

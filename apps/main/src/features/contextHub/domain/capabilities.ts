@@ -345,6 +345,12 @@ export interface GenerationWidgetContext {
   scopeId?: string;
   /** Current operation type (image_to_video, text_to_image, etc.) */
   operationType: OperationType;
+  /** Active provider id (e.g. 'pixverse') — resolved from session store */
+  providerId?: string | null;
+  /** Active model id (e.g. 'v4') — resolved from settings store */
+  model?: string | null;
+  /** Currently configured duration in seconds (for video operations) */
+  duration?: number | null;
   /** Update the operation type (if supported by the widget) */
   setOperationType?: (operationType: OperationType) => void;
   /** Trigger generation with widget state management (generating, error, generationId).

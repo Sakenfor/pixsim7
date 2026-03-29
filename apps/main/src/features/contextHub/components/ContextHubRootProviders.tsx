@@ -7,6 +7,7 @@ import {
   subscribeAuthoringProjectBundleDirtyState,
   startAutosave,
 } from "@lib/game/projectBundle";
+import { GestureSecondaryBridge } from "@lib/gestures/GestureSecondaryBridge";
 
 import {
   CAP_SCENE_CONTEXT,
@@ -20,6 +21,7 @@ import {
   type WorldContextSummary,
 } from "@features/contextHub";
 import { useProjectSessionStore } from "@features/scene";
+
 
 import { ContextHubCapabilityBridge } from "./ContextHubCapabilityBridge";
 
@@ -226,5 +228,10 @@ export function ContextHubRootProviders() {
     scope: "root",
   });
 
-  return <ContextHubCapabilityBridge />;
+  return (
+    <>
+      <ContextHubCapabilityBridge />
+      <GestureSecondaryBridge />
+    </>
+  );
 }
