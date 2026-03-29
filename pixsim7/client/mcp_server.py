@@ -800,16 +800,8 @@ def _get_client() -> httpx.AsyncClient:
     return _http_client
 
 
-async def _try_refresh_token() -> str | None:
-    """Attempt to mint a fresh agent token using the login token.
-
-    Extracts profile_id from the expired token's claims, then calls
-    the profile token endpoint with the user's login token as auth.
-    Returns the new token on success, None on failure.
-    """
-    global _refreshed_token
-
-    # Get the expired token to extract claims (decode without verification)
+def _get_expired_token_claims() -> tuple[str, dict]:
+    """Read the current (possibly expired) token and decode its claims."""
     expired = API_TOKEN or ""
     if API_TOKEN_FILE:
         try:
@@ -819,16 +811,58 @@ async def _try_refresh_token() -> str | None:
             pass
     if _refreshed_token:
         expired = _refreshed_token
+    return expired, _decode_token_claims(expired)
 
-    profile_id = _extract_profile_from_token(expired)
-    if not profile_id:
-        return None
 
-    # Use the persistent login token to mint a fresh agent token
+async def _try_refresh_token() -> str | None:
+    """Attempt to mint a fresh token using the user's login token.
+
+    Strategy depends on what kind of token expired:
+    - Agent token (has profile_id): mint via /dev/agent-profiles/{id}/token
+    - Bridge token (purpose=bridge): use login token directly (it's already valid)
+    - Unknown: try login token as-is
+
+    Returns the new token on success, None on failure.
+    """
+    global _refreshed_token
+
+    expired, claims = _get_expired_token_claims()
+    purpose = claims.get("purpose", "")
+    profile_id = claims.get("profile_id") or claims.get("agent_id")
+
     login_token = _get_login_token()
     if not login_token:
         return None
 
+    new_token: str | None = None
+
+    if profile_id:
+        # Agent token — mint a fresh one via the profile endpoint
+        new_token = await _mint_via_profile(profile_id, login_token)
+    elif purpose == "bridge" or not profile_id:
+        # Bridge token or unknown — the login token itself is a valid auth token.
+        # Use it directly as the API token (it has the user's full permissions).
+        new_token = login_token
+
+    if not new_token:
+        return None
+
+    # Persist: update in-memory cache and token file
+    _refreshed_token = new_token
+    if API_TOKEN_FILE:
+        try:
+            with open(API_TOKEN_FILE, "w") as f:
+                f.write(new_token)
+        except OSError:
+            pass
+
+    label = f"profile {profile_id}" if profile_id else f"purpose={purpose or 'login'}"
+    print(f"[pixsim-mcp] Token refreshed ({label})", file=sys.stderr)
+    return new_token
+
+
+async def _mint_via_profile(profile_id: str, login_token: str) -> str | None:
+    """Mint a fresh agent token via the profile endpoint."""
     try:
         client = _get_client()
         resp = await client.post(
@@ -839,21 +873,7 @@ async def _try_refresh_token() -> str | None:
         if resp.status_code != 200:
             return None
         data = resp.json()
-        new_token = data.get("token", "")
-        if not new_token:
-            return None
-
-        # Persist: update in-memory cache and token file
-        _refreshed_token = new_token
-        if API_TOKEN_FILE:
-            try:
-                with open(API_TOKEN_FILE, "w") as f:
-                    f.write(new_token)
-            except OSError:
-                pass
-
-        print(f"[pixsim-mcp] Token refreshed for profile {profile_id}", file=sys.stderr)
-        return new_token
+        return data.get("token", "") or None
     except Exception:
         return None
 
