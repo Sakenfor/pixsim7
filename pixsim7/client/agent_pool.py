@@ -267,9 +267,16 @@ class AgentPool:
                 self._drop_indexes_for_session(existing.session_id)
 
         # Use the CLI's actual conversation UUID for --resume (not our derived hash)
-        resume_id = self._cli_id_map.get(bridge_session_id, bridge_session_id)
-        if resume_id != bridge_session_id:
+        resume_id = self._cli_id_map.get(bridge_session_id)
+        if resume_id:
             client_log(f"[pool] Mapped {bridge_session_id[:8]} -> CLI session {resume_id[:8]} for resume")
+        elif bridge_session_id.startswith("mcp-") or bridge_session_id.startswith("auto-"):
+            # Derived session ID — Claude won't recognize it, start fresh
+            client_log(f"[pool] No CLI mapping for {bridge_session_id[:12]}, starting fresh session")
+            resume_id = None
+        else:
+            # Looks like a real UUID — try resume directly
+            resume_id = bridge_session_id
 
         return await self._spawn_session(
             command=command or self._command,

@@ -99,7 +99,8 @@ class ClaudeProtocol(AgentProtocol):
             cmd.extend(["--effort", reasoning_effort])
         if resume_session_id:
             cmd.extend(["--resume", resume_session_id])
-        if system_prompt:
+        # Don't append system prompt on resume — it's already in conversation history
+        if system_prompt and not resume_session_id:
             cmd.extend(["--append-system-prompt", system_prompt])
         if mcp_config_path:
             cmd.extend(["--mcp-config", mcp_config_path])
@@ -210,11 +211,10 @@ class CodexAppServerProtocol(AgentProtocol):
             # reasoning effort (e.g. xhigh) may not be supported by this model
             cmd.extend(["-c", f"model_reasoning_effort={self.BRIDGE_CONFIG_DEFAULTS['model_reasoning_effort']}"])
         # No CLI flags for system prompt or MCP per invocation.
-        # MCP is configured globally in ~/.codex/config.toml (or project .codex/config.toml).
-        # Codex supports enabled_tools/disabled_tools and per-server env vars, but config
-        # changes require server restart. Focus-driven tool filtering would need config.toml
-        # rewrite — not implemented; mcp_config_path is ignored. System prompt is injected
-        # via message preamble in the bridge, not via CLI flag.
+        # MCP is configured via Codex config layers. Bridge sets a per-focus workdir that
+        # contains a project-local .codex/config.toml for MCP + enabled_tools filtering.
+        # mcp_config_path is ignored.
+        # System prompt is injected via message preamble in the bridge, not via CLI flag.
         return cmd
 
     def build_message_payload(self, message, images=None):

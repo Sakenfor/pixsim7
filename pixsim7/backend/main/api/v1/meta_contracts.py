@@ -1843,6 +1843,7 @@ async def _upsert_chat_session(
     last_contract_id: Optional[str] = None,
     increment_messages: bool = False,
     source: Optional[str] = None,
+    cli_session_id: Optional[str] = None,
 ) -> None:
     """Create or update a chat session record (fire-and-forget).
 
@@ -1872,6 +1873,8 @@ async def _upsert_chat_session(
                     existing.last_contract_id = last_contract_id
                 if source and not existing.source:
                     existing.source = source  # set once, don't overwrite
+                if cli_session_id:
+                    existing.cli_session_id = cli_session_id
             else:
                 db.add(ChatSession(
                     id=session_id,
@@ -1883,6 +1886,7 @@ async def _upsert_chat_session(
                     last_contract_id=last_contract_id,
                     label=label or "Untitled",
                     source=source,
+                    cli_session_id=cli_session_id,
                     message_count=1 if increment_messages else 0,
                 ))
             await db.commit()

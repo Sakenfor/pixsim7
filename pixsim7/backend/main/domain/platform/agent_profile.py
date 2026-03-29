@@ -106,8 +106,11 @@ class ChatSession(SQLModel, table=True):
         {"schema": PLATFORM_SCHEMA},
     )
 
-    # The conversation UUID from the agent CLI (session_id from init event)
+    # Session identity — `id` is the bridge/frontend session ID (may be MCP hash or UUID).
+    # `cli_session_id` is the agent CLI's internal conversation UUID (for --resume).
+    # They're the same when the CLI creates the session; they differ for MCP-derived sessions.
     id: str = Field(primary_key=True, max_length=120)
+    cli_session_id: Optional[str] = Field(default=None, max_length=120, index=True)
     user_id: int = Field(default=0, index=True)
     engine: str = Field(default="claude", max_length=32)
     profile_id: Optional[str] = Field(default=None, max_length=120)
