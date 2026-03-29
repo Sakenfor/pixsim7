@@ -57,10 +57,13 @@ class AgentPool:
         self._resume_session_id: Optional[str] = None
         self._sessions: Dict[str, AgentCmdSession] = {}
         self._health_task: Optional[asyncio.Task] = None
-        # Index: cli_session_id -> pool session key (for affinity routing)
+        # Index: bridge_session_id -> pool session key (for affinity routing)
         self._session_id_index: Dict[str, str] = {}
         # Index: scope_key -> pool session key (for scoped routing)
         self._scope_key_index: Dict[str, str] = {}
+        # Persistent mapping: bridge_session_id -> CLI conversation UUID
+        # Survives session eviction so resume uses the correct ID
+        self._cli_id_map: Dict[str, str] = {}
         self._next_dynamic_id = 0
 
     @property
@@ -116,9 +119,13 @@ class AgentPool:
                 self._scope_key_index.pop(key, None)
 
     def _update_index(self, session: AgentCmdSession) -> None:
-        """Update the bridge_session_id -> pool key index."""
+        """Update the bridge_session_id -> pool key index and CLI ID map."""
         if session.bridge_session_id:
             self._session_id_index[session.bridge_session_id] = session.session_id
+            # Persist the mapping from our session ID to the CLI's conversation UUID
+            # so we can --resume correctly even after eviction
+            if session.cli_session_id and session.cli_session_id != session.bridge_session_id:
+                self._cli_id_map[session.bridge_session_id] = session.cli_session_id
 
     async def _evict_oldest_idle(self) -> bool:
         """Stop the oldest idle on-demand session to make room. Returns True if one was evicted."""
@@ -242,16 +249,31 @@ class AgentPool:
     ) -> AgentCmdSession:
         """Find the session with this conversation, or spawn a new one with --resume."""
         existing = self._find_by_session_id(bridge_session_id)
-        if existing and existing.state == SessionState.READY:
-            return existing
-        if existing and existing.state == SessionState.BUSY:
-            raise RuntimeError(
-                f"Session for conversation {bridge_session_id[:8]} is busy"
-            )
+        if existing:
+            if existing.state == SessionState.BUSY:
+                raise RuntimeError(
+                    f"Session for conversation {bridge_session_id[:8]} is busy"
+                )
+            if existing.state == SessionState.READY and existing.is_alive:
+                return existing
+            # Dead or errored — restart in-place (preserves cli_session_id for proper resume)
+            if not existing.is_alive:
+                client_log(f"[pool] Session {existing.session_id} died, restarting for {bridge_session_id[:8]}")
+                if await existing.restart():
+                    self._update_index(existing)
+                    return existing
+                # Restart failed — remove and spawn fresh
+                self._sessions.pop(existing.session_id, None)
+                self._drop_indexes_for_session(existing.session_id)
+
+        # Use the CLI's actual conversation UUID for --resume (not our derived hash)
+        resume_id = self._cli_id_map.get(bridge_session_id, bridge_session_id)
+        if resume_id != bridge_session_id:
+            client_log(f"[pool] Mapped {bridge_session_id[:8]} -> CLI session {resume_id[:8]} for resume")
 
         return await self._spawn_session(
             command=command or self._command,
-            resume_session_id=bridge_session_id,
+            resume_session_id=resume_id,
         )
 
     async def _get_or_create_for_scope_key(
@@ -435,6 +457,13 @@ class AgentPool:
                     await self._ensure_session_workdir(session, workdir=workdir)
 
         try:
+            # Pre-flight: ensure session process is alive (may have died since routing)
+            if not session.is_alive and not ephemeral:
+                client_log(f"[pool] Pre-flight: {session.session_id} dead, restarting...")
+                if not await session.restart():
+                    raise RuntimeError(f"Session {session.session_id} failed to restart")
+                self._update_index(session)
+
             # Write per-request token to this session's token file (isolated from other sessions)
             if user_token and session.token_file_path:
                 try:
@@ -471,10 +500,16 @@ class AgentPool:
                             client_log(f"[health] Restarting {session.session_id}...")
                             await session.restart()
                             self._update_index(session)
-                    elif session.state in (SessionState.READY, SessionState.BUSY) and not session.is_alive:
-                        client_log(f"[health] {session.session_id} died (was {session.state.value}), restarting...")
+                    elif session.state == SessionState.BUSY and not session.is_alive:
+                        # Died mid-task — restart immediately
+                        client_log(f"[health] {session.session_id} died while busy, restarting...")
                         await session.restart()
                         self._update_index(session)
+                    elif session.state == SessionState.READY and not session.is_alive:
+                        # Exited while idle — don't restart, just mark stopped.
+                        # It will be restarted on-demand when the next message arrives.
+                        client_log(f"[health] {session.session_id} exited while idle, marking stopped")
+                        session.state = SessionState.STOPPED
 
                 # Evict idle dynamic sessions past timeout
                 from datetime import datetime, timezone
