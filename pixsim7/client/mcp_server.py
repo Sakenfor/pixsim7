@@ -38,11 +38,35 @@ API_TOKEN_FILE = os.environ.get("PIXSIM_TOKEN_FILE", "")  # Per-request token fi
 API_SCOPE = os.environ.get("PIXSIM_SCOPE", "")  # "user", "dev", or comma-separated contract IDs; empty = all
 
 
+def _get_login_token() -> str:
+    """Read the user's persistent login token (~/.pixsim/token).
+
+    This token has a long TTL (login session) and can be used to mint
+    fresh agent tokens when the current one expires.
+    """
+    try:
+        from pathlib import Path
+        stored = Path.home() / ".pixsim" / "token"
+        token = stored.read_text().strip()
+        if token:
+            return token
+    except (OSError, FileNotFoundError):
+        pass
+    return ""
+
+
+# In-memory refreshed token — takes priority after a successful refresh
+_refreshed_token: str = ""
+
+
 def _get_token() -> str:
     """Read the freshest token.
 
-    Priority: per-request token file > env var > ~/.pixsim/token
+    Priority: refreshed (self-heal) > per-request token file > env var > login token
     """
+    # 0. In-memory refreshed token (from self-heal on 401)
+    if _refreshed_token:
+        return _refreshed_token
     # 1. Per-request token file (written by bridge before each task)
     if API_TOKEN_FILE:
         try:
@@ -56,15 +80,7 @@ def _get_token() -> str:
     if API_TOKEN:
         return API_TOKEN
     # 3. Persistent login token (~/.pixsim/token)
-    try:
-        from pathlib import Path
-        stored = Path.home() / ".pixsim" / "token"
-        token = stored.read_text().strip()
-        if token:
-            return token
-    except (OSError, FileNotFoundError):
-        pass
-    return ""
+    return _get_login_token()
 
 server = Server("pixsim")
 
@@ -144,6 +160,77 @@ _CORE_CONTRACTS: frozenset[str] = frozenset({
     "plans.management",
     "project.files",
 })
+_ALWAYS_INCLUDED_TOOLS: tuple[str, ...] = (
+    "register_session",
+    "log_work",
+    "call_api",
+)
+
+
+def _normalize_contract_id(value: str) -> str:
+    """Normalize contract IDs from either dot or underscore form."""
+    return str(value or "").strip().replace("_", ".").lower()
+
+
+def resolve_enabled_tool_names_for_focus(
+    contracts: list[dict[str, Any]],
+    focus_contract_ids: set[str] | None,
+) -> list[str]:
+    """Resolve the MCP tool names to enable for a focused contract set.
+
+    Includes:
+    - Focused contracts
+    - Core contracts (always)
+    - Built-in tools (`register_session`, `log_work`, `call_api`)
+
+    Uses contract-level ``tool_names`` from meta/contracts when present,
+    with endpoint-based fallback for older payloads.
+    """
+    normalized_focus = {
+        _normalize_contract_id(contract_id)
+        for contract_id in (focus_contract_ids or set())
+        if str(contract_id or "").strip()
+    }
+    include_contract_ids = set(_CORE_CONTRACTS)
+    include_contract_ids.update(normalized_focus)
+
+    seen: set[str] = set()
+    enabled: list[str] = []
+
+    def _add(name: str) -> None:
+        if not name or name in seen:
+            return
+        seen.add(name)
+        enabled.append(name)
+
+    for tool_name in _ALWAYS_INCLUDED_TOOLS:
+        _add(tool_name)
+
+    for contract in contracts:
+        contract_id = _normalize_contract_id(contract.get("id", ""))
+        if not contract_id or contract_id not in include_contract_ids:
+            continue
+
+        # Preferred source (from /api/v1/meta/contracts)
+        contract_tool_names = contract.get("tool_names")
+        if isinstance(contract_tool_names, list) and contract_tool_names:
+            for tool_name in contract_tool_names:
+                if isinstance(tool_name, str):
+                    _add(tool_name.strip())
+            continue
+
+        # Backward-compatible fallback (older meta payloads)
+        for endpoint in contract.get("sub_endpoints", []):
+            endpoint_id = endpoint.get("id", "")
+            path = endpoint.get("path", "")
+            availability = endpoint.get("availability") or {}
+            if not endpoint_id or not isinstance(path, str) or not path.startswith("/"):
+                continue
+            if availability.get("status") == "disabled":
+                continue
+            _add(_make_tool_name(contract_id, endpoint_id))
+
+    return enabled
 
 
 def _parse_scope() -> tuple[str | None, set[str]]:
@@ -422,13 +509,19 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
     global _heartbeat_task, _registered_session_id
     import uuid as _uuid
 
+    # Bridge-managed sessions: chat flow handles registration
+    if os.environ.get("PIXSIM_BRIDGE_MANAGED"):
+        _registered_session_id = "__bridge__"
+        return [types.TextContent(type="text", text="Session managed by bridge — registration skipped.")]
+
     token = _get_token()
     if not token:
         return [types.TextContent(type="text", text="No API token available — cannot register session.")]
 
     profile_id = _extract_profile_from_token(token)
     agent_type = _extract_agent_type(token)
-    session_id = arguments.get("session_id") or _registered_session_id or _derive_stable_session_id(token)
+    prev_id = _registered_session_id if _registered_session_id != "__bridge__" else None
+    session_id = arguments.get("session_id") or prev_id or _derive_stable_session_id(token)
     label = arguments.get("label") or f"CLI session ({session_id[:8]})"
 
     result = await _proxy(
@@ -577,7 +670,7 @@ async def handle_list_tools() -> list[types.Tool]:
 
 async def _signal_tool_activity(tool_name: str) -> None:
     """Fire-and-forget heartbeat on tool use — keeps session alive and visible."""
-    if not _registered_session_id:
+    if not _registered_session_id or _registered_session_id == "__bridge__":
         return
     token = _get_token()
     if not token:
@@ -605,9 +698,17 @@ async def _auto_register_if_needed() -> None:
     Ensures every MCP session is tracked — even if the agent never
     explicitly calls register_session. Uses token claims to derive
     session ID and profile, then starts the heartbeat loop.
+
+    Bridge-managed sessions (PIXSIM_TOKEN_FILE set) are skipped — the
+    chat flow in ws_chat.py already creates the ChatSession record and
+    the bridge sends session-level heartbeats.
     """
     global _heartbeat_task, _registered_session_id
     if _registered_session_id:
+        return
+    # Bridge-managed: chat flow handles ChatSession creation + bridge sends heartbeats
+    if os.environ.get("PIXSIM_BRIDGE_MANAGED"):
+        _registered_session_id = "__bridge__"  # prevent re-entry
         return
     token = _get_token()
     if not token:
@@ -699,13 +800,75 @@ def _get_client() -> httpx.AsyncClient:
     return _http_client
 
 
+async def _try_refresh_token() -> str | None:
+    """Attempt to mint a fresh agent token using the login token.
+
+    Extracts profile_id from the expired token's claims, then calls
+    the profile token endpoint with the user's login token as auth.
+    Returns the new token on success, None on failure.
+    """
+    global _refreshed_token
+
+    # Get the expired token to extract claims (decode without verification)
+    expired = API_TOKEN or ""
+    if API_TOKEN_FILE:
+        try:
+            with open(API_TOKEN_FILE, "r") as f:
+                expired = f.read().strip() or expired
+        except OSError:
+            pass
+    if _refreshed_token:
+        expired = _refreshed_token
+
+    profile_id = _extract_profile_from_token(expired)
+    if not profile_id:
+        return None
+
+    # Use the persistent login token to mint a fresh agent token
+    login_token = _get_login_token()
+    if not login_token:
+        return None
+
+    try:
+        client = _get_client()
+        resp = await client.post(
+            f"/api/v1/dev/agent-profiles/{profile_id}/token",
+            params={"hours": 24},
+            headers={"Authorization": f"Bearer {login_token}"},
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        new_token = data.get("token", "")
+        if not new_token:
+            return None
+
+        # Persist: update in-memory cache and token file
+        _refreshed_token = new_token
+        if API_TOKEN_FILE:
+            try:
+                with open(API_TOKEN_FILE, "w") as f:
+                    f.write(new_token)
+            except OSError:
+                pass
+
+        print(f"[pixsim-mcp] Token refreshed for profile {profile_id}", file=sys.stderr)
+        return new_token
+    except Exception:
+        return None
+
+
 async def _proxy(
     method: str,
     path: str,
     query_params: dict[str, Any] | None = None,
     body: dict[str, Any] | None = None,
 ) -> list[types.TextContent]:
-    """Proxy a request to the PixSim API and return the result."""
+    """Proxy a request to the PixSim API and return the result.
+
+    On 401 (expired token), attempts a self-heal: mints a fresh agent token
+    using the user's login token, then retries the request once.
+    """
     try:
         token = _get_token()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -718,6 +881,19 @@ async def _proxy(
             json=body,
             headers=headers,
         )
+
+        # Self-heal on 401: try to refresh the token and retry once
+        if resp.status_code == 401:
+            new_token = await _try_refresh_token()
+            if new_token:
+                headers = {"Authorization": f"Bearer {new_token}"}
+                resp = await client.request(
+                    method=method.upper(),
+                    url=path,
+                    params=query_params,
+                    json=body,
+                    headers=headers,
+                )
 
         try:
             data = resp.json()
