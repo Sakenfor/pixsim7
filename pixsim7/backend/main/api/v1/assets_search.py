@@ -23,9 +23,14 @@ from pixsim7.backend.main.shared.schemas.asset_schemas import (
     AssetResponse,
     AssetListResponse,
 )
+from pixsim7.backend.main.services.asset._filters import AssetSearchFilters
 from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
 from pixsim7.backend.main.shared.upload_context_schema import UPLOAD_CONTEXT_SPEC
-from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags, build_asset_responses_with_tags
+from pixsim7.backend.main.api.v1.assets_helpers import (
+    build_asset_response_with_tags,
+    build_asset_responses_with_tags,
+    get_effective_owner_user_id,
+)
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-search"])
@@ -53,6 +58,43 @@ def _parse_similarity_cursor(cursor: str | None) -> int | None:
 
 def _build_similarity_cursor(offset: int) -> str:
     return f"{SIMILARITY_CURSOR_PREFIX}{offset}"
+
+
+def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
+    """Build AssetSearchFilters from a search/group request (single source of truth)."""
+    return AssetSearchFilters(
+        filters=request.filters,
+        group_filter=request.group_filter,
+        group_path=request.group_path,
+        sync_status=request.sync_status,
+        provider_status=request.provider_status,
+        tag=request.tag,
+        q=request.q,
+        include_archived=request.include_archived,
+        searchable=request.searchable,
+        asset_kind=(request.filters or {}).get('asset_kind', getattr(request, 'asset_kind', 'content')),
+        created_from=request.created_from,
+        created_to=request.created_to,
+        min_width=request.min_width,
+        max_width=request.max_width,
+        min_height=request.min_height,
+        max_height=request.max_height,
+        content_domain=request.content_domain,
+        content_category=request.content_category,
+        content_rating=request.content_rating,
+        source_generation_id=request.source_generation_id,
+        source_asset_id=request.source_asset_id,
+        sha256=request.sha256,
+        operation_type=request.operation_type,
+        has_parent=request.has_parent,
+        has_children=request.has_children,
+        asset_ids=request.asset_ids,
+        prompt_version_id=request.prompt_version_id,
+        group_by=request.group_by.value if isinstance(request.group_by, Enum) else request.group_by,
+        group_key=request.group_key,
+        similar_to=request.similar_to,
+        similarity_threshold=request.similarity_threshold,
+    )
 
 
 # ===== SEARCH ASSETS =====
@@ -87,49 +129,18 @@ async def search_assets(
             else (request.offset if request.cursor is None else 0)
         )
 
-        assets = await asset_service.list_assets(
+        sf = _build_search_filters(request)
+
+        assets, total = await asset_service.list_assets(
             user=user,
-            filters=request.filters,
-            group_filter=request.group_filter,
-            group_path=request.group_path,
-            sync_status=request.sync_status,
-            provider_status=request.provider_status,
-            tag=request.tag,
-            q=request.q,
-            include_archived=request.include_archived,
+            sf=sf,
             limit=request.limit,
             offset=effective_offset,
             cursor=None if is_similarity_mode else request.cursor,
-            # New search filters
-            created_from=request.created_from,
-            created_to=request.created_to,
-            min_width=request.min_width,
-            max_width=request.max_width,
-            min_height=request.min_height,
-            max_height=request.max_height,
-            content_domain=request.content_domain,
-            content_category=request.content_category,
-            content_rating=request.content_rating,
-            searchable=request.searchable,
-            asset_kind=(request.filters or {}).get('asset_kind', getattr(request, 'asset_kind', 'content')),
-            source_generation_id=request.source_generation_id,
-            source_asset_id=request.source_asset_id,
-            sha256=request.sha256,
-            operation_type=request.operation_type,
-            has_parent=request.has_parent,
-            has_children=request.has_children,
-            asset_ids=request.asset_ids,
-            prompt_version_id=request.prompt_version_id,
-            group_by=request.group_by.value if isinstance(request.group_by, Enum) else request.group_by,
-            group_key=request.group_key,
             sort_by=request.sort_by,
             sort_dir=request.sort_dir,
-            similar_to=request.similar_to,
-            similarity_threshold=request.similarity_threshold,
+            include_total=True,
         )
-
-        # Simple total (future: separate COUNT query)
-        total = len(assets)
 
         # Generate cursor for next page
         next_cursor = None
@@ -167,37 +178,12 @@ async def list_asset_groups(
 ):
     """Group assets for the current user with filters and pagination."""
     try:
-        group_by = request.group_by.value if isinstance(request.group_by, Enum) else request.group_by
+        sf = _build_search_filters(request)
+        group_by = sf.group_by
+
         groups, total_groups = await asset_service.list_asset_groups(
-            user=user,
-            group_by=group_by,
-            filters=request.filters,
-            group_filter=request.group_filter,
-            group_path=request.group_path,
-            sync_status=request.sync_status,
-            provider_status=request.provider_status,
-            tag=request.tag,
-            q=request.q,
-            include_archived=request.include_archived,
-            searchable=request.searchable,
-            asset_kind=(request.filters or {}).get('asset_kind', getattr(request, 'asset_kind', 'content')),
-            created_from=request.created_from,
-            created_to=request.created_to,
-            min_width=request.min_width,
-            max_width=request.max_width,
-            min_height=request.min_height,
-            max_height=request.max_height,
-            content_domain=request.content_domain,
-            content_category=request.content_category,
-            content_rating=request.content_rating,
-            source_generation_id=request.source_generation_id,
-            source_asset_id=request.source_asset_id,
-            prompt_version_id=request.prompt_version_id,
-            operation_type=request.operation_type,
-            has_parent=request.has_parent,
-            has_children=request.has_children,
-            limit=request.limit,
-            offset=request.offset,
+            user=user, sf=sf, group_by=group_by,
+            limit=request.limit, offset=request.offset,
             preview_limit=request.preview_limit,
         )
 
@@ -208,33 +194,7 @@ async def list_asset_groups(
         ]
 
         meta_payloads = await asset_service.build_group_meta_payloads(
-            user=user,
-            group_by=group_by,
-            group_keys=group_keys,
-            filters=request.filters,
-            sync_status=request.sync_status,
-            provider_status=request.provider_status,
-            tag=request.tag,
-            q=request.q,
-            include_archived=request.include_archived,
-            searchable=request.searchable,
-            asset_kind=(request.filters or {}).get('asset_kind', getattr(request, 'asset_kind', 'content')),
-            created_from=request.created_from,
-            created_to=request.created_to,
-            min_width=request.min_width,
-            max_width=request.max_width,
-            min_height=request.min_height,
-            max_height=request.max_height,
-            content_domain=request.content_domain,
-            content_category=request.content_category,
-            content_rating=request.content_rating,
-            source_generation_id=request.source_generation_id,
-            source_asset_id=request.source_asset_id,
-            prompt_version_id=request.prompt_version_id,
-            operation_type=request.operation_type,
-            has_parent=request.has_parent,
-            has_children=request.has_children,
-            group_path=request.group_path,
+            user=user, sf=sf, group_by=group_by, group_keys=group_keys,
         )
 
         meta_map: dict[str, AssetGroupMeta] = {}
@@ -428,13 +388,14 @@ async def autocomplete_assets(
     from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
 
     like = f"%{query}%"
+    owner_user_id = get_effective_owner_user_id(user)
 
     try:
         # Search descriptions (distinct values containing query)
         desc_query = (
             select(Asset.description.label('suggestion'))
             .where(
-                Asset.user_id == user.id,
+                Asset.user_id == owner_user_id,
                 Asset.description.isnot(None),
                 Asset.description.ilike(like),
                 Asset.is_archived == False,
@@ -450,7 +411,7 @@ async def autocomplete_assets(
             .join(AssetTag, Tag.id == AssetTag.tag_id)
             .join(Asset, Asset.id == AssetTag.asset_id)
             .where(
-                Asset.user_id == user.id,
+                Asset.user_id == owner_user_id,
                 Tag.display_name.isnot(None),
                 Tag.display_name.ilike(like),
                 Asset.is_archived == False,

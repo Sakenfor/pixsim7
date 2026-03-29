@@ -14,6 +14,7 @@ Services:
 - tags: Asset tagging from ontology-aligned metadata
 - dedup: Centralized deduplication helpers for consistent asset matching
 """
+from ._filters import AssetSearchFilters
 from .core import AssetCoreService
 from .sync import AssetSyncService
 from .enrichment import AssetEnrichmentService
@@ -34,6 +35,7 @@ from .dedup import (
 from .service import AssetService
 
 __all__ = [
+    "AssetSearchFilters",
     "AssetCoreService",
     "AssetSyncService",
     "AssetEnrichmentService",

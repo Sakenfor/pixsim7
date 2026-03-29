@@ -19,6 +19,7 @@ from pixsim7.backend.main.domain import (
     MediaType,
     SyncStatus,
 )
+from pixsim7.backend.main.services.asset._filters import AssetSearchFilters
 from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim_logging import get_logger
@@ -105,44 +106,34 @@ class AssetSearchMixin:
         self,
         *,
         user: User,
-        filters: Optional[dict[str, Any]] = None,
-        group_filter: Optional[dict[str, Any]] = None,
+        sf: AssetSearchFilters,
         group_filter_invert: bool = False,
-        group_path: Optional[list[dict[str, Any]]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_status: Optional[str] = None,
-        tag: Optional[str | list[str]] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
-        searchable: Optional[bool] = True,
-        asset_kind: Optional[str] = "content",
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain: Optional[Any] = None,
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        asset_ids: Optional[list[int]] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        sha256: Optional[str] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type: Optional[Any] = None,
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
-        group_by: Optional[str] = None,
-        group_key: Optional[str] = None,
-        similar_to_embedding: Optional[list[float]] = None,
-        similar_to_asset_id: Optional[int] = None,
-        similarity_threshold: Optional[float] = None,
+        similar_to_embedding=None,
     ):
         from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
         from sqlalchemy.dialects.postgresql import JSONB
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+
+        # Destructure shared filters so the query-building body can use bare names
+        (filters, group_filter, group_path, sync_status, provider_status,
+         tag, q, include_archived, searchable, asset_kind,
+         created_from, created_to, min_width, max_width, min_height, max_height,
+         content_domain, content_category, content_rating,
+         asset_ids, source_generation_id, source_asset_id,
+         sha256, prompt_version_id, operation_type,
+         has_parent, has_children, group_by, group_key,
+         similarity_threshold) = (
+            sf.filters, sf.group_filter, sf.group_path, sf.sync_status, sf.provider_status,
+            sf.tag, sf.q, sf.include_archived, sf.searchable, sf.asset_kind,
+            sf.created_from, sf.created_to, sf.min_width, sf.max_width, sf.min_height, sf.max_height,
+            sf.content_domain, sf.content_category, sf.content_rating,
+            sf.asset_ids, sf.source_generation_id, sf.source_asset_id,
+            sf.sha256, sf.prompt_version_id, sf.operation_type,
+            sf.has_parent, sf.has_children, sf.group_by, sf.group_key,
+            sf.similarity_threshold,
+        )
+        similar_to_asset_id = sf.similar_to
 
         query = select(Asset)
         generation_joined = False
@@ -478,66 +469,8 @@ class AssetSearchMixin:
 
         return query
 
-    def _build_filtered_asset_id_subquery(
-        self,
-        *,
-        user: User,
-        filters: Optional[dict[str, Any]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_status: Optional[str] = None,
-        tag: Optional[str | list[str]] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
-        searchable: Optional[bool] = True,
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain: Optional[Any] = None,
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type: Optional[Any] = None,
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
-        group_by: Optional[str] = None,
-        group_key: Optional[str] = None,
-        group_path: Optional[list[dict[str, Any]]] = None,
-    ):
-        query = self._build_asset_search_query(
-            user=user,
-            filters=filters,
-            sync_status=sync_status,
-            provider_status=provider_status,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            searchable=searchable,
-            asset_kind=asset_kind,
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            source_generation_id=source_generation_id,
-            source_asset_id=source_asset_id,
-            prompt_version_id=prompt_version_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            group_by=group_by,
-            group_key=group_key,
-            group_path=group_path,
-        )
-
+    def _build_filtered_asset_id_subquery(self, *, user: User, sf: AssetSearchFilters):
+        query = self._build_asset_search_query(user=user, sf=sf)
         return query.with_only_columns(Asset.id).subquery()
 
     async def find_assets_by_face_and_action(
@@ -616,93 +549,35 @@ class AssetSearchMixin:
     async def list_assets(
         self,
         user: User,
-        provider_status: Optional[str] = None,
+        sf: AssetSearchFilters | None = None,
         *,
-        filters: dict[str, Any] | None = None,
-        group_filter: dict[str, Any] | None = None,
-        group_path: Optional[list[dict[str, Any]]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        tag: Optional[str] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
         cursor: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-        # New search filters
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain = None,  # ContentDomain enum
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        searchable: Optional[bool] = True,  # Default True to hide non-searchable
-        asset_kind: Optional[str] = "content",  # Default to gallery content; None = all kinds
-        asset_ids: Optional[list[int]] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        sha256: Optional[str] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type = None,  # OperationType enum
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
-        group_by: Optional[str] = None,
-        group_key: Optional[str] = None,
         sort_by: Optional[str] = None,
         sort_dir: Optional[str] = "desc",
-        similar_to: Optional[int] = None,
-        similarity_threshold: Optional[float] = None,
         include_total: bool = False,
+        **kwargs,
     ) -> list[Asset] | tuple[list[Asset], int]:
         """
         List assets for user with advanced search and filtering.
 
+        Accepts an AssetSearchFilters instance or individual kwargs (legacy).
+
         Returns:
             List of assets, or (assets, total) when include_total=True.
         """
+        if sf is None:
+            sf = AssetSearchFilters(**kwargs)
+
         # Pre-resolve embedding for similarity search
         owner_user_id = resolve_effective_user_id(user) or 0
         similar_to_embedding = await self._resolve_similarity_embedding(
-            similar_to, owner_user_id,
+            sf.similar_to, owner_user_id,
         )
 
         query = self._build_asset_search_query(
-            user=user,
-            filters=filters,
-            group_filter=group_filter,
-            group_filter_invert=False,
-            sync_status=sync_status,
-            provider_status=provider_status,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            searchable=searchable,
-            asset_kind=asset_kind,
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            asset_ids=asset_ids,
-            source_generation_id=source_generation_id,
-            source_asset_id=source_asset_id,
-            sha256=sha256,
-            prompt_version_id=prompt_version_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            group_by=group_by,
-            group_key=group_key,
-            group_path=group_path,
-            similar_to_embedding=similar_to_embedding,
-            similar_to_asset_id=similar_to,
-            similarity_threshold=similarity_threshold,
+            user=user, sf=sf, similar_to_embedding=similar_to_embedding,
         )
 
         # Total count (before sorting/pagination)

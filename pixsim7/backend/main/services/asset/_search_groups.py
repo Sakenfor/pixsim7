@@ -16,6 +16,7 @@ from pixsim7.backend.main.domain import (
     User,
     SyncStatus,
 )
+from pixsim7.backend.main.services.asset._filters import AssetSearchFilters
 from pixsim7.backend.main.services.asset._search import AssetSearchMixin, AssetGroupResult
 
 if TYPE_CHECKING:
@@ -26,96 +27,22 @@ if TYPE_CHECKING:
 class AssetGroupsMixin(AssetSearchMixin):
     """Mixin providing asset grouping methods. Extends AssetSearchMixin."""
 
-    def build_scoped_asset_ids_subquery(
-        self,
-        *,
-        user: User,
-        filters: Optional[dict[str, Any]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_status: Optional[str] = None,
-        tag: Optional[str | list[str]] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
-        searchable: Optional[bool] = True,
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain: Optional[Any] = None,
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type: Optional[Any] = None,
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
-        group_path: Optional[list[dict[str, Any]]] = None,
-    ):
+    def build_scoped_asset_ids_subquery(self, *, user: User, sf: AssetSearchFilters):
         """
         Public wrapper for the canonical user-scoped asset-id subquery.
 
         Use this when follow-up queries (metadata, aggregations, joins to other
         tables) must be guaranteed to operate on the exact same visible asset set.
         """
-        return self._build_filtered_asset_id_subquery(
-            user=user,
-            filters=filters,
-            sync_status=sync_status,
-            provider_status=provider_status,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            searchable=searchable,
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            source_generation_id=source_generation_id,
-            source_asset_id=source_asset_id,
-            prompt_version_id=prompt_version_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            group_path=group_path,
-        )
+        return self._build_filtered_asset_id_subquery(user=user, sf=sf)
 
     async def build_group_meta_payloads(
         self,
         *,
         user: User,
+        sf: AssetSearchFilters,
         group_by: str,
         group_keys: list[str],
-        filters: Optional[dict[str, Any]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_status: Optional[str] = None,
-        tag: Optional[str | list[str]] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
-        searchable: Optional[bool] = True,
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain: Optional[Any] = None,
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type: Optional[Any] = None,
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
-        group_path: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, dict[str, Any]]:
         """
         Build metadata payloads for grouped results using the canonical scoped asset set.
@@ -129,32 +56,7 @@ class AssetGroupsMixin(AssetSearchMixin):
         from pixsim7.backend.main.domain import Asset
 
         meta_map: dict[str, dict[str, Any]] = {}
-        scoped_asset_ids = self.build_scoped_asset_ids_subquery(
-            user=user,
-            filters=filters,
-            sync_status=sync_status,
-            provider_status=provider_status,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            searchable=searchable,
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            source_generation_id=source_generation_id,
-            source_asset_id=source_asset_id,
-            prompt_version_id=prompt_version_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            group_path=group_path,
-        )
+        scoped_asset_ids = self.build_scoped_asset_ids_subquery(user=user, sf=sf)
 
         if group_by == "source":
             from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
@@ -326,31 +228,8 @@ class AssetGroupsMixin(AssetSearchMixin):
         self,
         *,
         user: User,
+        sf: AssetSearchFilters,
         group_by: str,
-        filters: dict[str, Any] | None = None,
-        group_filter: dict[str, Any] | None = None,
-        group_path: Optional[list[dict[str, Any]]] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_status: Optional[str] = None,
-        tag: Optional[str | list[str]] = None,
-        q: Optional[str] = None,
-        include_archived: bool = False,
-        searchable: Optional[bool] = True,
-        created_from: Optional[datetime] = None,
-        created_to: Optional[datetime] = None,
-        min_width: Optional[int] = None,
-        max_width: Optional[int] = None,
-        min_height: Optional[int] = None,
-        max_height: Optional[int] = None,
-        content_domain: Optional[Any] = None,
-        content_category: Optional[str] = None,
-        content_rating: Optional[str] = None,
-        source_generation_id: Optional[int] = None,
-        source_asset_id: Optional[int] = None,
-        prompt_version_id: Optional[Any] = None,
-        operation_type: Optional[Any] = None,
-        has_parent: Optional[bool] = None,
-        has_children: Optional[bool] = None,
         limit: int = 50,
         offset: int = 0,
         preview_limit: int = 4,
@@ -363,32 +242,9 @@ class AssetGroupsMixin(AssetSearchMixin):
         """
         from sqlalchemy import select, func, literal
 
-        asset_ids = self._build_filtered_asset_id_subquery(
-            user=user,
-            filters=filters,
-            sync_status=sync_status,
-            provider_status=provider_status,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            searchable=searchable,
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            source_generation_id=source_generation_id,
-            source_asset_id=source_asset_id,
-            prompt_version_id=prompt_version_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            group_path=group_path,
-        )
+        group_filter = sf.group_filter
+        group_path = sf.group_path
+        asset_ids = self._build_filtered_asset_id_subquery(user=user, sf=sf)
 
         group_key_expr, join_generation, join_lineage, lineage_primary = self._resolve_group_key_expr(group_by)
 

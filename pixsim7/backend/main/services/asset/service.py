@@ -12,6 +12,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import User
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.services.user.user_service import UserService
 from .core import AssetCoreService
 from .sync import AssetSyncService
@@ -111,10 +112,13 @@ class AssetService:
         frame_path, sha256, width, height = extract_frame_with_metadata(
             video_asset.local_path, timestamp, frame_number, last_frame=last_frame
         )
+        owner_user_id = resolve_effective_user_id(user)
+        if owner_user_id is None:
+            raise InvalidOperationError("User-scoped principal required")
 
         try:
             # 4. Deduplication
-            existing = await self.find_asset_by_hash(sha256, user.id)
+            existing = await self.find_asset_by_hash(sha256, owner_user_id)
             if existing:
                 os.remove(frame_path)
                 return existing
@@ -123,7 +127,7 @@ class AssetService:
             file_size = os.path.getsize(frame_path)
             storage = get_storage_service()
             stored_key = await storage.store_from_path_with_hash(
-                user_id=user.id, sha256=sha256,
+                user_id=owner_user_id, sha256=sha256,
                 source_path=frame_path, extension=".jpg",
             )
             local_path = storage.get_path(stored_key)
@@ -142,7 +146,7 @@ class AssetService:
 
             asset = await add_asset(
                 self.db,
-                user_id=user.id,
+                user_id=owner_user_id,
                 media_type=MediaType.IMAGE,
                 provider_id="local",
                 provider_asset_id=f"local_{sha256[:12]}_{frame_suffix}",
@@ -177,7 +181,7 @@ class AssetService:
 
             # 7. Update user storage quota
             storage_gb = file_size / (1024 ** 3)
-            await self.users.increment_storage(user, storage_gb)
+            await self.users.increment_storage(owner_user_id, storage_gb)
 
             return asset
 

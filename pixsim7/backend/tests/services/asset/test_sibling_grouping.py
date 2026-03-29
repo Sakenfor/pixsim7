@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy import select, literal
 
+from pixsim7.backend.main.services.asset._filters import AssetSearchFilters
 from pixsim7.backend.main.services.asset.core import AssetCoreService
 
 
@@ -86,6 +87,7 @@ class TestResolveSiblingGroupKeyExpr:
 
         payloads = await service.build_group_meta_payloads(
             user=MagicMock(),
+            sf=AssetSearchFilters(),
             group_by="sibling",
             group_keys=["hash-abc"],
         )
