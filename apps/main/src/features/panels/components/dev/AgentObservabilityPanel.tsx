@@ -785,7 +785,7 @@ function ActiveSessionsView() {
                   <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                     {agent.pool_sessions.map((ps) => {
                       const engine = ps.session_id.split('-')[0] || 'unknown';
-                      const engineColor = engine === 'claude' ? 'blue' : engine === 'codex' ? 'purple' : 'gray';
+                      const engineColor = getEngineBrand(engine).badgeColor;
                       return (
                         <div key={ps.session_id} className="px-4 py-2 flex items-center gap-2 text-[10px]">
                           <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : ps.state === 'errored' ? 'red' : 'gray'} className="text-[9px] min-w-[38px] text-center">
@@ -1223,6 +1223,8 @@ const ACTION_LABELS: Record<string, string> = {
   status_changed: 'updated',
 };
 
+import { getEngineBrand } from '@lib/agent/engineBrands';
+
 const ACTION_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   created: 'green',
   deleted: 'red',
@@ -1560,7 +1562,7 @@ function SummariesView() {
         const expanded = expandedIdx === i;
         const commitSha = e.metadata?.commit;
         const sessionInfo = sessionProfiles.get(e.session_id);
-        const engineColor = _ENGINE_COLORS[sessionInfo?.engine ?? e.agent_type] ?? 'text-neutral-400';
+        const engineColor = getEngineBrand(sessionInfo?.engine ?? e.agent_type).textColor;
         return (
           <div key={`${e.timestamp}-${i}`} className="rounded border border-neutral-200 dark:border-neutral-800">
             <button
@@ -1596,7 +1598,7 @@ function SummariesView() {
 
             {expanded && (() => {
               const sessionInfo = sessionProfiles.get(e.session_id);
-              const engineColor = _ENGINE_COLORS[sessionInfo?.engine ?? e.agent_type] ?? 'text-neutral-400';
+              const engineColor = getEngineBrand(sessionInfo?.engine ?? e.agent_type).textColor;
               return (
                 <div className="border-t border-neutral-100 dark:border-neutral-800 px-2 py-1.5 space-y-1">
                   <div className="flex items-center gap-2 text-[10px] text-neutral-400 flex-wrap">
@@ -1826,8 +1828,6 @@ interface AgentEditFormState {
   system_prompt: string;
   audience: string;
 }
-
-const RECENT_SESSION_MS = 60 * 60 * 1000; // 1 hour
 
 function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
   const [data, setData] = useState<ObservabilityResponse | null>(null);
@@ -2202,13 +2202,10 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                       <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Sessions</div>
                       <div className="space-y-1">
                         {sessions.map((s) => {
-                          const elapsed = Date.now() - new Date(s.last_used_at).getTime();
-                          const isRecent = elapsed < RECENT_SESSION_MS;
                           const isActiveHeartbeat = data?.active_session_ids?.includes(s.id) ?? false;
                           const isIdleHeartbeat = (data as any)?.idle_session_ids?.includes(s.id) ?? false;
                           const sessionDot = isActiveHeartbeat ? 'bg-green-500'
                             : isIdleHeartbeat ? 'bg-yellow-500'
-                            : isRecent ? 'bg-green-500'
                             : 'bg-neutral-300 dark:bg-neutral-600';
                           const sourceIcon = s.source === 'chat' ? 'messageSquare'
                             : s.source === 'mcp' ? 'terminal'
@@ -2218,7 +2215,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                           return (
                             <div key={s.id} className="group/session flex items-center gap-2 text-[11px] py-1">
                               <div className={`w-2 h-2 rounded-full shrink-0 ${sessionDot}`} />
-                              <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{s.engine}</Badge>
+                              <Badge color={getEngineBrand(s.engine).badgeColor} className="text-[9px]">{s.engine}</Badge>
                               {sourceIcon && (
                                 <Icon name={sourceIcon} size={10} className="shrink-0 text-neutral-400" title={`Source: ${s.source}`} />
                               )}

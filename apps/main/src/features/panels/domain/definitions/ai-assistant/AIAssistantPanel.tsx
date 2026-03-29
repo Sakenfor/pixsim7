@@ -673,11 +673,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 // Inline Resume Picker (empty chat state)
 // =============================================================================
 
-const _ENGINE_COLORS: Record<string, string> = {
-  claude: 'text-blue-400',
-  codex: 'text-violet-400',
-  api: 'text-amber-400',
-};
+import { getEngineBrand } from '@lib/agent/engineBrands';
 
 function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
@@ -721,7 +717,7 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
             {sessions.map((s) => {
               const profileName = s.profile_id && profileLabels?.get(s.profile_id);
-              const engineColor = _ENGINE_COLORS[s.engine] ?? 'text-neutral-400';
+              const engineColor = getEngineBrand(s.engine).textColor;
               return (
                 <button
                   key={s.id}

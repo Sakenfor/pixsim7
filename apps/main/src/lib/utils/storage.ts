@@ -96,7 +96,23 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
         return;
       }
 
-      // Always save to localStorage immediately (for offline access and fast reads)
+      // Guard: don't overwrite existing stored data with empty/initial state.
+      // This prevents the race where a set() fires before async hydration completes,
+      // writing the initial (empty) state over the real persisted data.
+      const existing = localStorage.getItem(localStorageKey);
+      if (existing) {
+        try {
+          const incoming = JSON.parse(stringValue);
+          const incomingParams = incoming?.state?.params;
+          const paramsEmpty = !incomingParams || Object.keys(incomingParams).length === 0;
+          if (paramsEmpty) {
+            debugFlags.warn('persistence',
+              `[BackendStorage:${preferenceKey}] Skipping write — empty params over existing data (pre-hydration race)`,
+            );
+            return;
+          }
+        } catch { /* parse error — allow write */ }
+      }
       localStorage.setItem(localStorageKey, stringValue);
 
       // Debounce backend sync to avoid excessive API calls (only if authenticated)
