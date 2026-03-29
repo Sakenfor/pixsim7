@@ -1,17 +1,20 @@
 """
 Dev Testing API
 
-Live test suite discovery, catalog validation, agent guidance, and coverage
-gap detection.  Test execution is handled by the codegen API
-(``/devtools/codegen/tests/run``).
+Live test suite discovery, catalog validation, agent guidance, coverage
+gap detection, and test execution.
 """
 from __future__ import annotations
 
+import asyncio
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +23,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.services.testing.catalog import (
     build_catalog,
     validate_catalog,
+    validate_runner_alignment,
 )
 
 router = APIRouter(prefix="/dev/testing", tags=["dev", "testing"])
@@ -53,6 +57,10 @@ class ValidationResponse(BaseModel):
     ok: bool
     suite_count: int
     errors: List[str] = Field(default_factory=list)
+    runner_warnings: List[str] = Field(
+        default_factory=list,
+        description="Cataloged suites whose filename doesn't match their runner's include patterns.",
+    )
 
 
 class TestConventionRule(BaseModel):
@@ -161,7 +169,7 @@ _CONVENTIONS: List[TestConventionsSection] = [
                 rule='covers must list the source file paths this test verifies. This enables auto-discovery in plan coverage.',
             ),
             TestConventionRule(
-                rule="Frontend suites cannot self-register. Add them to _STATIC_SUITES in services/testing/catalog.py.",
+                rule="Frontend suites are auto-discovered from *.test.{ts,tsx} files. Optional: add export const TEST_SUITE = {...} to override inferred metadata.",
             ),
         ],
     ),
@@ -295,13 +303,20 @@ async def get_catalog(
 
 @router.get("/catalog/validate", response_model=ValidationResponse)
 async def validate_catalog_endpoint() -> ValidationResponse:
-    """Validate all suite metadata (paths exist, required fields present)."""
+    """Validate suite metadata and runner alignment.
+
+    Checks required fields, path existence, and cross-references each
+    suite's file against its runner's include patterns (pytest.ini for
+    backend, vite.config.ts for frontend).
+    """
     suites = build_catalog()
     errors = validate_catalog(suites)
+    runner_warnings = validate_runner_alignment(suites)
     return ValidationResponse(
-        ok=not errors,
+        ok=not errors and not runner_warnings,
         suite_count=len(suites),
         errors=errors,
+        runner_warnings=runner_warnings,
     )
 
 
@@ -619,3 +634,129 @@ async def get_run(
         environment=run.environment,
         created_at=run.created_at.isoformat(),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Test Execution — run suites and stream output
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ExecuteRequest(BaseModel):
+    suite_id: str = Field(..., description="Suite ID to execute")
+    verbose: bool = Field(True, description="Verbose output (-v flag)")
+    timeout: int = Field(300, ge=10, le=900, description="Max seconds before kill")
+
+
+class ExecuteResult(BaseModel):
+    suite_id: str
+    status: str  # pass | fail | error
+    exit_code: int
+    output: str
+    duration_ms: int
+
+
+def _resolve_project_root() -> Path:
+    """Walk up from this file to find the repo root (contains pytest.ini)."""
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        if (parent / "pytest.ini").exists():
+            return parent
+    return p.parents[4]  # fallback
+
+
+def _build_command(
+    suite_path: str,
+    layer: str,
+    verbose: bool,
+    root: Path,
+) -> tuple[list[str], Path]:
+    """Resolve the test runner command and working directory for a suite.
+
+    Returns (cmd_args, cwd).
+    """
+    if layer == "frontend":
+        # vitest: npx vitest run <path> --reporter=verbose
+        npx_bin = shutil.which("npx")
+        if not npx_bin:
+            raise HTTPException(status_code=500, detail="npx not found on PATH")
+        cmd = [npx_bin, "vitest", "run", suite_path]
+        if verbose:
+            cmd.append("--reporter=verbose")
+        # Resolve cwd: walk up from suite path to find closest package.json
+        suite_p = root / suite_path
+        cwd = suite_p.parent if suite_p.is_file() else suite_p
+        while cwd != root and not (cwd / "package.json").exists():
+            cwd = cwd.parent
+        return cmd, cwd
+    else:
+        # pytest: python -m pytest <path> -v
+        python = shutil.which("python") or "python"
+        cmd = [python, "-m", "pytest", suite_path]
+        if verbose:
+            cmd.append("-v")
+        return cmd, root
+
+
+@router.post("/execute", response_model=ExecuteResult)
+async def execute_suite(
+    body: ExecuteRequest,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+) -> ExecuteResult:
+    """Execute a test suite by ID and return the result.
+
+    Resolves the suite from the DB, builds the appropriate runner command
+    (pytest for backend, vitest for frontend), executes it as a subprocess,
+    and returns the output.  The auto-submission plugin (conftest.py for
+    pytest, pixsim-reporter for vitest) handles recording the run.
+    """
+    import time
+
+    from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
+
+    suite = await db.get(TestSuiteRecord, body.suite_id)
+    if suite is None:
+        raise HTTPException(status_code=404, detail=f"Suite '{body.suite_id}' not found")
+
+    root = _resolve_project_root()
+    cmd, cwd = _build_command(suite.path, suite.layer, body.verbose, root)
+
+    # Enable auto-submission so results are recorded
+    env = {**os.environ, "PIXSIM_TEST_SUBMIT": "1"}
+
+    start = time.monotonic()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(cwd),
+            env=env,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=body.timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return ExecuteResult(
+                suite_id=body.suite_id,
+                status="error",
+                exit_code=-1,
+                output=f"Timed out after {body.timeout}s",
+                duration_ms=int((time.monotonic() - start) * 1000),
+            )
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        output = stdout.decode(errors="replace") if stdout else ""
+        exit_code = proc.returncode or 0
+        status = "pass" if exit_code == 0 else "fail"
+
+        return ExecuteResult(
+            suite_id=body.suite_id,
+            status=status,
+            exit_code=exit_code,
+            output=output[-50000:],  # cap output to ~50KB
+            duration_ms=duration_ms,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=f"Runner not found: {e}") from None

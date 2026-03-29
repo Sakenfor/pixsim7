@@ -26,6 +26,10 @@ export interface BridgeRequest {
   abort: AbortController;
   /** Server-assigned task ID — used for reconnect after page reload */
   taskId?: string;
+  /** Monotonic timestamp of last activity (creation, heartbeat, or reconnect) */
+  _lastActivity: number;
+  /** True after consume() has been called — prevents double-processing */
+  _consumed?: boolean;
 }
 
 export interface BridgeResult {
@@ -78,10 +82,19 @@ function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): 
   }
 }
 
+/**
+ * Seconds without any heartbeat before a streaming request is marked stale.
+ * The bridge sends keepalive heartbeats every 15s during active tasks regardless
+ * of whether the agent is using tools — so 90s means 6 consecutive missed
+ * keepalives, indicating a genuinely broken connection.
+ */
+const STALE_TIMEOUT_S = 90;
+
 class AssistantChatBridge {
   /** Active or recently completed requests, keyed by tab ID */
   private _requests = new Map<string, BridgeRequest>();
   private _listeners: Listener[] = [];
+  private _staleTimer: ReturnType<typeof setInterval> | null = null;
 
   // ── WebSocket state ──
   private _ws: WebSocket | null = null;
@@ -90,6 +103,29 @@ class AssistantChatBridge {
   private _wsPingTimer: ReturnType<typeof setInterval> | null = null;
   private _wsConnecting = false;
   private _wsToken: string | null = null;
+
+  constructor() {
+    this._staleTimer = setInterval(() => this._checkStale(), 15_000);
+  }
+
+  /** Mark requests as errored if no heartbeat/result has arrived for too long */
+  private _checkStale(): void {
+    const now = Date.now();
+    for (const [, req] of this._requests) {
+      if (req.status !== 'pending' && req.status !== 'streaming') continue;
+      const elapsed = (now - req._lastActivity) / 1000;
+      if (elapsed > STALE_TIMEOUT_S) {
+        req.status = 'error';
+        req.activity = null;
+        req.result = {
+          ok: false,
+          error: 'Request timed out — no response from agent. Try sending again.',
+          thinkingLog: req.thinkingLog,
+        };
+        this._notify();
+      }
+    }
+  }
 
   // ── WebSocket lifecycle ──
 
@@ -177,9 +213,10 @@ class AssistantChatBridge {
       this._wsReconnectTimer = null;
       const ok = await this._connectWs();
       if (ok) {
-        // Reattach to in-flight tasks
+        // Reattach to in-flight tasks (reset staleness timer)
         for (const [, req] of this._requests) {
           if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
+            req._lastActivity = Date.now();
             this._ws?.send(JSON.stringify({
               type: 'reconnect',
               tab_id: req.tabId,
@@ -213,6 +250,7 @@ class AssistantChatBridge {
         request.taskId = data.task_id as string;
       }
       request.status = 'streaming';
+      request._lastActivity = Date.now();
       request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
       appendHeartbeat(request.thinkingLog, action, detail);
       this._notify();
@@ -289,6 +327,7 @@ class AssistantChatBridge {
           if (event.type === 'heartbeat') {
             const action = (event.action as string) || '';
             const detail = (event.detail as string) || '';
+            request._lastActivity = Date.now();
             request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
             appendHeartbeat(request.thinkingLog, action, detail);
             this._notify();
@@ -329,7 +368,7 @@ class AssistantChatBridge {
     this._requests.get(tabId)?.abort.abort();
 
     const abort = new AbortController();
-    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort };
+    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort, _lastActivity: Date.now() };
     this._requests.set(tabId, request);
     this._notify();
 
@@ -371,14 +410,15 @@ class AssistantChatBridge {
     return this._requests.get(tabId);
   }
 
-  /** Clear a completed/errored request (after the component has consumed it) */
+  /** Mark a completed/errored request as consumed and return its result.
+   *  The request stays in the map (so other panel instances can see
+   *  the thinking log) until a new send() for this tab replaces it. */
   consume(tabId: string): BridgeResult | null {
     const req = this._requests.get(tabId);
-    if (!req || (req.status !== 'completed' && req.status !== 'error')) return null;
-    const result = req.result;
-    this._requests.delete(tabId);
-    this._notify();
-    return result;
+    if (!req || req._consumed) return null;
+    if (req.status !== 'completed' && req.status !== 'error') return null;
+    req._consumed = true;
+    return req.result;
   }
 
   /** Subscribe for React re-renders */

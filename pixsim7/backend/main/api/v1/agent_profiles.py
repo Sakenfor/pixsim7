@@ -7,19 +7,21 @@ and a conversation persona (system prompt, model, tool scope).
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile, AgentRun
-from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
+from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+from pixsim7.backend.main.shared.auth import decode_access_token
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -116,6 +118,27 @@ def _read_expiration_datetime(claims: dict) -> datetime:
 # ── Helpers ──────────────────────────────────────────────────────
 
 
+def _effective_user_id(principal: CurrentUser) -> Optional[int]:
+    return resolve_effective_user_id(principal)
+
+
+def _require_effective_user_id(principal: CurrentUser) -> int:
+    effective_uid = _effective_user_id(principal)
+    if effective_uid is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Operation requires a user-scoped principal",
+        )
+    return effective_uid
+
+
+def _profile_visible_to_principal(profile: AgentProfile, principal: CurrentUser) -> bool:
+    if profile.user_id == 0:
+        return True
+    effective_uid = _effective_user_id(principal)
+    return effective_uid is not None and profile.user_id == effective_uid
+
+
 def _to_response(p: AgentProfile) -> dict:
     return {
         "id": p.id,
@@ -155,12 +178,21 @@ async def list_agent_profiles(
     if status:
         conditions = [AgentProfile.status == status]
 
+    effective_uid = _effective_user_id(principal)
     if include_global:
-        conditions.append(
-            or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0)
-        )
+        if effective_uid is None:
+            conditions.append(AgentProfile.user_id == 0)
+        else:
+            conditions.append(
+                or_(AgentProfile.user_id == effective_uid, AgentProfile.user_id == 0)
+            )
     else:
-        conditions.append(AgentProfile.user_id == principal.id)
+        if effective_uid is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Listing non-global profiles requires a user-scoped principal",
+            )
+        conditions.append(AgentProfile.user_id == effective_uid)
 
     stmt = (
         select(AgentProfile)
@@ -220,12 +252,14 @@ async def agent_observability(
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
     # 1. Load active profiles (same filter as list endpoint)
-    # principal.user_id returns on_behalf_of for agent tokens, id for users
-    effective_uid = principal.user_id or principal.id
+    effective_uid = _effective_user_id(principal)
+    owner_filter = AgentProfile.user_id == 0
+    if effective_uid is not None:
+        owner_filter = or_(AgentProfile.user_id == effective_uid, AgentProfile.user_id == 0)
     stmt = (
         select(AgentProfile)
         .where(AgentProfile.status != "archived")
-        .where(or_(AgentProfile.user_id == effective_uid, AgentProfile.user_id == 0))
+        .where(owner_filter)
         .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
     )
     profiles = (await db.execute(stmt)).scalars().all()
@@ -279,7 +313,7 @@ async def agent_observability(
     # 3. Get live bridge agents
     try:
         from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
-        bridge_agents = remote_cmd_bridge.get_agents(user_id=principal.id)
+        bridge_agents = remote_cmd_bridge.get_agents(user_id=effective_uid)
     except Exception:
         bridge_agents = []
 
@@ -502,7 +536,7 @@ async def get_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
+    if not profile or not _profile_visible_to_principal(profile, principal):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
     return _to_response(profile)
 
@@ -526,10 +560,11 @@ async def create_agent_profile(
     if existing:
         raise HTTPException(status_code=409, detail=f"Agent profile already exists: {payload.id}")
 
+    effective_uid = _require_effective_user_id(principal)
     now = utcnow()
     profile = AgentProfile(
         id=payload.id,
-        user_id=principal.id,
+        user_id=effective_uid,
         label=payload.label,
         description=payload.description,
         icon=payload.icon,
@@ -572,7 +607,7 @@ async def update_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
+    if not profile or not _profile_visible_to_principal(profile, principal):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     if payload.status is not None and payload.status not in VALID_STATUSES:
@@ -613,7 +648,7 @@ async def delete_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
+    if not profile or not _profile_visible_to_principal(profile, principal):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     profile.status = "archived"
@@ -643,20 +678,22 @@ async def mint_profile_token(
 ):
     """Mint a token using this profile's stable agent_id."""
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
+    if not profile or not _profile_visible_to_principal(profile, principal):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     if profile.status != "active":
         raise HTTPException(status_code=400, detail=f"Profile is {profile.status}, cannot mint tokens")
 
+    effective_user_id = _effective_user_id(principal)
     run_id = str(uuid4())
-    token = create_agent_token(
+    token = mint_token(
+        TokenKind.AGENT,
         agent_id=profile.id,
         agent_type=profile.agent_type,
         scopes=profile.default_scopes,
-        on_behalf_of=principal.id if principal.id != 0 else None,
+        on_behalf_of=effective_user_id,
         run_id=run_id,
-        ttl_hours=hours,
+        ttl=timedelta(hours=hours),
     )
 
     claims = decode_access_token(token)
@@ -664,7 +701,6 @@ async def mint_profile_token(
     if not isinstance(token_id, str) or not token_id.strip():
         raise HTTPException(status_code=500, detail="minted_agent_token_missing_jti")
 
-    effective_user_id = principal.user_id
     if effective_user_id is None and settings.jwt_require_session:
         raise HTTPException(
             status_code=400,
@@ -719,43 +755,56 @@ async def resolve_agent_profile(
     db: AsyncSession,
     user_id: int,
     profile_id: Optional[str] = None,
+    agent_type: Optional[str] = None,
 ) -> Optional[AgentProfile]:
     """Resolve an agent profile by ID, falling back to defaults.
 
     Priority: explicit profile_id > user's default > global default > first available.
+    Optionally filters fallbacks by ``agent_type`` (e.g. ``claude``, ``codex``).
     """
     if profile_id:
         return await db.get(AgentProfile, profile_id)
 
+    normalized_agent_type = (agent_type or "").strip().lower() or None
+
     # User's default
-    stmt = select(AgentProfile).where(
+    user_default_conditions = [
         AgentProfile.user_id == user_id,
         AgentProfile.is_default == True,  # noqa: E712
         AgentProfile.status == "active",
-    )
+    ]
+    if normalized_agent_type:
+        user_default_conditions.append(func.lower(AgentProfile.agent_type) == normalized_agent_type)
+    stmt = select(AgentProfile).where(*user_default_conditions)
     result = await db.execute(stmt)
     p = result.scalar_one_or_none()
     if p:
         return p
 
     # Global default
-    stmt = select(AgentProfile).where(
+    global_default_conditions = [
         AgentProfile.user_id == 0,
         AgentProfile.is_default == True,  # noqa: E712
         AgentProfile.status == "active",
-    )
+    ]
+    if normalized_agent_type:
+        global_default_conditions.append(func.lower(AgentProfile.agent_type) == normalized_agent_type)
+    stmt = select(AgentProfile).where(*global_default_conditions)
     result = await db.execute(stmt)
     p = result.scalar_one_or_none()
     if p:
         return p
 
     # First available
+    first_available_conditions = [
+        or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0),
+        AgentProfile.status == "active",
+    ]
+    if normalized_agent_type:
+        first_available_conditions.append(func.lower(AgentProfile.agent_type) == normalized_agent_type)
     stmt = (
         select(AgentProfile)
-        .where(
-            or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0),
-            AgentProfile.status == "active",
-        )
+        .where(*first_available_conditions)
         .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
         .limit(1)
     )

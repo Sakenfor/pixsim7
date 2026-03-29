@@ -11,6 +11,7 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -20,6 +21,8 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Optional
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 try:
     import websockets
@@ -29,7 +32,14 @@ except ImportError:
     ws_connect = None  # type: ignore
 
 from pixsim7.client.agent_pool import AgentPool
+from pixsim7.client.claude_session import SessionState
 from pixsim7.client.log import client_log
+from pixsim7.client.token_manager import (
+    TokenFile,
+    build_mcp_env,
+    write_claude_mcp_config,
+    write_codex_mcp_config,
+)
 
 
 class Bridge:
@@ -49,11 +59,18 @@ class Bridge:
         self._bridge_client_id: Optional[str] = self._load_persistent_bridge_client_id()
         self._connected = False
         self._tasks_handled = 0
+        self._buffered_results: dict[str, dict] = {}  # task_id -> result msg (buffer for WS failures)
         self._mcp_config_path: Optional[str] = None
-        self._token_file_path: Optional[str] = None
+        self._token_file: Optional[TokenFile] = None
         self._system_prompt: Optional[str] = None
         # Cache: frozenset of focus contract IDs -> MCP config temp file path
         self._mcp_config_cache: dict[frozenset[str], str] = {}
+        # Per-focus Codex project workdirs with local .codex/config.toml
+        self._codex_workdir_cache: dict[tuple[str, tuple[str, ...]], str] = {}
+        self._mcp_scope: str = "dev"
+        self._mcp_python_runtime: Optional[tuple[str, list[str]]] = None
+        self._service_token: str = ""
+        self._repo_root: Path = Path(__file__).resolve().parents[2]
 
     @property
     def is_connected(self) -> bool:
@@ -175,7 +192,9 @@ class Bridge:
             # Determine scope: user-scoped bridge vs shared/dev bridge
             user_id = welcome.get("user_id")
             scope = "user" if user_id else "dev"
+            self._mcp_scope = scope
             service_token = welcome.get("service_token", "")
+            self._service_token = str(service_token or "")
 
             # Extract system prompt and generate MCP config
             server_system_prompt = welcome.get("system_prompt")
@@ -201,25 +220,47 @@ class Bridge:
 
             client_log(f"Connected as {self._bridge_client_id}")
             client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy, max {self._pool._max_sessions}")
+
+            # Replay any buffered results from tasks that completed while WS was dead
+            if self._buffered_results:
+                client_log(f"Replaying {len(self._buffered_results)} buffered result(s)...")
+                for task_id, result_msg in list(self._buffered_results.items()):
+                    try:
+                        await ws.send(json.dumps(result_msg))
+                        self._buffered_results.pop(task_id, None)
+                        client_log(f"[task:{task_id[:8]}] Replayed buffered result")
+                    except Exception as e:
+                        client_log(f"[task:{task_id[:8]}] Failed to replay result: {e}", error=True)
+                        break  # WS already broken again — stop trying
+
             client_log("Waiting for tasks...\n")
 
-            while True:
-                raw = await ws.recv()
-                msg = json.loads(raw)
-                msg_type = msg.get("type", "")
+            # Background task: send idle heartbeats for alive sessions
+            idle_hb_task = asyncio.create_task(self._idle_heartbeat_loop(ws))
+            try:
+                while True:
+                    raw = await ws.recv()
+                    msg = json.loads(raw)
+                    msg_type = msg.get("type", "")
 
-                if msg_type == "shutdown":
-                    client_log("Shutdown requested by server.")
-                    self._shutdown_requested = True
-                    return
+                    if msg_type == "shutdown":
+                        client_log("Shutdown requested by server.")
+                        self._shutdown_requested = True
+                        return
 
-                if msg_type == "task":
-                    # Fire-and-forget — don't block the message loop
-                    # so concurrent tasks can be dispatched to different pool sessions
-                    asyncio.ensure_future(self._handle_task(ws, msg))
+                    if msg_type == "task":
+                        # Fire-and-forget — don't block the message loop
+                        # so concurrent tasks can be dispatched to different pool sessions
+                        asyncio.ensure_future(self._handle_task(ws, msg))
 
-                elif msg_type == "ping":
-                    await ws.send(json.dumps({"type": "pong"}))
+                    elif msg_type == "ping":
+                        await ws.send(json.dumps({"type": "pong"}))
+            finally:
+                idle_hb_task.cancel()
+                try:
+                    await idle_hb_task
+                except asyncio.CancelledError:
+                    pass
 
     async def _send_pool_status(self, ws) -> None:
         """Send current pool session info to backend."""
@@ -232,6 +273,35 @@ class Bridge:
             "engines": [e.split("/")[-1].split("\\")[-1] for e in self._pool._engines],
             "sessions": [s.to_dict() for s in self._pool.sessions],
         }))
+
+    async def _idle_heartbeat_loop(self, ws) -> None:
+        """Send periodic heartbeats for alive idle sessions.
+
+        Keeps sessions visible in the backend's agent_session_registry
+        even when no tasks are being processed. Uses ``cli_session`` action
+        which is in _KEEPALIVE_ACTIONS — keeps sessions from expiring
+        without resetting last_real_activity (so idle detection still works).
+        """
+        try:
+            while True:
+                await asyncio.sleep(60)
+                for session in self._pool.sessions:
+                    if not session.is_alive or not session.bridge_session_id:
+                        continue
+                    if session.state == SessionState.BUSY:
+                        continue  # active tasks send their own heartbeats
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "heartbeat",
+                            "status": "active",
+                            "action": "cli_session",
+                            "detail": "idle",
+                            "bridge_session_id": session.bridge_session_id,
+                        }))
+                    except Exception:
+                        return  # connection lost
+        except asyncio.CancelledError:
+            return
 
     async def _report_models(self, ws) -> None:
         """Probe engines for available models and report to backend.
@@ -348,72 +418,50 @@ class Bridge:
         if not focus and self._mcp_config_path and os.path.exists(self._mcp_config_path):
             return self._mcp_config_path
 
-        # Derive HTTP base URL from WebSocket URL
-        api_url = self._url
-        for ws_scheme, http_scheme in [("wss://", "https://"), ("ws://", "http://")]:
-            if api_url.startswith(ws_scheme):
-                api_url = http_scheme + api_url[len(ws_scheme):]
-                break
-        # Strip path to get base URL (e.g. http://localhost:8000)
-        api_base = api_url.split("/api/")[0] if "/api/" in api_url else api_url
+        api_base = self._ws_url_to_http_base()
+        mcp_server_script = self._mcp_server_script_path()
+        if not self._mcp_python_runtime:
+            self._mcp_python_runtime = self._resolve_mcp_python()
+        mcp_python_cmd, mcp_python_prefix = self._mcp_python_runtime
 
-        # Path to the MCP server script
-        mcp_server_script = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "mcp_server.py"
-        )
-        mcp_python_cmd, mcp_python_prefix = self._resolve_mcp_python()
-
-        # Create a token file that the bridge updates per-request
-        # and the MCP server reads on each API call (fresh auth).
-        # Only create one token file (shared across configs).
-        if not self._token_file_path:
-            token_fd, token_file = tempfile.mkstemp(suffix=".token", prefix="pixsim-mcp-")
-            with os.fdopen(token_fd, "w") as f:
-                f.write(token)  # Seed with the bridge service token
-            self._token_file_path = token_file
-
-        # PIXSIM_SCOPE: focused configs get comma-separated contract IDs,
-        # default config gets audience scope ("user"/"dev").
+        # Shared token file — created once, reused across configs
+        if not self._token_file:
+            self._token_file = TokenFile.create(seed_token=token, prefix="pixsim-mcp")
         mcp_scope = ",".join(focus) if focus else scope
 
-        config = {
-            "mcpServers": {
-                "pixsim": {
-                    "command": mcp_python_cmd,
-                    "args": [*mcp_python_prefix, mcp_server_script],
-                    "env": {
-                        "PIXSIM_API_URL": api_base,
-                        "PIXSIM_API_TOKEN": token,
-                        "PIXSIM_TOKEN_FILE": self._token_file_path,
-                        "PIXSIM_SCOPE": mcp_scope,
-                        "PYTHONIOENCODING": "utf-8",
-                    },
-                }
-            }
-        }
-
-        # Write to temp file (persists for process lifetime)
-        fd, path = tempfile.mkstemp(suffix=".json", prefix="pixsim-mcp-")
-        with os.fdopen(fd, "w") as f:
-            json.dump(config, f, indent=2)
+        env = build_mcp_env(
+            api_base=api_base,
+            token_file=self._token_file,
+            scope=mcp_scope,
+            api_token=token,
+        )
+        path = write_claude_mcp_config(
+            env,
+            python_cmd=mcp_python_cmd,
+            python_prefix=mcp_python_prefix,
+            mcp_server_script=mcp_server_script,
+        )
 
         if focus:
             self._mcp_config_cache[frozenset(focus)] = path
             client_log(f"MCP config (focused {mcp_scope}): {path}")
         else:
-            # Also register with Codex's global MCP config (if codex is available)
-            self._ensure_codex_mcp(
-                mcp_server_script,
-                api_base,
-                token,
-                self._token_file_path,
-                scope,
-                mcp_python_cmd=mcp_python_cmd,
-                mcp_python_prefix=mcp_python_prefix,
-            )
             self._mcp_config_path = path
 
         return path
+
+    def _ws_url_to_http_base(self) -> str:
+        """Derive HTTP base URL from WebSocket URL."""
+        api_url = self._url
+        for ws_scheme, http_scheme in [("wss://", "https://"), ("ws://", "http://")]:
+            if api_url.startswith(ws_scheme):
+                api_url = http_scheme + api_url[len(ws_scheme):]
+                break
+        return api_url.split("/api/")[0] if "/api/" in api_url else api_url
+
+    @staticmethod
+    def _mcp_server_script_path() -> str:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")
 
     @staticmethod
     def _resolve_mcp_python() -> tuple[str, list[str]]:
@@ -470,7 +518,88 @@ class Bridge:
         return sys.executable, []
 
     @staticmethod
-    def _ensure_codex_mcp(
+    def _normalize_contract_id(value: str) -> str:
+        return str(value or "").strip().replace("_", ".").lower()
+
+    def _fetch_contract_tool_names(
+        self,
+        *,
+        api_base: str,
+        token: str,
+        scope: str,
+    ) -> list[dict] | None:
+        """Fetch contracts index including precomputed tool names."""
+        params: dict[str, str] = {}
+        if scope in {"user", "dev"}:
+            params["audience"] = scope
+        query = f"?{urlparse.urlencode(params)}" if params else ""
+        url = f"{api_base.rstrip('/')}/api/v1/meta/contracts{query}"
+        headers = {"Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        req = urlrequest.Request(url=url, headers=headers, method="GET")
+        try:
+            with urlrequest.urlopen(req, timeout=8) as resp:
+                if resp.status != 200:
+                    client_log(
+                        f"Failed to fetch contracts for Codex focus: HTTP {resp.status}",
+                        error=True,
+                    )
+                    return None
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            client_log(f"Failed to fetch contracts for Codex focus: {e}", error=True)
+            return None
+
+        contracts = payload.get("contracts", [])
+        return contracts if isinstance(contracts, list) else None
+
+    def _resolve_codex_enabled_tools(
+        self,
+        *,
+        api_base: str,
+        token: str,
+        scope: str,
+        focus: list[str],
+    ) -> list[str] | None:
+        """Resolve focused enabled_tools values from contract metadata."""
+        contracts = self._fetch_contract_tool_names(api_base=api_base, token=token, scope=scope)
+        if contracts is None:
+            return None
+
+        include_contract_ids = {
+            self._normalize_contract_id(contract_id)
+            for contract_id in focus
+            if str(contract_id or "").strip()
+        }
+        include_contract_ids.update({"plans.management", "project.files"})
+
+        seen: set[str] = set()
+        enabled: list[str] = []
+
+        def add_tool(name: str) -> None:
+            key = str(name or "").strip()
+            if not key or key in seen:
+                return
+            seen.add(key)
+            enabled.append(key)
+
+        for builtin in ("register_session", "log_work", "call_api"):
+            add_tool(builtin)
+
+        for contract in contracts:
+            contract_id = self._normalize_contract_id(contract.get("id", ""))
+            if contract_id not in include_contract_ids:
+                continue
+            for tool_name in contract.get("tool_names", []):
+                if isinstance(tool_name, str):
+                    add_tool(tool_name)
+
+        return enabled
+
+    def _ensure_codex_project_workdir(
+        self,
         mcp_server_script: str,
         api_base: str,
         token: str,
@@ -479,50 +608,64 @@ class Bridge:
         *,
         mcp_python_cmd: str,
         mcp_python_prefix: list[str],
-    ) -> None:
-        """Register pixsim MCP server with Codex (idempotent).
+        focus: list[str] | None = None,
+    ) -> str | None:
+        """Write focus-scoped .codex/config.toml and return launch workdir.
 
-        Uses `codex mcp` CLI for reliable config management, then patches
-        config.toml for timeout settings the CLI doesn't expose.
+        This avoids touching global ~/.codex/config.toml. Each focus set gets
+        an isolated workdir under the repo with its own project config layer.
         """
-        codex_bin = shutil.which("codex")
-        if not codex_bin:
-            return
+        normalized_focus = tuple(
+            sorted({
+                self._normalize_contract_id(contract_id)
+                for contract_id in (focus or [])
+                if str(contract_id or "").strip()
+            })
+        )
+        cache_key = (scope, normalized_focus)
+
+        enabled_tools: list[str] | None = None
+        if focus is not None:
+            enabled_tools = self._resolve_codex_enabled_tools(
+                api_base=api_base,
+                token=token,
+                scope=scope,
+                focus=focus,
+            )
+            if enabled_tools is None:
+                return None
+
+        cached_workdir = self._codex_workdir_cache.get(cache_key)
+        if cached_workdir:
+            config_path = Path(cached_workdir) / ".codex" / "config.toml"
+            if config_path.exists():
+                return cached_workdir
 
         try:
-            # Remove + re-add via CLI (handles TOML correctly)
-            sp.run([codex_bin, "mcp", "remove", "pixsim"], capture_output=True, timeout=5)
-            result = sp.run(
-                [
-                    codex_bin, "mcp", "add", "pixsim",
-                    "--env", f"PIXSIM_API_URL={api_base}",
-                    "--env", f"PIXSIM_API_TOKEN={token}",
-                    "--env", f"PIXSIM_TOKEN_FILE={token_file.replace(chr(92), '/')}",
-                    "--env", f"PIXSIM_SCOPE={scope}",
-                    "--env", "PYTHONIOENCODING=utf-8",
-                    "--", mcp_python_cmd, *mcp_python_prefix, mcp_server_script,
-                ],
-                capture_output=True, timeout=10,
+            focus_seed = ",".join(normalized_focus) if normalized_focus else "all"
+            focus_hash = hashlib.sha1(f"{scope}|{focus_seed}".encode("utf-8")).hexdigest()[:12]
+            workdir = self._repo_root / ".pixsim-codex" / f"{scope}-{focus_hash}"
+
+            env = build_mcp_env(
+                api_base=api_base,
+                token_file=token_file,
+                scope=scope,
+                api_token=token,
             )
-            if result.returncode != 0:
-                client_log(f"codex mcp add failed: {result.stderr.decode()[:200]}", error=True)
-                return
-
-            # Patch config.toml to add timeout settings (CLI doesn't support these)
-            from pathlib import Path
-            codex_config = Path.home() / ".codex" / "config.toml"
-            if codex_config.exists():
-                content = codex_config.read_text()
-                if "startup_timeout_sec" not in content:
-                    content = content.replace(
-                        "[mcp_servers.pixsim.env]",
-                        "startup_timeout_sec = 30\ntool_timeout_sec = 60\n\n[mcp_servers.pixsim.env]",
-                    )
-                    codex_config.write_text(content)
-
-            client_log("Registered pixsim MCP server with Codex")
+            config_path = write_codex_mcp_config(
+                env,
+                python_cmd=mcp_python_cmd,
+                python_prefix=mcp_python_prefix,
+                mcp_server_script=mcp_server_script,
+                enabled_tools=enabled_tools,
+                workdir=str(workdir),
+            )
+            client_log(f"Prepared Codex project MCP config: {config_path}")
+            self._codex_workdir_cache[cache_key] = str(workdir)
+            return str(workdir)
         except Exception as e:
-            client_log(f"Failed to register Codex MCP: {e}", error=True)
+            client_log(f"Failed to prepare Codex MCP project config: {e}", error=True)
+            return None
 
     @staticmethod
     def _extract_task_meta(msg: dict) -> dict:
@@ -576,19 +719,34 @@ class Bridge:
         meta = self._extract_task_meta(msg)
         client_log(f"[task:{task_id[:8]}] {task_type}: engine={meta['engine']} model={meta['model']} prompt={prompt[:60]}...")
 
-        # Write per-request user token so MCP server uses fresh auth
+        # Per-request user token — passed to pool.send_message() which writes
+        # it to the target session's isolated token file (no shared file race)
         user_token = msg.get("user_token")
-        if user_token and self._token_file_path:
-            try:
-                with open(self._token_file_path, "w") as f:
-                    f.write(user_token)
-            except OSError:
-                pass
 
-        # Per-session MCP config from focus areas
-        mcp_config_override = (
-            self._ensure_mcp_config(focus=meta["focus"]) if meta["focus"] else None
-        )
+        # Focus handling:
+        # - Claude: per-session temp MCP config
+        # - Codex: project-local .codex/config.toml selected by workdir
+        mcp_config_override = None
+        codex_workdir = None
+        if meta["engine"] == "codex":
+            if self._token_file:
+                api_base = self._ws_url_to_http_base()
+                mcp_server_script = self._mcp_server_script_path()
+                if not self._mcp_python_runtime:
+                    self._mcp_python_runtime = self._resolve_mcp_python()
+                mcp_python_cmd, mcp_python_prefix = self._mcp_python_runtime
+                codex_workdir = self._ensure_codex_project_workdir(
+                    mcp_server_script,
+                    api_base,
+                    str(user_token or self._service_token or ""),
+                    self._token_file.path,
+                    self._mcp_scope,
+                    mcp_python_cmd=mcp_python_cmd,
+                    mcp_python_prefix=mcp_python_prefix,
+                    focus=meta["focus"],
+                )
+        elif meta["focus"]:
+            mcp_config_override = self._ensure_mcp_config(focus=meta["focus"])
 
         # On first message of a new conversation, inject system context + persona.
         # Resumed conversations already have these in history.
@@ -610,6 +768,8 @@ class Bridge:
         # Report busy (use original user text, not persona-prefixed prompt)
         user_text = msg.get("instruction") or msg.get("prompt", "")
         hb_base: dict[str, object] = {"type": "heartbeat", "task_id": task_id, "status": "active"}
+        if meta["bridge_session_id"]:
+            hb_base["bridge_session_id"] = meta["bridge_session_id"]
         if meta["plan_id"]:
             hb_base["plan_id"] = meta["plan_id"]
         if meta["task_kind"]:
@@ -681,6 +841,8 @@ class Bridge:
                     session_policy=meta["session_policy"],
                     scope_key=meta["scope_key"],
                     mcp_config_path=mcp_config_override,
+                    workdir=codex_workdir,
+                    user_token=user_token,
                 )
                 self._tasks_handled += 1
 
@@ -698,7 +860,13 @@ class Bridge:
                 }
                 if bridge_session_id:
                     result_msg["bridge_session_id"] = bridge_session_id
-                await ws.send(json.dumps(result_msg))
+                try:
+                    await ws.send(json.dumps(result_msg))
+                except Exception:
+                    # WS dead — buffer result for replay on reconnect
+                    self._buffered_results[task_id] = result_msg
+                    client_log(f"[task:{task_id[:8]}] WS dead, buffered result for replay ({len(response)} chars)")
+                    return
 
                 # Report updated pool status (new sessions may have spawned)
                 await self._send_pool_status(ws)
@@ -712,11 +880,17 @@ class Bridge:
 
         except Exception as e:
             client_log(f"[task:{task_id[:8]}] Error: {e}", error=True)
-            await ws.send(json.dumps({
+            error_msg = {
                 "type": "error",
                 "task_id": task_id,
                 "error": str(e),
-            }))
+            }
+            try:
+                await ws.send(json.dumps(error_msg))
+            except Exception:
+                # WS dead — buffer error for replay on reconnect
+                self._buffered_results[task_id] = error_msg
+                client_log(f"[task:{task_id[:8]}] WS dead, buffered error for replay")
 
     @staticmethod
     def _read_local_images(image_paths: list[dict]) -> list[dict]:

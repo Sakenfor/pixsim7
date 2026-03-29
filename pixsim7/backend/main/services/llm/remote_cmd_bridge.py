@@ -183,12 +183,18 @@ class RemoteCommandBridge:
                 bridge_id=agent.bridge_id,
                 tasks_completed=agent.tasks_completed,
             )
-            # Fail all pending tasks for this agent
+            # Fail all pending tasks for this agent and cache errors
+            # so frontend reconnect can retrieve the error status
             for tid in list(agent.current_task_ids):
+                self._completed_results[tid] = {
+                    "error": "Remote agent disconnected",
+                    "ok": False,
+                }
                 future = self._pending_tasks.pop(tid, None)
                 if future and not future.done():
                     future.set_exception(ConnectionError("Remote agent disconnected"))
                 self._active_tasks.pop(tid, None)
+            self._gc_completed()
 
     def get_available_agent(self, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
         """Get a connected agent with remaining capacity.
@@ -711,44 +717,17 @@ def _mint_bridge_token(user_id: Optional[int], hours: int = 24) -> Optional[str]
     and skips session-revocation checks.
     """
     from datetime import timedelta
-    from pixsim7.backend.main.shared.auth import create_access_token
+    from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
 
-    ttl = timedelta(hours=hours)
-
-    if user_id is not None:
-        return create_access_token(
-            data={
-                "sub": str(user_id),
-                "purpose": "bridge",
-                "role": "user",
-                "is_admin": False,
-                "permissions": [],
-                "is_active": True,
-            },
-            expires_delta=ttl,
-        )
-    else:
-        # Shared bridge: admin-level service token.
-        # sub=0 signals a service identity (no real user row).
-        return create_access_token(
-            data={
-                "sub": "0",
-                "purpose": "bridge",
-                "role": "admin",
-                "is_admin": True,
-                "permissions": [],
-                "is_active": True,
-            },
-            expires_delta=ttl,
-        )
+    return mint_token(TokenKind.BRIDGE, user_id=user_id, ttl=timedelta(hours=hours))
 
 
 # Global singleton
 remote_cmd_bridge = RemoteCommandBridge()
 
 
-# Re-export from shared contract (backward compat for existing importers)
-from pixsim7.backend.main.shared.agent_dispatch import (  # noqa: F401
+# Re-export from canonical location (backward compat for existing importers)
+from pixsim7.backend.main.services.meta.agent_dispatch import (  # noqa: F401
     TASK_MESSAGE,
     TASK_EDIT_PROMPT,
     TASK_EMBED_TEXTS,

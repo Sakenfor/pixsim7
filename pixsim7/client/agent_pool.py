@@ -11,7 +11,10 @@ Works with any agent command that speaks the stream-json protocol
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import shutil
+import tempfile
 from typing import Callable, Dict, List, Optional
 
 from pixsim7.client.claude_session import AgentCmdSession, SessionState
@@ -129,10 +132,57 @@ class AgentPool:
         oldest = min(idle, key=lambda s: s.stats.last_activity or s.stats.started_at or s.stats.last_activity)
         client_log(f"[pool] Evicting idle session {oldest.session_id} (bridge: {oldest.bridge_session_id})")
         await oldest.stop()
+        self._cleanup_session_files(oldest)
         # Remove from pool and clear stale indexes.
         self._sessions.pop(oldest.session_id, None)
         self._drop_indexes_for_session(oldest.session_id)
         return True
+
+    @staticmethod
+    def _cleanup_session_files(session: AgentCmdSession) -> None:
+        """Remove per-session temp files (token file + MCP config)."""
+        for path in (session.token_file_path, session._mcp_config_path):
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    def _create_session_mcp_config(self, pool_key: str, base_config_path: str | None = None) -> tuple[str | None, str | None]:
+        """Create a per-session token file + MCP config.
+
+        Clones the base MCP config and overrides PIXSIM_TOKEN_FILE to point
+        to a session-specific token file. Seeds the file from the base config's
+        token file (service token) so MCP tools work immediately.
+        Returns (token_file_path, mcp_config_path).
+        If no base config exists, returns (None, None).
+        """
+        from pixsim7.client.token_manager import TokenFile, clone_token_for_session, clone_mcp_config_for_session
+
+        base = base_config_path or self._mcp_config_path
+        if not base or not os.path.exists(base):
+            return None, None
+
+        # Seed per-session token file from base config's token file
+        seed_source = ""
+        try:
+            with open(base) as f:
+                config = json.load(f)
+            for server in config.get("mcpServers", {}).values():
+                env = server.get("env", {})
+                seed_source = env.get("PIXSIM_TOKEN_FILE", "") or env.get("PIXSIM_API_TOKEN", "")
+                if seed_source:
+                    break
+        except (json.JSONDecodeError, OSError):
+            return None, None
+
+        session_tf = clone_token_for_session(seed_source, session_id=pool_key)
+        cloned_config = clone_mcp_config_for_session(base, session_tf)
+        if not cloned_config:
+            session_tf.cleanup()
+            return None, None
+
+        return session_tf.path, cloned_config
 
     async def _spawn_session(
         self,
@@ -141,6 +191,7 @@ class AgentPool:
         model: str | None = None,
         reasoning_effort: str | None = None,
         mcp_config_path: str | None = None,
+        workdir: str | None = None,
     ) -> AgentCmdSession:
         """Spawn a new on-demand session (for a non-default engine or resume)."""
         if len(self._sessions) >= self._max_sessions:
@@ -156,19 +207,26 @@ class AgentPool:
         if pool_key in self._sessions:
             pool_key = f"{pool_key}-{self._next_dynamic_id}"
 
+        # Per-session token file + MCP config (isolates concurrent sessions)
+        token_file, session_mcp_config = self._create_session_mcp_config(
+            pool_key, base_config_path=mcp_config_path,
+        )
+
         session = AgentCmdSession(
             session_id=pool_key,
             extra_args=self._extra_args,
             command=command,
             system_prompt=self._system_prompt,
-            mcp_config_path=mcp_config_path or self._mcp_config_path,
+            mcp_config_path=session_mcp_config or mcp_config_path or self._mcp_config_path,
             resume_session_id=resume_session_id,
             model=model,
             reasoning_effort=reasoning_effort,
+            workdir=workdir,
+            token_file_path=token_file,
         )
         self._sessions[pool_key] = session
 
-        client_log(f"[pool] Spawning {pool_key} ({command})")
+        client_log(f"[pool] Spawning {pool_key} ({command})" + (f" token_file={token_file}" if token_file else ""))
         if not await session.start():
             err = session.last_error or "unknown error"
             self._sessions.pop(pool_key, None)
@@ -204,6 +262,7 @@ class AgentPool:
         model: str | None = None,
         reasoning_effort: str | None = None,
         mcp_config_path: str | None = None,
+        workdir: str | None = None,
     ) -> AgentCmdSession:
         """Find or create a scoped session bound to ``scope_key``."""
         existing = self._find_by_scope_key(scope_key)
@@ -217,9 +276,27 @@ class AgentPool:
             model=model,
             reasoning_effort=reasoning_effort,
             mcp_config_path=mcp_config_path,
+            workdir=workdir,
         )
         self._scope_key_index[scope_key] = session.session_id
         return session
+
+    async def _ensure_session_workdir(
+        self,
+        session: AgentCmdSession,
+        *,
+        workdir: str | None,
+    ) -> None:
+        """Apply a workdir override to an existing ready session."""
+        if not workdir or session._workdir == workdir:
+            return
+        if session.state == SessionState.BUSY:
+            raise RuntimeError(f"Session {session.session_id} is busy")
+        session._workdir = workdir
+        if session.is_alive:
+            client_log(f"[{session.session_id}] Restarting with updated workdir")
+            await session.restart()
+            self._update_index(session)
 
     async def configure(
         self,
@@ -296,6 +373,8 @@ class AgentPool:
         session_policy: str | None = None,
         scope_key: str | None = None,
         mcp_config_path: str | None = None,
+        workdir: str | None = None,
+        user_token: str | None = None,
     ) -> tuple[str, str]:
         """
         Route a message to a session.
@@ -305,6 +384,7 @@ class AgentPool:
         Engine overrides which command to use (e.g. "codex" instead of default "claude").
         Model overrides the default model for new sessions.
         mcp_config_path overrides the pool-wide MCP config for newly spawned sessions.
+        workdir overrides subprocess cwd for session start (used for project-local Codex config layers).
         Returns (session_id, response).
         """
         command = engine or self._command
@@ -316,8 +396,15 @@ class AgentPool:
 
         if bridge_session_id:
             session = await self._get_or_create_for_session_id(bridge_session_id, command=command)
+            await self._ensure_session_workdir(session, workdir=workdir)
         elif policy == "ephemeral":
-            session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort, mcp_config_path=mcp_config_path)
+            session = await self._spawn_session(
+                command=command,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                mcp_config_path=mcp_config_path,
+                workdir=workdir,
+            )
             ephemeral = True
         elif policy == "scoped" and scope:
             session = await self._get_or_create_for_scope_key(
@@ -326,18 +413,35 @@ class AgentPool:
                 model=model,
                 reasoning_effort=reasoning_effort,
                 mcp_config_path=mcp_config_path,
+                workdir=workdir,
             )
+            await self._ensure_session_workdir(session, workdir=workdir)
         else:
             # When a specific model or reasoning effort is requested, spawn a dedicated session
             if model or reasoning_effort:
-                session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort, mcp_config_path=mcp_config_path)
+                session = await self._spawn_session(
+                    command=command,
+                    model=model,
+                    reasoning_effort=reasoning_effort,
+                    mcp_config_path=mcp_config_path,
+                    workdir=workdir,
+                )
             else:
                 # Match engine: prefer an existing ready session, otherwise spawn one
                 session = self.get_available(command=command)
                 if not session:
-                    session = await self._spawn_session(command=command)
+                    session = await self._spawn_session(command=command, workdir=workdir)
+                else:
+                    await self._ensure_session_workdir(session, workdir=workdir)
 
         try:
+            # Write per-request token to this session's token file (isolated from other sessions)
+            if user_token and session.token_file_path:
+                try:
+                    with open(session.token_file_path, "w") as f:
+                        f.write(user_token)
+                except OSError:
+                    pass
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
@@ -385,6 +489,7 @@ class AgentPool:
                         if idle_secs > IDLE_EVICT_SECONDS:
                             client_log(f"[health] Evicting idle session {session.session_id} ({idle_secs:.0f}s idle)")
                             await session.stop()
+                            self._cleanup_session_files(session)
                             self._sessions.pop(session.session_id, None)
                             self._drop_indexes_for_session(session.session_id)
 

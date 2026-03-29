@@ -23,6 +23,7 @@ from sqlalchemy import select, func, distinct, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_current_user_optional, get_database
+from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
 from pixsim7.backend.main.domain.docs.models import AgentActivityLog
 from pixsim7.backend.main.services.meta.contract_registry import (
     meta_contract_registry,
@@ -1017,7 +1018,20 @@ class CliTokenResponse(BaseModel):
     expires_in_hours: int
     scope: str
     agent_id: Optional[str] = None
-    command: str = Field(description="Ready-to-paste Claude CLI command")
+    command: str = Field(description="Ready-to-paste CLI command")
+
+
+def _normalize_agent_type_hint(value: Optional[str]) -> Optional[str]:
+    token = (value or "").strip().lower()
+    if not token:
+        return None
+    if token.startswith("claude"):
+        return "claude"
+    if token.startswith("codex"):
+        return "codex"
+    if token in {"cli", "agent", "unknown"}:
+        return None
+    return token
 
 
 @router.post("/agents/cli-token", response_model=CliTokenResponse)
@@ -1026,24 +1040,39 @@ async def generate_cli_token(
     db: AsyncSession = Depends(get_database),
     scope: str = Query("dev", description="Tool scope: 'user' or 'dev'"),
     hours: int = Query(24, ge=1, le=168, description="Token lifetime in hours (max 7 days)"),
+    agent_type: str = Query(
+        "claude",
+        description="Provider/engine hint for profile defaults (e.g. claude, codex).",
+    ),
 ) -> CliTokenResponse:
-    """Generate a CLI agent token for standalone Claude use with MCP tools.
+    """Generate a CLI agent token for standalone CLI use with MCP tools.
 
     Mints a proper agent token with agent_id + on_behalf_of so all API
     calls made by the CLI agent are distinguishable from human actions.
     """
     import secrets
     from pixsim7.backend.main.domain import UserSession
-    from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
+    from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+    from datetime import timedelta
+    from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+    from pixsim7.backend.main.shared.auth import decode_access_token
 
-    agent_id = f"cli-{secrets.token_hex(4)}"
+    normalized_agent_type = _normalize_agent_type_hint(agent_type) or "claude"
     effective_user_id = user.user_id
+    resolved_profile = await resolve_agent_profile(
+        db,
+        effective_user_id or 0,
+        None,
+        agent_type=normalized_agent_type,
+    )
+    agent_id = resolved_profile.id if resolved_profile else f"cli-{secrets.token_hex(4)}"
 
-    token = create_agent_token(
+    token = mint_token(
+        TokenKind.AGENT,
         agent_id=agent_id,
-        agent_type="cli",
+        agent_type=normalized_agent_type,
         on_behalf_of=effective_user_id,
-        ttl_hours=hours,
+        ttl=timedelta(hours=hours),
     )
 
     claims = decode_access_token(token)
@@ -1072,16 +1101,19 @@ async def generate_cli_token(
                 token_id=token_id,
                 expires_at=expires_at,
                 client_type="agent_token",
-                client_name=f"agent:{agent_id}",
-                user_agent="agent/bridge",
+                client_name=f"agent:{normalized_agent_type}:{agent_id}",
+                user_agent=f"agent/{normalized_agent_type}",
             )
         )
         await db.commit()
 
-    command = (
-        f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '
-        f"claude --mcp-config pixsim-mcp.json"
-    )
+    if normalized_agent_type == "codex":
+        command = f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" codex'
+    else:
+        command = (
+            f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '
+            f"claude --mcp-config pixsim-mcp.json"
+        )
 
     return CliTokenResponse(
         token=token,
@@ -1136,8 +1168,8 @@ async def start_server_bridge(
     # Mint a bridge token so the subprocess connects as this user
     if user_id is not None:
         try:
-            from pixsim7.backend.main.services.llm.remote_cmd_bridge import _mint_bridge_token
-            bridge_token = _mint_bridge_token(user_id)
+            from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token as _mint
+            bridge_token = _mint(TokenKind.BRIDGE, user_id=user_id)
         except Exception:
             pass
 
@@ -1273,6 +1305,7 @@ async def _resolve_send_context(
 ) -> _SendContext:
     """Auth, profile, custom instructions, and provider — called once per send."""
     from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+    from pixsim7.backend.main.shared.actor import RequestPrincipal
 
     user_id: Optional[int] = None
     raw_token: Optional[str] = None
@@ -1280,8 +1313,12 @@ async def _resolve_send_context(
         try:
             raw_token = _extract_bearer_token(authorization)
             auth_service = get_auth_service()
-            user = await auth_service.verify_token(raw_token)
-            user_id = user.id if user else None
+            payload_claims = await auth_service.verify_token_claims(
+                raw_token,
+                update_last_used=True,
+            )
+            principal = RequestPrincipal.from_jwt_payload(payload_claims)
+            user_id = principal.user_id
         except Exception:
             pass
 
@@ -1411,6 +1448,45 @@ class RegisterSessionRequest(BaseModel):
     last_plan_id: Optional[str] = Field(None, description="Plan ID being worked on")
 
 
+def _is_generic_cli_profile(profile_id: Optional[str]) -> bool:
+    return isinstance(profile_id, str) and profile_id.strip().lower().startswith("cli-")
+
+
+async def _resolve_registration_profile_id(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    profile_id: Optional[str],
+    engine: Optional[str],
+    principal_agent_type: Optional[str],
+) -> Optional[str]:
+    requested = (profile_id or "").strip() or None
+    # Explicit non-generic profile IDs are treated as authoritative.
+    if requested and not _is_generic_cli_profile(requested):
+        return requested
+
+    agent_type_hint = _normalize_agent_type_hint(engine) or _normalize_agent_type_hint(principal_agent_type)
+    if not agent_type_hint:
+        return requested
+
+    try:
+        from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+
+        resolved = await resolve_agent_profile(
+            db,
+            user_id,
+            None,
+            agent_type=agent_type_hint,
+        )
+        if resolved:
+            return resolved.id
+    except Exception:
+        pass
+
+    # Preserve the original value if fallback resolution fails.
+    return requested
+
+
 @router.post("/agents/register-chat-session")
 async def register_chat_session(
     payload: RegisterSessionRequest,
@@ -1431,12 +1507,20 @@ async def register_chat_session(
     existing = await db.get(ChatSession, payload.session_id)
     created = existing is None
 
+    resolved_profile_id = await _resolve_registration_profile_id(
+        db,
+        user_id=user_id,
+        profile_id=payload.profile_id,
+        engine=payload.engine,
+        principal_agent_type=(getattr(_user, "agent_type", None) if _user else None),
+    )
+
     await _upsert_chat_session(
         session_id=payload.session_id,
         user_id=user_id,
         engine=payload.engine,
         label=payload.label or "CLI session",
-        profile_id=payload.profile_id,
+        profile_id=resolved_profile_id,
         scope_key=payload.scope_key,
         last_plan_id=payload.last_plan_id,
         source=payload.source,
@@ -1523,17 +1607,8 @@ async def get_active_task(
     Returns the active task status or completed result if available.
     """
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
-    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
 
-    user_id: Optional[int] = None
-    if authorization:
-        try:
-            raw_token = _extract_bearer_token(authorization)
-            auth_service = get_auth_service()
-            user = await auth_service.verify_token(raw_token)
-            user_id = user.id if user else None
-        except Exception:
-            pass
+    user_id = await _resolve_effective_user_id_from_authorization(authorization)
 
     # Check for active (in-progress) task
     active = remote_cmd_bridge.get_active_task_for_user(user_id)
@@ -1551,11 +1626,7 @@ async def get_task_result(task_id: str) -> Dict[str, Any]:
     result = remote_cmd_bridge.pop_completed_result(task_id)
     if result:
         session_id = result.get("bridge_session_id")
-        response_text = (
-            result.get("edited_prompt")
-            or result.get("response")
-            or result.get("output", "")
-        )
+        response_text = extract_response_text(result)
         return {
             "status": "completed",
             "ok": True,
@@ -1648,7 +1719,7 @@ async def send_message_to_agent_stream(
         # Bridges exist but all at max capacity — pick least-loaded
         agent = min(agents, key=lambda a: a.active_tasks)
 
-    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as _build_payload
+    from pixsim7.backend.main.services.meta.agent_dispatch import build_task_payload as _build_payload
     effective_token = payload.user_token or (ctx.raw_token if ctx.raw_token and ctx.user_id is not None else None)
     task_payload = _build_payload(
         prompt=payload.message,
@@ -1691,11 +1762,7 @@ async def send_message_to_agent_stream(
                     yield f"data: {_json.dumps({'type': 'heartbeat', 'action': event.get('action', ''), 'detail': event.get('detail', '')})}\n\n"
                 elif event.get("type") == "result":
                     duration_ms = int((time.monotonic() - start) * 1000)
-                    response_text = (
-                        event.get("edited_prompt")
-                        or event.get("response")
-                        or event.get("output", "")
-                    )
+                    response_text = extract_response_text(event)
                     cli_session_id = event.get("bridge_session_id")
                     if cli_session_id:
                         import asyncio as _asyncio
@@ -1898,7 +1965,7 @@ async def _send_via_bridge(
             )
         return SendMessageResponse(ok=False, bridge_client_id="", error="All agents are busy")
 
-    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
+    from pixsim7.backend.main.services.meta.agent_dispatch import build_task_payload as build_bridge_task_payload
     effective_token = payload.user_token or (raw_token if raw_token and user_id is not None else None)
     task_payload = build_bridge_task_payload(
         prompt=payload.message,
@@ -1937,11 +2004,7 @@ async def _send_via_bridge(
             user_id=user_id,
         )
         duration_ms = int((time.monotonic() - start) * 1000)
-        response_text = (
-            result.get("edited_prompt")
-            or result.get("response")
-            or result.get("output", "")
-        )
+        response_text = extract_response_text(result)
         # Track session for /resume
         cli_session_id = result.get("bridge_session_id")
         if cli_session_id:
@@ -2233,3 +2296,5 @@ def _sync_contract_versions() -> None:
     meta_contract_registry.update_version(
         "testing.catalog", TESTING_CONTRACT_VERSION
     )
+
+

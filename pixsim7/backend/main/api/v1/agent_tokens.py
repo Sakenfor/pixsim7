@@ -6,7 +6,7 @@ from regular user tokens.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_database
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
-from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
+from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
+from pixsim7.backend.main.shared.auth import decode_access_token
 from pixsim7.backend.main.shared.config import settings
 
 router = APIRouter(prefix="/dev/agent-tokens", tags=["dev", "agent-tokens"])
@@ -55,14 +56,15 @@ async def mint_agent_token(
     db: AsyncSession = Depends(get_database),
 ):
     """Mint a short-lived agent token. Admin only."""
-    token = create_agent_token(
+    token = mint_token(
+        TokenKind.AGENT,
         agent_id=payload.agent_id,
         agent_type=payload.agent_type,
         scopes=payload.scopes,
         on_behalf_of=payload.on_behalf_of,
         run_id=payload.run_id,
         plan_id=payload.plan_id,
-        ttl_hours=payload.ttl_hours,
+        ttl=timedelta(hours=payload.ttl_hours),
     )
 
     claims = decode_access_token(token)

@@ -274,6 +274,29 @@ class TestWsChatReconnect:
                 assert data["type"] == "error"
                 assert "not found" in data["error"].lower()
 
+    def test_reconnect_after_bridge_disconnect_returns_cached_error(self):
+        """When a bridge disconnects mid-task, the error is cached and returned on reconnect."""
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = MagicMock()
+        # Simulate: bridge disconnected, error was cached in _completed_results
+        mock_bridge.get_completed_result.return_value = {
+            "error": "Remote agent disconnected",
+            "ok": False,
+        }
+        patches = _debug_patches(user_id=1)
+        with patches[0], patches[1], patches[2], patch(_BRIDGE, mock_bridge):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "reconnect", "tab_id": "t1", "task_id": "task-lost",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is False
+                assert "disconnected" in data.get("error", "").lower()
+                assert data["reconnected"] is True
+
 
 # ── Auth ─────────────────────────────────────────────────────────
 

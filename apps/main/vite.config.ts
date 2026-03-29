@@ -15,4 +15,12 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    include: ['src/**/__tests__/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    reporters: process.env.PIXSIM_TEST_SUBMIT
+      ? ['default', [path.resolve(__dirname, '../../tools/vitest-reporter/pixsim-reporter.ts'), {}]]
+      : ['default'],
+  },
 });

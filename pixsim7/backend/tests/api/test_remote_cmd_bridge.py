@@ -321,6 +321,49 @@ class TestDisconnect:
             future.result()
 
     @pytest.mark.asyncio
+    async def test_disconnect_caches_error_for_reconnect(self):
+        """Disconnected task errors must be cached so frontend reconnect can find them."""
+        bridge = RemoteCommandBridge()
+        ws = AsyncMock()
+        agent = await bridge.connect(ws, bridge_client_id="a1")
+        agent.current_task_ids.add("task-1")
+
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        bridge._pending_tasks["task-1"] = future
+        bridge._active_tasks["task-1"] = {"_ts": datetime.now(timezone.utc)}
+
+        bridge.disconnect("a1")
+
+        # Error should be cached for reconnect
+        cached = bridge.get_completed_result("task-1")
+        assert cached is not None
+        assert cached["ok"] is False
+        assert "disconnected" in cached["error"].lower()
+        # Active task should be cleaned up
+        assert "task-1" not in bridge._active_tasks
+
+    @pytest.mark.asyncio
+    async def test_disconnect_caches_multiple_tasks(self):
+        """All in-flight tasks should be cached when a bridge disconnects."""
+        bridge = RemoteCommandBridge()
+        ws = AsyncMock()
+        agent = await bridge.connect(ws, bridge_client_id="a1")
+        agent.current_task_ids.update({"task-1", "task-2"})
+
+        loop = asyncio.get_event_loop()
+        for tid in ("task-1", "task-2"):
+            future = loop.create_future()
+            bridge._pending_tasks[tid] = future
+
+        bridge.disconnect("a1")
+
+        for tid in ("task-1", "task-2"):
+            cached = bridge.get_completed_result(tid)
+            assert cached is not None
+            assert cached["ok"] is False
+
+    @pytest.mark.asyncio
     async def test_disconnect_ignores_stale_websocket(self):
         bridge = RemoteCommandBridge()
         ws_old = AsyncMock()
