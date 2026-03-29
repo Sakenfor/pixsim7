@@ -13,4 +13,3 @@ export { useCardGestures, type UseCardGesturesOptions, type UseCardGesturesResul
 export { useViewerGestureConfigStore, type ViewerGestureConfigState, type ViewerGestureSource } from './useViewerGestureConfigStore';
 export { useViewerGestures, type ViewerGestureContext, type UseViewerGesturesResult } from './useViewerGestures';
 export { GestureOverlay, GestureCancelOverlay } from './GestureOverlay';
-export { GestureSecondaryBridge } from './GestureSecondaryBridge';

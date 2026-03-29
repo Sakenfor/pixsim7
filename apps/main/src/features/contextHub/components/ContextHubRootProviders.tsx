@@ -7,7 +7,6 @@ import {
   subscribeAuthoringProjectBundleDirtyState,
   startAutosave,
 } from "@lib/game/projectBundle";
-import { GestureSecondaryBridge } from "@lib/gestures/GestureSecondaryBridge";
 
 import {
   CAP_SCENE_CONTEXT,
@@ -20,6 +19,7 @@ import {
   type SceneContextSummary,
   type WorldContextSummary,
 } from "@features/contextHub";
+import { GestureSecondaryBridge } from "@features/generation/components/GestureSecondaryBridge";
 import { useProjectSessionStore } from "@features/scene";
 
 

@@ -17,6 +17,7 @@
 import { useEffect } from 'react';
 
 import { getDurationOptions } from '@lib/generation-ui/utils/parameterUtils';
+import { useGestureSecondaryStore } from '@lib/gestures/useGestureSecondaryStore';
 
 import {
   CAP_GENERATION_WIDGET,
@@ -25,7 +26,6 @@ import {
 } from '@features/contextHub';
 import { providerCapabilityRegistry } from '@features/providers';
 
-import { useGestureSecondaryStore } from './useGestureSecondaryStore';
 
 export function GestureSecondaryBridge() {
   const { value: widget } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
