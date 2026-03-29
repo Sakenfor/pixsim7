@@ -75,7 +75,25 @@ def login_and_store(
 
 
 def _store_token(token: str) -> None:
-    """Write token to ~/.pixsim/token."""
+    """Write login token to ~/.pixsim/token.
+
+    Guards against accidentally storing agent/bridge tokens which would
+    break the token refresh chain in the MCP server.
+    """
+    # Validate: only store user login tokens (no purpose field)
+    try:
+        import base64
+        import json as _json
+        parts = token.split(".")
+        if len(parts) >= 2:
+            payload = _json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+            purpose = payload.get("purpose", "")
+            if purpose in ("agent", "bridge"):
+                print(f"Warning: refusing to store {purpose} token in {TOKEN_FILE_PATH}", file=sys.stderr)
+                return
+    except Exception:
+        pass  # can't decode — store it anyway (might be a valid token format)
+
     PIXSIM_DIR.mkdir(parents=True, exist_ok=True)
     with open(TOKEN_FILE_PATH, "w") as f:
         f.write(token)

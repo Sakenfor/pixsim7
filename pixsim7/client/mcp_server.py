@@ -43,13 +43,29 @@ def _get_login_token() -> str:
 
     This token has a long TTL (login session) and can be used to mint
     fresh agent tokens when the current one expires.
+
+    Validates that the token is actually a user login token (not an agent
+    or bridge token that was accidentally written to the same file).
+    Also checks expiry — an expired login token is useless for refresh.
     """
     try:
         from pathlib import Path
         stored = Path.home() / ".pixsim" / "token"
         token = stored.read_text().strip()
-        if token:
-            return token
+        if not token:
+            return ""
+        # Validate: must be a user token, not agent/bridge, and not expired
+        claims = _decode_token_claims(token)
+        purpose = claims.get("purpose", "")
+        if purpose in ("agent", "bridge"):
+            # Not a login token — an agent/bridge token was written here
+            return ""
+        exp = claims.get("exp", 0)
+        if exp and isinstance(exp, (int, float)):
+            import time
+            if exp < time.time():
+                return ""  # expired
+        return token
     except (OSError, FileNotFoundError):
         pass
     return ""
@@ -865,6 +881,7 @@ async def _try_refresh_token() -> str | None:
 
     login_token = _get_login_token()
     if not login_token:
+        print("[pixsim-mcp] Token refresh failed: no valid login token at ~/.pixsim/token. Run 'pixsim login' to fix.", file=sys.stderr)
         return None
 
     new_token: str | None = None
