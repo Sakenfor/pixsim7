@@ -860,6 +860,10 @@ class Bridge:
                 }
                 if bridge_session_id:
                     result_msg["bridge_session_id"] = bridge_session_id
+                # Include the original session ID from the task for linking
+                original_session_id = meta.get("bridge_session_id")
+                if original_session_id and original_session_id != bridge_session_id:
+                    result_msg["original_session_id"] = original_session_id
                 try:
                     await ws.send(json.dumps(result_msg))
                 except Exception:

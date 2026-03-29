@@ -1422,6 +1422,29 @@ async def list_chat_sessions(
     }
 
 
+@router.get("/agents/chat-sessions/{session_id}")
+async def get_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Get a single chat session by ID."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "id": session.id,
+        "cli_session_id": session.cli_session_id,
+        "engine": session.engine,
+        "profile_id": session.profile_id,
+        "scope_key": session.scope_key,
+        "label": session.label,
+        "message_count": session.message_count,
+        "last_used_at": session.last_used_at.isoformat(),
+    }
+
+
 @router.delete("/agents/chat-sessions/{session_id}")
 async def archive_chat_session(
     session_id: str,

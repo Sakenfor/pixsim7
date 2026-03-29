@@ -30,6 +30,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pixsim_logging import get_logger
 
+from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
+
 logger = get_logger()
 
 router = APIRouter()
@@ -71,7 +73,7 @@ async def _handle_message(
 ) -> None:
     """Dispatch a chat message and stream heartbeats + result back over WS."""
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
-    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as _build_payload
+    from pixsim7.backend.main.services.meta.agent_dispatch import build_task_payload as _build_payload
 
     tab_id = data.get("tab_id", "")
     message = data.get("message", "")
@@ -208,11 +210,7 @@ async def _handle_message(
                 await websocket.send_json(msg)
             elif event.get("type") == "result":
                 duration_ms = int((time.monotonic() - start) * 1000)
-                response_text = (
-                    event.get("edited_prompt")
-                    or event.get("response")
-                    or event.get("output", "")
-                )
+                response_text = extract_response_text(event)
                 cli_session_id = event.get("bridge_session_id")
 
                 # Fire-and-forget chat session upsert
@@ -236,6 +234,19 @@ async def _handle_message(
                         increment_messages=True,
                         source="chat",
                     ))
+
+                    # Link the original session (e.g. MCP hash) to the CLI UUID
+                    original_session_id = event.get("original_session_id")
+                    if original_session_id and original_session_id != cli_session_id:
+                        asyncio.ensure_future(_upsert_chat_session(
+                            session_id=original_session_id,
+                            user_id=user_id or 0,
+                            engine=engine,
+                            label=message[:60],
+                            profile_id=assistant_id,
+                            cli_session_id=cli_session_id,
+                            source="chat",
+                        ))
 
                 await websocket.send_json({
                     "type": "result",
@@ -275,11 +286,7 @@ async def _handle_reconnect(
     # Check if result is already cached
     cached = remote_cmd_bridge.get_completed_result(task_id)
     if cached:
-        response_text = (
-            cached.get("edited_prompt")
-            or cached.get("response")
-            or cached.get("output", "")
-        )
+        response_text = extract_response_text(cached)
         await websocket.send_json({
             "type": "result",
             "tab_id": tab_id,
@@ -317,11 +324,7 @@ async def _handle_reconnect(
 
                     if future.done():
                         result = future.result()
-                        response_text = (
-                            result.get("edited_prompt")
-                            or result.get("response")
-                            or result.get("output", "")
-                        )
+                        response_text = extract_response_text(result)
                         await websocket.send_json({
                             "type": "result",
                             "tab_id": tab_id,
@@ -351,11 +354,7 @@ async def _handle_reconnect(
 
                     if future in done:
                         result = future.result()
-                        response_text = (
-                            result.get("edited_prompt")
-                            or result.get("response")
-                            or result.get("output", "")
-                        )
+                        response_text = extract_response_text(result)
                         await websocket.send_json({
                             "type": "result",
                             "tab_id": tab_id,

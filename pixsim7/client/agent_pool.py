@@ -23,6 +23,39 @@ from pixsim7.client.log import client_log
 MAX_SESSIONS = 10
 IDLE_EVICT_SECONDS = 30 * 60  # 30 minutes
 
+
+def _lookup_cli_session_id(bridge_session_id: str) -> str | None:
+    """Query the backend for the CLI conversation UUID mapped to a session ID.
+
+    Used when _cli_id_map misses after a bridge restart — the mapping
+    may have been persisted to the ChatSession.cli_session_id field.
+    """
+    import urllib.error
+    import urllib.request
+
+    token = ""
+    try:
+        from pathlib import Path
+        stored = Path.home() / ".pixsim" / "token"
+        token = stored.read_text().strip()
+    except (OSError, FileNotFoundError):
+        pass
+
+    try:
+        url = f"http://localhost:8000/api/v1/meta/agents/chat-sessions/{bridge_session_id}"
+        headers: dict[str, str] = {"Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            cli_id = data.get("cli_session_id")
+            if cli_id and isinstance(cli_id, str) and cli_id.strip():
+                return cli_id.strip()
+    except Exception:
+        pass
+    return None
+
 # Known agent engines — auto-detected on startup
 KNOWN_ENGINES = ["claude", "codex"]
 
@@ -271,9 +304,14 @@ class AgentPool:
         if resume_id:
             client_log(f"[pool] Mapped {bridge_session_id[:8]} -> CLI session {resume_id[:8]} for resume")
         elif bridge_session_id.startswith("mcp-") or bridge_session_id.startswith("auto-"):
-            # Derived session ID — Claude won't recognize it, start fresh
-            client_log(f"[pool] No CLI mapping for {bridge_session_id[:12]}, starting fresh session")
-            resume_id = None
+            # Derived session ID — Claude won't recognize it.
+            # Try backend lookup for persisted cli_session_id mapping.
+            resume_id = _lookup_cli_session_id(bridge_session_id)
+            if resume_id:
+                client_log(f"[pool] Backend lookup: {bridge_session_id[:12]} -> {resume_id[:8]} for resume")
+                self._cli_id_map[bridge_session_id] = resume_id
+            else:
+                client_log(f"[pool] No CLI mapping for {bridge_session_id[:12]}, starting fresh session")
         else:
             # Looks like a real UUID — try resume directly
             resume_id = bridge_session_id
