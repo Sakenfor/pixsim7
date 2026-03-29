@@ -303,10 +303,13 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
     });
   }
 
-  // Check for widgets at same position
+  // Check for widgets at same position (skip widgets sharing a stackGroup —
+  // those are intentionally co-located and laid out by a flex container).
   const positionMap = new Map<string, string[]>();
 
   for (const widget of config.widgets) {
+    // Widgets in a stackGroup are positioned by the stack container, not individually.
+    if (widget.stackGroup) continue;
     const posKey = JSON.stringify(widget.position);
     const existing = positionMap.get(posKey) ?? [];
     existing.push(widget.id);

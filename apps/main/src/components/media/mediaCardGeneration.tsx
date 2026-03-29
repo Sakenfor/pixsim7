@@ -118,7 +118,7 @@ export function createGenerationActionModeBadge(props: MediaCardResolvedProps): 
   return {
     id: 'generation-action-mode-badge',
     type: 'custom',
-    position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
+    position: { anchor: 'bottom-left', offset: { x: 8, y: -28 } },
     visibility: { trigger: 'hover-container' },
     priority: 34,
     interactive: false,
