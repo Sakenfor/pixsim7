@@ -1129,6 +1129,7 @@ class StartBridgeRequest(BaseModel):
     engines: Optional[str] = Field(None, description="Comma-separated engines (e.g. claude,codex). Auto-detects if omitted.")
     extra_args: Optional[str] = Field(None, description="Extra CLI args passed to agent sessions")
     resume_session_id: Optional[str] = Field(None, description="Session UUID to resume")
+    shared: bool = Field(False, description="Start as shared/admin bridge (no user scoping). Admin only.")
 
 
 class StartBridgeResponse(BaseModel):
@@ -1165,13 +1166,16 @@ async def start_server_bridge(
     user_id = await _resolve_effective_user_id_from_authorization(authorization)
     bridge_token: Optional[str] = None
 
-    # Mint a bridge token so the subprocess connects as this user
-    if user_id is not None:
-        try:
-            from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token as _mint
-            bridge_token = _mint(TokenKind.BRIDGE, user_id=user_id)
-        except Exception:
-            pass
+    # Shared bridge: admin-only, no user scoping
+    if payload.shared:
+        user_id = None  # force shared mode
+
+    # Mint a bridge token — user-scoped if user_id, shared/admin if None
+    try:
+        from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token as _mint
+        bridge_token = _mint(TokenKind.BRIDGE, user_id=user_id)
+    except Exception:
+        pass
 
     from pixsim7.backend.main.shared.config import _resolve_repo_root
     repo_root = str(_resolve_repo_root())
