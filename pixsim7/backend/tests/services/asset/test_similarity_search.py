@@ -30,7 +30,7 @@ class _RowsResult:
 @pytest.mark.asyncio
 async def test_similar_to_embedding_lookup_is_scoped_to_current_user() -> None:
     service = AssetCoreService(db=MagicMock(), user_service=MagicMock())
-    service._build_asset_search_query = MagicMock(return_value=(select(literal(1)), False))
+    service._build_asset_search_query = MagicMock(return_value=select(literal(1)))
 
     executed_statements: list[object] = []
 

@@ -20,6 +20,7 @@ from pixsim7.backend.main.domain import (
     SyncStatus,
 )
 from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -144,10 +145,10 @@ class AssetSearchMixin:
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
         query = select(Asset)
-        tag_joined = False
         generation_joined = False
         Generation = None
         lineage_joined = False
+        owner_user_id = resolve_effective_user_id(user) or 0
 
         def _ensure_generation_join() -> None:
             nonlocal query, generation_joined, Generation
@@ -199,7 +200,7 @@ class AssetSearchMixin:
 
         # Filter by user (unless admin)
         if not user.is_admin():
-            query = query.where(Asset.user_id == user.id)
+            query = query.where(Asset.user_id == owner_user_id)
 
         # Exclude archived by default
         if not include_archived:
@@ -387,6 +388,7 @@ class AssetSearchMixin:
             tag_mode = filters.get("tag__mode") or filters.get("tag_mode")
 
         # Tag filter (supports multi + all/any)
+        # Always use subquery to avoid row multiplication from JOIN
         if tag_values:
             if tag_mode == "all" and len(tag_values) > 1:
                 tag_subquery = (
@@ -399,12 +401,17 @@ class AssetSearchMixin:
                 )
                 query = query.where(Asset.id.in_(select(tag_subquery.c.asset_id)))
             else:
-                query = (
-                    query.join(AssetTag, AssetTag.asset_id == Asset.id)
-                    .join(Tag, Tag.id == AssetTag.tag_id)
-                    .where(Tag.slug.in_(tag_values))
+                # "any" mode: use EXISTS to avoid row multiplication
+                query = query.where(
+                    exists(
+                        select(AssetTag.asset_id)
+                        .join(Tag, Tag.id == AssetTag.tag_id)
+                        .where(
+                            AssetTag.asset_id == Asset.id,
+                            Tag.slug.in_(tag_values),
+                        )
+                    )
                 )
-                tag_joined = True
 
         # Prompt analysis tags filter (supports multi + all/any)
         analysis_tags = _normalize_list(filters.get("analysis_tags") if filters else None)
@@ -443,28 +450,33 @@ class AssetSearchMixin:
                 _apply_group_filter_entry(group_by, str(group_key))
         if q:
             # Search across multiple text fields (including tags and prompt)
+            # Use EXISTS for tag search to avoid row multiplication from outer join
             like = f"%{q}%"
-            if not tag_joined:
-                query = (
-                    query.outerjoin(AssetTag, AssetTag.asset_id == Asset.id)
-                    .outerjoin(Tag, Tag.id == AssetTag.tag_id)
-                )
-                tag_joined = True
 
-            # Build search conditions (no Generation JOIN needed — prompt is on Asset)
+            tag_text_match = exists(
+                select(AssetTag.asset_id)
+                .join(Tag, Tag.id == AssetTag.tag_id)
+                .where(
+                    AssetTag.asset_id == Asset.id,
+                    or_(
+                        Tag.slug.ilike(like),
+                        Tag.display_name.ilike(like),
+                        Tag.name.ilike(like),
+                    ),
+                )
+            )
+
             search_conditions = [
                 Asset.description.ilike(like),
                 Asset.prompt.ilike(like),
                 Asset.local_path.ilike(like),
                 Asset.original_source_url.ilike(like),
-                Tag.slug.ilike(like),
-                Tag.display_name.ilike(like),
-                Tag.name.ilike(like),
+                tag_text_match,
             ]
 
             query = query.where(or_(*search_conditions))
 
-        return query, tag_joined
+        return query
 
     def _build_filtered_asset_id_subquery(
         self,
@@ -496,7 +508,7 @@ class AssetSearchMixin:
         group_key: Optional[str] = None,
         group_path: Optional[list[dict[str, Any]]] = None,
     ):
-        query, tag_joined = self._build_asset_search_query(
+        query = self._build_asset_search_query(
             user=user,
             filters=filters,
             sync_status=sync_status,
@@ -526,8 +538,6 @@ class AssetSearchMixin:
             group_path=group_path,
         )
 
-        if tag_joined:
-            return query.with_only_columns(Asset.id).distinct().subquery()
         return query.with_only_columns(Asset.id).subquery()
 
     async def find_assets_by_face_and_action(
@@ -551,10 +561,11 @@ class AssetSearchMixin:
         from sqlalchemy import and_, or_, func
 
         query = select(Asset)
+        owner_user_id = resolve_effective_user_id(user) or 0
 
         # Filter by user (unless admin)
         if not user.is_admin():
-            query = query.where(Asset.user_id == user.id)
+            query = query.where(Asset.user_id == owner_user_id)
 
         if media_type:
             query = query.where(Asset.media_type == media_type)
@@ -586,6 +597,21 @@ class AssetSearchMixin:
 
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def _resolve_similarity_embedding(
+        self, similar_to: Optional[int], owner_user_id: int,
+    ):
+        """Pre-resolve embedding vector for similarity search."""
+        if similar_to is None:
+            return None
+        from sqlalchemy import select as sa_select
+        result = await self.db.execute(
+            sa_select(Asset.embedding).where(
+                Asset.id == similar_to,
+                Asset.user_id == owner_user_id,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def list_assets(
         self,
@@ -628,26 +654,21 @@ class AssetSearchMixin:
         sort_dir: Optional[str] = "desc",
         similar_to: Optional[int] = None,
         similarity_threshold: Optional[float] = None,
-    ) -> list[Asset]:
+        include_total: bool = False,
+    ) -> list[Asset] | tuple[list[Asset], int]:
         """
         List assets for user with advanced search and filtering.
 
         Returns:
-            List of assets
+            List of assets, or (assets, total) when include_total=True.
         """
         # Pre-resolve embedding for similarity search
-        similar_to_embedding = None
-        if similar_to is not None:
-            from sqlalchemy import select as sa_select
-            result = await self.db.execute(
-                sa_select(Asset.embedding).where(
-                    Asset.id == similar_to,
-                    Asset.user_id == user.id,
-                )
-            )
-            similar_to_embedding = result.scalar_one_or_none()
+        owner_user_id = resolve_effective_user_id(user) or 0
+        similar_to_embedding = await self._resolve_similarity_embedding(
+            similar_to, owner_user_id,
+        )
 
-        query, tag_joined = self._build_asset_search_query(
+        query = self._build_asset_search_query(
             user=user,
             filters=filters,
             group_filter=group_filter,
@@ -684,17 +705,13 @@ class AssetSearchMixin:
             similarity_threshold=similarity_threshold,
         )
 
-        # Handle deduplication when joins cause row multiplication
-        # Can't use DISTINCT on JSON columns, so use subquery for distinct IDs
-        if tag_joined:
-            # Get distinct asset IDs from filtered query
-            id_subquery = (
-                query.with_only_columns(Asset.id)
-                .distinct()
-                .subquery()
+        # Total count (before sorting/pagination)
+        total = None
+        if include_total:
+            count_query = select(func.count()).select_from(
+                query.with_only_columns(Asset.id).subquery()
             )
-            # Build fresh query selecting full Assets by those IDs
-            query = select(Asset).where(Asset.id.in_(select(id_subquery.c.id)))
+            total = (await self.db.execute(count_query)).scalar_one() or 0
 
         # Sorting — similarity search overrides default sort
         if similar_to_embedding is not None:
@@ -734,4 +751,7 @@ class AssetSearchMixin:
         else:
             query = query.limit(limit).offset(offset)
         result = await self.db.execute(query)
-        return list(result.scalars().all())
+        assets = list(result.scalars().all())
+        if include_total:
+            return assets, total
+        return assets

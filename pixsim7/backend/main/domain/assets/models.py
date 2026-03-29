@@ -353,6 +353,9 @@ class Asset(SQLModel, table=True):
         # Used by deletion sibling checks (stored_key/local_path dedup)
         Index("idx_asset_stored_key", "stored_key", postgresql_where="stored_key IS NOT NULL"),
         Index("idx_asset_local_path", "local_path", postgresql_where="local_path IS NOT NULL"),
+        # Composite indexes for gallery filter queries
+        Index("idx_asset_user_archived_kind", "user_id", "is_archived", "asset_kind"),
+        Index("idx_asset_gallery_default", "user_id", "is_archived", "asset_kind", "searchable", "created_at"),
     )
 
     def model_post_init(self, __context: Any) -> None:

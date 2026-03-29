@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.upload_attribution import UPLOAD_METHOD_LABELS
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.upload_context_schema import get_upload_context_filter_specs
 from pixsim_logging import get_logger
 
@@ -141,41 +142,52 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
         context: dict[str, Any] | None = None,
         limit: Optional[int] = None,
     ) -> dict[str, list[tuple[str, Optional[str], Optional[int]]]]:
+        import asyncio
+
         options: dict[str, list[tuple[str, Optional[str], Optional[int]]]] = {}
+        # Separate static (sync) from async option loads
+        async_tasks: list[tuple[str, asyncio.Task]] = []
+
         for spec in self.list_filters(include=include, context=context):
             if spec.option_source is None:
                 continue
-            try:
-                if spec.option_source == "static":
-                    options[spec.key] = [
-                        (value, label, None)
-                        for value, label in (spec.label_map or {}).items()
-                    ]
+            if spec.option_source == "static":
+                options[spec.key] = [
+                    (value, label, None)
+                    for value, label in (spec.label_map or {}).items()
+                ]
+                continue
+            if spec.option_source == "custom" and spec.option_loader:
+                coro = spec.option_loader(db, user, include_counts, context, limit)
+            elif spec.option_source == "distinct":
+                column = _resolve_filter_column(spec)
+                if column is None:
                     continue
-                if spec.option_source == "custom" and spec.option_loader:
-                    options[spec.key] = await spec.option_loader(db, user, include_counts, context, limit)
-                    continue
-                if spec.option_source == "distinct":
-                    column = _resolve_filter_column(spec)
-                    if column is None:
-                        continue
-                    options[spec.key] = await _load_distinct_options(
-                        db,
-                        user=user,
-                        column=column,
-                        label_map=spec.label_map,
-                        include_counts=include_counts,
-                        extra_filters=self.build_filter_conditions(context or {}, exclude_key=spec.key),
-                        exclude_empty=spec.jsonb_path is not None,
-                        limit=limit,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "asset_filter_options_failed",
-                    key=spec.key,
-                    error=str(exc),
+                coro = _load_distinct_options(
+                    db,
+                    user=user,
+                    column=column,
+                    label_map=spec.label_map,
+                    include_counts=include_counts,
+                    extra_filters=self.build_filter_conditions(context or {}, exclude_key=spec.key),
+                    exclude_empty=spec.jsonb_path is not None,
+                    limit=limit,
                 )
-                options.setdefault(spec.key, [])
+            else:
+                continue
+            async_tasks.append((spec.key, coro))
+
+        if async_tasks:
+            keys = [key for key, _ in async_tasks]
+            coros = [coro for _, coro in async_tasks]
+            results = await asyncio.gather(*coros, return_exceptions=True)
+            for key, result in zip(keys, results):
+                if isinstance(result, BaseException):
+                    logger.warning("asset_filter_options_failed", key=key, error=str(result))
+                    options[key] = []
+                else:
+                    options[key] = result
+
         return options
 
     def build_filter_conditions(
@@ -261,8 +273,9 @@ async def _load_distinct_options(
     exclude_empty: bool = False,
     limit: Optional[int] = None,
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
+    owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
-        Asset.user_id == user.id,
+        Asset.user_id == owner_user_id,
         Asset.is_archived == False,
         column.isnot(None),
     ]
@@ -315,8 +328,9 @@ async def _load_tag_options(
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
     from pixsim7.backend.main.domain.assets.tag import Tag, AssetTag
 
+    owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
-        Asset.user_id == user.id,
+        Asset.user_id == owner_user_id,
         Asset.is_archived == False,
     ]
     if context:
@@ -371,8 +385,9 @@ async def _load_analysis_tag_options(
     prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
     tag_values = func.jsonb_array_elements_text(prompt_jsonb["tags_flat"]).table_valued("value").lateral()
 
+    owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
-        Asset.user_id == user.id,
+        Asset.user_id == owner_user_id,
         Asset.is_archived == False,
         Asset.prompt_analysis.isnot(None),
         prompt_jsonb.has_key("tags_flat"),
@@ -437,8 +452,9 @@ async def _load_source_path_options(
     limit: Optional[int],
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
     path_expr = _build_source_path_expr()
+    owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
-        Asset.user_id == user.id,
+        Asset.user_id == owner_user_id,
         Asset.is_archived == False,
         Asset.upload_method == "local",
         Asset.upload_context["source_folder"].astext.isnot(None),
@@ -499,8 +515,9 @@ async def _load_source_video_options(
     limit: Optional[int],
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
     video_expr = _build_source_video_expr()
+    owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
-        Asset.user_id == user.id,
+        Asset.user_id == owner_user_id,
         Asset.is_archived == False,
         Asset.upload_method == "video_capture",
         Asset.upload_context["source_filename"].astext.isnot(None),
