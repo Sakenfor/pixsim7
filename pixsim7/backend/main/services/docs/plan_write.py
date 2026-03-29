@@ -36,6 +36,9 @@ from pixsim7.backend.main.services.docs.plans import (
     get_plans_index,
 )
 from pixsim7.backend.main.services.docs.plan_stages import (
+    CANONICAL_PLAN_PRIORITIES,
+    CANONICAL_PLAN_STATUSES,
+    CANONICAL_TASK_SCOPES,
     normalize_plan_stage,
 )
 from pixsim7.backend.main.services.notifications.notification_categories import (
@@ -72,9 +75,9 @@ LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs",
 JSON_MUTABLE_FIELDS = frozenset({"target", "checkpoints"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
-VALID_STATUSES = ("active", "parked", "done", "blocked", "archived", "removed")
-VALID_PRIORITIES = ("high", "normal", "low")
-VALID_TASK_SCOPES = ("plan", "user", "system")
+VALID_STATUSES = CANONICAL_PLAN_STATUSES
+VALID_PRIORITIES = CANONICAL_PLAN_PRIORITIES
+VALID_TASK_SCOPES = CANONICAL_TASK_SCOPES
 
 # Statuses hidden from default listings (require explicit include flag).
 HIDDEN_STATUSES = frozenset({"removed", "archived"})

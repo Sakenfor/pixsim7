@@ -16,6 +16,27 @@ CANONICAL_PLAN_TYPES: tuple[str, ...] = (
     "reference",
 )
 
+CANONICAL_PLAN_STATUSES: tuple[str, ...] = (
+    "active",
+    "parked",
+    "done",
+    "blocked",
+    "archived",
+    "removed",
+)
+
+CANONICAL_PLAN_PRIORITIES: tuple[str, ...] = (
+    "high",
+    "normal",
+    "low",
+)
+
+CANONICAL_TASK_SCOPES: tuple[str, ...] = (
+    "plan",
+    "user",
+    "system",
+)
+
 CANONICAL_PLAN_STAGES: tuple[str, ...] = (
     "backlog",
     "proposed",

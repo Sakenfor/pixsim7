@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from pixsim7.backend.main.shared.config import _resolve_repo_root
+from pixsim7.backend.main.services.docs.plan_stages import CANONICAL_PLAN_PRIORITIES
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -22,7 +23,7 @@ logger = get_logger()
 PLAN_SCOPES = ("active", "done", "parked")
 PLANS_DIR = "docs/plans"
 MANIFEST_FILENAMES = ("manifest.yaml", "manifest.yml")
-VALID_PRIORITIES = ("high", "normal", "low")
+VALID_PRIORITIES = CANONICAL_PLAN_PRIORITIES
 AUTO_COMPANION_DIRS = ("companions", "batches", "experiments", "tasks", "appendices")
 AUTO_HANDOFF_DIRS = ("handoffs",)
 APPENDIX_MANIFEST_FILENAMES = ("manifest.yaml", "manifest.yml")

@@ -31,14 +31,17 @@ from pixsim7.backend.main.services.docs.plans import (
     PlanEntry,
     build_plans_index,
 )
+from pixsim7.backend.main.services.docs.plan_stages import (
+    CANONICAL_PLAN_PRIORITIES,
+)
 from pixsim7.backend.main.shared.config import _resolve_repo_root
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
 
-VALID_PRIORITIES = ("high", "normal", "low")
-PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
+VALID_PRIORITIES = CANONICAL_PLAN_PRIORITIES
+PRIORITY_ORDER = {p: i for i, p in enumerate(CANONICAL_PLAN_PRIORITIES)}
 
 INDEX_BEGIN = "<!-- BEGIN:GENERATED_PLAN_INDEX -->"
 INDEX_END = "<!-- END:GENERATED_PLAN_INDEX -->"

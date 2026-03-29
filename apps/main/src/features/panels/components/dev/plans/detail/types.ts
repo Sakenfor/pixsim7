@@ -449,7 +449,7 @@ export const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' 
 
 export const PRIORITY_COLORS: Record<string, 'red' | 'orange' | 'gray'> = {
   high: 'red',
-  medium: 'orange',
+  normal: 'orange',
   low: 'gray',
 };
 
@@ -473,6 +473,8 @@ export const PLAN_TYPE_ICONS: Record<string, string> = {
   exploration: 'search',
   task: 'checkSquare',
   proposal: 'fileText',
+  strategy: 'target',
+  reference: 'library',
 };
 
 export const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
