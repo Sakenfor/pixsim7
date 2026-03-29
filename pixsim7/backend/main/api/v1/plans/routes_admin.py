@@ -3,13 +3,14 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.services.audit import list_entity_audit_events
 from pixsim7.backend.main.services.docs.plan_sync import (
     PlanSyncLockedError,
     prune_plan_sync_history,
@@ -49,9 +50,9 @@ async def get_plan_runtime_settings(
     _user: CurrentUser,
 ):
     return {
-        "plansDbOnlyMode": settings.plans_db_only_mode,
+        "plans_db_only_mode": settings.plans_db_only_mode,
         "source": "runtime",
-        "forgeCommitUrlTemplate": git_forge_commit_url_template(),
+        "forge_commit_url_template": git_forge_commit_url_template(),
     }
 
 
@@ -60,7 +61,7 @@ async def list_plan_stages(
     _user: CurrentUser,
 ):
     return PlanStagesResponse(
-        defaultStage=DEFAULT_PLAN_STAGE,
+        default_stage=DEFAULT_PLAN_STAGE,
         stages=[PlanStageOptionEntry(**opt) for opt in plan_stage_options()],
     )
 
@@ -71,7 +72,7 @@ async def update_plan_runtime_settings(
     _admin: CurrentAdminUser,
 ):
     settings.plans_db_only_mode = payload.plans_db_only_mode
-    return {"plansDbOnlyMode": settings.plans_db_only_mode, "source": "runtime"}
+    return {"plans_db_only_mode": settings.plans_db_only_mode, "source": "runtime"}
 
 
 @router.post("/sync", response_model=SyncResultResponse)
@@ -96,14 +97,14 @@ async def trigger_sync(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {
-        "runId": result.run_id,
+        "run_id": result.run_id,
         "created": result.created,
         "updated": result.updated,
         "removed": result.removed,
         "unchanged": result.unchanged,
         "events": result.events,
-        "durationMs": result.duration_ms,
-        "changedFields": result.changed_fields,
+        "duration_ms": result.duration_ms,
+        "changed_fields": result.changed_fields,
         "details": result.details,
     }
 
@@ -139,11 +140,11 @@ async def run_sync_retention(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {
-        "dryRun": result.dry_run,
-        "retentionDays": result.retention_days,
+        "dry_run": result.dry_run,
+        "retention_days": result.retention_days,
         "cutoff": result.cutoff,
-        "eventsDeleted": result.events_deleted,
-        "runsDeleted": result.runs_deleted,
+        "events_deleted": result.events_deleted,
+        "runs_deleted": result.runs_deleted,
     }
 
 
@@ -201,34 +202,30 @@ async def get_plan_events(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
 ):
-    from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
-
     plan = await db.get(PlanRegistry, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail=f"Plan not in registry: {plan_id}")
 
-    # Read from entity_audit
-    stmt = (
-        select(EntityAudit)
-        .where(EntityAudit.domain == "plan", EntityAudit.entity_id == plan_id)
-        .order_by(EntityAudit.timestamp.desc())
-        .offset(offset)
-        .limit(limit)
+    rows = await list_entity_audit_events(
+        db,
+        domain="plan",
+        entity_id=plan_id,
+        limit=limit,
+        offset=offset,
     )
-    rows = (await db.execute(stmt)).scalars().all()
 
     return {
-        "planId": plan_id,
+        "plan_id": plan_id,
         "events": [
             {
                 "id": str(row.id),
-                "runId": (row.extra or {}).get("sync_run_id"),
-                "planId": plan_id,
-                "eventType": row.action,
+                "run_id": (row.extra or {}).get("sync_run_id"),
+                "plan_id": plan_id,
+                "event_type": row.action,
                 "field": row.field,
-                "oldValue": row.old_value,
-                "newValue": row.new_value,
-                "commitSha": row.commit_sha,
+                "old_value": row.old_value,
+                "new_value": row.new_value,
+                "commit_sha": row.commit_sha,
                 "actor": row.actor,
                 "timestamp": row.timestamp.isoformat() if row.timestamp else "",
             }
@@ -245,30 +242,28 @@ async def get_activity(
     db: AsyncSession = Depends(get_database),
 ):
     from datetime import datetime, timedelta, timezone
-    from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
-
-    stmt = (
-        select(EntityAudit)
-        .where(EntityAudit.domain == "plan", EntityAudit.timestamp >= cutoff)
-        .order_by(EntityAudit.timestamp.desc())
-        .limit(limit)
+    rows = await list_entity_audit_events(
+        db,
+        domain="plan",
+        since=cutoff,
+        limit=limit,
+        offset=0,
     )
-    rows = (await db.execute(stmt)).scalars().all()
 
     return {
         "events": [
             {
                 "id": str(row.id),
-                "runId": (row.extra or {}).get("sync_run_id"),
-                "planId": row.entity_id,
-                "planTitle": row.entity_label or row.entity_id,
-                "eventType": row.action,
+                "run_id": (row.extra or {}).get("sync_run_id"),
+                "plan_id": row.entity_id,
+                "plan_title": row.entity_label or row.entity_id,
+                "event_type": row.action,
                 "field": row.field,
-                "oldValue": row.old_value,
-                "newValue": row.new_value,
-                "commitSha": row.commit_sha,
+                "old_value": row.old_value,
+                "new_value": row.new_value,
+                "commit_sha": row.commit_sha,
                 "actor": row.actor,
                 "timestamp": row.timestamp.isoformat() if row.timestamp else "",
             }

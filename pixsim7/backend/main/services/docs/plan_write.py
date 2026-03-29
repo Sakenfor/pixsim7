@@ -57,21 +57,16 @@ PLANS_DIR = "docs/plans"
 # Fields that can be updated via the API.
 # Doc fields go to Document, plan fields go to PlanRegistry.
 DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility", "namespace"})
+
+# Plan-specific list fields (JSON columns holding List[str]).
+# Single source of truth — add new list fields here only.
+PLAN_LIST_FIELDS = ("code_paths", "companions", "handoffs", "depends_on", "phases")
+
 PLAN_MUTABLE_FIELDS = frozenset(
-    {
-        "stage",
-        "priority",
-        "task_scope",
-        "plan_type",
-        "target",
-        "checkpoints",
-        "code_paths",
-        "companions",
-        "handoffs",
-        "depends_on",
-    }
+    {"stage", "priority", "task_scope", "plan_type", "target", "checkpoints"}
+    | set(PLAN_LIST_FIELDS)
 )
-LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs", "depends_on"})
+LIST_MUTABLE_FIELDS = frozenset({"tags"} | set(PLAN_LIST_FIELDS))
 JSON_MUTABLE_FIELDS = frozenset({"target", "checkpoints"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
@@ -323,20 +318,16 @@ def _build_manifest_data(bundle: PlanBundle) -> Dict[str, Any]:
         "summary": doc.summary or "",
         "plan_path": "./plan.md",
     }
-    if plan.code_paths:
-        data["code_paths"] = plan.code_paths
+    for field in PLAN_LIST_FIELDS:
+        val = getattr(plan, field, None)
+        if val:
+            data[field] = val
     if plan.target is not None:
         data["target"] = plan.target
     if plan.checkpoints is not None:
         data["checkpoints"] = plan.checkpoints
-    if plan.companions:
-        data["companions"] = plan.companions
-    if plan.handoffs:
-        data["handoffs"] = plan.handoffs
     if doc.tags:
         data["tags"] = doc.tags
-    if plan.depends_on:
-        data["depends_on"] = plan.depends_on
     return data
 
 
@@ -606,10 +597,8 @@ def _apply_entry_to_plan(plan: PlanRegistry, entry: PlanEntry, manifest_hash: st
     plan.priority = entry.priority
     plan.scope = entry.scope
     plan.plan_path = entry.plan_path
-    plan.code_paths = entry.code_paths
-    plan.companions = entry.companions
-    plan.handoffs = entry.handoffs
-    plan.depends_on = entry.depends_on
+    for field in PLAN_LIST_FIELDS:
+        setattr(plan, field, getattr(entry, field, None))
     plan.manifest_hash = manifest_hash
     plan.last_synced_at = utcnow()
     plan.updated_at = utcnow()
@@ -675,10 +664,7 @@ async def _ensure_bundle(
         priority=entry.priority if entry else d.get("priority", "normal"),
         scope=entry.scope if entry else "active",
         plan_path=entry.plan_path if entry else None,
-        code_paths=entry.code_paths if entry else [],
-        companions=entry.companions if entry else [],
-        handoffs=entry.handoffs if entry else [],
-        depends_on=entry.depends_on if entry else [],
+        **{f: (getattr(entry, f, None) if entry else []) for f in PLAN_LIST_FIELDS},
         created_at=now,
         updated_at=now,
     )
@@ -726,10 +712,7 @@ def _build_plan_snapshot(bundle: PlanBundle) -> Dict[str, Any]:
             "target": plan.target,
             "checkpoints": plan.checkpoints,
             "plan_path": plan.plan_path,
-            "code_paths": list(plan.code_paths or []),
-            "companions": list(plan.companions or []),
-            "handoffs": list(plan.handoffs or []),
-            "depends_on": list(plan.depends_on or []),
+            **{f: list(getattr(plan, f, None) or []) for f in PLAN_LIST_FIELDS},
             "manifest_hash": plan.manifest_hash,
             "last_synced_at": _snapshot_timestamp(plan.last_synced_at),
             "created_at": _snapshot_timestamp(plan.created_at),
@@ -1252,10 +1235,7 @@ async def list_plan_bundles(db: AsyncSession) -> List[PlanBundle]:
             priority=entry.priority,
             scope=entry.scope,
             plan_path=entry.plan_path,
-            code_paths=entry.code_paths,
-            companions=entry.companions,
-            handoffs=entry.handoffs,
-            depends_on=entry.depends_on,
+            **{f: getattr(entry, f, None) for f in PLAN_LIST_FIELDS},
             created_at=now,
             updated_at=now,
         )

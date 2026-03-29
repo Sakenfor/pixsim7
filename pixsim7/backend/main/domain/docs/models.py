@@ -147,6 +147,7 @@ class PlanRegistry(SQLModel, table=True):
     companions: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     handoffs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     depends_on: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    phases: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     manifest_hash: str = Field(default="", max_length=64)
     last_synced_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, index=True)

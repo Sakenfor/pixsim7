@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from pixsim7.backend.main.shared.schemas.api_base import ApiModel
+
 # ── Validation helpers (used by schema validators) ───────────────
 
 _PLAN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
@@ -26,7 +28,7 @@ def validate_plan_id(value: str, *, field_name: str = "id") -> str:
 
 # ── Plan summary / index ─────────────────────────────────────────
 
-class PlanChildSummary(BaseModel):
+class PlanChildSummary(ApiModel):
     """Minimal child plan reference."""
     id: str
     title: str
@@ -35,38 +37,39 @@ class PlanChildSummary(BaseModel):
     priority: str
 
 
-class PlanSummary(BaseModel):
+class PlanSummary(ApiModel):
     """Compact plan entry for list responses."""
     id: str
-    documentId: Optional[str] = None
-    parentId: Optional[str] = None
+    document_id: Optional[str] = None
+    parent_id: Optional[str] = None
     title: str
     status: str
     stage: str
     owner: str
-    lastUpdated: str
+    last_updated: str
     priority: str
     summary: str
     scope: str
-    planType: str = "feature"
+    plan_type: str = "feature"
     visibility: str = "public"
     namespace: Optional[str] = None
     target: Optional[Dict] = None
     checkpoints: Optional[List[Dict]] = None
-    codePaths: List[str] = Field(default_factory=list)
+    code_paths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
     handoffs: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
-    dependsOn: List[str] = Field(default_factory=list)
+    depends_on: List[str] = Field(default_factory=list)
+    phases: List[str] = Field(default_factory=list)
     revision: Optional[int] = None
-    reviewRoundCount: int = 0
-    activeReviewRoundCount: int = 0
+    review_round_count: int = 0
+    active_review_round_count: int = 0
     children: List[PlanChildSummary] = Field(default_factory=list)
 
 
-class PlansIndexResponse(BaseModel):
+class PlansIndexResponse(ApiModel):
     version: str
-    generatedAt: Optional[str] = None
+    generated_at: Optional[str] = None
     plans: List[PlanSummary] = Field(default_factory=list)
     total: int = 0
     limit: int = 0
@@ -75,15 +78,15 @@ class PlansIndexResponse(BaseModel):
 
 
 class PlanDetailResponse(PlanSummary):
-    planPath: str = ""
+    plan_path: str = ""
     markdown: str = ""
 
 
 # ── Registry & events ────────────────────────────────────────────
 
-class PlanRegistryEntry(BaseModel):
+class PlanRegistryEntry(ApiModel):
     id: str
-    documentId: Optional[str] = None
+    document_id: Optional[str] = None
     title: str
     status: str
     stage: str
@@ -93,18 +96,19 @@ class PlanRegistryEntry(BaseModel):
     summary: str
     scope: str
     namespace: Optional[str] = None
-    codePaths: List[str] = Field(default_factory=list)
+    code_paths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
     handoffs: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
-    dependsOn: List[str] = Field(default_factory=list)
-    manifestHash: str = ""
-    lastSyncedAt: Optional[str] = None
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    depends_on: List[str] = Field(default_factory=list)
+    phases: List[str] = Field(default_factory=list)
+    manifest_hash: str = ""
+    last_synced_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
-class PlanRegistryListResponse(BaseModel):
+class PlanRegistryListResponse(ApiModel):
     plans: List[PlanRegistryEntry] = Field(default_factory=list)
     total: int = 0
     limit: int = 0
@@ -112,42 +116,42 @@ class PlanRegistryListResponse(BaseModel):
     has_more: bool = False
 
 
-class PlanEventEntry(BaseModel):
+class PlanEventEntry(ApiModel):
     id: str
-    runId: Optional[str] = None
-    planId: str
-    eventType: str
+    run_id: Optional[str] = None
+    plan_id: str
+    event_type: str
     field: Optional[str] = None
-    oldValue: Optional[str] = None
-    newValue: Optional[str] = None
-    commitSha: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    commit_sha: Optional[str] = None
     actor: Optional[str] = None
     timestamp: str
 
 
-class PlanEventsResponse(BaseModel):
-    planId: str
+class PlanEventsResponse(ApiModel):
+    plan_id: str
     events: List[PlanEventEntry] = Field(default_factory=list)
 
 
 # ── Revisions ────────────────────────────────────────────────────
 
-class PlanRevisionEntry(BaseModel):
+class PlanRevisionEntry(ApiModel):
     id: str
-    planId: str
-    documentId: str
+    plan_id: str
+    document_id: str
     revision: int
-    eventType: str
+    event_type: str
     actor: Optional[str] = None
-    commitSha: Optional[str] = None
-    changedFields: List[str] = Field(default_factory=list)
-    restoreFromRevision: Optional[int] = None
-    createdAt: str
+    commit_sha: Optional[str] = None
+    changed_fields: List[str] = Field(default_factory=list)
+    restore_from_revision: Optional[int] = None
+    created_at: str
     snapshot: Optional[Dict[str, Any]] = None
 
 
-class PlanRevisionListResponse(BaseModel):
-    planId: str
+class PlanRevisionListResponse(ApiModel):
+    plan_id: str
     revisions: List[PlanRevisionEntry] = Field(default_factory=list)
 
 
@@ -163,36 +167,36 @@ class PlanRestoreRequest(BaseModel):
     )
 
 
-class PlanRestoreResponse(BaseModel):
-    planId: str
-    restoredFromRevision: int
+class PlanRestoreResponse(ApiModel):
+    plan_id: str
+    restored_from_revision: int
     revision: Optional[int] = None
     changes: List[Dict[str, Any]] = Field(default_factory=list)
-    commitSha: Optional[str] = None
-    newScope: Optional[str] = None
+    commit_sha: Optional[str] = None
+    new_scope: Optional[str] = None
 
 
 # ── Review rounds ────────────────────────────────────────────────
 
-class PlanReviewRoundEntry(BaseModel):
+class PlanReviewRoundEntry(ApiModel):
     id: str
-    planId: str
-    roundNumber: int
-    reviewRevision: Optional[int] = None
+    plan_id: str
+    round_number: int
+    review_revision: Optional[int] = None
     status: str
     note: Optional[str] = None
     conclusion: Optional[str] = None
-    createdBy: Optional[str] = None
-    actorPrincipalType: Optional[str] = None
-    actorAgentId: Optional[str] = None
-    actorRunId: Optional[str] = None
-    actorUserId: Optional[int] = None
-    createdAt: str
-    updatedAt: str
+    created_by: Optional[str] = None
+    actor_principal_type: Optional[str] = None
+    actor_agent_id: Optional[str] = None
+    actor_run_id: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    created_at: str
+    updated_at: str
 
 
-class PlanReviewRoundListResponse(BaseModel):
-    planId: str
+class PlanReviewRoundListResponse(ApiModel):
+    plan_id: str
     rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
 
 
@@ -267,94 +271,94 @@ class PlanReviewNodeCreateRequest(BaseModel):
         return value
 
 
-class PlanReviewNodeEntry(BaseModel):
+class PlanReviewNodeEntry(ApiModel):
     id: str
-    planId: str
-    roundId: str
+    plan_id: str
+    round_id: str
     kind: str
-    authorRole: str
+    author_role: str
     body: str
     severity: Optional[str] = None
-    planAnchor: Optional[Dict[str, Any]] = None
+    plan_anchor: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
-    createdBy: Optional[str] = None
-    actorPrincipalType: Optional[str] = None
-    actorAgentId: Optional[str] = None
-    actorRunId: Optional[str] = None
-    actorUserId: Optional[int] = None
-    createdAt: str
-    updatedAt: str
+    created_by: Optional[str] = None
+    actor_principal_type: Optional[str] = None
+    actor_agent_id: Optional[str] = None
+    actor_run_id: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    created_at: str
+    updated_at: str
 
 
-class PlanReviewLinkEntry(BaseModel):
+class PlanReviewLinkEntry(ApiModel):
     id: str
-    planId: str
-    roundId: str
-    sourceNodeId: str
-    targetNodeId: Optional[str] = None
+    plan_id: str
+    round_id: str
+    source_node_id: str
+    target_node_id: Optional[str] = None
     relation: str
-    sourceAnchor: Optional[Dict[str, Any]] = None
-    targetAnchor: Optional[Dict[str, Any]] = None
-    targetPlanAnchor: Optional[Dict[str, Any]] = None
+    source_anchor: Optional[Dict[str, Any]] = None
+    target_anchor: Optional[Dict[str, Any]] = None
+    target_plan_anchor: Optional[Dict[str, Any]] = None
     quote: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
-    createdBy: Optional[str] = None
-    createdAt: str
+    created_by: Optional[str] = None
+    created_at: str
 
 
-class PlanReviewNodeCreateResponse(BaseModel):
+class PlanReviewNodeCreateResponse(ApiModel):
     node: PlanReviewNodeEntry
     links: List[PlanReviewLinkEntry] = Field(default_factory=list)
 
 
 # ── Plan requests (review, build, etc.) ──────────────────────────
 
-class PlanRequestEntry(BaseModel):
+class PlanRequestEntry(ApiModel):
     id: str
     kind: str = "review"
     dismissed: bool = False
-    planId: str
-    roundId: Optional[str] = None
+    plan_id: str
+    round_id: Optional[str] = None
     title: str
     body: str
     status: str
-    targetMode: Optional[Literal["auto", "session", "recent_agent"]] = None
-    targetBridgeId: Optional[str] = None
-    targetAgentId: Optional[str] = None
-    targetAgentType: Optional[str] = None
-    targetSessionId: Optional[str] = None
-    preferredAgentId: Optional[str] = None
-    targetProfileId: Optional[str] = None
-    targetMethod: Optional[str] = None
-    targetModelId: Optional[str] = None
-    targetProvider: Optional[str] = None
-    targetUserId: Optional[int] = None
-    reviewMode: Literal["review_only", "propose_patch", "apply_patch"] = "review_only"
-    baseRevision: Optional[int] = None
-    queueIfBusy: bool = False
-    autoRerouteIfBusy: bool = True
-    dispatchState: Optional[Literal["assigned", "queued", "unassigned"]] = None
-    dispatchReason: Optional[str] = None
-    requestedBy: Optional[str] = None
-    requestedByPrincipalType: Optional[str] = None
-    requestedByAgentId: Optional[str] = None
-    requestedByRunId: Optional[str] = None
-    requestedByUserId: Optional[int] = None
+    target_mode: Optional[Literal["auto", "session", "recent_agent"]] = None
+    target_bridge_id: Optional[str] = None
+    target_agent_id: Optional[str] = None
+    target_agent_type: Optional[str] = None
+    target_session_id: Optional[str] = None
+    preferred_agent_id: Optional[str] = None
+    target_profile_id: Optional[str] = None
+    target_method: Optional[str] = None
+    target_model_id: Optional[str] = None
+    target_provider: Optional[str] = None
+    target_user_id: Optional[int] = None
+    review_mode: Literal["review_only", "propose_patch", "apply_patch"] = "review_only"
+    base_revision: Optional[int] = None
+    queue_if_busy: bool = False
+    auto_reroute_if_busy: bool = True
+    dispatch_state: Optional[Literal["assigned", "queued", "unassigned"]] = None
+    dispatch_reason: Optional[str] = None
+    requested_by: Optional[str] = None
+    requested_by_principal_type: Optional[str] = None
+    requested_by_agent_id: Optional[str] = None
+    requested_by_run_id: Optional[str] = None
+    requested_by_user_id: Optional[int] = None
     meta: Optional[Dict[str, Any]] = None
-    resolutionNote: Optional[str] = None
-    resolvedNodeId: Optional[str] = None
-    resolvedBy: Optional[str] = None
-    resolvedByPrincipalType: Optional[str] = None
-    resolvedByAgentId: Optional[str] = None
-    resolvedByRunId: Optional[str] = None
-    resolvedByUserId: Optional[int] = None
-    createdAt: str
-    updatedAt: str
-    resolvedAt: Optional[str] = None
+    resolution_note: Optional[str] = None
+    resolved_node_id: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolved_by_principal_type: Optional[str] = None
+    resolved_by_agent_id: Optional[str] = None
+    resolved_by_run_id: Optional[str] = None
+    resolved_by_user_id: Optional[int] = None
+    created_at: str
+    updated_at: str
+    resolved_at: Optional[str] = None
 
 
-class PlanRequestListResponse(BaseModel):
-    planId: str
+class PlanRequestListResponse(ApiModel):
+    plan_id: str
     requests: List[PlanRequestEntry] = Field(default_factory=list)
 
 
@@ -434,37 +438,37 @@ class PlanRequestDispatchRequest(BaseModel):
     create_round_if_missing: bool = Field(True)
 
 
-class PlanRequestDispatchResponse(BaseModel):
+class PlanRequestDispatchResponse(ApiModel):
     request: PlanRequestEntry
     node: Optional[PlanReviewNodeEntry] = None
     executed: bool = False
     message: str
-    durationMs: Optional[int] = None
+    duration_ms: Optional[int] = None
 
 
-class PlanReviewDelegationEntry(BaseModel):
+class PlanReviewDelegationEntry(ApiModel):
     id: str
-    grantorUserId: int
-    delegateUserId: int
-    planId: Optional[str] = None
+    grantor_user_id: int
+    delegate_user_id: int
+    plan_id: Optional[str] = None
     status: str
-    allowedProfileIds: List[str] = Field(default_factory=list)
-    allowedBridgeIds: List[str] = Field(default_factory=list)
-    allowedAgentIds: List[str] = Field(default_factory=list)
+    allowed_profile_ids: List[str] = Field(default_factory=list)
+    allowed_bridge_ids: List[str] = Field(default_factory=list)
+    allowed_agent_ids: List[str] = Field(default_factory=list)
     note: Optional[str] = None
-    createdByUserId: Optional[int] = None
-    revokedByUserId: Optional[int] = None
-    expiresAt: Optional[str] = None
-    revokedAt: Optional[str] = None
+    created_by_user_id: Optional[int] = None
+    revoked_by_user_id: Optional[int] = None
+    expires_at: Optional[str] = None
+    revoked_at: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
-    createdAt: str
-    updatedAt: str
+    created_at: str
+    updated_at: str
 
 
-class PlanReviewDelegationListResponse(BaseModel):
-    generatedAt: str
-    asGrantor: List[PlanReviewDelegationEntry] = Field(default_factory=list)
-    asDelegate: List[PlanReviewDelegationEntry] = Field(default_factory=list)
+class PlanReviewDelegationListResponse(ApiModel):
+    generated_at: str
+    as_grantor: List[PlanReviewDelegationEntry] = Field(default_factory=list)
+    as_delegate: List[PlanReviewDelegationEntry] = Field(default_factory=list)
 
 
 class PlanReviewDelegationRequestCreateRequest(BaseModel):
@@ -532,24 +536,24 @@ class PlanReviewDispatchTickRequest(BaseModel):
         return validate_plan_id(value, field_name="plan_id")
 
 
-class PlanReviewDispatchTickItem(BaseModel):
-    planId: str
-    requestId: str
+class PlanReviewDispatchTickItem(ApiModel):
+    plan_id: str
+    request_id: str
     status: str
     executed: bool
     message: str
-    dispatchState: Optional[str] = None
-    resolvedNodeId: Optional[str] = None
+    dispatch_state: Optional[str] = None
+    resolved_node_id: Optional[str] = None
 
 
-class PlanReviewDispatchTickResponse(BaseModel):
+class PlanReviewDispatchTickResponse(ApiModel):
     attempted: int
     processed: int
     items: List[PlanReviewDispatchTickItem] = Field(default_factory=list)
 
 
-class PlanReviewGraphResponse(BaseModel):
-    planId: str
+class PlanReviewGraphResponse(ApiModel):
+    plan_id: str
     rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
     nodes: List[PlanReviewNodeEntry] = Field(default_factory=list)
     links: List[PlanReviewLinkEntry] = Field(default_factory=list)
@@ -558,64 +562,64 @@ class PlanReviewGraphResponse(BaseModel):
 
 # ── Assignees & participants ─────────────────────────────────────
 
-class PlanReviewPoolSession(BaseModel):
-    sessionId: str
+class PlanReviewPoolSession(ApiModel):
+    session_id: str
     engine: str
     state: str
-    cliModel: Optional[str] = None
-    messagesSent: int = 0
-    contextPct: Optional[float] = None
+    cli_model: Optional[str] = None
+    messages_sent: int = 0
+    context_pct: Optional[float] = None
 
 
-class PlanReviewAssigneeEntry(BaseModel):
+class PlanReviewAssigneeEntry(ApiModel):
     id: str
     label: str
     source: Literal["live", "recent", "delegated"]
-    targetMode: Literal["session", "recent_agent"]
-    bridgeId: Optional[str] = None
-    targetUserId: Optional[int] = None
-    targetSessionId: Optional[str] = None
-    agentId: str
-    agentType: Optional[str] = None
+    target_mode: Literal["session", "recent_agent"]
+    bridge_id: Optional[str] = None
+    target_user_id: Optional[int] = None
+    target_session_id: Optional[str] = None
+    agent_id: str
+    agent_type: Optional[str] = None
     busy: bool = False
-    availableNow: bool = True
-    activeTasks: int = 0
-    tasksCompleted: int = 0
-    connectedAt: Optional[str] = None
-    lastSeenAt: Optional[str] = None
-    modelId: Optional[str] = None
+    available_now: bool = True
+    active_tasks: int = 0
+    tasks_completed: int = 0
+    connected_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    model_id: Optional[str] = None
     engines: List[str] = Field(default_factory=list)
-    poolSessions: List[PlanReviewPoolSession] = Field(default_factory=list)
+    pool_sessions: List[PlanReviewPoolSession] = Field(default_factory=list)
 
 
-class PlanReviewAssigneesResponse(BaseModel):
-    planId: str
-    generatedAt: str
-    liveSessions: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
-    recentAgents: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
+class PlanReviewAssigneesResponse(ApiModel):
+    plan_id: str
+    generated_at: str
+    live_sessions: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
+    recent_agents: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
 
 
-class PlanParticipantEntry(BaseModel):
+class PlanParticipantEntry(ApiModel):
     id: str
-    planId: str
+    plan_id: str
     role: Literal["builder", "reviewer"]
-    principalType: Optional[Literal["user", "agent", "service"]] = None
-    agentId: Optional[str] = None
-    agentType: Optional[str] = None
-    profileId: Optional[str] = None
-    runId: Optional[str] = None
-    sessionId: Optional[str] = None
-    userId: Optional[int] = None
+    principal_type: Optional[Literal["user", "agent", "service"]] = None
+    agent_id: Optional[str] = None
+    agent_type: Optional[str] = None
+    profile_id: Optional[str] = None
+    run_id: Optional[str] = None
+    session_id: Optional[str] = None
+    user_id: Optional[int] = None
     touches: int = 0
-    lastAction: Optional[str] = None
-    firstSeenAt: str
-    lastSeenAt: str
+    last_action: Optional[str] = None
+    first_seen_at: str
+    last_seen_at: str
     meta: Optional[Dict[str, Any]] = None
 
 
-class PlanParticipantsResponse(BaseModel):
-    planId: str
-    generatedAt: str
+class PlanParticipantsResponse(ApiModel):
+    plan_id: str
+    generated_at: str
     participants: List[PlanParticipantEntry] = Field(default_factory=list)
     reviewers: List[PlanParticipantEntry] = Field(default_factory=list)
     builders: List[PlanParticipantEntry] = Field(default_factory=list)
@@ -623,98 +627,98 @@ class PlanParticipantsResponse(BaseModel):
 
 # ── Source preview ───────────────────────────────────────────────
 
-class PlanSourceSnippetLine(BaseModel):
-    lineNumber: int
+class PlanSourceSnippetLine(ApiModel):
+    line_number: int
     text: str
 
 
-class PlanSourcePreviewResponse(BaseModel):
-    planId: str
+class PlanSourcePreviewResponse(ApiModel):
+    plan_id: str
     path: str
-    startLine: int
-    endLine: int
+    start_line: int
+    end_line: int
     lines: List[PlanSourceSnippetLine] = Field(default_factory=list)
 
 
 # ── Activity & sync ──────────────────────────────────────────────
 
-class PlanActivityEntry(BaseModel):
-    runId: Optional[str] = None
-    planId: str
-    planTitle: str
-    eventType: str
+class PlanActivityEntry(ApiModel):
+    run_id: Optional[str] = None
+    plan_id: str
+    plan_title: str
+    event_type: str
     field: Optional[str] = None
-    oldValue: Optional[str] = None
-    newValue: Optional[str] = None
-    commitSha: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    commit_sha: Optional[str] = None
     actor: Optional[str] = None
     timestamp: str
 
 
-class PlanActivityResponse(BaseModel):
+class PlanActivityResponse(ApiModel):
     events: List[PlanActivityEntry] = Field(default_factory=list)
 
 
-class SyncResultResponse(BaseModel):
-    runId: Optional[str] = None
+class SyncResultResponse(ApiModel):
+    run_id: Optional[str] = None
     created: int = 0
     updated: int = 0
     removed: int = 0
     unchanged: int = 0
     events: int = 0
-    durationMs: Optional[int] = None
-    changedFields: Dict[str, int] = Field(default_factory=dict)
+    duration_ms: Optional[int] = None
+    changed_fields: Dict[str, int] = Field(default_factory=dict)
     details: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class PlanSyncRunEntry(BaseModel):
+class PlanSyncRunEntry(ApiModel):
     id: str
     status: str
-    startedAt: str
-    finishedAt: Optional[str] = None
-    durationMs: Optional[int] = None
-    commitSha: Optional[str] = None
+    started_at: str
+    finished_at: Optional[str] = None
+    duration_ms: Optional[int] = None
+    commit_sha: Optional[str] = None
     actor: Optional[str] = None
-    errorMessage: Optional[str] = None
+    error_message: Optional[str] = None
     created: int = 0
     updated: int = 0
     removed: int = 0
     unchanged: int = 0
     events: int = 0
-    changedFields: Dict[str, int] = Field(default_factory=dict)
+    changed_fields: Dict[str, int] = Field(default_factory=dict)
 
 
-class PlanSyncRunsResponse(BaseModel):
+class PlanSyncRunsResponse(ApiModel):
     runs: List[PlanSyncRunEntry] = Field(default_factory=list)
 
 
-class PlanSyncRetentionResponse(BaseModel):
-    dryRun: bool
-    retentionDays: int
+class PlanSyncRetentionResponse(ApiModel):
+    dry_run: bool
+    retention_days: int
     cutoff: str
-    eventsDeleted: int
-    runsDeleted: int
+    events_deleted: int
+    runs_deleted: int
 
 
 # ── Settings ─────────────────────────────────────────────────────
 
-class PlanRuntimeSettingsResponse(BaseModel):
-    plansDbOnlyMode: bool
+class PlanRuntimeSettingsResponse(ApiModel):
+    plans_db_only_mode: bool
     source: str = "runtime"
-    forgeCommitUrlTemplate: Optional[str] = Field(None)
+    forge_commit_url_template: Optional[str] = Field(None)
 
 
 class PlanRuntimeSettingsUpdateRequest(BaseModel):
     plans_db_only_mode: bool = Field(...)
 
 
-class PlanStageOptionEntry(BaseModel):
+class PlanStageOptionEntry(ApiModel):
     value: str
     label: str
     description: str
     aliases: List[str] = Field(default_factory=list)
 
 
-class PlanStagesResponse(BaseModel):
-    defaultStage: str
+class PlanStagesResponse(ApiModel):
+    default_stage: str
     stages: List[PlanStageOptionEntry] = Field(default_factory=list)

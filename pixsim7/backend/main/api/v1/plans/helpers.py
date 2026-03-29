@@ -34,6 +34,7 @@ from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
     HIDDEN_STATUSES,
+    PLAN_LIST_FIELDS,
     get_plan_bundle,
     git_forge_commit_url_template,
     list_plan_bundles,
@@ -93,40 +94,39 @@ def _bundle_to_summary(
             )
             for c in children
         ]
+    list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
     return PlanSummary(
         id=plan.id,
-        documentId=doc.id,
-        parentId=plan.parent_id,
+        document_id=doc.id,
+        parent_id=plan.parent_id,
         title=doc.title,
         status=doc.status,
         stage=stage_value,
         owner=doc.owner,
-        lastUpdated=(plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
+        last_updated=(plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
         priority=plan.priority,
         summary=doc.summary or "",
         scope=plan.scope,
-        planType=plan.plan_type,
+        plan_type=plan.plan_type,
         visibility=doc.visibility,
         namespace=doc.namespace,
         target=plan.target,
         checkpoints=plan.checkpoints,
-        codePaths=plan.code_paths or [],
-        companions=plan.companions or [],
-        handoffs=plan.handoffs or [],
         tags=doc.tags or [],
-        dependsOn=plan.depends_on or [],
         revision=doc.revision,
-        reviewRoundCount=review_counts[0] if review_counts else 0,
-        activeReviewRoundCount=review_counts[1] if review_counts else 0,
+        review_round_count=review_counts[0] if review_counts else 0,
+        active_review_round_count=review_counts[1] if review_counts else 0,
         children=child_entries,
+        **list_fields,
     )
 
 
 def _bundle_to_registry_entry(b: PlanBundle) -> dict:
     doc, plan = b.doc, b.plan
+    list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
     return {
         "id": plan.id,
-        "documentId": doc.id,
+        "document_id": doc.id,
         "title": doc.title,
         "status": doc.status,
         "stage": _normalize_stage_for_response(plan.stage),
@@ -136,15 +136,12 @@ def _bundle_to_registry_entry(b: PlanBundle) -> dict:
         "summary": doc.summary or "",
         "scope": plan.scope,
         "namespace": doc.namespace,
-        "codePaths": plan.code_paths or [],
-        "companions": plan.companions or [],
-        "handoffs": plan.handoffs or [],
         "tags": doc.tags or [],
-        "dependsOn": plan.depends_on or [],
-        "manifestHash": plan.manifest_hash,
-        "lastSyncedAt": plan.last_synced_at.isoformat() if plan.last_synced_at else None,
-        "createdAt": plan.created_at.isoformat() if plan.created_at else None,
-        "updatedAt": plan.updated_at.isoformat() if plan.updated_at else None,
+        **list_fields,
+        "manifest_hash": plan.manifest_hash,
+        "last_synced_at": plan.last_synced_at.isoformat() if plan.last_synced_at else None,
+        "created_at": plan.created_at.isoformat() if plan.created_at else None,
+        "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
     }
 
 
@@ -175,15 +172,15 @@ _RESTORE_PLAN_FIELDS = (
 def _revision_to_entry(row: PlanRevision, *, include_snapshot: bool) -> dict:
     return {
         "id": str(row.id),
-        "planId": row.plan_id,
-        "documentId": row.document_id,
+        "plan_id": row.plan_id,
+        "document_id": row.document_id,
         "revision": row.revision,
-        "eventType": row.event_type,
+        "event_type": row.event_type,
         "actor": row.actor,
-        "commitSha": row.commit_sha,
-        "changedFields": list(row.changed_fields or []),
-        "restoreFromRevision": row.restore_from_revision,
-        "createdAt": row.created_at.isoformat() if row.created_at else "",
+        "commit_sha": row.commit_sha,
+        "changed_fields": list(row.changed_fields or []),
+        "restore_from_revision": row.restore_from_revision,
+        "created_at": row.created_at.isoformat() if row.created_at else "",
         "snapshot": row.snapshot if include_snapshot else None,
     }
 
@@ -208,18 +205,18 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     return {
         "id": str(run.id),
         "status": run.status,
-        "startedAt": run.started_at.isoformat() if run.started_at else "",
-        "finishedAt": run.finished_at.isoformat() if run.finished_at else None,
-        "durationMs": run.duration_ms,
-        "commitSha": run.commit_sha,
+        "started_at": run.started_at.isoformat() if run.started_at else "",
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "duration_ms": run.duration_ms,
+        "commit_sha": run.commit_sha,
         "actor": run.actor,
-        "errorMessage": run.error_message,
+        "error_message": run.error_message,
         "created": run.created or 0,
         "updated": run.updated or 0,
         "removed": run.removed or 0,
         "unchanged": run.unchanged or 0,
         "events": run.events or 0,
-        "changedFields": run.changed_fields or {},
+        "changed_fields": run.changed_fields or {},
     }
 def _normalize_stage_for_response(value: Optional[str]) -> str:
     if isinstance(value, str) and value.strip():
@@ -323,7 +320,7 @@ def _read_source_snippet(
 
     clipped_end = min(end_line, total_lines)
     rows = [
-        PlanSourceSnippetLine(lineNumber=n, text=file_lines[n - 1])
+        PlanSourceSnippetLine(line_number=n, text=file_lines[n - 1])
         for n in range(start_line, clipped_end + 1)
     ]
     return rows, clipped_end
@@ -344,7 +341,7 @@ _REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_a
 _REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
 _REVIEW_REQUEST_MODES: Set[str] = frozenset({"review_only", "propose_patch", "apply_patch"})
 PLAN_REQUEST_KINDS: Set[str] = frozenset({"review", "build", "research"})
-from pixsim7.backend.main.shared.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
+from pixsim7.backend.main.services.meta.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
 
 
 def _validate_commit_sha(sha: str) -> str:
@@ -543,59 +540,59 @@ async def _record_plan_participant_from_principal(
 def _review_round_to_entry(row: PlanReviewRound) -> PlanReviewRoundEntry:
     return PlanReviewRoundEntry(
         id=str(row.id),
-        planId=row.plan_id,
-        roundNumber=row.round_number,
-        reviewRevision=row.review_revision,
+        plan_id=row.plan_id,
+        round_number=row.round_number,
+        review_revision=row.review_revision,
         status=row.status,
         note=row.note,
         conclusion=row.conclusion,
-        createdBy=row.created_by,
-        actorPrincipalType=row.actor_principal_type,
-        actorAgentId=row.actor_agent_id,
-        actorRunId=row.actor_run_id,
-        actorUserId=row.actor_user_id,
-        createdAt=row.created_at.isoformat() if row.created_at else "",
-        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+        created_by=row.created_by,
+        actor_principal_type=row.actor_principal_type,
+        actor_agent_id=row.actor_agent_id,
+        actor_run_id=row.actor_run_id,
+        actor_user_id=row.actor_user_id,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        updated_at=row.updated_at.isoformat() if row.updated_at else "",
     )
 
 
 def _review_node_to_entry(row: PlanReviewNode) -> PlanReviewNodeEntry:
     return PlanReviewNodeEntry(
         id=str(row.id),
-        planId=row.plan_id,
-        roundId=str(row.round_id),
+        plan_id=row.plan_id,
+        round_id=str(row.round_id),
         kind=row.kind,
-        authorRole=row.author_role,
+        author_role=row.author_role,
         body=row.body,
         severity=row.severity,
-        planAnchor=row.plan_anchor,
+        plan_anchor=row.plan_anchor,
         meta=row.meta,
-        createdBy=row.created_by,
-        actorPrincipalType=row.actor_principal_type,
-        actorAgentId=row.actor_agent_id,
-        actorRunId=row.actor_run_id,
-        actorUserId=row.actor_user_id,
-        createdAt=row.created_at.isoformat() if row.created_at else "",
-        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+        created_by=row.created_by,
+        actor_principal_type=row.actor_principal_type,
+        actor_agent_id=row.actor_agent_id,
+        actor_run_id=row.actor_run_id,
+        actor_user_id=row.actor_user_id,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        updated_at=row.updated_at.isoformat() if row.updated_at else "",
     )
 
 
 def _participant_to_entry(row: PlanParticipant) -> PlanParticipantEntry:
     return PlanParticipantEntry(
         id=str(row.id),
-        planId=row.plan_id,
+        plan_id=row.plan_id,
         role=row.role,
-        principalType=row.principal_type,
-        agentId=row.agent_id,
-        agentType=row.agent_type,
-        profileId=row.profile_id,
-        runId=row.run_id,
-        sessionId=row.session_id,
-        userId=row.user_id,
+        principal_type=row.principal_type,
+        agent_id=row.agent_id,
+        agent_type=row.agent_type,
+        profile_id=row.profile_id,
+        run_id=row.run_id,
+        session_id=row.session_id,
+        user_id=row.user_id,
         touches=int(row.touches or 0),
-        lastAction=row.last_action,
-        firstSeenAt=row.first_seen_at.isoformat() if row.first_seen_at else "",
-        lastSeenAt=row.last_seen_at.isoformat() if row.last_seen_at else "",
+        last_action=row.last_action,
+        first_seen_at=row.first_seen_at.isoformat() if row.first_seen_at else "",
+        last_seen_at=row.last_seen_at.isoformat() if row.last_seen_at else "",
         meta=row.meta,
     )
 
@@ -603,18 +600,18 @@ def _participant_to_entry(row: PlanParticipant) -> PlanParticipantEntry:
 def _review_link_to_entry(row: PlanReviewLink) -> PlanReviewLinkEntry:
     return PlanReviewLinkEntry(
         id=str(row.id),
-        planId=row.plan_id,
-        roundId=str(row.round_id),
-        sourceNodeId=str(row.source_node_id),
-        targetNodeId=str(row.target_node_id) if row.target_node_id else None,
+        plan_id=row.plan_id,
+        round_id=str(row.round_id),
+        source_node_id=str(row.source_node_id),
+        target_node_id=str(row.target_node_id) if row.target_node_id else None,
         relation=row.relation,
-        sourceAnchor=row.source_anchor,
-        targetAnchor=row.target_anchor,
-        targetPlanAnchor=row.target_plan_anchor,
+        source_anchor=row.source_anchor,
+        target_anchor=row.target_anchor,
+        target_plan_anchor=row.target_plan_anchor,
         quote=row.quote,
         meta=row.meta,
-        createdBy=row.created_by,
-        createdAt=row.created_at.isoformat() if row.created_at else "",
+        created_by=row.created_by,
+        created_at=row.created_at.isoformat() if row.created_at else "",
     )
 
 
@@ -1032,12 +1029,17 @@ async def _run_review_request_via_bridge(
     profile_hint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
-    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
+    from pixsim7.backend.main.services.meta.agent_dispatch import build_task_payload as build_bridge_task_payload
 
     target_bridge_id = (getattr(request_row, "target_bridge_id", None) or "").strip() or None
     target_agent_id = (request_row.target_agent_id or "").strip() or None
     agent_type = (request_row.target_agent_type or "").lower()
     engine = "codex" if "codex" in agent_type else "claude"
+
+    # Mint a profile-scoped token so the agent's MCP tools have profile identity
+    from pixsim7.backend.main.services.meta.agent_dispatch import mint_task_token
+    agent_token = mint_task_token(target_agent_id, user_id, engine=engine) if target_agent_id and user_id is not None else None
+
     task_payload = build_bridge_task_payload(
         prompt=prompt,
         model=model_id,
@@ -1047,6 +1049,7 @@ async def _run_review_request_via_bridge(
             "review_round_id": str(request_row.round_id) if request_row.round_id else None,
         },
         engine=engine,
+        user_token=agent_token,
         profile_prompt=profile_hint.get("system_prompt") if profile_hint else None,
         profile_config=profile_hint.get("config") if profile_hint and isinstance(profile_hint.get("config"), dict) else None,
         session_policy="scoped",
@@ -1074,11 +1077,8 @@ async def _run_review_request_via_bridge(
             user_id=user_id,
         )
 
-    response_text = (
-        str(result.get("edited_prompt") or "")
-        or str(result.get("response") or "")
-        or str(result.get("output") or "")
-    ).strip()
+    from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
+    response_text = extract_response_text(result)
     if not response_text:
         raise RuntimeError("Remote review request completed without response text.")
 
@@ -2342,44 +2342,44 @@ def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
         id=str(row.id),
         kind=getattr(row, "kind", "review") or "review",
         dismissed=bool(getattr(row, "dismissed", False)),
-        planId=row.plan_id,
-        roundId=str(row.round_id) if row.round_id else None,
+        plan_id=row.plan_id,
+        round_id=str(row.round_id) if row.round_id else None,
         title=row.title,
         body=row.body,
         status=row.status,
-        targetMode=dispatch["target_mode"],
-        targetBridgeId=dispatch["target_bridge_id"],
-        targetAgentId=getattr(row, "target_agent_id", None),
-        targetAgentType=getattr(row, "target_agent_type", None),
-        targetSessionId=dispatch["target_session_id"],
-        preferredAgentId=dispatch["preferred_agent_id"],
-        targetProfileId=dispatch["target_profile_id"],
-        targetMethod=dispatch["target_method"],
-        targetModelId=dispatch["target_model_id"],
-        targetProvider=dispatch["target_provider"],
-        targetUserId=dispatch["target_user_id"],
-        reviewMode=review_cfg["review_mode"],
-        baseRevision=review_cfg["base_revision"],
-        queueIfBusy=dispatch["queue_if_busy"],
-        autoRerouteIfBusy=dispatch["auto_reroute_if_busy"],
-        dispatchState=dispatch["dispatch_state"],
-        dispatchReason=dispatch["dispatch_reason"],
-        requestedBy=row.requested_by,
-        requestedByPrincipalType=row.requested_by_principal_type,
-        requestedByAgentId=row.requested_by_agent_id,
-        requestedByRunId=row.requested_by_run_id,
-        requestedByUserId=row.requested_by_user_id,
+        target_mode=dispatch["target_mode"],
+        target_bridge_id=dispatch["target_bridge_id"],
+        target_agent_id=getattr(row, "target_agent_id", None),
+        target_agent_type=getattr(row, "target_agent_type", None),
+        target_session_id=dispatch["target_session_id"],
+        preferred_agent_id=dispatch["preferred_agent_id"],
+        target_profile_id=dispatch["target_profile_id"],
+        target_method=dispatch["target_method"],
+        target_model_id=dispatch["target_model_id"],
+        target_provider=dispatch["target_provider"],
+        target_user_id=dispatch["target_user_id"],
+        review_mode=review_cfg["review_mode"],
+        base_revision=review_cfg["base_revision"],
+        queue_if_busy=dispatch["queue_if_busy"],
+        auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
+        dispatch_state=dispatch["dispatch_state"],
+        dispatch_reason=dispatch["dispatch_reason"],
+        requested_by=row.requested_by,
+        requested_by_principal_type=row.requested_by_principal_type,
+        requested_by_agent_id=row.requested_by_agent_id,
+        requested_by_run_id=row.requested_by_run_id,
+        requested_by_user_id=row.requested_by_user_id,
         meta=row.meta,
-        resolutionNote=row.resolution_note,
-        resolvedNodeId=str(row.resolved_node_id) if row.resolved_node_id else None,
-        resolvedBy=row.resolved_by,
-        resolvedByPrincipalType=row.resolved_by_principal_type,
-        resolvedByAgentId=row.resolved_by_agent_id,
-        resolvedByRunId=row.resolved_by_run_id,
-        resolvedByUserId=row.resolved_by_user_id,
-        createdAt=row.created_at.isoformat() if row.created_at else "",
-        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
-        resolvedAt=row.resolved_at.isoformat() if row.resolved_at else None,
+        resolution_note=row.resolution_note,
+        resolved_node_id=str(row.resolved_node_id) if row.resolved_node_id else None,
+        resolved_by=row.resolved_by,
+        resolved_by_principal_type=row.resolved_by_principal_type,
+        resolved_by_agent_id=row.resolved_by_agent_id,
+        resolved_by_run_id=row.resolved_by_run_id,
+        resolved_by_user_id=row.resolved_by_user_id,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        updated_at=row.updated_at.isoformat() if row.updated_at else "",
+        resolved_at=row.resolved_at.isoformat() if row.resolved_at else None,
     )
 
 

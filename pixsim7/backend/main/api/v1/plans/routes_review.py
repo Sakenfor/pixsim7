@@ -94,21 +94,21 @@ def _parse_optional_iso_datetime(raw_value: Optional[str], *, field_name: str) -
 def _delegation_to_entry(row: PlanReviewDelegation) -> PlanReviewDelegationEntry:
     return PlanReviewDelegationEntry(
         id=str(row.id),
-        grantorUserId=int(row.grantor_user_id),
-        delegateUserId=int(row.delegate_user_id),
-        planId=row.plan_id,
+        grantor_user_id=int(row.grantor_user_id),
+        delegate_user_id=int(row.delegate_user_id),
+        plan_id=row.plan_id,
         status=row.status,
-        allowedProfileIds=list(row.allowed_profile_ids or []),
-        allowedBridgeIds=list(row.allowed_bridge_ids or []),
-        allowedAgentIds=list(row.allowed_agent_ids or []),
+        allowed_profile_ids=list(row.allowed_profile_ids or []),
+        allowed_bridge_ids=list(row.allowed_bridge_ids or []),
+        allowed_agent_ids=list(row.allowed_agent_ids or []),
         note=row.note,
-        createdByUserId=row.created_by_user_id,
-        revokedByUserId=row.revoked_by_user_id,
-        expiresAt=row.expires_at.isoformat() if row.expires_at else None,
-        revokedAt=row.revoked_at.isoformat() if row.revoked_at else None,
+        created_by_user_id=row.created_by_user_id,
+        revoked_by_user_id=row.revoked_by_user_id,
+        expires_at=row.expires_at.isoformat() if row.expires_at else None,
+        revoked_at=row.revoked_at.isoformat() if row.revoked_at else None,
         meta=row.meta,
-        createdAt=row.created_at.isoformat() if row.created_at else "",
-        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        updated_at=row.updated_at.isoformat() if row.updated_at else "",
     )
 
 
@@ -171,9 +171,9 @@ async def list_plan_review_delegations(
         as_delegate = rows
 
     return PlanReviewDelegationListResponse(
-        generatedAt=utcnow().isoformat(),
-        asGrantor=[_delegation_to_entry(row) for row in as_grantor],
-        asDelegate=[_delegation_to_entry(row) for row in as_delegate],
+        generated_at=utcnow().isoformat(),
+        as_grantor=[_delegation_to_entry(row) for row in as_grantor],
+        as_delegate=[_delegation_to_entry(row) for row in as_delegate],
     )
 
 
@@ -359,7 +359,7 @@ async def list_plan_review_requests(
 
     rows = (await db.execute(stmt)).scalars().all()
     return PlanRequestListResponse(
-        planId=plan_id,
+        plan_id=plan_id,
         requests=[_dp._review_request_to_entry(row) for row in rows],
     )
 
@@ -456,28 +456,28 @@ async def list_plan_review_assignees(
             id=str(row.get("bridge_id") or row["agent_id"]),
             label=profile_labels.get(str(row["agent_id"]), str(row["agent_id"])),
             source=str(row.get("source") or "live"),
-            targetMode="session",
-            bridgeId=str(row.get("bridge_id")) if row.get("bridge_id") else None,
-            targetUserId=int(row.get("target_user_id")) if isinstance(row.get("target_user_id"), int) else None,
-            targetSessionId=str(row["agent_id"]),
-            agentId=str(row["agent_id"]),
-            agentType=row.get("agent_type"),
+            target_mode="session",
+            bridge_id=str(row.get("bridge_id")) if row.get("bridge_id") else None,
+            target_user_id=int(row.get("target_user_id")) if isinstance(row.get("target_user_id"), int) else None,
+            target_session_id=str(row["agent_id"]),
+            agent_id=str(row["agent_id"]),
+            agent_type=row.get("agent_type"),
             busy=bool(row.get("busy")),
-            availableNow=not bool(row.get("busy")),
-            activeTasks=int(row.get("active_tasks", 0) or 0),
-            tasksCompleted=int(row.get("tasks_completed", 0) or 0),
-            connectedAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
-            lastSeenAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
-            modelId=row.get("model"),
+            available_now=not bool(row.get("busy")),
+            active_tasks=int(row.get("active_tasks", 0) or 0),
+            tasks_completed=int(row.get("tasks_completed", 0) or 0),
+            connected_at=row["connected_at"].isoformat() if row.get("connected_at") else None,
+            last_seen_at=row["connected_at"].isoformat() if row.get("connected_at") else None,
+            model_id=row.get("model"),
             engines=row.get("engines", []),
-            poolSessions=[
+            pool_sessions=[
                 PlanReviewPoolSession(
-                    sessionId=ps.get("session_id", ""),
+                    session_id=ps.get("session_id", ""),
                     engine=ps.get("engine", "unknown"),
                     state=ps.get("state", "unknown"),
-                    cliModel=ps.get("cli_model"),
-                    messagesSent=ps.get("messages_sent", 0),
-                    contextPct=ps.get("context_pct"),
+                    cli_model=ps.get("cli_model"),
+                    messages_sent=ps.get("messages_sent", 0),
+                    context_pct=ps.get("context_pct"),
                 )
                 for ps in row.get("pool_sessions", [])
             ],
@@ -496,25 +496,25 @@ async def list_plan_review_assignees(
                 id=agent_id,
                 label=profile_labels.get(agent_id, agent_id),
                 source="recent",
-                targetMode="recent_agent",
-                targetUserId=None,
-                targetSessionId=None,
-                agentId=agent_id,
-                agentType=row.get("agent_type"),
+                target_mode="recent_agent",
+                target_user_id=None,
+                target_session_id=None,
+                agent_id=agent_id,
+                agent_type=row.get("agent_type"),
                 busy=False,
-                availableNow=False,
-                activeTasks=0,
-                tasksCompleted=0,
-                connectedAt=None,
-                lastSeenAt=last_seen_at.isoformat() if last_seen_at else None,
+                available_now=False,
+                active_tasks=0,
+                tasks_completed=0,
+                connected_at=None,
+                last_seen_at=last_seen_at.isoformat() if last_seen_at else None,
             )
         )
 
     return PlanReviewAssigneesResponse(
-        planId=plan_id,
-        generatedAt=utcnow().isoformat(),
-        liveSessions=live_entries,
-        recentAgents=recent_entries,
+        plan_id=plan_id,
+        generated_at=utcnow().isoformat(),
+        live_sessions=live_entries,
+        recent_agents=recent_entries,
     )
 
 
@@ -546,8 +546,8 @@ async def list_plan_participants(
     reviewers = [entry for entry in participants if entry.role == "reviewer"]
     builders = [entry for entry in participants if entry.role == "builder"]
     return PlanParticipantsResponse(
-        planId=plan_id,
-        generatedAt=utcnow().isoformat(),
+        plan_id=plan_id,
+        generated_at=utcnow().isoformat(),
         participants=participants,
         reviewers=reviewers,
         builders=builders,
@@ -775,7 +775,7 @@ async def dispatch_plan_review_request(
         node=_dp._review_node_to_entry(node_row) if node_row is not None else None,
         executed=bool(outcome.get("executed", False)),
         message=str(outcome.get("message") or ""),
-        durationMs=outcome.get("duration_ms"),
+        duration_ms=outcome.get("duration_ms"),
     )
 
 
@@ -817,25 +817,25 @@ async def dispatch_plan_review_requests_tick(
                 processed += 1
             items.append(
                 PlanReviewDispatchTickItem(
-                    planId=row.plan_id,
-                    requestId=str(row.id),
+                    plan_id=row.plan_id,
+                    request_id=str(row.id),
                     status=request_entry.status,
                     executed=bool(outcome.get("executed", False)),
                     message=str(outcome.get("message") or ""),
-                    dispatchState=request_entry.dispatchState,
-                    resolvedNodeId=request_entry.resolvedNodeId,
+                    dispatch_state=request_entry.dispatch_state,
+                    resolved_node_id=request_entry.resolved_node_id,
                 )
             )
         except HTTPException as exc:
             items.append(
                 PlanReviewDispatchTickItem(
-                    planId=row.plan_id,
-                    requestId=str(row.id),
+                    plan_id=row.plan_id,
+                    request_id=str(row.id),
                     status=row.status,
                     executed=False,
                     message=str(exc.detail),
-                    dispatchState=_dp._review_request_dispatch_view(row).get("dispatch_state"),
-                    resolvedNodeId=str(row.resolved_node_id) if row.resolved_node_id else None,
+                    dispatch_state=_dp._review_request_dispatch_view(row).get("dispatch_state"),
+                    resolved_node_id=str(row.resolved_node_id) if row.resolved_node_id else None,
                 )
             )
 
@@ -870,7 +870,7 @@ async def list_plan_review_rounds(
         stmt = stmt.where(PlanReviewRound.status == status)
     rows = (await db.execute(stmt)).scalars().all()
     return PlanReviewRoundListResponse(
-        planId=plan_id,
+        plan_id=plan_id,
         rounds=[_dp._review_round_to_entry(row) for row in rows],
     )
 
@@ -1202,7 +1202,7 @@ async def get_plan_review_graph(
     request_rows = (await db.execute(requests_stmt)).scalars().all()
 
     return PlanReviewGraphResponse(
-        planId=plan_id,
+        plan_id=plan_id,
         rounds=[_dp._review_round_to_entry(row) for row in round_rows],
         nodes=[_dp._review_node_to_entry(row) for row in node_rows],
         links=[_dp._review_link_to_entry(row) for row in link_rows],
@@ -1262,9 +1262,9 @@ async def preview_plan_review_source(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return PlanSourcePreviewResponse(
-        planId=plan_id,
+        plan_id=plan_id,
         path=relative_path,
-        startLine=start_line,
-        endLine=resolved_end,
+        start_line=start_line,
+        end_line=resolved_end,
         lines=rows,
     )

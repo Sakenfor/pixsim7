@@ -29,6 +29,7 @@ from pixsim7.backend.main.domain.docs.models import (
     TestSuiteRecord,
 )
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
@@ -40,6 +41,7 @@ from pixsim7.backend.main.services.docs.plan_sync import (
 from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from pixsim7.backend.main.services.docs.plan_write import (
     HIDDEN_STATUSES,
+    PLAN_LIST_FIELDS,
     PlanBundle,
     PlanNotFoundError,
     PlanRevisionConflictError,
@@ -242,7 +244,7 @@ async def list_plans(
 
     return {
         "version": "1",
-        "generatedAt": None,
+        "generated_at": None,
         "plans": plans,
         "total": total,
         "limit": limit,
@@ -284,6 +286,7 @@ class PlanCreateRequest(BaseModel):
     companions: Optional[List[str]] = Field(None)
     handoffs: Optional[List[str]] = Field(None)
     depends_on: Optional[List[str]] = Field(None)
+    phases: Optional[List[str]] = Field(None, description="Ordered list of child plan IDs representing plan phases.")
     target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
     checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list.")
     parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
@@ -407,7 +410,7 @@ async def create_plan(
         owner=payload.owner,
         summary=payload.summary,
         markdown=payload.markdown,
-        user_id=principal.id if principal.id != 0 else None,
+        user_id=resolve_effective_user_id(principal),
         visibility=payload.visibility,
         namespace=payload.namespace or "dev/plans",
         tags=payload.tags or [],
@@ -425,6 +428,11 @@ async def create_plan(
             raise HTTPException(status_code=400, detail=f"Parent plan not found: {payload.parent_id}")
 
     # Create PlanRegistry (plan-specific fields)
+    # Resolve list fields from payload, with companions needing special handling.
+    list_field_values = {f: getattr(payload, f, None) or [] for f in PLAN_LIST_FIELDS}
+    list_field_values["companions"] = await _resolve_companion_docs(
+        db, plan_id=payload.id, companions=list_field_values.get("companions") or [],
+    )
     plan = PlanRegistry(
         id=payload.id,
         document_id=doc_id,
@@ -435,12 +443,7 @@ async def create_plan(
         task_scope=payload.task_scope,
         target=payload.target,
         checkpoints=payload.checkpoints,
-        code_paths=payload.code_paths or [],
-        companions=await _resolve_companion_docs(
-            db, plan_id=payload.id, companions=payload.companions or [],
-        ),
-        handoffs=payload.handoffs or [],
-        depends_on=payload.depends_on or [],
+        **list_field_values,
         scope=status_to_scope(payload.status),
         created_at=now,
         updated_at=now,
@@ -526,6 +529,7 @@ class PlanUpdateRequest(BaseModel):
     companions: Optional[List[str]] = Field(None)
     handoffs: Optional[List[str]] = Field(None)
     depends_on: Optional[List[str]] = Field(None)
+    phases: Optional[List[str]] = Field(None, description="Ordered list of child plan IDs representing plan phases.")
     target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
     checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list (replaces all).")
     checkpoints_append: Optional[List[Dict[str, Any]]] = Field(
@@ -744,7 +748,7 @@ async def list_plan_revisions(
     ).scalars().all()
 
     return PlanRevisionListResponse(
-        planId=plan_id,
+        plan_id=plan_id,
         revisions=[
             PlanRevisionEntry(**_revision_to_entry(row, include_snapshot=include_snapshot))
             for row in rows
@@ -874,12 +878,12 @@ async def restore_plan_revision(
     await db.commit()
 
     return PlanRestoreResponse(
-        planId=plan_id,
-        restoredFromRevision=revision,
+        plan_id=plan_id,
+        restored_from_revision=revision,
         revision=result.revision,
         changes=result.changes,
-        commitSha=result.commit_sha,
-        newScope=result.new_scope,
+        commit_sha=result.commit_sha,
+        new_scope=result.new_scope,
     )
 
 
@@ -1418,11 +1422,9 @@ async def get_plan(
     summary = _bundle_to_summary(bundle, children=children)
     return PlanDetailResponse(
         **summary.model_dump(),
-        planPath=bundle.plan.plan_path or "",
+        plan_path=bundle.plan.plan_path or "",
         markdown=bundle.doc.markdown or "",
     )
 
 
 # ── Test coverage discovery ──────────────────────────────────────
-
-
