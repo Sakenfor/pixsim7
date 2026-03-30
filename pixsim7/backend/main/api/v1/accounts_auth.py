@@ -84,7 +84,10 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         max_concurrent_jobs=account.max_concurrent_jobs,
         current_processing_jobs=account.current_processing_jobs,
         # Plan capabilities
+        plan_tier=provider_metadata.get("plan_type", 0),
         unlimited_image_models=provider_metadata.get("plan_unlimited_image_models", []),
+        promotions=provider_metadata.get("promotions") or {},
+        promotion_discounts=provider_metadata.get("promotion_discounts") or {},
         # Timing
         last_used=account.last_used,
         last_error=account.last_error,
@@ -652,7 +655,7 @@ async def import_cookies(
             except Exception:
                 pass  # non-fatal
 
-            # Sync plan details for existing Pixverse accounts (best-effort)
+            # Sync plan details + promotions for existing Pixverse accounts (best-effort)
             if request.provider_id == "pixverse":
                 try:
                     plan_details = await provider.get_plan_details(existing)
@@ -662,15 +665,27 @@ async def import_cookies(
                             updated_fields.append("max_concurrent_jobs")
                         if "provider_metadata" not in updated_fields:
                             updated_fields.append("provider_metadata")
-                        await db.commit()
-                        await db.refresh(existing)
-                        logger.info(
-                            "pixverse_plan_synced_on_update account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
-                            existing.id,
-                            email,
-                            plan_details.get("plan_name"),
-                            existing.max_concurrent_jobs,
-                        )
+                    # Sync promotions from credits endpoint
+                    try:
+                        credits_data = await provider.get_credits(existing)
+                        promotions = credits_data.get("promotions") if isinstance(credits_data, dict) else None
+                        if promotions and isinstance(promotions, dict):
+                            metadata = existing.provider_metadata or {}
+                            metadata["promotions"] = promotions
+                            existing.provider_metadata = metadata
+                    except Exception:
+                        pass  # promotions sync is non-fatal
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(existing, "provider_metadata")
+                    await db.commit()
+                    await db.refresh(existing)
+                    logger.info(
+                        "pixverse_plan_synced_on_update account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
+                        existing.id,
+                        email,
+                        plan_details.get("plan_name") if plan_details else None,
+                        existing.max_concurrent_jobs,
+                    )
                 except Exception as e:
                     # Plan detection failure should not block account update
                     logger.warning(
@@ -737,21 +752,33 @@ async def import_cookies(
                     await db.commit()
                     await db.refresh(account)
 
-            # Sync plan details for new Pixverse accounts (best-effort)
+            # Sync plan details + promotions for new Pixverse accounts (best-effort)
             if request.provider_id == "pixverse":
                 try:
                     plan_details = await provider.get_plan_details(account)
                     if plan_details:
                         provider.apply_plan_to_account(account, plan_details)
-                        await db.commit()
-                        await db.refresh(account)
-                        logger.info(
-                            "pixverse_plan_synced_on_import account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
-                            account.id,
-                            email,
-                            plan_details.get("plan_name"),
-                            account.max_concurrent_jobs,
-                        )
+                    # Sync promotions from credits endpoint
+                    try:
+                        creds = await provider.get_credits(account)
+                        promotions = creds.get("promotions") if isinstance(creds, dict) else None
+                        if promotions and isinstance(promotions, dict):
+                            metadata = account.provider_metadata or {}
+                            metadata["promotions"] = promotions
+                            account.provider_metadata = metadata
+                    except Exception:
+                        pass  # promotions sync is non-fatal
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(account, "provider_metadata")
+                    await db.commit()
+                    await db.refresh(account)
+                    logger.info(
+                        "pixverse_plan_synced_on_import account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
+                        account.id,
+                        email,
+                        plan_details.get("plan_name") if plan_details else None,
+                        account.max_concurrent_jobs,
+                    )
                 except Exception as e:
                     # Plan detection failure should not block account creation
                     logger.warning(

@@ -11,7 +11,7 @@ Provider metadata (domains, credit_types, capabilities) is now sourced from
 the Providers domain (domain/providers/). The registry provides dynamic
 domain mappings from provider manifests.
 """
-from typing import Optional, Literal
+from typing import Dict, Optional, Literal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from urllib.parse import urlparse
@@ -157,6 +157,10 @@ class PixverseCostEstimateRequest(BaseModel):
     multi_shot: bool = Field(False, description="Whether multi_shot is enabled")
     audio: bool = Field(False, description="Whether audio generation is enabled")
     api_method: str = Field("web-api", description="Pixverse API method (web-api or open-api)")
+    discounts: Optional[Dict[str, float]] = Field(
+        None,
+        description="Active model discounts from account promotions, e.g. {\"v6\": 0.7}",
+    )
 
 
 class PixverseCostEstimateResponse(BaseModel):
@@ -602,6 +606,7 @@ async def estimate_pixverse_cost(
         motion_mode=body.motion_mode,
         multi_shot=body.multi_shot,
         audio=body.audio,
+        discounts=body.discounts,
     )
     # Return null if pricing helper unavailable (graceful degradation)
     if credits is None:

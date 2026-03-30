@@ -82,7 +82,12 @@ class AccountResponse(BaseModel):
     current_processing_jobs: int
 
     # Plan capabilities
+    plan_tier: int = 0  # 0=free, 1=standard, 2+=pro (from Pixverse plan_details)
     unlimited_image_models: List[str] = []
+    # Active promotions (e.g. {"v6": true} for model discounts)
+    promotions: Dict[str, bool] = {}
+    # Resolved discount multipliers (e.g. {"v6": 0.7}) — backend-authoritative
+    promotion_discounts: Dict[str, float] = {}
 
     # Timing
     last_used: Optional[datetime]

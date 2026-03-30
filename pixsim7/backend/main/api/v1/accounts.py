@@ -107,7 +107,10 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         max_concurrent_jobs=account.max_concurrent_jobs,
         current_processing_jobs=account.current_processing_jobs,
         # Plan capabilities
+        plan_tier=provider_metadata.get("plan_type", 0),
         unlimited_image_models=provider_metadata.get("plan_unlimited_image_models") or [],
+        promotions=provider_metadata.get("promotions") or {},
+        promotion_discounts=provider_metadata.get("promotion_discounts") or {},
         # Timing
         last_used=account.last_used,
         last_error=account.last_error,
@@ -589,6 +592,29 @@ async def update_account(
             status=request.status,
             is_google_account=request.is_google_account
         )
+        # Sync plan + promotions for Pixverse accounts on update (best-effort)
+        if account.provider_id == "pixverse":
+            try:
+                from pixsim7.backend.main.domain.providers.registry import registry
+                provider = registry.get("pixverse")
+                if provider and hasattr(provider, "get_plan_details"):
+                    plan_details = await provider.get_plan_details(account)
+                    if plan_details:
+                        provider.apply_plan_to_account(account, plan_details)
+                if provider and hasattr(provider, "get_credits"):
+                    try:
+                        credits_data = await provider.get_credits(account)
+                        promotions = credits_data.get("promotions") if isinstance(credits_data, dict) else None
+                        if promotions and isinstance(promotions, dict):
+                            metadata = account.provider_metadata or {}
+                            metadata["promotions"] = promotions
+                            account.provider_metadata = metadata
+                    except Exception:
+                        pass  # promotions sync non-fatal
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(account, "provider_metadata")
+            except Exception as e:
+                logger.warning(f"[PATCH /accounts/{account_id}] Plan/promo sync failed: {e}")
         await db.commit()
         await db.refresh(account)
         logger.info(f"[PATCH /accounts/{account_id}] Account updated successfully. New email: {account.email}, nickname: {account.nickname}")

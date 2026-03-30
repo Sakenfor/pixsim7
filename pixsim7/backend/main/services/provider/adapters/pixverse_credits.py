@@ -19,6 +19,10 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_concurrency import
     PIXVERSE_PRO_MAX_CONCURRENT_JOBS,
     resolve_pixverse_max_concurrent_jobs,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_promotions import (
+    extract_pixverse_promotions,
+    resolve_promotion_discounts,
+)
 
 logger = get_logger()
 # Allow a bit more time for Pixverse web dashboard credits endpoint, which can
@@ -192,6 +196,14 @@ class PixverseCreditsMixin:
                 result["web"] = max(0, web_total)
             if openapi_total is not None:
                 result["openapi"] = max(0, openapi_total)
+
+            # Surface active promotions + resolved discounts from credits response
+            promotions = extract_pixverse_promotions(web_data)
+            if promotions:
+                result["promotions"] = promotions
+                discounts = resolve_promotion_discounts(promotions)
+                if discounts:
+                    result["promotion_discounts"] = discounts
 
             logger.debug(
                 "pixverse_credits_parsed",

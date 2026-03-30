@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 
 import type { ParamSpec } from '@lib/generation-ui';
+import { Icon } from '@lib/icons';
 
 import { PromotionDetailsPopover } from '@features/providers/components/PromotionDetailsPopover';
 
@@ -13,7 +14,34 @@ interface AccountOption {
   nickname?: string;
   email: string;
   promotions?: Record<string, unknown>;
+  plan_tier?: number;
   status?: string;
+}
+
+const TIER_CONFIG: Record<number, { label: string; color: string }> = {
+  1: { label: '1', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/25' },
+  2: { label: '2', color: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/25' },
+  3: { label: '3', color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25' },
+};
+
+function AccountTierBadge({ tier }: { tier: number }) {
+  const cfg = TIER_CONFIG[tier];
+  if (!cfg) return null;
+  return (
+    <span className={clsx('inline-flex items-center justify-center w-[16px] h-[16px] rounded text-[8px] font-bold border', cfg.color)}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function AccountPromoBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 px-1 py-px rounded text-[8px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+      <Icon name="sparkles" size={8} />
+      {count}
+    </span>
+  );
 }
 
 interface AdvancedSettingsPopoverProps {
@@ -196,17 +224,46 @@ export function AdvancedSettingsPopover({
             <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
               Account
             </label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => onChange('preferred_account_id', e.target.value ? Number(e.target.value) : undefined)}
-              disabled={disabled}
-              className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            >
-              <option value="">Auto</option>
-              {accounts!.map(a => (
-                <option key={a.id} value={a.id}>{a.nickname || a.email}</option>
-              ))}
-            </select>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => onChange('preferred_account_id', undefined)}
+                disabled={disabled}
+                className={clsx(
+                  'px-2 py-1 text-[11px] font-medium rounded-lg transition-colors',
+                  !selectedAccountId
+                    ? 'bg-accent text-accent-text shadow-sm'
+                    : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                )}
+              >
+                Auto
+              </button>
+              {accounts!.map(a => {
+                const isSelected = String(a.id) === String(selectedAccountId);
+                const tier = a.plan_tier ?? 0;
+                const promoCount = a.promotions && typeof a.promotions === 'object'
+                  ? Object.values(a.promotions).filter(Boolean).length : 0;
+                return (
+                  <button
+                    type="button"
+                    key={a.id}
+                    onClick={() => onChange('preferred_account_id', a.id)}
+                    disabled={disabled}
+                    className={clsx(
+                      'flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg transition-colors',
+                      isSelected
+                        ? 'bg-accent text-accent-text shadow-sm'
+                        : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                    )}
+                    title={a.email}
+                  >
+                    <span className="truncate max-w-[100px]">{a.nickname || a.email}</span>
+                    {tier >= 1 && <AccountTierBadge tier={tier} />}
+                    {promoCount > 0 && <AccountPromoBadge count={promoCount} />}
+                  </button>
+                );
+              })}
+            </div>
             {hasPromoModels && (
               <div className="mt-1 rounded-md border border-amber-200/70 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
                 <div>

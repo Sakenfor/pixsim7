@@ -115,7 +115,7 @@ def build_operation_parameter_spec() -> dict:
     base_prompt = {
         "name": "prompt", "type": "string", "required": True, "default": None,
         "enum": None, "description": "Primary text prompt", "group": "core",
-        "max_length": 2048,
+        "max_length": 5000,
         "metadata": {
             "per_model_max_length": prompt_per_model_max_length,
         },
@@ -131,15 +131,23 @@ def build_operation_parameter_spec() -> dict:
         "name": "quality", "type": "enum", "required": False, "default": "720p",
         "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
     }
+    # Derive duration presets per model directly from specs — no hardcoded defaults.
+    per_model_duration_presets: dict[str, list[int]] = {}
+    if VideoModel is not None:
+        for spec in VideoModel.ALL:
+            per_model_duration_presets[str(spec)] = list(range(1, spec.max_duration + 1))
+    global_max_duration = max((spec.max_duration for spec in VideoModel.ALL), default=10) if VideoModel is not None else 10
+    default_model_max = VideoModel.DEFAULT.max_duration if VideoModel is not None else 10
+
     duration_metadata: dict[str, Any] = {
         "kind": "duration_presets",
         "source": "pixverse",
-        "presets": list(range(1, 11)),  # 1-10 seconds
-        "note": "Pixverse video clips support 1-10 seconds.",
+        "presets": list(range(1, default_model_max + 1)),
+        "per_model_presets": per_model_duration_presets,
     }
     duration = {
         "name": "duration", "type": "number", "required": False, "default": 5,
-        "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 10,
+        "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": global_max_duration,
         "metadata": duration_metadata,
     }
     seed = {
@@ -304,13 +312,17 @@ def build_operation_parameter_spec() -> dict:
         "name": "strength", "type": "number", "required": False, "default": 0.7,
         "enum": None, "description": "Transformation strength (0.0-1.0)", "group": "style", "min": 0.0, "max": 1.0
     }
-    # v5.5+ only features (exposed as advanced toggles)
-    # Derive advanced models list from SDK when available
-    advanced_models: list[str] = []
-    if VideoModel is not None and getattr(VideoModel, "ADVANCED_MODELS", None):
-        advanced_models = list(VideoModel.ADVANCED_MODELS)
-    else:
-        advanced_models = ["v5.5", "v5.6"]  # Fallback
+    # v5.5+ feature toggles — derive per-capability from model specs
+    multi_shot_models = (
+        [str(m) for m in VideoModel.supporting("multi_shot")]
+        if VideoModel is not None
+        else ["v5.5", "v6"]
+    )
+    audio_models = (
+        [str(m) for m in VideoModel.supporting("audio")]
+        if VideoModel is not None
+        else ["v5.5", "v5.6", "v6"]
+    )
 
     multi_shot = {
         "name": "multi_shot",
@@ -318,10 +330,10 @@ def build_operation_parameter_spec() -> dict:
         "required": False,
         "default": False,
         "enum": None,
-        "description": "Multi-shot video generation (v5.5+ only)",
+        "description": "Multi-shot video generation",
         "group": "advanced",
         "metadata": {
-            "applies_to_models": advanced_models,
+            "applies_to_models": multi_shot_models,
         },
     }
     audio = {
@@ -330,10 +342,10 @@ def build_operation_parameter_spec() -> dict:
         "required": False,
         "default": False,
         "enum": None,
-        "description": "Native audio generation (v5.5+ only)",
+        "description": "Native audio generation",
         "group": "advanced",
         "metadata": {
-            "applies_to_models": advanced_models,
+            "applies_to_models": audio_models,
         },
     }
     # Off-peak mode (subscription accounts - reduces credit cost)

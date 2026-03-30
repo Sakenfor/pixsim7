@@ -65,9 +65,14 @@ def estimate_video_credit_change(
     motion_mode: Optional[str] = None,
     multi_shot: bool = False,
     audio: bool = False,
+    discounts: Optional[dict[str, float]] = None,
 ) -> Optional[int]:
     """
     Estimate Pixverse video credits using pixverse-py helper when available.
+
+    Args:
+        discounts: Optional model->multiplier map for active promotions,
+                   e.g. {"v6": 0.7}. Passed through to SDK calculate_cost.
 
     Returns:
         Integer credit delta or None if the helper is unavailable.
@@ -83,6 +88,7 @@ def estimate_video_credit_change(
             model=model,
             multi_shot=multi_shot,
             audio=audio,
+            discounts=discounts,
         )
         return int(credits)
     except Exception:  # pragma: no cover - defensive

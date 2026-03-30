@@ -97,6 +97,7 @@ MODEL_FAMILIES: dict[str, ModelFamily] = {
             ModelVariant("v5-fast", "pixverse", tier=2),
             ModelVariant("v5.5",    "pixverse", tier=3),
             ModelVariant("v5.6",    "pixverse", tier=4),
+            ModelVariant("v6",      "pixverse", tier=5),
         ),
     ),
 }

@@ -47,10 +47,15 @@ export function useModelPromotions(
 
       const planTier = Number(account?.plan_tier ?? 0);
       // In auto mode, avoid scanning baseline/free accounts with no subscription context.
-      // If promotions are present, still allow them even on lower tiers.
       if (!pinnedAccountId && planTier <= 0 && Object.keys(promos).length === 0) {
         return;
       }
+
+      // Backend-provided discount multipliers (authoritative when available)
+      const backendDiscounts: Record<string, number> | undefined =
+        account?.promotion_discounts && typeof account.promotion_discounts === 'object'
+          ? account.promotion_discounts as Record<string, number>
+          : undefined;
 
       let accountContributed = false;
       for (const [rawModelId, active] of Object.entries(promos)) {
@@ -63,7 +68,11 @@ export function useModelPromotions(
         }
         promoted.add(modelId);
         accountContributed = true;
-        const mult = resolvePromotionDiscount(modelId);
+        // Prefer backend-provided discount, fall back to catalog
+        const backendMult = backendDiscounts?.[modelId];
+        const mult = typeof backendMult === 'number' && backendMult > 0
+          ? backendMult
+          : resolvePromotionDiscount(modelId);
         if (mult !== undefined) {
           discounts[modelId] = mult;
         } else {

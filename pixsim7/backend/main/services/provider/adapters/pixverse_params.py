@@ -46,6 +46,14 @@ _QUALITY_NORMALIZATION = {
     "4k": "2160p",
 }
 
+_FALLBACK_VIDEO_MODEL_MAX_DURATION = {
+    "v5": 10,
+    "v5-fast": 10,
+    "v5.5": 10,
+    "v5.6": 10,
+    "v6": 15,
+}
+
 
 def normalize_quality(quality: str) -> str:
     """Normalize quality value to Pixverse API format.
@@ -99,6 +107,35 @@ def normalize_transition_durations(
     return sanitized
 
 
+def resolve_model_max_duration(model: Any) -> int:
+    """Resolve max duration for a video model (seconds)."""
+    model_key = str(model or "").strip().lower()
+    if model_key and VideoModel is not None:
+        specs = getattr(VideoModel, "ALL", None)
+        if specs:
+            for spec in specs:
+                if str(spec).strip().lower() == model_key:
+                    max_duration = getattr(spec, "max_duration", None)
+                    if isinstance(max_duration, int) and max_duration > 0:
+                        return max_duration
+        default_spec = getattr(VideoModel, "DEFAULT", None)
+        default_max = getattr(default_spec, "max_duration", None) if default_spec is not None else None
+        if isinstance(default_max, int) and default_max > 0:
+            return default_max
+
+    return _FALLBACK_VIDEO_MODEL_MAX_DURATION.get(model_key, 10)
+
+
+def normalize_video_duration(value: Any, model: Any, *, default: int = 5) -> int:
+    """Coerce/clamp video duration to Pixverse model limits."""
+    try:
+        duration = int(round(float(value)))
+    except (TypeError, ValueError):
+        duration = default
+    max_duration = resolve_model_max_duration(model)
+    return max(1, min(max_duration, duration))
+
+
 def map_parameters(
     operation_type: OperationType,
     params: Dict[str, Any],
@@ -122,7 +159,7 @@ def map_parameters(
     if VideoModel is not None:
         video_models = set(VideoModel.ids()) if hasattr(VideoModel, "ids") else {str(m) for m in getattr(VideoModel, "ALL", [])}
     else:
-        video_models = {"v5", "v5-fast", "v5.5", "v5.6"}
+        video_models = {"v5", "v5-fast", "v5.5", "v5.6", "v6"}
 
     if ImageModel is not None:
         image_models = set(ImageModel.ids()) if hasattr(ImageModel, "ids") else {str(m) for m in getattr(ImageModel, "ALL", [])}
@@ -172,7 +209,7 @@ def map_parameters(
     # === Video-only parameters ===
     if is_video_op:
         if "duration" in params and params["duration"] is not None:
-            mapped["duration"] = params["duration"]
+            mapped["duration"] = normalize_video_duration(params["duration"], mapped.get("model"))
 
         # Style/mode parameters (omit nulls and "none" sentinel)
         for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:

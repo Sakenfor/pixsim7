@@ -306,6 +306,18 @@ async def sync_all_account_credits(
                         metadata = account.provider_metadata or {}
                         metadata["openapi_credits_synced_at"] = datetime.now(timezone.utc).isoformat()
                         account.provider_metadata = metadata
+
+                    # Store active promotions + resolved discounts from credits response
+                    promotions = credits_data.get("promotions")
+                    if promotions and isinstance(promotions, dict):
+                        metadata = account.provider_metadata or {}
+                        metadata["promotions"] = promotions
+                        promo_discounts = credits_data.get("promotion_discounts")
+                        if promo_discounts and isinstance(promo_discounts, dict):
+                            metadata["promotion_discounts"] = promo_discounts
+                        account.provider_metadata = metadata
+                        from sqlalchemy.orm.attributes import flag_modified
+                        flag_modified(account, "provider_metadata")
                 else:
                     for credit_type, amount in credits_data.items():
                         # Strip credit_ prefix if present (credit_daily -> daily)
@@ -556,6 +568,18 @@ async def sync_account_credits(
                         openapi_int = 0
                     await account_service.set_credit(account.id, "openapi", openapi_int)
                     updated_credits["openapi"] = openapi_int
+
+                # Store active promotions + resolved discounts from credits response
+                promotions = credits_data.get("promotions")
+                if promotions and isinstance(promotions, dict):
+                    metadata = account.provider_metadata or {}
+                    metadata["promotions"] = promotions
+                    promo_discounts = credits_data.get("promotion_discounts")
+                    if promo_discounts and isinstance(promo_discounts, dict):
+                        metadata["promotion_discounts"] = promo_discounts
+                    account.provider_metadata = metadata
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(account, "provider_metadata")
             else:
                 for credit_type, amount in credits_data.items():
                     # Normalize credit type names (credit_daily -> daily)
@@ -650,6 +674,29 @@ async def sync_account_plan(
 
         # Apply plan to account
         result = provider.apply_plan_to_account(account, plan_details)
+
+        # Also refresh promotions from credits in the same user action.
+        # This keeps plan + promo state aligned for the providers UI.
+        try:
+            if hasattr(provider, "get_credits"):
+                credits_data = await provider.get_credits(
+                    account,
+                    retry_on_session_error=True,
+                    force_refresh=True,
+                )
+                promotions = credits_data.get("promotions") if isinstance(credits_data, dict) else None
+                if isinstance(promotions, dict):
+                    metadata = account.provider_metadata or {}
+                    metadata["promotions"] = promotions
+                    account.provider_metadata = metadata
+        except Exception as promo_exc:
+            logger.warning(
+                "sync_account_plan_promotions_failed account_id=%s email=%s error=%s",
+                account.id,
+                account.email,
+                str(promo_exc),
+            )
+
         # SQLAlchemy doesn't detect in-place JSON mutations; force dirty flag
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(account, "provider_metadata")
