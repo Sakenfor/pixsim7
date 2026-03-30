@@ -7,6 +7,7 @@ import { Icon } from '@lib/icons';
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
+import { useProviderSpecs } from '../hooks/useProviderSpecs';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
 import type { AccountUpdate } from '../lib/api/accounts';
 
@@ -29,6 +30,16 @@ type SidebarSelection =
   | { kind: 'ai-providers' };
 
 const LIVE_ACCOUNT_DIAGNOSTICS_POLL_MS = 250;
+const PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY = 'providers-panel-accounts-view-mode';
+
+function readStoredAccountsViewMode(): 'cards' | 'list' {
+  try {
+    const raw = localStorage.getItem(PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY);
+    return raw === 'list' ? 'list' : 'cards';
+  } catch {
+    return 'cards';
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /*  Sidebar helpers                                                    */
@@ -322,7 +333,7 @@ export function ProviderSettingsPanel() {
   // Sorting & view mode
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [viewMode, setViewModeRaw] = useState<'cards' | 'list'>(readStoredAccountsViewMode);
 
   // Live diagnostics — auto-enabled when any account is selected
   const [liveSelectedAccountIds, setLiveSelectedAccountIds] = useState<Set<number>>(new Set());
@@ -475,6 +486,15 @@ export function ProviderSettingsPanel() {
     }
   };
 
+  const setViewMode = (nextMode: 'cards' | 'list') => {
+    setViewModeRaw(nextMode);
+    try {
+      localStorage.setItem(PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY, nextMode);
+    } catch {
+      // best effort only
+    }
+  };
+
   // --- Derived state ---
 
   const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
@@ -487,6 +507,7 @@ export function ProviderSettingsPanel() {
     : capacity.map((c) => ({ id: c.provider_id, name: providerNames[c.provider_id] || c.provider_id }));
 
   const activeProvider = selection.kind === 'provider' ? selection.providerId : null;
+  const { specs: activeProviderSpecs } = useProviderSpecs(activeProvider ?? undefined);
 
   const providerData =
     capacity.find((c) => c.provider_id === activeProvider) ||
@@ -502,6 +523,20 @@ export function ProviderSettingsPanel() {
           accounts: [] as ProviderAccount[],
         }
       : null);
+  const knownPromotionModelIds = useMemo(() => {
+    const known = new Set<string>();
+    const operationSpecs = activeProviderSpecs?.operation_specs ?? {};
+    for (const operation of Object.values(operationSpecs)) {
+      const parameters = Array.isArray(operation?.parameters) ? operation.parameters : [];
+      for (const parameter of parameters) {
+        if (parameter?.name !== 'model' || !Array.isArray(parameter?.enum)) continue;
+        for (const model of parameter.enum) {
+          if (typeof model === 'string' && model.trim()) known.add(model.trim());
+        }
+      }
+    }
+    return Array.from(known);
+  }, [activeProviderSpecs]);
 
   const sortedAccounts = useMemo(() => {
     if (!providerData) return [];
@@ -1075,6 +1110,7 @@ export function ProviderSettingsPanel() {
                     <CompactAccountCard
                       key={account.id}
                       account={account}
+                      knownModelIds={knownPromotionModelIds}
                       onEdit={() => setEditingAccountId(account.id)}
                       onToggle={() => handleToggleStatus(account)}
                       onUpdateAccountPlan={() => handleUpdateAccountPlan(account)}
@@ -1117,6 +1153,7 @@ export function ProviderSettingsPanel() {
                         <AccountRow
                           key={account.id}
                           account={account}
+                          knownModelIds={knownPromotionModelIds}
                           onEdit={(a) => setEditingAccountId(a.id)}
                           onToggleStatus={(a) => handleToggleStatus(a)}
                           onUpdateAccountPlan={(a) => handleUpdateAccountPlan(a)}

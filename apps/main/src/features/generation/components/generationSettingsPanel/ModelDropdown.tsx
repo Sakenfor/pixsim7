@@ -5,6 +5,21 @@ import { useState, useRef } from 'react';
 import { ModelBadge, type ModelFamilyInfo } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 
+function getModelMatchKeys(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+  const compact = lower.replace(/[\s_-]+/g, '');
+  const lastSegment = lower.split(/[/:]/).filter(Boolean).at(-1) ?? lower;
+  const compactLastSegment = lastSegment.replace(/[\s_-]+/g, '');
+  return [trimmed, lower, compact, lastSegment, compactLastSegment];
+}
+
+function isModelInSet(models: Set<string>, value: unknown): boolean {
+  return getModelMatchKeys(value).some((key) => models.has(key));
+}
+
 export function ModelDropdown({
   options,
   currentValue,
@@ -12,6 +27,7 @@ export function ModelDropdown({
   disabled,
   modelFamilies,
   unlimitedModels,
+  promotedModels = new Set<string>(),
 }: {
   options: string[];
   currentValue: string;
@@ -19,12 +35,14 @@ export function ModelDropdown({
   disabled: boolean;
   modelFamilies: Record<string, ModelFamilyInfo> | null;
   unlimitedModels: Set<string>;
+  promotedModels?: Set<string>;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const currentFamily = modelFamilies?.[currentValue];
-  const isFree = unlimitedModels.has(currentValue);
+  const isFree = isModelInSet(unlimitedModels, currentValue);
+  const isPromo = isModelInSet(promotedModels, currentValue);
 
   return (
     <>
@@ -49,6 +67,11 @@ export function ModelDropdown({
             Free
           </span>
         )}
+        {isPromo && !isFree && (
+          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.04em] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+            Sale
+          </span>
+        )}
         <Icon name="chevronDown" size={12} className={clsx('text-neutral-400 transition-transform shrink-0', open && 'rotate-180')} />
       </button>
 
@@ -65,7 +88,8 @@ export function ModelDropdown({
           {options.map((opt) => {
             const family = modelFamilies?.[opt];
             const isSelected = currentValue === opt;
-            const optFree = unlimitedModels.has(opt);
+            const optFree = isModelInSet(unlimitedModels, opt);
+            const optPromo = isModelInSet(promotedModels, opt);
             return (
               <button
                 type="button"
@@ -83,6 +107,11 @@ export function ModelDropdown({
                 {optFree && (
                   <span className="ml-auto shrink-0 rounded-full bg-emerald-100 px-1 py-px text-[8px] font-bold uppercase text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                     free
+                  </span>
+                )}
+                {optPromo && !optFree && (
+                  <span className="ml-auto shrink-0 rounded-full bg-amber-100 px-1 py-px text-[8px] font-bold uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    sale
                   </span>
                 )}
               </button>

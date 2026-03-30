@@ -4,25 +4,32 @@
  * Table row for displaying a provider account with status, credits, and actions.
  */
 
-import { useState, useEffect } from 'react';
 import { useToast } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { dryRunPixverseSync, createApiKey, getAccountStats } from '../lib/api/accounts';
+import { isPromotionActive } from '../lib/promotionCatalog';
+
 import { AccountInfoModal } from './AccountInfoModal';
 import type { AccountDiagnosticsProps } from './CompactAccountCard';
 import { LivePollBadge } from './LivePollBadge';
+import { PromotionDetailsPopover } from './PromotionDetailsPopover';
 
 /** Status color mapping */
 const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400',
-  EXHAUSTED: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400',
-  ERROR: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400',
-  DISABLED: 'bg-neutral-100 dark:bg-neutral-800/30 text-neutral-600 dark:text-neutral-500',
-  RATE_LIMITED: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400',
+  active: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400',
+  exhausted: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400',
+  error: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-400',
+  disabled: 'bg-neutral-100 dark:bg-neutral-800/30 text-neutral-600 dark:text-neutral-500',
+  rate_limited: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400',
 };
 
 interface AccountRowProps {
   account: ProviderAccount;
+  knownModelIds?: string[];
   onEdit: (account: ProviderAccount) => void;
   onToggleStatus: (account: ProviderAccount) => void;
   onUpdateAccountPlan?: (account: ProviderAccount) => void;
@@ -33,6 +40,7 @@ interface AccountRowProps {
 
 export function AccountRow({
   account,
+  knownModelIds,
   onEdit,
   onToggleStatus,
   onUpdateAccountPlan,
@@ -40,9 +48,15 @@ export function AccountRow({
   onRefresh,
   diagnostics,
 }: AccountRowProps) {
-  const isActive = account.status === 'ACTIVE';
+  const normalizedStatus = account.status.toLowerCase();
+  const isActive = normalizedStatus === 'active';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
-  const statusColor = STATUS_COLORS[account.status] || STATUS_COLORS.DISABLED;
+  const statusColor = STATUS_COLORS[normalizedStatus] || STATUS_COLORS.disabled;
+  const promotions = (account.promotions && typeof account.promotions === 'object')
+    ? account.promotions as Record<string, unknown>
+    : {};
+  const promotionCount = Object.keys(promotions).length;
+  const activePromotionCount = Object.values(promotions).filter((value) => isPromotionActive(value)).length;
 
   const [accountStats, setAccountStats] = useState<{ invited_count: number; user_info: Record<string, any> } | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -128,9 +142,14 @@ export function AccountRow({
       {/* Badges */}
       <td className="px-3 py-2 text-sm">
         <div className="flex flex-col gap-0.5 text-xs">
-          {account.has_api_key_paid && (
+          {(account as any).plan_tier >= 2 && (
             <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-400 rounded w-fit">
               PRO
+            </span>
+          )}
+          {(account as any).plan_tier === 1 && (
+            <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded w-fit">
+              STD
             </span>
           )}
           {account.jwt_expired && (
@@ -144,8 +163,25 @@ export function AccountRow({
               onClick={() => setShowInfoModal(true)}
               title={`${accountStats.invited_count} invited user${accountStats.invited_count === 1 ? '' : 's'}`}
             >
-              👥 {accountStats.invited_count}
+              <span className="inline-flex items-center gap-1">
+                <Icon name="users" size={11} />
+                {accountStats.invited_count}
+              </span>
             </span>
+          )}
+          {promotionCount > 0 && (
+            <PromotionDetailsPopover
+              promotions={promotions}
+              knownModelIds={knownModelIds}
+              title={`Promotions • ${account.nickname || account.email}`}
+              triggerClassName="w-fit px-1.5 py-0.5"
+              triggerTitle="View promotion details"
+            >
+              <span className="inline-flex items-center gap-1">
+                <Icon name="sparkles" size={10} />
+                {activePromotionCount > 0 ? activePromotionCount : promotionCount}
+              </span>
+            </PromotionDetailsPopover>
           )}
         </div>
       </td>
@@ -161,28 +197,31 @@ export function AccountRow({
         <div className="flex flex-wrap gap-1">
           <button
             onClick={() => onEdit(account)}
-            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
             title="Edit account"
+            aria-label="Edit account"
           >
-            Edit
+            <Icon name="edit" size={14} />
           </button>
           <button
             onClick={() => onToggleStatus(account)}
-            className={`px-2 py-1 text-xs rounded transition-colors ${
+            className={`p-1.5 rounded transition-colors ${
               isActive
-                ? 'bg-amber-600 text-white hover:bg-amber-700'
-                : 'bg-green-600 text-white hover:bg-green-700'
+                ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
             }`}
             title={isActive ? 'Disable account' : 'Enable account'}
+            aria-label={isActive ? 'Disable account' : 'Enable account'}
           >
-            {isActive ? 'Disable' : 'Enable'}
+            <Icon name={isActive ? 'pause' : 'play'} size={14} />
           </button>
           <button
             onClick={() => onDelete(account)}
-            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
             title="Delete account"
+            aria-label="Delete account"
           >
-            Delete
+            <Icon name="trash2" size={14} />
           </button>
 
           {/* Pixverse-specific buttons */}
@@ -190,19 +229,21 @@ export function AccountRow({
             <>
               <button
                 onClick={() => setShowInfoModal(true)}
-                className="px-2 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-700 transition-colors"
+                className="p-1.5 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 rounded transition-colors"
                 title="View account details and invited users"
+                aria-label="View account details and invited users"
               >
-                ℹ️ Info
+                <Icon name="info" size={14} />
               </button>
               <PixverseDryRunButton accountId={account.id} />
               {onUpdateAccountPlan && (
                 <button
                   onClick={() => onUpdateAccountPlan(account)}
-                  className="px-2 py-1 text-xs bg-emerald-700 text-white rounded hover:bg-emerald-800 transition-colors"
+                  className="p-1.5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
                   title="Refresh Pixverse plan limits (max jobs)"
+                  aria-label="Refresh Pixverse plan limits"
                 >
-                  Update Acc
+                  <Icon name="refresh" size={14} />
                 </button>
               )}
               {!account.has_api_key_paid && account.has_jwt && (
@@ -245,10 +286,11 @@ function PixverseDryRunButton({ accountId }: { accountId: number }) {
     <button
       onClick={handleClick}
       disabled={loading}
-      className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-neutral-500 transition-colors"
+      className="p-1.5 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors disabled:text-neutral-500 disabled:hover:bg-transparent"
       title="Dev: Dry-run Pixverse video sync (no changes)"
+      aria-label="Run Pixverse dry-run sync"
     >
-      {loading ? 'Pixverse…' : 'Pixverse Dry-Run'}
+      <Icon name={loading ? 'loading' : 'flask'} size={14} className={loading ? 'animate-spin' : undefined} />
     </button>
   );
 }
@@ -281,10 +323,11 @@ function CreateApiKeyButton({ accountId, onSuccess }: { accountId: number; onSuc
     <button
       onClick={handleClick}
       disabled={loading}
-      className="px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-neutral-500 transition-colors"
+      className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded transition-colors disabled:text-neutral-500 disabled:hover:bg-transparent"
       title="Create OpenAPI key for faster status polling"
+      aria-label="Create OpenAPI key"
     >
-      {loading ? 'Creating…' : 'Create API Key'}
+      <Icon name={loading ? 'loading' : 'key'} size={14} className={loading ? 'animate-spin' : undefined} />
     </button>
   );
 }

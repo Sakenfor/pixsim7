@@ -22,7 +22,7 @@ import {
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 import { useAuthoringHintsStore, type AuthoringHints } from '@features/generation/stores/authoringHintsStore';
-import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels } from '@features/providers';
+import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels, useModelPromotions } from '@features/providers';
 import { providerCapabilityRegistry } from '@features/providers';
 
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
@@ -281,15 +281,7 @@ export function GenerationSettingsPanel({
     [allAccounts]
   );
 
-  // Credit estimation for Go button
-  const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
-    providerId: inferredProviderId,
-    operationType,
-    params: workbench.dynamicParams,
-  });
-  const creditEstimate = costEstimate?.estimated_credits ?? null;
-
-  // Models that are currently free (unlimited) for the selected account context
+  // Account context for free/promo model resolution
   const preferredAccountIdRaw = workbench.dynamicParams?.preferred_account_id;
   const preferredAccountId = (() => {
     if (preferredAccountIdRaw === undefined || preferredAccountIdRaw === null || preferredAccountIdRaw === '') {
@@ -298,7 +290,49 @@ export function GenerationSettingsPanel({
     const n = Number(preferredAccountIdRaw);
     return Number.isFinite(n) ? n : undefined;
   })();
+  const knownModelIds = useMemo(() => {
+    const known = new Set<string>();
+    for (const spec of workbench.paramSpecs) {
+      if (spec.name !== 'model' || !Array.isArray(spec.enum)) continue;
+      for (const model of spec.enum) {
+        if (typeof model === 'string' && model.trim()) known.add(model.trim());
+      }
+    }
+    return Array.from(known);
+  }, [workbench.paramSpecs]);
   const unlimitedModels = useUnlimitedModels(preferredAccountId, inferredProviderId);
+  const {
+    promoted: promotedModels,
+    discounts: modelDiscounts,
+    unknownPromotions,
+    sourceAccountIds: promoSourceAccountIds,
+  } = useModelPromotions(preferredAccountId, inferredProviderId, knownModelIds);
+  const unknownPromotionModels = useMemo(
+    () => Array.from(unknownPromotions).sort(),
+    [unknownPromotions]
+  );
+  const hasUnknownPromotionPricing = unknownPromotionModels.length > 0;
+  const unknownPromotionTooltip = useMemo(() => {
+    if (!hasUnknownPromotionPricing) return '';
+    const preview = unknownPromotionModels.slice(0, 4).join(', ');
+    const extraCount = unknownPromotionModels.length - 4;
+    return `Promotion detected without local pricing mapping: ${preview}${extraCount > 0 ? ` +${extraCount}` : ''}. Open Advanced Settings for details.`;
+  }, [hasUnknownPromotionPricing, unknownPromotionModels]);
+
+  // Credit estimation for Go button (inject active discounts for accurate estimate)
+  const costParams = useMemo(() => {
+    const hasDiscounts = Object.keys(modelDiscounts).length > 0;
+    return hasDiscounts
+      ? { ...workbench.dynamicParams, discounts: modelDiscounts }
+      : workbench.dynamicParams;
+  }, [workbench.dynamicParams, modelDiscounts]);
+  const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
+    providerId: inferredProviderId,
+    operationType,
+    params: costParams,
+  });
+  const creditEstimate = costEstimate?.estimated_credits ?? null;
+
   const currentModel = workbench.dynamicParams?.model as string | undefined;
   const isModelUnlimited = isModelInUnlimitedSet(unlimitedModels, currentModel);
   const isCurrentGenerationFree = isModelUnlimited || (creditEstimate !== null && creditEstimate <= 0);
@@ -486,6 +520,7 @@ export function GenerationSettingsPanel({
             onChange={workbench.handleParamChange}
             generating={generating}
             unlimitedModels={unlimitedModels}
+            promotedModels={promotedModels}
           />
         </div>
 
@@ -541,6 +576,10 @@ export function GenerationSettingsPanel({
               disabled={generating}
               currentModel={workbench.dynamicParams?.model as string | undefined}
               accounts={activeAccounts}
+              promoModels={Array.from(promotedModels)}
+              unknownPromoModels={unknownPromotionModels}
+              promoSourceAccountCount={promoSourceAccountIds.length}
+              knownPromoModelIds={knownModelIds}
             />
           </div>
           {/* Primary Go button with inline burst stepper */}
@@ -548,6 +587,19 @@ export function GenerationSettingsPanel({
             ref={burstWheelRef}
             className="min-w-0 flex flex-1"
           >
+            {hasUnknownPromotionPricing && (
+              <div
+                className={clsx(
+                  'px-1.5 flex items-center justify-center border-r border-white/20 rounded-l-lg',
+                  generating || !canGenerate
+                    ? 'text-white bg-neutral-400 opacity-70'
+                    : 'text-amber-50 bg-amber-500',
+                )}
+                title={unknownPromotionTooltip}
+              >
+                <Icon name="alertTriangle" size={11} />
+              </div>
+            )}
             {/* Main Go area */}
             <button
               onClick={() => {
@@ -565,7 +617,7 @@ export function GenerationSettingsPanel({
               className={clsx(
                 'flex-1 px-2 py-1.5 text-xs font-semibold tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'rounded-l-lg',
+                hasUnknownPromotionPricing ? 'rounded-none' : 'rounded-l-lg',
                 generating || !canGenerate
                   ? 'text-white bg-neutral-400'
                   : error

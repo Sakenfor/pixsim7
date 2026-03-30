@@ -1,15 +1,19 @@
 import { Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 
 import type { ParamSpec } from '@lib/generation-ui';
 
+import { PromotionDetailsPopover } from '@features/providers/components/PromotionDetailsPopover';
+
 interface AccountOption {
   id: number;
   nickname?: string;
   email: string;
+  promotions?: Record<string, unknown>;
+  status?: string;
 }
 
 interface AdvancedSettingsPopoverProps {
@@ -21,6 +25,14 @@ interface AdvancedSettingsPopoverProps {
   currentModel?: string;
   /** Provider accounts for the account selector */
   accounts?: AccountOption[];
+  /** Active promo model ids resolved from account metadata */
+  promoModels?: string[];
+  /** Promo model ids with unknown discount mapping in UI */
+  unknownPromoModels?: string[];
+  /** Number of accounts contributing active promotions */
+  promoSourceAccountCount?: number;
+  /** Known model ids for provider classification (model promo vs feature promo) */
+  knownPromoModelIds?: string[];
 }
 
 /**
@@ -37,6 +49,10 @@ export function AdvancedSettingsPopover({
   disabled = false,
   currentModel,
   accounts,
+  promoModels = [],
+  unknownPromoModels = [],
+  promoSourceAccountCount = 0,
+  knownPromoModelIds,
 }: AdvancedSettingsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -130,6 +146,23 @@ export function AdvancedSettingsPopover({
   });
   const hasAccounts = accounts && accounts.length > 0;
   const selectedAccountId = values.preferred_account_id ?? '';
+  const hasPromoModels = promoModels.length > 0;
+  const resolvedPromotionFlags = useMemo(() => {
+    const merged: Record<string, unknown> = {};
+    if (!accounts || accounts.length === 0) return merged;
+    const selectedId = selectedAccountId ? Number(selectedAccountId) : null;
+    const sourceAccounts = selectedId
+      ? accounts.filter((account) => account.id === selectedId)
+      : accounts;
+    for (const account of sourceAccounts) {
+      const promotions = account.promotions;
+      if (!promotions || typeof promotions !== 'object') continue;
+      for (const [key, value] of Object.entries(promotions)) {
+        if (!(key in merged) || Boolean(value)) merged[key] = value;
+      }
+    }
+    return merged;
+  }, [accounts, selectedAccountId]);
   if (safeParams.length === 0 && !hasAccounts) return null;
 
   // Count how many advanced params have non-default values
@@ -174,6 +207,32 @@ export function AdvancedSettingsPopover({
                 <option key={a.id} value={a.id}>{a.nickname || a.email}</option>
               ))}
             </select>
+            {hasPromoModels && (
+              <div className="mt-1 rounded-md border border-amber-200/70 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+                <div>
+                  Active promos ({promoSourceAccountCount} account{promoSourceAccountCount === 1 ? '' : 's'}):{' '}
+                  {promoModels.slice(0, 3).join(', ')}
+                  {promoModels.length > 3 ? ` +${promoModels.length - 3}` : ''}
+                </div>
+                {unknownPromoModels.length > 0 && (
+                  <div className="text-[9px] mt-0.5 opacity-90">
+                    Unmapped pricing for: {unknownPromoModels.slice(0, 3).join(', ')}
+                    {unknownPromoModels.length > 3 ? ` +${unknownPromoModels.length - 3}` : ''}. Cost estimate may be higher than real charge.
+                  </div>
+                )}
+                {Object.keys(resolvedPromotionFlags).length > 0 && (
+                  <div className="mt-1 flex justify-end">
+                    <PromotionDetailsPopover
+                      promotions={resolvedPromotionFlags}
+                      knownModelIds={knownPromoModelIds}
+                      title="Promotions in account scope"
+                      triggerClassName="px-1.5 py-0.5 text-[9px] font-medium"
+                      triggerTitle="Show promotion details"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {safeParams.map(param => (

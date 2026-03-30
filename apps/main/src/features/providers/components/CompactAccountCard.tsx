@@ -1,5 +1,10 @@
+import { Icon } from '@lib/icons';
+
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import { isPromotionActive } from '../lib/promotionCatalog';
+
 import { LivePollBadge } from './LivePollBadge';
+import { PromotionDetailsPopover } from './PromotionDetailsPopover';
 
 export interface AccountDiagnosticsProps {
   selected: boolean;
@@ -10,6 +15,7 @@ export interface AccountDiagnosticsProps {
 
 interface CompactAccountCardProps {
   account: ProviderAccount;
+  knownModelIds?: string[];
   onEdit: () => void;
   onToggle: () => void;
   onUpdateAccountPlan?: () => void;
@@ -19,6 +25,7 @@ interface CompactAccountCardProps {
 
 export function CompactAccountCard({
   account,
+  knownModelIds,
   onEdit,
   onToggle,
   onUpdateAccountPlan,
@@ -30,6 +37,11 @@ export function CompactAccountCard({
   const credits = account.credits || {};
   const creditTypes = Object.keys(credits);
   const hasMultipleCreditTypes = creditTypes.length > 1;
+  const promotions = (account.promotions && typeof account.promotions === 'object')
+    ? account.promotions as Record<string, unknown>
+    : {};
+  const promotionCount = Object.keys(promotions).length;
+  const activePromotionCount = Object.values(promotions).filter((value) => isPromotionActive(value)).length;
 
   const statusConfig = {
     active: {
@@ -107,9 +119,14 @@ export function CompactAccountCard({
                 {status.label.toUpperCase()}
               </span>
 
-              {account.has_api_key_paid && (
+              {(account as any).plan_tier >= 2 && (
                 <span className="px-1.5 py-0.5 text-[9px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded border border-purple-500/20">
                   PRO
+                </span>
+              )}
+              {(account as any).plan_tier === 1 && (
+                <span className="px-1.5 py-0.5 text-[9px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded border border-blue-500/20">
+                  STD
                 </span>
               )}
               {account.jwt_expired && (
@@ -121,6 +138,20 @@ export function CompactAccountCard({
                 <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded border border-amber-500/20">
                   FULL
                 </span>
+              )}
+              {promotionCount > 0 && (
+                <PromotionDetailsPopover
+                  promotions={promotions}
+                  knownModelIds={knownModelIds}
+                  title={`Promotions • ${account.nickname || account.email}`}
+                  triggerClassName="px-1.5 py-0.5 text-[9px] font-bold border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  triggerTitle="View promotion details"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Icon name="sparkles" size={9} />
+                    P{activePromotionCount > 0 ? activePromotionCount : promotionCount}
+                  </span>
+                </PromotionDetailsPopover>
               )}
             </div>
           </div>
@@ -137,37 +168,41 @@ export function CompactAccountCard({
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 flex-shrink-0">
           <button
             onClick={onEdit}
-            className="p-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
-            title="Edit"
+            className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+            title="Edit account"
+            aria-label="Edit account"
           >
-            ✏️
+            <Icon name="edit" size={14} />
           </button>
           <button
             onClick={onToggle}
-            className={`p-1 text-xs rounded hover:bg-opacity-20 ${
+            className={`p-1 rounded hover:bg-opacity-20 transition-colors ${
               isActive
                 ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
                 : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
             }`}
-            title={isActive ? 'Disable' : 'Enable'}
+            title={isActive ? 'Disable account' : 'Enable account'}
+            aria-label={isActive ? 'Disable account' : 'Enable account'}
           >
-            {isActive ? '⏸' : '▶'}
+            <Icon name={isActive ? 'pause' : 'play'} size={14} />
           </button>
           {account.provider_id === 'pixverse' && onUpdateAccountPlan && (
             <button
               onClick={onUpdateAccountPlan}
-              className="px-1.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
+              className="p-1 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
               title="Refresh Pixverse plan limits (max jobs)"
+              aria-label="Refresh Pixverse plan limits"
             >
-              Upd
+              <Icon name="refresh" size={14} />
             </button>
           )}
           <button
             onClick={onDelete}
-            className="p-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-            title="Delete"
+            className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+            title="Delete account"
+            aria-label="Delete account"
           >
-            🗑
+            <Icon name="trash2" size={14} />
           </button>
         </div>
       </div>
