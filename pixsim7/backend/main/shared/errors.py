@@ -118,9 +118,12 @@ class ProviderAuthenticationError(ProviderError):
 class ProviderQuotaExceededError(ProviderError):
     """Provider quota exceeded (no credits)"""
     def __init__(self, provider_id: str, credits_needed: int = 0):
+        detail = (
+            f"Credits needed: {credits_needed}" if credits_needed > 0
+            else "Account has insufficient credits"
+        )
         super().__init__(
-            f"Quota exceeded for provider '{provider_id}'. "
-            f"Credits needed: {credits_needed}",
+            f"Quota exceeded for provider '{provider_id}'. {detail}",
             code="PROVIDER_QUOTA_EXCEEDED",
             error_code="provider_quota",
             retryable=False,

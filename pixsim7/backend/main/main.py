@@ -258,6 +258,13 @@ logger.info(
 from pixsim7.backend.main.api.health import router as health_router
 app.include_router(health_router)
 
+# Debug control endpoint — runtime log level/domain changes without restart
+try:
+    from pixsim_logging.debug_endpoint import create_debug_router
+    app.include_router(create_debug_router(), prefix="/_debug")
+except ImportError:
+    pass
+
 
 # ===== API ROUTES =====
 
@@ -294,5 +301,6 @@ if __name__ == "__main__":
             "**/.venv/**",
             "**/__pycache__/**",
         ],
-        log_level=settings.log_level.lower()
+        log_level=settings.log_level.lower(),
+        access_log=False,  # Disable uvicorn's access log — RequestLoggingMiddleware handles this with richer context
     )

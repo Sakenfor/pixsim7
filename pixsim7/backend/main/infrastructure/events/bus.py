@@ -138,7 +138,7 @@ class EventBus:
             logger.debug(f"No local handlers for event: {event_type}")
             # Don't return - still need to propagate to distributed publisher!
         else:
-            logger.info(f"Publishing event: {event_type} to {len(handlers)} handlers")
+            logger.debug(f"Publishing event: {event_type} to {len(handlers)} handlers")
 
         # Execute local handlers (if any)
         tasks = []

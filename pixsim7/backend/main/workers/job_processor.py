@@ -15,7 +15,7 @@ import asyncio
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any
-from sqlalchemy import select as sa_select
+from sqlalchemy import func as sa_func, select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
@@ -405,29 +405,55 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
-                # For non-pinned generations, exclude accounts that have
-                # pending pinned work so pinned queues run without contention.
+                # For non-pinned generations, exclude accounts where
+                # pending pinned work would fill all remaining capacity.
+                # Only PENDING pinned gens need reservation — PROCESSING
+                # ones already consume current_processing_jobs slots.
                 _pinned_exclude_ids: list[int] = []
                 if not getattr(generation, 'preferred_account_id', None):
                     try:
-                        _pinned_q = (
-                            sa_select(Generation.preferred_account_id)
+                        # Count PENDING pinned demand per account
+                        _pinned_demand_q = (
+                            sa_select(
+                                Generation.preferred_account_id,
+                                sa_func.count(Generation.id).label("pinned_pending"),
+                            )
                             .where(
                                 Generation.preferred_account_id.isnot(None),
                                 Generation.provider_id == generation.provider_id,
-                                Generation.status.in_([GenStatus.PENDING, GenStatus.PROCESSING]),
+                                Generation.status == GenStatus.PENDING,
                                 Generation.id != generation.id,
                             )
-                            .distinct()
+                            .group_by(Generation.preferred_account_id)
                         )
-                        _pinned_result = await db.execute(_pinned_q)
-                        _pinned_exclude_ids = [
-                            r for (r,) in _pinned_result.all() if r is not None
-                        ]
+                        _pinned_demand_result = await db.execute(_pinned_demand_q)
+                        _pinned_demand: dict[int, int] = {
+                            int(acct_id): int(cnt)
+                            for acct_id, cnt in _pinned_demand_result.all()
+                            if acct_id is not None
+                        }
+
+                        if _pinned_demand:
+                            # Check each account's free capacity
+                            _cap_q = sa_select(
+                                ProviderAccount.id,
+                                ProviderAccount.max_concurrent_jobs,
+                                ProviderAccount.current_processing_jobs,
+                            ).where(
+                                ProviderAccount.id.in_(list(_pinned_demand.keys()))
+                            )
+                            _cap_result = await db.execute(_cap_q)
+                            for _acct_id, _max_jobs, _cur_jobs in _cap_result.all():
+                                _free = max(0, (_max_jobs or 0) - (_cur_jobs or 0))
+                                _pending = _pinned_demand.get(int(_acct_id), 0)
+                                if _pending >= _free:
+                                    _pinned_exclude_ids.append(int(_acct_id))
+
                         if _pinned_exclude_ids:
                             gen_logger.info(
                                 "excluding_pinned_accounts",
                                 excluded_ids=_pinned_exclude_ids,
+                                pinned_demand=_pinned_demand,
                             )
                     except Exception as _pin_err:
                         gen_logger.warning("pinned_account_query_failed", error=str(_pin_err))
@@ -759,40 +785,54 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                 # If provider reports quota exhaustion for this account,
                 # mark the account as exhausted and retry with a different account.
+                # Exception: unlimited/free models don't consume credits — the
+                # provider API may reject zero-credit accounts even for free ops.
+                # In that case skip exhaustion marking; the error is a false
+                # positive and rotating accounts won't help.
                 if isinstance(e, ProviderQuotaExceededError):
-                    try:
-                        await account_service.mark_exhausted(account.id)
-                        # Note: account_service.mark_exhausted already logs account_marked_exhausted
-                    except Exception as mark_err:
+                    if is_unlimited_model(account, gen_model) or required_credit_hint == 0:
                         gen_logger.warning(
-                            "account_mark_exhausted_failed",
+                            "quota_error_ignored_free_model",
                             account_id=account.id,
-                            error=str(mark_err),
+                            model=gen_model,
+                            required_credit_hint=required_credit_hint,
+                            msg="Provider returned quota error for free/unlimited model — not marking account exhausted",
                         )
+                        # Fall through to generic error handling below
+                    else:
+                        try:
+                            await account_service.mark_exhausted(account.id)
+                            # Note: account_service.mark_exhausted already logs account_marked_exhausted
+                        except Exception as mark_err:
+                            gen_logger.warning(
+                                "account_mark_exhausted_failed",
+                                account_id=account.id,
+                                error=str(mark_err),
+                            )
 
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
-                    account_released = True
-                    # Quota exhaustion is a hard account-level failure for this
-                    # attempt; rotate even for pinned generations by clearing the
-                    # preferred account if it matches the exhausted account.
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_quota_exhausted",
-                        log_event="generation_requeued_for_different_account",
-                        account_log_field="exhausted_account_id",
-                        gen_logger=gen_logger,
-                        clear_preferred_on_account_match=True,
-                    )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                        await _release_account_reservation(
+                            account_service=account_service,
+                            account_id=account.id,
+                            gen_logger=gen_logger,
+                        )
+                        account_released = True
+                        # Quota exhaustion is a hard account-level failure for this
+                        # attempt; rotate even for pinned generations by clearing the
+                        # preferred account if it matches the exhausted account.
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_quota_exhausted",
+                            log_event="generation_requeued_for_different_account",
+                            account_log_field="exhausted_account_id",
+                            gen_logger=gen_logger,
+                            clear_preferred_on_account_match=True,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                        # Fall through to mark as failed if requeue fails
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, Optional
 
-from pixsim7.client.log import client_log
+from pixsim7.client.log import get_logger
 
 
 class SessionState(str, Enum):
@@ -65,6 +65,8 @@ class AgentCmdSession:
         resume_session_id: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        workdir: str | None = None,
+        token_file_path: str | None = None,
     ):
         from pixsim7.client.protocols import get_protocol
         self.session_id = session_id
@@ -76,6 +78,9 @@ class AgentCmdSession:
         self._resume_session_id = resume_session_id
         self._model = model
         self._reasoning_effort = reasoning_effort
+        self._workdir = workdir
+        self.token_file_path = token_file_path
+        self._log = get_logger().bind(session=session_id)
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
@@ -141,7 +146,7 @@ class AgentCmdSession:
             extra_args=self._extra_args,
         )
 
-        client_log(f"[{self.session_id}] Starting: {' '.join(cmd)}")
+        self._log.debug("session_starting", command=" ".join(cmd))
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -149,16 +154,17 @@ class AgentCmdSession:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=self._workdir or None,
             )
         except FileNotFoundError:
             self._last_error = f"Command not found: {self._command}"
             self.state = SessionState.ERRORED
-            client_log(f"[{self.session_id}] {self._last_error}", error=True)
+            self._log.error("session_start_failed", error=self._last_error)
             return False
         except Exception as e:
             self._last_error = str(e)
             self.state = SessionState.ERRORED
-            client_log(f"[{self.session_id}] Failed to start: {e}", error=True)
+            self._log.error("session_start_failed", error=str(e))
             return False
 
         self._reader_task = asyncio.create_task(self._read_stdout())
@@ -168,14 +174,14 @@ class AgentCmdSession:
         self._last_error = None
         self._jsonrpc_id = 10  # start IDs above the init sequence
 
-        client_log(f"[{self.session_id}] Started (PID: {self._process.pid})")
+        self._log.info("session_started", pid=self._process.pid)
 
         # JSON-RPC protocols (codex app-server) need initialize + thread/start
         if hasattr(self._protocol, 'needs_jsonrpc_init') and self._protocol.needs_jsonrpc_init():
             try:
                 await self._jsonrpc_init()
             except Exception as e:
-                client_log(f"[{self.session_id}] JSON-RPC init failed: {e}", error=True)
+                self._log.error("session_init_failed", error=str(e))
                 self._last_error = f"Protocol init failed: {e}"
                 await self.stop()
                 return False
@@ -218,7 +224,7 @@ class AgentCmdSession:
             if parsed.kind == "error":
                 raise RuntimeError(parsed.text or f"{method} failed")
             if parsed.kind == "progress" and parsed.text:
-                client_log(f"[{self.session_id}] Init: {parsed.text}")
+                self._log.debug("session_init_progress", detail=parsed.text)
 
         raise RuntimeError(f"Timed out waiting for response to {method} (id={request_id})")
 
@@ -242,7 +248,7 @@ class AgentCmdSession:
                 if parsed.kind == "error":
                     raise RuntimeError(parsed.text or "MCP startup failed")
                 if parsed.kind == "progress" and parsed.text:
-                    client_log(f"[{self.session_id}] Init: {parsed.text}")
+                    self._log.debug("session_init_progress", detail=parsed.text)
                 if method == "codex/event/mcp_startup_complete":
                     return
                 continue
@@ -250,20 +256,17 @@ class AgentCmdSession:
             if parsed.kind == "error":
                 raise RuntimeError(parsed.text)
             if parsed.kind == "progress" and parsed.text:
-                client_log(f"[{self.session_id}] Init: {parsed.text}")
+                self._log.debug("session_init_progress", detail=parsed.text)
 
         if saw_mcp_event:
-            client_log(
-                f"[{self.session_id}] Init: MCP startup did not complete within {int(timeout)}s",
-                error=True,
-            )
+            self._log.warning("mcp_startup_timeout", timeout_s=int(timeout))
 
     async def _log_mcp_server_status(self) -> None:
         """Log MCP server/tool counts for observability."""
         try:
             result = await self._jsonrpc_call("mcpServerStatus/list", {}, request_id=2, timeout=10)
         except Exception as e:
-            client_log(f"[{self.session_id}] Init: mcpServerStatus/list failed: {e}", error=True)
+            self._log.warning("mcp_status_failed", error=str(e))
             return
 
         data = result.get("data") if isinstance(result, dict) else None
@@ -271,7 +274,7 @@ class AgentCmdSession:
             return
 
         if not data:
-            client_log(f"[{self.session_id}] Init: No MCP servers configured")
+            self._log.debug("mcp_no_servers")
             return
 
         summaries = []
@@ -284,7 +287,7 @@ class AgentCmdSession:
             summaries.append(f"{name}={tool_count}")
 
         if summaries:
-            client_log(f"[{self.session_id}] Init: MCP tool counts: {', '.join(summaries)}")
+            self._log.debug("mcp_tool_counts", servers=", ".join(summaries))
 
     async def _jsonrpc_init(self) -> None:
         """Send JSON-RPC initialize + thread/start for protocols that need it."""
@@ -328,7 +331,7 @@ class AgentCmdSession:
         if not thread_id:
             raise RuntimeError("thread/start returned no thread ID")
         self.cli_session_id = thread_id
-        client_log(f"[{self.session_id}] Thread: {self.cli_session_id}")
+        self._log.debug("session_thread_id", thread_id=self.cli_session_id)
 
         await self._wait_for_mcp_startup_complete(timeout=15)
         await self._log_mcp_server_status()
@@ -359,9 +362,9 @@ class AgentCmdSession:
                 if isinstance(m, dict)
             ]
             visible = [m for m in self.available_models if not m["hidden"]]
-            client_log(f"[{self.session_id}] Models: {len(visible)} available ({len(self.available_models)} total)")
+            self._log.debug("session_models", visible=len(visible), total=len(self.available_models))
         except Exception as e:
-            client_log(f"[{self.session_id}] model/list failed: {e}", error=True)
+            self._log.warning("session_models_failed", error=str(e))
         return self.available_models
 
     async def stop(self) -> None:
@@ -380,6 +383,12 @@ class AgentCmdSession:
                 pass
 
         if self._process and self._process.returncode is None:
+            # Close stdin first to signal EOF to the child process
+            if self._process.stdin:
+                try:
+                    self._process.stdin.close()
+                except Exception:
+                    pass
             try:
                 self._process.terminate()
                 await asyncio.wait_for(self._process.wait(), timeout=5)
@@ -389,8 +398,21 @@ class AgentCmdSession:
                 except ProcessLookupError:
                     pass
 
+        # Explicitly close pipe transports to prevent Windows ProactorEventLoop
+        # ResourceWarning spam ("unclosed transport" / "I/O operation on closed pipe")
+        if self._process:
+            for pipe in (self._process.stdin, self._process.stdout, self._process.stderr):
+                if pipe is None:
+                    continue
+                transport = getattr(pipe, '_transport', getattr(pipe, 'transport', None))
+                if transport and not getattr(transport, '_closing', False):
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+
         self.state = SessionState.STOPPED
-        client_log(f"[{self.session_id}] Stopped (sent: {self.stats.messages_sent}, received: {self.stats.messages_received})")
+        self._log.info("session_stopped", sent=self.stats.messages_sent, received=self.stats.messages_received)
 
     async def restart(self) -> bool:
         """Stop and restart the session, preserving conversation via --resume."""
@@ -472,7 +494,7 @@ class AgentCmdSession:
                         self.cli_session_id = parsed.session_id
                     if parsed.model:
                         self.cli_model = parsed.model
-                    client_log(f"[{self.session_id}] Session: {self.cli_session_id} model: {self.cli_model}")
+                    self._log.debug("session_identified", cli_session=self.cli_session_id, model=self.cli_model)
 
                 elif parsed.kind == "result":
                     if parsed.text:
@@ -485,18 +507,27 @@ class AgentCmdSession:
                     # Capture token usage from result event (Claude)
                     self._capture_usage(parsed.raw or {})
 
+                    if not result_text:
+                        raw_keys = list((parsed.raw or {}).keys())
+                        self._log.warning(
+                            "session_empty_result",
+                            result_event_keys=raw_keys,
+                            has_result_field="result" in (parsed.raw or {}),
+                            duration_ms=parsed.duration_ms,
+                        )
+
                     # For single-turn protocols, process exits after result → we're done
                     if not self._protocol.is_long_running():
                         self.state = SessionState.READY
-                        return result_text or "(empty response)"
+                        return result_text or ""
 
                     # For long-running, "result" is the final event
                     self.state = SessionState.READY
                     if self._pending_restart:
                         self._pending_restart = False
-                        client_log(f"[{self.session_id}] Applying deferred restart")
+                        self._log.debug("session_deferred_restart")
                         asyncio.ensure_future(self.restart())
-                    return result_text or "(empty response)"
+                    return result_text or ""
 
                 elif parsed.kind == "error":
                     self.stats.errors += 1
@@ -506,19 +537,41 @@ class AgentCmdSession:
                 elif parsed.kind == "progress":
                     # Capture agent message text from completed items (both exec JSONL and app-server JSON-RPC)
                     raw = parsed.raw or {}
-                    raw_method = raw.get("method", "")
+                    raw_method = str(raw.get("method", "") or "")
+                    raw_method_norm = raw_method.replace(".", "/")
                     raw_type = raw.get("type", "")
                     # Capture context window and token usage from Codex events
                     self._capture_usage(raw)
-                    is_delta = raw_method == "item/agentMessage/delta"
+                    is_delta = raw_method_norm in ("item/agentMessage/delta", "item/agent_message/delta")
                     is_text_block = raw_type == "assistant"  # Claude text streaming
-                    if raw_type == "item.completed" or raw_method == "item/completed":
+                    if raw_type == "item.completed" or raw_method_norm == "item/completed":
                         item = raw.get("item") or raw.get("params", {}).get("item", {})
                         if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
                             result_text = item["text"]
                     # Also accumulate streaming deltas (app-server agentMessage/delta)
                     elif is_delta:
-                        result_text += raw.get("params", {}).get("delta", "")
+                        delta = raw.get("params", {}).get("delta", "")
+                        if isinstance(delta, str):
+                            result_text += delta
+                    # Accumulate text from Claude assistant text blocks as fallback
+                    # (the result event's text takes precedence if present)
+                    elif is_text_block:
+                        content = raw.get("message", {}).get("content", [])
+                        if isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                                    # Replace (not append) — each assistant event carries the full text block
+                                    result_text = block["text"]
+                    # Log all progress events at debug for diagnostics
+                    self._log.debug(
+                        "session_progress",
+                        type=raw_type or raw_method_norm,
+                        is_delta=is_delta,
+                        is_text=is_text_block,
+                        forwarded=bool(on_progress and parsed.text and not is_delta and not is_text_block),
+                        text_len=len(parsed.text) if parsed.text else 0,
+                        result_len=len(result_text),
+                    )
                     # Only forward meaningful progress (tool use, thinking, status) — skip streaming text
                     if on_progress and parsed.text and not is_delta and not is_text_block:
                         on_progress("progress", parsed.text)
@@ -545,16 +598,17 @@ class AgentCmdSession:
             self.stats.cost_usd += cost
 
         # Codex task_started: {"method": "codex/event/task_started", "params": {"msg": {"model_context_window": 258400}}}
-        method = raw.get("method", "")
+        method = str(raw.get("method", "") or "")
+        method_norm = method.replace(".", "/")
         params = raw.get("params", {})
-        if method == "codex/event/task_started":
+        if method_norm == "codex/event/task_started":
             msg = params.get("msg", {})
             ctx = msg.get("model_context_window", 0)
             if ctx:
                 self.stats.context_window = ctx
 
         # Codex token_count: {"method": "codex/event/token_count", "params": {"msg": {"info": {...}}}}
-        if method == "codex/event/token_count":
+        if method_norm == "codex/event/token_count":
             msg = params.get("msg", {})
             info = msg.get("info")
             if isinstance(info, dict):
@@ -580,10 +634,10 @@ class AgentCmdSession:
                     if parsed.kind == "init" and parsed.session_id:
                         self.cli_session_id = parsed.session_id
                         self.cli_model = parsed.model
-                        client_log(f"[{self.session_id}] Session: {self.cli_session_id}")
+                        self._log.debug("session_identified", cli_session=self.cli_session_id)
                     await self._response_queue.put(event)
                 except json.JSONDecodeError:
-                    client_log(f"[{self.session_id}] [stdout] {text}")
+                    self._log.debug("session_stdout", text=text)
         except asyncio.CancelledError:
             return
 
@@ -598,7 +652,7 @@ class AgentCmdSession:
                     break
                 text = line.decode(errors="replace").strip()
                 if text:
-                    client_log(f"[{self.session_id}] [stderr] {text}")
+                    self._log.debug("session_stderr", text=text)
         except asyncio.CancelledError:
             return
 
@@ -628,6 +682,7 @@ class AgentCmdSession:
             "total_tokens": total_tokens,
             "context_pct": context_pct,
             "cost_usd": round(self.stats.cost_usd, 4) if self.stats.cost_usd else None,
+            "workdir": self._workdir,
         }
 
 

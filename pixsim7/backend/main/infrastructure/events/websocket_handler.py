@@ -43,10 +43,6 @@ async def broadcast_generation_event(event: Event):
         }
     )
     await connection_manager.broadcast(message)
-    logger.info(
-        "[WebSocket] Broadcast complete",
-        extra={"event_type": event.event_type, "generation_id": message.get('generation_id')}
-    )
 
 
 async def broadcast_asset_event(event: Event):
@@ -79,10 +75,6 @@ async def broadcast_asset_event(event: Event):
         }
     )
     await connection_manager.broadcast(message)
-    logger.info(
-        "[WebSocket] Broadcast complete",
-        extra={"event_type": event.event_type, "asset_id": message.get('asset_id')}
-    )
 
 
 def register_websocket_handlers():
