@@ -3,7 +3,8 @@
  * Rendered inside the overlay widget system on asset input cards.
  */
 import type { VersionEntry } from '@pixsim7/shared.api.client/domains';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Popover } from '@pixsim7/shared.ui';
+import { useCallback, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 import { useVersions } from '@lib/ui/versioning';
@@ -49,8 +50,9 @@ export function MaskVersionBadge({ label, primaryAssetId, onSwitchVersion }: Mas
     : null;
 
   return (
-    <div ref={btnRef} className="relative">
+    <>
       <div
+        ref={btnRef}
         className="cq-badge inline-flex items-center gap-0.5 !bg-black/60 !text-white backdrop-blur-sm rounded shadow-sm cursor-pointer select-none"
         onClick={(e) => { e.stopPropagation(); if (hasVersions) setOpen((v) => !v); }}
         title={hasVersions ? 'Click for mask versions' : label}
@@ -81,7 +83,15 @@ export function MaskVersionBadge({ label, primaryAssetId, onSwitchVersion }: Mas
         )}
       </div>
 
-      {open && hasVersions && (
+      <Popover
+        anchor={btnRef.current}
+        placement="bottom"
+        align="end"
+        offset={4}
+        open={open && hasVersions}
+        onClose={() => setOpen(false)}
+        triggerRef={btnRef}
+      >
         <MaskVersionPopover
           versions={versions}
           currentAssetId={primaryAssetId!}
@@ -89,10 +99,9 @@ export function MaskVersionBadge({ label, primaryAssetId, onSwitchVersion }: Mas
             if (primaryAssetId) onSwitchVersion?.(primaryAssetId, assetId);
             setOpen(false);
           }}
-          onClose={() => setOpen(false)}
         />
-      )}
-    </div>
+      </Popover>
+    </>
   );
 }
 
@@ -100,29 +109,14 @@ function MaskVersionPopover({
   versions,
   currentAssetId,
   onSelect,
-  onClose,
 }: {
   versions: VersionEntry[];
   currentAssetId: number;
   onSelect: (assetId: number) => void;
-  onClose: () => void;
 }) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
   return (
     <div
-      ref={popoverRef}
-      className="absolute top-full right-0 mt-1 z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg overflow-hidden min-w-[120px]"
+      className="bg-neutral-900 border border-neutral-700 rounded-md shadow-lg overflow-hidden min-w-[120px]"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="px-2 py-1 text-[9px] text-neutral-400 font-medium border-b border-neutral-700">

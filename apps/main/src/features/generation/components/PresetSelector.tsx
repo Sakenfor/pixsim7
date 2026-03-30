@@ -9,6 +9,7 @@
  * shows dynamic parameter presets (quality/aspect combos from provider specs).
  */
 
+import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useState, useRef, useEffect, useCallback } from 'react';
 
@@ -50,20 +51,13 @@ export function PresetSelector({
   const [editName, setEditName] = useState('');
   const [newPresetName, setNewPresetName] = useState('');
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setIsSaving(false);
-        setEditingId(null);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    setIsSaving(false);
+    setEditingId(null);
   }, []);
 
   // Focus input when saving or editing
@@ -115,9 +109,10 @@ export function PresetSelector({
   const hasPresets = presetsForOperation.length > 0;
 
   return (
-    <div ref={dropdownRef} className={clsx('relative', className)}>
+    <div className={className}>
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled || presetLoading}
@@ -141,8 +136,16 @@ export function PresetSelector({
       </button>
 
       {/* Dropdown */}
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-1 z-50 min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={isOpen}
+        onClose={handleClose}
+        triggerRef={triggerRef}
+      >
+        <div className="min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
           {/* Save new preset */}
           <div className="p-2 border-b border-neutral-200 dark:border-neutral-700">
             {isSaving ? (
@@ -298,7 +301,7 @@ export function PresetSelector({
             )}
           </div>
         </div>
-      )}
+      </Popover>
     </div>
   );
 }

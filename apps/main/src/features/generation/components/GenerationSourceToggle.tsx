@@ -9,12 +9,12 @@
  * Usage: Render in widget header/chrome, inside a GenerationScopeProvider.
  */
 
+import { IconButton, Popover } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { getGeneration } from '@lib/api/generations';
 import { Icon, IconBadge, Icons } from '@lib/icons';
-import { IconButton } from '@pixsim7/shared.ui';
-import clsx from 'clsx';
 
 import {
   CAP_GENERATION_SOURCE,
@@ -189,23 +189,16 @@ export function GenerationSourceToggle({
   );
 
   const [open, setOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+
 
   // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
   const current = SOURCE_MODES.find(m => m.id === mode) ?? SOURCE_MODES[1];
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div ref={dropdownRef} className="relative flex items-center gap-1">
+    <div className="flex items-center gap-1">
       <IconButton
+        ref={triggerRef}
         bg={current.color}
         size="lg"
         icon={loading
@@ -222,8 +215,16 @@ export function GenerationSourceToggle({
         </span>
       )}
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[130px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="end"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+      >
+        <div className="min-w-[130px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
           {SOURCE_MODES.map(m => {
             const isDisabled = m.id === 'asset' && !available;
             return (
@@ -253,7 +254,7 @@ export function GenerationSourceToggle({
             );
           })}
         </div>
-      )}
+      </Popover>
     </div>
   );
 }

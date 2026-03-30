@@ -1,8 +1,8 @@
-import { IconButton } from '@pixsim7/shared.ui';
+import { IconButton, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useState, useRef } from 'react';
 
-import { PROVIDER_BRANDS, DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
+import { PROVIDER_BRANDS, DROPDOWN_ITEM_CLS } from './constants';
 
 /** Compact provider badge with dropdown picker. */
 export function ProviderIconButton({
@@ -17,14 +17,14 @@ export function ProviderIconButton({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const brand = PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: providerId.slice(0, 2) };
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <IconButton
+        ref={triggerRef}
         bg={brand.color}
         size="lg"
         icon={<span className="text-[10px] font-bold">{brand.short}</span>}
@@ -33,8 +33,16 @@ export function ProviderIconButton({
         title={providerId}
       />
 
-      {open && (
-        <div className={DROPDOWN_MENU_CLS}>
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+      >
+        <div className="min-w-[140px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
           {providers.map(p => {
             const b = PROVIDER_BRANDS[p.id] ?? { color: '#6B7280', short: p.id.slice(0, 2) };
             return (
@@ -53,7 +61,7 @@ export function ProviderIconButton({
             );
           })}
         </div>
-      )}
-    </div>
+      </Popover>
+    </>
   );
 }

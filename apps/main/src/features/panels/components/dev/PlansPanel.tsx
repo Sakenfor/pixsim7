@@ -211,75 +211,69 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     // Any remaining (unknown stages)
     for (const s of allKeys) orderedKeys.push(s);
 
-    const makePlanEntry = (p: PlanSummary, groupKey: string, indented = false) => {
+    type SectionChild = NonNullable<SidebarContentLayoutSection['children']>[number];
+    const treePrefix = (depth: number) => (depth > 0 ? `${'|  '.repeat(depth)}|- ` : '');
+
+    const makePlanEntry = (p: PlanSummary, depth = 0): SectionChild => {
       const reviewCount = p.reviewRoundCount ?? 0;
       const activeReviews = p.activeReviewRoundCount ?? 0;
-      const daysSinceUpdate = p.lastUpdated
-        ? Math.floor((Date.now() - new Date(p.lastUpdated).getTime()) / 86400000)
-        : null;
-      const isFresh = daysSinceUpdate !== null && daysSinceUpdate <= 1;
       const isPinned = pinnedIds.has(p.id);
 
       return {
         id: `plan:${p.id}`,
-        label: indented ? `  ${p.title}` : p.title,
+        label: `${treePrefix(depth)}${p.title}`,
         icon: (
           <span className="relative flex items-center justify-center">
-            {indented
-              ? <Icon name="git-branch" size={9} className="text-neutral-500" />
-              : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
+            {depth > 0
+              ? <Icon name="git-branch" size={10} className="text-neutral-500" />
+              : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={12} />
             }
             <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
           </span>
         ),
         extra: (
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-2 text-[10px]">
             <span
-              className={`cursor-pointer ${isPinned ? '' : 'opacity-0 group-hover/child:opacity-40'} hover:!opacity-100`}
+              className={`inline-flex items-center justify-center rounded border px-1 py-0.5 cursor-pointer ${isPinned ? 'border-blue-400 text-blue-600 dark:border-blue-500 dark:text-blue-300' : 'border-neutral-300 text-neutral-500 dark:border-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
               onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
               title={isPinned ? 'Unpin' : 'Pin to top'}
             >
-              <Icon name="pin" size={8} />
+              <Icon name="pin" size={10} />
             </span>
-            {isFresh && (
-              <span title={`Updated ${p.lastUpdated}`}>
-                <Icon name="zap" size={9} />
-              </span>
-            )}
             {reviewCount > 0 && (
               <span
-                className={`flex items-center gap-0.5 ${activeReviews > 0 ? '' : 'opacity-50'}`}
+                className={`inline-flex items-center gap-1 ${activeReviews > 0 ? '' : 'opacity-70'}`}
                 title={`${reviewCount} review round${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
               >
-                <Icon name="messageSquare" size={9} />
-                <span className="text-[9px] leading-none">
+                <Icon name="messageSquare" size={10} />
+                <span className="leading-none">
                   {activeReviews > 0 ? `${activeReviews}/${reviewCount}` : reviewCount}
                 </span>
               </span>
             )}
             {p.priority === 'high' && (
-              <span title="High priority">
-                <Icon name="alertCircle" size={9} />
-              </span>
-            )}
-            {p.priority === 'medium' && (
-              <span className="opacity-60" title="Medium priority">
-                <Icon name="alertCircle" size={9} />
-              </span>
-            )}
-            {sortBy === 'stage' && !indented && STAGE_ICONS[p.stage] && p.stage !== groupKey && (
-              <span className="opacity-50" title={p.stage}>
-                <Icon name={STAGE_ICONS[p.stage] as any} size={8} />
-              </span>
-            )}
-            {sortBy !== 'stage' && STAGE_ICONS[p.stage] && (
-              <span className="opacity-50" title={p.stage}>
-                <Icon name={STAGE_ICONS[p.stage] as any} size={8} />
+              <span className="inline-flex items-center gap-1 text-red-500 dark:text-red-400" title="High priority">
+                <Icon name="alertCircle" size={10} />
+                <span>High</span>
               </span>
             )}
           </span>
         ),
       };
+    };
+
+    const appendPlanRows = (
+      rows: NonNullable<SidebarContentLayoutSection['children']>,
+      p: PlanSummary,
+      depth = 0,
+    ) => {
+      rows.push(makePlanEntry(p, depth));
+      const subPlans = grouped.childOf.get(p.id);
+      if (subPlans) {
+        for (const child of subPlans) {
+          appendPlanRows(rows, child, depth + 1);
+        }
+      }
     };
 
     // Separate pinned plans
@@ -288,11 +282,15 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
 
     // Pinned section (always shown if any pinned)
     if (pinnedPlans.length > 0) {
+      const pinnedChildren: NonNullable<SidebarContentLayoutSection['children']> = [];
+      for (const p of pinnedPlans) {
+        pinnedChildren.push(makePlanEntry(p, p.parentId ? 1 : 0));
+      }
       result.push({
         id: 'pinned',
         label: `Pinned (${pinnedPlans.length})`,
         icon: <Icon name="pin" size={12} />,
-        children: pinnedPlans.map((p) => makePlanEntry(p, '', false)),
+        children: pinnedChildren,
       });
     }
 
@@ -300,15 +298,9 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       // Flat sorted list - no stage groups
       const topLevel = unpinnedPlans.filter((p) => !p.parentId);
       if (topLevel.length > 0) {
-        const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
+        const children: NonNullable<SidebarContentLayoutSection['children']> = [];
         for (const p of topLevel) {
-          children.push(makePlanEntry(p, '', false));
-          const subPlans = grouped.childOf.get(p.id);
-          if (subPlans) {
-            for (const child of subPlans) {
-              children.push(makePlanEntry(child, '', true));
-            }
-          }
+          appendPlanRows(children, p, 0);
         }
         result.push({
           id: 'sorted',
@@ -326,15 +318,9 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
         let totalCount = stagePlans.length;
         for (const p of stagePlans) totalCount += (grouped.childOf.get(p.id)?.length ?? 0);
 
-        const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
+        const children: NonNullable<SidebarContentLayoutSection['children']> = [];
         for (const p of stagePlans) {
-          children.push(makePlanEntry(p, key, false));
-          const subPlans = grouped.childOf.get(p.id);
-          if (subPlans) {
-            for (const child of subPlans) {
-              children.push(makePlanEntry(child, key, true));
-            }
-          }
+          appendPlanRows(children, p, 0);
         }
 
         const stageLabel = stageLabelFromValue(key, stageOptionsByValue);
@@ -362,7 +348,17 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     }
 
     return result;
-  }, [grouped, filteredPlans, pinnedIds, sortBy, showDocs, companionDocs, stageOptions, stageOptionsByValue, togglePin]);
+  }, [
+    grouped,
+    filteredPlans,
+    pinnedIds,
+    sortBy,
+    showDocs,
+    companionDocs,
+    stageOptions,
+    stageOptionsByValue,
+    togglePin,
+  ]);
 
   const nav = useSidebarNav({
     sections,
@@ -404,8 +400,13 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   const activeId = nav.activeId;
   let content: React.ReactNode;
 
-  if (activeId.startsWith('plan:')) {
-    const planId = activeId.slice(5);
+  const isPlanView = activeId.startsWith('plan:');
+  const selectedPlanId = isPlanView
+    ? activeId.slice('plan:'.length)
+    : '';
+
+  if (selectedPlanId) {
+    const planId = selectedPlanId;
     const selectedPlanExists = plans.some((p) => p.id === planId);
     if (!isCanonicalPlanId(planId) || !selectedPlanExists) {
       content = (
@@ -426,6 +427,8 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
           onNavigatePlan={(id) => nav.navigate(`plan:${id}`)}
           forgeUrlTemplate={forgeUrlTemplate}
           stageOptions={stageOptions}
+          allPlans={plans}
+          view="plan"
         />
       );
     }

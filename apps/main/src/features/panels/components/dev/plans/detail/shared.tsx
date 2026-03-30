@@ -9,8 +9,6 @@
 
 import {
   Badge,
-  Dropdown,
-  DropdownItem,
   Popover,
 } from '@pixsim7/shared.ui';
 import { useRef, useState } from 'react';
@@ -44,7 +42,7 @@ export function ClickableBadge({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <span className="relative inline-flex">
+    <>
       <button
         ref={triggerRef}
         onClick={() => !disabled && setOpen((o) => !o)}
@@ -56,26 +54,33 @@ export function ClickableBadge({
           <Icon name="chevronDown" size={8} className="ml-0.5 inline-block opacity-50" />
         </Badge>
       </button>
-      <Dropdown
-        isOpen={open}
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
         onClose={() => setOpen(false)}
         triggerRef={triggerRef}
-        minWidth="100px"
       >
-        {options.map((opt) => (
-          <DropdownItem
-            key={opt.value}
-            onClick={() => {
-              onSelect(opt.value);
-              setOpen(false);
-            }}
-            icon={<Badge color={opt.color} className="text-[9px] !px-1">{opt.value === value ? '\u2713' : '\u00A0'}</Badge>}
-          >
-            {opt.label}
-          </DropdownItem>
-        ))}
-      </Dropdown>
-    </span>
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg py-1 min-w-[100px] text-xs">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onSelect(opt.value);
+                setOpen(false);
+              }}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <Badge color={opt.color} className="text-[9px] !px-1">{opt.value === value ? '\u2713' : '\u00A0'}</Badge>
+              <span className="text-neutral-700 dark:text-neutral-300">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      </Popover>
+    </>
   );
 }
 

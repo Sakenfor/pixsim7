@@ -104,6 +104,20 @@ export function Popover({
     return () => document.removeEventListener('keydown', handler);
   }, [open, closeOnEscape, onClose]);
 
+  // Dismiss on scroll/resize so the popover doesn't lag behind a moving anchor
+  useEffect(() => {
+    if (!open) return;
+
+    const dismiss = () => onClose();
+    window.addEventListener('resize', dismiss);
+    // Capture-phase scroll listener catches scrolls in any container
+    document.addEventListener('scroll', dismiss, true);
+    return () => {
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', dismiss, true);
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (

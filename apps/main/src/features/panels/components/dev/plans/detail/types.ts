@@ -46,6 +46,7 @@ export interface PlanSummary {
   handoffs: string[];
   tags: string[];
   dependsOn: string[];
+  phases: string[];
   revision?: number | null;
   reviewRoundCount?: number;
   activeReviewRoundCount?: number;

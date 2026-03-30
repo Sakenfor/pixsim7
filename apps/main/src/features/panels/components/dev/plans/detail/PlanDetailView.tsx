@@ -22,8 +22,10 @@ import { PlanDetailSections } from './PlanDetailSections';
 import type {
   AgentSessionSnapshot,
   AgentSessionsSnapshot,
+  PlanChildSummary,
   PlanDetail,
   PlanParticipantsResponse,
+  PlanSummary,
   PlanReviewAssigneesResponse,
   PlanReviewGraphResponse,
   PlanReviewLink,
@@ -66,6 +68,7 @@ export function PlanDetailView({
   onNavigatePlan,
   forgeUrlTemplate,
   stageOptions,
+  allPlans,
   view = 'plan',
 }: {
   planId: string;
@@ -73,6 +76,7 @@ export function PlanDetailView({
   onNavigatePlan?: (planId: string) => void;
   forgeUrlTemplate?: string | null;
   stageOptions: PlanStageOptionEntry[];
+  allPlans?: PlanSummary[];
   view?: 'plan' | 'tasks';
 }) {
   const currentUserId = useAuthStore((state) =>
@@ -1091,6 +1095,25 @@ export function PlanDetailView({
     setTimeout(() => composeTextareaRef.current?.focus(), 0);
   }, []);
 
+  // Resolve sibling phases when viewing a child plan (phase).
+  // Must be above all early returns to satisfy Rules of Hooks.
+  const siblingPhases = useMemo<PlanChildSummary[]>(() => {
+    if (!detail?.parentId || !allPlans) return [];
+    const parent = allPlans.find((p) => p.id === detail.parentId);
+    if (!parent) return [];
+    const childMap = new Map(parent.children.map((c) => [c.id, c]));
+    if (parent.phases.length > 0) {
+      const ordered: PlanChildSummary[] = [];
+      for (const id of parent.phases) {
+        const child = childMap.get(id);
+        if (child) { ordered.push(child); childMap.delete(id); }
+      }
+      for (const child of childMap.values()) ordered.push(child);
+      return ordered;
+    }
+    return parent.children;
+  }, [detail?.parentId, allPlans]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -1119,6 +1142,7 @@ export function PlanDetailView({
         lastResult={lastResult}
         onApplyUpdate={(updates) => void applyUpdate(updates)}
         onNavigatePlan={onNavigatePlan}
+        siblingPhases={siblingPhases}
       />
 
       <div className="space-y-4 min-w-0">

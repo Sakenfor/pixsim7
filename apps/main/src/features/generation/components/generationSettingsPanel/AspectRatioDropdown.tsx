@@ -1,5 +1,7 @@
+import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
+
 
 import { getAspectRatioLabel, getParamIcon } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
@@ -17,35 +19,11 @@ export function AspectRatioDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        triggerRef.current && !triggerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open]);
 
   const label = getAspectRatioLabel(currentValue);
 
   return (
-    <div className="relative">
+    <>
       <button
         ref={triggerRef}
         type="button"
@@ -63,11 +41,16 @@ export function AspectRatioDropdown({
         <Icon name="chevronDown" size={12} className={clsx('text-neutral-400 transition-transform', open && 'rotate-180')} />
       </button>
 
-      {open && (
-        <div
-          ref={menuRef}
-          className="absolute z-50 mt-1 left-0 right-0 bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[200px] overflow-y-auto"
-        >
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+      >
+        <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[200px] overflow-y-auto min-w-[160px]">
           {options.map((opt) => {
             const isSelected = currentValue === opt;
             return (
@@ -88,7 +71,7 @@ export function AspectRatioDropdown({
             );
           })}
         </div>
-      )}
-    </div>
+      </Popover>
+    </>
   );
 }

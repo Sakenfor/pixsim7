@@ -5,13 +5,18 @@
  * Extracted from PlansPanel.tsx during split — no logic changes.
  */
 
-import { Badge } from '@pixsim7/shared.ui';
+import {
+  Badge,
+  Popover,
+} from '@pixsim7/shared.ui';
+import { useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
 import { getCheckpointPointProgress } from '../PlanCheckpointList';
+
 import { ClickableBadge } from './shared';
-import type { PlanDetail, PlanStageOptionEntry } from './types';
+import type { PlanChildSummary, PlanDetail, PlanStageOptionEntry } from './types';
 import {
   formatDate,
   PRIORITY_COLORS,
@@ -28,6 +33,8 @@ export interface PlanDetailHeaderProps {
   lastResult: string | null;
   onApplyUpdate: (updates: Record<string, string>) => void;
   onNavigatePlan?: (planId: string) => void;
+  /** Ordered sibling phases when viewing a child plan (resolved from parent). */
+  siblingPhases?: PlanChildSummary[];
 }
 
 export function PlanDetailHeader({
@@ -38,6 +45,7 @@ export function PlanDetailHeader({
   lastResult,
   onApplyUpdate,
   onNavigatePlan,
+  siblingPhases = [],
 }: PlanDetailHeaderProps) {
   // Progress computation
   const pointProgressRows = detail.checkpoints
@@ -76,41 +84,55 @@ export function PlanDetailHeader({
 
   const stageLabel = stageLabelFromValue(detail.stage, stageOptionsByValue);
 
+  // Build ordered phases list: use `phases` ordering when available, fall back to children order
+  const orderedPhases = useMemo<PlanChildSummary[]>(() => {
+    if (detail.children.length === 0) return [];
+    const childMap = new Map(detail.children.map((c) => [c.id, c]));
+    if (detail.phases.length > 0) {
+      const ordered: PlanChildSummary[] = [];
+      for (const id of detail.phases) {
+        const child = childMap.get(id);
+        if (child) { ordered.push(child); childMap.delete(id); }
+      }
+      // Append any children not listed in phases
+      for (const child of childMap.values()) ordered.push(child);
+      return ordered;
+    }
+    return detail.children;
+  }, [detail.children, detail.phases]);
+
   return (
     <>
-      {/* Plan lineage - parent -> this -> children */}
-      {(detail.parentId || detail.children.length > 0) && (
-        <div className="flex items-center gap-1 flex-wrap text-[10px]">
+      {/* Plan lineage bar */}
+      {(detail.parentId || orderedPhases.length > 0 || siblingPhases.length > 0) && (
+        <div className="flex items-center gap-2 text-[10px]">
+          {/* Parent link */}
           {detail.parentId && (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigatePlan?.(detail.parentId!)}
-                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
-                title={detail.parentId}
-              >
-                {detail.parentId}
-              </button>
-              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
-            </>
+            <button
+              type="button"
+              onClick={() => onNavigatePlan?.(detail.parentId!)}
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline shrink-0"
+              title={`Go to parent: ${detail.parentId}`}
+            >
+              <Icon name="chevronLeft" size={10} />
+              <span className="truncate max-w-[160px]">{detail.parentId}</span>
+            </button>
           )}
-          <span className="font-medium text-neutral-700 dark:text-neutral-300 truncate max-w-[200px]">
-            {detail.title}
-          </span>
-          {detail.children.map((child) => (
-            <span key={child.id} className="flex items-center gap-1">
-              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
-              <button
-                type="button"
-                onClick={() => onNavigatePlan?.(child.id)}
-                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
-                title={`${child.title} (${child.status})`}
-              >
-                {child.title}
-              </button>
-              <Badge color={STATUS_COLORS[child.status] ?? 'gray'} className="text-[9px]">{child.status}</Badge>
-            </span>
-          ))}
+          {/* Phase dropdown: own children (parent view) or siblings (child view) */}
+          {orderedPhases.length > 0 && (
+            <PhaseNavigator
+              phases={orderedPhases}
+              currentId={detail.id}
+              onNavigate={(id) => onNavigatePlan?.(id)}
+            />
+          )}
+          {siblingPhases.length > 0 && orderedPhases.length === 0 && (
+            <PhaseNavigator
+              phases={siblingPhases}
+              currentId={detail.id}
+              onNavigate={(id) => onNavigatePlan?.(id)}
+            />
+          )}
         </div>
       )}
 
@@ -180,5 +202,89 @@ export function PlanDetailHeader({
         <span>{formatDate(detail.lastUpdated)}</span>
       </div>
     </>
+  );
+}
+
+// ── Phase navigator (dropdown + prev/next) ──────────────────────
+
+function PhaseNavigator({
+  phases,
+  currentId,
+  onNavigate,
+}: {
+  phases: PlanChildSummary[];
+  /** ID of the currently viewed plan (used to highlight current phase and enable prev/next). */
+  currentId?: string;
+  onNavigate: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const currentIndex = currentId ? phases.findIndex((p) => p.id === currentId) : -1;
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < phases.length - 1;
+
+  const label = currentIndex >= 0
+    ? phases[currentIndex].title
+    : `${phases.length} phase${phases.length !== 1 ? 's' : ''}`;
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        disabled={!hasPrev}
+        onClick={() => hasPrev && onNavigate(phases[currentIndex - 1].id)}
+        className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:pointer-events-none"
+        title={hasPrev ? `Previous: ${phases[currentIndex - 1].title}` : 'No previous phase'}
+      >
+        <Icon name="chevronLeft" size={12} className="text-neutral-500" />
+      </button>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-[10px] text-neutral-700 dark:text-neutral-300 max-w-[260px] truncate"
+      >
+        <span className="truncate">{label}</span>
+        <Icon name="chevronDown" size={8} className="shrink-0 opacity-50" />
+      </button>
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        className="min-w-[180px]"
+      >
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg py-1 text-xs">
+          {phases.map((phase, i) => (
+            <button
+              key={phase.id}
+              type="button"
+              onClick={() => { onNavigate(phase.id); setOpen(false); }}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 ${phase.id === currentId ? 'bg-neutral-50 dark:bg-neutral-800/50' : ''}`}
+            >
+              <Badge
+                color={STATUS_COLORS[phase.status] ?? 'gray'}
+                className="text-[9px] !px-1 shrink-0"
+              >
+                {phase.id === currentId ? '\u2713' : `${i + 1}`}
+              </Badge>
+              <span className="truncate text-neutral-700 dark:text-neutral-300">{phase.title}</span>
+            </button>
+          ))}
+        </div>
+      </Popover>
+      <button
+        type="button"
+        disabled={!hasNext}
+        onClick={() => hasNext && onNavigate(phases[currentIndex + 1].id)}
+        className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:pointer-events-none"
+        title={hasNext ? `Next: ${phases[currentIndex + 1].title}` : 'No next phase'}
+      >
+        <Icon name="chevronRight" size={12} className="text-neutral-500" />
+      </button>
+    </div>
   );
 }

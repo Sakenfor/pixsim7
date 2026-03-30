@@ -1,4 +1,4 @@
-import { IconButton } from '@pixsim7/shared.ui';
+import { IconButton, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useState, useRef } from 'react';
 
@@ -8,7 +8,7 @@ import { providerCapabilityRegistry } from '@features/providers';
 
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
-import { DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
+import { DROPDOWN_ITEM_CLS } from './constants';
 
 /** Operations shown in the icon button picker, filtered by provider when set. */
 function usePickerOperations(providerId?: string) {
@@ -37,8 +37,7 @@ export function OperationIconButton({
   textMode?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const meta = OPERATION_METADATA[operationType as OperationType];
   const icon = (meta?.icon ?? 'alertCircle') as IconName;
@@ -48,8 +47,9 @@ export function OperationIconButton({
   const pickerOps = usePickerOperations(providerId);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <IconButton
+        ref={triggerRef}
         bg={textMode ? undefined : color}
         size="lg"
         icon={<Icon name={icon} size={14} />}
@@ -59,8 +59,16 @@ export function OperationIconButton({
         style={textMode ? { color, boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}
       />
 
-      {open && (
-        <div className={DROPDOWN_MENU_CLS}>
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+      >
+        <div className="min-w-[140px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
           {pickerOps.map(({ op, icon: opIcon, color: opColor, label: opLabel }) => (
             <button
               key={op}
@@ -73,7 +81,7 @@ export function OperationIconButton({
             </button>
           ))}
         </div>
-      )}
-    </div>
+      </Popover>
+    </>
   );
 }
