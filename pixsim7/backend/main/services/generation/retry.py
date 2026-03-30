@@ -149,12 +149,13 @@ class GenerationRetryService:
         if original.status not in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             raise InvalidOperationError(f"Can only retry failed or cancelled generations, not {original.status.value}")
 
-        # Check attempt count
-        if (original.attempt_id or 0) >= max_retries:
-            raise InvalidOperationError(f"Maximum attempts ({max_retries}) exceeded")
+        # Check retry count (not attempt_id which includes non-error
+        # transitions like concurrent waits and adaptive defers)
+        if (original.retry_count or 0) >= max_retries:
+            raise InvalidOperationError(f"Maximum retries ({max_retries}) exceeded")
 
         # Create new generation with same params
-        logger.info(f"Retrying generation {generation_id} (attempt {(original.attempt_id or 0) + 1}/{max_retries})")
+        logger.info(f"Retrying generation {generation_id} (retry {(original.retry_count or 0) + 1}/{max_retries})")
 
         new_generation = await self.creation.create_generation(
             user=user,
@@ -205,11 +206,12 @@ class GenerationRetryService:
         if not generation.error_message:
             return False
 
-        # Check attempt count against configured max
+        # Check retry count against configured max (not attempt_id which
+        # includes non-error transitions like concurrent waits)
         from pixsim7.backend.main.shared.config import settings
         max_attempts = settings.auto_retry_max_attempts
 
-        if (generation.attempt_id or 0) >= max_attempts:
+        if (generation.retry_count or 0) >= max_attempts:
             return False
 
         # Primary path: use structured error_code if available

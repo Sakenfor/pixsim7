@@ -1133,11 +1133,11 @@ async def retry_generation(
                 f"Can only retry failed or cancelled generations, not {generation.status.value}"
             )
 
-        # Enforce max attempts (checked against attempt_id —
-        # the comprehensive counter of every PROCESSING transition)
-        if (generation.attempt_id or 0) >= settings.auto_retry_max_attempts:
+        # Enforce max retries (checked against retry_count — the error-retry
+        # counter, not attempt_id which includes non-error transitions)
+        if (generation.retry_count or 0) >= settings.auto_retry_max_attempts:
             raise InvalidOperationError(
-                f"Maximum attempts ({settings.auto_retry_max_attempts}) exceeded"
+                f"Maximum retries ({settings.auto_retry_max_attempts}) exceeded"
             )
 
         # Increment retry_count and reset lifecycle fields in one operation
