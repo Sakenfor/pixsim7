@@ -196,6 +196,7 @@ export function AccountRow({
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           <button
+            type="button"
             onClick={() => onEdit(account)}
             className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
             title="Edit account"
@@ -204,6 +205,7 @@ export function AccountRow({
             <Icon name="edit" size={14} />
           </button>
           <button
+            type="button"
             onClick={() => onToggleStatus(account)}
             className={`p-1.5 rounded transition-colors ${
               isActive
@@ -216,6 +218,7 @@ export function AccountRow({
             <Icon name={isActive ? 'pause' : 'play'} size={14} />
           </button>
           <button
+            type="button"
             onClick={() => onDelete(account)}
             className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
             title="Delete account"
@@ -228,6 +231,7 @@ export function AccountRow({
           {account.provider_id === 'pixverse' && (
             <>
               <button
+                type="button"
                 onClick={() => setShowInfoModal(true)}
                 className="p-1.5 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 rounded transition-colors"
                 title="View account details and invited users"
@@ -238,6 +242,7 @@ export function AccountRow({
               <PixverseDryRunButton accountId={account.id} />
               {onUpdateAccountPlan && (
                 <button
+                  type="button"
                   onClick={() => onUpdateAccountPlan(account)}
                   className="p-1.5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
                   title="Refresh Pixverse plan limits (max jobs)"

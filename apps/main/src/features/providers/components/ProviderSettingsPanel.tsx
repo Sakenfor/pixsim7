@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
+import { usePersistentState } from '@/hooks/usePersistentState';
+
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
@@ -32,10 +34,13 @@ type SidebarSelection =
 const LIVE_ACCOUNT_DIAGNOSTICS_POLL_MS = 250;
 const PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY = 'providers-panel-accounts-view-mode';
 
-function readStoredAccountsViewMode(): 'cards' | 'list' {
+function deserializeAccountsViewMode(raw: string): 'cards' | 'list' {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'list' || normalized === '"list"') return 'list';
+  if (normalized === 'cards' || normalized === '"cards"') return 'cards';
   try {
-    const raw = localStorage.getItem(PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY);
-    return raw === 'list' ? 'list' : 'cards';
+    const parsed = JSON.parse(raw);
+    return parsed === 'list' ? 'list' : 'cards';
   } catch {
     return 'cards';
   }
@@ -333,7 +338,14 @@ export function ProviderSettingsPanel() {
   // Sorting & view mode
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
-  const [viewMode, setViewModeRaw] = useState<'cards' | 'list'>(readStoredAccountsViewMode);
+  const [viewMode, setViewMode] = usePersistentState<'cards' | 'list'>(
+    PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY,
+    'cards',
+    {
+      serializer: (value) => value,
+      deserializer: deserializeAccountsViewMode,
+    },
+  );
 
   // Live diagnostics — auto-enabled when any account is selected
   const [liveSelectedAccountIds, setLiveSelectedAccountIds] = useState<Set<number>>(new Set());
@@ -483,15 +495,6 @@ export function ProviderSettingsPanel() {
     } else {
       setSortBy(field);
       setSortDesc(true);
-    }
-  };
-
-  const setViewMode = (nextMode: 'cards' | 'list') => {
-    setViewModeRaw(nextMode);
-    try {
-      localStorage.setItem(PROVIDERS_ACCOUNTS_VIEW_MODE_STORAGE_KEY, nextMode);
-    } catch {
-      // best effort only
     }
   };
 
@@ -1086,6 +1089,7 @@ export function ProviderSettingsPanel() {
                   ]).map(({ id, icon, title }) => (
                     <button
                       key={id}
+                      type="button"
                       onClick={() => setViewMode(id)}
                       title={title}
                       className={`px-2 py-1 transition-colors ${

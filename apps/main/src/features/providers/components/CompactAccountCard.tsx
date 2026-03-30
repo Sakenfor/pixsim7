@@ -167,6 +167,7 @@ export function CompactAccountCard({
         {/* Action Buttons (show on hover) */}
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 flex-shrink-0">
           <button
+            type="button"
             onClick={onEdit}
             className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
             title="Edit account"
@@ -175,6 +176,7 @@ export function CompactAccountCard({
             <Icon name="edit" size={14} />
           </button>
           <button
+            type="button"
             onClick={onToggle}
             className={`p-1 rounded hover:bg-opacity-20 transition-colors ${
               isActive
@@ -188,6 +190,7 @@ export function CompactAccountCard({
           </button>
           {account.provider_id === 'pixverse' && onUpdateAccountPlan && (
             <button
+              type="button"
               onClick={onUpdateAccountPlan}
               className="p-1 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
               title="Refresh Pixverse plan limits (max jobs)"
@@ -197,6 +200,7 @@ export function CompactAccountCard({
             </button>
           )}
           <button
+            type="button"
             onClick={onDelete}
             className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
             title="Delete account"
