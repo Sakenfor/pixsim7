@@ -21,6 +21,8 @@ Protocol:
 """
 from __future__ import annotations
 
+import asyncio
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -523,9 +525,35 @@ async def agent_cmd_websocket(
     bridge_id = agent.bridge_id or bridge_id
     last_bridge_touch = 0.0
 
+    # Server-side keepalive: send periodic pings so we detect dead connections
+    # rather than hanging in receive_json() until OS TCP timeout (~2h on Windows).
+    _PING_INTERVAL = 45  # seconds between pings
+    _RECV_TIMEOUT = 120  # close connection if nothing received for this long
+
+    async def _server_ping_loop():
+        try:
+            while True:
+                await asyncio.sleep(_PING_INTERVAL)
+                await websocket.send_json({"type": "ping"})
+        except Exception:
+            pass
+
+    ping_task = asyncio.create_task(_server_ping_loop())
+
     try:
         while True:
-            data = await websocket.receive_json()
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=_RECV_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.info(
+                    "agent_cmd_recv_timeout",
+                    bridge_client_id=resolved_bridge_client_id,
+                    timeout_s=_RECV_TIMEOUT,
+                )
+                raise WebSocketDisconnect(code=1001, reason="receive timeout")
             msg_type = data.get("type", "")
 
             if msg_type == "result":
@@ -561,13 +589,38 @@ async def agent_cmd_websocket(
                     hb_task_id = data.get("task_id")
                     if not hb_task_id and agent.current_task_ids:
                         hb_task_id = next(iter(agent.current_task_ids))
+                    # Bridge-level heartbeat (bridge_client_id) — in-memory only,
+                    # not persisted to DB. The bridge_client_id is shared across
+                    # all conversations so persisting it pollutes the history
+                    # timeline (session filter matches everything from this bridge).
                     hb = from_ws_heartbeat(
                         agent_id=resolved_bridge_client_id,
                         agent_type=agent_type,
                         data=data,
                         task_id=hb_task_id,
                     )
-                    agent_session_registry.record(hb)
+                    agent_session_registry.heartbeat(
+                        session_id=hb.session_id,
+                        agent_type=hb.agent_type,
+                        status=hb.status,
+                        contract_id=hb.contract_id,
+                        endpoint=hb.endpoint,
+                        plan_id=hb.plan_id,
+                        task_kind=hb.task_kind,
+                        action=hb.action,
+                        detail=hb.detail,
+                        metadata=dict(hb.metadata) if hb.metadata else None,
+                    )
+                    # Session-level heartbeat (CLI session UUID — matches ChatSession.id)
+                    chat_session_id = str(data.get("bridge_session_id") or "").strip()
+                    if chat_session_id:
+                        session_hb = from_ws_heartbeat(
+                            agent_id=chat_session_id,
+                            agent_type=agent_type,
+                            data=data,
+                            task_id=hb_task_id,
+                        )
+                        agent_session_registry.record(session_hb)
                 except Exception:
                     pass
 
@@ -613,23 +666,22 @@ async def agent_cmd_websocket(
                 )
 
     except WebSocketDisconnect:
-        remote_cmd_bridge.disconnect(resolved_bridge_client_id, websocket=websocket)
-        await _mark_bridge_instance_offline(
-            bridge_id=bridge_id,
-            bridge_client_id=resolved_bridge_client_id,
-            user_id=user_id,
-        )
-        await _complete_agent_run(run_id)
+        pass
     except Exception as exc:
         logger.warning(
             "agent_cmd_error",
             bridge_client_id=resolved_bridge_client_id,
             error=str(exc),
         )
+    finally:
+        ping_task.cancel()
+        run_status = "failed" if not isinstance(
+            sys.exc_info()[1], (WebSocketDisconnect, type(None))
+        ) else "completed"
         remote_cmd_bridge.disconnect(resolved_bridge_client_id, websocket=websocket)
         await _mark_bridge_instance_offline(
             bridge_id=bridge_id,
             bridge_client_id=resolved_bridge_client_id,
             user_id=user_id,
         )
-        await _complete_agent_run(run_id, status="failed")
+        await _complete_agent_run(run_id, status=run_status)

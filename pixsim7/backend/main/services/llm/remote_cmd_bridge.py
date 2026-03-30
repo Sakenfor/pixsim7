@@ -196,6 +196,38 @@ class RemoteCommandBridge:
                 self._active_tasks.pop(tid, None)
             self._gc_completed()
 
+    async def force_disconnect(self, bridge_client_id: str) -> bool:
+        """Force-close a bridge's WebSocket from the server side.
+
+        Used by the UI stop button for externally-started bridges
+        that the server doesn't have a subprocess handle for.
+        Sends a shutdown command so the client exits cleanly instead
+        of reconnecting, then closes the WebSocket.
+        Returns True if the bridge was found and closed.
+        """
+        agent = self._agents.get(bridge_client_id)
+        if not agent:
+            return False
+        try:
+            await agent.websocket.send_json({"type": "shutdown"})
+        except Exception:
+            pass
+        try:
+            await agent.websocket.close(code=1000, reason="Stopped by user")
+        except Exception:
+            pass
+        self.disconnect(bridge_client_id)
+        return True
+
+    async def force_disconnect_all(self) -> int:
+        """Force-close all connected bridges. Returns count disconnected."""
+        ids = list(self._agents.keys())
+        count = 0
+        for cid in ids:
+            if await self.force_disconnect(cid):
+                count += 1
+        return count
+
     def get_available_agent(self, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
         """Get a connected agent with remaining capacity.
 
@@ -324,6 +356,35 @@ class RemoteCommandBridge:
             raise RuntimeError("No remote agents available")
         return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
 
+    def _resolve_target_agent(
+        self,
+        *,
+        bridge_client_id: Optional[str] = None,
+        bridge_id: Optional[str] = None,
+        user_id: Optional[int] = None,
+    ) -> RemoteAgent:
+        """Resolve a target agent by bridge_client_id or bridge_id, validating availability."""
+        if bridge_client_id:
+            target = bridge_client_id.strip()
+            if not target:
+                raise RuntimeError("Target bridge client ID is required")
+            agent = self.get_agent_by_bridge_client_id(target, user_id=user_id)
+            label = f"bridge client '{target}'"
+        elif bridge_id:
+            target = bridge_id.strip()
+            if not target:
+                raise RuntimeError("Target bridge ID is required")
+            agent = self.get_agent_by_bridge_id(target, user_id=user_id)
+            label = f"bridge '{target}'"
+        else:
+            raise RuntimeError("Either bridge_client_id or bridge_id is required")
+
+        if not agent:
+            raise RuntimeError(f"Target {label} is not connected")
+        if agent.busy:
+            raise RuntimeError(f"Target {label} is busy")
+        return agent
+
     async def dispatch_task_to_bridge_client(
         self,
         bridge_client_id: str,
@@ -332,16 +393,7 @@ class RemoteCommandBridge:
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Dispatch a task to a specific connected bridge client ID."""
-        target = (bridge_client_id or "").strip()
-        if not target:
-            raise RuntimeError("Target bridge client ID is required")
-
-        agent = self.get_agent_by_bridge_client_id(target, user_id=user_id)
-        if not agent:
-            raise RuntimeError(f"Target bridge client '{target}' is not connected")
-        if agent.busy:
-            raise RuntimeError(f"Target bridge client '{target}' is busy")
-
+        agent = self._resolve_target_agent(bridge_client_id=bridge_client_id, user_id=user_id)
         return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
 
     async def dispatch_task_to_bridge(
@@ -352,17 +404,24 @@ class RemoteCommandBridge:
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Dispatch a task to a specific connected bridge UUID."""
-        target = (bridge_id or "").strip()
-        if not target:
-            raise RuntimeError("Target bridge ID is required")
-
-        agent = self.get_agent_by_bridge_id(target, user_id=user_id)
-        if not agent:
-            raise RuntimeError(f"Target bridge '{target}' is not connected")
-        if agent.busy:
-            raise RuntimeError(f"Target bridge '{target}' is busy")
-
+        agent = self._resolve_target_agent(bridge_id=bridge_id, user_id=user_id)
         return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
+
+    @staticmethod
+    def _enrich_result(
+        result: Any,
+        agent: RemoteAgent,
+        task_payload: Dict[str, Any],
+    ) -> None:
+        """Stamp bridge identity and engine onto the result dict."""
+        if not isinstance(result, dict):
+            return
+        result.setdefault("bridge_client_id", agent.bridge_client_id)
+        if agent.bridge_id:
+            result.setdefault("bridge_id", agent.bridge_id)
+        engine = task_payload.get("engine") or agent.agent_type
+        if engine:
+            result.setdefault("engine", engine)
 
     async def _dispatch_to_agent(
         self,
@@ -421,10 +480,7 @@ class RemoteCommandBridge:
                             deadline = asyncio.get_event_loop().time() + timeout
 
             agent.tasks_completed += 1
-            if isinstance(result, dict):
-                result.setdefault("bridge_client_id", agent.bridge_client_id)
-                if agent.bridge_id:
-                    result.setdefault("bridge_id", agent.bridge_id)
+            self._enrich_result(result, agent, task_payload)
             logger.info("remote_task_completed", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
             return result
@@ -494,14 +550,7 @@ class RemoteCommandBridge:
         Raises on timeout or error (same as dispatch_task).
         """
         if bridge_client_id:
-            target = (bridge_client_id or "").strip()
-            if not target:
-                raise RuntimeError("Target bridge client ID is required")
-            agent = self.get_agent_by_bridge_client_id(target, user_id=user_id)
-            if not agent:
-                raise RuntimeError(f"Target bridge client '{target}' is not connected")
-            if agent.busy:
-                raise RuntimeError(f"Target bridge client '{target}' is busy")
+            agent = self._resolve_target_agent(bridge_client_id=bridge_client_id, user_id=user_id)
         else:
             agent = self.get_available_agent(user_id=user_id)
             if not agent:
@@ -547,10 +596,7 @@ class RemoteCommandBridge:
                 if future.done():
                     result = future.result()
                     agent.tasks_completed += 1
-                    if isinstance(result, dict):
-                        result.setdefault("bridge_client_id", agent.bridge_client_id)
-                        if agent.bridge_id:
-                            result.setdefault("bridge_id", agent.bridge_id)
+                    self._enrich_result(result, agent, task_payload)
                     result["type"] = "result"
                     yield result
                     return
@@ -574,10 +620,7 @@ class RemoteCommandBridge:
                 if future in done:
                     result = future.result()
                     agent.tasks_completed += 1
-                    if isinstance(result, dict):
-                        result.setdefault("bridge_client_id", agent.bridge_client_id)
-                        if agent.bridge_id:
-                            result.setdefault("bridge_id", agent.bridge_id)
+                    self._enrich_result(result, agent, task_payload)
                     result["type"] = "result"
                     yield result
                     return

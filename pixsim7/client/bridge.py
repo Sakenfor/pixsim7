@@ -33,7 +33,7 @@ except ImportError:
 
 from pixsim7.client.agent_pool import AgentPool
 from pixsim7.client.claude_session import SessionState
-from pixsim7.client.log import client_log
+from pixsim7.client.log import get_logger, redact_url
 from pixsim7.client.token_manager import (
     TokenFile,
     build_mcp_env,
@@ -50,9 +50,11 @@ class Bridge:
         pool: AgentPool,
         url: str = "ws://localhost:8000/api/v1/ws/agent-cmd",
         agent_type: str | None = None,
+        shared: bool = False,
     ):
         self._pool = pool
         self._url = url
+        self._shared = shared
         # Derive agent_type from pool command name (e.g. "claude", "codex")
         self._agent_type = agent_type or pool._prefix or "claude"
         self._bridge_client_id_file = self._resolve_bridge_client_id_file()
@@ -71,6 +73,23 @@ class Bridge:
         self._mcp_python_runtime: Optional[tuple[str, list[str]]] = None
         self._service_token: str = ""
         self._repo_root: Path = Path(__file__).resolve().parents[2]
+
+    @staticmethod
+    def _get_valid_token() -> Optional[str]:
+        """Read stored login token, returning None if missing or expired."""
+        from pixsim7.client.auth import get_stored_token
+        token = get_stored_token()
+        if not token:
+            return None
+        try:
+            import base64, json, time
+            payload = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+            exp = payload.get("exp", 0)
+            if exp and exp < time.time():
+                return None
+        except Exception:
+            pass
+        return token
 
     @property
     def is_connected(self) -> bool:
@@ -140,8 +159,7 @@ class Bridge:
     async def run(self) -> None:
         """Main loop — connect, handle tasks, reconnect on failure."""
         if websockets is None:
-            client_log("Missing dependency: websockets", error=True)
-            client_log("Install with: pip install websockets", error=True)
+            get_logger().error("missing_dependency", package="websockets", hint="pip install websockets")
             return
 
         self._shutdown_requested = False
@@ -155,12 +173,12 @@ class Bridge:
             except Exception as e:
                 self._connected = False
                 if self._shutdown_requested:
-                    client_log("Shutdown requested, not reconnecting.")
+                    get_logger().info("shutdown_requested", reason="reconnect_suppressed")
                     break
                 consecutive_failures += 1
                 delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
-                client_log(f"Connection error: {e}", error=True)
-                client_log(f"Reconnecting in {delay}s (attempt {consecutive_failures})...")
+                get_logger().error("connection_error", error=str(e))
+                get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures)
                 await asyncio.sleep(delay)
 
     async def _connect_and_serve(self) -> None:
@@ -168,6 +186,11 @@ class Bridge:
         # Append query params — use & if URL already has ? (e.g. ?token=...)
         sep = "&" if "?" in self._url else "?"
         ws_url = f"{self._url}{sep}agent_type={self._agent_type}"
+        # User-scoped bridge: include stored login token (unless --shared)
+        if not self._shared:
+            login_token = self._get_valid_token()
+            if login_token:
+                ws_url += f"&token={login_token}"
         # Reconnect with same identity so backend maps back to the same bridge client
         if self._bridge_client_id:
             ws_url += f"&bridge_client_id={self._bridge_client_id}"
@@ -178,15 +201,25 @@ class Bridge:
         if pool_model:
             ws_url += f"&model={pool_model}"
 
-        client_log(f"Connecting to {self._url}...")
+        get_logger().info("connecting", url=redact_url(self._url))
 
-        async with ws_connect(ws_url) as ws:
+        async with ws_connect(
+            ws_url,
+            ping_interval=None,  # disabled — app-level heartbeats handle liveness
+            close_timeout=10,
+        ) as ws:
             # Welcome message
             welcome = json.loads(await ws.recv())
             connected_bridge_client_id = str(welcome.get("bridge_client_id") or "").strip()
             if not connected_bridge_client_id:
                 connected_bridge_client_id = f"{self._agent_type}-{uuid.uuid4().hex[:8]}"
             if connected_bridge_client_id != self._bridge_client_id:
+                if self._bridge_client_id:
+                    get_logger().warning(
+                        "bridge_id_changed",
+                        old=self._bridge_client_id,
+                        new=connected_bridge_client_id,
+                    )
                 self._persist_bridge_client_id(connected_bridge_client_id)
             self._bridge_client_id = connected_bridge_client_id
             self._connected = True
@@ -210,9 +243,9 @@ class Bridge:
                     mcp_config_path=mcp_config_path,
                 )
                 if server_system_prompt:
-                    client_log(f"System prompt: {len(server_system_prompt)} chars")
+                    get_logger().debug("system_prompt_loaded", chars=len(server_system_prompt))
                 if mcp_config_path:
-                    client_log(f"MCP config: {mcp_config_path}")
+                    get_logger().debug("mcp_config_loaded", path=mcp_config_path)
 
             # Report pool capacity to backend
             await self._send_pool_status(ws)
@@ -220,22 +253,22 @@ class Bridge:
             # Report available models from pool sessions (if any)
             await self._report_models(ws)
 
-            client_log(f"Connected as {self._bridge_client_id}")
-            client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy, max {self._pool._max_sessions}")
+            get_logger().info("connected", bridge_id=self._bridge_client_id)
+            get_logger().info("pool_status", ready=self._pool.ready_count, busy=self._pool.busy_count, max=self._pool._max_sessions)
 
             # Replay any buffered results from tasks that completed while WS was dead
             if self._buffered_results:
-                client_log(f"Replaying {len(self._buffered_results)} buffered result(s)...")
+                get_logger().info("replaying_buffered", count=len(self._buffered_results))
                 for task_id, result_msg in list(self._buffered_results.items()):
                     try:
                         await ws.send(json.dumps(result_msg))
                         self._buffered_results.pop(task_id, None)
-                        client_log(f"[task:{task_id[:8]}] Replayed buffered result")
+                        get_logger().debug("buffered_replayed", task=task_id[:8])
                     except Exception as e:
-                        client_log(f"[task:{task_id[:8]}] Failed to replay result: {e}", error=True)
+                        get_logger().error("buffered_replay_failed", task=task_id[:8], error=str(e))
                         break  # WS already broken again — stop trying
 
-            client_log("Waiting for tasks...\n")
+            get_logger().info("waiting_for_tasks")
 
             # Background task: send idle heartbeats for alive sessions
             idle_hb_task = asyncio.create_task(self._idle_heartbeat_loop(ws))
@@ -246,7 +279,7 @@ class Bridge:
                     msg_type = msg.get("type", "")
 
                     if msg_type == "shutdown":
-                        client_log("Shutdown requested by server.")
+                        get_logger().info("shutdown_requested")
                         self._shutdown_requested = True
                         return
 
@@ -320,17 +353,17 @@ class Bridge:
                     "agent_type": engine_name,
                     "models": models,
                 }))
-                client_log(f"Reported {len(models)} models for '{engine_name}'")
+                get_logger().info("models_reported", engine=engine_name, count=len(models))
 
     async def _probe_models(self, engine: str) -> list[dict]:
         """Lightweight model probe — initialize + model/list, no thread or MCP."""
         try:
             return await asyncio.wait_for(self._probe_models_impl(engine), timeout=15)
         except asyncio.TimeoutError:
-            client_log(f"Model probe for '{engine}' timed out", error=True)
+            get_logger().warning("model_probe_timeout", engine=engine)
             return []
         except Exception as e:
-            client_log(f"Model probe for '{engine}' failed: {e}", error=True)
+            get_logger().warning("model_probe_failed", engine=engine, error=str(e))
             return []
 
     async def _probe_models_impl(self, engine: str) -> list[dict]:
@@ -391,11 +424,27 @@ class Bridge:
                     pass
             return []
         finally:
+            if proc.stdin:
+                try:
+                    proc.stdin.close()
+                except Exception:
+                    pass
             proc.terminate()
             try:
                 await asyncio.wait_for(proc.wait(), timeout=3)
             except asyncio.TimeoutError:
                 proc.kill()
+            # Close pipe transports to prevent Windows ProactorEventLoop
+            # ResourceWarning spam on GC
+            for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                if pipe is None:
+                    continue
+                transport = getattr(pipe, '_transport', getattr(pipe, 'transport', None))
+                if transport and not getattr(transport, '_closing', False):
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
 
     def _ensure_mcp_config(
         self,
@@ -446,7 +495,7 @@ class Bridge:
 
         if focus:
             self._mcp_config_cache[frozenset(focus)] = path
-            client_log(f"MCP config (focused {mcp_scope}): {path}")
+            get_logger().debug("mcp_config_focused", scope=mcp_scope, path=path)
         else:
             self._mcp_config_path = path
 
@@ -512,11 +561,7 @@ class Bridge:
                 continue
 
         # Keep behavior predictable if probes fail unexpectedly.
-        client_log(
-            "Could not find a Python runtime with mcp/httpx installed; "
-            f"falling back to {sys.executable}",
-            error=True,
-        )
+        get_logger().warning("mcp_python_fallback", fallback=sys.executable)
         return sys.executable, []
 
     @staticmethod
@@ -544,14 +589,11 @@ class Bridge:
         try:
             with urlrequest.urlopen(req, timeout=8) as resp:
                 if resp.status != 200:
-                    client_log(
-                        f"Failed to fetch contracts for Codex focus: HTTP {resp.status}",
-                        error=True,
-                    )
+                    get_logger().warning("contract_fetch_failed", status=resp.status)
                     return None
                 payload = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
-            client_log(f"Failed to fetch contracts for Codex focus: {e}", error=True)
+            get_logger().warning("contract_fetch_failed", error=str(e))
             return None
 
         contracts = payload.get("contracts", [])
@@ -662,11 +704,11 @@ class Bridge:
                 enabled_tools=enabled_tools,
                 workdir=str(workdir),
             )
-            client_log(f"Prepared Codex project MCP config: {config_path}")
+            get_logger().debug("codex_config_prepared", path=str(config_path))
             self._codex_workdir_cache[cache_key] = str(workdir)
             return str(workdir)
         except Exception as e:
-            client_log(f"Failed to prepare Codex MCP project config: {e}", error=True)
+            get_logger().error("codex_config_failed", error=str(e))
             return None
 
     @staticmethod
@@ -719,7 +761,7 @@ class Bridge:
         prompt = msg.get("instruction") or msg.get("prompt", "")
 
         meta = self._extract_task_meta(msg)
-        client_log(f"[task:{task_id[:8]}] {task_type}: engine={meta['engine']} model={meta['model']} prompt={prompt[:60]}...")
+        get_logger().info("task_received", task=task_id[:8], type=task_type, engine=meta["engine"], model=meta["model"])
 
         # Per-request user token — passed to pool.send_message() which writes
         # it to the target session's isolated token file (no shared file race)
@@ -852,8 +894,7 @@ class Bridge:
                 session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
                 bridge_session_id = session.bridge_session_id if session else None
 
-                preview = response[:120].replace('\n', ' ')
-                client_log(f"[task:{task_id[:8]}] Done via {session_id} ({len(response)} chars): {preview}")
+                get_logger().info("task_complete", task=task_id[:8], session=session_id, chars=len(response))
 
                 result_msg: dict = {
                     "type": "result",
@@ -871,7 +912,7 @@ class Bridge:
                 except Exception:
                     # WS dead — buffer result for replay on reconnect
                     self._buffered_results[task_id] = result_msg
-                    client_log(f"[task:{task_id[:8]}] WS dead, buffered result for replay ({len(response)} chars)")
+                    get_logger().warning("ws_dead_buffered", task=task_id[:8], chars=len(response))
                     return
 
                 # Report updated pool status (new sessions may have spawned)
@@ -885,7 +926,7 @@ class Bridge:
                     pass
 
         except Exception as e:
-            client_log(f"[task:{task_id[:8]}] Error: {e}", error=True)
+            get_logger().error("task_error", task=task_id[:8], error=str(e))
             error_msg = {
                 "type": "error",
                 "task_id": task_id,
@@ -896,7 +937,7 @@ class Bridge:
             except Exception:
                 # WS dead — buffer error for replay on reconnect
                 self._buffered_results[task_id] = error_msg
-                client_log(f"[task:{task_id[:8]}] WS dead, buffered error for replay")
+                get_logger().warning("ws_dead_buffered_error", task=task_id[:8])
 
     @staticmethod
     def _read_local_images(image_paths: list[dict]) -> list[dict]:

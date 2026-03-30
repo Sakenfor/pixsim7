@@ -73,6 +73,7 @@ def _bundle_to_summary(
     b: PlanBundle,
     children: Optional[List[PlanBundle]] = None,
     review_counts: Optional[tuple[int, int]] = None,
+    compact: bool = False,
 ) -> PlanSummary:
     """Build a typed PlanSummary from PlanBundle.
 
@@ -83,7 +84,7 @@ def _bundle_to_summary(
     doc, plan = b.doc, b.plan
     stage_value = _normalize_stage_for_response(plan.stage)
     child_entries = []
-    if children:
+    if children and not compact:
         child_entries = [
             PlanChildSummary(
                 id=c.id,
@@ -94,7 +95,7 @@ def _bundle_to_summary(
             )
             for c in children
         ]
-    list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
+    list_fields = {} if compact else {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
     return PlanSummary(
         id=plan.id,
         document_id=doc.id,
@@ -110,9 +111,9 @@ def _bundle_to_summary(
         plan_type=plan.plan_type,
         visibility=doc.visibility,
         namespace=doc.namespace,
-        target=plan.target,
-        checkpoints=plan.checkpoints,
-        tags=doc.tags or [],
+        target=None if compact else plan.target,
+        checkpoints=None if compact else plan.checkpoints,
+        tags=[] if compact else (doc.tags or []),
         revision=doc.revision,
         review_round_count=review_counts[0] if review_counts else 0,
         active_review_round_count=review_counts[1] if review_counts else 0,
@@ -121,10 +122,9 @@ def _bundle_to_summary(
     )
 
 
-def _bundle_to_registry_entry(b: PlanBundle) -> dict:
+def _bundle_to_registry_entry(b: PlanBundle, *, compact: bool = False) -> dict:
     doc, plan = b.doc, b.plan
-    list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
-    return {
+    base = {
         "id": plan.id,
         "document_id": doc.id,
         "title": doc.title,
@@ -136,6 +136,12 @@ def _bundle_to_registry_entry(b: PlanBundle) -> dict:
         "summary": doc.summary or "",
         "scope": plan.scope,
         "namespace": doc.namespace,
+    }
+    if compact:
+        return base
+    list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
+    return {
+        **base,
         "tags": doc.tags or [],
         **list_fields,
         "manifest_hash": plan.manifest_hash,
@@ -657,43 +663,30 @@ def _review_request_config_view(row: PlanRequest) -> Dict[str, Any]:
     }
 
 
+def _str_field(dispatch: dict, key: str, fallback: "Any" = None) -> Optional[str]:
+    """Extract a string field from dispatch meta, falling back to a row attribute."""
+    val = dispatch.get(key)
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    if isinstance(fallback, str) and fallback.strip():
+        return fallback.strip()
+    return None
+
+
 def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     dispatch = _request_dispatch_meta(row)
     mode = dispatch.get("target_mode")
     if mode not in _REVIEW_REQUEST_TARGET_MODES:
         mode = "session" if (getattr(row, "target_agent_id", None) or getattr(row, "target_bridge_id", None)) else "auto"
 
-    target_bridge_id = dispatch.get("target_bridge_id")
-    if not isinstance(target_bridge_id, str):
-        target_bridge_id = getattr(row, "target_bridge_id", None)
-    if isinstance(target_bridge_id, str):
-        target_bridge_id = target_bridge_id.strip() or None
-    else:
-        target_bridge_id = None
-
-    target_session_id = dispatch.get("target_session_id")
-    if not isinstance(target_session_id, str):
-        target_session_id = None
-
-    preferred_agent_id = dispatch.get("preferred_agent_id")
-    if not isinstance(preferred_agent_id, str):
-        preferred_agent_id = None
-
-    target_profile_id = dispatch.get("target_profile_id")
-    if not isinstance(target_profile_id, str):
-        target_profile_id = None
-
-    target_method = dispatch.get("target_method")
-    if not isinstance(target_method, str):
-        target_method = None
-
-    target_model_id = dispatch.get("target_model_id")
-    if not isinstance(target_model_id, str):
-        target_model_id = None
-
-    target_provider = dispatch.get("target_provider")
-    if not isinstance(target_provider, str):
-        target_provider = None
+    target_bridge_id = _str_field(dispatch, "target_bridge_id", getattr(row, "target_bridge_id", None))
+    target_session_id = _str_field(dispatch, "target_session_id")
+    preferred_agent_id = _str_field(dispatch, "preferred_agent_id")
+    target_profile_id = _str_field(dispatch, "target_profile_id")
+    target_method = _str_field(dispatch, "target_method")
+    target_model_id = _str_field(dispatch, "target_model_id")
+    target_provider = _str_field(dispatch, "target_provider")
+    dispatch_reason = _str_field(dispatch, "dispatch_reason")
 
     target_user_id_raw = dispatch.get("target_user_id")
     if isinstance(target_user_id_raw, int) and target_user_id_raw > 0:
@@ -706,10 +699,6 @@ def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     dispatch_state = dispatch.get("dispatch_state")
     if dispatch_state not in _REVIEW_REQUEST_DISPATCH_STATES:
         dispatch_state = "assigned" if (getattr(row, "target_agent_id", None) or target_bridge_id) else "unassigned"
-
-    dispatch_reason = dispatch.get("dispatch_reason")
-    if not isinstance(dispatch_reason, str):
-        dispatch_reason = None
 
     queue_if_busy = bool(dispatch.get("queue_if_busy", False))
     auto_reroute_if_busy = bool(dispatch.get("auto_reroute_if_busy", True))
@@ -1082,31 +1071,28 @@ async def _run_review_request_via_bridge(
     if not response_text:
         raise RuntimeError("Remote review request completed without response text.")
 
+    resolved_client_id = (
+        str(result.get("bridge_client_id") or "").strip()
+        or target_agent_id
+        or (request_row.target_agent_id or None)
+    )
+    resolved_bridge_id = (
+        str(result.get("bridge_id") or "").strip()
+        or target_bridge_id
+        or (getattr(request_row, "target_bridge_id", None) or None)
+    )
+    resolved_session_id = result.get("bridge_session_id")
+
     return {
         "response_text": response_text,
-        "bridge_client_id": (
-            str(result.get("bridge_client_id") or "").strip()
-            or target_agent_id
-            or (request_row.target_agent_id or None)
-        ),
-        "bridge_id": (
-            str(result.get("bridge_id") or "").strip()
-            or target_bridge_id
-            or (getattr(request_row, "target_bridge_id", None) or None)
-        ),
-        "run_id": result.get("bridge_session_id"),
+        "bridge_client_id": resolved_client_id,
+        "bridge_id": resolved_bridge_id,
+        "engine": result.get("engine"),
+        "run_id": resolved_session_id,
         "meta": {
-            "bridge_id": (
-                str(result.get("bridge_id") or "").strip()
-                or target_bridge_id
-                or (getattr(request_row, "target_bridge_id", None) or None)
-            ),
-            "bridge_client_id": (
-                str(result.get("bridge_client_id") or "").strip()
-                or target_agent_id
-                or (request_row.target_agent_id or None)
-            ),
-            "bridge_session_id": result.get("bridge_session_id"),
+            "bridge_id": resolved_bridge_id,
+            "bridge_client_id": resolved_client_id,
+            "bridge_session_id": resolved_session_id,
         },
     }
 
@@ -1475,12 +1461,16 @@ async def _dispatch_review_request_execution(
         execution_agent_id = result.get("bridge_client_id")
         execution_bridge_id = result.get("bridge_id")
         execution_run_id = result.get("run_id")
+        execution_engine = result.get("engine")
         if isinstance(execution_bridge_id, str) and execution_bridge_id.strip():
             request_row.target_bridge_id = execution_bridge_id.strip()
         if execution_agent_id:
-            node_created_by = f"agent:{execution_agent_id}"
+            # Use engine name (codex, claude) when available — bridge_client_id
+            # is a shared dispatcher ID that doesn't identify the agent.
+            agent_label = execution_engine or execution_agent_id
+            node_created_by = f"agent:{agent_label}"
             node_actor["principal_type"] = "agent"
-            node_actor["agent_id"] = execution_agent_id
+            node_actor["agent_id"] = agent_label
         if execution_run_id:
             node_actor["run_id"] = execution_run_id
 
@@ -2511,9 +2501,38 @@ def _filter_bundles(
     priority: Optional[str] = None,
     plan_type: Optional[str] = None,
     tag: Optional[str] = None,
+    q: Optional[str] = None,
     include_hidden: bool = False,
 ) -> List[PlanBundle]:
     """Apply common filters to a list of plan bundles."""
+    query = (q or "").strip().lower()
+
+    def _matches_query(bundle: PlanBundle, needle: str) -> bool:
+        if not needle:
+            return True
+        doc = bundle.doc
+        plan = bundle.plan
+        scalar_fields = (
+            bundle.id,
+            doc.title,
+            doc.summary,
+            doc.owner,
+            doc.namespace,
+            plan.scope,
+            plan.plan_type,
+        )
+        for value in scalar_fields:
+            if needle in str(value or "").lower():
+                return True
+        list_fields = [doc.tags or []]
+        for field in PLAN_LIST_FIELDS:
+            list_fields.append(getattr(plan, field, None) or [])
+        for values in list_fields:
+            for value in values:
+                if needle in str(value or "").lower():
+                    return True
+        return False
+
     out: list[PlanBundle] = []
     for b in sorted(bundles, key=lambda b: b.id):
         if not include_hidden and not status and b.doc.status in HIDDEN_STATUSES:
@@ -2529,6 +2548,8 @@ def _filter_bundles(
         if plan_type and b.plan.plan_type != plan_type:
             continue
         if tag and tag not in (b.doc.tags or []):
+            continue
+        if query and not _matches_query(b, query):
             continue
         out.append(b)
     return out

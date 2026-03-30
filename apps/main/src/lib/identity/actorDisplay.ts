@@ -27,13 +27,21 @@ function profileLabel(profileId: string | null, profileLabels?: ReadonlyMap<stri
   return normalizeText(profileLabels.get(normalized));
 }
 
+const ENGINE_LABELS: Record<string, string> = {
+  codex: 'Codex',
+  claude: 'Claude',
+};
+
 function labelFromAgentId(agentId: string, profileLabels?: ReadonlyMap<string, string>): string {
   const profileFromAgent = profileLabel(agentId, profileLabels);
   if (profileFromAgent) return profileFromAgent;
 
+  const engineLabel = ENGINE_LABELS[agentId.toLowerCase()];
+  if (engineLabel) return engineLabel;
+
   if (agentId.startsWith('profile-')) return `Agent Profile ${shortId(agentId)}`;
   if (agentId.startsWith('assistant:')) return 'Assistant';
-  if (agentId.startsWith('shared-')) return `AI Agent (legacy ${shortId(agentId)})`;
+  if (agentId.startsWith('shared-')) return `AI Agent ${shortId(agentId)}`;
   if (agentId.startsWith('user-')) return `User Bridge ${shortId(agentId)}`;
   return `AI Agent ${shortId(agentId)}`;
 }
