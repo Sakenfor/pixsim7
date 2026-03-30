@@ -14,6 +14,7 @@ import {
 } from '@lib/generation-ui';
 
 import { AspectRatioDropdown } from './AspectRatioDropdown';
+import { ModelDropdown } from './ModelDropdown';
 
 function getModelMatchKeys(value: unknown): string[] {
   if (typeof value !== 'string') return [];
@@ -186,42 +187,39 @@ export function GenerationParamControls({
           );
         }
 
-        const isModelParam = param.name === 'model';
-        const isFreeSelectedModel = isModelParam && isModelInUnlimitedSet(unlimitedModels, currentValue);
-        return (
-          <div key={param.name} className="relative">
-            <select
-              value={currentValue}
-              onChange={(e) => onChange(param.name, e.target.value)}
+        // Model param: use rich dropdown with model badges
+        if (param.name === 'model') {
+          return (
+            <ModelDropdown
+              key={param.name}
+              options={options}
+              currentValue={currentValue}
+              onChange={(val) => onChange(param.name, val)}
               disabled={generating}
-              className={clsx(
-                'w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm',
-                isFreeSelectedModel && 'pr-14 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800',
-              )}
-              title={param.name}
-            >
-              {options.map((opt: string) => {
-                const baseLabel = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
-                const familyShort = param.name === 'model' && modelFamilies?.[opt]?.short;
-                const label = familyShort ? `[${familyShort}] ${baseLabel}` : baseLabel;
-                const isFree = param.name === 'model' && isModelInUnlimitedSet(unlimitedModels, opt);
-                return (
-                  <option
-                    key={opt}
-                    value={opt}
-                    className={isFree ? 'text-emerald-700 dark:text-emerald-300' : 'text-neutral-900 dark:text-neutral-100'}
-                  >
-                    {isFree ? `${label} (free)` : label}
-                  </option>
-                );
-              })}
-            </select>
-            {isFreeSelectedModel && (
-              <span className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                Free
-              </span>
-            )}
-          </div>
+              modelFamilies={modelFamilies}
+              unlimitedModels={unlimitedModels}
+            />
+          );
+        }
+
+        return (
+          <select
+            key={param.name}
+            value={currentValue}
+            onChange={(e) => onChange(param.name, e.target.value)}
+            disabled={generating}
+            className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+            title={param.name}
+          >
+            {options.map((opt: string) => {
+              const baseLabel = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
+              return (
+                <option key={opt} value={opt}>
+                  {baseLabel}
+                </option>
+              );
+            })}
+          </select>
         );
       })}
     </>
