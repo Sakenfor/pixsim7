@@ -120,6 +120,11 @@ class ChatSession(SQLModel, table=True):
     label: str = Field(default="Untitled", max_length=255)
     source: Optional[str] = Field(default=None, max_length=32)  # chat, mcp, mcp-auto, bridge
     message_count: int = Field(default=0)
+    messages: Optional[List[Dict]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Recent chat messages for resume (last 50). Each: {role, text, timestamp}.",
+    )
     last_used_at: datetime = Field(default_factory=utcnow)
     created_at: datetime = Field(default_factory=utcnow)
     status: str = Field(default="active", max_length=32)  # active | archived

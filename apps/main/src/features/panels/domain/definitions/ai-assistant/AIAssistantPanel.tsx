@@ -25,7 +25,7 @@ import { chatBridge } from './assistantChatBridge';
 // Types
 // =============================================================================
 
-interface BridgeStatus { connected: number; available: number }
+interface BridgeStatus { connected: number; available: number; process_alive?: boolean; managed_by?: string | null }
 /** Unified profile â€" both agent identity and assistant persona */
 interface UnifiedProfile {
   id: string;
@@ -212,6 +212,41 @@ function persistTabDraft(tabId: string, text: string) {
 
 function createTabId(): string {
   return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// =============================================================================
+// Server-side message sync (for session resume across tabs/sessions)
+// =============================================================================
+
+const _syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Debounced save of messages to the server for a given session. */
+function syncMessagesToServer(sessionId: string, messages: ChatMessage[]) {
+  const existing = _syncTimers.get(sessionId);
+  if (existing) clearTimeout(existing);
+  _syncTimers.set(sessionId, setTimeout(() => {
+    _syncTimers.delete(sessionId);
+    const persistable = messages
+      .filter((m) => m.role !== 'error')
+      .slice(-50)
+      .map((m) => ({ role: m.role, text: m.text, duration_ms: m.duration_ms, timestamp: m.timestamp.toISOString() }));
+    pixsimClient.patch(`/meta/agents/chat-sessions/${sessionId}/messages`, { messages: persistable }).catch(() => {});
+  }, 2000));
+}
+
+/** Fetch messages from server for a resumed session. */
+async function fetchServerMessages(sessionId: string): Promise<ChatMessage[]> {
+  try {
+    const res = await pixsimClient.get<{ messages?: Array<Record<string, unknown>> | null }>(`/meta/agents/chat-sessions/${sessionId}`);
+    const raw = res.data?.messages;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw.map((m) => ({
+      role: m.role as ChatMessage['role'],
+      text: m.text as string,
+      duration_ms: m.duration_ms as number | undefined,
+      timestamp: new Date(m.timestamp as string),
+    }));
+  } catch { return []; }
 }
 
 /** Build a ChatTab from a session record. Single source of truth for resume. */
@@ -1409,8 +1444,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (messages.length > 0 || hasPersistedRef.current) {
       persistTabMessages(tab.id, messages);
       hasPersistedRef.current = true;
+      // Also sync to server for session resume
+      if (tab.sessionId && messages.length > 0) {
+        syncMessagesToServer(tab.sessionId, messages);
+      }
     }
-  }, [messages, tab.id]);
+  }, [messages, tab.id, tab.sessionId]);
   useEffect(() => { persistTabDraft(tab.id, input); }, [input, tab.id]);
 
   // Inject prompt from other panels
@@ -1546,16 +1585,26 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                   profileId: resumed.profileId,
                   injectToken: resumed.injectToken,
                 });
+                // Fetch server-side message history for this session
+                fetchServerMessages(sessionId).then((serverMsgs) => {
+                  if (serverMsgs.length > 0) setMessages(serverMsgs);
+                });
               }}
             />
           </div>
         )}
         {messages.length === 0 && connected === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-8">
-            <EmptyState message="AI assistant is offline" description="Start an agent bridge to connect" size="sm" />
-            <Button size="sm" onClick={() => { pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); }}>
-              <Icon name="play" size={12} className="mr-1.5" />Start Bridge
-            </Button>
+            {bridge?.process_alive ? (
+              <EmptyState message="Bridge is connecting..." description={bridge.managed_by === 'launcher' ? 'Managed by launcher' : 'Waiting for WebSocket connection'} size="sm" />
+            ) : (
+              <>
+                <EmptyState message="AI assistant is offline" description="Start an agent bridge to connect" size="sm" />
+                <Button size="sm" onClick={() => { pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); }}>
+                  <Icon name="play" size={12} className="mr-1.5" />Start Bridge
+                </Button>
+              </>
+            )}
           </div>
         )}
         {messages.map((msg, i) => {
@@ -1829,8 +1878,8 @@ export function AIAssistantPanel() {
         const isConnected = status.connected > 0;
         bridgeWasConnectedRef.current = isConnected;
 
-        if (wasConnected && !isConnected && !bridgeManualStopRef.current) {
-          // Bridge dropped unexpectedly — auto-reconnect
+        if (wasConnected && !isConnected && !bridgeManualStopRef.current && !status.process_alive) {
+          // Bridge process died unexpectedly — auto-reconnect
           pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {});
         }
         if (isConnected) bridgeManualStopRef.current = false;
@@ -1901,6 +1950,9 @@ export function AIAssistantPanel() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ResumeSessionDetail>).detail;
       if (!detail?.sessionId) return;
+      // Reuse existing tab if one with the same sessionId already exists
+      const existing = tabs.find((t) => t.sessionId === detail.sessionId);
+      if (existing) { setActiveTab(existing.id); return; }
       const profile = detail.profileId ? profiles.find((p) => p.id === detail.profileId) : undefined;
       const newTab = buildResumedTab({
         id: detail.sessionId,
@@ -1908,12 +1960,15 @@ export function AIAssistantPanel() {
         label: profile?.label || detail.label,
         profile_id: detail.profileId,
       });
-      setTabs((prev) => [newTab, ...prev]);
-      setActiveTab(newTab.id);
+      fetchServerMessages(detail.sessionId).then((serverMsgs) => {
+        if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
+        setTabs((prev) => [newTab, ...prev]);
+        setActiveTab(newTab.id);
+      });
     };
     window.addEventListener(RESUME_SESSION_EVENT, handler);
     return () => window.removeEventListener(RESUME_SESSION_EVENT, handler);
-  }, [profiles, setActiveTab]);
+  }, [tabs, profiles, setActiveTab]);
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-neutral-950">
@@ -1958,11 +2013,18 @@ export function AIAssistantPanel() {
             <Icon name="plus" size={12} />
           </button>
           <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId) => {
+            // Reuse existing tab if one with the same sessionId already exists
+            const existing = tabs.find((t) => t.sessionId === sessionId);
+            if (existing) { setActiveTab(existing.id); return; }
             const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId });
-            setTabs((prev) => [newTab, ...prev]);
-            setActiveTab(newTab.id);
+            // Fetch server-side message history, then create the tab
+            fetchServerMessages(sessionId).then((serverMsgs) => {
+              if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
+              setTabs((prev) => [newTab, ...prev]);
+              setActiveTab(newTab.id);
+            });
           }} />
-          {connected === 0 && (
+          {connected === 0 && !bridge?.process_alive && (
             <button
               onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
               disabled={bridgeStarting}
@@ -1977,6 +2039,8 @@ export function AIAssistantPanel() {
               className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
               title="Connected - click to disconnect"
             />
+          ) : bridge?.process_alive ? (
+            <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="Connecting..." />
           ) : (
             <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />
           )}

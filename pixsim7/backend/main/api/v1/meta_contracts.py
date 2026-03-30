@@ -496,6 +496,15 @@ async def list_agent_sessions() -> AgentSessionsResponse:
     active = agent_session_registry.get_active()
     all_sessions = agent_session_registry.get_all()
 
+    # Exclude bridge-client-level heartbeat sessions — they mirror the
+    # underlying CLI session and would inflate the count.
+    try:
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+        bridge_client_ids = {a.bridge_client_id for a in remote_cmd_bridge.get_agents()}
+    except Exception:
+        bridge_client_ids = set()
+    active = [s for s in active if s.session_id not in bridge_client_ids]
+
     return AgentSessionsResponse(
         active=[
             AgentSessionEntry(
@@ -731,6 +740,8 @@ class RemoteAgentBridgeStatus(BaseModel):
     connected: int
     available: int
     agents: List[RemoteAgentEntry]
+    process_alive: bool = False
+    managed_by: Optional[str] = None  # "server" | "launcher" | None
 
 
 class BridgeMachineEntry(BaseModel):
@@ -836,10 +847,28 @@ async def get_bridge_status(
             pool_sessions=pool_sessions,
         )
 
+    # Determine if a bridge process is known to be alive (beyond WS connections)
+    process_alive = len(agents) > 0
+    managed_by: Optional[str] = None
+
+    if not process_alive:
+        # Check server-spawned subprocess
+        if _server_bridge_process and _server_bridge_process.poll() is None:
+            process_alive = True
+            managed_by = "server"
+        else:
+            # Check launcher-managed service
+            launcher_status = _check_launcher_bridge()
+            if launcher_status:
+                process_alive = True
+                managed_by = "launcher"
+
     return RemoteAgentBridgeStatus(
         connected=len(agents),
         available=sum(1 for a in agents if not a.busy),
         agents=[_build_agent_entry(a) for a in agents],
+        process_alive=process_alive,
+        managed_by=managed_by,
     )
 
 
@@ -1141,6 +1170,16 @@ class StartBridgeResponse(BaseModel):
 _server_bridge_process: Optional[Any] = None
 
 
+def _check_launcher_bridge() -> Optional[dict]:
+    """Check if the launcher already manages a running ai-client service."""
+    from pixsim7.backend.main.shared.launcher_client import get_service_status
+
+    status = get_service_status("ai-client")
+    if status and status.get("status") == "running":
+        return status
+    return None
+
+
 @router.post("/agents/bridge/start", response_model=StartBridgeResponse)
 async def start_server_bridge(
     payload: StartBridgeRequest,
@@ -1150,10 +1189,22 @@ async def start_server_bridge(
 
     If authenticated, creates a user-scoped bridge with the user's token.
     Otherwise creates a shared/admin bridge.
+
+    Defers to the launcher's ai-client service if the launcher is running
+    and already manages the bridge process.
     """
     global _server_bridge_process
     import subprocess
     import sys
+
+    # If the launcher already manages a running bridge, don't spawn a duplicate
+    launcher_bridge = _check_launcher_bridge()
+    if launcher_bridge:
+        return StartBridgeResponse(
+            ok=True,
+            pid=launcher_bridge.get("pid"),
+            message="Bridge managed by launcher",
+        )
 
     if _server_bridge_process and _server_bridge_process.poll() is None:
         return StartBridgeResponse(
@@ -1223,25 +1274,39 @@ async def start_server_bridge(
 
 @router.post("/agents/bridge/stop", response_model=StartBridgeResponse)
 async def stop_server_bridge() -> StartBridgeResponse:
-    """Stop the server-managed agent bridge."""
+    """Stop bridges — server-spawned subprocess and/or connected WebSocket clients."""
     global _server_bridge_process
 
-    if not _server_bridge_process or _server_bridge_process.poll() is not None:
-        _server_bridge_process = None
-        return StartBridgeResponse(ok=False, message="No server bridge running")
+    killed_proc = False
+    pid = None
 
-    pid = _server_bridge_process.pid
-    try:
-        _server_bridge_process.terminate()
-        _server_bridge_process.wait(timeout=5)
-    except Exception:
+    # 1. Kill server-spawned subprocess if present
+    if _server_bridge_process and _server_bridge_process.poll() is None:
+        pid = _server_bridge_process.pid
         try:
-            _server_bridge_process.kill()
+            _server_bridge_process.terminate()
+            _server_bridge_process.wait(timeout=5)
         except Exception:
-            pass
+            try:
+                _server_bridge_process.kill()
+            except Exception:
+                pass
+        _server_bridge_process = None
+        killed_proc = True
 
-    _server_bridge_process = None
-    return StartBridgeResponse(ok=True, pid=pid, message=f"Bridge stopped (PID: {pid})")
+    # 2. Force-disconnect all WebSocket-connected bridges
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+    ws_count = await remote_cmd_bridge.force_disconnect_all()
+
+    if not killed_proc and ws_count == 0:
+        return StartBridgeResponse(ok=False, message="No bridges running")
+
+    parts = []
+    if killed_proc:
+        parts.append(f"subprocess PID {pid}")
+    if ws_count:
+        parts.append(f"{ws_count} WebSocket client{'s' if ws_count != 1 else ''}")
+    return StartBridgeResponse(ok=True, pid=pid, message=f"Stopped: {', '.join(parts)}")
 
 
 class SendMessageRequest(BaseModel):
@@ -1445,8 +1510,33 @@ async def get_chat_session(
         "scope_key": session.scope_key,
         "label": session.label,
         "message_count": session.message_count,
+        "messages": session.messages,
         "last_used_at": session.last_used_at.isoformat(),
     }
+
+
+@router.patch("/agents/chat-sessions/{session_id}/messages")
+async def save_chat_session_messages(
+    session_id: str,
+    body: Dict[str, Any],
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Persist chat messages for a session (called by frontend on message changes)."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    messages = body.get("messages")
+    if not isinstance(messages, list):
+        raise HTTPException(status_code=422, detail="messages must be a list")
+    # Cap at 50 messages server-side
+    capped = messages[-50:] if len(messages) > 50 else messages
+
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.messages = capped
+    session.message_count = len(capped)
+    await db.commit()
+    return {"ok": True, "count": len(capped)}
 
 
 @router.delete("/agents/chat-sessions/{session_id}")
@@ -1531,6 +1621,7 @@ async def register_chat_session(
         user_id = getattr(_user, 'user_id', None) or getattr(_user, 'id', 0) or 0
 
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
     existing = await db.get(ChatSession, payload.session_id)
     created = existing is None
 
@@ -1552,9 +1643,13 @@ async def register_chat_session(
         last_plan_id=payload.last_plan_id,
         source=payload.source,
     )
+
+    resumed = not created
+
     return {
         "ok": True,
         "created": created,
+        "resumed": resumed,
         "session_id": payload.session_id,
         "profile_id": resolved_profile_id,
     }
