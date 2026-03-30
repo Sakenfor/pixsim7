@@ -77,6 +77,28 @@ VALID_TASK_SCOPES = CANONICAL_TASK_SCOPES
 # Statuses hidden from default listings (require explicit include flag).
 HIDDEN_STATUSES = frozenset({"removed", "archived"})
 
+
+def _validate_checkpoints(raw: list) -> list[dict]:
+    """Validate checkpoint dicts against the Checkpoint schema.
+
+    Each dict must have at least 'id'. The Checkpoint model fills defaults
+    (label="", status="pending") and preserves extra keys.
+    Returns a list of validated dicts (round-tripped through model_validate).
+    """
+    from pixsim7.backend.main.api.v1.plans.schemas import Checkpoint
+
+    validated = []
+    for i, cp in enumerate(raw):
+        if not isinstance(cp, dict):
+            raise ValueError(f"Invalid checkpoint at index {i}: expected object")
+        if "id" not in cp:
+            raise ValueError(f"Invalid checkpoint at index {i}: missing required 'id'")
+        try:
+            validated.append(Checkpoint.model_validate(cp).model_dump(by_alias=False, exclude_none=True))
+        except Exception as exc:
+            raise ValueError(f"Invalid checkpoint '{cp.get('id', f'index {i}')}': {exc}") from exc
+    return validated
+
 _PLAN_NOTIFICATION_SYSTEM_ID = "plan"
 _PLAN_NOTIFICATION_SYSTEM_LABEL = "Plans"
 
@@ -904,8 +926,10 @@ async def update_plan(
         checkpoints = updates["checkpoints"]
         if checkpoints is None:
             updates["checkpoints"] = []
-        elif not isinstance(checkpoints, list) or any(not isinstance(v, dict) for v in checkpoints):
+        elif not isinstance(checkpoints, list):
             raise ValueError("Invalid 'checkpoints': expected list[object] or null")
+        else:
+            updates["checkpoints"] = _validate_checkpoints(checkpoints)
 
     bundle = await _ensure_bundle(db, plan_id)
     doc, plan = bundle.doc, bundle.plan

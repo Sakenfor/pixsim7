@@ -10,7 +10,55 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from pydantic import ConfigDict
+
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
+
+
+# ── Checkpoint schema ───────────────────────────────────────────
+
+class CheckpointEvidence(ApiModel):
+    """A single piece of evidence attached to a checkpoint."""
+    kind: Literal["file_path", "git_commit", "url", "note"] = "note"
+    ref: str = ""
+
+
+class CheckpointLastUpdate(ApiModel):
+    """Snapshot of who last touched a checkpoint and when."""
+    model_config = ConfigDict(extra="allow")
+
+    at: Optional[str] = None
+    by: Optional[str] = None
+    note: Optional[str] = None
+
+
+class Checkpoint(ApiModel):
+    """Structured checkpoint within a plan.
+
+    Required: id, label, status.
+    Optional: tracking fields (description, note, points, evidence).
+    Extra keys are preserved (extra="allow") for forward compatibility.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    # Required
+    id: str
+    label: str = ""
+    status: str = "pending"
+
+    # Planning
+    description: Optional[str] = None
+
+    # Progress tracking
+    note: Optional[str] = None
+    progress: Optional[int] = None
+    points_done: Optional[int] = None
+    points_total: Optional[int] = None
+
+    # Evidence & audit
+    evidence: Optional[List[CheckpointEvidence]] = None
+    last_update: Optional[CheckpointLastUpdate] = None
+
 
 # ── Validation helpers (used by schema validators) ───────────────
 
@@ -54,7 +102,7 @@ class PlanSummary(ApiModel):
     visibility: str = "public"
     namespace: Optional[str] = None
     target: Optional[Dict] = None
-    checkpoints: Optional[List[Dict]] = None
+    checkpoints: Optional[List[Checkpoint]] = None
     code_paths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
     handoffs: List[str] = Field(default_factory=list)
