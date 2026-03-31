@@ -774,14 +774,17 @@ async def _poll_single_generation(
                         generation_id=generation.id,
                     )
                     gen_model.deferred_action = None
-                    gen_model.status = GenerationStatus.CANCELLED
-                    gen_model.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
                     timeout_account_id = generation.account_id
                     if timeout_account_id:
                         orphan_account = await db.get(ProviderAccount, timeout_account_id)
                         if orphan_account and orphan_account.current_processing_jobs > 0:
                             orphan_account.current_processing_jobs -= 1
-                    await db.commit()
+                            await db.commit()
+                    # Use update_status to emit job:cancelled WebSocket event
+                    await generation_service.update_status(
+                        generation.id, GenerationStatus.CANCELLED,
+                    )
                     return _PollGenerationResult(generation_id=generation_id, outcome='failed')
 
                 if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
@@ -1291,17 +1294,12 @@ async def _poll_single_generation(
                             deferred_action=getattr(generation_model, "deferred_action", None),
                         )
                         generation_model.deferred_action = None
+                        await db.commit()
                         account = await account_service.release_account(account.id)
                         if generation_model.status != GenerationStatus.CANCELLED:
-                            await generation_service.mark_failed(
-                                generation.id,
-                                "Cancelled by user during provider processing",
+                            await generation_service.update_status(
+                                generation.id, GenerationStatus.CANCELLED,
                             )
-                            # Overwrite FAILED with CANCELLED (terminal guard
-                            # allows same-terminal overwrites via direct update)
-                            generation_model.status = GenerationStatus.CANCELLED
-                            generation_model.completed_at = datetime.now(timezone.utc)
-                        await db.commit()
                         return _PollGenerationResult(
                             generation_id=generation_id,
                             outcome='completed',
@@ -1406,11 +1404,12 @@ async def _poll_single_generation(
                             deferred_action=getattr(generation_model, "deferred_action", None),
                         )
                         generation_model.deferred_action = None
+                        await db.commit()
                         account = await account_service.release_account(account.id)
                         if generation_model.status != GenerationStatus.CANCELLED:
-                            generation_model.status = GenerationStatus.CANCELLED
-                            generation_model.completed_at = datetime.now(timezone.utc)
-                        await db.commit()
+                            await generation_service.update_status(
+                                generation.id, GenerationStatus.CANCELLED,
+                            )
                         return _PollGenerationResult(
                             generation_id=generation_id,
                             outcome='failed',
@@ -1502,10 +1501,11 @@ async def _poll_single_generation(
                             generation_id=generation.id,
                         )
                         generation_model.deferred_action = None
-                        generation_model.status = GenerationStatus.CANCELLED
-                        generation_model.completed_at = datetime.now(timezone.utc)
-                        account = await account_service.release_account(account.id)
                         await db.commit()
+                        account = await account_service.release_account(account.id)
+                        await generation_service.update_status(
+                            generation.id, GenerationStatus.CANCELLED,
+                        )
                         return _PollGenerationResult(
                             generation_id=generation_id,
                             outcome='failed',
