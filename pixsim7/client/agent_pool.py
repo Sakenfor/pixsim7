@@ -17,8 +17,8 @@ import shutil
 import tempfile
 from typing import Callable, Dict, List, Optional
 
-from pixsim7.client.claude_session import AgentCmdSession, SessionState
-from pixsim7.client.log import client_log
+from pixsim7.client.session import AgentCmdSession, SessionState
+from pixsim7.client.log import get_logger
 
 MAX_SESSIONS = 10
 IDLE_EVICT_SECONDS = 30 * 60  # 30 minutes
@@ -128,7 +128,7 @@ class AgentPool:
             return self._sessions[pool_key]
         # Slow path: scan (index may be stale)
         for session in self._sessions.values():
-            if session.bridge_session_id == bridge_session_id:
+            if session.cli_session_id == bridge_session_id:
                 self._session_id_index[bridge_session_id] = session.session_id
                 return session
         return None
@@ -153,12 +153,12 @@ class AgentPool:
 
     def _update_index(self, session: AgentCmdSession) -> None:
         """Update the bridge_session_id -> pool key index and CLI ID map."""
-        if session.bridge_session_id:
-            self._session_id_index[session.bridge_session_id] = session.session_id
+        if session.cli_session_id:
+            self._session_id_index[session.cli_session_id] = session.session_id
             # Persist the mapping from our session ID to the CLI's conversation UUID
             # so we can --resume correctly even after eviction
-            if session.cli_session_id and session.cli_session_id != session.bridge_session_id:
-                self._cli_id_map[session.bridge_session_id] = session.cli_session_id
+            if session.cli_session_id and session.cli_session_id != session.cli_session_id:
+                self._cli_id_map[session.cli_session_id] = session.cli_session_id
 
     async def _evict_oldest_idle(self) -> bool:
         """Stop the oldest idle on-demand session to make room. Returns True if one was evicted."""
@@ -170,7 +170,7 @@ class AgentPool:
         if not idle:
             return False
         oldest = min(idle, key=lambda s: s.stats.last_activity or s.stats.started_at or s.stats.last_activity)
-        client_log(f"[pool] Evicting idle session {oldest.session_id} (bridge: {oldest.bridge_session_id})")
+        get_logger().debug("pool_evict", session=oldest.session_id, cli_session=oldest.cli_session_id)
         await oldest.stop()
         self._cleanup_session_files(oldest)
         # Remove from pool and clear stale indexes.
@@ -266,7 +266,7 @@ class AgentPool:
         )
         self._sessions[pool_key] = session
 
-        client_log(f"[pool] Spawning {pool_key} ({command})" + (f" token_file={token_file}" if token_file else ""))
+        get_logger().debug("pool_spawn", session=pool_key, command=command)
         if not await session.start():
             err = session.last_error or "unknown error"
             self._sessions.pop(pool_key, None)
@@ -291,7 +291,7 @@ class AgentPool:
                 return existing
             # Dead or errored — restart in-place (preserves cli_session_id for proper resume)
             if not existing.is_alive:
-                client_log(f"[pool] Session {existing.session_id} died, restarting for {bridge_session_id[:8]}")
+                get_logger().info("pool_session_restart", session=existing.session_id, reason="died")
                 if await existing.restart():
                     self._update_index(existing)
                     return existing
@@ -302,16 +302,16 @@ class AgentPool:
         # Use the CLI's actual conversation UUID for --resume (not our derived hash)
         resume_id = self._cli_id_map.get(bridge_session_id)
         if resume_id:
-            client_log(f"[pool] Mapped {bridge_session_id[:8]} -> CLI session {resume_id[:8]} for resume")
+            get_logger().debug("pool_session_mapped", bridge=bridge_session_id[:8], cli=resume_id[:8])
         elif bridge_session_id.startswith("mcp-") or bridge_session_id.startswith("auto-"):
             # Derived session ID — Claude won't recognize it.
             # Try backend lookup for persisted cli_session_id mapping.
             resume_id = _lookup_cli_session_id(bridge_session_id)
             if resume_id:
-                client_log(f"[pool] Backend lookup: {bridge_session_id[:12]} -> {resume_id[:8]} for resume")
+                get_logger().debug("pool_session_lookup", bridge=bridge_session_id[:12], cli=resume_id[:8])
                 self._cli_id_map[bridge_session_id] = resume_id
             else:
-                client_log(f"[pool] No CLI mapping for {bridge_session_id[:12]}, starting fresh session")
+                get_logger().debug("pool_no_mapping", bridge=bridge_session_id[:12])
         else:
             # Looks like a real UUID — try resume directly
             resume_id = bridge_session_id
@@ -361,7 +361,7 @@ class AgentPool:
             raise RuntimeError(f"Session {session.session_id} is busy")
         session._workdir = workdir
         if session.is_alive:
-            client_log(f"[{session.session_id}] Restarting with updated workdir")
+            get_logger().debug("pool_workdir_update", session=session.session_id)
             await session.restart()
             self._update_index(session)
 
@@ -394,9 +394,9 @@ class AgentPool:
             if session.is_alive:
                 if session.state == SessionState.BUSY:
                     session._pending_restart = True
-                    client_log(f"[{session.session_id}] Config updated, will restart when idle")
+                    get_logger().debug("pool_config_pending", session=session.session_id)
                 else:
-                    client_log(f"[{session.session_id}] Restarting with updated config")
+                    get_logger().debug("pool_config_restart", session=session.session_id)
                     await session.restart()
                     self._update_index(session)
 
@@ -410,7 +410,7 @@ class AgentPool:
             self._health_task = asyncio.create_task(self._health_monitor())
 
         engines_str = ", ".join(e.split("/")[-1].split("\\")[-1] for e in self._engines)
-        client_log(f"Pool ready: engines={engines_str}, sessions spawn on demand")
+        get_logger().info("pool_ready", engines=engines_str)
         return len(self._engines)
 
     async def stop(self) -> None:
@@ -425,7 +425,7 @@ class AgentPool:
         for session in self._sessions.values():
             await session.stop()
 
-        client_log("Pool stopped")
+        get_logger().info("pool_stopped")
 
     async def send_message(
         self,
@@ -504,7 +504,7 @@ class AgentPool:
         try:
             # Pre-flight: ensure session process is alive (may have died since routing)
             if not session.is_alive and not ephemeral:
-                client_log(f"[pool] Pre-flight: {session.session_id} dead, restarting...")
+                get_logger().debug("pool_preflight_restart", session=session.session_id)
                 if not await session.restart():
                     raise RuntimeError(f"Session {session.session_id} failed to restart")
                 self._update_index(session)
@@ -542,18 +542,18 @@ class AgentPool:
                 for session in list(self._sessions.values()):
                     if session.state in (SessionState.ERRORED, SessionState.STOPPED):
                         if not session.is_alive:
-                            client_log(f"[health] Restarting {session.session_id}...")
+                            get_logger().debug("pool_health_restart", session=session.session_id)
                             await session.restart()
                             self._update_index(session)
                     elif session.state == SessionState.BUSY and not session.is_alive:
                         # Died mid-task — restart immediately
-                        client_log(f"[health] {session.session_id} died while busy, restarting...")
+                        get_logger().info("pool_session_died", session=session.session_id)
                         await session.restart()
                         self._update_index(session)
                     elif session.state == SessionState.READY and not session.is_alive:
                         # Exited while idle — don't restart, just mark stopped.
                         # It will be restarted on-demand when the next message arrives.
-                        client_log(f"[health] {session.session_id} exited while idle, marking stopped")
+                        get_logger().debug("pool_session_exited", session=session.session_id)
                         session.state = SessionState.STOPPED
 
                 # Evict idle dynamic sessions past timeout
@@ -567,7 +567,7 @@ class AgentPool:
                     ):
                         idle_secs = (now - session.stats.last_activity).total_seconds()
                         if idle_secs > IDLE_EVICT_SECONDS:
-                            client_log(f"[health] Evicting idle session {session.session_id} ({idle_secs:.0f}s idle)")
+                            get_logger().debug("pool_idle_evict", session=session.session_id, idle_secs=int(idle_secs))
                             await session.stop()
                             self._cleanup_session_files(session)
                             self._sessions.pop(session.session_id, None)

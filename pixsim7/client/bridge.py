@@ -32,7 +32,7 @@ except ImportError:
     ws_connect = None  # type: ignore
 
 from pixsim7.client.agent_pool import AgentPool
-from pixsim7.client.claude_session import SessionState
+from pixsim7.client.session import SessionState
 from pixsim7.client.log import get_logger, redact_url
 from pixsim7.client.token_manager import (
     TokenFile,
@@ -321,7 +321,7 @@ class Bridge:
             while True:
                 await asyncio.sleep(60)
                 for session in self._pool.sessions:
-                    if not session.is_alive or not session.bridge_session_id:
+                    if not session.is_alive or not session.cli_session_id:
                         continue
                     if session.state == SessionState.BUSY:
                         continue  # active tasks send their own heartbeats
@@ -331,7 +331,7 @@ class Bridge:
                             "status": "active",
                             "action": "cli_session",
                             "detail": "idle",
-                            "bridge_session_id": session.bridge_session_id,
+                            "bridge_session_id": session.cli_session_id,
                         }))
                     except Exception:
                         return  # connection lost
@@ -892,7 +892,7 @@ class Bridge:
 
                 # Get conversation session UUID for resume support
                 session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
-                bridge_session_id = session.bridge_session_id if session else None
+                bridge_session_id = session.cli_session_id if session else None
 
                 get_logger().info("task_complete", task=task_id[:8], session=session_id, chars=len(response))
 

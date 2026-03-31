@@ -5,7 +5,7 @@ import pytest
 
 try:
     from pixsim7.client.agent_pool import AgentPool, MAX_SESSIONS, IDLE_EVICT_SECONDS
-    from pixsim7.client.claude_session import AgentCmdSession, SessionState
+    from pixsim7.client.session import AgentCmdSession, SessionState
 
     IMPORTS_AVAILABLE = True
 except ImportError:

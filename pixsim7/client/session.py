@@ -22,6 +22,11 @@ from typing import Callable, Optional
 
 from pixsim7.client.log import get_logger
 
+# Asyncio stream buffer limit for subprocess stdout/stderr.
+# Codex app-server can emit large JSON lines (e.g. mcpServerStatus/list with
+# full tool schemas exceeds 200KB). The asyncio default of 64KB is too small.
+SUBPROCESS_STREAM_LIMIT = 1024 * 1024  # 1MB
+
 
 class SessionState(str, Enum):
     IDLE = "idle"
@@ -93,23 +98,6 @@ class AgentCmdSession:
         self.available_models: list[dict] = []       # models from model/list (JSON-RPC agents)
         self._pending_restart: bool = False
 
-    # ── Backward-compat aliases ────────────────────────────────────
-    @property
-    def bridge_session_id(self) -> Optional[str]:
-        return self.cli_session_id
-
-    @bridge_session_id.setter
-    def bridge_session_id(self, value: Optional[str]) -> None:
-        self.cli_session_id = value
-
-    @property
-    def claude_model(self) -> Optional[str]:
-        return self.cli_model
-
-    @claude_model.setter
-    def claude_model(self, value: Optional[str]) -> None:
-        self.cli_model = value
-
     # ── Properties ─────────────────────────────────────────────────
 
     @property
@@ -155,6 +143,7 @@ class AgentCmdSession:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self._workdir or None,
+                limit=SUBPROCESS_STREAM_LIMIT,
             )
         except FileNotFoundError:
             self._last_error = f"Command not found: {self._command}"
@@ -229,20 +218,31 @@ class AgentCmdSession:
         raise RuntimeError(f"Timed out waiting for response to {method} (id={request_id})")
 
     async def _wait_for_mcp_startup_complete(self, timeout: float = 15) -> None:
-        """Wait for MCP startup complete notification when available."""
+        """Wait for MCP startup complete notification when available.
+
+        Handles both legacy (codex/event/mcp_startup_*) and current
+        (mcpServer/startupStatus/updated) Codex event names.
+        """
         deadline = asyncio.get_event_loop().time() + timeout
         saw_mcp_event = False
+        # Track per-server ready/failed status for the new event format
+        pending_servers: set[str] = set()
+        ready_servers: set[str] = set()
 
         while asyncio.get_event_loop().time() < deadline:
             remaining = max(0.1, deadline - asyncio.get_event_loop().time())
             try:
                 event = await asyncio.wait_for(self._response_queue.get(), timeout=min(2, remaining))
             except asyncio.TimeoutError:
+                # If we saw MCP events and all known servers are ready, we're done
+                if saw_mcp_event and pending_servers and pending_servers == ready_servers:
+                    return
                 continue
 
             method = event.get("method", "")
             parsed = self._protocol.parse_event(event)
 
+            # Legacy format: codex/event/mcp_startup_*
             if method.startswith("codex/event/mcp_startup_"):
                 saw_mcp_event = True
                 if parsed.kind == "error":
@@ -253,12 +253,35 @@ class AgentCmdSession:
                     return
                 continue
 
+            # Current format (Codex 0.117+): mcpServer/startupStatus/updated
+            if method == "mcpServer/startupStatus/updated":
+                saw_mcp_event = True
+                params = event.get("params", {})
+                server_name = params.get("name", "")
+                status = params.get("status", "")
+                error = params.get("error")
+                if server_name:
+                    pending_servers.add(server_name)
+                if status == "ready":
+                    ready_servers.add(server_name)
+                    self._log.debug("session_init_progress", detail=f"MCP ready: {server_name}")
+                elif status == "starting":
+                    self._log.debug("session_init_progress", detail=f"MCP starting: {server_name}")
+                elif status == "failed":
+                    err_msg = error or "unknown"
+                    self._log.warning("mcp_server_failed", server=server_name, error=err_msg)
+                    ready_servers.add(server_name)  # count as resolved (don't block)
+                # All known servers resolved?
+                if pending_servers and pending_servers == ready_servers:
+                    return
+                continue
+
             if parsed.kind == "error":
                 raise RuntimeError(parsed.text)
             if parsed.kind == "progress" and parsed.text:
                 self._log.debug("session_init_progress", detail=parsed.text)
 
-        if saw_mcp_event:
+        if saw_mcp_event and pending_servers != ready_servers:
             self._log.warning("mcp_startup_timeout", timeout_s=int(timeout))
 
     async def _log_mcp_server_status(self) -> None:
@@ -373,13 +396,13 @@ class AgentCmdSession:
             self._reader_task.cancel()
             try:
                 await self._reader_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
         if self._stderr_task:
             self._stderr_task.cancel()
             try:
                 await self._stderr_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
 
         if self._process and self._process.returncode is None:
@@ -640,6 +663,9 @@ class AgentCmdSession:
                     self._log.debug("session_stdout", text=text)
         except asyncio.CancelledError:
             return
+        except Exception as exc:
+            self._log.error("session_reader_crashed", error=str(exc))
+            self._last_error = f"stdout reader crashed: {exc}"
 
     async def _read_stderr(self) -> None:
         """Read stderr for debug/error output."""
@@ -684,8 +710,3 @@ class AgentCmdSession:
             "cost_usd": round(self.stats.cost_usd, 4) if self.stats.cost_usd else None,
             "workdir": self._workdir,
         }
-
-
-# Backward-compat aliases
-ClaudeSession = AgentCmdSession
-CliSession = AgentCmdSession

@@ -1,13 +1,11 @@
-"""Tests for AgentCmdSession — state machine, resume, backward compat."""
+"""Tests for AgentCmdSession — state machine, resume, serialization."""
 from __future__ import annotations
 
 import pytest
 
 try:
-    from pixsim7.client.claude_session import (
+    from pixsim7.client.session import (
         AgentCmdSession,
-        ClaudeSession,
-        CliSession,
         SessionState,
         SessionStats,
     )
@@ -17,32 +15,6 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="client deps not available")
-
-
-class TestBackwardCompat:
-    """ClaudeSession and CliSession are aliases for AgentCmdSession."""
-
-    def test_claude_session_alias(self):
-        assert ClaudeSession is AgentCmdSession
-
-    def test_cli_session_alias(self):
-        assert CliSession is AgentCmdSession
-
-    def test_bridge_session_id_property(self):
-        session = AgentCmdSession(session_id="test")
-        session.cli_session_id = "abc-123"
-        assert session.bridge_session_id == "abc-123"
-
-        session.bridge_session_id = "def-456"
-        assert session.cli_session_id == "def-456"
-
-    def test_claude_model_property(self):
-        session = AgentCmdSession(session_id="test")
-        session.cli_model = "claude-sonnet"
-        assert session.claude_model == "claude-sonnet"
-
-        session.claude_model = "gpt-4"
-        assert session.cli_model == "gpt-4"
 
 
 class TestInitialState:

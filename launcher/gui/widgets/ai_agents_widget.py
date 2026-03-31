@@ -1,7 +1,7 @@
 """
 AI Agents Widget -- launcher panel for managing agent sessions.
 
-Each session is an independent Claude CLI process connected to the backend.
+Each session is an independent agent CLI process connected to the backend.
 Sessions can be started, stopped, and resumed individually.
 Uses the launcher's PID store for process persistence across restarts.
 """
@@ -60,7 +60,7 @@ class AgentSessionCard(QFrame):
         self._extra_args = extra_args
         self._process: QProcess | None = None
         self._start_time: float = 0
-        self.claude_session_uuid: str = ""
+        self.cli_session_uuid: str = ""
         self._service_key = _agent_service_key(session_id)
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -102,7 +102,7 @@ class AgentSessionCard(QFrame):
         self._resume_btn.setFixedWidth(60)
         self._resume_btn.setStyleSheet(theme.get_button_stylesheet())
         self._resume_btn.clicked.connect(self._resume)
-        self._resume_btn.setToolTip("Resume previous Claude conversation")
+        self._resume_btn.setToolTip("Resume previous conversation")
         top.addWidget(self._resume_btn)
 
         self._stop_btn = QPushButton("Stop")
@@ -134,26 +134,26 @@ class AgentSessionCard(QFrame):
             return
 
         pid = entry.get("pid")
-        claude_uuid = entry.get("claude_session_uuid", "")
+        cli_uuid = entry.get("cli_session_uuid", "")
 
-        if claude_uuid:
-            self.claude_session_uuid = str(claude_uuid)
+        if cli_uuid:
+            self.cli_session_uuid = str(cli_uuid)
 
         if pid and is_pid_running(int(pid)):
             # Process still alive from before launcher restart
             self._set_status("running", f"PID {pid} (reattached)")
             self._label.setText(f"Session {self.session_id + 1} -- PID {pid}")
-            if claude_uuid:
-                self._info.setText(f"Claude: {str(claude_uuid)[:8]}")
+            if cli_uuid:
+                self._info.setText(f"Session: {str(cli_uuid)[:8]}")
             self._start_btn.setEnabled(False)
             self._stop_btn.setEnabled(True)
             self._log.setVisible(True)
             self._append_log(f"Reattached to running process (PID: {pid})")
             # We can't reattach QProcess to an existing PID, but we know it's alive
             # Stop will use os.kill, Start is disabled
-        elif claude_uuid:
-            # Process dead but we have the Claude session UUID for resume
-            self._info.setText(f"Previous: {str(claude_uuid)[:8]} (Resume to continue)")
+        elif cli_uuid:
+            # Process dead but we have the session UUID for resume
+            self._info.setText(f"Previous: {str(cli_uuid)[:8]} (Resume to continue)")
 
     def _set_status(self, status: str, detail: str = ""):
         colors = {
@@ -200,8 +200,8 @@ class AgentSessionCard(QFrame):
         self._launch([])
 
     def _resume(self):
-        if self.claude_session_uuid:
-            self._launch(["--resume", self.claude_session_uuid])
+        if self.cli_session_uuid:
+            self._launch(["--resume", self.cli_session_uuid])
         else:
             self._launch(["--continue"])
 
@@ -244,7 +244,7 @@ class AgentSessionCard(QFrame):
         pid = int(self._process.processId()) if self._process.processId() else 0
         if pid:
             save_pid(self._service_key, pid, metadata={
-                "claude_session_uuid": self.claude_session_uuid,
+                "cli_session_uuid": self.cli_session_uuid,
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             })
 
@@ -295,36 +295,35 @@ class AgentSessionCard(QFrame):
                 self._set_status("running", agent_id)
                 self._label.setText(f"Session {self.session_id + 1} -- {agent_id}")
                 self.session_changed.emit()
-            elif "Claude session:" in line:
-                parts = line.split("Claude session:")
-                if len(parts) > 1:
-                    uuid_part = parts[-1].strip().split()[0]
-                    if len(uuid_part) > 8:
-                        self.claude_session_uuid = uuid_part
-                        # Update persisted entry with the Claude UUID
-                        entry = get_pid_entry(self._service_key)
-                        if entry and entry.get("pid"):
-                            save_pid(self._service_key, int(entry["pid"]), metadata={
-                                "claude_session_uuid": self.claude_session_uuid,
-                                "started_at": entry.get("started_at"),
-                            })
-                        self.session_changed.emit()
-            elif "Reconnecting" in line:
+            elif "session_identified" in line and "cli_session=" in line:
+                # Structured log: session_identified cli_session=<uuid>
+                for part in line.split():
+                    if part.startswith("cli_session="):
+                        uuid_part = part.split("=", 1)[1].strip()
+                        if len(uuid_part) > 8:
+                            self.cli_session_uuid = uuid_part
+                            entry = get_pid_entry(self._service_key)
+                            if entry and entry.get("pid"):
+                                save_pid(self._service_key, int(entry["pid"]), metadata={
+                                    "cli_session_uuid": self.cli_session_uuid,
+                                    "started_at": entry.get("started_at"),
+                                })
+                            self.session_changed.emit()
+                        break
+            elif "Reconnecting" in line or "reconnecting" in line:
                 self._set_status("connecting", "Reconnecting...")
-            elif "Claude started" in line:
-                self._set_status("connecting", "Claude started...")
             elif "[task:" in line and "Done" in line:
                 self._info.setText(line.split("Done")[0].split("]")[-1].strip()[:60])
 
     def _on_finished(self, exit_code, _exit_status):
         self._append_log(f"Exited (code: {exit_code})")
-        # Don't clear PID here -- keep the claude_session_uuid for resume
+        # Don't clear PID here -- keep the cli_session_uuid for resume
         # But mark as not running
         entry = get_pid_entry(self._service_key)
         if entry:
-            # Re-save with pid=0 but keep claude_session_uuid
+            # Re-save with pid=0 but keep cli_session_uuid
             save_pid(self._service_key, 0, metadata={
-                "claude_session_uuid": self.claude_session_uuid,
+                "cli_session_uuid": self.cli_session_uuid,
                 "started_at": entry.get("started_at"),
             })
 
@@ -374,7 +373,7 @@ class AIAgentsWidget(QWidget):
         layout.addWidget(header)
 
         desc = QLabel(
-            "Each session is an independent Claude CLI connected to the backend. "
+            "Each session is an independent agent CLI connected to the backend. "
             "Start new sessions or resume previous ones."
         )
         desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
@@ -392,7 +391,7 @@ class AIAgentsWidget(QWidget):
         self._url_input.setStyleSheet(_input_style())
         config_grid.addWidget(self._url_input, 0, 1)
 
-        config_grid.addWidget(create_section_label("Claude args:"), 1, 0)
+        config_grid.addWidget(create_section_label("Agent args:"), 1, 0)
         self._extra_args = QLineEdit("--dangerously-skip-permissions")
         self._extra_args.setStyleSheet(_input_style())
         self._extra_args.setPlaceholderText("e.g. --dangerously-skip-permissions --model sonnet")
