@@ -4,10 +4,7 @@ import os
 import json
 from pathlib import Path
 
-try:
-    from .config import ROOT, read_env_ports, find_python_executable, read_env_file
-except ImportError:
-    from config import ROOT, read_env_ports, find_python_executable, read_env_file
+from .gui_config import ROOT, read_env_ports, find_python_executable, read_env_file
 
 
 MANIFEST_FILENAME = "pixsim.service.json"
@@ -55,6 +52,12 @@ class ServiceDef:
     # OpenAPI schema support (for services that expose OpenAPI)
     openapi_url: Optional[str] = None  # e.g., "http://localhost:8000/openapi.json"
     openapi_types_path: Optional[str] = None  # Relative path to generated OpenAPI output directory
+    # Metadata
+    category: Optional[str] = None
+    # Lifecycle
+    auto_start: bool = False
+    # Peer relationship
+    dev_peer_of: Optional[str] = None
 
 
 def _iter_package_json_paths(root: Path) -> Iterable[Path]:
@@ -303,6 +306,8 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         health_url=_join_base_url(base_url, health_endpoint),
         health_grace_attempts=service_config.get("health_grace_attempts", 6),
         depends_on=service_config.get("depends_on", []),
+        category=service_config.get("category"),
+        auto_start=service_config.get("auto_start", False),
         openapi_url=openapi_url,
         openapi_types_path=openapi_types_path,
     )
@@ -341,6 +346,9 @@ def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         required_tool=command.replace(".cmd", ""),
         health_grace_attempts=service_config.get("health_grace_attempts", 15),
         depends_on=service_config.get("depends_on", []),
+        category=service_config.get("category"),
+        auto_start=service_config.get("auto_start", False),
+        dev_peer_of=service_config.get("dev_peer_of"),
     )
 
 
@@ -377,6 +385,8 @@ def _convert_worker_service_to_def(service_config: Dict, ports) -> ServiceDef:
         health_url=None,
         health_grace_attempts=service_config.get("health_grace_attempts", 10),
         depends_on=service_config.get("depends_on", []),
+        category=service_config.get("category"),
+        auto_start=service_config.get("auto_start", False),
     )
 
 
@@ -400,6 +410,8 @@ def _convert_docker_compose_service_to_def(service_config: Dict, ports) -> Servi
         required_tool="docker|docker-compose",
         health_grace_attempts=service_config.get("health_grace_attempts", 8),
         depends_on=service_config.get("depends_on", []),
+        category=service_config.get("category"),
+        auto_start=service_config.get("auto_start", False),
     )
 
 

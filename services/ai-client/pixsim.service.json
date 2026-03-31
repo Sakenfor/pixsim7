@@ -1,0 +1,12 @@
+{
+  "id": "ai-client",
+  "category": "services",
+  "type": "worker",
+  "name": "AI Client (Bridge)",
+  "description": "Local agent bridge — connects Claude/Codex CLI sessions to the backend via WebSocket",
+  "module": "pixsim7.client",
+  "args": ["--url", "ws://localhost:8000/api/v1/ws/agent-cmd", "--shared"],
+  "depends_on": ["main-api"],
+  "auto_start": false,
+  "enabled": true
+}

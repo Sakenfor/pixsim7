@@ -1,5 +1,6 @@
 {
   "id": "main-api",
+  "category": "core",
   "type": "backend",
   "name": "Main Backend API",
   "description": "Core API handling game, users, assets, dialogue, and actions",

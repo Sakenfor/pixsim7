@@ -1,5 +1,6 @@
 {
   "id": "simulation-worker",
+  "category": "services",
   "type": "worker",
   "name": "Worker (Simulation)",
   "description": "Dedicated world simulation scheduler worker",

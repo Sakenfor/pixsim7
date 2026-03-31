@@ -5,8 +5,9 @@
  * Users can drag tabs, split panes, resize, and rearrange.
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layout, Model, Actions, IJsonModel, TabNode } from 'flexlayout-react'
+import { Button } from '@pixsim7/shared.ui'
 import 'flexlayout-react/style/dark.css'
 
 import { ServiceCard } from './ServiceCard'
@@ -14,10 +15,39 @@ import { LogViewer } from './LogViewer'
 import { DbLogViewer } from './DbLogViewer'
 import { ToolsPage } from './ToolsPage'
 import { TracePanel } from './TracePanel'
+import { DebugPanel } from './DebugPanel'
 import { StatusBar } from './StatusBar'
 import { useServicesStore } from '../stores/services'
+import { checkWindowAvailable } from '../api/client'
+import type { ServiceState } from '../api/client'
 
 // ── Panel components registry ──
+
+const CATEGORY_ORDER = ['core', 'apps', 'services', 'launcher']
+const CATEGORY_LABELS: Record<string, string> = {
+  core: 'Core',
+  apps: 'Apps',
+  services: 'Services',
+  launcher: 'Launcher',
+}
+
+function groupByCategory(services: ServiceState[]): { category: string; label: string; services: ServiceState[] }[] {
+  const groups = new Map<string, ServiceState[]>()
+  for (const svc of services) {
+    const cat = svc.category || 'core'
+    if (!groups.has(cat)) groups.set(cat, [])
+    groups.get(cat)!.push(svc)
+  }
+  return CATEGORY_ORDER
+    .filter((cat) => groups.has(cat))
+    .map((cat) => ({ category: cat, label: CATEGORY_LABELS[cat] || cat, services: groups.get(cat)! }))
+    // Append any categories not in CATEGORY_ORDER
+    .concat(
+      [...groups.entries()]
+        .filter(([cat]) => !CATEGORY_ORDER.includes(cat))
+        .map(([cat, svcs]) => ({ category: cat, label: CATEGORY_LABELS[cat] || cat, services: svcs }))
+    )
+}
 
 function ServicesPanel() {
   const {
@@ -25,25 +55,63 @@ function ServicesPanel() {
     selectService, startService, stopService, restartService,
     startAll, stopAll,
   } = useServicesStore()
+  const [desktopAvailable, setDesktopAvailable] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['launcher']))
+
+  useEffect(() => {
+    checkWindowAvailable().then((r) => setDesktopAvailable(r.available)).catch(() => {})
+  }, [])
+
+  const groups = useMemo(() => groupByCategory(services), [services])
+
+  const toggleGroup = useCallback((cat: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }, [])
 
   return (
     <div className="h-full flex flex-col bg-surface overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0">
         <span className="text-[11px] font-bold text-gray-300">Services</span>
         <div className="flex gap-1">
-          <button onClick={startAll} className="px-1.5 py-0.5 text-[9px] rounded bg-green-700 hover:bg-green-600 text-white">All</button>
-          <button onClick={stopAll} className="px-1.5 py-0.5 text-[9px] rounded bg-red-700 hover:bg-red-600 text-white">Stop</button>
+          <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={startAll}>All</Button>
+          <Button size="xs" variant="danger" onClick={stopAll}>Stop</Button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-1">
+      <div className="flex-1 overflow-y-auto px-2 py-1.5">
         {loading && services.length === 0 && <div className="text-[11px] text-gray-500 p-2">Loading...</div>}
-        {services.map((svc) => (
-          <ServiceCard key={svc.key} service={svc} selected={svc.key === selectedKey}
-            onSelect={() => selectService(svc.key)}
-            onStart={() => startService(svc.key)}
-            onStop={() => stopService(svc.key)}
-            onRestart={() => restartService(svc.key)} />
-        ))}
+        {groups.map(({ category, label, services: groupServices }) => {
+          const isCollapsed = collapsed.has(category)
+          const runningCount = groupServices.filter((s) => s.status === 'running' || s.status === 'starting').length
+          return (
+            <div key={category} className="mb-1.5">
+              <button
+                onClick={() => toggleGroup(category)}
+                className="flex items-center gap-1.5 w-full px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <span className={`text-[8px] transition-transform ${isCollapsed ? '' : 'rotate-90'}`}>&#9654;</span>
+                <span className="font-semibold uppercase tracking-wide">{label}</span>
+                <span className="text-gray-600">{runningCount}/{groupServices.length}</span>
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-1 mt-0.5">
+                  {groupServices.map((svc) => (
+                    <ServiceCard key={svc.key} service={svc} services={services} selected={svc.key === selectedKey}
+                      desktopAvailable={desktopAvailable}
+                      onSelect={() => selectService(svc.key)}
+                      onStart={() => startService(svc.key)}
+                      onStop={() => stopService(svc.key)}
+                      onRestart={() => restartService(svc.key)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -51,6 +119,53 @@ function ServicesPanel() {
 
 function ConsolePanel({ onFieldClick }: { onFieldClick?: (n: string, v: string) => void }) {
   return <LogViewer onFieldClick={onFieldClick} />
+}
+
+function ServiceInfoPanel() {
+  const selectedKey = useServicesStore((s) => s.selectedKey)
+  const services = useServicesStore((s) => s.services)
+  const service = services.find((s) => s.key === selectedKey)
+
+  if (!service) {
+    return <div className="h-full flex items-center justify-center text-sm text-gray-500">Select a service</div>
+  }
+
+  return (
+    <div className="p-3 space-y-3 overflow-y-auto h-full text-xs">
+      <div className="bg-surface-secondary rounded border border-border p-3 space-y-1.5">
+        <div className="text-[11px] font-semibold text-gray-300 mb-2">{service.title}</div>
+        <SvcInfoRow label="Key" value={service.key} />
+        <SvcInfoRow label="Status" value={service.status} />
+        <SvcInfoRow label="Health" value={service.health} />
+        {service.pid && <SvcInfoRow label="PID" value={String(service.pid)} />}
+        {service.url && <SvcInfoRow label="URL" value={service.url} mono />}
+        {service.category && <SvcInfoRow label="Category" value={service.category} />}
+        {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
+      </div>
+
+      {service.last_error && (
+        <div className="bg-red-900/20 rounded border border-red-800/50 p-3">
+          <div className="text-[10px] text-red-400 font-medium mb-1">Last Error</div>
+          <div className="text-[10px] text-red-300 font-mono">{service.last_error}</div>
+        </div>
+      )}
+
+      {!service.tool_available && service.tool_check_message && (
+        <div className="bg-amber-900/20 rounded border border-amber-800/50 p-3">
+          <div className="text-[10px] text-amber-400">{service.tool_check_message}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="text-gray-500 w-20 shrink-0">{label}</span>
+      <span className={`text-gray-300 truncate ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
 }
 
 function DbLogsPanel({ onFieldClick }: { onFieldClick?: (n: string, v: string) => void }) {
@@ -86,6 +201,7 @@ const DEFAULT_LAYOUT: IJsonModel = {
         children: [
           { type: 'tab', name: 'Console', component: 'console' },
           { type: 'tab', name: 'DB Logs', component: 'db-logs' },
+          { type: 'tab', name: 'Service', component: 'service-detail' },
         ],
       },
       {
@@ -93,6 +209,7 @@ const DEFAULT_LAYOUT: IJsonModel = {
         weight: 25,
         children: [
           { type: 'tab', name: 'Tools', component: 'tools' },
+          { type: 'tab', name: 'Debug', component: 'debug' },
           { type: 'tab', name: 'Trace', component: 'trace' },
         ],
       },
@@ -103,17 +220,77 @@ const DEFAULT_LAYOUT: IJsonModel = {
 // Persistence
 const LAYOUT_KEY = 'pixsim7-launcher-layout'
 
+/** All component IDs that should exist in the layout. */
+function getDefaultComponents(): Set<string> {
+  const components = new Set<string>()
+  function walk(node: any) {
+    if (node.component) components.add(node.component)
+    for (const child of node.children ?? []) walk(child)
+    for (const row of node.layout?.children ?? []) walk(row)
+  }
+  walk(DEFAULT_LAYOUT)
+  return components
+}
+
+/** Find component IDs present in a saved layout. */
+function getSavedComponents(layout: any): Set<string> {
+  const components = new Set<string>()
+  function walk(node: any) {
+    if (node.component) components.add(node.component)
+    for (const child of node.children ?? []) walk(child)
+  }
+  walk(layout)
+  return components
+}
+
+/** Inject missing tabs into the first tabset of the saved layout. */
+function injectMissingTabs(layout: IJsonModel): IJsonModel {
+  const defaults = getDefaultComponents()
+  const existing = getSavedComponents(layout)
+  const missing = [...defaults].filter((c) => !existing.has(c))
+  if (missing.length === 0) return layout
+
+  // Find default tab definitions for the missing components
+  const defaultTabs: Record<string, { name: string; component: string }> = {}
+  function walkDefaults(node: any) {
+    if (node.component && missing.includes(node.component)) {
+      defaultTabs[node.component] = { name: node.name, component: node.component }
+    }
+    for (const child of node.children ?? []) walkDefaults(child)
+  }
+  walkDefaults(DEFAULT_LAYOUT)
+
+  // Find first tabset in saved layout and append missing tabs
+  function injectIntoFirstTabset(node: any): boolean {
+    if (node.type === 'tabset' && Array.isArray(node.children)) {
+      for (const comp of missing) {
+        const def = defaultTabs[comp]
+        if (def) node.children.push({ type: 'tab', name: def.name, component: def.component })
+      }
+      return true
+    }
+    for (const child of node.children ?? []) {
+      if (injectIntoFirstTabset(child)) return true
+    }
+    return false
+  }
+
+  const patched = JSON.parse(JSON.stringify(layout))
+  injectIntoFirstTabset(patched)
+  return patched
+}
+
 function loadSavedLayout(): IJsonModel {
   try {
     const saved = localStorage.getItem(LAYOUT_KEY)
-    if (saved) return JSON.parse(saved)
+    if (saved) return injectMissingTabs(JSON.parse(saved))
   } catch {}
   return DEFAULT_LAYOUT
 }
 
 // ── Main layout component ──
 
-export function DockLayout() {
+export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
   const modelRef = useRef(Model.fromJson(loadSavedLayout()))
   const [traceTarget, setTraceTarget] = useState<{ fieldName: string; fieldValue: string } | null>(null)
 
@@ -135,8 +312,12 @@ export function DockLayout() {
         return <ConsolePanel onFieldClick={handleFieldClick} />
       case 'db-logs':
         return <DbLogsPanel onFieldClick={handleFieldClick} />
+      case 'service-detail':
+        return <ServiceInfoPanel />
       case 'tools':
         return <ToolsPage />
+      case 'debug':
+        return <DebugPanel />
       case 'trace':
         return traceTarget ? (
           <TracePanel fieldName={traceTarget.fieldName} fieldValue={traceTarget.fieldValue} onClose={() => setTraceTarget(null)} />
@@ -174,14 +355,10 @@ export function DockLayout() {
         />
       </div>
       <div className="flex items-center border-t border-border shrink-0 h-7 bg-surface-secondary">
-        <StatusBar />
-        <button
-          onClick={resetLayout}
-          className="px-2 py-0.5 text-[9px] text-gray-500 hover:text-gray-300 mr-2 shrink-0"
-          title="Reset panel layout to default"
-        >
+        <StatusBar onShowSetup={onShowSetup} />
+        <Button size="xs" variant="ghost" onClick={resetLayout} className="mr-2 text-gray-500 hover:text-gray-300" title="Reset panel layout to default">
           Reset Layout
-        </button>
+        </Button>
       </div>
     </div>
   )

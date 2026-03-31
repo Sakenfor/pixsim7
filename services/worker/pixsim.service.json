@@ -1,5 +1,6 @@
 {
   "id": "worker",
+  "category": "core",
   "type": "worker",
   "name": "Worker (ARQ)",
   "description": "Background task worker (generation/automation/retries)",

@@ -377,6 +377,67 @@ class HealthManager:
         except Exception:
             return None
 
+    def _detect_headless_service(self, key: str, definition) -> Optional[int]:
+        """Detect an externally-started headless service by scanning process command lines.
+
+        Returns the PID if found, None otherwise. Uses the same pattern matching
+        as ProcessManager._detect_worker_pids.
+        """
+        patterns = {
+            'worker': ['arq_worker.WorkerSettings', 'arq_worker', '-m arq'],
+            'simulation-worker': ['SimulationWorkerSettings', 'simulation'],
+            'ai-client': ['pixsim7.client', '-m pixsim7.client'],
+        }
+        search_terms = patterns.get(key)
+        if not search_terms:
+            args = getattr(definition, 'args', []) or []
+            if len(args) >= 2:
+                search_terms = [' '.join(args[:2])]
+            else:
+                return None
+
+        try:
+            if os.name == 'nt':
+                ps_cmd = (
+                    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+                    "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
+                )
+                result = subprocess.run(
+                    ['powershell', '-NoProfile', '-Command', ps_cmd],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        line = line.strip()
+                        if '|' not in line:
+                            continue
+                        pid_str, cmdline = line.split('|', 1)
+                        if any(term in cmdline for term in search_terms):
+                            try:
+                                pid = int(pid_str.strip())
+                                if pid != os.getpid():
+                                    return pid
+                            except ValueError:
+                                pass
+            else:
+                result = subprocess.run(
+                    ['ps', 'aux'], capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        if any(term in line for term in search_terms):
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                try:
+                                    pid = int(parts[1])
+                                    if pid != os.getpid():
+                                        return pid
+                                except ValueError:
+                                    pass
+        except Exception:
+            pass
+        return None
+
     def _check_service(self, key: str, state: ServiceState):
         """Check health for a single service."""
         definition = state.definition
@@ -392,6 +453,25 @@ class HealthManager:
         is_detached = definition.is_detached or definition.key == 'db'
         has_health_url = bool(getattr(definition, 'health_url', None))
         is_worker = definition.key == 'worker'  # only main worker uses Redis probe
+
+        # For headless services without a health_url (workers, bridges),
+        # try to detect externally-started processes by command line scan.
+        # Rate-limited: scan at most once per 10 health cycles (~20s) to
+        # avoid PowerShell overhead on every tick.
+        if (not has_known_pid and not has_health_url
+                and not is_detached and not definition.custom_health_check):
+            scan_key = f"_scan_{key}"
+            scan_count = getattr(self, scan_key, 0)
+            if scan_count <= 0:
+                detected = self._detect_headless_service(key, definition)
+                if detected:
+                    state.detected_pid = detected
+                    has_known_pid = True
+                    state.status = ServiceStatus.RUNNING
+                setattr(self, scan_key, 10)  # skip next 10 cycles
+            else:
+                setattr(self, scan_key, scan_count - 1)
+
         if (not state.requested_running and state.status.value == 'stopped'
                 and not has_known_pid and not is_detached
                 and not definition.custom_health_check
@@ -486,9 +566,12 @@ class HealthManager:
             except Exception as e:
                 self._handle_http_failure(key, state, e)
         else:
-            # No health URL — use status as proxy
+            # No health URL — use process status as proxy.
+            # If the process is alive, treat as healthy and promote to RUNNING.
             if state.status.value in ('running', 'starting'):
                 self.failure_counts[key] = 0
+                if state.status == ServiceStatus.STARTING:
+                    state.status = ServiceStatus.RUNNING
                 self._emit_health_update(key, HealthStatus.HEALTHY)
             else:
                 self._emit_health_update(key, HealthStatus.STOPPED)

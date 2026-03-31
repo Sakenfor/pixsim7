@@ -19,6 +19,9 @@ import sys
 
 def _cmd_bridge(args, extra_args: list[str]) -> None:
     """Default: run the WebSocket bridge with agent session pool."""
+    from pixsim7.client.log import init_client_logging
+    init_client_logging()
+
     from pixsim7.client.agent_pool import AgentPool, detect_engines
     from pixsim7.client.bridge import Bridge
 
@@ -38,7 +41,13 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
     resume = getattr(args, 'resume_session', None)
     detected = engines or detect_engines()
 
+    # Check login status for scope display
+    from pixsim7.client.bridge import Bridge
+    _has_valid_token = not args.shared and Bridge._get_valid_token() is not None
+    _scope_label = "shared" if args.shared or not _has_valid_token else "user-scoped"
+
     print(f"  Backend:    {args.url}")
+    print(f"  Scope:      {_scope_label}")
     print(f"  Engines:    {', '.join(detected)}")
     print(f"  Pool size:  {args.pool_size}")
     print(f"  Timeout:    {args.timeout}s")
@@ -61,6 +70,7 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
     bridge = Bridge(
         pool=pool,
         url=args.url,
+        shared=args.shared,
     )
 
     async def run() -> None:
@@ -158,6 +168,7 @@ def main() -> None:
     parser.add_argument("--claude-command", default="claude", help="[deprecated] Use --engines instead. Claude CLI executable path.")
     parser.add_argument("--resume-session", default=None, help="Session UUID to resume")
     parser.add_argument("--no-auto-restart", action="store_true", help="Disable automatic restart of crashed sessions")
+    parser.add_argument("--shared", action="store_true", help="Run as shared bridge (no user token). Default: user-scoped if logged in.")
 
     args, claude_args = parser.parse_known_args()
     if claude_args and claude_args[0] == "--":

@@ -44,6 +44,15 @@ class ServiceDefinition:
     health_grace_attempts: int = 5       # Attempts before marking unhealthy
     depends_on: Optional[List[str]] = None  # Service keys that must be running first
 
+    # Metadata
+    category: Optional[str] = None
+
+    # Lifecycle
+    auto_start: bool = False  # Start automatically when launcher boots
+
+    # Peer relationships
+    dev_peer_of: Optional[str] = None  # This service is the dev-mode peer of another service
+
     # Service-specific handlers (for special cases like docker-compose)
     is_detached: bool = False  # True for services that run detached (like docker-compose)
     custom_start: Optional[Callable] = None  # Custom start function

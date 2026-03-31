@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { Button, Input } from '@pixsim7/shared.ui'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
 import { VirtualLogList } from './log'
 
 const POLL_INTERVAL = 2000
+
+/** Regex to suppress known noisy log lines (Docker/Redis save cycles, PG checkpoints). */
+const NOISE_RE = /Background saving (?:started|terminated)|DB saved on disk|Fork CoW for RDB|changes in \d+ seconds\. Saving|checkpoint starting: time|checkpoint complete:/
 
 /** Extract unique event names and domains from log lines (for dynamic filter dropdowns). */
 // ARQ timing prefix: "1.02s → cron:task()" or "0.01s ← cron:task ●"
@@ -86,6 +90,8 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
 
   // Client-side filtering
   const filteredLines = useMemo(() => lines.filter((line) => {
+    // Suppress known Docker/Redis noise
+    if (NOISE_RE.test(line)) return false
     if (levelFilter && !line.toUpperCase().includes(levelFilter)) return false
     if (searchFilter && !line.toLowerCase().includes(searchFilter.toLowerCase())) return false
     if (eventFilter) {
@@ -131,27 +137,25 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
           </select>
         )}
 
-        <input
+        <Input
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Search..." className={`${sel} w-32`}
+          placeholder="Search..." size="sm" className="w-32"
         />
 
-        <button
-          onClick={() => setPaused(!paused)}
-          className={`px-2 py-0.5 rounded text-[11px] ${paused ? 'bg-amber-600 text-white' : 'bg-surface-tertiary text-gray-300 hover:bg-surface-hover'}`}
-        >
+        <Button size="xs" variant={paused ? 'primary' : 'secondary'} className={paused ? 'bg-amber-600 hover:bg-amber-500 text-white' : ''} onClick={() => setPaused(!paused)}>
           {paused ? 'Resume' : 'Pause'}
-        </button>
+        </Button>
 
         <div className="flex-1" />
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>
-        <button onClick={() => selectedKey && fetchLogs(selectedKey)} className="px-2 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Refresh</button>
-        <button onClick={() => selectedKey && clearLogs(selectedKey)} className="px-2 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Clear</button>
+        <Button size="xs" variant="secondary" onClick={() => selectedKey && fetchLogs(selectedKey)}>Refresh</Button>
+        <Button size="xs" variant="secondary" onClick={() => selectedKey && clearLogs(selectedKey)}>Clear</Button>
       </div>
 
       {/* Log lines (virtualized) */}
       <div className="flex-1 bg-surface min-h-0 overflow-hidden">
-        {loading && filteredLines.length === 0 && <div className="text-gray-500 py-4 px-3">Loading logs...</div>}
+        {loading && filteredLines.length === 0 && lines.length === 0 && <div className="text-gray-500 py-4 px-3">Loading logs...</div>}
+        {!loading && filteredLines.length === 0 && lines.length === 0 && <div className="text-gray-600 py-4 px-3">No logs yet</div>}
         {filteredLines.length > 0 && (
           <VirtualLogList
             lines={filteredLines}

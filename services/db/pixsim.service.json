@@ -1,5 +1,6 @@
 {
   "id": "db",
+  "category": "core",
   "type": "docker-compose",
   "name": "Databases (Docker)",
   "description": "PostgreSQL and Redis via docker-compose",

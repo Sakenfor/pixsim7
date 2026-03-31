@@ -159,9 +159,50 @@ def create_access_token(
     return encoded_jwt
 
 
+_launcher_key_cache: Optional[str] = None
+
+def _get_launcher_public_key() -> Optional[str]:
+    """Get the launcher public key for RS256 verification.
+
+    Sources (in order):
+    1. PIXSIM_LAUNCHER_PUBLIC_KEY env var (base64 PEM, set by launcher)
+    2. ~/.pixsim/keys/public.pem file (written by launcher setup)
+    """
+    global _launcher_key_cache
+    if _launcher_key_cache is not None:
+        return _launcher_key_cache if _launcher_key_cache else None
+
+    # Try env var first
+    raw = settings.launcher_public_key
+    if raw:
+        try:
+            import base64
+            _launcher_key_cache = base64.b64decode(raw).decode()
+            return _launcher_key_cache
+        except Exception:
+            pass
+
+    # Try well-known file
+    try:
+        from pathlib import Path
+        pub_path = Path.home() / ".pixsim" / "keys" / "public.pem"
+        if pub_path.exists():
+            _launcher_key_cache = pub_path.read_text()
+            return _launcher_key_cache
+    except Exception:
+        pass
+
+    _launcher_key_cache = ""  # negative cache
+    return None
+
+
 def decode_access_token(token: str) -> dict:
     """
-    Decode and verify JWT token
+    Decode and verify JWT token.
+
+    Tries RS256 with the launcher public key first (if configured),
+    then falls back to HS256 with the secret key. This allows both
+    launcher-minted tokens and backend-minted tokens to work.
 
     Args:
         token: JWT token string
@@ -170,8 +211,18 @@ def decode_access_token(token: str) -> dict:
         Decoded token payload
 
     Raises:
-        JWTError: If token is invalid or expired
+        ValueError: If token is invalid or expired
     """
+    # Try launcher RS256 key first (if configured)
+    launcher_key = _get_launcher_public_key()
+    if launcher_key:
+        try:
+            payload = jwt.decode(token, launcher_key, algorithms=["RS256"])
+            return payload
+        except JWTError:
+            pass  # Not a launcher token — fall through to HS256
+
+    # Fall back to backend HS256 key
     try:
         payload = jwt.decode(
             token,

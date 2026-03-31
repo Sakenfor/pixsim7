@@ -1,0 +1,16 @@
+{
+  "id": "launcher-ui",
+  "category": "launcher",
+  "type": "frontend",
+  "name": "Launcher UI",
+  "description": "Launcher React frontend (Vite)",
+  "command": "pnpm",
+  "args": ["--filter", "@pixsim7/launcher", "dev"],
+  "port_env": "LAUNCHER_DEV_PORT",
+  "default_port": 3100,
+  "health_endpoint": "/",
+  "tags": ["launcher"],
+  "auto_start": true,
+  "enabled": true,
+  "depends_on": ["launcher-api"]
+}

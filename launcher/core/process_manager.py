@@ -159,6 +159,20 @@ class ProcessManager:
                 ))
                 return False
 
+        # Kill any stale process on the service's port before starting
+        if definition.health_url:
+            port = self._extract_port_from_url(definition.health_url)
+            if port:
+                stale_pids = self._detect_all_pids_by_port(port)
+                if stale_pids:
+                    for pid in stale_pids:
+                        self._kill_process_tree(pid, force=True)
+                    self._emit_event(ProcessEvent(
+                        service_key=service_key,
+                        event_type="stale_cleared",
+                        data={"port": port, "pids": stale_pids}
+                    ))
+
         # Check tool availability
         if not self.check_tool_availability(service_key):
             state.status = ServiceStatus.FAILED
@@ -349,25 +363,24 @@ class ProcessManager:
                 except Exception:
                     pass
 
-            # Worker services: detect by command line pattern
-            if 'worker' in service_key:
-                try:
-                    worker_pids = self._detect_worker_pids(service_key)
-                    if worker_pids:
-                        for pid in worker_pids:
-                            self._kill_process_tree(pid, force=True)
-                        state.status = ServiceStatus.STOPPED
-                        state.health = HealthStatus.STOPPED
-                        state.pid = None
-                        state.detected_pid = None
-                        self._emit_event(ProcessEvent(
-                            service_key=service_key,
-                            event_type="stopped",
-                            data={"worker_pids": worker_pids}
-                        ))
-                        return True
-                except Exception:
-                    pass
+            # Headless services (workers, bridges, etc.): detect by command line pattern
+            try:
+                worker_pids = self._detect_worker_pids(service_key)
+                if worker_pids:
+                    for pid in worker_pids:
+                        self._kill_process_tree(pid, force=True)
+                    state.status = ServiceStatus.STOPPED
+                    state.health = HealthStatus.STOPPED
+                    state.pid = None
+                    state.detected_pid = None
+                    self._emit_event(ProcessEvent(
+                        service_key=service_key,
+                        event_type="stopped",
+                        data={"worker_pids": worker_pids}
+                    ))
+                    return True
+            except Exception:
+                pass
 
             # Already stopped or can't find process
             state.status = ServiceStatus.STOPPED
@@ -549,7 +562,7 @@ class ProcessManager:
         return pids
 
     def _detect_worker_pids(self, service_key: str) -> List[int]:
-        """Detect ARQ worker PIDs by scanning process command lines.
+        """Detect headless service PIDs by scanning process command lines.
 
         Uses PowerShell Get-CimInstance on Windows (wmic is deprecated).
         """
@@ -557,8 +570,17 @@ class ProcessManager:
         patterns = {
             'worker': ['arq_worker.WorkerSettings', 'arq_worker', '-m arq'],
             'simulation-worker': ['SimulationWorkerSettings', 'simulation'],
+            'ai-client': ['pixsim7.client', '-m pixsim7.client'],
         }
-        search_terms = patterns.get(service_key, [service_key])
+        # Fall back to matching the module from the service definition
+        search_terms = patterns.get(service_key)
+        if not search_terms:
+            defn = self.services.get(service_key)
+            if defn and defn.args:
+                # Match on "-m <module>" args (e.g. ["-m", "pixsim7.client", ...])
+                search_terms = [' '.join(defn.args[:2])] if len(defn.args) >= 2 else [service_key]
+            else:
+                search_terms = [service_key]
 
         try:
             if os.name == 'nt':

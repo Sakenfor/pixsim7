@@ -53,6 +53,13 @@ export async function runCodegenTask(taskId: string, check = false): Promise<Cod
 
 // ── Buildables ──
 
+export interface BuildStatus {
+  state: 'not_built' | 'stale' | 'fresh' | 'unknown'
+  output_dir?: string | null
+  source_modified?: string | null
+  build_modified?: string | null
+}
+
 export interface Buildable {
   id: string
   title: string
@@ -63,16 +70,21 @@ export interface Buildable {
   args: string[]
   category: string
   tags: string[]
+  build_status?: BuildStatus
 }
 
 let _buildablesCache: Buildable[] | null = null
+let _buildablesCacheTs = 0
+const _BUILDABLES_TTL = 30_000 // 30s
 
-export async function getBuildables(): Promise<Buildable[]> {
-  if (_buildablesCache) return _buildablesCache
-  const res = await fetch('/buildables')
+export async function getBuildables(force = false): Promise<Buildable[]> {
+  const now = Date.now()
+  if (!force && _buildablesCache && (now - _buildablesCacheTs) < _BUILDABLES_TTL) return _buildablesCache
+  const res = await fetch(force ? '/buildables?refresh=true' : '/buildables')
   if (!res.ok) return []
   const items: Buildable[] = (await res.json()).buildables ?? []
   _buildablesCache = items
+  _buildablesCacheTs = now
   return items
 }
 
@@ -86,6 +98,7 @@ export interface BuildResult {
 
 export async function buildPackage(packageName: string): Promise<BuildResult> {
   const res = await fetch(`/buildables/${encodeURIComponent(packageName)}/build`, { method: 'POST' })
+  _buildablesCache = null  // invalidate so next fetch gets fresh build_status
   return res.json()
 }
 

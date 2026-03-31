@@ -9,7 +9,7 @@ router = APIRouter(prefix="/migrations", tags=["migrations"])
 
 
 def _get_tools():
-    from launcher.gui.migration_tools import (
+    from launcher.core.migration_tools import (
         _run_alembic, _filter_alembic_output,
         discover_databases, get_pending_migrations_detailed,
     )

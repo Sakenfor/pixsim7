@@ -19,7 +19,7 @@ from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 
 class CheckpointEvidence(ApiModel):
     """A single piece of evidence attached to a checkpoint."""
-    kind: Literal["file_path", "git_commit", "url", "note"] = "note"
+    kind: Literal["file_path", "git_commit", "url", "note", "test_suite"] = "note"
     ref: str = ""
 
 
@@ -32,11 +32,19 @@ class CheckpointLastUpdate(ApiModel):
     note: Optional[str] = None
 
 
+class CheckpointStep(ApiModel):
+    """A trackable sub-item within a checkpoint (like a GitHub checklist item)."""
+    id: Optional[str] = None
+    label: str
+    done: bool = False
+    tests: Optional[List[str]] = None
+
+
 class Checkpoint(ApiModel):
     """Structured checkpoint within a plan.
 
     Required: id, label, status.
-    Optional: tracking fields (description, note, points, evidence).
+    Optional: tracking fields (description, note, points, evidence, steps).
     Extra keys are preserved (extra="allow") for forward compatibility.
     """
     model_config = ConfigDict(extra="allow")
@@ -55,9 +63,26 @@ class Checkpoint(ApiModel):
     points_done: Optional[int] = None
     points_total: Optional[int] = None
 
+    # Sub-steps (checklist items within a checkpoint)
+    steps: Optional[List[CheckpointStep]] = None
+
     # Evidence & audit
     evidence: Optional[List[CheckpointEvidence]] = None
     last_update: Optional[CheckpointLastUpdate] = None
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_evidence(cls, v: Any) -> Any:
+        """Accept legacy plain-string evidence entries (bare file paths)."""
+        if not isinstance(v, list):
+            return v
+        out = []
+        for item in v:
+            if isinstance(item, str):
+                out.append({"kind": "file_path", "ref": item})
+            else:
+                out.append(item)
+        return out
 
 
 # ── Validation helpers (used by schema validators) ───────────────

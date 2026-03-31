@@ -75,27 +75,38 @@ def _get_login_token() -> str:
 _refreshed_token: str = ""
 
 
-def _get_token() -> str:
-    """Read the freshest token.
+def _is_token_expired(token: str) -> bool:
+    """Check if a JWT token is expired (with 30s grace)."""
+    claims = _decode_token_claims(token)
+    exp = claims.get("exp", 0)
+    if exp and isinstance(exp, (int, float)):
+        import time
+        return exp < time.time() - 30
+    return False
 
-    Priority: refreshed (self-heal) > per-request token file > env var > login token
+
+def _get_token() -> str:
+    """Read the freshest non-expired token.
+
+    Priority: refreshed (self-heal) > per-request token file > env var > login token.
+    Skips expired tokens so a stale file doesn't shadow a valid env var.
     """
     # 0. In-memory refreshed token (from self-heal on 401)
-    if _refreshed_token:
+    if _refreshed_token and not _is_token_expired(_refreshed_token):
         return _refreshed_token
     # 1. Per-request token file (written by bridge before each task)
     if API_TOKEN_FILE:
         try:
             with open(API_TOKEN_FILE, "r") as f:
                 token = f.read().strip()
-                if token:
+                if token and not _is_token_expired(token):
                     return token
         except OSError:
             pass
     # 2. Env var (set at MCP server startup)
-    if API_TOKEN:
+    if API_TOKEN and not _is_token_expired(API_TOKEN):
         return API_TOKEN
-    # 3. Persistent login token (~/.pixsim/token)
+    # 3. Persistent login token (~/.pixsim/token) — already checks expiry internally
     return _get_login_token()
 
 server = Server("pixsim")
@@ -470,20 +481,34 @@ def _extract_profile_from_token(token: str) -> str | None:
 
 
 def _extract_agent_type(token: str) -> str:
-    """Extract agent_type from JWT claims, falling back to 'agent'."""
-    return _decode_token_claims(token).get("agent_type") or "agent"
+    """Extract agent_type from JWT claims, or detect from environment.
+
+    Detection order: token claims > CODEX_CLI env > default to claude.
+    """
+    from_token = _decode_token_claims(token).get("agent_type")
+    if from_token and from_token not in ("agent", "unknown"):
+        return from_token
+    if os.environ.get("CODEX_CLI"):
+        return "codex"
+    return "claude"
+
+
+_process_start = str(os.getpid())  # stable within one MCP process, differs across launches
 
 
 def _derive_stable_session_id(token: str) -> str:
-    """Derive a deterministic session ID from the token's unique claims.
+    """Derive a session ID unique to this MCP server process.
 
-    Uses run_id (unique per token mint) + profile_id. Same token reused
-    across claude restarts = same session. Different token = different session.
-    Falls back to jti (JWT ID) if run_id is absent.
+    Uses run_id (from agent tokens) or jti + process ID as fallback
+    (for launcher tokens where jti is shared across processes).
+    Within the same MCP process the ID is stable (for reconnects).
     """
     import hashlib
     claims = _decode_token_claims(token)
-    unique_key = claims.get("run_id") or claims.get("jti") or ""
+    unique_key = claims.get("run_id") or ""
+    if not unique_key:
+        # No run_id — launcher token. Use jti + PID to distinguish processes
+        unique_key = f"{claims.get('jti', '')}:{_process_start}"
     profile = claims.get("profile_id") or claims.get("agent_id") or "unknown"
     raw = f"{profile}:{unique_key}"
     return f"mcp-{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
@@ -563,6 +588,16 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
                 _resolved_profile_id = resolved
         except (json.JSONDecodeError, IndexError):
             pass
+
+    # Proactively refresh token if expired — register endpoint uses optional
+    # auth so it never triggers the 401 self-heal in _proxy.
+    import time as _t
+    claims = _decode_token_claims(token)
+    exp = claims.get("exp", 0)
+    if exp and isinstance(exp, (int, float)) and exp < _t.time():
+        refreshed = await _try_refresh_token()
+        if refreshed:
+            print("[pixsim-mcp] Proactive token refresh after register_session", file=sys.stderr)
 
     # Start background heartbeat (replaces any existing one)
     if _heartbeat_task and not _heartbeat_task.done():
@@ -771,6 +806,16 @@ async def _auto_register_if_needed() -> None:
             except (json.JSONDecodeError, IndexError):
                 pass
 
+        # Proactively refresh token if expired — the register endpoint uses
+        # optional auth so it never triggers the 401 self-heal in _proxy.
+        import time as _t
+        claims = _decode_token_claims(token)
+        exp = claims.get("exp", 0)
+        if exp and isinstance(exp, (int, float)) and exp < _t.time():
+            refreshed = await _try_refresh_token()
+            if refreshed:
+                print("[pixsim-mcp] Proactive token refresh after auto-register", file=sys.stderr)
+
         if not _heartbeat_task or _heartbeat_task.done():
             _heartbeat_task = asyncio.create_task(_heartbeat_loop(session_id, agent_type))
         label = f"{session_id[:8]}"
@@ -941,6 +986,9 @@ async def _proxy(
     try:
         token = _get_token()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
+        # Pass resolved profile so backend attributes actions to the right agent
+        if _resolved_profile_id:
+            headers["X-Agent-Id"] = _resolved_profile_id
         client = _get_client()
 
         resp = await client.request(

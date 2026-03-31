@@ -8,6 +8,9 @@ from .buildables import router as buildables_router
 from .settings import router as settings_router
 from .codegen import router as codegen_router
 from .migrations import router as migrations_router
+from .debug import router as debug_router
+from .identity import router as identity_router
+from .window import router as window_router
 
 __all__ = [
     'services_router',
@@ -18,4 +21,7 @@ __all__ = [
     'settings_router',
     'codegen_router',
     'migrations_router',
+    'debug_router',
+    'identity_router',
+    'window_router',
 ]

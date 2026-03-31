@@ -4,11 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3100",
+    "dev": "vite --port 3100 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 3100"
   },
   "dependencies": {
+    "@pixsim7/shared.ui": "workspace:*",
     "@types/react-window": "^2.0.0",
     "flexlayout-react": "^0.8.19",
     "react": "^19.2.0",

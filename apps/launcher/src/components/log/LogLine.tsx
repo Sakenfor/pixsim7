@@ -26,7 +26,7 @@ interface LogLineProps {
 
 /** Resolve service color: exact → prefix → hash to palette */
 function resolveServiceColor(name: string, meta: LogMeta | null): string {
-  if (!meta) return '#B0BEC5'
+  if (!meta?.service_colors) return '#B0BEC5'
   // Exact match
   if (meta.service_colors[name]) return meta.service_colors[name]
   // Prefix match
@@ -59,27 +59,34 @@ function resolveEventColor(message: string, meta: LogMeta | null): string | unde
   return undefined
 }
 
-export function LogLine({ line, meta, fields, onFieldClick }: LogLineProps) {
+export function LogLine({ line, meta, fields, onFieldClick, onExpandChange }: LogLineProps & { onExpandChange?: (expanded: boolean) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const toggleExpand = () => {
+    const next = !expanded
+    setExpanded(next)
+    onExpandChange?.(next)
+  }
   const parsed = useMemo(() => parseLine(line), [line])
-  const levelStyle = meta?.level_colors[parsed.level]
+  const levelStyle = meta?.level_colors?.[parsed.level]
   const serviceColor = parsed.service ? resolveServiceColor(parsed.service, meta) : null
-  const eventColor = resolveEventColor(parsed.message, meta)
+  const eventColor = resolveEventColor(parsed.message ?? '', meta)
   const hasDetails = Object.keys(parsed.fields).length > 0
 
   return (
     <div
-      className={`group border-l-2 hover:bg-white/[0.04] ${expanded ? 'bg-blue-500/[0.06]' : ''}`}
+      className={`group border-l-2 hover:bg-white/[0.04] select-text ${expanded ? 'bg-blue-500/[0.06]' : ''}`}
       style={{ borderColor: levelStyle?.color ?? '#555' }}
     >
       {/* Main row */}
       <div
-        className={`flex items-baseline gap-1.5 px-2 py-px font-mono text-[11px] leading-[1.55] ${hasDetails ? 'cursor-pointer' : ''}`}
-        onClick={() => hasDetails && setExpanded(!expanded)}
+        className="flex items-baseline gap-1.5 px-2 py-px font-mono text-[11px] leading-[1.55] select-text"
       >
         {/* Expand icon */}
         {hasDetails && (
-          <span className="text-gray-600 text-[9px] w-3 shrink-0 select-none">
+          <span
+            className="text-gray-600 text-[9px] w-3 shrink-0 select-none cursor-pointer hover:text-gray-400"
+            onClick={toggleExpand}
+          >
             {expanded ? '▼' : '▶'}
           </span>
         )}

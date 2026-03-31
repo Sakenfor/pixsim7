@@ -1,5 +1,6 @@
 {
   "id": "generation-api",
+  "category": "services",
   "type": "backend",
   "name": "Generation API",
   "description": "Lightweight API for generation + chrome extension + automation (excludes game engine)",

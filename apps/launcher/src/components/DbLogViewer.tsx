@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Button, Input } from '@pixsim7/shared.ui'
 import { queryDbLogs, logEntryToLine, type LogEntry, type LogQueryParams } from '../api/dbLogs'
 import {
   getLogMeta, getCompiledFields,
@@ -152,9 +153,9 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           ))}
         </select>
 
-        <input
+        <Input
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..." className={`${sel} w-36`}
+          placeholder="Search..." size="sm" className="w-36"
         />
 
         <div className="flex items-center gap-0.5 text-[10px]">
@@ -182,7 +183,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
 
         <div className="flex-1" />
         <span className="text-[10px] text-gray-500">{entries.length}/{total} {loading && '...'}</span>
-        <button onClick={fetchLogs} className="px-2 py-0.5 text-[11px] rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Refresh</button>
+        <Button size="xs" variant="secondary" onClick={fetchLogs}>Refresh</Button>
       </div>
 
       {error && (

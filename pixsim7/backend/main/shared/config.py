@@ -3,7 +3,7 @@ Application configuration using Pydantic Settings
 
 Clean configuration for PixSim7 - simplified from PixSim6
 """
-from typing import List
+from typing import List, Optional
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     )
     jwt_algorithm: str = "HS256"
     jwt_expiration_days: int = 30
+    launcher_public_key: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded PEM public key from the launcher (for RS256 token verification)"
+    )
     
     # Session policy: strict requires DB session record, stateless accepts any valid JWT
     jwt_require_session: bool = Field(

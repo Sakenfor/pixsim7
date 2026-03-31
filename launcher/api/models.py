@@ -66,6 +66,9 @@ class ServiceStateResponse(BaseModel):
     last_error: str = ""
     tool_available: bool = True
     tool_check_message: str = ""
+    url: Optional[str] = None
+    dev_peer_of: Optional[str] = None
+    category: Optional[str] = None
 
 
 class ServiceActionRequest(BaseModel):
@@ -90,6 +93,14 @@ class ServicesListResponse(BaseModel):
 # Buildable Models
 # ============================================================================
 
+class BuildStatusResponse(BaseModel):
+    """Build freshness info."""
+    state: str = "unknown"  # not_built | stale | fresh | unknown
+    output_dir: Optional[str] = None
+    source_modified: Optional[str] = None
+    build_modified: Optional[str] = None
+
+
 class BuildableDefinitionResponse(BaseModel):
     """Buildable package definition."""
     id: str
@@ -101,6 +112,7 @@ class BuildableDefinitionResponse(BaseModel):
     args: List[str]
     category: Optional[str] = None
     tags: List[str] = []
+    build_status: BuildStatusResponse = BuildStatusResponse()
 
 
 class BuildablesListResponse(BaseModel):

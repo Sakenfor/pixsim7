@@ -31,6 +31,9 @@ export interface ServiceState {
   last_error: string
   tool_available: boolean
   tool_check_message: string
+  url: string | null
+  dev_peer_of: string | null
+  category: string | null
 }
 
 export interface ServicesListResponse {
@@ -70,3 +73,46 @@ export const clearLogs = (key: string) =>
 // ── Health ──────────────────────────────────────────────────────────
 
 export const getHealth = () => request('/health')
+
+// ── Desktop Window ─────────────────────────────────────────────────
+
+export const checkWindowAvailable = () => request<{ available: boolean }>('/window/available')
+export const openWindow = (url: string, title: string) =>
+  request<{ ok: boolean; window_id: string | null; message: string }>('/window/open', {
+    method: 'POST',
+    body: JSON.stringify({ url, title }),
+  })
+
+// ── Identity ───────────────────────────────────────────────────────
+
+export interface IdentityStatus {
+  exists: boolean
+  username: string | null
+  email: string | null
+  backend_url: string | null
+  keypair_id: string | null
+}
+
+export interface SetupCreateRequest {
+  username: string
+  password: string
+  email?: string
+}
+
+export interface SetupLinkRequest {
+  backend_url: string
+  username: string
+  password: string
+}
+
+export interface SetupResponse {
+  ok: boolean
+  message: string
+  username?: string
+}
+
+export const getIdentity = () => request<IdentityStatus>('/identity')
+export const setupCreate = (body: SetupCreateRequest) =>
+  request<SetupResponse>('/identity/setup/create', { method: 'POST', body: JSON.stringify(body) })
+export const setupLink = (body: SetupLinkRequest) =>
+  request<SetupResponse>('/identity/setup/link', { method: 'POST', body: JSON.stringify(body) })

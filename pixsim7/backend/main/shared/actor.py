@@ -17,6 +17,24 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
+def resolve_effective_user_id(principal: Any) -> Optional[int]:
+    """Resolve the effective user ID for user/agent principals.
+
+    Prefers ``user_id`` (on-behalf for agents), then falls back to ``id``.
+    Returns ``None`` when no positive user ID can be resolved.
+    """
+    candidate = getattr(principal, "user_id", None)
+    if candidate is None:
+        candidate = getattr(principal, "id", None)
+
+    try:
+        resolved = int(candidate)
+    except (TypeError, ValueError):
+        return None
+
+    return resolved if resolved > 0 else None
+
+
 class RequestPrincipal(BaseModel):
     """Unified identity for all authenticated requests.
 
@@ -29,7 +47,10 @@ class RequestPrincipal(BaseModel):
 
     id: int = Field(
         default=0,
-        description="User ID for humans, 0 for agents/services.",
+        description=(
+            "Effective user ID for humans; for agent principals this is "
+            "on_behalf_of when present, otherwise 0."
+        ),
     )
     principal_type: str = Field(
         default="user",
@@ -147,16 +168,23 @@ class RequestPrincipal(BaseModel):
         ptype = payload.get("principal_type", "user")
 
         # ── Agent token ──
-        if purpose == "agent" or ptype == "agent":
+        if purpose in ("agent", "launcher") or ptype == "agent":
             resolved_profile_id = payload.get("profile_id") or payload.get("agent_id") or x_agent_id or "unknown"
+            delegated_user_id = payload.get("on_behalf_of")
+            try:
+                delegated_user_id = int(delegated_user_id) if delegated_user_id is not None else 0
+            except (TypeError, ValueError):
+                delegated_user_id = 0
+            if delegated_user_id < 0:
+                delegated_user_id = 0
             return cls(
-                id=0,
+                id=delegated_user_id,
                 principal_type="agent",
                 profile_id=resolved_profile_id,
                 agent_type=payload.get("agent_type"),
                 run_id=payload.get("run_id") or x_run_id,
                 plan_id=payload.get("plan_id") or x_plan_id,
-                on_behalf_of=payload.get("on_behalf_of"),
+                on_behalf_of=delegated_user_id if delegated_user_id > 0 else None,
                 role="agent",
                 admin=False,
                 permissions=payload.get("permissions", []),

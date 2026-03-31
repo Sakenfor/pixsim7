@@ -7,6 +7,8 @@ Provides REST API for starting, stopping, and querying services.
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from typing import List
 
+from pixsim_logging import get_logger
+
 from launcher.core import ProcessManager, HealthManager
 from launcher.core.launcher_settings import load_launcher_settings
 from launcher.core.types import ServiceStatus, HealthStatus
@@ -24,6 +26,19 @@ from ..dependencies import get_process_manager, get_health_manager
 
 
 router = APIRouter(prefix="/services", tags=["services"])
+
+
+def _infer_category(service_key: str) -> str:
+    """Derive a category from the service key when not explicitly set."""
+    if service_key.startswith("launcher"):
+        return "launcher"
+    if service_key in ("db",):
+        return "core"
+    if "worker" in service_key:
+        return "services"
+    if "frontend" in service_key or "admin" in service_key or service_key in ("devtools",):
+        return "apps"
+    return "core"
 
 
 def map_service_status(status: ServiceStatus) -> ServiceStatusEnum:
@@ -50,15 +65,29 @@ async def list_services(
 
     services = []
     for key, state in states.items():
+        status = map_service_status(state.status)
+        health = map_health_status(state.health)
+        pid = state.pid or state.detected_pid
+
+        # Self-detection: launcher-api is always running if we're serving this response
+        if key == "launcher-api" and status == ServiceStatusEnum.STOPPED:
+            import os
+            status = ServiceStatusEnum.RUNNING
+            health = HealthStatusEnum.HEALTHY
+            pid = pid or os.getpid()
+
         services.append(ServiceStateResponse(
             key=key,
             title=state.definition.title,
-            status=map_service_status(state.status),
-            health=map_health_status(state.health),
-            pid=state.pid or state.detected_pid,
+            status=status,
+            health=health,
+            pid=pid,
             last_error=state.last_error,
             tool_available=state.tool_available,
-            tool_check_message=state.tool_check_message
+            tool_check_message=state.tool_check_message,
+            url=getattr(state.definition, 'url', None),
+            dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
+            category=getattr(state.definition, 'category', None) or _infer_category(key),
         ))
 
     return ServicesListResponse(
@@ -100,7 +129,10 @@ async def get_service_status(
         pid=state.pid or state.detected_pid,
         last_error=state.last_error,
         tool_available=state.tool_available,
-        tool_check_message=state.tool_check_message
+        tool_check_message=state.tool_check_message,
+        url=getattr(state.definition, 'url', None),
+        dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
+        category=getattr(state.definition, 'category', None) or _infer_category(service_key),
     )
 
 
@@ -181,6 +213,8 @@ async def start_service(
     success = process_mgr.start(service_key)
 
     if success:
+        state = process_mgr.get_state(service_key)
+        get_logger().info("service_started", service=service_key, pid=state.pid if state else None)
         return ServiceActionResponse(
             success=True,
             message=f"Service '{service_key}' started successfully",
@@ -189,6 +223,7 @@ async def start_service(
     else:
         # Get error from state
         state = process_mgr.get_state(service_key)
+        get_logger().error("service_start_failed", service=service_key, error=state.last_error if state else None)
         raise HTTPException(
             status_code=500,
             detail=state.last_error if state.last_error else "Failed to start service"
@@ -222,6 +257,14 @@ async def stop_service(
             detail=f"Service '{service_key}' not found"
         )
 
+    # Prevent launcher-api from stopping itself
+    if service_key == "launcher-api":
+        return ServiceActionResponse(
+            success=False,
+            message="Cannot stop launcher-api — it serves this UI. Restart the launcher process instead.",
+            service_key=service_key,
+        )
+
     # Check if already stopped
     if not process_mgr.is_running(service_key):
         return ServiceActionResponse(
@@ -234,6 +277,7 @@ async def stop_service(
     success = process_mgr.stop(service_key, graceful=request.graceful)
 
     if success:
+        get_logger().info("service_stopped", service=service_key)
         return ServiceActionResponse(
             success=True,
             message=f"Service '{service_key}' stopped successfully",
@@ -242,6 +286,7 @@ async def stop_service(
     else:
         # Get error from state
         state = process_mgr.get_state(service_key)
+        get_logger().error("service_stop_failed", service=service_key, error=state.last_error if state else None)
         raise HTTPException(
             status_code=500,
             detail=state.last_error if state.last_error else "Failed to stop service"
@@ -278,6 +323,8 @@ async def restart_service(
     success = process_mgr.restart(service_key)
 
     if success:
+        state = process_mgr.get_state(service_key)
+        get_logger().info("service_restarted", service=service_key, pid=state.pid if state else None)
         return ServiceActionResponse(
             success=True,
             message=f"Service '{service_key}' restarted successfully",
@@ -286,6 +333,7 @@ async def restart_service(
     else:
         # Get error from state
         state = process_mgr.get_state(service_key)
+        get_logger().error("service_restart_failed", service=service_key, error=state.last_error if state else None)
         raise HTTPException(
             status_code=500,
             detail=state.last_error if state.last_error else "Failed to restart service"
@@ -353,6 +401,8 @@ async def stop_all_services(
     stopped = 0
 
     for service_key in states.keys():
+        if service_key == "launcher-api":
+            continue  # never stop self
         if process_mgr.is_running(service_key):
             process_mgr.stop(service_key, graceful=request.graceful)
             stopped += 1

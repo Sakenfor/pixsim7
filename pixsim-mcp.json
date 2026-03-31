@@ -7,6 +7,7 @@
       ],
       "env": {
         "PIXSIM_API_URL": "http://localhost:8000",
+        "PIXSIM_TOKEN_FILE": "C:/Users/Stefan/.pixsim/token",
         "PIXSIM_SCOPE": "dev"
       }
     }

@@ -1,11 +1,13 @@
 import type { ServiceState } from '../api/client'
+import { openWindow } from '../api/client'
+import { ServiceIcon } from './ServiceIcon'
 
-const healthDot: Record<string, string> = {
-  healthy: 'bg-green-500',
-  unhealthy: 'bg-red-500',
-  starting: 'bg-yellow-500 animate-pulse',
-  stopped: 'bg-gray-500',
-  unknown: 'bg-gray-400',
+const healthColor: Record<string, string> = {
+  healthy: 'text-green-400',
+  unhealthy: 'text-red-400',
+  starting: 'text-yellow-400 animate-pulse',
+  stopped: 'text-gray-500',
+  unknown: 'text-gray-500',
 }
 
 const healthLabel: Record<string, string> = {
@@ -18,16 +20,24 @@ const healthLabel: Record<string, string> = {
 
 interface Props {
   service: ServiceState
+  services: ServiceState[]
   selected: boolean
+  desktopAvailable?: boolean
   onSelect: () => void
   onStart: () => void
   onStop: () => void
   onRestart: () => void
 }
 
-export function ServiceCard({ service, selected, onSelect, onStart, onStop, onRestart }: Props) {
+export function ServiceCard({ service, services, selected, desktopAvailable, onSelect, onStart, onStop, onRestart }: Props) {
   const isRunning = service.status === 'running' || service.status === 'starting'
-  const dot = healthDot[service.health] ?? healthDot.unknown
+  const color = healthColor[service.health] ?? healthColor.unknown
+
+  // Peer relationships
+  const devPeer = service.dev_peer_of
+    ? services.find((s) => s.key === service.dev_peer_of)
+    : null
+  const devChild = services.find((s) => s.dev_peer_of === service.key && s.health === 'healthy')
 
   return (
     <div
@@ -43,11 +53,16 @@ export function ServiceCard({ service, selected, onSelect, onStart, onStop, onRe
         ${service.health === 'unhealthy' && !selected ? 'border-red-500/40 bg-red-500/5' : ''}
       `}
     >
-      {/* Top row: dot + title + status */}
+      {/* Top row: icon + title + status */}
       <div className="flex items-center gap-2.5">
-        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+        <ServiceIcon serviceKey={service.key} className={`shrink-0 ${color}`} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-100 truncate">{service.title}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-gray-100 truncate">{service.title}</span>
+            {devPeer && (
+              <span className="text-[9px] text-amber-400/70 shrink-0">dev of {devPeer.title}</span>
+            )}
+          </div>
           <div className="text-[11px] text-gray-400 truncate">
             {healthLabel[service.health] ?? service.health}
             {service.pid ? ` | PID ${service.pid}` : ''}
@@ -55,47 +70,139 @@ export function ServiceCard({ service, selected, onSelect, onStart, onStop, onRe
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {/* Auth indicator */}
+          {isRunning && service.health === 'healthy' && service.key === 'ai-client' && (
+            <span className="text-green-500/60" title="Authenticated via launcher">
+              <IconShield />
+            </span>
+          )}
+          {isRunning && service.health === 'healthy' && service.key === 'main-api' && (
+            <span className="text-blue-500/50" title="Trusts launcher signing key">
+              <IconShield />
+            </span>
+          )}
           {!isRunning ? (
-            <button
-              onClick={onStart}
-              disabled={!service.tool_available}
-              className="px-2.5 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white transition-colors"
-            >
-              Start
-            </button>
+            <IconButton className="text-green-400 hover:text-green-300" title="Start service" onClick={onStart}>
+              <IconPlay />
+            </IconButton>
           ) : (
             <>
-              <button
-                onClick={onStop}
-                className="px-2.5 py-1 text-xs font-medium rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
-              >
-                Stop
-              </button>
-              <button
-                onClick={onRestart}
-                className="px-2 py-1 text-xs font-medium rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors"
-              >
-                Restart
-              </button>
+              {service.url && service.health === 'healthy' && (
+                <a href={service.url} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>
+                  <IconButton className="text-blue-400 hover:text-blue-300" title="Open in browser">
+                    <IconExternalLink />
+                  </IconButton>
+                </a>
+              )}
+              {service.url && service.health === 'healthy' && desktopAvailable && (
+                <IconButton className="text-purple-400 hover:text-purple-300" title="Open in desktop window" onClick={() => openWindow(service.url!, service.title)}>
+                  <IconWindow />
+                </IconButton>
+              )}
+              <IconButton className="text-red-400 hover:text-red-300" title="Stop service" onClick={onStop}>
+                <IconStop />
+              </IconButton>
+              <IconButton className="text-amber-400 hover:text-amber-300" title="Restart service" onClick={onRestart}>
+                <IconRestart />
+              </IconButton>
             </>
           )}
         </div>
       </div>
 
+      {/* Dev peer available */}
+      {devChild && (
+        <div className="mt-1 text-[10px] pl-[30px]" onClick={(e) => e.stopPropagation()}>
+          <a
+            href={devChild.url ?? '#'}
+            target="_blank"
+            rel="noopener"
+            className="text-amber-400/70 hover:text-amber-300 transition-colors"
+          >
+            Dev server available ({devChild.title})
+          </a>
+        </div>
+      )}
+
       {/* Error line */}
       {service.last_error && (
-        <div className="mt-1.5 text-[10px] text-red-400 truncate pl-5">
+        <div className="mt-1.5 text-[10px] text-red-400 truncate pl-[30px]">
           {service.last_error}
         </div>
       )}
 
       {/* Tool warning */}
       {!service.tool_available && (
-        <div className="mt-1.5 text-[10px] text-yellow-400 truncate pl-5">
+        <div className="mt-1.5 text-[10px] text-yellow-400 truncate pl-[30px]">
           {service.tool_check_message}
         </div>
       )}
     </div>
+  )
+}
+
+// ── Inline icons (no dependency) ──────────────────────────────────
+
+function IconButton({ children, className = '', title, onClick }: { children: React.ReactNode; className?: string; title?: string; onClick?: () => void }) {
+  return (
+    <button className={`p-1 rounded hover:bg-white/10 transition-colors ${className}`} title={title} onClick={onClick}>
+      {children}
+    </button>
+  )
+}
+
+function IconExternalLink() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  )
+}
+
+function IconWindow() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="18" rx="2" />
+      <line x1="2" y1="9" x2="22" y2="9" />
+      <circle cx="6" cy="6" r="0.5" fill="currentColor" />
+      <circle cx="9" cy="6" r="0.5" fill="currentColor" />
+    </svg>
+  )
+}
+
+function IconPlay() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="6,4 20,12 6,20" />
+    </svg>
+  )
+}
+
+function IconStop() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <rect x="5" y="5" width="14" height="14" rx="1" />
+    </svg>
+  )
+}
+
+function IconRestart() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 4v6h6" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  )
+}
+
+function IconShield() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
   )
 }

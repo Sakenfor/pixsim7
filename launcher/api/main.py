@@ -9,15 +9,83 @@ clean, decoupled architecture.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
+import logging
+import os
 import sys
 from pathlib import Path
 
 # Add project root to path
 ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = ROOT.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Ensure human-readable logs for the launcher API itself
+os.environ.setdefault("PIXSIM_LOG_FORMAT", "human")
+
+
+class _TeeWriter:
+    """Write to both the original stream and a log file."""
+
+    def __init__(self, original, log_file_path: str):
+        self._original = original
+        self._file = open(log_file_path, "a", encoding="utf-8", errors="replace")
+
+    def write(self, text: str) -> int:
+        if text and text.strip():
+            self._file.write(text if text.endswith("\n") else text + "\n")
+            self._file.flush()
+        return self._original.write(text)
+
+    def flush(self):
+        self._file.flush()
+        self._original.flush()
+
+    def fileno(self):
+        return self._original.fileno()
+
+    def isatty(self):
+        return self._original.isatty()
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+
+def _setup_logging():
+    """Initialize structured logging for launcher-api.
+
+    Uses pixsim_logging for structured console output and tees stdout
+    to ``data/logs/console/launcher-api.log`` so the LogManager can
+    surface them in the service card.
+    """
+    from launcher.core.paths import console_log_file, ensure_launcher_runtime_dirs
+
+    ensure_launcher_runtime_dirs()
+
+    # Tee stdout/stderr to the console log file.
+    # structlog renders directly to stdout (bypassing stdlib handlers),
+    # so a file handler on the root logger won't capture structlog output.
+    # Tee-ing stdout captures everything: structlog, print(), uvicorn.
+    log_path = str(console_log_file("launcher-api"))
+    if not isinstance(sys.stdout, _TeeWriter):
+        sys.stdout = _TeeWriter(sys.stdout, log_path)
+    if not isinstance(sys.stderr, _TeeWriter):
+        sys.stderr = _TeeWriter(sys.stderr, log_path)
+
+    # Structured logging via pixsim_logging (same pipeline as backend + client)
+    from pixsim_logging import configure_logging, configure_stdlib_root_logger
+    logger = configure_logging("launcher", json=False)
+    configure_stdlib_root_logger()
+
+    # Suppress noisy uvicorn access logs (individual requests)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    return logger
+
+
+_logger = _setup_logging()
 
 from launcher.core import create_container, __version__
 from launcher.core.launcher_settings import load_launcher_settings, apply_launcher_settings_to_env
@@ -31,6 +99,9 @@ from .routes import (
     settings_router,
     codegen_router,
     migrations_router,
+    debug_router,
+    identity_router,
+    window_router,
 )
 from .dependencies import set_container
 
@@ -57,28 +128,42 @@ async def lifespan(app: FastAPI):
         existing = _get_existing()
         already_injected = True
         _container = existing
-        print("PixSim7 Launcher API (embedded mode — using injected container)")
+        _logger.info("startup_embedded", mode="embedded")
     except Exception:
         pass
 
     if not already_injected:
         # Standalone mode: create our own container
-        print("=" * 70)
-        print("PixSim7 Launcher API")
-        print("=" * 70)
-        print()
+        _logger.info("startup_standalone", mode="standalone")
+
+        # --- Identity & auth bootstrap ---
+        from launcher.core.auth import ensure_identity, get_public_key_b64, refresh_stored_token
+        identity = ensure_identity()
+        if identity:
+            _logger.info("identity_loaded", user=identity.username, keypair=identity.keypair_id)
+            # Inject launcher public key so backend trusts launcher-minted tokens
+            pub_key_b64 = get_public_key_b64()
+            if pub_key_b64:
+                os.environ.setdefault("PIXSIM_LAUNCHER_PUBLIC_KEY", pub_key_b64)
+            # Refresh stored token if expired (so MCP/bridge have a valid token)
+            refreshed = refresh_stored_token(identity)
+            if refreshed:
+                _logger.info("token_refreshed", backend=identity.backend_url)
+        else:
+            _logger.info("identity_missing", hint="first-time setup required")
+        app.state.launcher_identity = identity
 
         try:
             apply_launcher_settings_to_env(load_launcher_settings())
         except Exception:
             pass
 
-        from launcher.gui.services import build_services_from_manifests
-        from launcher.gui.launcher_facade import convert_service_def
+        from launcher.core.services import build_services_from_manifests
+        from launcher.core.service_converter import convert_service_def
 
         raw_services = build_services_from_manifests()
         services_list = [convert_service_def(sd) for sd in raw_services]
-        print(f"Loaded {len(services_list)} service definitions")
+        _logger.info("services_loaded", count=len(services_list))
 
         _container = create_container(
             services_list,
@@ -93,18 +178,45 @@ async def lifespan(app: FastAPI):
 
         set_container(_container)
         _container.start_all()
-        print("✓ Managers started")
-        print()
+        _logger.info("managers_started")
+
+        # Mark launcher-api as running (we ARE the launcher-api process)
+        process_mgr = _container.get_process_manager()
+        api_state = process_mgr.get_state("launcher-api")
+        if api_state:
+            from launcher.core.types import ServiceStatus, HealthStatus
+            api_state.status = ServiceStatus.RUNNING
+            api_state.health = HealthStatus.HEALTHY
+            api_state.pid = os.getpid()
+
+        # Auto-start services that have auto_start AND whose dependencies are met.
+        # Only start services whose deps are already running (e.g. launcher-ui
+        # depends on launcher-api which we just marked running above).
+        # Services with unmet deps (e.g. main-api needs db) are skipped silently.
+        for key, state in process_mgr.get_all_states().items():
+            defn = state.definition
+            if not defn.auto_start or process_mgr.is_running(key):
+                continue
+            # Check deps are met before attempting
+            deps_met = True
+            for dep_key in (defn.depends_on or []):
+                dep_state = process_mgr.get_state(dep_key)
+                if not dep_state or not process_mgr.is_running(dep_key):
+                    deps_met = False
+                    break
+            if deps_met:
+                if process_mgr.start(key):
+                    _logger.info("auto_started", service=key)
+                else:
+                    _logger.warning("auto_start_failed", service=key, error=state.last_error)
 
     yield
 
     # Shutdown — only stop managers we created
     if not already_injected and _container:
-        print()
-        print("Shutting down...")
+        _logger.info("shutting_down")
         _container.stop_all()
-        print("✓ Managers stopped")
-        print("Goodbye!")
+        _logger.info("shutdown_complete")
 
 
 # Create FastAPI app
@@ -172,45 +284,24 @@ app.include_router(buildables_router)
 app.include_router(settings_router)
 app.include_router(codegen_router)
 app.include_router(migrations_router)
+app.include_router(debug_router)
+app.include_router(identity_router)
+app.include_router(window_router)
+
+# Debug control endpoint — runtime log level/domain changes without restart
+try:
+    from pixsim_logging.debug_endpoint import create_debug_router
+    app.include_router(create_debug_router(), prefix="/_debug")
+except ImportError:
+    pass
 
 
-# Serve the built React launcher UI if available.
-# In production the webview shell points at this origin; the static
-# files are served alongside the API routes.
-# ROOT is launcher/, project root is one level above that.
-_PROJECT_ROOT = ROOT.parent
-_LAUNCHER_DIST = _PROJECT_ROOT / "apps" / "launcher" / "dist"
-
-if _LAUNCHER_DIST.is_dir() and (_LAUNCHER_DIST / "index.html").exists():
-    _index_html = str(_LAUNCHER_DIST / "index.html")
-    _assets = _LAUNCHER_DIST / "assets"
-    if _assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=str(_assets)), name="launcher-assets")
-
-    @app.get("/", include_in_schema=False)
-    async def root():
-        """Serve the launcher UI."""
-        return FileResponse(_index_html)
-
-    @app.get("/viewer", include_in_schema=False)
-    async def viewer():
-        """Serve the embedded log viewer (SPA route)."""
-        return FileResponse(_index_html)
-
-    @app.get("/db-logs", include_in_schema=False)
-    async def db_logs():
-        """Serve the DB log query viewer (SPA route)."""
-        return FileResponse(_index_html)
-
-    @app.get("/tools", include_in_schema=False)
-    async def tools():
-        """Serve the tools page (SPA route)."""
-        return FileResponse(_index_html)
-else:
-    @app.get("/", include_in_schema=False)
-    async def root():
-        """Redirect root to docs when no UI is built."""
-        return RedirectResponse(url="/docs")
+# The launcher UI is served by Vite (launcher-ui service on port 3100).
+# API root redirects there so bookmarks/habits for :8100 still work.
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect to launcher UI."""
+    return RedirectResponse(url="http://localhost:3100")
 
 
 @app.get("/api", include_in_schema=False)
@@ -228,25 +319,11 @@ async def api_root():
 if __name__ == "__main__":
     import uvicorn
 
-    print("=" * 70)
-    print("Starting PixSim7 Launcher API")
-    print("=" * 70)
-    print()
-    print("API will be available at:")
-    print("  http://localhost:8100")
-    print()
-    print("Documentation:")
-    print("  http://localhost:8100/docs")
-    print()
-    print("WebSocket:")
-    print("  ws://localhost:8100/events/ws")
-    print()
-    print("=" * 70)
-    print()
+    _logger.info("starting", api="http://localhost:8100", docs="/docs", ws="/events/ws")
 
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=8100,
-        log_level="info"
+        log_level="warning",  # structlog handles our logging; suppress uvicorn's default
     )

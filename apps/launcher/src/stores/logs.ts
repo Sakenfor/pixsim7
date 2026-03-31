@@ -21,7 +21,7 @@ export const useLogsStore = create<LogsStore>((set) => ({
       const res = await api.getLogs(key, 300)
       set({ lines: res.lines, loading: false })
     } catch {
-      set({ loading: false })
+      set({ lines: [], loading: false })
     }
   },
 
