@@ -766,6 +766,24 @@ async def _poll_single_generation(
                     ),
                 )
 
+                # Check for deferred cancel on unsubmitted generations
+                gen_model = await db.get(Generation, generation.id)
+                if gen_model and getattr(gen_model, "deferred_action", None) == "cancel":
+                    logger.info(
+                        "generation_cancel_before_submission",
+                        generation_id=generation.id,
+                    )
+                    gen_model.deferred_action = None
+                    gen_model.status = GenerationStatus.CANCELLED
+                    gen_model.completed_at = datetime.now(timezone.utc)
+                    timeout_account_id = generation.account_id
+                    if timeout_account_id:
+                        orphan_account = await db.get(ProviderAccount, timeout_account_id)
+                        if orphan_account and orphan_account.current_processing_jobs > 0:
+                            orphan_account.current_processing_jobs -= 1
+                    await db.commit()
+                    return _PollGenerationResult(generation_id=generation_id, outcome='failed')
+
                 if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
                     await generation_service.mark_failed(
                         generation.id,
@@ -1260,11 +1278,29 @@ async def _poll_single_generation(
 
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
-                    # Re-check: generation may have been cancelled while we polled
+                    # Re-check: generation may have a deferred action or
+                    # been cancelled while we polled
                     generation_model = await db.get(Generation, generation.id)
-                    if generation_model and generation_model.status == GenerationStatus.CANCELLED:
-                        logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                    if generation_model and (
+                        generation_model.status == GenerationStatus.CANCELLED
+                        or getattr(generation_model, "deferred_action", None) == "cancel"
+                    ):
+                        logger.info(
+                            "generation_cancel_during_poll",
+                            generation_id=generation.id,
+                            deferred_action=getattr(generation_model, "deferred_action", None),
+                        )
+                        generation_model.deferred_action = None
                         account = await account_service.release_account(account.id)
+                        if generation_model.status != GenerationStatus.CANCELLED:
+                            await generation_service.mark_failed(
+                                generation.id,
+                                "Cancelled by user during provider processing",
+                            )
+                            # Overwrite FAILED with CANCELLED (terminal guard
+                            # allows same-terminal overwrites via direct update)
+                            generation_model.status = GenerationStatus.CANCELLED
+                            generation_model.completed_at = datetime.now(timezone.utc)
                         await db.commit()
                         return _PollGenerationResult(
                             generation_id=generation_id,
@@ -1357,11 +1393,23 @@ async def _poll_single_generation(
                     ProviderStatus.FILTERED,
                     ProviderStatus.CANCELLED,
                 }:
-                    # Re-check: generation may have been cancelled while we polled
+                    # Re-check: generation may have a deferred cancel or
+                    # been cancelled while we polled
                     generation_model = await db.get(Generation, generation.id)
-                    if generation_model and generation_model.status == GenerationStatus.CANCELLED:
-                        logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                    if generation_model and (
+                        generation_model.status == GenerationStatus.CANCELLED
+                        or getattr(generation_model, "deferred_action", None) == "cancel"
+                    ):
+                        logger.info(
+                            "generation_cancel_during_poll",
+                            generation_id=generation.id,
+                            deferred_action=getattr(generation_model, "deferred_action", None),
+                        )
+                        generation_model.deferred_action = None
                         account = await account_service.release_account(account.id)
+                        if generation_model.status != GenerationStatus.CANCELLED:
+                            generation_model.status = GenerationStatus.CANCELLED
+                            generation_model.completed_at = datetime.now(timezone.utc)
                         await db.commit()
                         return _PollGenerationResult(
                             generation_id=generation_id,
@@ -1445,6 +1493,24 @@ async def _poll_single_generation(
                     )
 
                 elif status_result.status == ProviderStatus.PROCESSING:
+                    # Check for deferred cancel — user wants to stop even
+                    # though the provider is still working on it.
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model and getattr(generation_model, "deferred_action", None) == "cancel":
+                        logger.info(
+                            "generation_cancel_while_provider_processing",
+                            generation_id=generation.id,
+                        )
+                        generation_model.deferred_action = None
+                        generation_model.status = GenerationStatus.CANCELLED
+                        generation_model.completed_at = datetime.now(timezone.utc)
+                        account = await account_service.release_account(account.id)
+                        await db.commit()
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='failed',
+                            missing_provider_job=missing_provider_job,
+                        )
                     return _PollGenerationResult(
                         generation_id=generation_id,
                         outcome='still_processing',

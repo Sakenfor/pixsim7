@@ -383,7 +383,7 @@ class GenerationResponse(BaseModel):
     error_message: Optional[str]
     error_code: Optional[str] = None
     retry_count: int
-    pause_requested: bool = False
+    deferred_action: Optional[str] = None
     attempt_count: Optional[int] = None
     wait_reason: Optional[str] = None
     parent_generation: Optional[GenerationRef] = Field(

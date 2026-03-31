@@ -785,7 +785,7 @@ function GenerationGroupSection({
     </span>
   );
 
-  const pausableIds = useMemo(() => group.items.filter(g => g.status === 'pending' || (g.status === 'processing' && !g.pauseRequested)).map(g => g.id), [group.items]);
+  const pausableIds = useMemo(() => group.items.filter(g => g.status === 'pending' || (g.status === 'processing' && !g.deferredAction)).map(g => g.id), [group.items]);
   const pausedIds = useMemo(() => group.items.filter(g => g.status === 'paused').map(g => g.id), [group.items]);
 
   const batchCancelAction = activeIds.length >= 2 ? (
@@ -1009,8 +1009,8 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
   const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
   const isPaused = generation.status === 'paused';
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
-  const canCancel = isActive;
-  const canPause = generation.status === 'pending' || (generation.status === 'processing' && !generation.pauseRequested);
+  const canCancel = isActive && generation.deferredAction !== 'cancel';
+  const canPause = generation.status === 'pending' || (generation.status === 'processing' && !generation.deferredAction);
   const canResume = isPaused;
   const canDelete = isTerminal;
   const activityBadge = useMemo(() => {
@@ -1245,19 +1245,13 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
             {generation.retryCount > 0 && (
               <>
                 <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
-                <span className="text-amber-600 dark:text-amber-400">
-                  {generation.retryCount} {generation.retryCount === 1 ? 'retry' : 'retries'}
-                </span>
-              </>
-            )}
-            {generation.attemptCount != null && generation.attemptCount > 1 && (
-              <>
-                <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
                 <span
-                  className="text-rose-600 dark:text-rose-400"
-                  title="Provider submission attempts for this generation"
+                  className="text-amber-600 dark:text-amber-400"
+                  title={generation.attemptCount != null && generation.attemptCount > 1
+                    ? `${generation.attemptCount} provider submission attempts`
+                    : undefined}
                 >
-                  {generation.attemptCount} attempts
+                  {generation.retryCount} {generation.retryCount === 1 ? 'retry' : 'retries'}
                 </span>
               </>
             )}
@@ -1354,9 +1348,14 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
               />
             </button>
           )}
-          {generation.pauseRequested && (
+          {generation.deferredAction === 'pause' && (
             <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" title="Will pause after current attempt">
               pausing
+            </span>
+          )}
+          {generation.deferredAction === 'cancel' && (
+            <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" title="Will cancel after current attempt">
+              cancelling
             </span>
           )}
           {canResume && (

@@ -55,7 +55,7 @@ export interface GenerationModel {
   errorMessage: string | null;
   errorCode: string | null;
   retryCount: number;
-  pauseRequested: boolean;
+  deferredAction: 'pause' | 'cancel' | null;
   attemptCount: number | null;
   priority: number;
   waitReason: string | null;
@@ -204,7 +204,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     errorMessage: response.error_message,
     errorCode: response.error_code ?? null,
     retryCount: response.retry_count,
-    pauseRequested: (response as { pause_requested?: boolean }).pause_requested ?? false,
+    deferredAction: ((response as { deferred_action?: string | null }).deferred_action as 'pause' | 'cancel' | null) ?? null,
     attemptCount,
     priority: response.priority,
     waitReason: (response as { wait_reason?: string | null }).wait_reason ?? null,
@@ -400,7 +400,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     errorMessage: null,
     errorCode: null,
     retryCount: 0,
-    pauseRequested: false,
+    deferredAction: null,
     attemptCount: null,
     priority: 5,
     waitReason: null,

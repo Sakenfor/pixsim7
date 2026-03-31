@@ -141,9 +141,12 @@ class Generation(SQLModel, table=True):
         description="Structured error code from GenerationErrorCode enum (e.g. 'content_prompt_rejected')",
     )
     retry_count: int = Field(default=0)
-    pause_requested: bool = Field(
-        default=False,
-        description="When True, auto-retry lands in PAUSED instead of PENDING.",
+    deferred_action: Optional[str] = Field(
+        default=None,
+        max_length=10,
+        description="Cooperative deferred action for PROCESSING generations: "
+                    "'pause' or 'cancel'. Checked by the status poller and "
+                    "auto-retry handler when the current attempt finishes.",
     )
     attempt_id: int = Field(
         default=0,

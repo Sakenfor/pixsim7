@@ -201,18 +201,25 @@ async def handle_event(event: Event) -> None:
             else:
                 generation.retry_count += 1
 
-            # If pause was requested, land in PAUSED instead of re-queuing
-            if getattr(generation, "pause_requested", False):
-                generation.status = GenerationStatus.PAUSED
-                generation.pause_requested = False
+            # Check for deferred action (pause or cancel) before re-queuing
+            deferred = getattr(generation, "deferred_action", None)
+            if deferred in ("pause", "cancel"):
+                target_status = (
+                    GenerationStatus.PAUSED if deferred == "pause"
+                    else GenerationStatus.CANCELLED
+                )
+                generation.status = target_status
+                generation.deferred_action = None
                 generation.started_at = None
-                generation.completed_at = None
+                generation.completed_at = datetime.now(timezone.utc) if deferred == "cancel" else None
                 generation.updated_at = datetime.now(timezone.utc)
                 await db.commit()
                 await db.refresh(generation)
                 logger.info(
-                    "auto_retry_paused_by_request",
+                    "auto_retry_deferred_action_applied",
                     generation_id=generation.id,
+                    deferred_action=deferred,
+                    final_status=target_status.value,
                     retry_attempt=generation.retry_count,
                 )
                 return

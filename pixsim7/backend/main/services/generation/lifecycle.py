@@ -207,14 +207,20 @@ class GenerationLifecycleService:
 
     async def cancel_generation(self, generation_id: int, user: User) -> Generation:
         """
-        Cancel generation (user request)
+        Cancel generation (user request).
+
+        - PENDING / PAUSED → immediately transitions to CANCELLED.
+        - PROCESSING → deferred: sets ``deferred_action='cancel'`` so the
+          status poller can finish the in-flight provider poll and then
+          transition to CANCELLED.  A best-effort provider-side cancel is
+          still attempted.
 
         Args:
             generation_id: Generation ID
             user: User requesting cancellation
 
         Returns:
-            Cancelled generation
+            Updated generation
 
         Raises:
             ResourceNotFoundError: Generation not found
@@ -223,18 +229,15 @@ class GenerationLifecycleService:
         generation = await self._get_generation(generation_id)
         self._check_ownership(generation, user, "cancel")
 
-        # Check if can be cancelled
         if generation.is_terminal:
             raise InvalidOperationError(f"Generation already {generation.status.value}")
 
-        # Cancel on provider if processing
         if generation.status == GenerationStatus.PROCESSING:
+            # Best-effort provider-side cancel (provider may abort sooner)
             try:
                 from pixsim7.backend.main.services.provider import ProviderService
 
                 provider_service = ProviderService(self.db)
-
-                # Get latest submission
                 result = await self.db.execute(
                     select(ProviderSubmission)
                     .where(ProviderSubmission.generation_id == generation.id)
@@ -242,24 +245,24 @@ class GenerationLifecycleService:
                     .limit(1)
                 )
                 submission = result.scalar_one_or_none()
-
                 if submission and submission.account_id:
-                    # Get account
                     account = await self.db.get(ProviderAccount, submission.account_id)
                     if account:
-                        # Try to cancel on provider
                         cancelled = await provider_service.cancel_job(submission, account)
                         if cancelled:
                             logger.info(f"Generation {generation_id} cancelled on provider")
-
-                        # Decrement account's concurrent job count
-                        if account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
-                            await self.db.commit()
             except Exception as e:
                 logger.error(f"Failed to cancel generation on provider: {e}")
-                # Continue with local cancellation even if provider cancel fails
 
+            # Deferred cancel — poller owns account release and final transition
+            generation.deferred_action = "cancel"
+            generation.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(generation)
+            logger.info(f"Generation {generation_id} flagged for cancel after current attempt")
+            return generation
+
+        # PENDING / PAUSED — immediate cancel
         return await self.update_status(generation_id, GenerationStatus.CANCELLED)
 
     async def pause_generation(self, generation_id: int, user: User) -> Generation:
@@ -267,19 +270,19 @@ class GenerationLifecycleService:
         Pause a generation.
 
         - PENDING → immediately transitions to PAUSED.
-        - PROCESSING → sets pause_requested flag; auto-retry will land in
-          PAUSED instead of PENDING when the current attempt finishes.
+        - PROCESSING → deferred: sets ``deferred_action='pause'`` so the
+          auto-retry handler lands in PAUSED when the current attempt finishes.
 
         Args:
             generation_id: Generation ID
             user: User requesting pause
 
         Returns:
-            Updated generation (PAUSED or PROCESSING with pause_requested)
+            Updated generation (PAUSED or PROCESSING with deferred_action)
 
         Raises:
             ResourceNotFoundError: Generation not found
-            InvalidOperationError: Cannot pause (wrong user or already terminal)
+            InvalidOperationError: Cannot pause (wrong user, terminal, or cancel pending)
         """
         generation = await self._get_generation(generation_id)
         self._check_ownership(generation, user, "pause")
@@ -291,7 +294,9 @@ class GenerationLifecycleService:
             return generation  # idempotent
 
         if generation.status == GenerationStatus.PROCESSING:
-            generation.pause_requested = True
+            if generation.deferred_action == "cancel":
+                raise InvalidOperationError("Generation is already being cancelled")
+            generation.deferred_action = "pause"
             generation.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
             await self.db.refresh(generation)
@@ -328,7 +333,7 @@ class GenerationLifecycleService:
                 f"Only paused generations can be resumed (current: {generation.status.value})"
             )
 
-        generation.pause_requested = False
+        generation.deferred_action = None
         generation = await self.update_status(generation_id, GenerationStatus.PENDING)
 
         # Publish resumed event for WebSocket

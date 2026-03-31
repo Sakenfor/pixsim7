@@ -32,9 +32,10 @@ class DiscoveredSuite:
     subcategory: str | None = None
     covers: tuple[str, ...] = ()
     order: float | None = None
+    description: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "id": self.id,
             "label": self.label,
             "path": self.path,
@@ -45,16 +46,25 @@ class DiscoveredSuite:
             "covers": list(self.covers),
             "order": self.order,
         }
+        if self.description:
+            d["description"] = self.description
+        return d
 
 
-def _extract_test_suite(file_path: Path) -> dict[str, Any] | None:
-    """Parse a Python file's AST and extract a top-level TEST_SUITE dict literal."""
+def _extract_test_file_metadata(file_path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Parse a Python file's AST and extract TEST_SUITE dict + module docstring.
+
+    Returns ``(suite_dict_or_none, docstring_or_none)``.
+    """
     try:
         source = file_path.read_text(encoding="utf-8-sig")
         tree = ast.parse(source, filename=str(file_path))
     except (SyntaxError, UnicodeDecodeError):
-        return None
+        return None, None
 
+    docstring = ast.get_docstring(tree)
+
+    suite: dict[str, Any] | None = None
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -68,8 +78,10 @@ def _extract_test_suite(file_path: Path) -> dict[str, Any] | None:
         except (ValueError, TypeError):
             continue
         if isinstance(value, dict):
-            return value
-    return None
+            suite = value
+            break
+
+    return suite, docstring
 
 
 def _infer_layer(rel_path: str) -> str:
@@ -111,7 +123,7 @@ def discover_suites(
         for py_file in sorted(scan_root.rglob("*.py")):
             if not (py_file.name.startswith("test_") or py_file.name == "conftest.py"):
                 continue
-            raw = _extract_test_suite(py_file)
+            raw, docstring = _extract_test_file_metadata(py_file)
             if raw is None:
                 continue
 
@@ -131,6 +143,9 @@ def discover_suites(
             order_raw = raw.get("order")
             order = float(order_raw) if isinstance(order_raw, (int, float)) else None
 
+            # Description: explicit TEST_SUITE field > module docstring
+            description = raw.get("description") if isinstance(raw.get("description"), str) else docstring
+
             suites.append(DiscoveredSuite(
                 id=suite_id,
                 label=suite_label,
@@ -141,6 +156,7 @@ def discover_suites(
                 subcategory=raw.get("subcategory") if isinstance(raw.get("subcategory"), str) else None,
                 covers=covers,
                 order=order,
+                description=description,
             ))
 
     return suites
@@ -266,18 +282,23 @@ def _humanize_label(suite_id: str) -> str:
 
 _SKIP_DIRS = {"node_modules", ".git", "dist", "build", "__pycache__"}
 
+# Accepted extensions for frontend test files.  Intentionally broader than
+# the current vitest ``include`` patterns so the catalog never silently
+# misses files that a runner *does* execute.  The runner-alignment check in
+# ``validate_runner_alignment()`` catches the inverse (catalog has it, runner
+# doesn't).
+_TS_TEST_EXTENSIONS = frozenset({".ts", ".tsx", ".mts", ".cts"})
+
 
 def _glob_ts_tests(root: Path) -> list[Path]:
-    """Recursively find *.test.ts / *.test.tsx, skipping node_modules etc."""
+    """Recursively find ``*.test.*`` frontend test files, skipping vendor dirs."""
     results: list[Path] = []
     for entry in root.iterdir():
         if entry.is_dir():
             if entry.name in _SKIP_DIRS:
                 continue
             results.extend(_glob_ts_tests(entry))
-        elif entry.is_file() and (
-            entry.name.endswith(".test.ts") or entry.name.endswith(".test.tsx")
-        ):
+        elif entry.is_file() and ".test." in entry.name and entry.suffix in _TS_TEST_EXTENSIONS:
             results.append(entry)
     return results
 
