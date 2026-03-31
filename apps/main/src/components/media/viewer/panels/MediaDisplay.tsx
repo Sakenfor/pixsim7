@@ -6,8 +6,9 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
+import { BACKEND_BASE } from '@lib/api/client';
 import { useAutoContextMenu } from '@lib/dockview';
-
+import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 
 import type { ViewerAsset } from '@features/assets';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
@@ -28,19 +29,52 @@ interface MediaDisplayProps {
   imageRef?: RefObject<HTMLImageElement>;
 }
 
+function isLikelyVideoUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  const lowered = url.toLowerCase();
+  if (lowered.startsWith('blob:') || lowered.startsWith('data:video')) return true;
+  return /\.(mp4|webm|mov|m4v|mkv|avi)(?:$|[?#])/.test(lowered);
+}
+
 export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, imageRef }: MediaDisplayProps) {
   const fallbackVideoRef = useRef<HTMLVideoElement>(null);
   const fallbackImageRef = useRef<HTMLImageElement>(null);
   const resolvedVideoRef = videoRef ?? fallbackVideoRef;
   const resolvedImageRef = imageRef ?? fallbackImageRef;
-  const mediaUrl = asset.fullUrl || asset.url;
+  const remoteModelUrl = useMemo(
+    () => ensureBackendAbsolute(asset._assetModel?.remoteUrl ?? undefined, BACKEND_BASE),
+    [asset._assetModel?.remoteUrl],
+  );
+  const videoCandidates = useMemo(() => {
+    if (asset.type !== 'video') return [] as string[];
+    const candidates = [
+      asset.fullUrl,
+      remoteModelUrl,
+      isLikelyVideoUrl(asset.url) ? asset.url : undefined,
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+    return Array.from(new Set(candidates));
+  }, [asset.type, asset.fullUrl, asset.url, remoteModelUrl]);
+  const [videoCandidateIndex, setVideoCandidateIndex] = useState(0);
+  const [videoLoadFailed, setVideoLoadFailed] = useState(false);
+  const mediaUrl = asset.type === 'video'
+    ? videoCandidates[videoCandidateIndex]
+    : (asset.fullUrl || asset.url);
   const { mediaSrc } = useResolvedAssetMedia({ mediaUrl });
   const resolvedMediaUrl = mediaSrc;
   const [videoReady, setVideoReady] = useState(asset.type !== 'video');
 
   useEffect(() => {
     setVideoReady(asset.type !== 'video');
-  }, [asset.id, asset.type, resolvedMediaUrl]);
+    setVideoLoadFailed(false);
+    setVideoCandidateIndex(0);
+  }, [asset.id, asset.type, asset.fullUrl, asset.url, remoteModelUrl]);
+
+  useEffect(() => {
+    if (asset.type === 'video' && videoCandidates.length === 0) {
+      setVideoReady(false);
+      setVideoLoadFailed(true);
+    }
+  }, [asset.type, videoCandidates.length]);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({
@@ -95,10 +129,36 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
             playsInline
             onLoadedMetadata={() => setVideoReady(true)}
             onCanPlay={() => setVideoReady(true)}
+            onError={() => {
+              if (videoCandidateIndex < videoCandidates.length - 1) {
+                setVideoReady(false);
+                setVideoLoadFailed(false);
+                setVideoCandidateIndex((idx) => idx + 1);
+                return;
+              }
+              setVideoLoadFailed(true);
+              setVideoReady(false);
+            }}
           />
-          {!videoReady && (
+          {!videoReady && !videoLoadFailed && (
             <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-neutral-100/70 dark:bg-neutral-900/70 pointer-events-none">
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          {videoLoadFailed && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg bg-neutral-100/80 dark:bg-neutral-900/80">
+              <span className="text-xs text-neutral-700 dark:text-neutral-200">Video failed to load</span>
+              <button
+                type="button"
+                className="rounded bg-neutral-200 px-2 py-1 text-xs text-neutral-800 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600"
+                onClick={() => {
+                  setVideoCandidateIndex(0);
+                  setVideoLoadFailed(false);
+                  setVideoReady(false);
+                }}
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>

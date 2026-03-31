@@ -55,23 +55,13 @@ function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
   return url?.startsWith('http') ? 'anonymous' : undefined;
 }
 
-const MAX_VIDEO_RETRIES = 3;
-/** Delay in ms before each video retry attempt.  Linear backoff:
- *  attempt 1 → 5s, attempt 2 → 10s, attempt 3 → 15s.
- *  Gives CDN propagation time without hammering the endpoint. */
+const VIDEO_RETRY_DELAYS_MS = [3000, 6000, 10000, 15000, 22000, 30000, 45000, 60000];
+const MAX_VIDEO_RETRIES = VIDEO_RETRY_DELAYS_MS.length;
+/** Delay in ms before each video retry attempt. */
 function getVideoRetryDelay(attempt: number): number {
-  return 5000 * attempt;
+  const index = Math.max(0, Math.min(attempt - 1, VIDEO_RETRY_DELAYS_MS.length - 1));
+  return VIDEO_RETRY_DELAYS_MS[index];
 }
-
-/**
- * Module-level set of video URLs that exhausted all retries.
- * Prevents remounted cards (virtualization) from re-spamming the CDN.
- * Cleared on full page reload; entries expire when ingestion completes
- * and the URL switches to a local backend path.
- */
-const _failedVideoUrls = new Set<string>();
-
-
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -290,9 +280,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const videoRetryCountRef = useRef(0);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
-  const [videoLoadFailed, setVideoLoadFailed] = useState(
-    () => !!videoSrc && _failedVideoUrls.has(videoSrc),
-  );
+  const [videoLoadFailed, setVideoLoadFailed] = useState(false);
   const [videoRetryToken, setVideoRetryToken] = useState<number | null>(null);
   const [videoRetrying, setVideoRetrying] = useState(false);
   const [videoRetryAttempt, setVideoRetryAttempt] = useState(0);
@@ -443,8 +431,6 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     if (videoRetryCountRef.current >= MAX_VIDEO_RETRIES) {
       setVideoLoadFailed(true);
       setVideoRetrying(false);
-      // Remember this URL failed so remounted cards don't retry
-      _failedVideoUrls.add(videoSrc);
       return;
     }
 
