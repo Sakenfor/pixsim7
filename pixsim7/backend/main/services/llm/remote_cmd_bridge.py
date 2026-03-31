@@ -155,8 +155,14 @@ class RemoteCommandBridge:
         *,
         websocket: Optional[WebSocket] = None,
         connection_id: Optional[str] = None,
+        grace: bool = True,
     ) -> None:
-        """Remove a disconnected agent."""
+        """Remove a disconnected agent.
+
+        If *grace* is True (default), in-flight tasks are kept pending for
+        ``DISCONNECT_GRACE_SECONDS`` so a reconnecting bridge can deliver
+        buffered results.  Pass ``grace=False`` for explicit user stop.
+        """
         agent = self._agents.get(bridge_client_id)
         if not agent:
             return
@@ -177,24 +183,64 @@ class RemoteCommandBridge:
 
         agent = self._agents.pop(bridge_client_id, None)
         if agent:
+            in_flight = list(agent.current_task_ids)
             logger.info(
                 "remote_agent_disconnected",
                 bridge_client_id=bridge_client_id,
                 bridge_id=agent.bridge_id,
                 tasks_completed=agent.tasks_completed,
+                in_flight=len(in_flight),
             )
-            # Fail all pending tasks for this agent and cache errors
-            # so frontend reconnect can retrieve the error status
-            for tid in list(agent.current_task_ids):
+            if in_flight and grace:
+                # Don't fail tasks immediately — the bridge client buffers
+                # results and replays them on reconnect.  Keep futures alive
+                # for a grace period so the replayed result can resolve them.
+                asyncio.ensure_future(
+                    self._fail_tasks_after_grace(in_flight, bridge_client_id)
+                )
+            elif in_flight:
+                # Immediate failure (explicit user stop — no reconnect expected)
+                for tid in in_flight:
+                    self._completed_results[tid] = {
+                        "error": "Remote agent disconnected",
+                        "ok": False,
+                    }
+                    future = self._pending_tasks.pop(tid, None)
+                    if future and not future.done():
+                        future.set_exception(ConnectionError("Remote agent disconnected"))
+                    self._active_tasks.pop(tid, None)
+            self._gc_completed()
+
+    # Grace period before failing in-flight tasks after bridge disconnect.
+    # The bridge client buffers results and replays them on reconnect,
+    # so we wait before declaring tasks failed.
+    DISCONNECT_GRACE_SECONDS = 90
+
+    async def _fail_tasks_after_grace(
+        self,
+        task_ids: List[str],
+        bridge_client_id: str,
+    ) -> None:
+        """Wait for bridge reconnect before failing in-flight tasks."""
+        await asyncio.sleep(self.DISCONNECT_GRACE_SECONDS)
+        failed = 0
+        for tid in task_ids:
+            future = self._pending_tasks.pop(tid, None)
+            if future and not future.done():
                 self._completed_results[tid] = {
                     "error": "Remote agent disconnected",
                     "ok": False,
                 }
-                future = self._pending_tasks.pop(tid, None)
-                if future and not future.done():
-                    future.set_exception(ConnectionError("Remote agent disconnected"))
+                future.set_exception(ConnectionError("Remote agent disconnected"))
                 self._active_tasks.pop(tid, None)
-            self._gc_completed()
+                failed += 1
+        if failed:
+            logger.info(
+                "grace_period_expired",
+                bridge_client_id=bridge_client_id,
+                failed=failed,
+                total=len(task_ids),
+            )
 
     async def force_disconnect(self, bridge_client_id: str) -> bool:
         """Force-close a bridge's WebSocket from the server side.
@@ -216,7 +262,7 @@ class RemoteCommandBridge:
             await agent.websocket.close(code=1000, reason="Stopped by user")
         except Exception:
             pass
-        self.disconnect(bridge_client_id)
+        self.disconnect(bridge_client_id, grace=False)
         return True
 
     async def force_disconnect_all(self) -> int:
