@@ -95,6 +95,8 @@ class AssistantChatBridge {
   private _requests = new Map<string, BridgeRequest>();
   private _listeners: Listener[] = [];
   private _staleTimer: ReturnType<typeof setInterval> | null = null;
+  /** Monotonic counter — incremented on every state change so useSyncExternalStore always re-renders */
+  private _version = 0;
 
   // ── WebSocket state ──
   private _ws: WebSocket | null = null;
@@ -428,14 +430,11 @@ class AssistantChatBridge {
   }
 
   getSnapshot(): number {
-    let hash = 0;
-    for (const [, req] of this._requests) {
-      hash += req.status.length + (req.activity?.length ?? 0) + req.thinkingLog.length;
-    }
-    return hash + this._requests.size;
+    return this._version;
   }
 
   private _notify(): void {
+    this._version++;
     this._listeners.forEach((fn) => fn());
   }
 }
