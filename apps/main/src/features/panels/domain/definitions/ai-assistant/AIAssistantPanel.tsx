@@ -2005,6 +2005,8 @@ export function AIAssistantPanel() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const connected = bridge?.connected ?? 0;
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // Auto-create a tab if none exist
   useEffect(() => {
@@ -2089,14 +2091,22 @@ export function AIAssistantPanel() {
     };
   }, [tabs]);
 
+  const commitRename = useCallback((tabId: string, value: string) => {
+    const trimmed = value.trim();
+    if (trimmed) updateTab(tabId, { label: trimmed });
+    setRenamingTabId(null);
+  }, [updateTab]);
+
   const renderSessionItem = useCallback((tab: ChatTab, isActive: boolean) => {
     const tabProfile = profiles.find((p) => p.id === tab.profileId);
     const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
     const bridgeReq = chatBridge.get(tab.id);
     const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+    const isRenaming = renamingTabId === tab.id;
 
     return (
       <div
+        key={tab.id}
         role="option"
         aria-selected={isActive}
         onClick={() => setActiveTab(tab.id)}
@@ -2115,19 +2125,50 @@ export function AIAssistantPanel() {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-medium truncate">{tab.label}</div>
-          {tab.profileId && tabProfile && (
+          {isRenaming ? (
+            <input
+              autoFocus
+              className="w-full text-[11px] font-medium bg-white dark:bg-neutral-800 border border-blue-300 dark:border-blue-600 rounded px-1 py-0 outline-none"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={() => commitRename(tab.id, renameValue)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') commitRename(tab.id, renameValue);
+                if (e.key === 'Escape') setRenamingTabId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div
+              className="text-[11px] font-medium truncate"
+              onDoubleClick={(e) => { e.stopPropagation(); setRenamingTabId(tab.id); setRenameValue(tab.label); }}
+            >
+              {tab.label}
+            </div>
+          )}
+          {tab.profileId && tabProfile && !isRenaming && (
             <div className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate">{tabProfile.label}</div>
           )}
         </div>
-        {tabs.length > 1 && (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-            className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+            onClick={(e) => { e.stopPropagation(); setRenamingTabId(tab.id); setRenameValue(tab.label); }}
+            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+            title="Rename"
           >
-            <Icon name="x" size={10} />
+            <Icon name="edit" size={10} />
           </button>
-        )}
+          {tabs.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+              title="Close"
+            >
+              <Icon name="x" size={10} />
+            </button>
+          )}
+        </div>
       </div>
     );
   }, [profiles, tabs.length, closeTab, setActiveTab]);

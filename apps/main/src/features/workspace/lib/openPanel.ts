@@ -37,6 +37,14 @@ export function navigateToPlan(planId: string): void {
   });
 }
 
+/** Open the AI Assistant panel with a new chat tab scoped to a plan. */
+export function navigateToAssistantWithPlan(planId: string, planTitle?: string): void {
+  useWorkspaceStore.getState().restorePanel('ai-assistant');
+  window.dispatchEvent(new CustomEvent('ai-assistant:open-plan-chat', {
+    detail: { planId, planTitle },
+  }));
+}
+
 /** Open the Agent Observability panel and expand a specific agent profile. */
 export function navigateToAgentProfile(agentId: string): void {
   try { localStorage.setItem('agent-observability:nav', 'agents'); } catch { /* */ }

@@ -75,8 +75,9 @@ from pixsim7.backend.main.services.docs.plan_stages import (
 from pixsim7.backend.main.services.docs.plan_authoring_policy import (
     PLAN_AUTHORING_CONTRACT_ENDPOINT,
     get_plan_authoring_contract,
-    validate_plan_create_policy,
-    validate_plan_progress_policy,
+    evaluate_plan_create_policy,
+    evaluate_plan_update_policy,
+    evaluate_plan_progress_policy,
 )
 from pixsim_logging import get_logger
 
@@ -187,12 +188,14 @@ from pixsim7.backend.main.api.v1.plans.helpers import (
 @router.get("", response_model=PlansIndexResponse)
 async def list_plans(
     _user: CurrentUser,
+    q: Optional[str] = Query(None, description="Free-text search across id/title/summary/owner/tags"),
     status: Optional[str] = Query(None, description="Filter by status (active, done, parked, archived, removed)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
     priority: Optional[str] = Query(None, description="Filter by priority (high, normal, low)"),
     plan_type: Optional[str] = Query(None, description=f"Filter by plan type ({', '.join(CANONICAL_PLAN_TYPES)})"),
     tag: Optional[str] = Query(None, description="Filter by tag (plans containing this tag)"),
+    compact: bool = Query(False, description="Return lightweight list entries for large result sets"),
     include_hidden: bool = Query(False, description="Include archived and removed plans (hidden by default)"),
     limit: int = Query(100, ge=1, le=500, description="Max plans to return"),
     offset: int = Query(0, ge=0, description="Number of plans to skip"),
@@ -202,15 +205,16 @@ async def list_plans(
     bundles = await list_plan_bundles(db)
     filtered = _filter_bundles(
         bundles, status=status, owner=owner, namespace=namespace,
-        priority=priority, plan_type=plan_type, tag=tag, include_hidden=include_hidden,
+        priority=priority, plan_type=plan_type, tag=tag, q=q, include_hidden=include_hidden,
     )
 
     # Build parent->children index
     children_map: dict[str, list[PlanBundle]] = {}
-    for b in bundles:
-        pid = b.plan.parent_id
-        if pid:
-            children_map.setdefault(pid, []).append(b)
+    if not compact:
+        for b in bundles:
+            pid = b.plan.parent_id
+            if pid:
+                children_map.setdefault(pid, []).append(b)
 
     total = len(filtered)
     page = filtered[offset : offset + limit]
@@ -218,7 +222,7 @@ async def list_plans(
     # Batch-load review round counts for plans in this page
     page_plan_ids = [b.id for b in page]
     review_counts: dict[str, tuple[int, int]] = {}
-    if page_plan_ids:
+    if page_plan_ids and not compact:
         rows = (
             await db.execute(
                 select(
@@ -239,6 +243,7 @@ async def list_plans(
             b,
             children=children_map.get(b.id),
             review_counts=review_counts.get(b.id),
+            compact=compact,
         )
         for b in page
     ]
@@ -320,6 +325,7 @@ class PlanCreateResponse(BaseModel):
     created: bool
     commitSha: Optional[str] = None
     exportError: Optional[str] = None
+    warnings: List[str] = Field(default_factory=list)
 
 
 class PlanAuthoringRuleEntry(BaseModel):
@@ -327,6 +333,9 @@ class PlanAuthoringRuleEntry(BaseModel):
     endpointId: str
     field: str
     level: Literal["required", "suggested"]
+    severity: str = "warning"
+    sinceVersion: Optional[str] = None
+    deprecatedAt: Optional[str] = None
     appliesToPrincipalTypes: List[str] = Field(default_factory=list)
     description: str
     constraint: Dict[str, Any] = Field(default_factory=dict)
@@ -355,6 +364,9 @@ async def get_plan_authoring_contract_endpoint(
                 endpointId=str(rule.get("endpoint_id") or ""),
                 field=str(rule.get("field") or ""),
                 level=str(rule.get("level") or "suggested"),
+                severity=str(rule.get("severity") or "warning"),
+                sinceVersion=(str(rule.get("since_version")) if rule.get("since_version") is not None else None),
+                deprecatedAt=(str(rule.get("deprecated_at")) if rule.get("deprecated_at") is not None else None),
                 appliesToPrincipalTypes=list(rule.get("applies_to_principal_types") or []),
                 description=str(rule.get("description") or ""),
                 constraint=dict(rule.get("constraint") or {}),
@@ -383,7 +395,7 @@ async def create_plan(
     from pixsim7.backend.main.services.docs.plan_write import _git_commit
     from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-    policy_violations = validate_plan_create_policy(payload, principal)
+    policy_violations, policy_warnings = evaluate_plan_create_policy(payload, principal)
     if policy_violations:
         raise HTTPException(
             status_code=400,
@@ -507,6 +519,7 @@ async def create_plan(
         created=True,
         commitSha=commit_sha,
         exportError=export_error,
+        warnings=policy_warnings,
     )
 
 
@@ -582,6 +595,7 @@ class PlanUpdateResponse(BaseModel):
     revision: Optional[int] = None
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
+    warnings: List[str] = Field(default_factory=list)
 
 
 @router.patch("/{plan_id}", response_model=PlanUpdateResponse)
@@ -680,6 +694,17 @@ async def update_plan_endpoint(
             db, plan_id=plan_id, companions=updates["companions"],
         )
 
+    update_policy_violations, update_policy_warnings = evaluate_plan_update_policy(updates, principal)
+    if update_policy_violations:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Plan authoring policy violation",
+                "errors": update_policy_violations,
+                "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+            },
+        )
+
     try:
         result = await update_plan(
             db, plan_id, updates, principal=principal,
@@ -719,6 +744,7 @@ async def update_plan_endpoint(
         revision=result.revision,
         commitSha=result.commit_sha,
         newScope=result.new_scope,
+        warnings=update_policy_warnings,
     )
 
 
@@ -908,6 +934,13 @@ class PlanProgressRequest(BaseModel):
             '(legacy file path) or {"kind": "file_path"|"test_suite"|"git_commit", "ref": "..."}.'
         ),
     )
+    append_tests: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Test suite IDs to link directly to this checkpoint. "
+            "Stored as evidence entries with kind='test_suite'."
+        ),
+    )
     commit_sha: Optional[str] = Field(
         None,
         description="Single git commit SHA to record as checkpoint evidence. Accepts short (7+) or full (40) hex.",
@@ -943,6 +976,7 @@ class PlanProgressResponse(BaseModel):
     revision: Optional[int] = None
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
+    warnings: List[str] = Field(default_factory=list)
 
 
 def _checkpoint_progress_summary(checkpoint: Dict[str, Any], fallback_id: str) -> str:
@@ -952,6 +986,21 @@ def _checkpoint_progress_summary(checkpoint: Dict[str, Any], fallback_id: str) -
     if points_total is not None and points_total > 0:
         return f"{checkpoint_id} [{status}] {points_done}/{points_total}"
     return f"{checkpoint_id} [{status}] {points_done}"
+
+
+def _extract_checkpoint_test_suite_refs(evidence_value: Any) -> List[str]:
+    refs: List[str] = []
+    seen: Set[str] = set()
+    for item in evidence_value if isinstance(evidence_value, list) else []:
+        ref = _normalize_evidence_ref(item, strict=False)
+        if not ref or ref.get("kind") != "test_suite":
+            continue
+        suite_id = str(ref.get("ref") or "").strip()
+        if not suite_id or suite_id in seen:
+            continue
+        seen.add(suite_id)
+        refs.append(suite_id)
+    return refs
 
 
 async def _emit_plan_progress_notification(
@@ -1021,6 +1070,7 @@ async def log_plan_progress(
             payload.eta is not None,
             payload.blockers is not None,
             bool(payload.append_evidence),
+            bool(payload.append_tests),
             payload.commit_sha is not None,
             bool(payload.append_commits),
             payload.commit_range is not None,
@@ -1059,6 +1109,12 @@ async def log_plan_progress(
     old_checkpoint_summary = _checkpoint_progress_summary(checkpoint, payload.checkpoint_id)
 
     referenced_test_suite_ids: list[str] = []
+    for suite_id in payload.append_tests or []:
+        if not isinstance(suite_id, str) or not suite_id.strip():
+            raise HTTPException(status_code=400, detail="append_tests must be list of non-empty strings")
+        normalized_suite_id = suite_id.strip()
+        if normalized_suite_id not in referenced_test_suite_ids:
+            referenced_test_suite_ids.append(normalized_suite_id)
     for item in payload.append_evidence or []:
         try:
             ref = _normalize_evidence_ref(item)
@@ -1077,7 +1133,7 @@ async def log_plan_progress(
         )
         known_test_suite_ids = set(suites_result.scalars().all())
 
-    progress_policy_violations = validate_plan_progress_policy(
+    progress_policy_violations, progress_policy_warnings = evaluate_plan_progress_policy(
         payload,
         principal,
         referenced_test_suite_ids=referenced_test_suite_ids,
@@ -1189,16 +1245,24 @@ async def log_plan_progress(
 
     # ── Build evidence items and merge ──────────────────────────────
     commit_evidence = [{"kind": "git_commit", "ref": sha} for sha in collected_shas]
+    test_suite_evidence = [{"kind": "test_suite", "ref": suite_id} for suite_id in (payload.append_tests or [])]
 
     evidence_to_append: Optional[list] = None
     if payload.append_evidence is not None:
         evidence_to_append = list(payload.append_evidence)
+    if test_suite_evidence:
+        if evidence_to_append is None:
+            evidence_to_append = []
+        evidence_to_append.extend(test_suite_evidence)
     if commit_evidence:
         if evidence_to_append is None:
             evidence_to_append = []
         evidence_to_append.extend(commit_evidence)
     if evidence_to_append is not None:
         checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), evidence_to_append)
+        tests_refs = _extract_checkpoint_test_suite_refs(checkpoint.get("evidence"))
+        if tests_refs:
+            checkpoint["tests"] = tests_refs
 
     # Primary commit SHA for audit events
     progress_commit_sha: Optional[str] = collected_shas[0] if collected_shas else None
@@ -1262,6 +1326,7 @@ async def log_plan_progress(
         revision=result.revision,
         commitSha=result.commit_sha,
         newScope=result.new_scope,
+        warnings=progress_policy_warnings,
     )
 
 
@@ -1401,6 +1466,109 @@ async def delete_plan_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return DeleteResponse(success=result.success, message=result.message)
+
+
+# ── Active work inference ────────────────────────────────────────
+
+
+class ActiveWorkCheckpoint(BaseModel):
+    checkpoint_id: str
+    checkpoint_label: str
+    confidence: Literal["high", "medium", "low"]
+    reason: str
+
+
+class ActiveWorkResponse(BaseModel):
+    plan_id: str = Field(alias="planId")
+    active_checkpoints: List[ActiveWorkCheckpoint] = Field(default_factory=list, alias="activeCheckpoints")
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/active-work/{plan_id}", response_model=ActiveWorkResponse)
+async def get_active_work(
+    plan_id: str,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Infer which checkpoint(s) an agent is currently working on based on audit trail."""
+    from pixsim7.backend.main.services.audit import list_entity_audit_events
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    checkpoints = bundle.plan.checkpoints or []
+    if not checkpoints:
+        return ActiveWorkResponse(planId=plan_id, activeCheckpoints=[])
+
+    # Get recent audit events for this plan (last 50)
+    events = await list_entity_audit_events(db, plan_id=plan_id, limit=50)
+
+    active: list[ActiveWorkCheckpoint] = []
+    seen_ids: set[str] = set()
+
+    # Build checkpoint lookup
+    cp_map: dict[str, dict] = {}
+    for cp in checkpoints:
+        cp_id = cp.get("id", "") if isinstance(cp, dict) else getattr(cp, "id", "")
+        cp_label = cp.get("label", cp_id) if isinstance(cp, dict) else getattr(cp, "label", cp_id)
+        cp_status = cp.get("status", "") if isinstance(cp, dict) else getattr(cp, "status", "")
+        if cp_id:
+            cp_map[cp_id] = {"id": cp_id, "label": cp_label or cp_id, "status": cp_status}
+
+    # Heuristic 1: checkpoints with status "active" — direct match (high confidence)
+    for cp_id, cp in cp_map.items():
+        if cp["status"] == "active" and cp_id not in seen_ids:
+            active.append(ActiveWorkCheckpoint(
+                checkpoint_id=cp_id,
+                checkpoint_label=cp["label"],
+                confidence="high",
+                reason="Checkpoint status is active",
+            ))
+            seen_ids.add(cp_id)
+
+    # Heuristic 2: recent audit events that mention checkpoint IDs in field changes
+    for event in events:
+        if len(active) >= 3:
+            break
+        # Check if event references a checkpoint by ID in new_value or extra
+        text = " ".join(filter(None, [event.new_value, event.old_value, event.entity_label or ""]))
+        extra_str = json.dumps(event.extra) if event.extra else ""
+        combined = f"{text} {extra_str}"
+        for cp_id, cp in cp_map.items():
+            if cp_id in combined and cp_id not in seen_ids:
+                active.append(ActiveWorkCheckpoint(
+                    checkpoint_id=cp_id,
+                    checkpoint_label=cp["label"],
+                    confidence="medium",
+                    reason=f"Referenced in audit: {event.action} {event.entity_type}",
+                ))
+                seen_ids.add(cp_id)
+
+    # Heuristic 3: most recently updated checkpoint (from last_update timestamps)
+    if not active:
+        latest_cp = None
+        latest_ts = ""
+        for cp in checkpoints:
+            lu = cp.get("last_update") if isinstance(cp, dict) else getattr(cp, "last_update", None)
+            if lu:
+                ts = lu.get("at", "") if isinstance(lu, dict) else getattr(lu, "at", "")
+                if ts > latest_ts:
+                    latest_ts = ts
+                    latest_cp = cp
+        if latest_cp:
+            cp_id = latest_cp.get("id", "") if isinstance(latest_cp, dict) else getattr(latest_cp, "id", "")
+            cp_label = latest_cp.get("label", cp_id) if isinstance(latest_cp, dict) else getattr(latest_cp, "label", cp_id)
+            if cp_id and cp_id not in seen_ids:
+                active.append(ActiveWorkCheckpoint(
+                    checkpoint_id=cp_id,
+                    checkpoint_label=cp_label or cp_id,
+                    confidence="low",
+                    reason="Most recently updated checkpoint",
+                ))
+
+    return ActiveWorkResponse(planId=plan_id, activeCheckpoints=active)
 
 
 # ── Catch-all: plan by ID (must be last) ─────────────────────────

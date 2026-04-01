@@ -13,10 +13,12 @@ import { useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { navigateToAssistantWithPlan } from '@features/workspace/lib/openPanel';
+
 import { getCheckpointPointProgress } from '../PlanCheckpointList';
 
 import { ClickableBadge } from './shared';
-import type { PlanChildSummary, PlanDetail, PlanStageOptionEntry } from './types';
+import type { AgentSessionSnapshot, PlanChildSummary, PlanDetail, PlanStageOptionEntry } from './types';
 import {
   formatDate,
   PRIORITY_COLORS,
@@ -35,6 +37,10 @@ export interface PlanDetailHeaderProps {
   onNavigatePlan?: (planId: string) => void;
   /** Ordered sibling phases when viewing a child plan (resolved from parent). */
   siblingPhases?: PlanChildSummary[];
+  /** Live agent sessions currently working on this plan. */
+  planAgentSessions?: AgentSessionSnapshot[];
+  /** Inferred active checkpoints from audit + agent activity. */
+  activeCheckpoints?: { checkpointId: string; checkpointLabel: string; confidence: string; reason: string }[];
 }
 
 export function PlanDetailHeader({
@@ -46,6 +52,8 @@ export function PlanDetailHeader({
   onApplyUpdate,
   onNavigatePlan,
   siblingPhases = [],
+  planAgentSessions = [],
+  activeCheckpoints = [],
 }: PlanDetailHeaderProps) {
   // Progress computation
   const pointProgressRows = detail.checkpoints
@@ -136,6 +144,31 @@ export function PlanDetailHeader({
         </div>
       )}
 
+      {/* Live agent presence banner */}
+      {planAgentSessions.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {planAgentSessions.map((session) => (
+            <AgentPresenceBanner key={session.session_id} session={session} planId={detail.id} planTitle={detail.title} />
+          ))}
+          {activeCheckpoints.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+              <Icon name="target" size={10} className="text-neutral-400 shrink-0" />
+              <span>Working on:</span>
+              {activeCheckpoints.map((cp) => (
+                <Badge
+                  key={cp.checkpointId}
+                  color={cp.confidence === 'high' ? 'green' : cp.confidence === 'medium' ? 'blue' : 'gray'}
+                  className="text-[9px]"
+                  title={cp.reason}
+                >
+                  {cp.checkpointLabel || cp.checkpointId}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header with clickable status/priority badges */}
       <div>
         <div className="flex items-center gap-2 mb-1">
@@ -170,6 +203,15 @@ export function PlanDetailHeader({
               {detail.visibility}
             </Badge>
           )}
+          <button
+            type="button"
+            onClick={() => navigateToAssistantWithPlan(detail.id, detail.title)}
+            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+            title={`Open AI Assistant chat scoped to this plan`}
+          >
+            <Icon name="messageSquare" size={12} />
+            {planAgentSessions.length > 0 ? 'Open Chat' : 'Start Chat'}
+          </button>
         </div>
         <div className="text-sm text-neutral-500 dark:text-neutral-400">{detail.summary}</div>
         {lastResult && (
@@ -203,6 +245,94 @@ export function PlanDetailHeader({
       </div>
     </>
   );
+}
+
+// ── Agent presence banner ────────────────────────────────────────
+
+const PRESENCE_STYLES: Record<string, { dot: string; ring: string; bg: string; label: string }> = {
+  active: {
+    dot: 'bg-green-500',
+    ring: 'bg-green-400/50',
+    bg: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800/50',
+    label: 'Working',
+  },
+  idle: {
+    dot: 'bg-yellow-500',
+    ring: 'bg-yellow-400/50',
+    bg: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800/50',
+    label: 'Idle',
+  },
+  expired: {
+    dot: 'bg-neutral-400',
+    ring: 'bg-neutral-300/50',
+    bg: 'bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-700',
+    label: 'Disconnected',
+  },
+};
+
+function AgentPresenceBanner({ session, planId, planTitle }: { session: AgentSessionSnapshot; planId: string; planTitle?: string }) {
+  const style = PRESENCE_STYLES[session.status] ?? PRESENCE_STYLES.active;
+  const isActive = session.status === 'active';
+
+  // Agent display name: prefer agent_type, fall back to session_id prefix
+  const agentLabel = session.agent_type || session.session_id.split('-')[0] || 'Agent';
+
+  // Action + detail summary
+  const actionText = [session.action, session.detail].filter(Boolean).join(': ');
+
+  // Elapsed time from most recent activity
+  const lastActivity = session.recent_activity?.[0];
+  const elapsed = lastActivity ? formatElapsed(lastActivity.timestamp) : null;
+
+  return (
+    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs ${style.bg}`}>
+      {/* Animated dot */}
+      <span className="relative flex h-2.5 w-2.5 shrink-0">
+        {isActive && (
+          <span className={`absolute inset-0 rounded-full animate-ping ${style.ring}`} />
+        )}
+        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${style.dot}`} />
+      </span>
+
+      {/* Content */}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <span className="font-medium text-neutral-800 dark:text-neutral-200 shrink-0">
+          {agentLabel}
+        </span>
+        <span className="text-neutral-400 dark:text-neutral-500 shrink-0">&middot;</span>
+        <span className="text-neutral-600 dark:text-neutral-400 truncate">
+          {actionText || style.label}
+        </span>
+      </div>
+
+      {/* Elapsed badge */}
+      {elapsed && (
+        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 shrink-0 tabular-nums">
+          {elapsed}
+        </span>
+      )}
+
+      {/* Open Chat link */}
+      <button
+        type="button"
+        onClick={() => navigateToAssistantWithPlan(planId, planTitle)}
+        className="text-[10px] text-blue-500 dark:text-blue-400 hover:underline shrink-0"
+      >
+        Open Chat
+      </button>
+    </div>
+  );
+}
+
+function formatElapsed(isoTimestamp: string): string {
+  const diffMs = Date.now() - new Date(isoTimestamp).getTime();
+  if (diffMs < 0 || !Number.isFinite(diffMs)) return '';
+  const seconds = Math.floor(diffMs / 1_000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
 }
 
 // ── Phase navigator (dropdown + prev/next) ──────────────────────
