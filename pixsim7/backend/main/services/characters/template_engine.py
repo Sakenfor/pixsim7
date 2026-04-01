@@ -14,6 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.services.characters.character import CharacterService
+from pixsim7.backend.main.shared.ontology.vocabularies import (
+    get_registry,
+    normalize_species_id,
+)
+from pixsim7.backend.main.shared.ontology.vocabularies.types import SpeciesDef
 
 
 class CharacterTemplateEngine:
@@ -21,6 +26,9 @@ class CharacterTemplateEngine:
 
     # Pattern to match {{character:character_id}} or {{character:character_id:detail}}
     TEMPLATE_PATTERN = re.compile(r'\{\{character:([a-zA-Z0-9_-]+)(?::([a-zA-Z0-9_-]+))?\}\}')
+    _DEFAULT_VISUAL_PRIORITY = ["build", "height", "skin_fur", "eyes", "distinguishing_marks"]
+    _RENDER_TEMPLATE_PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+    _RENDER_TEMPLATE_OPTIONAL = re.compile(r"\[([^\[\]]+)\]")
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -148,31 +156,143 @@ class CharacterTemplateEngine:
 
     def _build_visual_description(self, character: Character) -> str:
         """Build visual description from visual_traits"""
-        traits = character.visual_traits
-        if not traits:
+        traits = character.visual_traits if isinstance(character.visual_traits, dict) else {}
+        species = self._get_species_definition(character)
+        if not traits and not species:
             return ""
 
-        # Prioritize certain traits
-        priority_keys = ["build", "height", "skin_fur", "eyes", "distinguishing_marks"]
+        if species and species.render_template:
+            rendered = self._render_species_template(species.render_template, traits, species)
+            if rendered:
+                return rendered
+
+        priority_keys = (
+            list(species.visual_priority)
+            if species and species.visual_priority
+            else list(self._DEFAULT_VISUAL_PRIORITY)
+        )
         parts = []
+        seen_keys = set()
 
         for key in priority_keys:
-            if key in traits:
-                value = traits[key]
-                if isinstance(value, list):
-                    parts.extend(value)
-                else:
-                    parts.append(value)
+            seen_keys.add(key)
+            parts.extend(self._flatten_trait_value(self._resolve_visual_trait_value(key, traits, species)))
 
         # Add any other traits not in priority list
         for key, value in traits.items():
-            if key not in priority_keys:
-                if isinstance(value, list):
-                    parts.extend(value)
-                else:
-                    parts.append(value)
+            if key in seen_keys:
+                continue
+            parts.extend(self._flatten_trait_value(value))
 
         return ", ".join(str(p) for p in parts if p)
+
+    def _get_species_definition(self, character: Character) -> Optional[SpeciesDef]:
+        species_id = normalize_species_id(character.species)
+        if not species_id:
+            return None
+        return get_registry().get_species(species_id)
+
+    def _resolve_visual_trait_value(
+        self,
+        key: str,
+        traits: Dict[str, Any],
+        species: Optional[SpeciesDef],
+    ) -> Any:
+        if key in traits:
+            return traits.get(key)
+
+        if not species:
+            return None
+
+        if key == "stance":
+            if species.anatomy_map.get("stance"):
+                return species.anatomy_map.get("stance")
+            return species.default_stance
+
+        if key in species.anatomy_map:
+            return species.anatomy_map.get(key)
+
+        if key == "movement" and species.movement_verbs:
+            return species.movement_verbs[0]
+
+        if key.startswith("pronoun."):
+            pronoun_key = key.split(".", 1)[1]
+            return species.pronoun_set.get(pronoun_key)
+        if key == "pronoun":
+            return species.pronoun_set.get("subject")
+
+        return None
+
+    def _flatten_trait_value(self, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            out = []
+            for item in value:
+                text = str(item).strip()
+                if text:
+                    out.append(text)
+            return out
+        text = str(value).strip()
+        return [text] if text else []
+
+    def _stringify_trait_value(self, value: Any) -> str:
+        values = self._flatten_trait_value(value)
+        return ", ".join(values)
+
+    def _render_species_template(
+        self,
+        template: str,
+        traits: Dict[str, Any],
+        species: SpeciesDef,
+    ) -> str:
+        source = str(template or "").strip()
+        if not source:
+            return ""
+
+        def render_segment(segment: str, *, drop_if_empty: bool) -> str:
+            had_value = False
+
+            def replace_placeholder(match: re.Match) -> str:
+                nonlocal had_value
+                key = match.group(1)
+                rendered = self._stringify_trait_value(
+                    self._resolve_visual_trait_value(key, traits, species)
+                )
+                if rendered:
+                    had_value = True
+                return rendered
+
+            rendered_segment = self._RENDER_TEMPLATE_PLACEHOLDER.sub(
+                replace_placeholder,
+                segment,
+            )
+            if drop_if_empty and not had_value:
+                return ""
+            return rendered_segment
+
+        rendered = source
+        previous = None
+        while rendered != previous:
+            previous = rendered
+            rendered = self._RENDER_TEMPLATE_OPTIONAL.sub(
+                lambda m: render_segment(m.group(1), drop_if_empty=True),
+                rendered,
+            )
+
+        rendered = render_segment(rendered, drop_if_empty=False)
+        return self._cleanup_rendered_text(rendered)
+
+    def _cleanup_rendered_text(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        cleaned = re.sub(r"\s+([,;:.!?])", r"\1", cleaned)
+        cleaned = re.sub(r"([,;:])(?!\s|$)", r"\1 ", cleaned)
+        cleaned = re.sub(r"(,\s*){2,}", ", ", cleaned)
+        cleaned = re.sub(r"\(\s*\)", "", cleaned)
+        cleaned = re.sub(r"\[\s*\]", "", cleaned)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned)
+        cleaned = cleaned.strip(" ,;:-")
+        return cleaned
 
     async def find_character_references(
         self,

@@ -129,6 +129,10 @@ class AssetSearchRequest(BaseModel):
 
     sort_by: str | None = Field(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field")
     sort_dir: str = Field("desc", pattern=r"^(asc|desc)$", description="Sort direction")
+    include_total: bool = Field(
+        True,
+        description="When true, computes exact total count. Set false to skip expensive count query.",
+    )
 
     limit: int = Field(50, ge=1, le=100, description="Results per page")
     offset: int = Field(0, ge=0, description="Pagination offset (legacy)")

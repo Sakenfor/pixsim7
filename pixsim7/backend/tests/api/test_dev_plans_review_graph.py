@@ -18,6 +18,7 @@ try:
     )
     from pixsim7.backend.main.api.v1 import dev_plans
     from pixsim7.backend.main.api.v1.dev_plans import router
+    from pixsim7.backend.main.api.v1.plans import helpers as plan_helpers
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -104,13 +105,13 @@ class TestDevPlansReviewGraph:
         }
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
             patch.object(
-                dev_plans,
+                plan_helpers,
                 "_load_review_round",
                 new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), plan_id="plan-a")),
             ),
-            patch.object(dev_plans, "_load_causal_review_adjacency", new=AsyncMock(return_value={})),
+            patch.object(plan_helpers, "_load_causal_review_adjacency", new=AsyncMock(return_value={})),
         ):
             async with _client(app) as c:
                 response = await c.post("/api/v1/dev/plans/reviews/plan-a/nodes", json=payload)
@@ -142,13 +143,13 @@ class TestDevPlansReviewGraph:
         }
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
             patch.object(
-                dev_plans,
+                plan_helpers,
                 "_load_review_round",
                 new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), plan_id="plan-a")),
             ),
-            patch.object(dev_plans, "_load_causal_review_adjacency", new=AsyncMock(return_value={})),
+            patch.object(plan_helpers, "_load_causal_review_adjacency", new=AsyncMock(return_value={})),
         ):
             async with _client(app) as c:
                 response = await c.post("/api/v1/dev/plans/reviews/plan-a/nodes", json=payload)
@@ -178,8 +179,8 @@ class TestDevPlansReviewGraph:
         )
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
-            patch.object(dev_plans, "_load_review_round", new=AsyncMock(return_value=round_row)),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_round", new=AsyncMock(return_value=round_row)),
         ):
             async with _client(app) as c:
                 response = await c.patch(
@@ -189,6 +190,98 @@ class TestDevPlansReviewGraph:
 
         assert response.status_code == 400
         assert "require non-empty conclusion" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_create_review_round_rejects_duplicate_round_number(self):
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: uuid4())),
+            commit=AsyncMock(),
+            add=lambda *_args, **_kwargs: None,
+        )
+        app = _app(db_obj=db)
+
+        with patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/dev/plans/reviews/plan-a/rounds",
+                    json={"round_number": 2, "status": "open"},
+                )
+
+        assert response.status_code == 409
+        assert "Review round already exists" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_review_round_rejects_empty_payload(self):
+        db = SimpleNamespace(commit=AsyncMock())
+        app = _app(db_obj=db)
+        round_uuid = str(uuid4())
+        round_row = SimpleNamespace(
+            id=uuid4(),
+            plan_id="plan-a",
+            round_number=2,
+            review_revision=None,
+            status="open",
+            note="existing note",
+            conclusion=None,
+            created_by="user:1",
+            actor_principal_type="user",
+            actor_agent_id=None,
+            actor_run_id=None,
+            actor_user_id=1,
+            created_at=SimpleNamespace(isoformat=lambda: "2026-03-21T00:00:00+00:00"),
+            updated_at=SimpleNamespace(isoformat=lambda: "2026-03-21T00:00:00+00:00"),
+        )
+
+        with (
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_round", new=AsyncMock(return_value=round_row)),
+        ):
+            async with _client(app) as c:
+                response = await c.patch(
+                    f"/api/v1/dev/plans/reviews/plan-a/rounds/{round_uuid}",
+                    json={},
+                )
+
+        assert response.status_code == 400
+        assert "No round fields to update" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_review_round_backfills_actor_fields_when_missing(self):
+        db = SimpleNamespace(commit=AsyncMock())
+        app = _app(db_obj=db)
+        round_uuid = str(uuid4())
+        round_row = SimpleNamespace(
+            id=uuid4(),
+            plan_id="plan-a",
+            round_number=3,
+            review_revision=7,
+            status="open",
+            note=None,
+            conclusion=None,
+            created_by=None,
+            actor_principal_type=None,
+            actor_agent_id=None,
+            actor_run_id=None,
+            actor_user_id=None,
+            created_at=SimpleNamespace(isoformat=lambda: "2026-03-21T00:00:00+00:00"),
+            updated_at=SimpleNamespace(isoformat=lambda: "2026-03-21T00:00:00+00:00"),
+        )
+
+        with (
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_round", new=AsyncMock(return_value=round_row)),
+        ):
+            async with _client(app) as c:
+                response = await c.patch(
+                    f"/api/v1/dev/plans/reviews/plan-a/rounds/{round_uuid}",
+                    json={"note": "attach actor metadata"},
+                )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["createdBy"] == "user:1"
+        assert body["actorPrincipalType"] == "user"
+        assert body["actorUserId"] == 1
 
     @pytest.mark.asyncio
     async def test_create_review_round_tracks_agent_actor_fields(self):
@@ -209,7 +302,7 @@ class TestDevPlansReviewGraph:
         )
         app = _app(db_obj=db, principal=principal)
 
-        with patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()):
+        with patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()):
             async with _client(app) as c:
                 response = await c.post(
                     "/api/v1/dev/plans/reviews/plan-a/rounds",
@@ -245,9 +338,9 @@ class TestDevPlansReviewGraph:
         app = _app(db_obj=db, principal=principal)
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
             patch.object(
-                dev_plans,
+                plan_helpers,
                 "_list_live_bridge_agents",
                 return_value=[
                     {
@@ -309,8 +402,8 @@ class TestDevPlansReviewGraph:
         )
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
-            patch.object(dev_plans, "_load_review_request", new=AsyncMock(return_value=request_row)),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_request", new=AsyncMock(return_value=request_row)),
         ):
             async with _client(app) as c:
                 update_response = await c.patch(
@@ -325,6 +418,113 @@ class TestDevPlansReviewGraph:
         assert updated["resolvedByPrincipalType"] == "agent"
         assert updated["resolvedByAgentId"] == "assistant:codex"
         assert updated["resolvedByRunId"] == "run-review-1"
+
+    @pytest.mark.asyncio
+    async def test_create_review_request_rejects_blank_title_after_trim(self):
+        db = SimpleNamespace(
+            add=lambda *_args, **_kwargs: None,
+            commit=AsyncMock(),
+            execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None)),
+        )
+        app = _app(db_obj=db)
+
+        with patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/dev/plans/reviews/plan-a/requests",
+                    json={
+                        "title": "   ",
+                        "body": "Still has a body",
+                    },
+                )
+
+        assert response.status_code == 400
+        assert "Request title is required" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_review_request_rejects_empty_payload(self):
+        db = SimpleNamespace(commit=AsyncMock())
+        app = _app(db_obj=db)
+
+        with (
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(
+                plan_helpers,
+                "_load_review_request",
+                new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), plan_id="plan-a")),
+            ),
+        ):
+            async with _client(app) as c:
+                response = await c.patch(
+                    f"/api/v1/dev/plans/reviews/plan-a/requests/{uuid4()}",
+                    json={},
+                )
+
+        assert response.status_code == 400
+        assert "No request fields to update" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_review_request_reopens_and_clears_resolution_fields(self):
+        db = SimpleNamespace(commit=AsyncMock())
+        app = _app(db_obj=db)
+        node_uuid = uuid4()
+
+        request_row = SimpleNamespace(
+            id=uuid4(),
+            plan_id="plan-a",
+            round_id=None,
+            kind="review",
+            dismissed=False,
+            title="Already fulfilled",
+            body="This was completed earlier.",
+            status="fulfilled",
+            target_user_id=1,
+            target_bridge_id=None,
+            target_agent_id="assistant:claude",
+            target_agent_type="claude-cli",
+            requested_by="user:1",
+            requested_by_principal_type="user",
+            requested_by_agent_id=None,
+            requested_by_run_id=None,
+            requested_by_user_id=1,
+            meta={
+                "dispatch": {
+                    "target_mode": "session",
+                    "target_session_id": "assistant:claude",
+                    "dispatch_state": "assigned",
+                    "dispatch_reason": "target_session_idle",
+                }
+            },
+            resolution_note="Done previously.",
+            resolved_node_id=node_uuid,
+            resolved_by="agent:assistant:claude",
+            resolved_by_principal_type="agent",
+            resolved_by_agent_id="assistant:claude",
+            resolved_by_run_id="run-fulfilled",
+            resolved_by_user_id=1,
+            created_at=SimpleNamespace(isoformat=lambda: "2026-03-22T00:00:00+00:00"),
+            updated_at=SimpleNamespace(isoformat=lambda: "2026-03-22T00:00:00+00:00"),
+            resolved_at=SimpleNamespace(isoformat=lambda: "2026-03-22T00:00:00+00:00"),
+        )
+
+        with (
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_request", new=AsyncMock(return_value=request_row)),
+        ):
+            async with _client(app) as c:
+                response = await c.patch(
+                    f"/api/v1/dev/plans/reviews/plan-a/requests/{uuid4()}",
+                    json={"status": "open"},
+                )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "open"
+        assert body["resolvedBy"] is None
+        assert body["resolvedByAgentId"] is None
+        assert body["resolvedByRunId"] is None
+        assert body["resolvedNodeId"] is None
+        assert body["resolvedAt"] is None
 
     @pytest.mark.asyncio
     async def test_list_review_assignees_returns_live_and_recent(self):
@@ -354,9 +554,11 @@ class TestDevPlansReviewGraph:
         ]
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
-            patch.object(dev_plans, "_list_live_bridge_agents", return_value=live_connected),
-            patch.object(dev_plans, "_list_recent_review_agents", new=AsyncMock(return_value=recent)),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_list_live_bridge_agents", return_value=live_connected),
+            patch.object(plan_helpers, "_list_recent_review_agents", new=AsyncMock(return_value=recent)),
+            patch.object(plan_helpers, "_list_delegated_target_user_ids", new=AsyncMock(return_value=[])),
+            patch.object(plan_helpers, "_resolve_profile_labels", new=AsyncMock(return_value={})),
         ):
             async with _client(app) as c:
                 response = await c.get("/api/v1/dev/plans/reviews/plan-a/assignees")
@@ -400,8 +602,8 @@ class TestDevPlansReviewGraph:
         ]
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
-            patch.object(dev_plans, "_list_live_bridge_agents", return_value=live_agents),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_list_live_bridge_agents", return_value=live_agents),
         ):
             async with _client(app) as c:
                 response = await c.post(
@@ -497,10 +699,10 @@ class TestDevPlansReviewGraph:
         )
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
-            patch.object(dev_plans, "_load_review_request", new=AsyncMock(return_value=request_row)),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_load_review_request", new=AsyncMock(return_value=request_row)),
             patch.object(
-                dev_plans,
+                plan_helpers,
                 "_dispatch_review_request_execution",
                 new=AsyncMock(
                     return_value={
@@ -601,9 +803,9 @@ class TestDevPlansReviewGraph:
         }
 
         with (
-            patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()),
+            patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()),
             patch.object(
-                dev_plans,
+                plan_helpers,
                 "_dispatch_review_request_execution",
                 new=AsyncMock(
                     side_effect=[
@@ -690,7 +892,7 @@ class TestDevPlansReviewGraph:
         )
         app = _app(db_obj=db)
 
-        with patch.object(dev_plans, "_ensure_plan_exists", new=AsyncMock()):
+        with patch.object(plan_helpers, "_ensure_plan_exists", new=AsyncMock()):
             async with _client(app) as c:
                 response = await c.get("/api/v1/dev/plans/plan-a/participants")
 
@@ -714,5 +916,5 @@ def test_graph_has_path():
         b: {c},
         c: set(),
     }
-    assert dev_plans._graph_has_path(adjacency, a, c) is True
-    assert dev_plans._graph_has_path(adjacency, c, a) is False
+    assert plan_helpers._graph_has_path(adjacency, a, c) is True
+    assert plan_helpers._graph_has_path(adjacency, c, a) is False

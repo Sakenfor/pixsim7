@@ -369,6 +369,8 @@ async def list_branches(
         branches = await branch_service.list_branches(family_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list branches: {e}")
 
     return [BranchSummary(**b) for b in branches]
 

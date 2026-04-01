@@ -21,6 +21,7 @@ from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
 )
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_CREATED
@@ -319,6 +320,9 @@ class AssetEnrichmentService:
         meta = asset.media_metadata or {}
         customer_paths = meta.get("customer_paths", {})
         create_mode = customer_paths.get("create_mode") or meta.get("create_mode", "i2v")
+        owner_user_id = resolve_effective_user_id(user)
+        if owner_user_id is None:
+            raise PermissionError("User-scoped principal required for enrichment")
 
         # Determine operation_type ONCE based on create_mode
         CREATE_MODE_TO_OPERATION = {
@@ -355,7 +359,7 @@ class AssetEnrichmentService:
             # This prevents duplicates when the same asset was synced with a different ID format
             existing_asset = await find_existing_asset(
                 self.db,
-                user_id=user.id,
+                user_id=owner_user_id,
                 provider_id=asset.provider_id,
                 candidate_ids=candidate_ids,
                 remote_url=remote_url,
@@ -375,7 +379,7 @@ class AssetEnrichmentService:
                 # Create new parent asset
                 parent_asset = await add_asset(
                     self.db,
-                    user_id=user.id,
+                    user_id=owner_user_id,
                     media_type=media_type,
                     provider_id=asset.provider_id,
                     provider_asset_id=provider_asset_id,

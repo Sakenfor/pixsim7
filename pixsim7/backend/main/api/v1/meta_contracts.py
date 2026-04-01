@@ -1276,6 +1276,7 @@ async def start_server_bridge(
 async def stop_server_bridge() -> StartBridgeResponse:
     """Stop bridges — server-spawned subprocess and/or connected WebSocket clients."""
     global _server_bridge_process
+    import subprocess
 
     killed_proc = False
     pid = None
@@ -1284,8 +1285,19 @@ async def stop_server_bridge() -> StartBridgeResponse:
     if _server_bridge_process and _server_bridge_process.poll() is None:
         pid = _server_bridge_process.pid
         try:
-            _server_bridge_process.terminate()
-            _server_bridge_process.wait(timeout=5)
+            if os.name == "nt" and pid:
+                # On Windows terminate() on the parent may leave child CLI/MCP
+                # processes alive. Kill the full process tree.
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                _server_bridge_process.wait(timeout=5)
+            else:
+                _server_bridge_process.terminate()
+                _server_bridge_process.wait(timeout=5)
         except Exception:
             try:
                 _server_bridge_process.kill()
@@ -1396,8 +1408,17 @@ async def _resolve_send_context(
     profile_config: Optional[dict] = None
     try:
         from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
-        profile = await resolve_agent_profile(db, user_id or 0, payload.assistant_id)
+        requested_profile_id = _normalize_profile_id(payload.assistant_id)
+        payload.assistant_id = requested_profile_id
+        agent_type_hint = _normalize_agent_type_hint(payload.engine)
+        profile = await resolve_agent_profile(
+            db,
+            user_id or 0,
+            requested_profile_id,
+            agent_type=agent_type_hint,
+        )
         if profile:
+            payload.assistant_id = profile.id
             if not payload.skip_persona:
                 profile_prompt = profile.system_prompt
             if profile.model_id:
@@ -1565,6 +1586,15 @@ class RegisterSessionRequest(BaseModel):
     last_plan_id: Optional[str] = Field(None, description="Plan ID being worked on")
 
 
+def _normalize_profile_id(profile_id: Optional[str]) -> Optional[str]:
+    value = (profile_id or "").strip()
+    if not value:
+        return None
+    if value.lower() in {"unknown", "none", "null"}:
+        return None
+    return value
+
+
 def _is_generic_cli_profile(profile_id: Optional[str]) -> bool:
     return isinstance(profile_id, str) and profile_id.strip().lower().startswith("cli-")
 
@@ -1577,7 +1607,7 @@ async def _resolve_registration_profile_id(
     engine: Optional[str],
     principal_agent_type: Optional[str],
 ) -> Optional[str]:
-    requested = (profile_id or "").strip() or None
+    requested = _normalize_profile_id(profile_id)
     # Explicit non-generic profile IDs are treated as authoritative.
     if requested and not _is_generic_cli_profile(requested):
         return requested
@@ -1982,6 +2012,8 @@ async def _upsert_chat_session(
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
         from pixsim7.backend.main.shared.datetime_utils import utcnow
 
+        normalized_profile_id = _normalize_profile_id(profile_id)
+
         async with AsyncSessionLocal() as db:
             existing = await db.get(ChatSession, session_id)
             if existing:
@@ -1990,8 +2022,8 @@ async def _upsert_chat_session(
                 existing.last_used_at = utcnow()
                 if label and label != existing.label:
                     existing.label = label
-                if profile_id is not None:
-                    existing.profile_id = profile_id
+                if normalized_profile_id is not None:
+                    existing.profile_id = normalized_profile_id
                 if scope_key is not None:
                     existing.scope_key = scope_key
                 if last_plan_id is not None:
@@ -2007,7 +2039,7 @@ async def _upsert_chat_session(
                     id=session_id,
                     user_id=user_id,
                     engine=engine,
-                    profile_id=profile_id,
+                    profile_id=normalized_profile_id,
                     scope_key=scope_key,
                     last_plan_id=last_plan_id,
                     last_contract_id=last_contract_id,
@@ -2427,5 +2459,3 @@ def _sync_contract_versions() -> None:
     meta_contract_registry.update_version(
         "testing.catalog", TESTING_CONTRACT_VERSION
     )
-
-

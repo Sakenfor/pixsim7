@@ -30,7 +30,7 @@ async def test_search_assets_uses_similarity_cursor_mode(monkeypatch) -> None:
     fake_asset.created_at = now
 
     asset_service = MagicMock()
-    asset_service.list_assets = AsyncMock(return_value=[fake_asset])
+    asset_service.list_assets = AsyncMock(return_value=([fake_asset], 1))
 
     db = MagicMock()
     user = MagicMock()
@@ -38,9 +38,13 @@ async def test_search_assets_uses_similarity_cursor_mode(monkeypatch) -> None:
     user.is_admin.return_value = False
 
     monkeypatch.setattr(
-        assets_api,
-        "build_asset_response_with_tags",
-        AsyncMock(return_value=_minimal_asset_response(asset_id=7, user_id=42, created_at=now)),
+        assets_api.assets_search,
+        "build_asset_responses_with_tags",
+        AsyncMock(
+            return_value=[
+                _minimal_asset_response(asset_id=7, user_id=42, created_at=now),
+            ]
+        ),
     )
 
     response = await assets_api.search_assets(
@@ -53,7 +57,7 @@ async def test_search_assets_uses_similarity_cursor_mode(monkeypatch) -> None:
     assert response.next_cursor == "simoff:1"
     assert response.offset == 0
     assert len(response.assets) == 1
-    assert asset_service.list_assets.await_args.kwargs["similar_to"] == 7
+    assert asset_service.list_assets.await_args.kwargs["sf"].similar_to == 7
     assert asset_service.list_assets.await_args.kwargs["offset"] == 0
     assert asset_service.list_assets.await_args.kwargs["cursor"] is None
 
@@ -66,7 +70,7 @@ async def test_search_assets_parses_similarity_cursor_as_offset(monkeypatch) -> 
     fake_asset.created_at = now
 
     asset_service = MagicMock()
-    asset_service.list_assets = AsyncMock(return_value=[fake_asset])
+    asset_service.list_assets = AsyncMock(return_value=([fake_asset], 1))
 
     db = MagicMock()
     user = MagicMock()
@@ -74,9 +78,13 @@ async def test_search_assets_parses_similarity_cursor_as_offset(monkeypatch) -> 
     user.is_admin.return_value = False
 
     monkeypatch.setattr(
-        assets_api,
-        "build_asset_response_with_tags",
-        AsyncMock(return_value=_minimal_asset_response(asset_id=8, user_id=42, created_at=now)),
+        assets_api.assets_search,
+        "build_asset_responses_with_tags",
+        AsyncMock(
+            return_value=[
+                _minimal_asset_response(asset_id=8, user_id=42, created_at=now),
+            ]
+        ),
     )
 
     response = await assets_api.search_assets(
@@ -100,7 +108,7 @@ async def test_search_assets_keeps_cursor_for_standard_mode(monkeypatch) -> None
     fake_asset.created_at = now
 
     asset_service = MagicMock()
-    asset_service.list_assets = AsyncMock(return_value=[fake_asset])
+    asset_service.list_assets = AsyncMock(return_value=([fake_asset], 1))
 
     db = MagicMock()
     user = MagicMock()
@@ -108,9 +116,13 @@ async def test_search_assets_keeps_cursor_for_standard_mode(monkeypatch) -> None
     user.is_admin.return_value = False
 
     monkeypatch.setattr(
-        assets_api,
-        "build_asset_response_with_tags",
-        AsyncMock(return_value=_minimal_asset_response(asset_id=11, user_id=42, created_at=now)),
+        assets_api.assets_search,
+        "build_asset_responses_with_tags",
+        AsyncMock(
+            return_value=[
+                _minimal_asset_response(asset_id=11, user_id=42, created_at=now),
+            ]
+        ),
     )
 
     response = await assets_api.search_assets(

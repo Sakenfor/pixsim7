@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 import time
+import re
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -30,6 +32,9 @@ router = APIRouter(prefix="/dev/sql", tags=["dev"])
 
 MAX_ROWS = 500  # Maximum rows to return
 QUERY_TIMEOUT_SECONDS = 30  # Query timeout
+MAX_TIMEOUT_SECONDS = 180  # Hard upper bound for ad-hoc dev queries
+DEFAULT_EXPLAIN_ANALYZE_TIMEOUT_SECONDS = 120
+SQL_TEMPLATE_VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
 # Disallowed SQL keywords (case-insensitive)
 WRITE_KEYWORDS = [
@@ -177,6 +182,147 @@ ORDER BY n_live_tup DESC
 LIMIT 20;
         """.strip(),
     },
+    {
+        "id": "gallery-baseline-no-filters",
+        "name": "Gallery Baseline (No Filters)",
+        "description": "Simulate default gallery list for current user (no extra filters)",
+        "category": "gallery",
+        "sql": """
+SELECT
+    a.id,
+    a.created_at,
+    a.media_type,
+    a.provider_id,
+    a.upload_method
+FROM assets a
+WHERE a.user_id = {{current_user_id}}
+  AND a.is_archived = false
+  AND a.searchable = true
+  AND a.asset_kind = 'content'
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT 50;
+        """.strip(),
+    },
+    {
+        "id": "gallery-filter-source-site-jsonb",
+        "name": "Gallery Filter: source_site (JSONB)",
+        "description": "Probe source_site JSONB filter path using most common value for current user",
+        "category": "gallery",
+        "sql": """
+WITH top_site AS (
+    SELECT a.upload_context->>'source_site' AS source_site
+    FROM assets a
+    WHERE a.user_id = {{current_user_id}}
+      AND a.is_archived = false
+      AND a.searchable = true
+      AND a.asset_kind = 'content'
+      AND a.upload_context IS NOT NULL
+      AND COALESCE(a.upload_context->>'source_site', '') <> ''
+    GROUP BY 1
+    ORDER BY COUNT(*) DESC
+    LIMIT 1
+)
+SELECT
+    a.id,
+    a.created_at,
+    a.upload_context->>'source_site' AS source_site
+FROM assets a
+JOIN top_site ts ON (a.upload_context->>'source_site') = ts.source_site
+WHERE a.user_id = {{current_user_id}}
+  AND a.is_archived = false
+  AND a.searchable = true
+  AND a.asset_kind = 'content'
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT 50;
+        """.strip(),
+    },
+    {
+        "id": "gallery-filter-source-path-jsonb",
+        "name": "Gallery Filter: source_path (JSONB)",
+        "description": "Probe local source path expression filter using most common path",
+        "category": "gallery",
+        "sql": """
+WITH top_path AS (
+    SELECT
+        CASE
+            WHEN COALESCE(a.upload_context->>'source_subfolder', '') <> ''
+            THEN (a.upload_context->>'source_folder') || '/' || (a.upload_context->>'source_subfolder')
+            ELSE (a.upload_context->>'source_folder')
+        END AS source_path
+    FROM assets a
+    WHERE a.user_id = {{current_user_id}}
+      AND a.is_archived = false
+      AND a.searchable = true
+      AND a.asset_kind = 'content'
+      AND a.upload_method = 'local'
+      AND a.upload_context IS NOT NULL
+      AND COALESCE(a.upload_context->>'source_folder', '') <> ''
+    GROUP BY 1
+    ORDER BY COUNT(*) DESC
+    LIMIT 1
+)
+SELECT
+    a.id,
+    a.created_at,
+    CASE
+        WHEN COALESCE(a.upload_context->>'source_subfolder', '') <> ''
+        THEN (a.upload_context->>'source_folder') || '/' || (a.upload_context->>'source_subfolder')
+        ELSE (a.upload_context->>'source_folder')
+    END AS source_path
+FROM assets a
+JOIN top_path tp ON (
+    CASE
+        WHEN COALESCE(a.upload_context->>'source_subfolder', '') <> ''
+        THEN (a.upload_context->>'source_folder') || '/' || (a.upload_context->>'source_subfolder')
+        ELSE (a.upload_context->>'source_folder')
+    END
+) = tp.source_path
+WHERE a.user_id = {{current_user_id}}
+  AND a.is_archived = false
+  AND a.searchable = true
+  AND a.asset_kind = 'content'
+  AND a.upload_method = 'local'
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT 50;
+        """.strip(),
+    },
+    {
+        "id": "gallery-filter-analysis-tags",
+        "name": "Gallery Filter: analysis_tags",
+        "description": "Probe prompt_analysis tags_flat filter path using most common tag",
+        "category": "gallery",
+        "sql": """
+WITH top_tag AS (
+    SELECT t.tag
+    FROM assets a
+    CROSS JOIN LATERAL jsonb_array_elements_text(
+        COALESCE((a.prompt_analysis::jsonb)->'tags_flat', '[]'::jsonb)
+    ) AS t(tag)
+    WHERE a.user_id = {{current_user_id}}
+      AND a.is_archived = false
+      AND a.searchable = true
+      AND a.asset_kind = 'content'
+    GROUP BY t.tag
+    ORDER BY COUNT(*) DESC
+    LIMIT 1
+)
+SELECT
+    a.id,
+    a.created_at,
+    tt.tag AS analysis_tag
+FROM assets a
+JOIN top_tag tt ON (a.prompt_analysis::jsonb) @> jsonb_build_object(
+    'tags_flat',
+    jsonb_build_array(tt.tag)
+)
+WHERE a.user_id = {{current_user_id}}
+  AND a.is_archived = false
+  AND a.searchable = true
+  AND a.asset_kind = 'content'
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT 50;
+        """.strip(),
+    },
 ]
 
 # ============================================================================
@@ -187,6 +333,12 @@ class SqlQueryRequest(BaseModel):
     """Request to execute a SQL query."""
     sql: str = Field(..., description="SQL query to execute (SELECT only)")
     max_rows: int = Field(default=100, le=MAX_ROWS, description="Maximum rows to return")
+    timeout_seconds: int = Field(
+        default=QUERY_TIMEOUT_SECONDS,
+        ge=1,
+        le=MAX_TIMEOUT_SECONDS,
+        description=f"Statement timeout in seconds (max {MAX_TIMEOUT_SECONDS})",
+    )
 
 
 class SqlQueryResult(BaseModel):
@@ -224,13 +376,41 @@ def validate_read_only(sql: str) -> None:
         # Simple check: keyword at start, or preceded by whitespace/newline
         if keyword in sql_upper:
             # More precise check to avoid false positives
-            import re
             pattern = rf'\b{keyword}\b'
             if re.search(pattern, sql_upper):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Write operations are not allowed. Found: {keyword}"
                 )
+
+
+def is_explain(sql: str) -> bool:
+    """Return True if SQL starts with EXPLAIN."""
+    return bool(re.match(r"^\s*EXPLAIN\b", sql, re.IGNORECASE))
+
+
+def is_explain_analyze(sql: str) -> bool:
+    """Return True if SQL is EXPLAIN and requests ANALYZE mode."""
+    return bool(re.match(r"^\s*EXPLAIN\b[\s\S]*\bANALYZE\b", sql, re.IGNORECASE))
+
+
+def render_query_template(sql: str, user: CurrentUser) -> str:
+    """Render supported SQL template variables with request-scoped values."""
+    effective_user_id = resolve_effective_user_id(user)
+    if effective_user_id is None:
+        raise HTTPException(status_code=403, detail="User-scoped principal required")
+
+    substitutions: dict[str, str] = {
+        "current_user_id": str(int(effective_user_id)),
+    }
+
+    def _replace(match: re.Match[str]) -> str:
+        var_name = match.group(1)
+        if var_name not in substitutions:
+            raise HTTPException(status_code=400, detail=f"Unknown SQL template variable: {var_name}")
+        return substitutions[var_name]
+
+    return SQL_TEMPLATE_VAR_PATTERN.sub(_replace, sql)
 
 
 def serialize_row(row: Any) -> List[Any]:
@@ -289,25 +469,39 @@ async def execute_query(
     if not sql:
         raise HTTPException(status_code=400, detail="SQL query is required")
 
+    # Expand request-scoped template vars (e.g. {{current_user_id}}).
+    sql = render_query_template(sql, user)
+
     # Validate read-only
     validate_read_only(sql)
 
-    # Add LIMIT if not present (safety net)
+    # Add LIMIT if not present (safety net). Skip for EXPLAIN because
+    # appending LIMIT after EXPLAIN text can produce invalid SQL.
     sql_upper = sql.upper()
-    if "LIMIT" not in sql_upper:
+    explain_mode = is_explain(sql)
+    explain_analyze_mode = is_explain_analyze(sql)
+    if not explain_mode and "LIMIT" not in sql_upper:
         sql = f"{sql.rstrip(';')} LIMIT {request.max_rows}"
+
+    timeout_seconds = min(max(int(request.timeout_seconds), 1), MAX_TIMEOUT_SECONDS)
+    if explain_analyze_mode:
+        timeout_seconds = max(timeout_seconds, DEFAULT_EXPLAIN_ANALYZE_TIMEOUT_SECONDS)
 
     logger.info(
         "dev_sql_query",
         user_id=user.id,
+        explain_mode=explain_mode,
+        explain_analyze_mode=explain_analyze_mode,
+        timeout_seconds=timeout_seconds,
         query_preview=sql[:200],
     )
 
     try:
         start_time = time.time()
 
-        # Set statement timeout
-        await db.execute(text(f"SET statement_timeout = '{QUERY_TIMEOUT_SECONDS}s'"))
+        # Set statement timeout for this session before query execution.
+        # We cap this via request validation + MAX_TIMEOUT_SECONDS.
+        await db.execute(text(f"SET statement_timeout = '{timeout_seconds}s'"))
 
         # Execute query
         result = await db.execute(text(sql))

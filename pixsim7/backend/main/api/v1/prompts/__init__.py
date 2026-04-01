@@ -12,7 +12,7 @@ Modules:
 """
 from fastapi import APIRouter
 
-from . import families, variants, analytics, operations, meta
+from . import families, variants, analytics, operations, meta, audit
 
 # Create main router
 router = APIRouter(prefix="/prompts", tags=["prompts"])
@@ -23,5 +23,6 @@ router.include_router(variants.router)
 router.include_router(analytics.router)
 router.include_router(operations.router)
 router.include_router(meta.router)
+router.include_router(audit.router)
 
 __all__ = ["router"]

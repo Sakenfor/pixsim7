@@ -445,15 +445,24 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.list",
                 method="GET",
                 path="/api/v1/dev/plans",
-                summary="List all plans with children, filterable by status/owner.",
+                summary="List all plans with filters, text search, and optional compact payload mode.",
                 input_schema={
                     "type": "object",
                     "properties": {
                         "params": {
                             "type": "object",
                             "properties": {
+                                "q": {"type": "string"},
                                 "status": {"type": "string"},
                                 "owner": {"type": "string"},
+                                "namespace": {"type": "string"},
+                                "priority": {"type": "string"},
+                                "plan_type": {"type": "string"},
+                                "tag": {"type": "string"},
+                                "compact": {"type": "boolean"},
+                                "include_hidden": {"type": "boolean"},
+                                "limit": {"type": "integer"},
+                                "offset": {"type": "integer"},
                                 "refresh": {"type": "boolean"},
                             },
                         },
@@ -542,6 +551,11 @@ def _builtin_plans_management() -> MetaContract:
                                 "eta": {"type": "string"},
                                 "blockers": {"type": "array", "items": {"type": "object"}},
                                 "append_evidence": {"type": "array", "items": {"type": "string"}},
+                                "append_tests": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Checkpoint-linked test suite IDs (alias for test_suite evidence).",
+                                },
                                 "note": {"type": "string"},
                                 "sync_plan_stage": {"type": "boolean"},
                                 "commit_sha": {

@@ -8,10 +8,13 @@ and MCP contract metadata.
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
+
+from pixsim_logging import get_logger
 
 PLAN_AUTHORING_CONTRACT_VERSION = "2026-03-24.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
+logger = get_logger()
 
 PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
     {
@@ -122,6 +125,15 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
 ]
 
 
+def _rule_with_defaults(rule: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = copy.deepcopy(rule)
+    level = str(normalized.get("level") or "suggested").strip().lower()
+    normalized.setdefault("severity", "error" if level == "required" else "warning")
+    normalized.setdefault("since_version", PLAN_AUTHORING_CONTRACT_VERSION)
+    normalized.setdefault("deprecated_at", None)
+    return normalized
+
+
 def _principal_type(principal: Any) -> str:
     ptype = getattr(principal, "principal_type", None)
     if isinstance(ptype, str) and ptype.strip():
@@ -133,11 +145,16 @@ def _principal_type(principal: Any) -> str:
             return "agent"
         if source.startswith("service:"):
             return "service"
+    logger.warning(
+        "plan_authoring_policy_principal_type_fallback",
+        principal_type_attr=ptype,
+        source=source,
+    )
     return "user"
 
 
 def get_plan_authoring_rules() -> List[Dict[str, Any]]:
-    return copy.deepcopy(PLAN_AUTHORING_RULES)
+    return [_rule_with_defaults(rule) for rule in PLAN_AUTHORING_RULES]
 
 
 def get_plan_authoring_contract() -> Dict[str, Any]:
@@ -152,62 +169,206 @@ def get_plan_authoring_contract() -> Dict[str, Any]:
     }
 
 
-def validate_plan_create_policy(payload: Any, principal: Any) -> List[str]:
-    """Return policy violations for plans.create under the current principal."""
+def _get_payload_field(payload: Any, field_name: str) -> Any:
+    if isinstance(payload, dict):
+        return payload.get(field_name)
+    return getattr(payload, field_name, None)
+
+
+def _normalize_rule_message(rule: Dict[str, Any], field_name: str) -> str:
+    return str(rule.get("message") or f"{field_name} violated required policy")
+
+
+ConstraintValidator = Callable[
+    [Any, str, Dict[str, Any], Dict[str, Any], Any, Dict[str, Any]],
+    List[str],
+]
+
+
+def _constraint_array_min_items(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del payload, context
+    try:
+        min_items = int(constraint.get("min_items", 0))
+    except (TypeError, ValueError):
+        min_items = 0
+    if not isinstance(value, list) or len(value) < min_items:
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
+def _constraint_array_items_required_keys(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del payload, context
+    required_keys = [
+        str(key).strip()
+        for key in (constraint.get("required_keys") or [])
+        if isinstance(key, str) and key.strip()
+    ]
+    if not required_keys:
+        return []
+    if not isinstance(value, list):
+        return [_normalize_rule_message(rule, field_name)]
+
+    bad_indexes: List[int] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, dict):
+            bad_indexes.append(idx)
+            continue
+        missing = [
+            key for key in required_keys
+            if not isinstance(item.get(key), str) or not item.get(key, "").strip()
+        ]
+        if missing:
+            bad_indexes.append(idx)
+
+    if bad_indexes:
+        rule_message = _normalize_rule_message(rule, field_name)
+        return [f"{rule_message} Invalid checkpoint indexes: {bad_indexes}"]
+    return []
+
+
+def _constraint_evidence_test_suite_refs_exist(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del constraint, payload
+    suite_ids = context.get("referenced_test_suite_ids")
+    if suite_ids is None:
+        suite_ids = _extract_test_suite_refs_from_evidence(value)
+    else:
+        suite_ids = list(suite_ids)
+
+    known_test_suite_ids = context.get("known_test_suite_ids")
+    if not suite_ids or known_test_suite_ids is None:
+        return []
+
+    missing = [sid for sid in suite_ids if sid not in known_test_suite_ids]
+    if missing:
+        rule_message = _normalize_rule_message(rule, field_name)
+        return [f"{rule_message} Missing suite ids: {missing}"]
+    return []
+
+
+def _constraint_advisory(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del constraint, payload, context
+    if value is None:
+        return [_normalize_rule_message(rule, field_name)]
+    if isinstance(value, str) and not value.strip():
+        return [_normalize_rule_message(rule, field_name)]
+    if isinstance(value, (list, tuple, set, dict)) and not value:
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
+CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
+    "array_min_items": _constraint_array_min_items,
+    "array_items_required_keys": _constraint_array_items_required_keys,
+    "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
+    "advisory": _constraint_advisory,
+}
+
+
+def validate_policy(
+    endpoint_id: str,
+    payload: Any,
+    principal: Any,
+    *,
+    levels: Optional[Set[str]] = None,
+    constraint_context: Optional[Dict[str, Any]] = None,
+    partial: bool = False,
+) -> tuple[List[str], List[str]]:
+    """Return policy violations and warnings for a specific endpoint/principal."""
+    endpoint_key = str(endpoint_id or "").strip()
+    if not endpoint_key:
+        return [], []
+
     principal_type = _principal_type(principal)
     violations: List[str] = []
+    warnings: List[str] = []
+    active_levels = {str(level).strip().lower() for level in (levels or {"required", "suggested"})}
+    context = dict(constraint_context or {})
 
-    for rule in PLAN_AUTHORING_RULES:
-        if rule.get("endpoint_id") != "plans.create":
-            continue
-        if rule.get("level") != "required":
+    for rule in get_plan_authoring_rules():
+        if str(rule.get("endpoint_id") or "").strip() != endpoint_key:
             continue
 
-        applies_to = rule.get("applies_to_principal_types") or []
+        level = str(rule.get("level") or "").strip().lower()
+        if level not in active_levels:
+            continue
+
+        applies_to = [
+            str(item).strip().lower()
+            for item in (rule.get("applies_to_principal_types") or [])
+            if isinstance(item, str) and item.strip()
+        ]
         if principal_type not in applies_to:
             continue
 
         field_name = str(rule.get("field") or "").strip()
         if not field_name:
             continue
-        value = getattr(payload, field_name, None)
+
+        if partial and isinstance(payload, dict) and field_name not in payload:
+            continue
+        value = _get_payload_field(payload, field_name)
         constraint = rule.get("constraint") or {}
         constraint_type = str(constraint.get("type") or "").strip()
-
-        if constraint_type == "array_min_items":
-            min_items = int(constraint.get("min_items", 0))
-            if not isinstance(value, list) or len(value) < min_items:
-                violations.append(str(rule.get("message") or f"{field_name} violated required policy"))
+        validator = CONSTRAINT_VALIDATORS.get(constraint_type)
+        if validator is None:
             continue
 
-        if constraint_type == "array_items_required_keys":
-            required_keys = [
-                str(key).strip()
-                for key in (constraint.get("required_keys") or [])
-                if isinstance(key, str) and key.strip()
-            ]
-            if not required_keys:
-                continue
-            if not isinstance(value, list):
-                violations.append(str(rule.get("message") or f"{field_name} violated required policy"))
-                continue
-
-            bad_indexes: List[int] = []
-            for idx, item in enumerate(value):
-                if not isinstance(item, dict):
-                    bad_indexes.append(idx)
-                    continue
-                missing = [
-                    key for key in required_keys
-                    if not isinstance(item.get(key), str) or not item.get(key, "").strip()
-                ]
-                if missing:
-                    bad_indexes.append(idx)
-            if bad_indexes:
-                rule_message = str(rule.get("message") or f"{field_name} violated required policy")
-                violations.append(f"{rule_message} Invalid checkpoint indexes: {bad_indexes}")
+        messages = validator(
+            value,
+            field_name,
+            rule,
+            constraint,
+            payload,
+            context,
+        )
+        if not messages:
             continue
 
+        severity = str(rule.get("severity") or "").strip().lower()
+        if severity == "warning" or level == "suggested":
+            warnings.extend(messages)
+        else:
+            violations.extend(messages)
+
+    return violations, warnings
+
+
+def evaluate_plan_create_policy(payload: Any, principal: Any) -> tuple[List[str], List[str]]:
+    """Return policy violations and warnings for plans.create."""
+    return validate_policy("plans.create", payload, principal)
+
+
+def validate_plan_create_policy(payload: Any, principal: Any) -> List[str]:
+    """Backward-compatible wrapper: returns only violations for plans.create."""
+    violations, _warnings = evaluate_plan_create_policy(payload, principal)
     return violations
 
 
@@ -229,6 +390,44 @@ def _extract_test_suite_refs_from_evidence(value: Any) -> List[str]:
     return out
 
 
+def evaluate_plan_update_policy(
+    payload: Any,
+    principal: Any,
+) -> tuple[List[str], List[str]]:
+    """Return policy violations and warnings for plans.update."""
+    return validate_policy(
+        "plans.update",
+        payload,
+        principal,
+        partial=True,
+    )
+
+
+def validate_plan_update_policy(payload: Any, principal: Any) -> List[str]:
+    """Backward-compatible wrapper: returns only violations for plans.update."""
+    violations, _warnings = evaluate_plan_update_policy(payload, principal)
+    return violations
+
+
+def evaluate_plan_progress_policy(
+    payload: Any,
+    principal: Any,
+    *,
+    referenced_test_suite_ids: Optional[List[str]] = None,
+    known_test_suite_ids: Optional[Set[str]] = None,
+) -> tuple[List[str], List[str]]:
+    """Return policy violations and warnings for plans.progress."""
+    return validate_policy(
+        "plans.progress",
+        payload,
+        principal,
+        constraint_context={
+            "referenced_test_suite_ids": referenced_test_suite_ids,
+            "known_test_suite_ids": known_test_suite_ids,
+        },
+    )
+
+
 def validate_plan_progress_policy(
     payload: Any,
     principal: Any,
@@ -236,39 +435,11 @@ def validate_plan_progress_policy(
     referenced_test_suite_ids: Optional[List[str]] = None,
     known_test_suite_ids: Optional[Set[str]] = None,
 ) -> List[str]:
-    """Return policy violations for plans.progress under the current principal."""
-    principal_type = _principal_type(principal)
-    violations: List[str] = []
-
-    for rule in PLAN_AUTHORING_RULES:
-        if rule.get("endpoint_id") != "plans.progress":
-            continue
-        if rule.get("level") != "required":
-            continue
-
-        applies_to = rule.get("applies_to_principal_types") or []
-        if principal_type not in applies_to:
-            continue
-
-        field_name = str(rule.get("field") or "").strip()
-        if not field_name:
-            continue
-        value = getattr(payload, field_name, None)
-        constraint = rule.get("constraint") or {}
-        constraint_type = str(constraint.get("type") or "").strip()
-
-        if constraint_type == "evidence_test_suite_refs_exist":
-            suite_ids = (
-                list(referenced_test_suite_ids)
-                if referenced_test_suite_ids is not None
-                else _extract_test_suite_refs_from_evidence(value)
-            )
-            if not suite_ids or known_test_suite_ids is None:
-                continue
-            missing = [sid for sid in suite_ids if sid not in known_test_suite_ids]
-            if missing:
-                rule_message = str(rule.get("message") or f"{field_name} violated required policy")
-                violations.append(f"{rule_message} Missing suite ids: {missing}")
-            continue
-
+    """Backward-compatible wrapper: returns only violations for plans.progress."""
+    violations, _warnings = evaluate_plan_progress_policy(
+        payload,
+        principal,
+        referenced_test_suite_ids=referenced_test_suite_ids,
+        known_test_suite_ids=known_test_suite_ids,
+    )
     return violations

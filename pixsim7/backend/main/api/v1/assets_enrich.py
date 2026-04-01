@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
+from pixsim7.backend.main.api.v1.assets_helpers import get_effective_owner_user_id
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 from pixsim_logging import get_logger
 
@@ -60,6 +61,8 @@ async def enrich_asset(
     from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
     from sqlalchemy import select, delete
 
+    owner_user_id = get_effective_owner_user_id(user)
+
     # Get the asset
     asset = await asset_service.get_asset_for_user(asset_id, user)
     if not asset:
@@ -92,7 +95,7 @@ async def enrich_asset(
     # Get the account
     account_stmt = select(ProviderAccount).where(
         ProviderAccount.id == asset.provider_account_id,
-        ProviderAccount.user_id == user.id,
+        ProviderAccount.user_id == owner_user_id,
     )
     result = await db.execute(account_stmt)
     account = result.scalar_one_or_none()

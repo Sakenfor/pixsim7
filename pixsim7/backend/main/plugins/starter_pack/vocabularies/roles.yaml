@@ -366,6 +366,7 @@ namespace_mappings:
   light: role:lighting:key
   color: role:materials:atmosphere
   character_pose: role:entities:subject
+  anatomy: role:entities:main_character
 
 # Category -> composition role mapping (block category refinement)
 # Used by inference when a block's category narrows the composition role
@@ -399,3 +400,4 @@ category_mappings:
   location: role:world:environment
   character_pose: role:entities:subject
   pose: role:entities:subject
+  anatomy: role:entities:main_character

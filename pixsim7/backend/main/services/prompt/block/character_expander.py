@@ -103,11 +103,13 @@ class CharacterBindingExpander:
 
             # Resolve species vocab
             if character.species:
-                from pixsim7.backend.main.shared.ontology.vocabularies.registry import get_registry
-                species_id = character.species
-                if not species_id.startswith("species:"):
-                    species_id = f"species:{species_id}"
-                species_def = get_registry().get_species(species_id)
+                from pixsim7.backend.main.shared.ontology.vocabularies import (
+                    get_registry,
+                    normalize_species_id,
+                )
+
+                species_id = normalize_species_id(character.species)
+                species_def = get_registry().get_species(species_id) if species_id else None
                 if species_def:
                     role_species[role] = species_def
 

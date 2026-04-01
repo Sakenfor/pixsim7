@@ -3,10 +3,20 @@ Asset helper functions shared across asset endpoints.
 """
 from typing import List
 
+from fastapi import HTTPException
 from pixsim7.backend.main.api.dependencies import DatabaseSession
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.services.tag_service import TagService
+
+
+def get_effective_owner_user_id(user) -> int:
+    """Resolve the request's effective owner user ID or fail with 403."""
+    owner_user_id = resolve_effective_user_id(user)
+    if owner_user_id is None:
+        raise HTTPException(status_code=403, detail="User-scoped principal required")
+    return owner_user_id
 
 
 def _compute_provider_status(asset) -> str:

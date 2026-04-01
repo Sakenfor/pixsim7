@@ -1,0 +1,6 @@
+id: creature_foundation
+version: "1.0.0"
+description: "Creature-specific body plan and anatomy primitives for non-humanoid authoring"
+
+categories:
+  - anatomy

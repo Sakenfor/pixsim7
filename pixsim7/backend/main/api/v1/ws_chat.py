@@ -103,7 +103,10 @@ async def _handle_message(
     # Resolve profile + system prompt
     engine = data.get("engine", "claude")
     model = data.get("model")
-    assistant_id = data.get("assistant_id")
+    assistant_id_raw = data.get("assistant_id")
+    assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
+    if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
+        assistant_id = None
     skip_persona = data.get("skip_persona", False)
     custom_instructions = (data.get("custom_instructions") or "").strip()
     focus = data.get("focus")
@@ -118,23 +121,39 @@ async def _handle_message(
     profile_prompt: str | None = None
     profile_config: dict | None = None
     system_prompt: str | None = None
+    resolved_profile_id: str | None = None
     try:
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
+            from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+
+            profile = None
+            agent_type_hint = engine if engine in {"claude", "codex"} else None
             if assistant_id:
-                from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
                 profile = await resolve_agent_profile(db, user_id or 0, assistant_id)
-                if profile:
-                    if not skip_persona:
-                        profile_prompt = profile.system_prompt
-                    if profile.model_id:
-                        model = profile.model_id
-                    # Build profile_config from first-class fields + legacy config dict
-                    merged_config = dict(profile.config or {})
-                    if profile.reasoning_effort:
-                        merged_config["reasoning_effort"] = profile.reasoning_effort
-                    if merged_config:
-                        profile_config = merged_config
+            if not profile:
+                profile = await resolve_agent_profile(
+                    db,
+                    user_id or 0,
+                    None,
+                    agent_type=agent_type_hint,
+                )
+
+            if profile:
+                resolved_profile_id = profile.id
+                if not skip_persona:
+                    profile_prompt = profile.system_prompt
+                if profile.model_id:
+                    model = profile.model_id
+                # Build profile_config from first-class fields + legacy config dict
+                merged_config = dict(profile.config or {})
+                if profile.reasoning_effort:
+                    merged_config["reasoning_effort"] = profile.reasoning_effort
+                if merged_config:
+                    profile_config = merged_config
+            elif assistant_id:
+                # Keep explicit non-sentinel IDs when resolution fails.
+                resolved_profile_id = assistant_id
     except Exception:
         pass
 
@@ -227,7 +246,7 @@ async def _handle_message(
                     asyncio.ensure_future(_upsert_chat_session(
                         session_id=cli_session_id, user_id=user_id or 0,
                         engine=engine, label=message[:60],
-                        profile_id=assistant_id,
+                        profile_id=resolved_profile_id,
                         scope_key=chat_scope_key,
                         last_plan_id=chat_plan_id,
                         last_contract_id=chat_contract_id,
@@ -243,7 +262,7 @@ async def _handle_message(
                             user_id=user_id or 0,
                             engine=engine,
                             label=message[:60],
-                            profile_id=assistant_id,
+                            profile_id=resolved_profile_id,
                             cli_session_id=cli_session_id,
                             source="chat",
                         ))

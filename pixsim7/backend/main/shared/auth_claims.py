@@ -87,11 +87,29 @@ class AuthPrincipal(BaseModel):
 
     @classmethod
     def from_jwt_payload(cls, payload: dict) -> "AuthPrincipal":
+        def _safe_int(value, default: int = 0) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        purpose = str(payload.get("purpose") or "").lower()
+        principal_type = str(payload.get("principal_type") or "").lower()
+        is_agent = purpose == "agent" or principal_type == "agent"
+
+        # For agent tokens, game APIs should scope to delegated owner.
+        # Fall back to ``sub`` when delegation is absent.
+        resolved_id = _safe_int(payload.get("sub"), default=0)
+        if is_agent and payload.get("on_behalf_of") is not None:
+            resolved_id = _safe_int(payload.get("on_behalf_of"), default=0)
+        if resolved_id < 0:
+            resolved_id = 0
+
         role = payload.get("role")
         is_admin_claim = bool(payload.get("is_admin", False))
         role_is_admin = str(role).lower() in {"admin", "super_admin"} if role is not None else False
         return cls(
-            id=int(payload["sub"]),
+            id=resolved_id,
             token_id=payload["jti"],
             email=payload.get("email"),
             username=payload.get("username"),

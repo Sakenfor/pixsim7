@@ -107,6 +107,7 @@ async def upload_db_session() -> AsyncIterator[AsyncSession]:
 async def test_upload_asset_library_mode_saves_without_provider(monkeypatch) -> None:
     user = MagicMock()
     user.id = 42
+    user.user_id = 42
     db = MagicMock()
     account_service = MagicMock()
     asset_service = MagicMock()
@@ -159,6 +160,7 @@ async def test_upload_asset_library_mode_saves_without_provider(monkeypatch) -> 
 async def test_upload_asset_library_mode_requires_local_persistence(monkeypatch) -> None:
     user = MagicMock()
     user.id = 7
+    user.user_id = 7
     db = MagicMock()
     account_service = MagicMock()
     asset_service = MagicMock()
@@ -193,6 +195,7 @@ async def test_upload_asset_library_mode_requires_local_persistence(monkeypatch)
 async def test_upload_asset_library_mode_allows_local_dedup_without_new_persist(monkeypatch) -> None:
     user = MagicMock()
     user.id = 9
+    user.user_id = 9
     db = MagicMock()
     account_service = MagicMock()
     asset_service = MagicMock()
@@ -242,6 +245,7 @@ async def test_upload_asset_library_mode_allows_local_dedup_without_new_persist(
 async def test_upload_asset_versioning_rejects_invalid_parent_id(monkeypatch) -> None:
     user = MagicMock()
     user.id = 42
+    user.user_id = 42
     db = MagicMock()
     db.execute = AsyncMock(return_value=SimpleNamespace(one_or_none=lambda: None))
     account_service = MagicMock()
@@ -284,6 +288,7 @@ async def test_upload_asset_versioning_rejects_invalid_parent_id(monkeypatch) ->
 async def test_upload_asset_versioning_rejects_when_dedup_hits_parent(monkeypatch) -> None:
     user = MagicMock()
     user.id = 42
+    user.user_id = 42
     db = MagicMock()
     db.execute = AsyncMock(
         return_value=SimpleNamespace(
@@ -443,6 +448,7 @@ async def test_upload_asset_versioning_failure_rolls_back_asset_and_emits_no_cre
 async def test_upload_asset_provider_mode_requires_provider_id() -> None:
     user = MagicMock()
     user.id = 7
+    user.user_id = 7
     db = MagicMock()
     account_service = MagicMock()
     asset_service = MagicMock()

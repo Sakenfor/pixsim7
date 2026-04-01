@@ -68,6 +68,9 @@ from pixsim7.backend.main.shared.ontology.vocabularies.registry import (
     get_registry,
     reset_registry,
 )
+from pixsim7.backend.main.shared.ontology.vocabularies.species import (
+    normalize_species_id,
+)
 
 
 # =============================================================================
@@ -200,6 +203,7 @@ __all__ = [
     "get_location",
     "get_part",
     "get_species",
+    "normalize_species_id",
     "get_influence_region",
     "get_spatial",
     "get_camera",

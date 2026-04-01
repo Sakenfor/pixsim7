@@ -215,6 +215,113 @@ class TestWsChatMessage:
                 assert result["bridge_session_id"] == "sess-123"
                 assert "duration_ms" in result
 
+    def test_missing_assistant_id_uses_resolved_default_profile_for_session(self):
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "result", "ok": True,
+                "response": "Hello back!",
+                "bridge_session_id": "sess-xyz",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db = MagicMock()
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        resolved_profile = SimpleNamespace(
+            id="assistant:default",
+            system_prompt=None,
+            model_id=None,
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "claude",
+                }))
+                result = json.loads(ws.receive_text())
+                assert result["type"] == "result"
+                assert result["ok"] is True
+                assert result["bridge_session_id"] == "sess-xyz"
+
+        mock_resolve_profile.assert_awaited_once_with(mock_db, 7, None, agent_type="claude")
+        assert mock_upsert.call_count == 1
+        assert mock_upsert.call_args.kwargs["profile_id"] == "assistant:default"
+
+    def test_unknown_assistant_id_uses_resolved_default_profile_for_session(self):
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "result", "ok": True,
+                "response": "Hello back!",
+                "bridge_session_id": "sess-xyz",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db = MagicMock()
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        resolved_profile = SimpleNamespace(
+            id="assistant:default",
+            system_prompt=None,
+            model_id=None,
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "claude",
+                    "assistant_id": "unknown",
+                }))
+                result = json.loads(ws.receive_text())
+                assert result["type"] == "result"
+                assert result["ok"] is True
+                assert result["bridge_session_id"] == "sess-xyz"
+
+        mock_resolve_profile.assert_awaited_once_with(mock_db, 7, None, agent_type="claude")
+        assert mock_upsert.call_count == 1
+        assert mock_upsert.call_args.kwargs["profile_id"] == "assistant:default"
+
 
 # ── Reconnect ────────────────────────────────────────────────────
 

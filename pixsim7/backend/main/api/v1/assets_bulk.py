@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from typing import List
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc
+from pixsim7.backend.main.api.v1.assets_helpers import get_effective_owner_user_id
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
@@ -148,9 +149,10 @@ async def bulk_export_assets(
     """
     temp_dir = None
     try:
+        owner_user_id = get_effective_owner_user_id(user)
         # Create temporary directory for ZIP
         temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, f"export_{user.id}_{datetime.now(timezone.utc).timestamp()}.zip")
+        zip_path = os.path.join(temp_dir, f"export_{owner_user_id}_{datetime.now(timezone.utc).timestamp()}.zip")
 
         # Create ZIP file
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -176,7 +178,7 @@ async def bulk_export_assets(
         export_dir = get_path_registry().exports_root
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        zip_filename = f"export_{user.id}_{int(datetime.now(timezone.utc).timestamp())}.zip"
+        zip_filename = f"export_{owner_user_id}_{int(datetime.now(timezone.utc).timestamp())}.zip"
         final_path = export_dir / zip_filename
         shutil.move(zip_path, final_path)
 
@@ -220,8 +222,10 @@ async def download_export(
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
+    owner_user_id = get_effective_owner_user_id(user)
+
     # Verify filename matches user ID
-    if not filename.startswith(f"export_{user.id}_"):
+    if not filename.startswith(f"export_{owner_user_id}_"):
         raise HTTPException(status_code=403, detail="Access denied")
 
     export_path = get_path_registry().exports_root / filename

@@ -27,6 +27,9 @@ from pixsim7.backend.main.services.provider.provider_logging import (
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as _normalize_pixverse_url,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_params import (
+    normalize_video_duration,
+)
 from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
@@ -72,11 +75,16 @@ def _build_generation_options(params: Dict[str, Any]) -> "GenerationOptions":
     if GenerationOptions is None:
         raise ProviderError("pixverse-py SDK not available")
 
+    duration = normalize_video_duration(
+        params.get("duration", 5),
+        params.get("model", "v5"),
+    )
+
     # Build with all possible fields - SDK will filter based on operation type
     return GenerationOptions(
         model=params.get("model", "v5"),
         quality=params.get("quality", "360p"),
-        duration=int(params.get("duration", 5)) if params.get("duration") else 5,
+        duration=duration,
         seed=_coerce_optional_seed(params),
         aspect_ratio=params.get("aspect_ratio"),
         motion_mode=params.get("motion_mode"),
@@ -891,6 +899,13 @@ class PixverseOperationsMixin:
                             max_pages=5,
                         )
                         if (list_result.metadata or {}).get("matched"):
+                            # Pixverse reports status 5 as "processing" but for
+                            # video_extend it is a silent content filter — the job
+                            # never transitions to completed.  Remap to FILTERED
+                            # so the retry/rotation machinery can handle it.
+                            raw_st = (list_result.metadata or {}).get("provider_status")
+                            if raw_st == 5 and list_result.status == ProviderStatus.PROCESSING:
+                                list_result.status = ProviderStatus.FILTERED
                             return list_result
 
                     # Use get_video for video operations (now async)
@@ -1433,20 +1448,20 @@ class PixverseOperationsMixin:
             return ProviderStatus.PROCESSING
 
         # Handle integer status codes (Pixverse API uses integers)
-        # 1 = completed, 0 = processing, 2 = failed, 3 = filtered
-        # Newer Pixverse codes (observed):
-        # 7, 8 = flagged/rejected content → treat as filtered
+        # Canonical codes (aligned with pixverse-py SDK):
+        # 1, 10 = completed
+        # 0, 5 = processing (5 seen on extend and some video jobs)
+        # 7 = filtered (content moderation)
+        # 8, 9 = failed
+        # Legacy/rare: 2 = processing(?), 3 = filtered, 4 = failed
         if isinstance(status, int):
-            if status == 1:
+            if status in (1, 10):
                 return ProviderStatus.COMPLETED
-            elif status == 0:
+            elif status in (0, 2, 5):
                 return ProviderStatus.PROCESSING
-            elif status == 2:
+            elif status in (4, 8, 9):
                 return ProviderStatus.FAILED
-            elif status == 3:
-                return ProviderStatus.FILTERED
-            elif status in (7, 8):
-                # Provider has definitively decided the content is not allowed
+            elif status in (3, 7):
                 return ProviderStatus.FILTERED
             else:
                 return ProviderStatus.PROCESSING

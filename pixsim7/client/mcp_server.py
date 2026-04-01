@@ -480,6 +480,15 @@ def _extract_profile_from_token(token: str) -> str | None:
     return claims.get("profile_id") or claims.get("agent_id")
 
 
+def _normalize_profile_id(profile_id: str | None) -> str | None:
+    value = (profile_id or "").strip()
+    if not value:
+        return None
+    if value.lower() in {"unknown", "none", "null", "agent"}:
+        return None
+    return value
+
+
 def _extract_agent_type(token: str) -> str:
     """Extract agent_type from JWT claims, or detect from environment.
 
@@ -549,12 +558,13 @@ async def _heartbeat_loop(session_id: str, agent_type: str) -> None:
 
 async def _handle_register_session(arguments: dict[str, Any]) -> list[types.TextContent]:
     """Register this CLI session with the backend and start heartbeat."""
-    global _heartbeat_task, _registered_session_id, _resolved_profile_id
+    global _heartbeat_task, _registered_session_id, _resolved_profile_id, _bridge_session_cache
     import uuid as _uuid
 
     # Bridge-managed sessions: chat flow handles registration
     if os.environ.get("PIXSIM_BRIDGE_MANAGED"):
         _registered_session_id = "__bridge__"
+        _bridge_session_cache.clear()
         return [types.TextContent(type="text", text="Session managed by bridge — registration skipped.")]
 
     token = _get_token()
@@ -603,32 +613,75 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
     if _heartbeat_task and not _heartbeat_task.done():
         _heartbeat_task.cancel()
     _registered_session_id = session_id
+    _bridge_session_cache.clear()
     _heartbeat_task = asyncio.create_task(_heartbeat_loop(session_id, agent_type))
     print(f"[pixsim-mcp] Heartbeat started for session {session_id[:8]}", file=sys.stderr)
 
     return result
 
 
-_bridge_session_cache: str | None = None
+_bridge_session_cache: dict[tuple[str | None, str | None, str | None], str] = {}
 
 
-async def _resolve_bridge_session_id(token: str, profile_id: str) -> str | None:
-    """Look up the most recent active chat session for this profile from the backend."""
+def _normalize_scope_key(scope_key: str | None) -> str | None:
+    value = (scope_key or "").strip()
+    return value or None
+
+
+async def _resolve_bridge_session_id(
+    token: str,
+    profile_id: str | None,
+    agent_type: str,
+    scope_key: str | None = None,
+) -> str | None:
+    """Look up the most recent active chat session for this engine/profile from the backend."""
     global _bridge_session_cache
-    if _bridge_session_cache:
-        return _bridge_session_cache
+    normalized_profile_id = _normalize_profile_id(profile_id)
+    normalized_engine = (agent_type or "").strip() or None
+    normalized_scope_key = _normalize_scope_key(scope_key)
+    cache_key = (normalized_engine, normalized_profile_id, normalized_scope_key)
+    cached = _bridge_session_cache.get(cache_key)
+    if cached:
+        return cached
     try:
         client = _get_client()
+        params: dict[str, Any] = {"limit": 100}
+        if normalized_engine:
+            params["engine"] = normalized_engine
         resp = await client.get(
             "/api/v1/meta/agents/chat-sessions",
             headers={"Authorization": f"Bearer {token}"},
-            params={"limit": 1},
+            params=params,
         )
         if resp.status_code == 200:
-            sessions = resp.json().get("sessions") or []
+            sessions = [
+                s for s in (resp.json().get("sessions") or [])
+                if isinstance(s.get("id"), str) and s.get("id")
+            ]
+            if normalized_scope_key:
+                scoped = [s for s in sessions if _normalize_scope_key(s.get("scope_key")) == normalized_scope_key]
+                if normalized_profile_id:
+                    for session in scoped:
+                        if _normalize_profile_id(session.get("profile_id")) == normalized_profile_id:
+                            resolved = session.get("id")
+                            _bridge_session_cache[cache_key] = resolved
+                            return resolved
+                elif scoped:
+                    resolved = scoped[0].get("id")
+                    _bridge_session_cache[cache_key] = resolved
+                    return resolved
+            if normalized_profile_id:
+                for session in sessions:
+                    if _normalize_profile_id(session.get("profile_id")) == normalized_profile_id:
+                        resolved = session.get("id")
+                        _bridge_session_cache[cache_key] = resolved
+                        return resolved
+                # Avoid cross-profile leakage when no matching profile session exists.
+                return None
             if sessions:
-                _bridge_session_cache = sessions[0].get("id")
-                return _bridge_session_cache
+                resolved = sessions[0].get("id")
+                _bridge_session_cache[cache_key] = resolved
+                return resolved
     except Exception:
         pass
     return None
@@ -645,13 +698,19 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
         return [types.TextContent(type="text", text="No API token available.")]
 
     agent_type = _extract_agent_type(token)
-    profile_id = _extract_profile_from_token(token)
+    profile_id = _normalize_profile_id(_extract_profile_from_token(token))
     session_id = _registered_session_id or "unregistered"
+    plan_id = (arguments.get("plan_id") or "").strip() or None
 
     # Bridge-managed: resolve the real chat session ID from the backend
     if session_id == "__bridge__":
-        session_id = await _resolve_bridge_session_id(token, profile_id) or "__bridge__"
-    plan_id = (arguments.get("plan_id") or "").strip() or None
+        scope_key_hint = f"plan:{plan_id}" if plan_id else None
+        session_id = await _resolve_bridge_session_id(
+            token,
+            profile_id,
+            agent_type,
+            scope_key=scope_key_hint,
+        ) or "__bridge__"
     checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
     points_delta = arguments.get("points_delta") or 0
     evidence = arguments.get("evidence") or []
@@ -705,10 +764,10 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
             session_update: dict[str, Any] = {
                 "session_id": session_id,
                 "engine": agent_type,
-                "label": summary[:60],
-                "profile_id": profile_id,
                 "source": "mcp",
             }
+            if profile_id:
+                session_update["profile_id"] = profile_id
             if plan_id:
                 session_update["last_plan_id"] = plan_id
                 session_update["scope_key"] = f"plan:{plan_id}"
@@ -798,12 +857,13 @@ async def _auto_register_if_needed() -> None:
     chat flow in ws_chat.py already creates the ChatSession record and
     the bridge sends session-level heartbeats.
     """
-    global _heartbeat_task, _registered_session_id, _resolved_profile_id
+    global _heartbeat_task, _registered_session_id, _resolved_profile_id, _bridge_session_cache
     if _registered_session_id:
         return
     # Bridge-managed: chat flow handles ChatSession creation + bridge sends heartbeats
     if os.environ.get("PIXSIM_BRIDGE_MANAGED"):
         _registered_session_id = "__bridge__"  # prevent re-entry
+        _bridge_session_cache.clear()
         return
     token = _get_token()
     if not token:
@@ -824,6 +884,7 @@ async def _auto_register_if_needed() -> None:
             },
         )
         _registered_session_id = session_id
+        _bridge_session_cache.clear()
 
         # Capture the backend-resolved profile_id for token refresh
         if results and results[0].text:

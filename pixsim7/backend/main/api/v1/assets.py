@@ -28,7 +28,10 @@ from typing import Optional, List
 from pixsim_logging import get_logger
 
 # Shared helper (used by this module and sub-modules)
-from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags
+from pixsim7.backend.main.api.v1.assets_helpers import (
+    build_asset_response_with_tags,
+    get_effective_owner_user_id,
+)
 
 # Sub-routers for modular organization
 from pixsim7.backend.main.api.v1 import assets_maintenance
@@ -100,6 +103,8 @@ async def get_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get asset: {str(e)}")
 
@@ -287,12 +292,14 @@ async def check_asset_by_hash(
     Use this before uploading to avoid duplicate uploads.
     """
     try:
+        owner_user_id = get_effective_owner_user_id(user)
+
         # Find asset by hash (read-only, doesn't update last_accessed_at)
         from sqlmodel import select
         from pixsim7.backend.main.domain.assets.models import Asset
 
         stmt = select(Asset).where(
-            Asset.user_id == user.id,
+            Asset.user_id == owner_user_id,
             Asset.sha256 == request.sha256
         )
         result = await asset_service.db.execute(stmt)
@@ -325,6 +332,8 @@ async def check_asset_by_hash(
             note=note
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             "check_by_hash_failed",
@@ -378,6 +387,8 @@ async def check_assets_by_hash_batch(
     Use this to check multiple local files at once before uploading.
     """
     try:
+        owner_user_id = get_effective_owner_user_id(user)
+
         from sqlmodel import select
         from pixsim7.backend.main.domain.assets.models import Asset
 
@@ -385,7 +396,7 @@ async def check_assets_by_hash_batch(
         valid_hashes = [h for h in request.hashes if len(h) == 64]
         logger.debug(
             "batch_check_by_hash",
-            user_id=user.id,
+            user_id=owner_user_id,
             total_hashes=len(request.hashes),
             valid_hashes=len(valid_hashes),
         )
@@ -394,14 +405,14 @@ async def check_assets_by_hash_batch(
 
         # Query all matching assets in one query
         stmt = select(Asset.sha256, Asset.id).where(
-            Asset.user_id == user.id,
+            Asset.user_id == owner_user_id,
             Asset.sha256.in_(valid_hashes)
         )
         result = await asset_service.db.execute(stmt)
         found_assets = {row.sha256: row.id for row in result.all()}
         logger.debug(
             "batch_check_by_hash_result",
-            user_id=user.id,
+            user_id=owner_user_id,
             found_count=len(found_assets),
         )
 
@@ -420,6 +431,8 @@ async def check_assets_by_hash_batch(
             found_count=len(found_assets)
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             "batch_check_by_hash_failed",
@@ -631,10 +644,11 @@ async def get_asset_siblings(
     from pixsim7.backend.main.services.generation.synthetic import find_sibling_assets
 
     try:
+        owner_user_id = get_effective_owner_user_id(user)
         siblings = await find_sibling_assets(
             db,
             asset_id=asset_id,
-            user_id=user.id,
+            user_id=owner_user_id,
             workspace_id=workspace_id,
         )
 
@@ -658,7 +672,7 @@ async def get_asset_siblings(
         logger.error(
             "get_asset_siblings_failed",
             asset_id=asset_id,
-            user_id=user.id,
+            user_id=owner_user_id,
             error=str(e),
             exc_info=True
         )

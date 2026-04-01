@@ -24,6 +24,7 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
 )
 from pixsim7.backend.main.shared.upload_context_schema import normalize_upload_context
 from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload
+from pixsim7.backend.main.api.v1.assets_helpers import get_effective_owner_user_id
 from pixsim7.backend.main.services.asset.upload_preferences import UploadPreferences
 from pixsim_logging import get_logger
 
@@ -151,6 +152,7 @@ async def upload_asset_to_provider(
     source_relative_path = _unwrap_form_default(source_relative_path)
     upload_method = _unwrap_form_default(upload_method)
     upload_context = _unwrap_form_default(upload_context)
+    owner_user_id = get_effective_owner_user_id(user)
 
     content_type = file.content_type or ""
     media_type = MediaType.IMAGE if content_type.startswith("image/") else MediaType.VIDEO if content_type.startswith("video/") else None
@@ -198,7 +200,7 @@ async def upload_asset_to_provider(
 
     prep = await prepare_upload(
         tmp_path=tmp_path,
-        user_id=user.id,
+        user_id=owner_user_id,
         media_type=media_type,
         asset_service=asset_service,
         provider_id=provider_id,
@@ -378,12 +380,12 @@ async def upload_asset_to_provider(
                     status_code=422,
                     detail=f"version_parent_id {validated_version_parent} not found",
                 )
-            if parent_row.user_id != user.id:
+            if parent_row.user_id != owner_user_id:
                 raise HTTPException(
                     status_code=422,
                     detail=(
                         "version_parent_id owner mismatch: "
-                        f"parent_user_id={parent_row.user_id}, request_user_id={user.id}"
+                        f"parent_user_id={parent_row.user_id}, request_user_id={owner_user_id}"
                     ),
                 )
 
@@ -424,7 +426,7 @@ async def upload_asset_to_provider(
                 # Create new asset with CAS storage
                 new_asset = await add_asset(
                     db,
-                    user_id=user.id,
+                    user_id=owner_user_id,
                     media_type=media_type,
                     provider_id=provider_id,
                     provider_asset_id=provider_asset_id,
@@ -629,6 +631,7 @@ async def upload_asset_from_url(
     import base64
 
     url = request.url
+    owner_user_id = get_effective_owner_user_id(user)
 
     # Handle data URLs (from extension uploading local files)
     if url.startswith("data:"):
@@ -741,7 +744,7 @@ async def upload_asset_from_url(
 
         prep = await prepare_upload(
             tmp_path=temp_local_path,
-            user_id=user.id,
+            user_id=owner_user_id,
             media_type=media_type,
             asset_service=asset_service,
             provider_id=request.provider_id,
@@ -906,7 +909,7 @@ async def upload_asset_from_url(
     try:
         asset = await add_asset(
             db,
-            user_id=user.id,
+            user_id=owner_user_id,
             media_type=media_type,
             provider_id=request.provider_id,
             provider_asset_id=provider_asset_id,

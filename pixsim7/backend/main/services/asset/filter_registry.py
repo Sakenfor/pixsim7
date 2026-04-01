@@ -22,6 +22,10 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
+ANALYSIS_TAG_OPTION_DEFAULT_LIMIT = 150
+ANALYSIS_TAG_OPTION_SCAN_WINDOW = 5000
+ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX = 20000
+
 EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD: dict[str, str] = {
     "pixverse_sync": "pixverse",
 }
@@ -383,7 +387,6 @@ async def _load_analysis_tag_options(
     limit: Optional[int],
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
     prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
-    tag_values = func.jsonb_array_elements_text(prompt_jsonb["tags_flat"]).table_valued("value").lateral()
 
     owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
@@ -395,7 +398,11 @@ async def _load_analysis_tag_options(
     if context:
         filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="analysis_tags"))
 
+    option_limit = limit or ANALYSIS_TAG_OPTION_DEFAULT_LIMIT
+    option_limit = max(1, min(option_limit, 500))
+
     if include_counts:
+        tag_values = func.jsonb_array_elements_text(prompt_jsonb["tags_flat"]).table_valued("value").lateral()
         stmt = (
             select(tag_values.c.value, func.count(distinct(Asset.id)).label("count"))
             .select_from(Asset)
@@ -404,8 +411,7 @@ async def _load_analysis_tag_options(
             .group_by(tag_values.c.value)
             .order_by(func.count(distinct(Asset.id)).desc())
         )
-        if limit:
-            stmt = stmt.limit(limit)
+        stmt = stmt.limit(option_limit)
         result = await db.execute(stmt)
         rows = result.all()
         return [
@@ -414,15 +420,33 @@ async def _load_analysis_tag_options(
             if row.value
         ]
 
+    # Lightweight option discovery mode for large libraries:
+    # sample recent matching assets first, then explode tags in-memory.
+    scan_window = max(ANALYSIS_TAG_OPTION_SCAN_WINDOW, option_limit * 50)
+    scan_window = min(scan_window, ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX)
+    recent_assets = (
+        select(
+            Asset.id.label("id"),
+            cast(Asset.prompt_analysis, JSONB).label("prompt_jsonb"),
+        )
+        .where(*filters)
+        .order_by(Asset.created_at.desc(), Asset.id.desc())
+        .limit(scan_window)
+        .subquery("recent_assets")
+    )
+    recent_prompt_jsonb = recent_assets.c.prompt_jsonb
+    tag_values = func.jsonb_array_elements_text(
+        recent_prompt_jsonb["tags_flat"]
+    ).table_valued("value").lateral()
+
     stmt = (
         select(distinct(tag_values.c.value))
-        .select_from(Asset)
+        .select_from(recent_assets)
         .join(tag_values, true())
-        .where(*filters)
+        .where(tag_values.c.value.isnot(None), tag_values.c.value != "")
         .order_by(tag_values.c.value.asc())
+        .limit(option_limit)
     )
-    if limit:
-        stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     rows = result.all()
     return [

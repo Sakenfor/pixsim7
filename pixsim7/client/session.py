@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -412,14 +413,32 @@ class AgentCmdSession:
                     self._process.stdin.close()
                 except Exception:
                     pass
-            try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except (asyncio.TimeoutError, ProcessLookupError):
+            pid = self._process.pid
+            stopped = False
+            if os.name == "nt" and pid:
+                # Windows doesn't reliably terminate child MCP subprocesses when
+                # only the parent CLI process is terminated. Kill the process
+                # tree so stale mcp_server.py instances don't accumulate.
                 try:
-                    self._process.kill()
-                except ProcessLookupError:
-                    pass
+                    killer = await asyncio.create_subprocess_exec(
+                        "taskkill", "/PID", str(pid), "/T", "/F",
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await asyncio.wait_for(killer.wait(), timeout=5)
+                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                    stopped = True
+                except (asyncio.TimeoutError, ProcessLookupError, FileNotFoundError):
+                    stopped = False
+            if not stopped:
+                try:
+                    self._process.terminate()
+                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                except (asyncio.TimeoutError, ProcessLookupError):
+                    try:
+                        self._process.kill()
+                    except ProcessLookupError:
+                        pass
 
         # Explicitly close pipe transports to prevent Windows ProactorEventLoop
         # ResourceWarning spam ("unclosed transport" / "I/O operation on closed pipe")

@@ -1,7 +1,7 @@
 # Species Vocabulary
 # Anatomy/movement mappings per species for character binding expansion
 # word_lists: graded low→high intensity, resolved via {{role.key}} placeholders
-version: "1.1.0"
+version: "1.2.0"
 
 species:
   species:human:
@@ -182,3 +182,44 @@ species:
       press: [nuzzles, nudges, pushes, shoves, rams]
       muscle: [relaxed, twitching, rippling, straining, hea_vi-ng]
       ear_state: [relaxed, pricked, swiveling, pinned back, flicking]
+
+  species:cephalopod:
+    label: "Cephalopod"
+    category: mollusk
+    anatomy_map:
+      limbs: "tentacles"
+      grip: "suckers"
+      stance: "upright on two rear tentacles"
+      feet: "walking tentacles"
+      forelimbs: "manipulation tentacles"
+      tail: ""
+      muzzle: ""
+      pelt: "chromatophore skin"
+      mantle: "smooth cephalopod mantle"
+      eyes: "large horizontally-pupiled eyes"
+      ventral_appendage: "ventral tentacle"
+      skin_display: "chromatophore patterns"
+    movement_verbs: [grips forward, walks deliberately, shuffles, picks its way, navigates, plants tentacles]
+    pronoun_set:
+      subject: "it"
+      object: "it"
+      possessive: "its"
+    default_stance: "upright on two walking tentacles"
+    keywords: [cephalopod, octopod, octopus, squid, cuttlefish]
+    visual_priority:
+      - stance
+      - mantle
+      - skin_display
+      - eyes
+      - build
+      - height
+      - skin_fur
+      - distinguishing_marks
+    render_template: "{build}[, {height}][, {stance}][, {mantle}][, {skin_display}][, {eyes}][, {distinguishing_marks}][, wearing {clothing}][, with {accessories}]"
+    word_lists:
+      chromatophore_mood: [steady dark blue-grey, shifting warmer, rippling cool patterns, flaring bright, strobing]
+      tentacle_motion: [still and coiled, extending slowly, probing, gripping firmly, thrashing]
+      sucker_state: [relaxed, flexing, gripping, clamped, releasing]
+      vocal_surprise: [jets backward, flashes chromatophores, blanches, ink-clouds]
+      vocal_effort: [darkens, mottles deep, tightens chromatophores, strains dark]
+      breath: [slow siphon pulse, quickened siphon, rapid siphon jets, siphon flaring]

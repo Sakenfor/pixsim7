@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
 router = APIRouter()
 
@@ -71,17 +72,33 @@ def _to_compat(p: AgentProfile) -> AssistantProfileResponse:
 # ── Endpoints ─────────────────────────────────────────────────────
 
 
+
+def _require_effective_user_id(user: CurrentUser) -> int:
+    effective_uid = resolve_effective_user_id(user)
+    if effective_uid is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Operation requires a user-scoped principal",
+        )
+    return effective_uid
+
+
 @router.get("", response_model=List[AssistantProfileResponse])
 async def list_assistant_profiles(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> List[AssistantProfileResponse]:
     """List profiles available to the current user (global + own)."""
+    effective_uid = resolve_effective_user_id(user)
+    owner_filter = AgentProfile.user_id == 0
+    if effective_uid is not None:
+        owner_filter = or_(AgentProfile.user_id == effective_uid, AgentProfile.user_id == 0)
+
     stmt = (
         select(AgentProfile)
         .where(
             AgentProfile.status == "active",
-            or_(AgentProfile.user_id == user.id, AgentProfile.user_id == 0),
+            owner_filter,
         )
         .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
     )
@@ -115,10 +132,11 @@ async def create_assistant_profile(
     if existing:
         raise HTTPException(status_code=409, detail=f"Profile already exists: {payload.assistant_id}")
 
+    effective_uid = _require_effective_user_id(user)
     now = utcnow()
     profile = AgentProfile(
         id=payload.assistant_id,
-        user_id=user.id,
+        user_id=effective_uid,
         label=payload.name,
         description=payload.description,
         icon=payload.icon,
@@ -151,7 +169,8 @@ async def delete_assistant_profile(
     profile = await db.get(AgentProfile, assistant_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
-    if profile.user_id != 0 and profile.user_id != user.id and not user.is_admin():
+    effective_uid = resolve_effective_user_id(user)
+    if profile.user_id != 0 and profile.user_id != effective_uid and not user.is_admin():
         raise HTTPException(status_code=403, detail="Can only delete your own profiles")
 
     profile.status = "archived"
@@ -172,10 +191,11 @@ async def set_default_profile(
     profile = await db.get(AgentProfile, assistant_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
+    effective_uid = _require_effective_user_id(user)
 
     # Clear existing defaults for this user
     stmt = select(AgentProfile).where(
-        AgentProfile.user_id == user.id,
+        AgentProfile.user_id == effective_uid,
         AgentProfile.is_default == True,  # noqa: E712
     )
     for p in (await db.execute(stmt)).scalars().all():

@@ -6,11 +6,11 @@ Provides branch management features similar to git:
 - Switch branches
 - Branch visualization
 """
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
 from pixsim7.backend.main.services.prompt.family import PromptFamilyService
@@ -141,65 +141,61 @@ class GitBranchService:
         Returns:
             List of branches with metadata
         """
-        # Get all distinct branch names
-        query = select(
-            PromptVersion.branch_name,
-            func.max(PromptVersion.created_at).label('last_commit'),
-            func.count(PromptVersion.id).label('commit_count'),
-            func.max(PromptVersion.version_number).label('latest_version_number')
-        ).where(
-            and_(
-                PromptVersion.family_id == family_id,
-                PromptVersion.branch_name.isnot(None),
-                ~PromptVersion.tags.contains(['archived'])  # Exclude archived
-            )
-        ).group_by(PromptVersion.branch_name)
-
-        result = await self.db.execute(query)
-        branches_data = result.all()
-
-        branches = []
-        for branch_name, last_commit, commit_count, latest_version_number in branches_data:
-            # Get head (latest version on branch)
-            head = await self._get_branch_head(family_id, branch_name)
-
-            branches.append({
-                "name": branch_name,
-                "head_version_id": str(head.id) if head else None,
-                "latest_version_number": latest_version_number,
-                "commit_count": commit_count,
-                "last_commit": last_commit.isoformat() if last_commit else None,
-                "author": head.author if head else None,
-                "is_main": branch_name == "main" or branch_name == "master"
-            })
-
-        # Add implicit "main" branch (versions without branch_name)
-        main_query = select(
-            func.count(PromptVersion.id).label('commit_count'),
-            func.max(PromptVersion.created_at).label('last_commit'),
-            func.max(PromptVersion.version_number).label('latest_version_number')
-        ).where(
-            and_(
-                PromptVersion.family_id == family_id,
-                PromptVersion.branch_name.is_(None)
-            )
+        # NOTE:
+        # JSON contains() on tags is dialect-sensitive (especially sqlite/json),
+        # and can raise runtime SQL errors. Fetch family versions and apply a
+        # deterministic archived filter in Python.
+        query = (
+            select(PromptVersion)
+            .where(PromptVersion.family_id == family_id)
+            .order_by(PromptVersion.created_at.desc())
         )
-        main_result = await self.db.execute(main_query)
-        main_data = main_result.first()
+        result = await self.db.execute(query)
+        versions = list(result.scalars().all())
 
-        if main_data and main_data.commit_count > 0:
-            main_head = await self.version_service.get_latest_version(family_id)
-            branches.insert(0, {
-                "name": "main",
-                "head_version_id": str(main_head.id) if main_head else None,
-                "latest_version_number": main_data.latest_version_number,
-                "commit_count": main_data.commit_count,
-                "last_commit": main_data.last_commit.isoformat() if main_data.last_commit else None,
-                "author": main_head.author if main_head else None,
-                "is_main": True
-            })
+        branch_entries: Dict[str, Dict[str, Any]] = {}
 
+        for version in versions:
+            if self._is_archived(version):
+                continue
+
+            branch_name = version.branch_name if version.branch_name not in (None, "") else "main"
+
+            entry = branch_entries.get(branch_name)
+            if entry is None:
+                entry = {
+                    "name": branch_name,
+                    "head_version_id": str(version.id),
+                    "latest_version_number": version.version_number,
+                    "commit_count": 0,
+                    "last_commit": version.created_at.isoformat() if version.created_at else None,
+                    "_last_commit_sort": version.created_at.timestamp() if version.created_at else 0.0,
+                    "author": version.author,
+                    "is_main": branch_name in {"main", "master"},
+                }
+                branch_entries[branch_name] = entry
+
+            entry["commit_count"] += 1
+            if version.version_number is not None:
+                current_latest = entry["latest_version_number"]
+                if current_latest is None or version.version_number > current_latest:
+                    entry["latest_version_number"] = version.version_number
+
+        branches = list(branch_entries.values())
+        branches.sort(
+            key=lambda b: (
+                0 if b["is_main"] else 1,
+                -b["_last_commit_sort"],
+            ),
+        )
+        for branch in branches:
+            branch.pop("_last_commit_sort", None)
         return branches
+
+    @staticmethod
+    def _is_archived(version: PromptVersion) -> bool:
+        tags = version.tags or []
+        return "archived" in tags
 
     async def get_branch_history(
         self,

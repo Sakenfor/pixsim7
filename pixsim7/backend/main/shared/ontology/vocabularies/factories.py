@@ -206,6 +206,8 @@ def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
         pronoun_set=pronoun_set,
         default_stance=default_stance,
         keywords=data.get("keywords", []),
+        visual_priority=data.get("visual_priority", []),
+        render_template=data.get("render_template", ""),
         source=source,
         modifiers=modifiers,
     )

@@ -1,0 +1,27 @@
+blocks:
+  - block_id: anatomy.cephalopod_bipedal
+    category: anatomy
+    text: "Octopod walking upright on two rear tentacles, mantle held at waist height, remaining tentacles used for manipulation."
+    tags:
+      body_plan: cephalopod
+      locomotion: bipedal_tentacle
+      appendage_count: "8"
+      source_pack: creature_foundation
+
+  - block_id: anatomy.chromatophore_display_controlled
+    category: anatomy
+    text: "Cuttlefish-like chromatophore skin with controlled pattern shifts that track mood and intent."
+    tags:
+      body_plan: cephalopod
+      skin_system: chromatophore
+      expression: controlled
+      source_pack: creature_foundation
+
+  - block_id: anatomy.tentacle_manipulation_precision
+    category: anatomy
+    text: "Front tentacles coordinate as dexterous manipulation limbs while rear tentacles maintain stable gait."
+    tags:
+      body_plan: cephalopod
+      locomotion: mixed_support
+      dexterity: high
+      source_pack: creature_foundation

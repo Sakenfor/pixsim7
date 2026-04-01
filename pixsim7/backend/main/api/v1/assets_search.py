@@ -114,6 +114,9 @@ async def search_assets(
     By default:
     - Archived assets are excluded. Set include_archived=true to show them.
     - Only searchable assets are shown. Set searchable=false to include hidden assets.
+
+    `include_total=false` skips exact total counting for better latency on large
+    libraries. In that mode, response.total is a lower bound.
     """
     try:
         is_similarity_mode = request.similar_to is not None
@@ -131,7 +134,8 @@ async def search_assets(
 
         sf = _build_search_filters(request)
 
-        assets, total = await asset_service.list_assets(
+        include_total = bool(getattr(request, "include_total", True))
+        search_result = await asset_service.list_assets(
             user=user,
             sf=sf,
             limit=request.limit,
@@ -139,8 +143,16 @@ async def search_assets(
             cursor=None if is_similarity_mode else request.cursor,
             sort_by=request.sort_by,
             sort_dir=request.sort_dir,
-            include_total=True,
+            include_total=include_total,
         )
+        if include_total:
+            assets, total = search_result
+        else:
+            assets = search_result
+            # Lower-bound total when exact count is intentionally skipped.
+            total = effective_offset + len(assets)
+            if len(assets) == request.limit:
+                total += 1
 
         # Generate cursor for next page
         next_cursor = None

@@ -21,6 +21,7 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
 )
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
 # Provider URL domains - if remote_url matches, asset is already on that provider
 PROVIDER_URL_DOMAINS: Dict[str, tuple] = {
@@ -265,8 +266,9 @@ class AssetSyncService:
         asset = result.scalar_one_or_none()
         if not asset:
             raise ResourceNotFoundError(f"Asset {asset_id} not found")
-        if asset.user_id != user.id:
-            raise PermissionError(f"User {user.id} does not own asset {asset_id}")
+        owner_user_id = resolve_effective_user_id(user)
+        if owner_user_id is None or asset.user_id != owner_user_id:
+            raise PermissionError(f"User {owner_user_id or 0} does not own asset {asset_id}")
 
         # Already ingested with content-addressed storage? Return early
         is_content_addressed = asset.stored_key and '/content/' in asset.stored_key

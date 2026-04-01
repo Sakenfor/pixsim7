@@ -331,3 +331,49 @@ class TestDevPlansUpdateEndpoint:
         assert detail["error"] == "plan_revision_conflict"
         assert detail["expected_revision"] == 4
         assert detail["current_revision"] == 5
+
+    @pytest.mark.asyncio
+    async def test_update_policy_violation_returns_400(self):
+        app = _app(authenticated=True)
+        mock_update = AsyncMock()
+
+        payload = {"summary": "Update summary"}
+
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.dev_plans.evaluate_plan_update_policy",
+                return_value=(["synthetic policy violation"], []),
+            ),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update),
+        ):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["message"] == "Plan authoring policy violation"
+        assert detail["contract"] == "/api/v1/dev/plans/meta/authoring-contract"
+        assert "synthetic policy violation" in detail["errors"][0]
+        mock_update.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_update_policy_warnings_are_returned(self):
+        app = _app(authenticated=True)
+        update_result = _update_result(changes=[{"field": "summary"}])
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {"summary": "Update summary"}
+
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.dev_plans.evaluate_plan_update_policy",
+                return_value=([], ["suggested policy warning"]),
+            ),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update),
+        ):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["warnings"] == ["suggested policy warning"]

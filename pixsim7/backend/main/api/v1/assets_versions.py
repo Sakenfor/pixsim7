@@ -14,6 +14,7 @@ from uuid import UUID
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.v1.assets_helpers import get_effective_owner_user_id
 from pixsim7.backend.main.services.asset.versioning import AssetVersioningService
 from pixsim7.backend.main.domain.assets.versioning import AssetVersionFamily
 from pixsim_logging import get_logger
@@ -117,12 +118,13 @@ async def get_version_family(
     Returns family metadata with derived version count and latest version number.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
     family = await service.get_family(family_id)
 
     if not family:
         raise HTTPException(status_code=404, detail="Version family not found")
 
-    if family.user_id != user.id:
+    if family.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this family")
 
     return await _build_family_response(family, service)
@@ -140,12 +142,13 @@ async def get_family_timeline(
     Returns versions ordered by version number with HEAD indicator.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
     family = await service.get_family(family_id)
 
     if not family:
         raise HTTPException(status_code=404, detail="Version family not found")
 
-    if family.user_id != user.id:
+    if family.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this family")
 
     timeline = await service.get_version_timeline(family_id)
@@ -165,12 +168,13 @@ async def set_family_head(
     The specified asset must belong to the family.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
     family = await service.get_family(family_id)
 
     if not family:
         raise HTTPException(status_code=404, detail="Version family not found")
 
-    if family.user_id != user.id:
+    if family.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to modify this family")
 
     try:
@@ -196,6 +200,7 @@ async def get_asset_versions(
     If the asset is standalone, returns just that asset.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
     family = await service.get_family_for_asset(asset_id)
 
     if not family:
@@ -209,7 +214,7 @@ async def get_asset_versions(
         if not asset:
             raise HTTPException(status_code=404, detail="Asset not found")
 
-        if asset.user_id != user.id:
+        if asset.user_id != owner_user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this asset")
 
         return [VersionSummary(
@@ -222,7 +227,7 @@ async def get_asset_versions(
             is_head=False,
         )]
 
-    if family.user_id != user.id:
+    if family.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this family")
 
     versions = await service.get_versions(family.id)
@@ -253,6 +258,7 @@ async def get_asset_ancestry(
     Returns ancestors ordered oldest first.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
 
     # First check access
     from pixsim7.backend.main.domain.assets.models import Asset
@@ -264,7 +270,7 @@ async def get_asset_ancestry(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    if asset.user_id != user.id:
+    if asset.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this asset")
 
     ancestors = await service.get_ancestry(asset_id, max_depth)
@@ -305,6 +311,7 @@ async def link_version(
     from pixsim7.backend.main.domain.assets.models import Asset as AssetModel
 
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
 
     # Load and validate both assets
     parent_result = await db.execute(
@@ -313,7 +320,7 @@ async def link_version(
     parent = parent_result.scalar_one_or_none()
     if not parent:
         raise HTTPException(status_code=404, detail=f"Parent asset {request.parent_asset_id} not found")
-    if parent.user_id != user.id:
+    if parent.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access parent asset")
 
     child_result = await db.execute(
@@ -322,7 +329,7 @@ async def link_version(
     child = child_result.scalar_one_or_none()
     if not child:
         raise HTTPException(status_code=404, detail=f"Child asset {request.child_asset_id} not found")
-    if child.user_id != user.id:
+    if child.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access child asset")
 
     # Reject if child already belongs to a version family
@@ -367,6 +374,7 @@ async def fork_asset(
     Use this when you want to "branch off" in a new direction from an existing asset.
     """
     service = AssetVersioningService(db)
+    owner_user_id = get_effective_owner_user_id(user)
 
     # Check access
     from pixsim7.backend.main.domain.assets.models import Asset
@@ -378,13 +386,13 @@ async def fork_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    if asset.user_id != user.id:
+    if asset.user_id != owner_user_id:
         raise HTTPException(status_code=403, detail="Not authorized to fork this asset")
 
     try:
         family = await service.fork_to_new_family(
             source_asset_id=asset_id,
-            user_id=user.id,
+            user_id=owner_user_id,
             fork_name=request.name,
         )
         await db.commit()

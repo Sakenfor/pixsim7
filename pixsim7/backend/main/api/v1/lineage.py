@@ -11,6 +11,7 @@ from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 from pixsim7.backend.main.services.asset.lineage import AssetLineageService
 from pixsim7.backend.main.services.asset.branching import AssetBranchingService
 from pixsim7.backend.main.services.asset.lineage_refresh import LineageRefreshService
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim_logging import get_logger
 
@@ -19,11 +20,19 @@ logger = get_logger()
 router = APIRouter(prefix="/lineage", tags=["lineage"], include_in_schema=False)
 
 
+def _owner_user_id_or_403(user) -> int:
+    owner_user_id = resolve_effective_user_id(user)
+    if owner_user_id is None:
+        raise HTTPException(status_code=403, detail="User-scoped principal required")
+    return owner_user_id
+
+
 @router.get("/assets/{asset_id}/parents")
 async def get_parents(asset_id: int, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     service = AssetLineageService(db)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     parents = await service.get_parents(asset_id)
     return {"asset_id": asset_id, "parents": [p.id for p in parents]}
@@ -31,9 +40,10 @@ async def get_parents(asset_id: int, db: AsyncSession = Depends(get_db), user=De
 
 @router.get("/assets/{asset_id}/children")
 async def get_children(asset_id: int, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     service = AssetLineageService(db)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     children = await service.get_children(asset_id)
     return {"asset_id": asset_id, "children": [c.id for c in children]}
@@ -59,8 +69,9 @@ async def get_lineage_graph(
     - sequence_order: Order in multi-input operations
     - time/frame metadata when available
     """
+    owner_user_id = _owner_user_id_or_403(user)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
     # BFS down (children) - query lineage edges directly
@@ -181,8 +192,9 @@ async def get_lineage_graph(
 
 @router.post("/branches/{asset_id}")
 async def create_branch(asset_id: int, branch_time: float, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     svc = AssetBranchingService(db)
     branch = await svc.create_branch(asset_id, branch_time=branch_time)
@@ -191,8 +203,9 @@ async def create_branch(asset_id: int, branch_time: float, db: AsyncSession = De
 
 @router.get("/branches/{asset_id}")
 async def list_branches(asset_id: int, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     svc = AssetBranchingService(db)
     branches = await svc.list_branches(asset_id)
@@ -212,8 +225,9 @@ async def add_variant(branch_id: int, variant_asset_id: int, variant_name: str, 
 
 @router.post("/clips/{asset_id}")
 async def create_clip(asset_id: int, start_time: float, end_time: float, clip_name: str, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     svc = AssetBranchingService(db)
     clip = await svc.create_clip(asset_id, start_time=start_time, end_time=end_time, clip_name=clip_name)
@@ -222,8 +236,9 @@ async def create_clip(asset_id: int, start_time: float, end_time: float, clip_na
 
 @router.get("/clips/{asset_id}")
 async def list_clips(asset_id: int, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+    owner_user_id = _owner_user_id_or_403(user)
     asset = await db.get(Asset, asset_id)
-    if not asset or asset.user_id != user.id:
+    if not asset or asset.user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="Asset not found")
     svc = AssetBranchingService(db)
     clips = await svc.list_clips(asset_id)
@@ -276,6 +291,7 @@ async def refresh_lineage(
     Returns per-asset results with counts of removed and new edges.
     """
     service = LineageRefreshService(db)
+    owner_user_id = _owner_user_id_or_403(user)
 
     asset_ids_to_refresh: List[int] = []
 
@@ -284,7 +300,7 @@ async def refresh_lineage(
         # Validate ownership
         stmt = select(Asset.id).where(
             Asset.id.in_(body.asset_ids),
-            Asset.user_id == user.id,
+            Asset.user_id == owner_user_id,
         )
         result = await db.execute(stmt)
         owned_ids = {row[0] for row in result.fetchall()}
@@ -297,14 +313,14 @@ async def refresh_lineage(
                 "lineage_refresh_filtered_assets",
                 requested=len(body.asset_ids),
                 owned=len(asset_ids_to_refresh),
-                user_id=user.id,
+                user_id=owner_user_id,
             )
 
     elif body.provider_id and body.scope == "current_user":
         # Mode 2: Provider filter for current user
         stmt = select(Asset.id).where(
             Asset.provider_id == body.provider_id,
-            Asset.user_id == user.id,
+            Asset.user_id == owner_user_id,
         )
         result = await db.execute(stmt)
         asset_ids_to_refresh = [row[0] for row in result.fetchall()]
@@ -313,7 +329,7 @@ async def refresh_lineage(
             "lineage_refresh_by_provider",
             provider_id=body.provider_id,
             asset_count=len(asset_ids_to_refresh),
-            user_id=user.id,
+            user_id=owner_user_id,
         )
 
     else:
@@ -339,7 +355,7 @@ async def refresh_lineage(
     logger.info(
         "lineage_refresh_completed",
         count=refresh_result["count"],
-        user_id=user.id,
+        user_id=owner_user_id,
         provider_id=body.provider_id,
     )
 

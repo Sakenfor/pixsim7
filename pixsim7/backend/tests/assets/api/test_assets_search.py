@@ -10,7 +10,7 @@ Tests the /api/v1/assets endpoint with various filter combinations:
 - Error cases
 
 Usage:
-    pytest pixsim7/backend/tests/api/test_assets_search.py -v
+    pytest pixsim7/backend/tests/assets/api/test_assets_search.py -v
 """
 import pytest
 from datetime import datetime, timedelta

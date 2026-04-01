@@ -35,9 +35,17 @@ from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleS
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
 from pixsim7.backend.main.services.game.derived_projections import resync_world_projections, ResyncResult
 from pixsim7.backend.main.services.game.world import WORLD_UPSERT_META_KEY
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
 
 router = APIRouter()
+
+
+def _owner_user_id_or_403(user: CurrentUser) -> int:
+    owner_user_id = resolve_effective_user_id(user)
+    if owner_user_id is None:
+        raise HTTPException(status_code=403, detail="User-scoped principal required")
+    return owner_user_id
 
 
 class GameWorldSummary(BaseModel):
@@ -79,8 +87,9 @@ class UpdateWorldMetaRequest(BaseModel):
 async def _get_owned_world(world_id: int, user: CurrentUser, game_world_service: GameWorldSvc):
     """Fetch a world and ensure the requesting user owns it."""
 
+    owner_user_id = _owner_user_id_or_403(user)
     world = await game_world_service.get_world(world_id)
-    if not world or world.owner_user_id != user.id:
+    if not world or world.owner_user_id != owner_user_id:
         raise HTTPException(status_code=404, detail="World not found")
     return world
 
@@ -252,6 +261,7 @@ async def list_worlds(
     """
     from sqlalchemy import select
     from pixsim7.backend.main.domain.game import GameWorld
+    owner_user_id = _owner_user_id_or_403(user)
 
     # Clamp limit to reasonable range
     limit = min(max(1, limit), 1000)
@@ -260,7 +270,7 @@ async def list_worlds(
     # Load full user world list, then collapse legacy seed duplicates before paginating.
     result = await game_world_service.db.execute(
         select(GameWorld)
-        .where(GameWorld.owner_user_id == user.id)
+        .where(GameWorld.owner_user_id == owner_user_id)
         .order_by(GameWorld.id)
     )
     worlds = _dedupe_world_list_for_catalog(list(result.scalars().all()))
@@ -288,10 +298,11 @@ async def create_world(
     """
     normalized_upsert_key = _normalize_optional_string(req.upsert_key)
     merged_meta = dict(req.meta or {})
+    owner_user_id = _owner_user_id_or_403(user)
 
     if normalized_upsert_key:
         existing = await game_world_service.get_world_by_owner_and_upsert_key(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             upsert_key=normalized_upsert_key,
         )
         if existing:
@@ -306,7 +317,7 @@ async def create_world(
 
     try:
         world = await game_world_service.create_world(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             name=req.name,
             meta=merged_meta,
         )
@@ -473,8 +484,9 @@ async def import_world_project(
     - create_new_world
     """
     bundle_service = GameProjectBundleService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     try:
-        return await bundle_service.import_bundle(req, owner_user_id=user.id)
+        return await bundle_service.import_bundle(req, owner_user_id=owner_user_id)
     except ValueError as e:
         msg = str(e)
         if msg in {"unsupported_import_mode", "world_name_required"}:
@@ -491,8 +503,9 @@ async def list_saved_projects(
     origin_kind: Optional[ProjectOriginKind] = None,
 ) -> List[SavedGameProjectSummary]:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     projects = await storage.list_projects(
-        owner_user_id=user.id,
+        owner_user_id=owner_user_id,
         offset=offset,
         limit=limit,
         origin_kind=origin_kind,
@@ -507,7 +520,8 @@ async def get_saved_project(
     user: CurrentUser,
 ) -> SavedGameProjectDetail:
     storage = GameProjectStorageService(game_world_service.db)
-    project = await storage.get_project(owner_user_id=user.id, project_id=project_id)
+    owner_user_id = _owner_user_id_or_403(user)
+    project = await storage.get_project(owner_user_id=owner_user_id, project_id=project_id)
     if not project:
         raise HTTPException(status_code=404, detail="project_not_found")
 
@@ -524,11 +538,12 @@ async def save_project_snapshot(
     user: CurrentUser,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     overwrite_project_id = req.overwrite_project_id
     if overwrite_project_id is None:
         source_key = req.provenance.source_key if req.provenance is not None else None
         existing_by_source_key = await storage.get_latest_project_by_origin_source_key(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             source_key=source_key,
         )
         if existing_by_source_key and existing_by_source_key.id is not None:
@@ -536,7 +551,7 @@ async def save_project_snapshot(
 
     if overwrite_project_id is None and req.upsert_by_name:
         existing_by_name = await storage.get_latest_project_by_name(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             name=req.name,
         )
         if existing_by_name and existing_by_name.id is not None:
@@ -544,7 +559,7 @@ async def save_project_snapshot(
 
     try:
         project = await storage.save_project(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             name=req.name,
             bundle=req.bundle,
             source_world_id=req.source_world_id,
@@ -571,9 +586,10 @@ async def rename_saved_project(
     user: CurrentUser,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     try:
         project = await storage.rename_project(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             project_id=project_id,
             name=req.name,
         )
@@ -596,9 +612,10 @@ async def duplicate_saved_project(
     user: CurrentUser,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     try:
         project = await storage.duplicate_project(
-            owner_user_id=user.id,
+            owner_user_id=owner_user_id,
             project_id=project_id,
             name=req.name,
         )
@@ -620,7 +637,8 @@ async def delete_saved_project(
     user: CurrentUser,
 ) -> Response:
     storage = GameProjectStorageService(game_world_service.db)
-    deleted = await storage.delete_project(owner_user_id=user.id, project_id=project_id)
+    owner_user_id = _owner_user_id_or_403(user)
+    deleted = await storage.delete_project(owner_user_id=owner_user_id, project_id=project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="project_not_found")
 
@@ -649,8 +667,9 @@ async def upsert_project_draft(
     user: CurrentUser,
 ) -> DraftSummary:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     draft = await storage.upsert_draft(
-        owner_user_id=user.id,
+        owner_user_id=owner_user_id,
         bundle=req.bundle,
         source_world_id=req.source_world_id,
         draft_source_project_id=req.draft_source_project_id,
@@ -666,8 +685,9 @@ async def get_project_draft(
     draft_source_project_id: Optional[int] = None,
 ) -> Optional[SavedGameProjectDetail]:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     draft = await storage.get_latest_draft(
-        owner_user_id=user.id,
+        owner_user_id=owner_user_id,
         draft_source_project_id=draft_source_project_id,
     )
     if not draft:
@@ -686,8 +706,9 @@ async def delete_project_draft(
     draft_source_project_id: Optional[int] = None,
 ) -> Response:
     storage = GameProjectStorageService(game_world_service.db)
+    owner_user_id = _owner_user_id_or_403(user)
     deleted = await storage.delete_draft(
-        owner_user_id=user.id,
+        owner_user_id=owner_user_id,
         draft_source_project_id=draft_source_project_id,
     )
     if not deleted:
@@ -752,7 +773,8 @@ async def validate_all_world_schemas(
     for potential issues (like gaps in tier coverage) and suggestions for fixing
     validation errors.
     """
-    worlds = await game_world_service.list_worlds_for_user(owner_user_id=user.id)
+    owner_user_id = _owner_user_id_or_403(user)
+    worlds = await game_world_service.list_worlds_for_user(owner_user_id=owner_user_id)
     results = []
 
     for world in worlds:
@@ -1501,5 +1523,4 @@ async def get_world_config_endpoint(
     config = get_world_config(world.meta)
 
     return config
-
 

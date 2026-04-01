@@ -121,6 +121,20 @@ async def test_contracts_index_includes_endpoint_metadata() -> None:
 
 
 @pytest.mark.asyncio
+async def test_contracts_index_includes_contract_tool_names() -> None:
+    result = await list_contract_endpoints()
+
+    plans = next((c for c in result.contracts if c.id == "plans.management"), None)
+    assert plans is not None
+    assert "plans_management__plans_create" in plans.tool_names
+    assert "plans_management__plans_sync" not in plans.tool_names  # disabled endpoint
+
+    endpoint = next((ep for ep in plans.sub_endpoints if ep.id == "plans.create"), None)
+    assert endpoint is not None
+    assert endpoint.tool_name == "plans_management__plans_create"
+
+
+@pytest.mark.asyncio
 async def test_contracts_index_includes_structured_notifications_emit_endpoint() -> None:
     result = await list_contract_endpoints()
 

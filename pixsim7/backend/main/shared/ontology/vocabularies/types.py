@@ -145,6 +145,8 @@ class SpeciesDef:
     pronoun_set: Dict[str, str] = field(default_factory=dict)
     default_stance: str = "standing"
     keywords: List[str] = field(default_factory=list)
+    visual_priority: List[str] = field(default_factory=list)
+    render_template: str = ""
     source: str = "core"
     # Generic modifier registry — populated by factory from existing fields
     # plus any extra word_lists/modifiers in YAML.  Keyed by attr name.

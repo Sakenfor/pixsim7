@@ -412,12 +412,21 @@ class AssetSearchMixin:
         if analysis_tags:
             query = query.where(Asset.prompt_analysis.isnot(None))
             prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
-            query = query.where(prompt_jsonb.has_key("tags_flat"))
-            prompt_tags = prompt_jsonb["tags_flat"]
+            # Use root-level JSONB containment so the existing GIN index on
+            # (prompt_analysis::jsonb) can satisfy analysis-tag filters.
             if analysis_mode == "all" and len(analysis_tags) > 1:
-                query = query.where(prompt_tags.contains(analysis_tags))
+                query = query.where(
+                    prompt_jsonb.contains({"tags_flat": analysis_tags})
+                )
             else:
-                query = query.where(or_(*[prompt_tags.contains([tag]) for tag in analysis_tags]))
+                query = query.where(
+                    or_(
+                        *[
+                            prompt_jsonb.contains({"tags_flat": [tag]})
+                            for tag in analysis_tags
+                        ]
+                    )
+                )
 
         # Group filter (group_by + group_key or group_path)
         def _apply_group_filter_entry(entry_by: str, entry_key: str) -> None:

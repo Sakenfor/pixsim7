@@ -13,6 +13,7 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
 )
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_CREATED, ASSET_DELETED
@@ -84,8 +85,10 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
         asset = await self.get_asset(asset_id)
 
         # Authorization check
-        if asset.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot access other users' assets")
+        if not user.is_admin():
+            owner_user_id = resolve_effective_user_id(user)
+            if owner_user_id is None or asset.user_id != owner_user_id:
+                raise InvalidOperationError("Cannot access other users' assets")
 
         return asset
 

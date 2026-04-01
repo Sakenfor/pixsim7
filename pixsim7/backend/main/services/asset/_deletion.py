@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict
 from sqlalchemy import select, func
 
 from pixsim7.backend.main.domain import Asset, User
+from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_DELETED
@@ -131,6 +132,7 @@ class AssetDeletionMixin:
                     await self.db.delete(blob)
 
         await self.db.commit()
+        deleted_by_user_id = resolve_effective_user_id(user)
 
         async def _post_commit_cleanup():
             """Best-effort cleanup that runs after the response is sent."""
@@ -169,7 +171,7 @@ class AssetDeletionMixin:
             await event_bus.publish(ASSET_DELETED, {
                 "asset_id": asset_id,
                 "user_id": asset_owner_id,
-                "deleted_by_user_id": user.id,
+                "deleted_by_user_id": deleted_by_user_id,
             })
 
         return {
