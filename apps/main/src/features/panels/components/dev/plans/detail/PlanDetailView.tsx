@@ -384,16 +384,6 @@ export function PlanDetailView({
     return counts;
   }, [reviewGraph?.nodes]);
 
-  const reviewerParticipants = useMemo(
-    () => planParticipants?.reviewers ?? [],
-    [planParticipants?.reviewers],
-  );
-
-  const builderParticipants = useMemo(
-    () => planParticipants?.builders ?? [],
-    [planParticipants?.builders],
-  );
-
   useEffect(() => {
     if (reviewRounds.length === 0) {
       setSelectedRoundId('');
