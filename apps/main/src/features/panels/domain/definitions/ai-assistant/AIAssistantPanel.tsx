@@ -11,10 +11,11 @@ import {
   Badge,
   Button,
   EmptyState,
+  SidebarPaneShell,
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { pixsimClient } from '@lib/api/client';
+import { pixsimClient, API_BASE_URL } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
@@ -229,19 +230,51 @@ function createTabId(): string {
 // =============================================================================
 
 const _syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Pending payloads keyed by sessionId — kept so beforeunload can flush them */
+const _pendingSyncs = new Map<string, { sessionId: string; messages: ChatMessage[] }>();
 
 /** Debounced save of messages to the server for a given session. */
 function syncMessagesToServer(sessionId: string, messages: ChatMessage[]) {
   const existing = _syncTimers.get(sessionId);
   if (existing) clearTimeout(existing);
+  _pendingSyncs.set(sessionId, { sessionId, messages });
   _syncTimers.set(sessionId, setTimeout(() => {
     _syncTimers.delete(sessionId);
+    _pendingSyncs.delete(sessionId);
     const persistable = messages
       .filter((m) => m.role !== 'error')
       .slice(-50)
       .map((m) => ({ role: m.role, text: m.text, duration_ms: m.duration_ms, timestamp: m.timestamp.toISOString() }));
     pixsimClient.patch(`/meta/agents/chat-sessions/${sessionId}/messages`, { messages: persistable }).catch(() => {});
   }, 2000));
+}
+
+/** Flush any pending debounced server syncs — called on page unload */
+function flushPendingSyncs() {
+  for (const [id, { sessionId, messages }] of _pendingSyncs) {
+    const timer = _syncTimers.get(id);
+    if (timer) clearTimeout(timer);
+    _syncTimers.delete(id);
+    _pendingSyncs.delete(id);
+    const persistable = messages
+      .filter((m) => m.role !== 'error')
+      .slice(-50)
+      .map((m) => ({ role: m.role, text: m.text, duration_ms: m.duration_ms, timestamp: m.timestamp.toISOString() }));
+    // keepalive: true survives page unload (like sendBeacon but supports PATCH)
+    try {
+      const url = `${API_BASE_URL}/meta/agents/chat-sessions/${sessionId}/messages`;
+      fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: persistable }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch { /* best effort */ }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPendingSyncs);
 }
 
 /** Fetch messages from server for a resumed session. */
@@ -1384,23 +1417,34 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const activity = bridgeReq?.activity ?? null;
 
   // Consume completed/error results (may have arrived while panel was closed)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs every render; consume is idempotent
+  // Uses setMessages updater to persist synchronously during the state transition,
+  // so a page refresh between paint and the deferred persistence effect can't lose messages.
+   
   useEffect(() => {
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
     if (!result) return;
 
+    /** Persist inside the updater so it's synchronous with the state change */
+    const persistingUpdate = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      setMessages((prev) => {
+        const next = updater(prev);
+        persistTabMessages(tab.id, next);
+        return next;
+      });
+    };
+
     if (result.error === 'cancelled') {
-      setMessages((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
+      persistingUpdate((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
         if (prevSessionId) {
-          setMessages((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
+          persistingUpdate((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
         }
       } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
-        setMessages((prev) => {
+        persistingUpdate((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
             return [...prev.slice(0, -1), { ...last, text: `Session resumed (verified: ${prevSessionId.slice(0, 8)})` }];
@@ -1409,14 +1453,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         });
       }
       const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
-      setMessages((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
+      persistingUpdate((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
       if (!tab.sessionId) {
         // Use the first user message as tab label
         const lastUserMsg = messages.findLast((m) => m.role === 'user');
         if (lastUserMsg) onUpdateTab({ label: lastUserMsg.text.slice(0, 30) });
       }
     } else {
-      setMessages((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+      persistingUpdate((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
     }
   });
 
@@ -1491,7 +1535,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || sending) return;
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text, timestamp: new Date() }]);
+    setMessages((prev) => {
+      const next = [...prev, { role: 'user', text, timestamp: new Date() }];
+      persistTabMessages(tab.id, next);
+      return next;
+    });
 
     const timeout = tab.engine === 'codex' ? 600 : 300;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
@@ -2022,109 +2070,172 @@ export function AIAssistantPanel() {
     return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);
   }, [tabs, profiles, setActiveTab]);
 
-  return (
-    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-neutral-950">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-[32px] shrink-0">
-        <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId;
-            const tabProfile = profiles.find((p) => p.id === tab.profileId);
-            const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
-            return (
-              <div
-                key={tab.id}
-                role="tab"
-                tabIndex={0}
-                onClick={() => setActiveTab(tab.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter') setActiveTab(tab.id); }}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-r border-neutral-200 dark:border-neutral-800 shrink-0 transition-colors cursor-pointer ${
-                  isActive
-                    ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'
-                    : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                }`}
-              >
-                <Icon name={tabIcon} size={10} className={isActive ? 'text-accent' : 'text-neutral-400'} />
-                <span className="max-w-[80px] truncate">{tab.label}</span>
-                {tab.planId && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); navigateToPlan(tab.planId!); }}
-                    className="flex items-center gap-0.5 px-1 py-px rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[8px] font-medium hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors shrink-0"
-                    title={`Bound to plan: ${tab.planId}`}
-                  >
-                    <Icon name="clipboard" size={8} />
-                    plan
-                  </button>
-                )}
-                {tabs.length > 1 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                    className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 transition-opacity"
-                  >
-                    <Icon name="x" size={8} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+  // Group tabs: plan-bound first (grouped by planId), then ungrouped
+  const { planGroups, ungroupedTabs } = useMemo(() => {
+    const byPlan = new Map<string, ChatTab[]>();
+    const ungrouped: ChatTab[] = [];
+    for (const tab of tabs) {
+      if (tab.planId) {
+        const group = byPlan.get(tab.planId) ?? [];
+        group.push(tab);
+        byPlan.set(tab.planId, group);
+      } else {
+        ungrouped.push(tab);
+      }
+    }
+    return {
+      planGroups: Array.from(byPlan.entries()).map(([planId, items]) => ({ planId, items })),
+      ungroupedTabs: ungrouped,
+    };
+  }, [tabs]);
 
-        {/* New tab + resume + status */}
-        <div className="flex items-center gap-1 px-2 shrink-0">
-          <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
-            <Icon name="plus" size={12} />
+  const renderSessionItem = useCallback((tab: ChatTab, isActive: boolean) => {
+    const tabProfile = profiles.find((p) => p.id === tab.profileId);
+    const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
+    const bridgeReq = chatBridge.get(tab.id);
+    const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+
+    return (
+      <div
+        role="option"
+        aria-selected={isActive}
+        onClick={() => setActiveTab(tab.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter') setActiveTab(tab.id); }}
+        tabIndex={0}
+        className={`group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+          isActive
+            ? 'bg-blue-50 dark:bg-blue-950/40 text-neutral-900 dark:text-neutral-100'
+            : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+        }`}
+      >
+        <div className="relative shrink-0">
+          <Icon name={tabIcon} size={12} className={isActive ? 'text-accent' : 'text-neutral-400'} />
+          {isSending && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] font-medium truncate">{tab.label}</div>
+          {tab.profileId && tabProfile && (
+            <div className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate">{tabProfile.label}</div>
+          )}
+        </div>
+        {tabs.length > 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+            className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+          >
+            <Icon name="x" size={10} />
           </button>
-          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
-            // Reuse existing tab if one with the same sessionId already exists
-            const existing = tabs.find((t) => t.sessionId === sessionId);
-            if (existing) { setActiveTab(existing.id); return; }
-            const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
-            // Fetch server-side message history, then create the tab
-            fetchServerMessages(sessionId).then((serverMsgs) => {
-              if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
-              setTabs((prev) => [newTab, ...prev]);
-              setActiveTab(newTab.id);
-            });
-          }} />
-          {connected === 0 && !bridge?.process_alive && (
-            <button
-              onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
-              disabled={bridgeStarting}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
-            >
-              {bridgeStarting ? '...' : 'Connect'}
-            </button>
-          )}
-          {connected > 0 ? (
-            <button
-              onClick={() => { bridgeManualStopRef.current = true; pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
-              className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
-              title="Connected - click to disconnect"
-            />
-          ) : bridge?.process_alive ? (
-            <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="Connecting..." />
-          ) : (
-            <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />
-          )}
-        </div>
+        )}
       </div>
+    );
+  }, [profiles, tabs.length, closeTab, setActiveTab]);
 
-      {/* Active tab content */}
-      {activeTab ? (
-        <TabChatView
-          key={activeTab.id}
-          tab={activeTab}
-          onUpdateTab={(updates) => updateTab(activeTab.id, updates)}
-          bridge={bridge}
-          profiles={profiles}
-          onRefreshProfiles={refreshProfiles}
-        />
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <EmptyState message="No chat tabs" />
+  return (
+    <div className="flex h-full min-h-0 bg-white dark:bg-neutral-950">
+      {/* Left sidebar */}
+      <SidebarPaneShell
+        title="Chats"
+        collapsible
+        resizable
+        expandedWidth={200}
+        persistKey="ai-assistant:sidebar"
+        variant="light"
+        bodyScrollable={false}
+      >
+        <div className="flex flex-col h-full min-h-0">
+          {/* Session list */}
+          <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
+            {/* Plan-bound groups */}
+            {planGroups.map(({ planId, items }) => (
+              <div key={planId}>
+                <button
+                  type="button"
+                  onClick={() => navigateToPlan(planId)}
+                  className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-green-600 dark:text-green-400 hover:underline w-full text-left"
+                >
+                  <Icon name="clipboard" size={9} className="shrink-0" />
+                  <span className="truncate">{planId}</span>
+                  <Badge color="green" className="text-[8px] ml-auto">{items.length}</Badge>
+                </button>
+                {items.map((tab) => renderSessionItem(tab, tab.id === activeTabId))}
+              </div>
+            ))}
+
+            {/* Ungrouped chats */}
+            {ungroupedTabs.length > 0 && planGroups.length > 0 && (
+              <div className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-neutral-400 dark:text-neutral-500">
+                <Icon name="messageSquare" size={9} className="shrink-0" />
+                <span>Chats</span>
+                <Badge color="gray" className="text-[8px] ml-auto">{ungroupedTabs.length}</Badge>
+              </div>
+            )}
+            {ungroupedTabs.map((tab) => renderSessionItem(tab, tab.id === activeTabId))}
+
+            {tabs.length === 0 && (
+              <div className="px-2 py-4 text-[10px] text-neutral-400 text-center">No chats yet</div>
+            )}
+          </div>
+
+          {/* Sidebar footer: actions + status */}
+          <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-700 px-2 py-1.5 flex items-center gap-1.5">
+            <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
+              <Icon name="plus" size={13} />
+            </button>
+            <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
+              const existing = tabs.find((t) => t.sessionId === sessionId);
+              if (existing) { setActiveTab(existing.id); return; }
+              const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
+              fetchServerMessages(sessionId).then((serverMsgs) => {
+                if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
+                setTabs((prev) => [newTab, ...prev]);
+                setActiveTab(newTab.id);
+              });
+            }} />
+            <div className="ml-auto flex items-center gap-1">
+              {connected === 0 && !bridge?.process_alive && (
+                <button
+                  onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
+                  disabled={bridgeStarting}
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                >
+                  {bridgeStarting ? '...' : 'Connect'}
+                </button>
+              )}
+              {connected > 0 ? (
+                <button
+                  onClick={() => { bridgeManualStopRef.current = true; pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
+                  className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
+                  title="Connected - click to disconnect"
+                />
+              ) : bridge?.process_alive ? (
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="Connecting..." />
+              ) : (
+                <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </SidebarPaneShell>
+
+      {/* Chat content area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {activeTab ? (
+          <TabChatView
+            key={activeTab.id}
+            tab={activeTab}
+            onUpdateTab={(updates) => updateTab(activeTab.id, updates)}
+            bridge={bridge}
+            profiles={profiles}
+            onRefreshProfiles={refreshProfiles}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <EmptyState message="No chat sessions" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
