@@ -90,6 +90,35 @@ function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): 
  */
 const STALE_TIMEOUT_S = 90;
 
+// ── Inflight task persistence (survives page reload / HMR full-reload) ──
+
+const INFLIGHT_KEY = 'ai-assistant:inflight';
+
+interface InflightEntry {
+  tabId: string;
+  taskId: string;
+  ts: number; // Date.now() when persisted
+}
+
+function loadInflight(): InflightEntry[] {
+  try {
+    const raw = localStorage.getItem(INFLIGHT_KEY);
+    if (!raw) return [];
+    const entries = JSON.parse(raw) as InflightEntry[];
+    // Drop entries older than stale timeout
+    const cutoff = Date.now() - STALE_TIMEOUT_S * 1000;
+    return entries.filter((e) => e.ts > cutoff);
+  } catch { return []; }
+}
+
+function saveInflight(entries: InflightEntry[]): void {
+  try {
+    if (entries.length === 0) localStorage.removeItem(INFLIGHT_KEY);
+    else localStorage.setItem(INFLIGHT_KEY, JSON.stringify(entries));
+  } catch { /* ignore */ }
+}
+
+
 class AssistantChatBridge {
   /** Active or recently completed requests, keyed by tab ID */
   private _requests = new Map<string, BridgeRequest>();
@@ -108,11 +137,14 @@ class AssistantChatBridge {
 
   constructor() {
     this._staleTimer = setInterval(() => this._checkStale(), 15_000);
+    // Restore in-flight tasks from a previous page session (reload / HMR full-reload)
+    this._restoreInflight();
   }
 
   /** Mark requests as errored if no heartbeat/result has arrived for too long */
   private _checkStale(): void {
     const now = Date.now();
+    let inflightChanged = false;
     for (const [, req] of this._requests) {
       if (req.status !== 'pending' && req.status !== 'streaming') continue;
       const elapsed = (now - req._lastActivity) / 1000;
@@ -124,9 +156,65 @@ class AssistantChatBridge {
           error: 'Request timed out — no response from agent. Try sending again.',
           thinkingLog: req.thinkingLog,
         };
+        inflightChanged = true;
         this._notify();
       }
     }
+    if (inflightChanged) this._persistInflight();
+  }
+
+  // ── Inflight persistence ──
+
+  /** Save current in-flight tabId→taskId mappings to localStorage */
+  private _persistInflight(): void {
+    const entries: InflightEntry[] = [];
+    for (const [, req] of this._requests) {
+      if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
+        entries.push({ tabId: req.tabId, taskId: req.taskId, ts: Date.now() });
+      }
+    }
+    saveInflight(entries);
+  }
+
+  /** Restore in-flight tasks from localStorage and reconnect to them */
+  private _restoreInflight(): void {
+    const entries = loadInflight();
+    if (entries.length === 0) return;
+
+    // Create placeholder requests so the UI shows the activity bubble
+    for (const entry of entries) {
+      if (this._requests.has(entry.tabId)) continue;
+      const request: BridgeRequest = {
+        tabId: entry.tabId,
+        status: 'streaming',
+        activity: 'Reconnecting...',
+        thinkingLog: [],
+        result: null,
+        abort: new AbortController(),
+        taskId: entry.taskId,
+        _lastActivity: Date.now(),
+      };
+      this._requests.set(entry.tabId, request);
+    }
+    this._notify();
+
+    // Connect WS and send reconnect messages
+    this._ensureWs().then((ok) => {
+      if (!ok) {
+        this._scheduleReconnect();
+        return;
+      }
+      for (const entry of entries) {
+        const req = this._requests.get(entry.tabId);
+        if (req && (req.status === 'pending' || req.status === 'streaming') && req.taskId) {
+          this._ws?.send(JSON.stringify({
+            type: 'reconnect',
+            tab_id: entry.tabId,
+            task_id: entry.taskId,
+          }));
+        }
+      }
+    });
   }
 
   // ── WebSocket lifecycle ──
@@ -250,6 +338,7 @@ class AssistantChatBridge {
       // Capture task_id for reconnect support
       if (data.task_id && !request.taskId) {
         request.taskId = data.task_id as string;
+        this._persistInflight();
       }
       request._lastActivity = Date.now();
       // Skip idle session keepalives — they are not task activity
@@ -273,6 +362,7 @@ class AssistantChatBridge {
         thinkingLog: request.thinkingLog,
         reconnected: data.reconnected as boolean | undefined,
       };
+      this._persistInflight();
       this._notify();
     } else if (type === 'error') {
       request.status = 'error';
@@ -282,6 +372,7 @@ class AssistantChatBridge {
         error: (data.error as string) || 'Unknown error',
         thinkingLog: request.thinkingLog,
       };
+      this._persistInflight();
       this._notify();
     }
   }
@@ -408,6 +499,7 @@ class AssistantChatBridge {
       req.status = 'error';
       req.activity = null;
       req.result = { ok: false, error: 'cancelled' };
+      this._persistInflight();
       this._notify();
     }
   }

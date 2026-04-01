@@ -86,6 +86,51 @@ class AgentProtocol:
         raise NotImplementedError
 
 
+def _describe_tool_use(block: dict) -> str:
+    """Build a human-readable description of a tool_use block."""
+    name = block.get("name", "?")
+    inp = block.get("input") or {}
+    if not isinstance(inp, dict):
+        return f"Tool: {name}"
+
+    if name in ("Read", "read"):
+        path = inp.get("file_path", "")
+        return f"Reading {_short_path(path)}" if path else f"Tool: {name}"
+    if name in ("Edit", "edit"):
+        path = inp.get("file_path", "")
+        return f"Editing {_short_path(path)}" if path else f"Tool: {name}"
+    if name in ("Write", "write"):
+        path = inp.get("file_path", "")
+        return f"Writing {_short_path(path)}" if path else f"Tool: {name}"
+    if name in ("Bash", "bash"):
+        cmd = inp.get("command", "")
+        return f"Running: {cmd[:120]}" if cmd else f"Tool: {name}"
+    if name in ("Grep", "grep"):
+        pat = inp.get("pattern", "")
+        path = inp.get("path", "")
+        suffix = f" in {_short_path(path)}" if path else ""
+        return f"Searching: {pat[:80]}{suffix}" if pat else f"Tool: {name}"
+    if name in ("Glob", "glob"):
+        pat = inp.get("pattern", "")
+        return f"Finding: {pat}" if pat else f"Tool: {name}"
+    if name in ("Agent", "agent"):
+        desc = inp.get("description", "")
+        return f"Agent: {desc[:100]}" if desc else f"Tool: {name}"
+    # Generic fallback: tool name + first string-valued input key
+    for v in inp.values():
+        if isinstance(v, str) and len(v) > 3:
+            return f"{name}: {v[:100]}"
+    return f"Tool: {name}"
+
+
+def _short_path(path: str) -> str:
+    """Shorten a file path to last 3 segments for readability."""
+    if not path:
+        return path
+    parts = path.replace("\\", "/").split("/")
+    return "/".join(parts[-3:]) if len(parts) > 3 else path
+
+
 class ClaudeProtocol(AgentProtocol):
     """Claude Code: long-running process, stream-json stdin/stdout."""
 
@@ -138,7 +183,7 @@ class ClaudeProtocol(AgentProtocol):
             block = content[0] if isinstance(content, list) and content else content
             bt = block.get("type", "")
             if bt == "tool_use":
-                return ParsedEvent(kind="progress", text=f"Using tool: {block.get('name', '?')}", raw=raw)
+                return ParsedEvent(kind="progress", text=_describe_tool_use(block), raw=raw)
             if bt == "thinking":
                 return ParsedEvent(kind="progress", text="Thinking...", raw=raw)
             if bt == "text":
