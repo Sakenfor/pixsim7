@@ -1,32 +1,22 @@
 """
-In-memory stores for provider and media settings (DB-backed via system_config).
+In-memory stores for settings (DB-backed via system_config).
 
-These module-level caches are populated on startup by the applier registry
-and updated on every write. Consumers can read synchronously without a DB session.
+Generic namespace cache is delegated to the shared pixsim_settings package.
+Provider and media caches remain here (app-specific).
 """
 from __future__ import annotations
 
 from typing import Any
 
+# Re-export generic store from shared package
+from pixsim_settings.store import (  # noqa: F401
+    get_settings_data,
+    apply_settings,
+)
+
 
 # ---------------------------------------------------------------------------
-# Generic namespace cache (used by SettingsBase subclasses)
-# ---------------------------------------------------------------------------
-
-_namespace_caches: dict[str, dict[str, Any]] = {}
-
-
-def get_settings_data(namespace: str) -> dict[str, Any]:
-    """Read settings for any namespace from in-memory cache."""
-    return dict(_namespace_caches.get(namespace, {}))
-
-
-def apply_settings(namespace: str, data: dict) -> None:
-    """Applier callback: project data onto the generic namespace cache."""
-    _namespace_caches[namespace] = dict(data) if data else {}
-
-# ---------------------------------------------------------------------------
-# Provider settings cache
+# Provider settings cache (app-specific)
 # ---------------------------------------------------------------------------
 
 _provider_settings_cache: dict[str, dict[str, Any]] = {}
