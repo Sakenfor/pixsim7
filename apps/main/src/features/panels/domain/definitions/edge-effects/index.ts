@@ -1,4 +1,4 @@
-import { EdgeEffectsPanel } from '@features/panels/components/tools/EdgeEffectsPanel';
+import { EdgeEffectsPanel } from './EdgeEffectsPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 

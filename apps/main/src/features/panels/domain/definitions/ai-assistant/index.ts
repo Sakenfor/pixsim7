@@ -3,7 +3,7 @@ import { lazy } from 'react';
 import { definePanel } from '../../../lib/definePanel';
 
 const AIAssistantPanel = lazy(() =>
-  import('@features/panels/components/helpers/AIAssistantPanel').then((m) => ({
+  import('./AIAssistantPanel').then((m) => ({
     default: m.AIAssistantPanel,
   }))
 );

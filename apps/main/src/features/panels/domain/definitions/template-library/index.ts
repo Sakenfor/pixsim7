@@ -1,4 +1,4 @@
-import { TemplateLibraryPanel } from '@features/panels/components/tools/TemplateLibraryPanel';
+import { TemplateLibraryPanel } from './TemplateLibraryPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 

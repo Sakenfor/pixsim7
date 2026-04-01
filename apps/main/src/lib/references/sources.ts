@@ -9,6 +9,11 @@ import { pixsimClient } from '@lib/api/client';
 import { referenceRegistry } from './registry';
 
 const _STATUS_ORDER: Record<string, number> = { active: 0, done: 1, parked: 2 };
+const _STATUS_COLOR: Record<string, string> = {
+  active: 'text-emerald-400',
+  done: 'text-neutral-500',
+  parked: 'text-amber-400',
+};
 
 referenceRegistry.register({
   type: 'plan',
@@ -26,6 +31,7 @@ referenceRegistry.register({
             id: p.id,
             label: p.title,
             detail: `${p.status}${p.stage ? ` · ${p.stage}` : ''}`,
+            detailColor: _STATUS_COLOR[p.status],
           })),
       )
       .catch(() => []),
@@ -57,13 +63,12 @@ referenceRegistry.register({
   label: 'Projects',
   fetch: () =>
     pixsimClient
-      .get<Array<{ project_id: string; name: string; world_name?: string }>>('/game/worlds/projects/snapshots')
+      .get<Array<{ id: number; name: string; source_world_id?: number }>>('/game/worlds/projects/snapshots')
       .then((r) =>
         (r || []).map((p) => ({
           type: 'project' as const,
-          id: p.project_id,
+          id: String(p.id),
           label: p.name,
-          detail: p.world_name,
         })),
       )
       .catch(() => []),

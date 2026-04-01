@@ -143,11 +143,21 @@ interface OpenPlanChatDetail {
   planTitle?: string;
 }
 
+function normalizeProfileId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  if (!value) return null;
+  if (value.toLowerCase() === 'unknown') return null;
+  return value;
+}
+
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
     if (raw) {
-      return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => ({
+      return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => {
+        const normalizedProfileId = normalizeProfileId(t.profileId ?? null);
+        return ({
         usePersona: true,
         engine: 'claude' as AgentEngine,
         modelOverride: null,
@@ -155,9 +165,11 @@ function loadTabs(): ChatTab[] {
         focusAreas: [] as string[],
         planId: null,
         ...t,
+        profileId: normalizedProfileId,
         // Legacy tabs without injectToken inherit profile-bound default.
-        injectToken: typeof t.injectToken === 'boolean' ? t.injectToken : Boolean(t.profileId),
-      })) as ChatTab[];
+        injectToken: typeof t.injectToken === 'boolean' ? t.injectToken : Boolean(normalizedProfileId),
+      });
+      }) as ChatTab[];
     }
   } catch { /* ignore */ }
   return [];
@@ -300,17 +312,18 @@ function buildResumedTab(session: {
   profile_id?: string | null;
   last_plan_id?: string | null;
 }): ChatTab {
+  const profileId = normalizeProfileId(session.profile_id ?? null);
   return {
     id: createTabId(),
     label: session.label || 'Resumed',
     sessionId: session.id,
-    profileId: session.profile_id ?? null,
+    profileId,
     engine: (session.engine || 'claude') as AgentEngine,
     modelOverride: null,
     usePersona: true,
     customInstructions: '',
     focusAreas: [],
-    injectToken: Boolean(session.profile_id),
+    injectToken: Boolean(profileId),
     planId: session.last_plan_id ?? null,
     createdAt: new Date().toISOString(),
   };
@@ -1454,11 +1467,6 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       }
       const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
       persistingUpdate((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
-      if (!tab.sessionId) {
-        // Use the first user message as tab label
-        const lastUserMsg = messages.findLast((m) => m.role === 'user');
-        if (lastUserMsg) onUpdateTab({ label: lastUserMsg.text.slice(0, 30) });
-      }
     } else {
       persistingUpdate((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
     }
@@ -1534,6 +1542,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || sending) return;
+    const isFirstUserMessage = !tab.sessionId && !messages.some((m) => m.role === 'user');
+    if (isFirstUserMessage) {
+      onUpdateTab({ label: text.slice(0, 30) });
+    }
     setInput('');
     setMessages((prev) => {
       const next = [...prev, { role: 'user', text, timestamp: new Date() }];
@@ -1543,9 +1555,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     const timeout = tab.engine === 'codex' ? 600 : 300;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
-    if (tab.profileId) body.assistant_id = tab.profileId;
+    const tabProfileId = normalizeProfileId(tab.profileId);
+    const resolvedProfileId = tabProfileId || profiles.find((p) => p.is_default)?.id || profiles[0]?.id || null;
+    if (resolvedProfileId) {
+      body.assistant_id = resolvedProfileId;
+      if (tab.profileId !== resolvedProfileId) onUpdateTab({ profileId: resolvedProfileId });
+    }
     if (tab.sessionId) body.bridge_session_id = tab.sessionId;
-    if (tab.profileId && !tab.usePersona) body.skip_persona = true;
+    if (resolvedProfileId && !tab.usePersona) body.skip_persona = true;
     if (tab.modelOverride) body.model = tab.modelOverride;
     if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
     if (tab.focusAreas.length > 0) body.focus = tab.focusAreas;
@@ -1568,19 +1585,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Token flows two ways: (1) body.user_token → bridge writes to MCP token file
     // for automatic tool auth, (2) bridge prepends it to the first message so the
     // agent is aware it has a token (useful for non-MCP use cases).
-    if (tab.injectToken && tab.profileId) {
+    if (tab.injectToken && resolvedProfileId) {
       try {
-        const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${tab.profileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
+        const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${resolvedProfileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
         body.user_token = res.access_token;
       } catch (err) {
-        console.warn('[ai-assistant] Token mint failed for profile', tab.profileId, err);
+        console.warn('[ai-assistant] Token mint failed for profile', resolvedProfileId, err);
       }
     }
 
     // Fire-and-forget â€" the bridge singleton manages the SSE fetch.
     // Results are consumed by the useEffect above, even if the panel unmounts.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab, messages]);
 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -2025,7 +2042,7 @@ export function AIAssistantPanel() {
       const newTab = buildResumedTab({
         id: detail.sessionId,
         engine: detail.engine,
-        label: profile?.label || detail.label,
+        label: detail.label || profile?.label || 'Resumed',
         profile_id: detail.profileId,
       });
       fetchServerMessages(detail.sessionId).then((serverMsgs) => {

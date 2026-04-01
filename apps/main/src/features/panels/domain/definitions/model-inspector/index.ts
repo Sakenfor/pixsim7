@@ -1,5 +1,5 @@
 import { definePanel } from '../../../lib/definePanel';
-import { ModelInspectorPanel } from '@features/panels/components/tools/ModelInspectorPanel';
+import { ModelInspectorPanel } from './ModelInspectorPanel';
 
 export default definePanel({
   id: 'model-inspector',

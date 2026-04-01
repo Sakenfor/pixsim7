@@ -13,6 +13,8 @@ export interface ReferenceItem {
   id: string;
   label: string;
   detail?: string;
+  /** Optional CSS color class for the detail text (e.g. status color). */
+  detailColor?: string;
 }
 
 export interface ReferenceSource {

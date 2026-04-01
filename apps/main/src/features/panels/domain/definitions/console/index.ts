@@ -1,5 +1,5 @@
 import { definePanel } from '../../../lib/definePanel';
-import { ConsolePanel } from '@features/panels/components/console/ConsolePanel';
+import { ConsolePanel } from './ConsolePanel';
 
 export default definePanel({
   id: 'console',

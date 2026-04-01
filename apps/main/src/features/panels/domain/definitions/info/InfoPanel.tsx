@@ -9,8 +9,8 @@
 
 import type { ViewerAsset } from '@features/assets';
 
-import { useResolvedPanelAsset } from '../../hooks/useResolvedPanelAsset';
-import { useResolvedPanelScene } from '../../hooks/useResolvedPanelScene';
+import { useResolvedPanelAsset } from '@features/panels/hooks/useResolvedPanelAsset';
+import { useResolvedPanelScene } from '@features/panels/hooks/useResolvedPanelScene';
 
 export interface InfoPanelContext {
   /** Current asset being viewed */

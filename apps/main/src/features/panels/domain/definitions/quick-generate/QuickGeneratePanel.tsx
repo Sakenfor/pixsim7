@@ -11,9 +11,9 @@ import { useMemo } from 'react';
 
 import type { ViewerAsset } from '@features/assets';
 
-import { ViewerQuickGenerate } from '../../../../components/media/ViewerQuickGenerate';
-import { useResolvedPanelAsset } from '../../hooks/useResolvedPanelAsset';
-import { useResolvedPanelScene } from '../../hooks/useResolvedPanelScene';
+import { ViewerQuickGenerate } from '@/components/media/ViewerQuickGenerate';
+import { useResolvedPanelAsset } from '@features/panels/hooks/useResolvedPanelAsset';
+import { useResolvedPanelScene } from '@features/panels/hooks/useResolvedPanelScene';
 
 export interface QuickGeneratePanelContext {
   /** Current asset being viewed */

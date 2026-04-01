@@ -30,6 +30,47 @@ interface QueryResult {
   query: string;
 }
 
+type RunMode = 'query' | 'explain' | 'explain_analyze';
+
+const RUN_MODE_OPTIONS: Array<{
+  id: RunMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: 'query',
+    label: 'Query',
+    description: 'Run SQL and return rows.',
+  },
+  {
+    id: 'explain',
+    label: 'Explain Plan',
+    description: 'Plan only, fast, no query execution.',
+  },
+  {
+    id: 'explain_analyze',
+    label: 'Explain Analyze',
+    description: 'Execute query and show actual timings/buffers.',
+  },
+];
+
+function defaultTimeoutForMode(mode: RunMode): number {
+  return mode === 'explain_analyze' ? 120 : 30;
+}
+
+function labelForMode(mode: RunMode): string {
+  if (mode === 'query') return 'Run Query';
+  if (mode === 'explain') return 'Explain Plan';
+  return 'Explain Analyze';
+}
+
+function runningLabelForMode(mode: RunMode | null): string {
+  if (mode === 'query') return 'Running Query...';
+  if (mode === 'explain') return 'Explaining Plan...';
+  if (mode === 'explain_analyze') return 'Explaining Analyze...';
+  return 'Running...';
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -43,8 +84,13 @@ export function SqlQueryExplorerPanel() {
   const [sql, setSql] = useState('SELECT id, operation_type, status, created_at\nFROM generations\nORDER BY created_at DESC\nLIMIT 20;');
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [runningMode, setRunningMode] = useState<RunMode | null>(null);
+  const [selectedRunMode, setSelectedRunMode] = useState<RunMode>('query');
   const [error, setError] = useState<string | null>(null);
   const [maxRows, setMaxRows] = useState(100);
+  const [timeoutSeconds, setTimeoutSeconds] = useState<number>(
+    defaultTimeoutForMode('query')
+  );
 
   // Load presets on mount
   const loadPresets = useCallback(async () => {
@@ -63,29 +109,54 @@ export function SqlQueryExplorerPanel() {
     loadPresets();
   }
 
-  // Execute query
-  const executeQuery = useCallback(async () => {
-    if (!sql.trim()) {
-      setError('Please enter a SQL query');
-      return;
-    }
-
+  const runSql = useCallback(async (sqlText: string, mode: RunMode, timeoutOverride?: number) => {
     setLoading(true);
+    setRunningMode(mode);
     setError(null);
     setResult(null);
 
+    const effectiveTimeoutSeconds = Math.max(
+      1,
+      Math.min(180, timeoutOverride ?? defaultTimeoutForMode(mode))
+    );
+    const requestTimeoutMs = Math.max(60_000, (effectiveTimeoutSeconds + 30) * 1000);
+
     try {
       const data = await api.post('/dev/sql/query', {
-        sql: sql.trim(),
+        sql: sqlText,
         max_rows: maxRows,
-      });
+        timeout_seconds: effectiveTimeoutSeconds,
+      }, { timeout: requestTimeoutMs });
       setResult(data);
     } catch (err: any) {
       setError(err.message || 'Query failed');
     } finally {
       setLoading(false);
+      setRunningMode(null);
     }
-  }, [api, sql, maxRows]);
+  }, [api, maxRows]);
+
+  const buildSqlForMode = useCallback((baseSql: string, mode: RunMode): string => {
+    if (mode === 'query') {
+      return baseSql;
+    }
+    if (mode === 'explain') {
+      return `EXPLAIN (FORMAT TEXT)\n${baseSql};`;
+    }
+    return `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)\n${baseSql};`;
+  }, []);
+
+  const executeSelectedMode = useCallback(async () => {
+    const trimmed = sql.trim();
+    if (!trimmed) {
+      setError('Please enter a SQL query');
+      return;
+    }
+
+    const baseSql = trimmed.replace(/;+\s*$/, '');
+    const sqlToRun = buildSqlForMode(baseSql, selectedRunMode);
+    await runSql(sqlToRun, selectedRunMode, timeoutSeconds);
+  }, [sql, buildSqlForMode, selectedRunMode, timeoutSeconds, runSql]);
 
   // Load preset
   const loadPreset = useCallback((preset: PresetQuery) => {
@@ -103,6 +174,11 @@ export function SqlQueryExplorerPanel() {
     return acc;
   }, {} as Record<string, PresetQuery[]>);
 
+  const isExplainResult = isExplainPlanResult(result);
+  const explainLines = isExplainResult
+    ? result?.rows.map((row) => formatCell(row[0])).join('\n') ?? ''
+    : '';
+
   return (
     <div className="sql-query-explorer h-full flex flex-col bg-gray-900 text-gray-100">
       {/* Header */}
@@ -118,8 +194,66 @@ export function SqlQueryExplorerPanel() {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left sidebar - Presets */}
+        {/* Left sidebar - Execution + Presets */}
         <div className="w-64 border-r border-gray-700 overflow-y-auto p-3">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Execution
+          </h3>
+          <div className="space-y-1 mb-4">
+            {RUN_MODE_OPTIONS.map((option) => {
+              const selected = selectedRunMode === option.id;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    setSelectedRunMode(option.id);
+                    setTimeoutSeconds(defaultTimeoutForMode(option.id));
+                  }}
+                  className={`w-full text-left px-2 py-2 rounded border transition-colors ${
+                    selected
+                      ? 'bg-blue-900/30 border-blue-700'
+                      : 'bg-gray-900 border-gray-700 hover:bg-gray-800'
+                  }`}
+                >
+                  <div className={`text-sm font-medium ${selected ? 'text-blue-200' : 'text-gray-200'}`}>
+                    {option.label}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {option.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-3 mb-5 p-2 rounded border border-gray-700 bg-gray-900/60">
+            <label className="block text-xs text-gray-400">
+              Timeout (seconds)
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={timeoutSeconds}
+                onChange={(e) => setTimeoutSeconds(Number(e.target.value) || defaultTimeoutForMode(selectedRunMode))}
+                className="mt-1 w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-gray-200"
+              />
+            </label>
+
+            <label className="block text-xs text-gray-400">
+              Max rows
+              <select
+                value={maxRows}
+                onChange={(e) => setMaxRows(Number(e.target.value))}
+                className="mt-1 w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-gray-200"
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+                <option value={500}>500</option>
+              </select>
+            </label>
+          </div>
+
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Preset Queries
           </h3>
@@ -165,33 +299,20 @@ export function SqlQueryExplorerPanel() {
                 SQL Query
               </label>
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-gray-400">
-                  <span>Max rows:</span>
-                  <select
-                    value={maxRows}
-                    onChange={(e) => setMaxRows(Number(e.target.value))}
-                    className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm"
-                  >
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={200}>200</option>
-                    <option value={500}>500</option>
-                  </select>
-                </label>
                 <button
-                  onClick={executeQuery}
+                  onClick={executeSelectedMode}
                   disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded font-medium text-sm transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded font-medium text-sm transition-colors min-w-[180px] justify-center"
                 >
                   {loading ? (
                     <>
                       <Icon name="loader" size={16} className="animate-spin" />
-                      Running...
+                      {runningLabelForMode(runningMode)}
                     </>
                   ) : (
                     <>
                       <Icon name="play" size={16} />
-                      Run Query
+                      {labelForMode(selectedRunMode)}
                     </>
                   )}
                 </button>
@@ -207,7 +328,8 @@ export function SqlQueryExplorerPanel() {
             />
 
             <p className="text-xs text-gray-500 mt-2">
-              Only SELECT queries allowed. Results limited to {maxRows} rows.
+              Mode, timeout, and row limits are configured in the left sidebar.
+              Explain modes run the SQL currently in this editor, they do not auto-bind to gallery UI filters.
             </p>
           </div>
 
@@ -241,8 +363,17 @@ export function SqlQueryExplorerPanel() {
                   </span>
                 </div>
 
-                {/* Table */}
-                {result.rows.length > 0 ? (
+                {/* Results */}
+                {result.rows.length > 0 && isExplainResult ? (
+                  <div className="border border-gray-700 rounded bg-gray-950/60">
+                    <div className="px-3 py-2 text-xs font-medium text-gray-300 border-b border-gray-700">
+                      Execution Plan
+                    </div>
+                    <pre className="px-3 py-3 text-xs text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto">
+                      {explainLines}
+                    </pre>
+                  </div>
+                ) : result.rows.length > 0 ? (
                   <div className="overflow-x-auto border border-gray-700 rounded">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-800">
@@ -313,4 +444,17 @@ function formatCell(value: any): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function isExplainPlanResult(result: QueryResult | null): boolean {
+  if (!result) {
+    return false;
+  }
+  if (/^\s*EXPLAIN\b/i.test(result.query)) {
+    return true;
+  }
+  if (result.columns.length === 1 && /query plan/i.test(result.columns[0])) {
+    return true;
+  }
+  return false;
 }

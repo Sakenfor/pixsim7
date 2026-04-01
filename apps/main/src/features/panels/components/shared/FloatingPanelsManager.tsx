@@ -10,6 +10,7 @@ import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors"
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
+import { CubeHeaderChips } from "@features/cubes/components/CubeHeaderChips";
 import { useCubeSettingsStore } from "@features/cubes/stores/cubeSettingsStore";
 import { useCubeStore } from "@features/cubes/useCubeStore";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
@@ -26,9 +27,12 @@ import { DropZoneOverlay } from "./DropZoneOverlay";
 
 // ── Fly-away helpers ───────────────────────────────────────────────
 
-/** Resolve the on-screen center of the cube indicator widget. */
-function getCubeIndicatorPosition(): { x: number; y: number } {
-  const el = document.querySelector('.floating-panel-cube-target');
+/** Resolve the on-screen center of a cube indicator widget (optionally by instance). */
+function getCubeIndicatorPosition(instanceId?: string): { x: number; y: number } {
+  const selector = instanceId
+    ? `.floating-panel-cube-target[data-cube-instance="${instanceId}"]`
+    : '.floating-panel-cube-target';
+  const el = document.querySelector(selector);
   if (el) {
     const rect = el.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -301,7 +305,7 @@ const FloatingPanel = memo(function FloatingPanel({
   const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
   const cubesVisible = useCubeSettingsStore((s) => s.visible);
   const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
-  // cubeDockPosition removed — handleMinimizeToCube now always flies to cube
+  // cubeDockPosition removed — handleSendToCube flies to the target cube instance
 
   // ── Fly-away animation ──
   const [flyingAway, setFlyingAway] = useState(false);
@@ -317,12 +321,12 @@ const FloatingPanel = memo(function FloatingPanel({
     anim.finished.then(onComplete).catch(() => onComplete());
   }, []);
 
-  const handleMinimizeToCube = useCallback(() => {
+  const handleSendToCube = useCallback((instanceId: string) => {
     // Ensure cube is visible before animating so the target element exists in the DOM
     if (!cubesVisible) setCubesVisible(true);
     // Allow a microtask for React to render the cube widget, then read its position
     queueMicrotask(() => {
-      const cubePos = getCubeIndicatorPosition();
+      const cubePos = getCubeIndicatorPosition(instanceId);
       flyToAndDo(cubePos, () => {
         const defId = getFloatingDefinitionId(panel.id);
         minimizePanelToCube(
@@ -330,6 +334,7 @@ const FloatingPanel = memo(function FloatingPanel({
           { x: panel.x, y: panel.y },
           { width: panel.width, height: panel.height },
           panel.context,
+          instanceId,
         );
         closeFloatingPanel(panel.id);
       });
@@ -550,11 +555,6 @@ const FloatingPanel = memo(function FloatingPanel({
                 {panelCategoryBadge}
               </span>
             )}
-            {!panel.minimized && (
-              <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
-                FLOATING
-              </span>
-            )}
             {!panel.minimized && panelContextSummary && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 {panelContextSummary}
@@ -567,6 +567,8 @@ const FloatingPanel = memo(function FloatingPanel({
             )}
           </div>
           <div className="flex items-center shrink-0">
+            <CubeHeaderChips onSendToCube={handleSendToCube} />
+            <div className="w-px h-4 bg-neutral-300 dark:bg-neutral-600 mx-1" />
             <IconButton
               size="md"
               rounded="md"
@@ -574,14 +576,6 @@ const FloatingPanel = memo(function FloatingPanel({
               onClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
               className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
               title="Minimize"
-            />
-            <IconButton
-              size="md"
-              rounded="md"
-              icon={<Icon name="box" size={12} />}
-              onClick={handleMinimizeToCube}
-              className="text-neutral-500 dark:text-neutral-400 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 hover:text-cyan-600 dark:hover:text-cyan-400"
-              title="Send to cube"
             />
             {canReturnToOrigin && (
               <IconButton

@@ -1,4 +1,4 @@
-import { GameToolsPanel } from '@features/panels/components/tools/GameToolsPanel';
+import { GameToolsPanel } from './GameToolsPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 

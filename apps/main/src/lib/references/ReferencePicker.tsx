@@ -64,7 +64,7 @@ export function ReferencePicker({
   const showCategories = !query && !typeFilter && sources.length > 1;
   const showItems = filtered.length > 0;
 
-  if (!showCategories && !showItems) return null;
+  if (!showCategories && !showItems && !typeFilter) return null;
 
   return (
     <div
@@ -128,10 +128,11 @@ export function ReferencePicker({
           />
           <div className="flex-1 min-w-0">
             <div className="truncate font-medium">{item.label}</div>
-            <div className="text-[9px] text-neutral-400 truncate">
-              {item.type}:{item.id}
-              {item.detail ? ` — ${item.detail}` : ''}
-            </div>
+            {item.detail && (
+              <div className={`text-[9px] truncate ${item.detailColor ?? 'text-neutral-400'}`}>
+                {item.detail}
+              </div>
+            )}
           </div>
         </button>
       ))}

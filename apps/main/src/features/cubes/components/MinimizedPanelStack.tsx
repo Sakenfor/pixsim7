@@ -21,6 +21,7 @@ import { useWorkspaceStore } from '@features/workspace';
 import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
 
 import { cubeFaceRegistry, type CubeFaceRegistry } from '../lib/cubeFaceRegistry';
+import { useCubeHighlightStore } from '../stores/cubeHighlightStore';
 import { getCubeSettingsStore, type CubeDockPosition } from '../stores/cubeSettingsStore';
 import { useCubeStore, type ControlCube } from '../useCubeStore';
 
@@ -402,8 +403,14 @@ export function MinimizedPanelStack({
   const cubeSize = isExpanded ? CUBE_SIZE_ACTIVE : CUBE_SIZE_IDLE;
   const half = isExpanded ? HALF_ACTIVE : HALF_IDLE;
 
-  // Idle: wobble. Hover (not expanded yet): double-bounce. Expanded: nothing.
+  // Highlight: external hover from CubeHeaderChips triggers nudge animation
+  const isHighlighted = useCubeHighlightStore(
+    (s) => s.highlightedInstanceId === instanceId,
+  );
+
+  // Priority: drag > highlight > expanded > hover > idle wobble
   const animClass = isDragging ? ''
+    : isHighlighted ? 'animate-cube-nudge'
     : isExpanded ? ''
     : isHovered ? 'animate-cube-bounce'
     : 'animate-cube-wobble';
@@ -441,6 +448,7 @@ export function MinimizedPanelStack({
   const content = (
     <div
       className="pointer-events-auto floating-panel-cube-target"
+      data-cube-instance={instanceId}
       style={{
         position: 'fixed',
         left: position.x,

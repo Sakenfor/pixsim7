@@ -11,13 +11,17 @@ export { cubesModule } from './module';
 // Main overlay component
 export { CubeWidgetOverlay } from './CubeWidgetOverlay';
 
-// Store
+// Stores
 export { useCubeStore } from './useCubeStore';
 export { useCubeSettingsStore, type CubeFaceMode, type CubeDockPosition } from './stores/cubeSettingsStore';
+export { useCubeInstanceStore, selectOrderedInstances, CUBE_PRESETS, type CubePreset, type CubeInstanceMeta } from './stores/cubeInstanceStore';
+export { useCubeHighlightStore } from './stores/cubeHighlightStore';
 
 // Components
 export { DraggableCube } from './components/DraggableCube';
 export { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
+export { CubeHeaderChips } from './components/CubeHeaderChips';
+export { CreateCubePopup } from './components/CreateCubePopup';
 
 // Lib - Expansion registry
 export {

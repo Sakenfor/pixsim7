@@ -1,4 +1,4 @@
-import { InfoPanel } from '@features/panels/components/helpers';
+import { InfoPanel } from './InfoPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 

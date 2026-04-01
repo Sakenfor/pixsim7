@@ -3,7 +3,7 @@ import { createElement, lazy, Suspense } from 'react';
 import { defineModule } from '@app/modules/types';
 
 const LazyAIAssistantWidget = lazy(() =>
-  import('./components/helpers/AIAssistantActivityBarWidget').then((m) => ({
+  import('./domain/definitions/ai-assistant/AIAssistantActivityBarWidget').then((m) => ({
     default: m.AIAssistantActivityBarWidget,
   }))
 );

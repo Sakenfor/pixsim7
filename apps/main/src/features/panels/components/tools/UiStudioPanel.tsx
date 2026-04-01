@@ -30,7 +30,7 @@ import {
 
 import { OverlayConfig } from "@/routes/OverlayConfig";
 
-import { HudDesignerPanel } from "../HudDesignerPanel";
+import { HudDesignerPanel } from "@features/panels/domain/definitions/hud-designer/HudDesignerPanel";
 
 import { SurfaceWorkbenchPanel } from "./SurfaceWorkbenchPanel";
 

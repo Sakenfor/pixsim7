@@ -12,7 +12,7 @@ import {
   useCapability,
 } from "@features/contextHub";
 
-import { ProjectContextBadge } from "../shared/ProjectContextBadge";
+import { ProjectContextBadge } from "@features/panels/components/shared/ProjectContextBadge";
 
 
 

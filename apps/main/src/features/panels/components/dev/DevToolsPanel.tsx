@@ -77,7 +77,7 @@ function sortToolsByRecency(tools: DevToolDefinition[]): DevToolDefinition[] {
   });
 }
 
-type NavId = DevToolCategory | "recent";
+type NavId = DevToolCategory | "recent" | "all";
 
 export function DevToolsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -122,6 +122,15 @@ export function DevToolsPanel() {
       });
     }
 
+    const totalVisible = visibleTools.length;
+    if (totalVisible > 0) {
+      result.push({
+        id: "all",
+        label: `All (${totalVisible})`,
+        icon: <Icon name="grid" size={13} />,
+      });
+    }
+
     for (const cat of CATEGORY_ORDER) {
       const count = categoryCounts.get(cat) ?? 0;
       if (count === 0) continue;
@@ -134,11 +143,11 @@ export function DevToolsPanel() {
     }
 
     return result;
-  }, [recentTools.length, categoryCounts]);
+  }, [recentTools.length, visibleTools.length, categoryCounts]);
 
   const nav = useSidebarNav<NavId, never>({
     sections,
-    initial: recentTools.length > 0 ? "recent" : CATEGORY_ORDER.find((c) => (categoryCounts.get(c) ?? 0) > 0) ?? "debug",
+    initial: recentTools.length > 0 ? "recent" : "all",
     storageKey: "dev-tools:nav",
   });
 
@@ -150,9 +159,9 @@ export function DevToolsPanel() {
         .filter((t): t is DevToolDefinition => !!t);
     }
 
-    const categoryTools = visibleTools.filter(
-      (tool) => (tool.category ?? "misc") === nav.activeId
-    );
+    const categoryTools = nav.activeId === "all"
+      ? visibleTools
+      : visibleTools.filter((tool) => (tool.category ?? "misc") === nav.activeId);
 
     if (!searchQuery.trim()) return sortToolsByRecency(categoryTools);
 
@@ -183,7 +192,9 @@ export function DevToolsPanel() {
   };
 
   const activeCategory = nav.activeId as NavId;
-  const activeMeta = activeCategory !== "recent" ? CATEGORY_META[activeCategory] : null;
+  const activeMeta = activeCategory !== "recent" && activeCategory !== "all"
+    ? CATEGORY_META[activeCategory]
+    : null;
 
   return (
     <SidebarContentLayout
@@ -211,7 +222,7 @@ export function DevToolsPanel() {
           ) : undefined}
         >
           {activeMeta && <Icon name={activeMeta.icon} size={14} className="inline-block mr-1 align-middle" />}
-          {activeCategory === "recent" ? "Recently Used" : activeMeta?.label ?? activeCategory}
+          {activeCategory === "recent" ? "Recently Used" : activeCategory === "all" ? "All Tools" : activeMeta?.label ?? activeCategory}
         </SectionHeader>
 
         <div className="flex items-center gap-2">
@@ -240,7 +251,7 @@ export function DevToolsPanel() {
 
         {activeTools.length === 0 && (
           <EmptyState
-            message={searchQuery ? "No matching tools" : "No tools in this category"}
+            message={searchQuery ? "No matching tools" : activeCategory === "all" ? "No tools available" : "No tools in this category"}
             size="sm"
           />
         )}

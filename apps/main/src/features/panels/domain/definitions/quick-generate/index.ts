@@ -1,4 +1,4 @@
-import { QuickGeneratePanel } from '@features/panels/components/helpers';
+import { QuickGeneratePanel } from './QuickGeneratePanel';
 
 import { definePanel } from '../../../lib/definePanel';
 

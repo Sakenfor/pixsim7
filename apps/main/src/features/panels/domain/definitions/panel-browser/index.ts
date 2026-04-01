@@ -1,4 +1,4 @@
-import { PanelBrowserPanel } from '@features/panels/components/tools/PanelBrowserPanel';
+import { PanelBrowserPanel } from './PanelBrowserPanel';
 
 import { definePanelWithMeta } from '../../../lib/definePanel';
 

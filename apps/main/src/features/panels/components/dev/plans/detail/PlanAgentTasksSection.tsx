@@ -79,6 +79,9 @@ export interface PlanAgentTasksSectionProps {
   onNewRoundNoteChange: (value: string) => void;
   onCreateRound: () => void;
   onCloseRound?: (round: PlanReviewRound) => void | Promise<void>;
+  onReopenRound?: (round: PlanReviewRound) => void | Promise<void>;
+  currentUserId?: number | null;
+  currentUsername?: string | null;
 
   // Selected round state form
   roundStatusDraft: ReviewRoundStatus;
@@ -186,6 +189,15 @@ export interface PlanAgentTasksSectionProps {
   textAreaClassName: string;
 }
 
+function parseCreatedByUserId(createdBy: string | null | undefined): number | null {
+  const raw = (createdBy ?? '').trim();
+  if (!raw) return null;
+  const match = /^user:(\d+)$/.exec(raw);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function PlanAgentTasksSection({
   reviewGraph,
   loadingReviews,
@@ -205,6 +217,9 @@ export function PlanAgentTasksSection({
   onNewRoundNoteChange,
   onCreateRound,
   onCloseRound,
+  onReopenRound,
+  currentUserId,
+  currentUsername,
   roundStatusDraft,
   roundNoteDraft,
   roundConclusionDraft,
@@ -289,6 +304,55 @@ export function PlanAgentTasksSection({
   inputClassName,
   textAreaClassName,
 }: PlanAgentTasksSectionProps) {
+  const normalizedCurrentUsername = (currentUsername ?? '').trim() || null;
+  const formatActorWithCurrentUser = ({
+    principalType,
+    userId,
+    agentId,
+    fallback,
+  }: {
+    principalType?: string | null;
+    userId?: number | null;
+    agentId?: string | null;
+    fallback?: string | null;
+  }): string => {
+    if (currentUserId != null && userId != null && Number(currentUserId) === Number(userId)) {
+      return normalizedCurrentUsername ?? 'You';
+    }
+    return formatActorLabel(
+      {
+        principalType,
+        userId,
+        agentId,
+        fallback,
+      },
+      { profileLabels: reviewProfileLabels },
+    );
+  };
+
+  const isSelectedRoundClosed = selectedRound?.status === 'concluded';
+  const selectedRoundCreatorUserId =
+    selectedRound?.actorUserId ?? parseCreatedByUserId(selectedRound?.createdBy);
+  const selectedRoundCreatorLabel = selectedRound
+    ? formatActorWithCurrentUser({
+        principalType: selectedRound.actorPrincipalType,
+        userId: selectedRound.actorUserId,
+        agentId: selectedRound.actorAgentId,
+        fallback: selectedRound.createdBy,
+      })
+    : null;
+  const creatorIsCurrentUser =
+    currentUserId != null &&
+    selectedRoundCreatorUserId != null &&
+    Number(currentUserId) === Number(selectedRoundCreatorUserId);
+  const hasCreatorUserBinding = selectedRoundCreatorUserId != null;
+  const canReopenSelectedRound =
+    isSelectedRoundClosed &&
+    !!selectedRound &&
+    !!onReopenRound &&
+    currentUserId != null &&
+    (hasCreatorUserBinding ? Number(currentUserId) === Number(selectedRoundCreatorUserId) : true);
+
   return (
     <DisclosureSection
       label="Agent Tasks"
@@ -366,15 +430,12 @@ export function PlanAgentTasksSection({
                               </div>
                               {(round.actorAgentId || round.actorRunId || round.createdBy) && (
                                 <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                  {formatActorLabel(
-                                    {
-                                      principalType: round.actorPrincipalType,
-                                      userId: round.actorUserId,
-                                      agentId: round.actorAgentId,
-                                      fallback: round.createdBy,
-                                    },
-                                    { profileLabels: reviewProfileLabels },
-                                  )}
+                                  {formatActorWithCurrentUser({
+                                    principalType: round.actorPrincipalType,
+                                    userId: round.actorUserId,
+                                    agentId: round.actorAgentId,
+                                    fallback: round.createdBy,
+                                  })}
                                   {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
                                 </div>
                               )}
@@ -440,9 +501,18 @@ export function PlanAgentTasksSection({
                 {selectedRound ? `Iteration #${selectedRound.roundNumber}` : 'Iteration State'}
               </span>
               {selectedRound && (
-                <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
-                  {ITERATION_STATUS_LABELS[selectedRound.status] ?? selectedRound.status}
-                </Badge>
+                <select
+                  value={roundStatusDraft}
+                  onChange={(e) => onRoundStatusDraftChange(e.target.value as ReviewRoundStatus)}
+                  className={`${inputClassName} w-auto min-w-[9rem] max-w-[12rem]`}
+                  disabled={isSelectedRoundClosed}
+                  aria-label="Iteration status"
+                >
+                  <option value="open">Active</option>
+                  <option value="changes_requested">Needs Action</option>
+                  <option value="approved">Completed</option>
+                  <option value="concluded">Closed</option>
+                </select>
               )}
               {selectedRound?.reviewRevision != null && (
                 <Badge color="gray" className="text-[9px]">
@@ -457,30 +527,21 @@ export function PlanAgentTasksSection({
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                    Status
-                    <select
-                      value={roundStatusDraft}
-                      onChange={(e) => onRoundStatusDraftChange(e.target.value as ReviewRoundStatus)}
-                      className={inputClassName}
-                    >
-                      <option value="open">Active</option>
-                      <option value="changes_requested">Needs Action</option>
-                      <option value="approved">Completed</option>
-                      <option value="concluded">Closed</option>
-                    </select>
-                  </label>
-                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
-                    Note
-                    <input
-                      value={roundNoteDraft}
-                      onChange={(e) => onRoundNoteDraftChange(e.target.value)}
-                      className={inputClassName}
-                      placeholder="Optional round note"
-                    />
-                  </label>
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Created by {selectedRoundCreatorLabel ?? 'Unknown actor'}
+                  {creatorIsCurrentUser ? ' (you)' : ''}
                 </div>
+
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Note
+                  <input
+                    value={roundNoteDraft}
+                    onChange={(e) => onRoundNoteDraftChange(e.target.value)}
+                    className={inputClassName}
+                    placeholder="Optional round note"
+                    disabled={isSelectedRoundClosed}
+                  />
+                </label>
 
                 <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
                   Conclusion (required when status=concluded)
@@ -489,13 +550,34 @@ export function PlanAgentTasksSection({
                     onChange={(e) => onRoundConclusionDraftChange(e.target.value)}
                     className={textAreaClassName}
                     rows={2}
+                    disabled={isSelectedRoundClosed}
                   />
                 </label>
 
                 <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={onSaveRoundState} disabled={updatingRound}>
-                    {updatingRound ? 'Saving...' : 'Save Iteration State'}
-                  </Button>
+                  {!isSelectedRoundClosed && (
+                    <Button size="sm" onClick={onSaveRoundState} disabled={updatingRound}>
+                      {updatingRound ? 'Saving...' : 'Save Iteration Changes'}
+                    </Button>
+                  )}
+                  {isSelectedRoundClosed && selectedRound && onReopenRound && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (canReopenSelectedRound) void onReopenRound(selectedRound);
+                      }}
+                      disabled={updatingRound || !canReopenSelectedRound}
+                      title={
+                        canReopenSelectedRound
+                          ? 'Re-open this iteration'
+                          : 'Only the iteration creator can re-open this iteration'
+                      }
+                    >
+                      {canReopenSelectedRound
+                        ? (updatingRound ? 'Re-opening...' : 'Re-open Iteration')
+                        : 'Re-open Iteration (Creator Only)'}
+                    </Button>
+                  )}
                   <span className="text-[10px] text-neutral-400">
                     Updated {formatDateTime(selectedRound.updatedAt)}
                   </span>
@@ -504,87 +586,89 @@ export function PlanAgentTasksSection({
             )}
           </div>
 
-          <DisclosureSection
-            label="Agent Tasks"
-            defaultOpen
-            className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
-            contentClassName="space-y-2"
-            badge={
-              <Badge color="gray" className="text-[9px]">{selectedRoundRequests.length}</Badge>
-            }
-            actions={
-              <Button
-                size="sm"
-                onClick={onDispatchTick}
-                disabled={dispatchingTick || !selectedRoundRequests.some((request) => request.status === 'open')}
-              >
-                {dispatchingTick ? 'Dispatching...' : 'Dispatch Open'}
-              </Button>
-            }
-          >
+          {!isSelectedRoundClosed && (
+            <DisclosureSection
+              label="Agent Tasks"
+              defaultOpen
+              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
+              contentClassName="space-y-2"
+              badge={
+                <Badge color="gray" className="text-[9px]">{selectedRoundRequests.length}</Badge>
+              }
+              actions={
+                <Button
+                  size="sm"
+                  onClick={onDispatchTick}
+                  disabled={dispatchingTick || !selectedRoundRequests.some((request) => request.status === 'open')}
+                >
+                  {dispatchingTick ? 'Dispatching...' : 'Dispatch Open'}
+                </Button>
+              }
+            >
 
-            {selectedRoundRequests.length === 0 ? (
-              <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                No agent tasks yet.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {selectedRoundRequests.filter((r) => !r.dismissed).map((request) => (
-                  <PlanReviewRequestCard
-                    key={request.id}
-                    request={request}
-                    profileLabels={reviewProfileLabels}
-                    requestStatusColors={REVIEW_REQUEST_STATUS_COLORS}
-                    requestDispatchColors={REVIEW_REQUEST_DISPATCH_COLORS}
-                    agentSessions={agentSessions}
-                    nodeById={nodeById}
-                    selectedRoundNodeOrder={selectedRoundNodeOrder}
-                    dispatchingRequestId={dispatchingRequestId}
-                    updatingRequestId={updatingRequestId}
-                    onDispatchRequest={onDispatchRequest}
-                    onUpdateRequestStatus={onUpdateRequestStatus}
-                    onDismissRequest={onDismissRequest}
-                    onFocusNode={focusLinkedNode}
-                    formatDateTime={formatDateTime}
-                  />
-                ))}
-              </div>
-            )}
+              {selectedRoundRequests.length === 0 ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  No agent tasks yet.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {selectedRoundRequests.filter((r) => !r.dismissed).map((request) => (
+                    <PlanReviewRequestCard
+                      key={request.id}
+                      request={request}
+                      profileLabels={reviewProfileLabels}
+                      requestStatusColors={REVIEW_REQUEST_STATUS_COLORS}
+                      requestDispatchColors={REVIEW_REQUEST_DISPATCH_COLORS}
+                      agentSessions={agentSessions}
+                      nodeById={nodeById}
+                      selectedRoundNodeOrder={selectedRoundNodeOrder}
+                      dispatchingRequestId={dispatchingRequestId}
+                      updatingRequestId={updatingRequestId}
+                      onDispatchRequest={onDispatchRequest}
+                      onUpdateRequestStatus={onUpdateRequestStatus}
+                      onDismissRequest={onDismissRequest}
+                      onFocusNode={focusLinkedNode}
+                      formatDateTime={formatDateTime}
+                    />
+                  ))}
+                </div>
+              )}
 
-            <PlanReviewRequestForm
-              inputClassName={inputClassName}
-              textAreaClassName={textAreaClassName}
-              title={newRequestTitle}
-              body={newRequestBody}
-              profileId={newRequestProfileId}
-              method={newRequestMethod}
-              provider={newRequestProvider}
-              modelId={newRequestModelId}
-              mode={newRequestMode}
-              baseRevision={newRequestBaseRevision}
-              assignee={newRequestAssignee}
-              queuePolicy={newRequestQueuePolicy}
-              creating={creatingRequest}
-              loadingAssignees={loadingAssignees}
-              loadingProfiles={loadingProfiles}
-              profiles={reviewProfiles}
-              liveAssignees={liveAssigneeOptions}
-              recentAssignees={recentAssigneeOptions}
-              profileLabels={reviewProfileLabels}
-              buildAssigneeOptionValue={buildAssigneeOptionValue}
-              onTitleChange={onNewRequestTitleChange}
-              onBodyChange={onNewRequestBodyChange}
-              onProfileChange={onApplyRequestProfileSelection}
-              onMethodChange={onNewRequestMethodChange}
-              onProviderChange={onNewRequestProviderChange}
-              onModelIdChange={onNewRequestModelIdChange}
-              onModeChange={onNewRequestModeChange}
-              onBaseRevisionChange={onNewRequestBaseRevisionChange}
-              onAssigneeChange={onNewRequestAssigneeChange}
-              onQueuePolicyChange={onNewRequestQueuePolicyChange}
-              onSubmit={onCreateRequest}
-            />
-          </DisclosureSection>
+              <PlanReviewRequestForm
+                inputClassName={inputClassName}
+                textAreaClassName={textAreaClassName}
+                title={newRequestTitle}
+                body={newRequestBody}
+                profileId={newRequestProfileId}
+                method={newRequestMethod}
+                provider={newRequestProvider}
+                modelId={newRequestModelId}
+                mode={newRequestMode}
+                baseRevision={newRequestBaseRevision}
+                assignee={newRequestAssignee}
+                queuePolicy={newRequestQueuePolicy}
+                creating={creatingRequest}
+                loadingAssignees={loadingAssignees}
+                loadingProfiles={loadingProfiles}
+                profiles={reviewProfiles}
+                liveAssignees={liveAssigneeOptions}
+                recentAssignees={recentAssigneeOptions}
+                profileLabels={reviewProfileLabels}
+                buildAssigneeOptionValue={buildAssigneeOptionValue}
+                onTitleChange={onNewRequestTitleChange}
+                onBodyChange={onNewRequestBodyChange}
+                onProfileChange={onApplyRequestProfileSelection}
+                onMethodChange={onNewRequestMethodChange}
+                onProviderChange={onNewRequestProviderChange}
+                onModelIdChange={onNewRequestModelIdChange}
+                onModeChange={onNewRequestModeChange}
+                onBaseRevisionChange={onNewRequestBaseRevisionChange}
+                onAssigneeChange={onNewRequestAssigneeChange}
+                onQueuePolicyChange={onNewRequestQueuePolicyChange}
+                onSubmit={onCreateRequest}
+              />
+            </DisclosureSection>
+          )}
 
           <DisclosureSection
             label="Discussion"
@@ -635,32 +719,34 @@ export function PlanAgentTasksSection({
             )}
           </DisclosureSection>
 
-          <PlanReviewResponseForm
-            inputClassName={inputClassName}
-            textAreaClassName={textAreaClassName}
-            selectedRoundStatus={selectedRound?.status ?? null}
-            selectedRoundNodes={selectedRoundNodes}
-            relationOptions={relationOptions}
-            composeTextareaRef={composeTextareaRef}
-            kind={newNodeKind}
-            authorRole={newNodeAuthorRole}
-            severity={newNodeSeverity}
-            body={newNodeBody}
-            refTargetId={newNodeRefTargetId}
-            refRelation={newNodeRefRelation}
-            refPlanAnchor={newNodeRefPlanAnchor}
-            refQuote={newNodeRefQuote}
-            creating={creatingNode}
-            onKindChange={onNewNodeKindChange}
-            onAuthorRoleChange={onNewNodeAuthorRoleChange}
-            onSeverityChange={onNewNodeSeverityChange}
-            onBodyChange={onNewNodeBodyChange}
-            onRefTargetIdChange={onNewNodeRefTargetIdChange}
-            onRefRelationChange={onNewNodeRefRelationChange}
-            onRefPlanAnchorChange={onNewNodeRefPlanAnchorChange}
-            onRefQuoteChange={onNewNodeRefQuoteChange}
-            onSubmit={onCreateNode}
-          />
+          {!isSelectedRoundClosed && (
+            <PlanReviewResponseForm
+              inputClassName={inputClassName}
+              textAreaClassName={textAreaClassName}
+              selectedRoundStatus={selectedRound?.status ?? null}
+              selectedRoundNodes={selectedRoundNodes}
+              relationOptions={relationOptions}
+              composeTextareaRef={composeTextareaRef}
+              kind={newNodeKind}
+              authorRole={newNodeAuthorRole}
+              severity={newNodeSeverity}
+              body={newNodeBody}
+              refTargetId={newNodeRefTargetId}
+              refRelation={newNodeRefRelation}
+              refPlanAnchor={newNodeRefPlanAnchor}
+              refQuote={newNodeRefQuote}
+              creating={creatingNode}
+              onKindChange={onNewNodeKindChange}
+              onAuthorRoleChange={onNewNodeAuthorRoleChange}
+              onSeverityChange={onNewNodeSeverityChange}
+              onBodyChange={onNewNodeBodyChange}
+              onRefTargetIdChange={onNewNodeRefTargetIdChange}
+              onRefRelationChange={onNewNodeRefRelationChange}
+              onRefPlanAnchorChange={onNewNodeRefPlanAnchorChange}
+              onRefQuoteChange={onNewNodeRefQuoteChange}
+              onSubmit={onCreateNode}
+            />
+          )}
         </div>
       </div>
     </DisclosureSection>
