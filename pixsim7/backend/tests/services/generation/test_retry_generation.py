@@ -175,11 +175,11 @@ async def test_retry_count_one_below_max_allowed():
 
 @pytest.mark.asyncio
 async def test_max_retries_resolved_from_settings():
-    """When max_retries is None, settings.auto_retry_max_attempts is used."""
+    """When max_retries is None, GenerationSettings.auto_retry_max_attempts is used."""
     svc = _make_service(_make_original(retry_count=5))
     with patch(
-        "pixsim7.backend.main.shared.config.settings",
-        SimpleNamespace(auto_retry_max_attempts=5),
+        "pixsim7.backend.main.services.generation.generation_settings.GenerationSettings.get",
+        return_value=SimpleNamespace(auto_retry_max_attempts=5),
     ):
         with pytest.raises(InvalidOperationError, match="Maximum retries"):
             await svc.retry_generation(1, _make_user())

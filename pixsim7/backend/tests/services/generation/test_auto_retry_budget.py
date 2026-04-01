@@ -15,7 +15,7 @@ import pytest
 from pixsim7.backend.main.domain.enums import GenerationStatus, GenerationErrorCode
 from pixsim7.backend.main.services.generation.retry import GenerationRetryService
 
-_SETTINGS_PATH = "pixsim7.backend.main.shared.config.settings"
+_SETTINGS_PATH = "pixsim7.backend.main.services.generation.generation_settings.GenerationSettings.get"
 
 
 def _make_generation(
@@ -38,7 +38,7 @@ def _make_generation(
 
 
 def _patch_max_attempts(n: int = 20):
-    return patch(_SETTINGS_PATH, SimpleNamespace(auto_retry_max_attempts=n))
+    return patch(_SETTINGS_PATH, return_value=SimpleNamespace(auto_retry_max_attempts=n))
 
 
 # ---------------------------------------------------------------------------

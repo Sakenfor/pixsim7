@@ -13,9 +13,14 @@ from .service import register_applier
 # ---------------------------------------------------------------------------
 
 def _apply_generation_config(data: dict) -> None:
-    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.system_config.settings_store import apply_settings
     from pixsim7.backend.main.shared.rate_limit import job_create_limiter, login_limiter
 
+    # Populate the SettingsBase cache — consumers read via
+    # GenerationSettings.get() (no global settings sync needed)
+    apply_settings("generation", data)
+
+    # Side effect: update rate limiter state
     job_create_limiter.update_limits(
         max_requests=data.get("rate_limit_max_requests"),
         window_seconds=data.get("rate_limit_window_seconds"),
@@ -24,14 +29,6 @@ def _apply_generation_config(data: dict) -> None:
         max_requests=data.get("login_rate_limit_max_requests"),
         window_seconds=data.get("login_rate_limit_window_seconds"),
     )
-    if "auto_retry_enabled" in data:
-        settings.auto_retry_enabled = data["auto_retry_enabled"]
-    if "auto_retry_max_attempts" in data:
-        settings.auto_retry_max_attempts = data["auto_retry_max_attempts"]
-    if "max_jobs_per_user" in data:
-        settings.max_jobs_per_user = data["max_jobs_per_user"]
-    if "max_accounts_per_user" in data:
-        settings.max_accounts_per_user = data["max_accounts_per_user"]
 
 
 register_applier("generation", _apply_generation_config)
@@ -57,14 +54,11 @@ register_applier("generation_worker", _apply_generation_worker_config)
 # ---------------------------------------------------------------------------
 
 def _apply_llm_config(data: dict) -> None:
-    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.system_config.settings_store import apply_settings
 
-    if "llm_cache_enabled" in data:
-        settings.llm_cache_enabled = data["llm_cache_enabled"]
-    if "llm_cache_ttl" in data:
-        settings.llm_cache_ttl = data["llm_cache_ttl"]
-    if "llm_cache_freshness" in data:
-        settings.llm_cache_freshness = data["llm_cache_freshness"]
+    # Populate the SettingsBase cache — consumers read via
+    # LLMSettings.get() (no global settings sync needed)
+    apply_settings("llm", data)
 
 
 register_applier("llm", _apply_llm_config)

@@ -1135,9 +1135,11 @@ async def retry_generation(
 
         # Enforce max retries (checked against retry_count — the error-retry
         # counter, not attempt_id which includes non-error transitions)
-        if (generation.retry_count or 0) >= settings.auto_retry_max_attempts:
+        from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+        gen_settings = get_generation_settings()
+        if (generation.retry_count or 0) >= gen_settings.auto_retry_max_attempts:
             raise InvalidOperationError(
-                f"Maximum retries ({settings.auto_retry_max_attempts}) exceeded"
+                f"Maximum retries ({gen_settings.auto_retry_max_attempts}) exceeded"
             )
 
         # Increment retry_count and reset lifecycle fields in one operation
@@ -1163,7 +1165,7 @@ async def retry_generation(
             "manual_retry_requeued",
             generation_id=generation.id,
             retry_attempt=generation.retry_count,
-            max_attempts=settings.auto_retry_max_attempts,
+            max_attempts=gen_settings.auto_retry_max_attempts,
         )
 
         return GenerationResponse.model_validate(generation)

@@ -717,18 +717,19 @@ class GenerationConfigUpdate(BaseModel):
 @router.get("/admin/generation/config", response_model=GenerationConfigResponse)
 async def get_generation_config(user: CurrentUser):
     """Get current generation config (any authenticated user)."""
-    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
     from pixsim7.backend.main.shared.rate_limit import job_create_limiter, login_limiter
 
+    gs = get_generation_settings()
     return GenerationConfigResponse(
         rate_limit_max_requests=job_create_limiter.max_requests,
         rate_limit_window_seconds=job_create_limiter.window_seconds,
         login_rate_limit_max_requests=login_limiter.max_requests,
         login_rate_limit_window_seconds=login_limiter.window_seconds,
-        auto_retry_enabled=settings.auto_retry_enabled,
-        auto_retry_max_attempts=settings.auto_retry_max_attempts,
-        max_jobs_per_user=settings.max_jobs_per_user,
-        max_accounts_per_user=settings.max_accounts_per_user,
+        auto_retry_enabled=gs.auto_retry_enabled,
+        auto_retry_max_attempts=gs.auto_retry_max_attempts,
+        max_jobs_per_user=gs.max_jobs_per_user,
+        max_accounts_per_user=gs.max_accounts_per_user,
     )
 
 
@@ -739,7 +740,7 @@ async def update_generation_config(
     db: DatabaseSession,
 ):
     """Update generation config (admin only, persisted)."""
-    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
     from pixsim7.backend.main.shared.rate_limit import job_create_limiter, login_limiter
     from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
 
@@ -747,6 +748,9 @@ async def update_generation_config(
     if patch_data:
         row = await patch_config(db, "generation", patch_data, admin.id)
         apply_namespace("generation", row.data)
+
+    gs = get_generation_settings()
+    gs.reload()
 
     logger.info(
         "Generation config updated by admin %s: rate_limit=%d/%ds, login=%d/%ds, "
@@ -756,10 +760,10 @@ async def update_generation_config(
         job_create_limiter.window_seconds,
         login_limiter.max_requests,
         login_limiter.window_seconds,
-        settings.auto_retry_enabled,
-        settings.auto_retry_max_attempts,
-        settings.max_jobs_per_user,
-        settings.max_accounts_per_user,
+        gs.auto_retry_enabled,
+        gs.auto_retry_max_attempts,
+        gs.max_jobs_per_user,
+        gs.max_accounts_per_user,
     )
 
     return GenerationConfigResponse(
@@ -767,10 +771,10 @@ async def update_generation_config(
         rate_limit_window_seconds=job_create_limiter.window_seconds,
         login_rate_limit_max_requests=login_limiter.max_requests,
         login_rate_limit_window_seconds=login_limiter.window_seconds,
-        auto_retry_enabled=settings.auto_retry_enabled,
-        auto_retry_max_attempts=settings.auto_retry_max_attempts,
-        max_jobs_per_user=settings.max_jobs_per_user,
-        max_accounts_per_user=settings.max_accounts_per_user,
+        auto_retry_enabled=gs.auto_retry_enabled,
+        auto_retry_max_attempts=gs.auto_retry_max_attempts,
+        max_jobs_per_user=gs.max_jobs_per_user,
+        max_accounts_per_user=gs.max_accounts_per_user,
     )
 
 
@@ -827,40 +831,24 @@ async def update_generation_worker_config(
 
 # ===== LLM CONFIG (CACHE TUNING) =====
 
-class LLMConfigResponse(BaseModel):
-    """Current LLM cache configuration."""
-    llm_cache_enabled: bool
-    llm_cache_ttl: int
-    llm_cache_freshness: float
+from pixsim7.backend.main.services.llm.llm_settings import LLMSettings, get_llm_settings
+
+LLMConfigUpdate = LLMSettings.get_update_model()
 
 
-class LLMConfigUpdate(BaseModel):
-    """Partial update for LLM config."""
-    llm_cache_enabled: bool | None = None
-    llm_cache_ttl: int | None = Field(None, ge=0, le=86400)
-    llm_cache_freshness: float | None = Field(None, ge=0.0, le=1.0)
-
-
-@router.get("/admin/llm/config", response_model=LLMConfigResponse)
+@router.get("/admin/llm/config", response_model=LLMSettings)
 async def get_llm_config(user: CurrentUser):
     """Get current LLM cache config (any authenticated user)."""
-    from pixsim7.backend.main.shared.config import settings
-
-    return LLMConfigResponse(
-        llm_cache_enabled=settings.llm_cache_enabled,
-        llm_cache_ttl=settings.llm_cache_ttl,
-        llm_cache_freshness=settings.llm_cache_freshness,
-    )
+    return get_llm_settings()
 
 
-@router.patch("/admin/llm/config", response_model=LLMConfigResponse)
+@router.patch("/admin/llm/config", response_model=LLMSettings)
 async def update_llm_config(
     body: LLMConfigUpdate,
     admin: CurrentAdminUser,
     db: DatabaseSession,
 ):
     """Update LLM cache config (admin only, persisted)."""
-    from pixsim7.backend.main.shared.config import settings
     from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
 
     patch_data = body.model_dump(exclude_none=True)
@@ -868,19 +856,18 @@ async def update_llm_config(
         row = await patch_config(db, "llm", patch_data, admin.id)
         apply_namespace("llm", row.data)
 
+    ls = get_llm_settings()
+    ls.reload()
+
     logger.info(
         "LLM config updated by admin %s: cache=%s, ttl=%ds, freshness=%.2f",
         admin.username,
-        settings.llm_cache_enabled,
-        settings.llm_cache_ttl,
-        settings.llm_cache_freshness,
+        ls.llm_cache_enabled,
+        ls.llm_cache_ttl,
+        ls.llm_cache_freshness,
     )
 
-    return LLMConfigResponse(
-        llm_cache_enabled=settings.llm_cache_enabled,
-        llm_cache_ttl=settings.llm_cache_ttl,
-        llm_cache_freshness=settings.llm_cache_freshness,
-    )
+    return ls
 
 
 # ===== LOGGING CONFIG (DOMAIN LEVEL OVERRIDES) =====

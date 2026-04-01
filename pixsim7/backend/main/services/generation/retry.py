@@ -135,8 +135,8 @@ class GenerationRetryService:
         """
         # Resolve max_retries from settings if not provided
         if max_retries is None:
-            from pixsim7.backend.main.shared.config import settings
-            max_retries = settings.auto_retry_max_attempts
+            from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+            max_retries = get_generation_settings().auto_retry_max_attempts
 
         # Get original generation
         original = await self._get_generation(generation_id)
@@ -208,8 +208,8 @@ class GenerationRetryService:
 
         # Check retry count against configured max (not attempt_id which
         # includes non-error transitions like concurrent waits)
-        from pixsim7.backend.main.shared.config import settings
-        max_attempts = settings.auto_retry_max_attempts
+        from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+        max_attempts = get_generation_settings().auto_retry_max_attempts
 
         if (generation.retry_count or 0) >= max_attempts:
             return False

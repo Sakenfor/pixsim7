@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
-from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_event_logger
 from pixsim7.backend.main.shared.policies.content_filter_retry import (
     should_rotate_content_filter_account,
@@ -64,8 +63,7 @@ async def _count_pending_pinned_siblings(db, preferred_account_id: int, exclude_
 # Manifest
 class HandlerManifest:
     """Auto-retry handler configuration"""
-    # Check if enabled via settings
-    enabled = settings.auto_retry_enabled
+    enabled = True  # Runtime check in handle_event via GenerationSettings
     subscribe_to = "job:failed"  # Only listen to failed generation events
     name = "Auto-Retry Failed Generations"
     description = "Automatically retries generations that fail due to content filters or temporary errors"
@@ -87,6 +85,11 @@ async def handle_event(event: Event) -> None:
 
     generation_id = event.data.get("generation_id") or event.data.get("job_id")
     if not generation_id:
+        return
+
+    # Runtime enabled check (DB-backed, can be toggled without restart)
+    from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+    if not get_generation_settings().auto_retry_enabled:
         return
 
     try:
@@ -118,13 +121,15 @@ async def handle_event(event: Event) -> None:
             # Respect global max attempts (checked against retry_count —
             # the error-retry counter, NOT attempt_id which also counts
             # non-error transitions like concurrent waits and adaptive defers)
-            if (generation.retry_count or 0) >= settings.auto_retry_max_attempts:
+            from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+            gen_settings = get_generation_settings()
+            if (generation.retry_count or 0) >= gen_settings.auto_retry_max_attempts:
                 logger.info(
                     "auto_retry_max_attempts_reached",
                     generation_id=generation_id,
                     retry_count=generation.retry_count,
                     attempt_id=generation.attempt_id,
-                    max_attempts=settings.auto_retry_max_attempts,
+                    max_attempts=gen_settings.auto_retry_max_attempts,
                 )
                 return
 
@@ -247,7 +252,7 @@ async def handle_event(event: Event) -> None:
                 "auto_retry_requeued",
                 generation_id=generation.id,
                 retry_attempt=generation.retry_count,
-                max_attempts=settings.auto_retry_max_attempts,
+                max_attempts=gen_settings.auto_retry_max_attempts,
                 target_queue=GENERATION_RETRY_QUEUE_NAME,
                 defer_seconds=logged_defer_seconds,
                 base_defer_seconds=defer_seconds,
@@ -270,9 +275,11 @@ async def handle_event(event: Event) -> None:
 
 def on_register() -> None:
     """Called when handler is registered"""
+    from pixsim7.backend.main.services.generation.generation_settings import get_generation_settings
+    gs = get_generation_settings()
     logger.info(
         "auto_retry_handler_registered",
-        enabled=settings.auto_retry_enabled,
-        max_attempts=settings.auto_retry_max_attempts,
+        enabled=gs.auto_retry_enabled,
+        max_attempts=gs.auto_retry_max_attempts,
         msg="Auto-retry handler registered"
     )

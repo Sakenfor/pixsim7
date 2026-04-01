@@ -156,19 +156,8 @@ class Settings(BaseSettings):
     )
 
     # ===== GENERATION =====
-    # Business-rule settings (admin-controlled, DB-backed via "generation" namespace)
-    auto_retry_enabled: bool = Field(
-        default=True,
-        description="Enable automatic retry for failed generations (content filters, temporary errors)"
-    )
-    auto_retry_max_attempts: int = Field(
-        default=20,
-        ge=1,
-        le=50,
-        description="Maximum retry attempts per generation (default: 20 for content filters and transient errors)"
-    )
-    # Worker runtime tuning is in GenerationWorkerSettings (DB-backed via
-    # "generation_worker" namespace). Consumers read from get_worker_settings().
+    # Generation business rules → GenerationSettings (DB "generation" namespace)
+    # Worker runtime tuning → GenerationWorkerSettings (DB "generation_worker" namespace)
     validate_composition_vocabs: bool = Field(
         default=False,
         description="Validate composition asset vocab fields (role, pose_id, location_id, etc.) against the vocabulary registry. Logs warnings for unknown values."
@@ -189,14 +178,7 @@ class Settings(BaseSettings):
     )
 
     # ===== LIMITS =====
-    max_jobs_per_user: int = Field(
-        default=10,
-        description="Max concurrent jobs per user"
-    )
-    max_accounts_per_user: int = Field(
-        default=5,
-        description="Max provider accounts per user"
-    )
+    # Per-user limits → GenerationSettings (DB "generation" namespace)
 
     # ===== WORKER (ARQ) =====
     arq_max_jobs: int = Field(
@@ -253,18 +235,7 @@ class Settings(BaseSettings):
         default=None,
         description="Default model to use (provider-specific, uses provider default if None)"
     )
-    llm_cache_enabled: bool = Field(
-        default=True,
-        description="Enable LLM response caching"
-    )
-    llm_cache_ttl: int = Field(
-        default=3600,
-        description="Default cache TTL in seconds (1 hour)"
-    )
-    llm_cache_freshness: float = Field(
-        default=0.0,
-        description="Default cache freshness threshold (0.0=always use cache, 1.0=always regenerate)"
-    )
+    # LLM cache tuning → LLMSettings (DB "llm" namespace)
     local_llm_model_path: str | None = Field(
         default=None,
         description="Optional absolute path to a local GGUF model file."
