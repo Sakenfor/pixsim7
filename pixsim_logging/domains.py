@@ -157,14 +157,25 @@ def _global_level_filter_processor(
     return event_dict
 
 
+_SEEN_DOMAINS: set[str] = set()
+
+
+def get_active_domains() -> list[str]:
+    """Return domains that have had log events pass through this process."""
+    return sorted(_SEEN_DOMAINS)
+
+
 def _domain_filter_processor(
     logger, method_name: str, event_dict: dict
 ):
     """Structlog processor that drops events based on domain config."""
+    domain: Optional[str] = event_dict.get("domain")
+    if domain is not None:
+        _SEEN_DOMAINS.add(domain)
+
     if not _DOMAIN_CONFIG:
         return event_dict
 
-    domain: Optional[str] = event_dict.get("domain")
     if domain is None:
         return event_dict
 

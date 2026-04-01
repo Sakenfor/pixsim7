@@ -9,6 +9,7 @@ import { LogLine } from './LogLine'
 
 const ROW_HEIGHT = 22
 const OVERSCAN = 20
+const EXPANDED_HEIGHT = 160  // approximate height for expanded rows
 
 interface VirtualLogListProps {
   lines: string[]
@@ -22,6 +23,7 @@ export function VirtualLogList({ lines, meta, fields, onFieldClick }: VirtualLog
   const autoScroll = useRef(true)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewHeight, setViewHeight] = useState(600)
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
 
   // Measure container height
   useEffect(() => {
@@ -61,16 +63,28 @@ export function VirtualLogList({ lines, meta, fields, onFieldClick }: VirtualLog
       <div style={{ height: totalHeight, position: 'relative' }}>
         {/* Only render visible rows */}
         <div style={{ position: 'absolute', top: startIdx * ROW_HEIGHT, left: 0, right: 0 }}>
-          {lines.slice(startIdx, endIdx).map((line, i) => (
-            <div key={startIdx + i} style={{ height: ROW_HEIGHT, overflow: 'hidden' }}>
-              <LogLine
-                line={line}
-                meta={meta}
-                fields={fields}
-                onFieldClick={onFieldClick}
-              />
-            </div>
-          ))}
+          {lines.slice(startIdx, endIdx).map((line, i) => {
+            const idx = startIdx + i
+            const isExpanded = expandedRows.has(idx)
+            return (
+              <div key={idx} style={isExpanded ? { minHeight: ROW_HEIGHT } : { height: ROW_HEIGHT, overflow: 'hidden' }}>
+                <LogLine
+                  line={line}
+                  meta={meta}
+                  fields={fields}
+                  onFieldClick={onFieldClick}
+                  onExpandChange={(expanded) => {
+                    setExpandedRows((prev) => {
+                      const next = new Set(prev)
+                      if (expanded) next.add(idx)
+                      else next.delete(idx)
+                      return next
+                    })
+                  }}
+                />
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

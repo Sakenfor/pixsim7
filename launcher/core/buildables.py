@@ -18,6 +18,20 @@ import json
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 
 
+_OUTPUT_DIRS = ("dist", "build", "out", ".next")
+_SOURCE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte", ".css", ".scss"}
+_SKIP_DIRS = {"node_modules", "dist", "build", "out", ".next", "__pycache__", ".git"}
+
+
+@dataclass
+class BuildStatus:
+    """Build freshness info for a buildable package."""
+    state: str = "unknown"  # "not_built" | "stale" | "fresh" | "unknown"
+    output_dir: Optional[str] = None
+    source_modified: Optional[str] = None  # ISO timestamp
+    build_modified: Optional[str] = None   # ISO timestamp
+
+
 @dataclass
 class BuildableDefinition:
     id: str
@@ -29,6 +43,7 @@ class BuildableDefinition:
     args: List[str] = field(default_factory=list)
     category: Optional[str] = None
     tags: List[str] = field(default_factory=list)
+    build_status: BuildStatus = field(default_factory=BuildStatus)
 
 
 def _strip_quotes(value: str) -> str:
@@ -131,6 +146,67 @@ def _derive_tags(directory: str) -> List[str]:
     return [category]
 
 
+def _newest_mtime(directory: Path, extensions: set[str], skip: set[str]) -> float:
+    """Return the newest mtime of files matching extensions under directory."""
+    newest = 0.0
+    try:
+        for item in directory.iterdir():
+            name = item.name
+            if name in skip:
+                continue
+            if item.is_dir():
+                t = _newest_mtime(item, extensions, skip)
+                if t > newest:
+                    newest = t
+            elif item.suffix in extensions:
+                try:
+                    t = item.stat().st_mtime
+                    if t > newest:
+                        newest = t
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return newest
+
+
+def _detect_build_status(pkg_dir: Path) -> BuildStatus:
+    """Detect build freshness for a package directory."""
+    from datetime import datetime, timezone
+
+    # Find output directory
+    out_dir: Optional[str] = None
+    out_path: Optional[Path] = None
+    for candidate in _OUTPUT_DIRS:
+        p = pkg_dir / candidate
+        if p.is_dir():
+            out_dir = candidate
+            out_path = p
+            break
+
+    if not out_path:
+        return BuildStatus(state="not_built")
+
+    # Newest source file
+    src_mtime = _newest_mtime(pkg_dir, _SOURCE_EXTS, _SKIP_DIRS)
+    # Newest output file
+    out_mtime = _newest_mtime(out_path, _SOURCE_EXTS | {".js", ".mjs", ".cjs", ".map", ".css", ".html"}, {"node_modules"})
+    if out_mtime == 0.0:
+        # Output dir exists but is empty
+        return BuildStatus(state="not_built", output_dir=out_dir)
+
+    src_iso = datetime.fromtimestamp(src_mtime, tz=timezone.utc).isoformat() if src_mtime else None
+    out_iso = datetime.fromtimestamp(out_mtime, tz=timezone.utc).isoformat() if out_mtime else None
+    state = "stale" if src_mtime > out_mtime else "fresh"
+
+    return BuildStatus(
+        state=state,
+        output_dir=out_dir,
+        source_modified=src_iso,
+        build_modified=out_iso,
+    )
+
+
 def load_buildables(root_dir: Optional[Path] = None) -> List[BuildableDefinition]:
     root = root_dir or DEFAULT_ROOT
 
@@ -176,6 +252,7 @@ def load_buildables(root_dir: Optional[Path] = None) -> List[BuildableDefinition
                 args=["--filter", package_name, "build"],
                 category=_derive_category(directory),
                 tags=_derive_tags(directory),
+                build_status=_detect_build_status(path.parent),
             )
         )
 

@@ -99,7 +99,7 @@ class CleanConsoleRenderer:
         kvs = []
         for key, value in event_dict.items():
             # Skip internal fields
-            if key in {"env", "exception"}:
+            if key in {"env", "exception", "logger_name"}:
                 continue
 
             # Format value

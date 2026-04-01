@@ -18,6 +18,8 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
+import { navigateToPlan } from '@features/workspace/lib/openPanel';
+
 import { chatBridge } from './assistantChatBridge';
 
 
@@ -81,6 +83,7 @@ interface ChatTab {
   customInstructions: string;  // user text appended to the system prompt
   focusAreas: string[];        // capability focus tags (from contract provides)
   injectToken: boolean;        // auto-mint and inject agent token for this session
+  planId: string | null;       // bound plan ID (set via @plan: or "Start Chat" from plan panel)
   createdAt: string;
 }
 
@@ -120,6 +123,7 @@ const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
 const MSG_KEY_PREFIX = 'ai-assistant:msg:';
 const INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
 const RESUME_SESSION_EVENT = 'ai-assistant:resume-session';
+const OPEN_PLAN_CHAT_EVENT = 'ai-assistant:open-plan-chat';
 
 interface InjectPromptDetail {
   prompt: string;
@@ -133,6 +137,11 @@ interface ResumeSessionDetail {
   profileId?: string | null;
 }
 
+interface OpenPlanChatDetail {
+  planId: string;
+  planTitle?: string;
+}
+
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
@@ -143,6 +152,7 @@ function loadTabs(): ChatTab[] {
         modelOverride: null,
         customInstructions: '',
         focusAreas: [] as string[],
+        planId: null,
         ...t,
         // Legacy tabs without injectToken inherit profile-bound default.
         injectToken: typeof t.injectToken === 'boolean' ? t.injectToken : Boolean(t.profileId),
@@ -255,6 +265,7 @@ function buildResumedTab(session: {
   engine: string;
   label: string;
   profile_id?: string | null;
+  last_plan_id?: string | null;
 }): ChatTab {
   return {
     id: createTabId(),
@@ -267,6 +278,7 @@ function buildResumedTab(session: {
     customInstructions: '',
     focusAreas: [],
     injectToken: Boolean(session.profile_id),
+    planId: session.last_plan_id ?? null,
     createdAt: new Date().toISOString(),
   };
 }
@@ -519,7 +531,7 @@ const RESUME_SESSION_PAGE_SIZE = 50;
 const RESUME_SESSION_MAX_LIMIT = 300;
 
 function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
-  onResume: (sessionId: string, engine: string, label: string, profileId: string | null) => void;
+  onResume: (sessionId: string, engine: string, label: string, profileId: string | null, lastPlanId?: string | null) => void;
   profileId?: string | null;
   profileLabels?: ReadonlyMap<string, string>;
 }) {
@@ -643,7 +655,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                 className="group w-full flex items-center gap-1 px-1 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800"
               >
                 <button
-                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null); setOpen(false); }}
+                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
                   className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
                 >
                   <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className={`shrink-0 ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`} />
@@ -713,7 +725,7 @@ import { getEngineBrand } from '@lib/agent/engineBrands';
 function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
   profileLabels?: ReadonlyMap<string, string>;
-  onResume: (sessionId: string, engine: string, label: string, profileId: string | null) => void;
+  onResume: (sessionId: string, engine: string, label: string, profileId: string | null, lastPlanId?: string | null) => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -756,7 +768,7 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
               return (
                 <button
                   key={s.id}
-                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null); setOpen(false); }}
+                  onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                 >
                   <Icon
@@ -1493,10 +1505,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Each tab gets its own scoped session — prevents new tabs from reusing
     // another tab's Claude process with stale conversation history.
     // @plan: scope overrides the tab scope when present.
-    body.scope_key = scope.scopeKey || `tab:${tab.id}`;
+    const effectivePlanId = scope.planId || tab.planId;
+    body.scope_key = (effectivePlanId ? `plan:${effectivePlanId}` : null) || scope.scopeKey || `tab:${tab.id}`;
     body.session_policy = 'scoped';
-    if (scope.planId) {
-      body.context = { plan_id: scope.planId };
+    if (effectivePlanId) {
+      body.context = { plan_id: effectivePlanId };
+    }
+    // Auto-bind tab to plan on first @plan: reference
+    if (scope.planId && scope.planId !== tab.planId) {
+      onUpdateTab({ planId: scope.planId });
     }
 
     // Auto-inject token: mint one for the active profile and include it.
@@ -1911,6 +1928,7 @@ export function AIAssistantPanel() {
       customInstructions: '',
       focusAreas: [],
       injectToken: Boolean(resolvedProfileId),
+      planId: null,
       createdAt: new Date().toISOString(),
     };
     setTabs((prev) => [newTab, ...prev]);
@@ -1970,6 +1988,40 @@ export function AIAssistantPanel() {
     return () => window.removeEventListener(RESUME_SESSION_EVENT, handler);
   }, [tabs, profiles, setActiveTab]);
 
+  // Listen for open-plan-chat events (e.g. from Plan panel "Start Chat" button)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { planId, planTitle } = (e as CustomEvent<OpenPlanChatDetail>).detail ?? {};
+      if (!planId) return;
+      // Reuse existing tab if one is already bound to this plan
+      const existing = tabs.find((t) => t.planId === planId);
+      if (existing) { setActiveTab(existing.id); return; }
+      // Create new tab pre-bound to the plan
+      const id = createTabId();
+      const defaultProfile = profiles.find((p) => p.is_default) || profiles[0];
+      const newTab: ChatTab = {
+        id,
+        label: planTitle ? `Plan: ${planTitle}` : `Plan: ${planId}`,
+        sessionId: null,
+        profileId: defaultProfile?.id ?? null,
+        engine: (defaultProfile ? engineFromProfile(defaultProfile) : 'claude') as AgentEngine,
+        modelOverride: null,
+        usePersona: true,
+        customInstructions: '',
+        focusAreas: [],
+        injectToken: Boolean(defaultProfile?.id),
+        planId,
+        createdAt: new Date().toISOString(),
+      };
+      setTabs((prev) => [newTab, ...prev]);
+      setActiveTab(id);
+      // Pre-fill the input with @plan: reference so scope flows on first message
+      try { localStorage.setItem(draftKey(id), `@plan:${planId} `); } catch { /* */ }
+    };
+    window.addEventListener(OPEN_PLAN_CHAT_EVENT, handler);
+    return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);
+  }, [tabs, profiles, setActiveTab]);
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-neutral-950">
       {/* Tab bar */}
@@ -1994,6 +2046,17 @@ export function AIAssistantPanel() {
               >
                 <Icon name={tabIcon} size={10} className={isActive ? 'text-accent' : 'text-neutral-400'} />
                 <span className="max-w-[80px] truncate">{tab.label}</span>
+                {tab.planId && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigateToPlan(tab.planId!); }}
+                    className="flex items-center gap-0.5 px-1 py-px rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[8px] font-medium hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors shrink-0"
+                    title={`Bound to plan: ${tab.planId}`}
+                  >
+                    <Icon name="clipboard" size={8} />
+                    plan
+                  </button>
+                )}
                 {tabs.length > 1 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
@@ -2012,11 +2075,11 @@ export function AIAssistantPanel() {
           <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
             <Icon name="plus" size={12} />
           </button>
-          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId) => {
+          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
             // Reuse existing tab if one with the same sessionId already exists
             const existing = tabs.find((t) => t.sessionId === sessionId);
             if (existing) { setActiveTab(existing.id); return; }
-            const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId });
+            const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
             // Fetch server-side message history, then create the tab
             fetchServerMessages(sessionId).then((serverMsgs) => {
               if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
