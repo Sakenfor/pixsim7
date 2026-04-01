@@ -68,7 +68,7 @@ function computeChatWsUrl(token: string | null): string {
 
 function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): void {
   const text = detail || action;
-  const isGeneric = !text || text === 'thinking' || text === 'active';
+  const isGeneric = !text || text === 'thinking' || text === 'active' || text === 'idle' || action === 'cli_session';
   if (isGeneric) return;
   const last = log[log.length - 1];
   const lastText = last ? (last.detail || last.action) : '';
@@ -251,8 +251,13 @@ class AssistantChatBridge {
       if (data.task_id && !request.taskId) {
         request.taskId = data.task_id as string;
       }
-      request.status = 'streaming';
       request._lastActivity = Date.now();
+      // Skip idle session keepalives — they are not task activity
+      if (action === 'cli_session' || detail === 'idle') {
+        this._notify();
+        return;
+      }
+      request.status = 'streaming';
       request.activity = detail || (action && action !== 'thinking' && action !== 'active' ? action : null) || 'Working...';
       appendHeartbeat(request.thinkingLog, action, detail);
       this._notify();

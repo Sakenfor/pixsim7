@@ -558,10 +558,15 @@ class RemoteCommandBridge:
         if isinstance(model, str) and model:
             agent.metadata["model"] = model
 
-        # Determine which task(s) to route this heartbeat to
+        # Determine which task(s) to route this heartbeat to.
+        # Idle session keepalives (action=cli_session) have no task_id and must
+        # NOT be broadcast to task queues — they would pollute in-flight task
+        # heartbeat streams with "idle" activity.
         explicit_task_id = data.get("task_id")
         if explicit_task_id and explicit_task_id in agent.current_task_ids:
             target_task_ids = [explicit_task_id]
+        elif data.get("action") == "cli_session":
+            target_task_ids = []  # idle keepalive — timestamp-only, no queue routing
         else:
             target_task_ids = list(agent.current_task_ids)
 

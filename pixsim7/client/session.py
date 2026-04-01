@@ -566,7 +566,11 @@ class AgentCmdSession:
                     # Capture context window and token usage from Codex events
                     self._capture_usage(raw)
                     is_delta = raw_method_norm in ("item/agentMessage/delta", "item/agent_message/delta")
-                    is_text_block = raw_type == "assistant"  # Claude text streaming
+                    # Only suppress text-streaming blocks — tool_use and thinking should be forwarded
+                    _content = raw.get("message", {}).get("content", [{}]) if raw_type == "assistant" else []
+                    _first_block = (_content[0] if isinstance(_content, list) and _content else _content) if _content else {}
+                    _block_type = _first_block.get("type", "") if isinstance(_first_block, dict) else ""
+                    is_text_block = raw_type == "assistant" and _block_type == "text"
                     if raw_type == "item.completed" or raw_method_norm == "item/completed":
                         item = raw.get("item") or raw.get("params", {}).get("item", {})
                         if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
