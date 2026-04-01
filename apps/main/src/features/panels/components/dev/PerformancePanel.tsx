@@ -31,12 +31,23 @@ interface HeapSnapshot {
   jsHeapSizeLimit: number;
 }
 
+interface LongTaskScriptEntry {
+  name: string;
+  invoker: string;
+  invokerType: string;
+  sourceURL: string;
+  sourceFunctionName: string;
+  duration: number;
+}
+
 interface LongTaskEntry {
   id: number;
   name: string;
   duration: number;
   startTime: number;
   timestamp: number;
+  /** LoAF script attribution (Chrome 123+) */
+  scripts: LongTaskScriptEntry[];
 }
 
 interface TimeSeriesPoint {
@@ -289,12 +300,42 @@ function useFps(): number {
 
 // ── Long Task Observer Hook ──────────────────────────────────────────────
 
+function extractScripts(entry: PerformanceEntry): LongTaskScriptEntry[] {
+  const scripts = (entry as any).scripts;
+  if (!Array.isArray(scripts)) return [];
+  return scripts
+    .filter((s: any) => s.duration > 0 || s.sourceFunctionName)
+    .map((s: any) => ({
+      name: s.name || '',
+      invoker: s.invoker || '',
+      invokerType: s.invokerType || '',
+      sourceURL: s.sourceURL || '',
+      sourceFunctionName: s.sourceFunctionName || '',
+      duration: Math.round(s.duration ?? 0),
+    }));
+}
+
+/** Short filename from a full URL, e.g. "generationScopeStores.ts" */
+function shortSource(url: string): string {
+  if (!url) return '';
+  try {
+    const pathname = new URL(url).pathname;
+    const segments = pathname.split('/');
+    return segments[segments.length - 1] || pathname;
+  } catch {
+    return url.split('/').pop() || url;
+  }
+}
+
 function useLongTasks(): LongTaskEntry[] {
   const [tasks, setTasks] = useState<LongTaskEntry[]>([]);
   const idRef = useRef(0);
 
   useEffect(() => {
     if (typeof PerformanceObserver === 'undefined') return;
+
+    // Prefer Long Animation Frame API (Chrome 123+) for rich script attribution
+    const useLoAF = PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame');
 
     try {
       const observer = new PerformanceObserver((list) => {
@@ -305,13 +346,14 @@ function useLongTasks(): LongTaskEntry[] {
           duration: Math.round(entry.duration),
           startTime: Math.round(entry.startTime),
           timestamp: Date.now(),
+          scripts: extractScripts(entry),
         }));
         setTasks((prev) => [...newTasks, ...prev].slice(0, LONG_TASK_MAX_ENTRIES));
       });
-      observer.observe({ type: 'longtask', buffered: true });
+      observer.observe({ type: useLoAF ? 'long-animation-frame' : 'longtask', buffered: true });
       return () => observer.disconnect();
     } catch {
-      // longtask not supported in this browser
+      // observer type not supported in this browser
     }
   }, []);
 
@@ -527,6 +569,8 @@ export function PerformancePanel() {
     );
   };
 
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+
   const renderLongTasks = () => (
     <div className="p-4 space-y-4">
       <SectionHeader>
@@ -534,6 +578,12 @@ export function PerformancePanel() {
       </SectionHeader>
       <p className="text-xs text-neutral-500">
         Tasks taking &gt;50ms block the main thread and cause UI jank.
+        {longTasks.length > 0 && longTasks[0].scripts.length > 0
+          ? ' Click a task to see script attribution.'
+          : longTasks.length > 0
+            ? ' LoAF not available — upgrade Chrome for script attribution.'
+            : ''
+        }
       </p>
       {longTasks.length === 0 ? (
         <div className="text-sm text-neutral-500 py-8 text-center">
@@ -541,30 +591,89 @@ export function PerformancePanel() {
         </div>
       ) : (
         <div className="space-y-1">
-          {longTasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <Badge
-                color={
-                  task.duration > 200
-                    ? 'red'
-                    : task.duration > 100
-                      ? 'orange'
-                      : 'gray'
-                }
-              >
-                {task.duration}ms
-              </Badge>
-              <span className="text-neutral-500 font-mono">
-                {task.name === 'self' ? 'main thread' : task.name}
-              </span>
-              <span className="ml-auto text-neutral-400">
-                {new Date(task.timestamp).toLocaleTimeString()}
-              </span>
-            </div>
-          ))}
+          {longTasks.map((task) => {
+            const isExpanded = expandedTaskId === task.id;
+            const hasScripts = task.scripts.length > 0;
+
+            return (
+              <div key={task.id}>
+                <div
+                  className={`flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 ${hasScripts ? 'cursor-pointer' : ''}`}
+                  onClick={hasScripts ? () => setExpandedTaskId(isExpanded ? null : task.id) : undefined}
+                >
+                  {hasScripts && (
+                    <Icon
+                      name="chevronRight"
+                      size={10}
+                      className={`text-neutral-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                    />
+                  )}
+                  <Badge
+                    color={
+                      task.duration > 200
+                        ? 'red'
+                        : task.duration > 100
+                          ? 'orange'
+                          : 'gray'
+                    }
+                  >
+                    {task.duration}ms
+                  </Badge>
+                  <span className="text-neutral-500 font-mono truncate">
+                    {hasScripts
+                      ? task.scripts
+                          .slice(0, 2)
+                          .map((s) => s.sourceFunctionName || s.invoker || shortSource(s.sourceURL))
+                          .filter(Boolean)
+                          .join(', ') || (task.name === 'self' ? 'main thread' : task.name)
+                      : task.name === 'self' ? 'main thread' : task.name
+                    }
+                  </span>
+                  {hasScripts && task.scripts.length > 2 && (
+                    <span className="text-neutral-400">+{task.scripts.length - 2}</span>
+                  )}
+                  <span className="ml-auto text-neutral-400 whitespace-nowrap">
+                    {new Date(task.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                {isExpanded && (
+                  <div className="ml-6 mt-1 mb-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3 space-y-1.5">
+                    {task.scripts.map((script, i) => (
+                      <div key={i} className="text-xs space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <Badge color="blue">{script.duration}ms</Badge>
+                          <span className="font-mono font-medium text-neutral-700 dark:text-neutral-300">
+                            {script.sourceFunctionName || '(anonymous)'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-0.5 ml-1 text-neutral-500">
+                          {script.invoker && (
+                            <span>
+                              <span className="text-neutral-400">invoker: </span>
+                              <span className="font-mono">{script.invoker}</span>
+                            </span>
+                          )}
+                          {script.invokerType && (
+                            <span>
+                              <span className="text-neutral-400">type: </span>
+                              {script.invokerType}
+                            </span>
+                          )}
+                          {script.sourceURL && (
+                            <span className="font-mono truncate" title={script.sourceURL}>
+                              <span className="text-neutral-400">source: </span>
+                              {shortSource(script.sourceURL)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
