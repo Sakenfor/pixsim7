@@ -1219,11 +1219,6 @@ export function PlanDetailView({
             detail={detail}
             viewMode={contentView === 'checkpoints' ? 'checkpoints' : 'full'}
             forgeUrlTemplate={forgeUrlTemplate}
-            loadingParticipants={loadingParticipants}
-            planParticipants={planParticipants}
-            reviewerParticipants={reviewerParticipants}
-            builderParticipants={builderParticipants}
-            reviewProfileLabels={reviewProfileLabels}
             coverage={coverage}
             planExpanded={planExpanded}
             onTogglePlanExpanded={() => setPlanExpanded((e) => !e)}

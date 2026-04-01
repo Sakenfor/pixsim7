@@ -11,7 +11,7 @@ import {
   DisclosureSection,
   SectionHeader,
 } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
@@ -20,7 +20,6 @@ import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { CheckpointList } from '../PlanCheckpointList';
 
-import { ParticipantEntry } from './shared';
 import type {
   PlanDetail,
   PlanParticipant,
@@ -39,11 +38,6 @@ export interface PlanDetailSectionsProps {
   detail: PlanDetail;
   viewMode?: 'full' | 'checkpoints';
   forgeUrlTemplate?: string | null;
-  loadingParticipants: boolean;
-  planParticipants: PlanParticipantsResponse | null;
-  reviewerParticipants: PlanParticipant[];
-  builderParticipants: PlanParticipant[];
-  reviewProfileLabels: ReadonlyMap<string, string>;
   coverage: {
     code_paths: string[];
     explicit_suites: string[];
@@ -64,109 +58,19 @@ export interface PlanDetailSectionsProps {
   onClearSourcePreview: () => void;
 }
 
-/** Group participants that resolve to the same actor (same profileId or agentId). */
-function deduplicateParticipants(participants: PlanParticipant[]): PlanParticipant[] {
-  const grouped = new Map<string, PlanParticipant>();
-  for (const p of participants) {
-    const key = p.profileId || p.agentId || p.id;
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, { ...p });
-    } else {
-      existing.touches += p.touches;
-      if (p.lastSeenAt > existing.lastSeenAt) {
-        existing.lastSeenAt = p.lastSeenAt;
-        existing.lastAction = p.lastAction;
-      }
-      if (p.firstSeenAt < existing.firstSeenAt) {
-        existing.firstSeenAt = p.firstSeenAt;
-      }
-    }
-  }
-  return [...grouped.values()];
-}
 
 export function PlanDetailSections({
   detail,
   viewMode = 'full',
   forgeUrlTemplate,
-  loadingParticipants,
-  planParticipants,
-  reviewerParticipants,
-  builderParticipants,
-  reviewProfileLabels,
   coverage,
   planExpanded,
   onTogglePlanExpanded,
 }: PlanDetailSectionsProps) {
   const checkpointsOnly = viewMode === 'checkpoints';
-  const dedupedBuilders = deduplicateParticipants(builderParticipants);
-  const dedupedReviewers = deduplicateParticipants(reviewerParticipants);
 
   return (
     <>
-      {!checkpointsOnly && (loadingParticipants || (planParticipants?.participants.length ?? 0) > 0) && (
-        <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
-          <SectionHeader
-            trailing={(
-              <span className="text-[10px] text-neutral-400">
-                {loadingParticipants
-                  ? 'Refreshing...'
-                  : `${dedupedBuilders.length + dedupedReviewers.length} tracked`}
-              </span>
-            )}
-          >
-            Participants
-          </SectionHeader>
-          {!loadingParticipants && (planParticipants?.participants.length ?? 0) === 0 ? (
-            <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-              No attributed participants yet.
-            </div>
-          ) : (
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Builders ({dedupedBuilders.length})
-                </div>
-                <div className="space-y-1">
-                  {dedupedBuilders.map((participant) => (
-                    <ParticipantEntry
-                      key={participant.id}
-                      participant={participant}
-                      profileLabels={reviewProfileLabels}
-                    />
-                  ))}
-                  {dedupedBuilders.length === 0 && (
-                    <div className="text-[11px] text-neutral-400">None</div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Reviewers ({dedupedReviewers.length})
-                </div>
-                <div className="space-y-1">
-                  {dedupedReviewers.map((participant) => (
-                    <ParticipantEntry
-                      key={participant.id}
-                      participant={participant}
-                      profileLabels={reviewProfileLabels}
-                    />
-                  ))}
-                  {dedupedReviewers.length === 0 && (
-                    <div className="text-[11px] text-neutral-400">None</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Activity Timeline */}
-      {!checkpointsOnly && (
-        <PlanActivityTimeline planId={detail.id} />
-      )}
 
       {/* Target */}
       {detail.target && (
@@ -545,84 +449,6 @@ function formatTimelineDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function PlanActivityTimeline({ planId }: { planId: string }) {
-  const [events, setEvents] = useState<AuditEventEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await pixsimClient.get<PlanEventsApiResponse>(
-        `/dev/plans/registry/${encodeURIComponent(planId)}/events`,
-        { params: { limit: 30 } },
-      );
-      setEvents(normalizePlanEvents(res));
-    } catch { setEvents([]); }
-    setLoading(false);
-  }, [planId]);
-
-  // Load on expand
-  useEffect(() => {
-    if (expanded) void load();
-  }, [expanded, load]);
-
-  return (
-    <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between text-left"
-      >
-        <SectionHeader trailing={
-          <span className="text-[10px] text-neutral-400">
-            {loading ? 'Loading...' : expanded ? `${events.length} events` : ''}
-          </span>
-        }>
-          Activity
-        </SectionHeader>
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={12} className="text-neutral-400 shrink-0" />
-      </button>
-
-      {expanded && (
-        <div className="mt-2 space-y-0.5 max-h-[300px] overflow-y-auto">
-          {events.length === 0 && !loading && (
-            <div className="text-[11px] text-neutral-400">No audit events recorded for this plan.</div>
-          )}
-          {events.map((event, i) => {
-            // Show date divider when day changes
-            const prevDate = i > 0 ? formatTimelineDate(events[i - 1].timestamp) : null;
-            const curDate = formatTimelineDate(event.timestamp);
-            const showDate = curDate !== prevDate;
-
-            return (
-              <div key={event.id}>
-                {showDate && (
-                  <div className="text-[9px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mt-2 mb-1 first:mt-0">
-                    {curDate}
-                  </div>
-                )}
-                <div className="flex items-start gap-2 py-0.5 text-[11px]">
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums shrink-0 w-[58px]">
-                    {formatTimelineTime(event.timestamp)}
-                  </span>
-                  <Icon name={actorIcon(event.actor) as never} size={11} className="text-neutral-400 shrink-0 mt-0.5" />
-                  <span className="font-medium text-neutral-600 dark:text-neutral-300 shrink-0">
-                    {actorLabel(event.actor)}
-                  </span>
-                  <span className="text-neutral-500 dark:text-neutral-400 min-w-0 flex-1 overflow-hidden">
-                    {formatActionText(event)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ══════════════════════════════════════════════════════════════════
