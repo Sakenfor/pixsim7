@@ -51,22 +51,51 @@ function resolveProvider<T>(
   preferredProviderId?: string,
 ): CapabilityProvider<T> | null {
   if (preferredProviderId) {
+    let bestMatch: {
+      provider: CapabilityProvider<T>;
+      priority: number;
+      depth: number;
+      index: number;
+    } | null = null;
+    let depth = 0;
     let current = root;
     while (current) {
       const candidates = current.registry.getAll<T>(key);
-      const match = candidates.find((provider) => {
+      candidates.forEach((provider, index) => {
         if (!provider?.id || provider.id !== preferredProviderId) {
-          return false;
+          return;
         }
         if (provider.isAvailable && !provider.isAvailable()) {
-          return false;
+          return;
         }
-        return true;
+        const priority = provider.priority ?? 0;
+        if (!bestMatch) {
+          bestMatch = { provider, priority, depth, index };
+          return;
+        }
+        if (priority > bestMatch.priority) {
+          bestMatch = { provider, priority, depth, index };
+          return;
+        }
+        if (priority < bestMatch.priority) {
+          return;
+        }
+        // For equal priority:
+        // 1) prefer nearest scope in the hub chain
+        // 2) within that scope, prefer most recently registered provider
+        if (depth < bestMatch.depth) {
+          bestMatch = { provider, priority, depth, index };
+          return;
+        }
+        if (depth === bestMatch.depth && index > bestMatch.index) {
+          bestMatch = { provider, priority, depth, index };
+        }
       });
-      if (match) {
-        return match;
-      }
       current = current.parent;
+      depth += 1;
+    }
+    if (bestMatch) {
+      return bestMatch.provider;
     }
   }
 

@@ -30,7 +30,7 @@ import { useSelectionStore } from '@features/graph';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
-import { EdgeEffectsPanel } from '@features/panels/components/tools/EdgeEffectsPanel';
+import { EdgeEffectsPanel } from '@features/panels/domain/definitions/edge-effects/EdgeEffectsPanel';
 import { ValidationPanel } from '@features/panels/components/tools/ValidationPanel';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';

@@ -847,21 +847,18 @@ async def get_bridge_status(
             pool_sessions=pool_sessions,
         )
 
-    # Determine if a bridge process is known to be alive (beyond WS connections)
-    process_alive = len(agents) > 0
-    managed_by: Optional[str] = None
+    # Determine ownership + liveness beyond immediate WS connectivity.
+    server_alive = _server_bridge_process is not None and _server_bridge_process.poll() is None
+    launcher_status = _check_launcher_bridge()
+    launcher_alive = _is_launcher_bridge_active(launcher_status)
 
-    if not process_alive:
-        # Check server-spawned subprocess
-        if _server_bridge_process and _server_bridge_process.poll() is None:
-            process_alive = True
-            managed_by = "server"
-        else:
-            # Check launcher-managed service
-            launcher_status = _check_launcher_bridge()
-            if launcher_status:
-                process_alive = True
-                managed_by = "launcher"
+    managed_by: Optional[str] = None
+    if server_alive:
+        managed_by = "server"
+    elif launcher_alive:
+        managed_by = "launcher"
+
+    process_alive = len(agents) > 0 or server_alive or launcher_alive
 
     return RemoteAgentBridgeStatus(
         connected=len(agents),
@@ -1170,12 +1167,25 @@ class StartBridgeResponse(BaseModel):
 _server_bridge_process: Optional[Any] = None
 
 
+def _is_launcher_bridge_active(status: Optional[dict]) -> bool:
+    """True when launcher reports ai-client as running or in startup."""
+    if not status:
+        return False
+    service_status = str(status.get("status") or "").strip().lower()
+    if service_status in {"running", "starting"}:
+        return True
+    service_health = str(status.get("health") or "").strip().lower()
+    if service_health in {"healthy", "starting"} and status.get("pid"):
+        return True
+    return False
+
+
 def _check_launcher_bridge() -> Optional[dict]:
     """Check if the launcher already manages a running ai-client service."""
     from pixsim7.backend.main.shared.launcher_client import get_service_status
 
     status = get_service_status("ai-client")
-    if status and status.get("status") == "running":
+    if _is_launcher_bridge_active(status):
         return status
     return None
 
@@ -1196,15 +1206,32 @@ async def start_server_bridge(
     global _server_bridge_process
     import subprocess
     import sys
+    from pixsim7.backend.main.shared.launcher_client import (
+        get_service_status as launcher_get_service_status,
+        start_service as launcher_start_service,
+    )
 
-    # If the launcher already manages a running bridge, don't spawn a duplicate
-    launcher_bridge = _check_launcher_bridge()
-    if launcher_bridge:
+    launcher_status = launcher_get_service_status("ai-client")
+
+    # If the launcher already manages (running/starting) ai-client, don't spawn duplicates.
+    if _is_launcher_bridge_active(launcher_status):
         return StartBridgeResponse(
             ok=True,
-            pid=launcher_bridge.get("pid"),
+            pid=(launcher_status or {}).get("pid"),
             message="Bridge managed by launcher",
         )
+
+    # Launcher is available and ai-client exists but is not active yet.
+    # Delegate startup to launcher so ownership stays in launcher.
+    if launcher_status:
+        started = launcher_start_service("ai-client")
+        if started:
+            refreshed = launcher_get_service_status("ai-client") or launcher_status
+            return StartBridgeResponse(
+                ok=True,
+                pid=(refreshed or {}).get("pid"),
+                message="Bridge start delegated to launcher",
+            )
 
     if _server_bridge_process and _server_bridge_process.poll() is None:
         return StartBridgeResponse(

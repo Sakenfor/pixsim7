@@ -232,7 +232,9 @@ export const sqlQueryExplorerTool = defineDevTool({
   category: 'debug',
   panelComponent: SqlQueryExplorerPanel,
   tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
-  safeForNonDev: false, // Admin only
+  // Visible in dev-tools list for discoverability.
+  // Backend endpoint remains permission-gated (admin).
+  safeForNonDev: true,
 });
 
 // ============================================================================

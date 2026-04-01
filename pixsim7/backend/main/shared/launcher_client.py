@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Optional
 
 _TIMEOUT = 2  # seconds — keep short; launcher is localhost
+_RETRIES = 2
 
 
 def _launcher_url(path: str) -> str:
@@ -30,15 +32,19 @@ def get_service_status(service_key: str) -> Optional[dict]:
     Returns the full status dict (key, status, health, pid, ...) or
     ``None`` if the launcher is unreachable or the service doesn't exist.
     """
-    try:
-        req = urllib.request.Request(
-            _launcher_url(f"/services/{service_key}"),
-            headers={"Accept": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception:
-        return None
+    for attempt in range(_RETRIES):
+        try:
+            req = urllib.request.Request(
+                _launcher_url(f"/services/{service_key}"),
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            if attempt == _RETRIES - 1:
+                return None
+            time.sleep(0.15)
+    return None
 
 
 def is_service_running(service_key: str) -> bool:

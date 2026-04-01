@@ -9,6 +9,7 @@ import type { MediaCardResolvedProps } from '@/components/media/MediaCard';
 
 import { FAVORITE_TAG_SLUG } from '../../lib/favoriteTag';
 import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
+import { useMediaSettingsStore } from '../../stores/mediaSettingsStore';
 
 /**
  * Core MediaCard props derived from an asset.
@@ -44,6 +45,12 @@ export type AssetMediaCardProps = Pick<
  */
 export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps {
   const { mainUrl, thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
+  const downloadOnGenerate = useMediaSettingsStore.getState().serverSettings?.download_on_generate ?? false;
+  const isGeneratedVideo = asset.mediaType === 'video' && (
+    asset.uploadMethod === 'generated' || Boolean(asset.sourceGenerationId)
+  );
+  const hasLocalVideoReady = asset.syncStatus === 'downloaded' || Boolean(asset.storedKey);
+  const suppressRemoteVideoPreview = downloadOnGenerate && isGeneratedVideo && !hasLocalVideoReady;
 
   return {
     id: asset.id,
@@ -52,7 +59,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
     providerAssetId: asset.providerAssetId,
     thumbUrl: thumbnailUrl ?? asset.thumbnailUrl ?? '',
     previewUrl: previewUrl ?? asset.previewUrl ?? undefined,
-    remoteUrl: mainUrl ?? asset.remoteUrl ?? '',
+    remoteUrl: suppressRemoteVideoPreview ? '' : (mainUrl ?? asset.remoteUrl ?? ''),
     width: asset.width ?? undefined,
     height: asset.height ?? undefined,
     durationSec: asset.durationSec ?? undefined,

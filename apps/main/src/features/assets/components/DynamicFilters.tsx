@@ -137,6 +137,7 @@ export function DynamicFilters({
   const { metadata, loading, error } = useFilterMetadata({
     includeCounts: showCounts,
     context: filterContext,
+    limit: 150,
   });
 
   const pinnedKeys = usePinnedFiltersStore((s) => s.pinnedKeys);

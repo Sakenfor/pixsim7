@@ -25,6 +25,7 @@ import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '../lib/assetUrlResolver';
 import type { SelectedAsset } from '../stores/assetSelectionStore';
 import type { ViewerAsset } from '../stores/assetViewerStore';
+import { useMediaSettingsStore } from '../stores/mediaSettingsStore';
 
 export type AssetSyncStatus = 'remote' | 'downloading' | 'downloaded' | 'error';
 export type AssetProviderStatus = 'ok' | 'local_only' | 'unknown' | 'flagged';
@@ -221,17 +222,31 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
   // ViewerAsset only supports image/video - map others to image as fallback
   const viewerType: 'image' | 'video' =
     asset.mediaType === 'video' ? 'video' : 'image';
+  const downloadOnGenerate = useMediaSettingsStore.getState().serverSettings?.download_on_generate ?? false;
+  const isGeneratedVideo = viewerType === 'video' && (
+    asset.uploadMethod === 'generated' || Boolean(asset.sourceGenerationId)
+  );
+  const hasLocalVideoReady = asset.syncStatus === 'downloaded' || Boolean(asset.storedKey);
+  const suppressRemoteVideoFallback = downloadOnGenerate && isGeneratedVideo && !hasLocalVideoReady;
 
-  const { mainUrl, thumbnailUrl } = getAssetDisplayUrls(asset);
+  const { mainUrl, thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
   const safeMainUrl = ensureBackendAbsolute(mainUrl, BACKEND_BASE);
   const safeThumbUrl = ensureBackendAbsolute(thumbnailUrl, BACKEND_BASE);
+  const safePreviewUrl = ensureBackendAbsolute(previewUrl, BACKEND_BASE);
+  const safeRemoteUrl = suppressRemoteVideoFallback
+    ? undefined
+    : ensureBackendAbsolute(asset.remoteUrl ?? undefined, BACKEND_BASE);
+  const videoFullUrl =
+    viewerType === 'video'
+      ? (safeMainUrl || safeRemoteUrl || safePreviewUrl || safeThumbUrl)
+      : safeMainUrl;
 
   return {
     id: asset.id,
     name: asset.description || `Asset ${asset.id}`,
     type: viewerType,
-    url: safeThumbUrl || safeMainUrl || '',
-    fullUrl: safeMainUrl || undefined,
+    url: safeThumbUrl || safePreviewUrl || videoFullUrl || '',
+    fullUrl: videoFullUrl || undefined,
     source: 'gallery',
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     hasGenerationContext: asset.hasGenerationContext ?? false,

@@ -1296,7 +1296,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             <DynamicFilters
               filters={controller.filters}
               onFiltersChange={(f) => setFilters(f)}
-              showCounts
+              // Count aggregation across all filter dimensions is expensive on
+              // large libraries and can time out even with no active filters.
               onBrowseFilter={browseFilterInMiniGallery}
               extraChips={
                 <AssetSetChip
