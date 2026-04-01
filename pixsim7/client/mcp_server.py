@@ -609,6 +609,31 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
     return result
 
 
+_bridge_session_cache: str | None = None
+
+
+async def _resolve_bridge_session_id(token: str, profile_id: str) -> str | None:
+    """Look up the most recent active chat session for this profile from the backend."""
+    global _bridge_session_cache
+    if _bridge_session_cache:
+        return _bridge_session_cache
+    try:
+        client = _get_client()
+        resp = await client.get(
+            "/api/v1/meta/agents/chat-sessions",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": 1},
+        )
+        if resp.status_code == 200:
+            sessions = resp.json().get("sessions") or []
+            if sessions:
+                _bridge_session_cache = sessions[0].get("id")
+                return _bridge_session_cache
+    except Exception:
+        pass
+    return None
+
+
 async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]:
     """Log a work summary to activity log and optionally update plan checkpoint."""
     summary = (arguments.get("summary") or "").strip()
@@ -622,6 +647,10 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     agent_type = _extract_agent_type(token)
     profile_id = _extract_profile_from_token(token)
     session_id = _registered_session_id or "unregistered"
+
+    # Bridge-managed: resolve the real chat session ID from the backend
+    if session_id == "__bridge__":
+        session_id = await _resolve_bridge_session_id(token, profile_id) or "__bridge__"
     plan_id = (arguments.get("plan_id") or "").strip() or None
     checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
     points_delta = arguments.get("points_delta") or 0
