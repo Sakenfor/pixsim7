@@ -145,13 +145,18 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
       position: CubePosition,
       size: { width: number; height: number },
       context?: Record<string, any>,
+      cubeInstanceId?: string,
     ) => {
-      // Deduplicate: if a cube for this panel definition already exists, update it.
-      // Compare by stripped definition ID so legacy instance-suffixed IDs
-      // (e.g. "settings::1") still match the new definition ID ("settings").
+      // Deduplicate: if a cube for this panel definition already exists within
+      // the same cube instance, update it. Compare by stripped definition ID so
+      // legacy instance-suffixed IDs (e.g. "settings::1") still match ("settings").
       const normalizedId = stripInstanceSuffix(panelId);
+      const instId = cubeInstanceId ?? 'default';
       const existing = Object.values(get().cubes).find(
-        (c) => c.minimizedPanel && stripInstanceSuffix(c.minimizedPanel.panelId) === normalizedId,
+        (c) =>
+          c.minimizedPanel &&
+          stripInstanceSuffix(c.minimizedPanel.panelId) === normalizedId &&
+          (c.cubeInstanceId ?? 'default') === instId,
       );
       if (existing) {
         set((state) => ({
@@ -160,6 +165,7 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
             [existing.id]: {
               ...existing,
               position,
+              cubeInstanceId: instId,
               minimizedPanel: {
                 panelId: normalizedId,
                 originalPosition: position,
@@ -179,6 +185,7 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
         rotation: { x: 0, y: 0 },
         zIndex: 100,
         visible: true,
+        cubeInstanceId: instId,
         minimizedPanel: {
           panelId: normalizedId,
           originalPosition: position,

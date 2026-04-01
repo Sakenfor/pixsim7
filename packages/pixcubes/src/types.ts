@@ -65,6 +65,8 @@ export interface ControlCube {
   visible?: boolean;
   minimized?: boolean;
   minimizedPanel?: MinimizedPanelData;
+  /** Routes this cube to a specific cube instance. Defaults to 'default'. */
+  cubeInstanceId?: string;
   data?: unknown;
 }
 
@@ -179,6 +181,7 @@ export interface ExtendedCubeStore extends CubeStore {
     position: CubePosition,
     size: { width: number; height: number },
     context?: Record<string, any>,
+    cubeInstanceId?: string,
   ) => string;
   restorePanelFromCube: (cubeId: string) => MinimizedPanelData | null;
 
