@@ -207,7 +207,7 @@
     {
       "id": "assets-upload-api",
       "label": "Assets Upload API Tests",
-      "path": "pixsim7/backend/tests/api/test_assets_upload_library_mode.py",
+      "path": "pixsim7/backend/tests/assets/api/test_assets_upload_library_mode.py",
       "layer": "backend",
       "kind": "contract",
       "category": "backend/api",
