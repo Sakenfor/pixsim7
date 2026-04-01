@@ -45,6 +45,7 @@ class AuditMeta:
     id_field: str = "id"
     label_field: Optional[str] = None
     tracked_fields: Sequence[str] = ()  # empty = track all mutable fields
+    plan_id_field: Optional[str] = None  # populates EntityAudit.plan_id from this model field
 
 
 def _serialize(value: Any) -> Optional[str]:
@@ -67,6 +68,13 @@ def _get_id(target: Any, meta: AuditMeta) -> str:
     return str(getattr(target, meta.id_field, ""))
 
 
+def _get_plan_id(target: Any, meta: AuditMeta) -> Optional[str]:
+    if not meta.plan_id_field:
+        return None
+    val = getattr(target, meta.plan_id_field, None)
+    return str(val) if val else None
+
+
 def _on_after_insert(mapper, connection, target):
     meta: AuditMeta = getattr(target.__class__, "__audit__", None)
     if not meta:
@@ -79,6 +87,7 @@ def _on_after_insert(mapper, connection, target):
         entity_label=_get_label(target, meta),
         action="created",
         actor=get_audit_actor(),
+        plan_id=_get_plan_id(target, meta),
         commit_sha=get_audit_commit_sha(),
         timestamp=utcnow(),
     )
@@ -97,6 +106,8 @@ def _on_after_update(mapper, connection, target):
     entity_label = _get_label(target, meta)
 
     tracked = set(meta.tracked_fields) if meta.tracked_fields else None
+
+    plan_id = _get_plan_id(target, meta)
 
     for attr in insp.attrs:
         if attr.key.startswith("_"):
@@ -123,6 +134,7 @@ def _on_after_update(mapper, connection, target):
             old_value=_serialize(old_val),
             new_value=_serialize(new_val),
             actor=actor,
+            plan_id=plan_id,
             commit_sha=commit_sha,
             timestamp=now,
         )
@@ -140,6 +152,7 @@ def _on_after_delete(mapper, connection, target):
         entity_label=_get_label(target, meta),
         action="deleted",
         actor=get_audit_actor(),
+        plan_id=_get_plan_id(target, meta),
         commit_sha=get_audit_commit_sha(),
         timestamp=utcnow(),
     )

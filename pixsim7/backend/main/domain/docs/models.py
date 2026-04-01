@@ -315,6 +315,7 @@ class PlanReviewRound(SQLModel, table=True):
     __audit__ = AuditMeta(
         domain="plan", entity_type="plan_review_round",
         tracked_fields=("status", "conclusion"),
+        plan_id_field="plan_id",
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
@@ -349,6 +350,7 @@ class PlanRequest(SQLModel, table=True):
     __audit__ = AuditMeta(
         domain="plan", entity_type="plan_request",
         tracked_fields=("status", "kind", "resolution_note", "resolved_node_id"),
+        plan_id_field="plan_id",
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
@@ -407,6 +409,7 @@ class PlanReviewDelegation(SQLModel, table=True):
         domain="plan",
         entity_type="plan_review_delegation",
         tracked_fields=("status", "expires_at", "revoked_at"),
+        plan_id_field="plan_id",
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
@@ -436,7 +439,7 @@ class PlanReviewNode(SQLModel, table=True):
         Index("idx_plan_review_node_plan_kind", "plan_id", "kind"),
         {"schema": PLAN_META_SCHEMA},
     )
-    __audit__ = AuditMeta(domain="plan", entity_type="plan_review_node")
+    __audit__ = AuditMeta(domain="plan", entity_type="plan_review_node", plan_id_field="plan_id")
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     plan_id: str = Field(

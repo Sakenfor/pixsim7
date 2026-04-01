@@ -3,13 +3,14 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 from pixsim7.backend.main.services.audit import list_entity_audit_events
 from pixsim7.backend.main.services.docs.plan_sync import (
     PlanSyncLockedError,
@@ -166,19 +167,27 @@ async def get_sync_run(
 @router.get("/registry", response_model=PlanRegistryListResponse)
 async def list_registry(
     _user: CurrentUser,
+    q: Optional[str] = Query(None, description="Free-text search across id/title/summary/owner/tags"),
     status: Optional[str] = Query(None),
     owner: Optional[str] = Query(None),
+    compact: bool = Query(False, description="Return lightweight registry entries"),
     include_hidden: bool = Query(False, description="Include archived and removed plans"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
 ):
     bundles = await _h.list_plan_bundles(db)
-    filtered = _h._filter_bundles(bundles, status=status, owner=owner, include_hidden=include_hidden)
+    filtered = _h._filter_bundles(
+        bundles,
+        status=status,
+        owner=owner,
+        q=q,
+        include_hidden=include_hidden,
+    )
 
     total = len(filtered)
     page = filtered[offset : offset + limit]
-    entries = [_h._bundle_to_registry_entry(b) for b in page]
+    entries = [_h._bundle_to_registry_entry(b, compact=compact) for b in page]
     return {"plans": entries, "total": total, "limit": limit, "offset": offset, "has_more": offset + limit < total}
 
 
@@ -206,13 +215,24 @@ async def get_plan_events(
     if not plan:
         raise HTTPException(status_code=404, detail=f"Plan not in registry: {plan_id}")
 
-    rows = await list_entity_audit_events(
-        db,
-        domain="plan",
-        entity_id=plan_id,
-        limit=limit,
-        offset=offset,
+    # Include both plan-level events (entity_id = plan_id) and
+    # sub-entity events (review rounds, nodes, requests) linked via plan_id column.
+    stmt = (
+        select(EntityAudit)
+        .where(
+            and_(
+                EntityAudit.domain == "plan",
+                or_(
+                    EntityAudit.entity_id == plan_id,
+                    EntityAudit.plan_id == plan_id,
+                ),
+            )
+        )
+        .order_by(EntityAudit.timestamp.desc())
+        .offset(offset)
+        .limit(limit)
     )
+    rows = list((await db.execute(stmt)).scalars().all())
 
     return {
         "plan_id": plan_id,
@@ -222,6 +242,8 @@ async def get_plan_events(
                 "run_id": (row.extra or {}).get("sync_run_id"),
                 "plan_id": plan_id,
                 "event_type": row.action,
+                "entity_type": row.entity_type,
+                "entity_label": row.entity_label,
                 "field": row.field,
                 "old_value": row.old_value,
                 "new_value": row.new_value,

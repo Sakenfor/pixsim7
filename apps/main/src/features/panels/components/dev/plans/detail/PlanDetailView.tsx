@@ -18,7 +18,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 import { PlanAgentTasksSection } from './PlanAgentTasksSection';
 import { PlanDetailHeader } from './PlanDetailHeader';
-import { PlanDetailSections } from './PlanDetailSections';
+import { PlanDetailSections, PlanUnifiedActivityView } from './PlanDetailSections';
 import type {
   AgentSessionSnapshot,
   AgentSessionsSnapshot,
@@ -89,7 +89,7 @@ export function PlanDetailView({
   const [updating, setUpdating] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
-  const [contentView, setContentView] = useState<'full' | 'checkpoints' | 'tasks'>(
+  const [contentView, setContentView] = useState<'full' | 'checkpoints' | 'tasks' | 'activity'>(
     view === 'tasks' ? 'tasks' : 'full',
   );
   const [showSummaries, setShowSummaries] = useState(false);
@@ -248,17 +248,14 @@ export function PlanDetailView({
     setContentView(view === 'tasks' ? 'tasks' : 'full');
   }, [planId, view]);
 
-  // Poll agent sessions while any agent task is in_progress
+  // Poll agent sessions — always while plan is loaded (catches chat-based agents too)
   const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
   const hasInProgressRequests = useMemo(
     () => (reviewGraph?.requests ?? []).some((r) => r.status === 'in_progress'),
     [reviewGraph?.requests],
   );
   useEffect(() => {
-    if (!hasInProgressRequests) {
-      setAgentSessions(new Map());
-      return;
-    }
+    if (!detail) { setAgentSessions(new Map()); return; }
     let cancelled = false;
     const poll = async () => {
       try {
@@ -270,9 +267,30 @@ export function PlanDetailView({
       } catch { /* non-critical */ }
     };
     void poll();
-    const interval = setInterval(() => { void poll(); }, 5_000);
+    // Poll faster when requests are in-progress, slower otherwise
+    const interval = setInterval(() => { void poll(); }, hasInProgressRequests ? 5_000 : 15_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [hasInProgressRequests]);
+  }, [detail?.id, hasInProgressRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Derived: agent sessions currently working on THIS plan
+  const planAgentSessions = useMemo(() => {
+    if (!detail) return [];
+    return Array.from(agentSessions.values()).filter((s) => s.plan_id === detail.id);
+  }, [agentSessions, detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch active work inference when agents are present
+  const [activeCheckpoints, setActiveCheckpoints] = useState<{ checkpointId: string; checkpointLabel: string; confidence: string; reason: string }[]>([]);
+  useEffect(() => {
+    if (planAgentSessions.length === 0 || !detail) { setActiveCheckpoints([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await pixsimClient.get<{ activeCheckpoints: typeof activeCheckpoints }>(`/dev/plans/active-work/${encodeURIComponent(detail.id)}`);
+        if (!cancelled) setActiveCheckpoints(res.activeCheckpoints ?? []);
+      } catch { if (!cancelled) setActiveCheckpoints([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [planAgentSessions.length, detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Also auto-refresh the review graph while requests are in-progress
   useEffect(() => {
@@ -1143,6 +1161,8 @@ export function PlanDetailView({
         onApplyUpdate={(updates) => void applyUpdate(updates)}
         onNavigatePlan={onNavigatePlan}
         siblingPhases={siblingPhases}
+        planAgentSessions={planAgentSessions}
+        activeCheckpoints={activeCheckpoints}
       />
 
       <div className="space-y-4 min-w-0">
@@ -1154,6 +1174,7 @@ export function PlanDetailView({
             { id: 'full', label: 'Full Plan' },
             { id: 'checkpoints', label: 'Checkpoints' },
             { id: 'tasks', label: 'Tasks' },
+            { id: 'activity', label: 'Activity' },
           ] as const).map((option) => {
             const active = contentView === option.id;
             return (
@@ -1186,7 +1207,14 @@ export function PlanDetailView({
           </button>
         </div>
 
-        {contentView !== 'tasks' ? (
+        {contentView === 'activity' ? (
+          <PlanUnifiedActivityView
+            planId={detail.id}
+            participants={planParticipants}
+            loadingParticipants={loadingParticipants}
+            profileLabels={reviewProfileLabels}
+          />
+        ) : contentView !== 'tasks' ? (
           <PlanDetailSections
             detail={detail}
             viewMode={contentView === 'checkpoints' ? 'checkpoints' : 'full'}

@@ -194,6 +194,8 @@ class PlanEventEntry(ApiModel):
     run_id: Optional[str] = None
     plan_id: str
     event_type: str
+    entity_type: Optional[str] = None
+    entity_label: Optional[str] = None
     field: Optional[str] = None
     old_value: Optional[str] = None
     new_value: Optional[str] = None

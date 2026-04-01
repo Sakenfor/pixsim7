@@ -20,6 +20,7 @@ class EntityAudit(SQLModel, table=True):
         Index("idx_entity_audit_domain_ts", "domain", "timestamp"),
         Index("idx_entity_audit_entity", "entity_type", "entity_id", "timestamp"),
         Index("idx_entity_audit_actor_ts", "actor", "timestamp"),
+        Index("idx_entity_audit_domain_plan_id_ts", "domain", "plan_id", "timestamp"),
         {"schema": PLATFORM_SCHEMA},
     )
 

@@ -109,7 +109,6 @@ export function ParticipantEntry({
   const profileLabel = participant.profileId
     ? (profileLabels.get(participant.profileId) ?? participant.profileId)
     : null;
-  const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
   const summaryAction = participant.lastAction ? participant.lastAction.replace(/_/g, ' ') : null;
 
   return (
@@ -185,28 +184,11 @@ export function ParticipantEntry({
               </>
             )}
           </div>
-          <div>
-            <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-              Activity ({actionLog.length > 0 ? actionLog.length : participant.touches})
+          {summaryAction && (
+            <div className="text-[10px] text-neutral-400">
+              Last action: <span className="text-neutral-600 dark:text-neutral-300">{summaryAction}</span>
             </div>
-            {actionLog.length > 0 ? (
-              <div className="space-y-0.5 max-h-40 overflow-y-auto">
-                {actionLog.map((entry, i) => (
-                  <div key={`${participant.id}:action:${i}`} className="flex items-center gap-2 text-[10px]">
-                    <span className="shrink-0 w-10 text-right text-neutral-400 font-mono">
-                      {new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="text-neutral-700 dark:text-neutral-300">{entry.action.replace(/_/g, ' ')}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[10px] text-neutral-400 italic">
-                {participant.touches} touch{participant.touches !== 1 ? 'es' : ''} recorded before activity tracking.
-                {participant.lastAction && <> Last: {participant.lastAction.replace(/_/g, ' ')}.</>}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </Popover>
     </>
