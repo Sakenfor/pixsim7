@@ -1,4 +1,4 @@
-import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
+import type { DockviewApi } from 'dockview-core';
 import { useEffect, useRef, useCallback } from 'react';
 
 import { getDockviewPanels } from '@lib/dockview';
@@ -14,9 +14,7 @@ import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 const CC_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 
-type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
-
-export function QuickGenerateModule(props: QuickGenerateModuleProps) {
+export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
 
@@ -27,7 +25,9 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
     [setDockOpen],
   );
 
-  const resolvedPanelId = props.panelId ?? props.api?.id ?? 'cc-generate';
+  // Keep QuickGen scope identity stable across HMR/prop shape jitter.
+  // This module is only mounted for the fixed `cc-generate` control-center panel.
+  const hostPanelId = 'cc-generate';
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenPanelHostRef>(null);
@@ -56,7 +56,7 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
       label="Control Center"
       panelManagerId="ccQuickgen"
       hostDockviewId="controlCenter"
-      hostPanelId={resolvedPanelId}
+      hostPanelId={hostPanelId}
       panelIds={CC_PANEL_IDS}
       priority={50}
       isOpen={ccIsOpen}

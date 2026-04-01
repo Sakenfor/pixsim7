@@ -346,4 +346,25 @@ describe('useQuickGenerateController.generate with assetOverrides', () => {
       }),
     );
   });
+
+  it('updates tracked generationId for direct executeGeneration calls', async () => {
+    const { result } = renderHook(() => useQuickGenerateController());
+
+    const asset = {
+      id: 123,
+      mediaType: 'image',
+      providerUploads: {},
+      lastUploadStatusByProvider: {},
+    } as any;
+
+    expect(result.current.generationId).toBeNull();
+
+    await act(async () => {
+      const response = await result.current.executeGeneration({ assetOverrides: [asset] });
+      expect(response.generationIds).toEqual([42]);
+    });
+
+    expect(result.current.generationId).toBe(42);
+    expect(testState.setWatchingGenerationMock).toHaveBeenCalledWith(42);
+  });
 });

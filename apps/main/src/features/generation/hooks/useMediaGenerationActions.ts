@@ -16,6 +16,7 @@ import {
 import type { OperationType } from '@/types/operations';
 
 import { upgradeModelForAsset, patchAssetToWidget } from '../lib/assetGenerationActions';
+import { getGenerationSessionStore } from '../stores/generationScopeStores';
 
 import { useGenerationScopeStores } from './useGenerationScope';
 
@@ -76,9 +77,21 @@ export function useMediaGenerationActions() {
 
     return candidates;
   }, [getWidgetContext, widgetProviders]);
+  const resolveWidgetOperationType = useCallback(
+    (widget: GenerationWidgetContext | null | undefined): OperationType => {
+      if (widget?.scopeId) {
+        const scopedOperationType = getGenerationSessionStore(widget.scopeId).getState()?.operationType;
+        if (scopedOperationType) {
+          return scopedOperationType as OperationType;
+        }
+      }
+      return widget?.operationType ?? sessionOperationType;
+    },
+    [sessionOperationType],
+  );
   const getCurrentOperationType = useCallback(
-    (): OperationType => getWidgetContext()?.operationType ?? sessionOperationType,
-    [getWidgetContext, sessionOperationType],
+    (): OperationType => resolveWidgetOperationType(getWidgetContext()),
+    [getWidgetContext, resolveWidgetOperationType],
   );
 
   const openGenerationWidget = useCallback(
@@ -228,7 +241,7 @@ export function useMediaGenerationActions() {
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean; count?: number; duration?: number }) => {
       let widget = getWidgetContext();
-      const currentOperationType = widget?.operationType ?? sessionOperationType;
+      const currentOperationType = resolveWidgetOperationType(widget);
       // Optionally add to inputs (default: no)
       if (options?.addToQueue) {
         addInputs({ assets: [asset], operationType: currentOperationType });
@@ -248,6 +261,11 @@ export function useMediaGenerationActions() {
         return;
       }
 
+      const liveOperationType = resolveWidgetOperationType(widget);
+      if (widget.setOperationType && widget.operationType !== liveOperationType) {
+        widget.setOperationType(liveOperationType);
+      }
+
       try {
         await widget.executeGeneration({
           assetOverrides: [asset],
@@ -262,7 +280,7 @@ export function useMediaGenerationActions() {
         });
       }
     },
-    [addInputs, getWidgetContext, sessionOperationType, selectAssetFromSummary, resolveWidgetForQuickGenerate],
+    [addInputs, getWidgetContext, selectAssetFromSummary, resolveWidgetForQuickGenerate, resolveWidgetOperationType],
   );
 
   // Upgrade model — re-queue generation with one model tier up.

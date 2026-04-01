@@ -916,7 +916,9 @@ export function useQuickGenerateController() {
 
   /**
    * Generation pipeline core — builds request, submits to API, seeds generations store.
-   * Does NOT touch widget state (generating, error, generationId, queueProgress).
+   * Does NOT touch active widget run state (generating, error, queueProgress).
+   * It does update `generationId` so downstream rejection watchers can surface
+   * provider-side prompt/content failures for non-UI triggers (e.g. gestures).
    * Throws on fatal errors (build failure, template roll failure).
    *
    * Use this from external triggers (media cards, gestures) to avoid
@@ -1085,7 +1087,9 @@ export function useQuickGenerateController() {
       }
 
       if (generatedIds.length > 0) {
-        setWatchingGeneration(generatedIds[generatedIds.length - 1]);
+        const lastId = generatedIds[generatedIds.length - 1];
+        setGenerationId(lastId);
+        setWatchingGeneration(lastId);
       }
 
       logEvent('INFO', 'burst_complete', {
@@ -1122,6 +1126,7 @@ export function useQuickGenerateController() {
         inputAssetIds: extractInputAssetIds(effectiveInputs),
       }),
     );
+    setGenerationId(genId);
     setWatchingGeneration(genId);
     recordInputHistory(activeOperationType, effectiveInputs);
 

@@ -153,7 +153,7 @@ export function getRegisteredSettingsStoreEntries(): Array<{
 const SCOPED_PREFIXES = ['generation_settings:', 'generation_inputs:'];
 // Legacy prefixes from before the session→settings merge
 const LEGACY_PREFIXES = ['generation_session:'];
-const MAX_SCOPED_STORES = 8;
+const MAX_SCOPED_STORES = 32;
 const PRUNE_MARKER_KEY = 'generation_scope_prune_ts';
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000; // once per day
 
@@ -183,6 +183,12 @@ export function pruneStaleGenerationStores(): number {
     // generation_settings:x:x -> generation_settings:x
     // generation_inputs:x:x -> generation_inputs:x
     removed += collapseDuplicateScopedStorageKeys();
+
+    // In dev, HMR can produce temporary scope IDs while panels remount.
+    // Skipping aggressive prune avoids accidentally deleting active scopes.
+    if (import.meta.env.DEV) {
+      return removed;
+    }
 
     const lastPrune = Number(localStorage.getItem(PRUNE_MARKER_KEY) || '0');
     if (Date.now() - lastPrune < PRUNE_INTERVAL_MS) return removed;
