@@ -47,6 +47,8 @@ export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
   similarity_threshold?: number;
   /** Whitelist of asset IDs to include */
   asset_ids?: number[];
+  /** Include exact total count (can be expensive on large libraries) */
+  include_total?: boolean;
 };
 export type ListAssetsQuery = AssetSearchRequest;
 
@@ -73,11 +75,13 @@ export function getAssetDownloadUrl(asset: AssetResponse): string {
 export function createAssetsApi(client: PixSimApiClient) {
   return {
     async searchAssets(request?: AssetSearchRequest): Promise<AssetListResponse> {
-      return client.post<AssetListResponse>('/assets/search', request || {}, { timeout: 120_000 });
+      const payload = { include_total: false, ...(request || {}) };
+      return client.post<AssetListResponse>('/assets/search', payload, { timeout: 120_000 });
     },
 
     async listAssets(query?: AssetSearchRequest): Promise<AssetListResponse> {
-      return client.post<AssetListResponse>('/assets/search', query || {}, { timeout: 120_000 });
+      const payload = { include_total: false, ...(query || {}) };
+      return client.post<AssetListResponse>('/assets/search', payload, { timeout: 120_000 });
     },
 
     async listAssetGroups(request: AssetGroupRequest): Promise<AssetGroupListResponse> {
@@ -169,4 +173,3 @@ export function createAssetsApi(client: PixSimApiClient) {
     },
   };
 }
-
