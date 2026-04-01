@@ -1,4 +1,4 @@
-// eslint-disable-next-line import/no-unresolved
+ 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +10,7 @@ const testState = vi.hoisted(() => {
   const setWatchingGenerationMock = vi.fn();
   const setGeneratingMock = vi.fn();
   const recordUsageMock = vi.fn();
+  const syncOperationMock = vi.fn();
 
   const sessionState = {
     operationType: 'image_to_image',
@@ -39,11 +40,13 @@ const testState = vi.hoisted(() => {
     setWatchingGeneration: setWatchingGenerationMock,
   };
 
-  const blockTemplateState = {
-    pinnedTemplateId: 'tpl-1',
-    templateRollMode: 'once' as 'once' | 'each',
-    draftCharacterBindings: {},
-  };
+const blockTemplateState = {
+  pinnedTemplateId: 'tpl-1',
+  templateRollMode: 'once' as 'once' | 'each',
+  draftCharacterBindings: {},
+  controlValues: {},
+  syncOperation: syncOperationMock,
+};
 
   return {
     rollTemplateMock,
@@ -79,6 +82,9 @@ vi.mock('@features/assets', () => ({
   fromAssetResponse: vi.fn(),
   getAssetDisplayUrls: vi.fn(() => ({ thumbnailUrl: '', previewUrl: '', mainUrl: '' })),
   toSelectedAsset: vi.fn((asset: any) => ({ id: asset.id, source: 'gallery' })),
+  assetEvents: {
+    subscribeToUpdates: vi.fn(() => ({ unsubscribe: () => {} })),
+  },
 }));
 
 vi.mock('@features/assets/lib/assetSetResolver', () => ({
@@ -165,9 +171,13 @@ vi.mock('@features/providers', () => ({
   },
 }));
 
-vi.mock('@/types/operations', () => ({
-  getFallbackOperation: vi.fn((operationType: string) => operationType),
-}));
+vi.mock('@/types/operations', async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  return {
+    ...actual,
+    getFallbackOperation: vi.fn((operationType: string) => operationType),
+  };
+});
 
 vi.mock('@/utils/prompt/limits', () => ({
   resolvePromptLimitForModel: vi.fn(() => undefined),
