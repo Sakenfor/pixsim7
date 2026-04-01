@@ -87,7 +87,9 @@ class ProviderManifest(BaseModel):
         default=None,
         description=(
             "Optional cost estimation config for frontend UI. "
-            "Expected shape: {endpoint, method, payload_keys, required_keys, include_operation_type}."
+            "Expected shape: {endpoint, method, payload_keys, required_keys, include_operation_type}. "
+            "The frontend always injects 'discounts' (promotional multipliers) into the "
+            "estimate payload when present, regardless of payload_keys."
         ),
     )
 

@@ -144,44 +144,8 @@ class PixverseProvider(
             OperationType.FUSION,
         ]
 
-    # ===== PROVIDER METADATA =====
-
-    def get_manifest(self):
-        """Return Pixverse provider manifest with domains and credit types."""
-        from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
-        return ProviderManifest(
-            id="pixverse",
-            name="Pixverse AI",
-            version="1.0.0",
-            description="Pixverse AI video and image generation provider",
-            author="PixSim Team",
-            kind=ProviderKind.VIDEO,
-            enabled=True,
-            requires_credentials=True,
-            domains=["pixverse.ai", "app.pixverse.ai"],
-            credit_types=["web", "openapi", "standard"],
-            cost_estimator={
-                "endpoint": "/providers/pixverse/estimate-cost",
-                "method": "POST",
-                "payload_keys": [
-                    "model",
-                    "quality",
-                    "duration",
-                    "motion_mode",
-                    "multi_shot",
-                    "audio",
-                    "api_method",
-                    "discounts",
-                ],
-                "required_keys": ["model", "quality"],
-                "include_operation_type": False,
-            },
-            status_mapping_notes=(
-                "1=success/completed, 2=processing, "
-                "4/7=failed (transient, may retry), 5=filtered (may retry), "
-                "6=filtered (prompt blocked, no retry)"
-            ),
-        )
+    # Manifest metadata is defined in providers/pixverse/manifest.py and
+    # attached by the registry — do not override get_manifest() here.
 
     def map_parameters(
         self,

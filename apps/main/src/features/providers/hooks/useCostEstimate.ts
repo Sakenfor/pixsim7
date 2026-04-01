@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+
 import { pixsimClient } from '@lib/api/client';
+
 import { useProviderCapabilities } from './useProviderCapabilities';
 
 export interface UseCostEstimateOptions {
@@ -64,6 +66,11 @@ export function useCostEstimate({
     for (const key of keys) {
       snapshot[key] = params[key];
     }
+    // Always track discounts so the estimate re-fires when promos change,
+    // even if the provider doesn't list discounts in payload_keys.
+    if (params.discounts !== undefined && !('discounts' in snapshot)) {
+      snapshot.discounts = params.discounts;
+    }
     return snapshot;
   }, [params, dependencyKeys, estimatorConfig]);
 
@@ -80,7 +87,7 @@ export function useCostEstimate({
       globalThis.localStorage.getItem('debug_cost_estimate') === '1';
     const debug = (message: string, details?: Record<string, any>) => {
       if (!debugEnabled) return;
-      // eslint-disable-next-line no-console
+       
       console.info(`[cost-estimate] ${message}`, details || {});
     };
 
@@ -119,6 +126,12 @@ export function useCostEstimate({
         continue;
       }
       payload[key] = value;
+    }
+
+    // Inject promotional discounts if present (provider-agnostic — not gated
+    // by payload_keys so every provider's estimator receives them automatically).
+    if (params.discounts && typeof params.discounts === 'object' && Object.keys(params.discounts).length > 0) {
+      payload.discounts = params.discounts;
     }
 
     if (estimatorConfig.include_operation_type && operationType) {

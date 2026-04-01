@@ -222,9 +222,9 @@ export function GenerationSettingsPanel({
   const switchProviderInputs = useInputStore(s => s.switchProviderInputs);
   const [perProviderInputs] = usePersistedScopeState('perProviderInputs', false, { stable: true });
 
-  // Burst mode - persisted in session store uiState
-  const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
-  const [burstSequentialMode, setBurstSequentialMode] = usePersistedScopeState('burstSequentialMode', false);
+  // Burst mode - persisted per operation type in session store uiState
+  const [burstCount, setBurstCount] = usePersistedScopeState(`burstCount:${operationType}`, 1);
+  const [burstSequentialMode, setBurstSequentialMode] = usePersistedScopeState(`burstSequentialMode:${operationType}`, false);
   const isBurstMode = burstCount > 1;
   const canUseSequentialBurst = !!onGenerateSequentialBurst;
 
@@ -319,13 +319,16 @@ export function GenerationSettingsPanel({
     return `Promotion detected without local pricing mapping: ${preview}${extraCount > 0 ? ` +${extraCount}` : ''}. Open Advanced Settings for details.`;
   }, [hasUnknownPromotionPricing, unknownPromotionModels]);
 
-  // Credit estimation for Go button (inject active discounts for accurate estimate)
+  // Credit estimation for Go button (inject active discounts for accurate estimate).
+  // Only apply promotional discounts when a specific account is pinned — in Auto
+  // mode the backend picks the account which may not have the promo, so showing
+  // the discounted price would be misleading.
   const costParams = useMemo(() => {
-    const hasDiscounts = Object.keys(modelDiscounts).length > 0;
+    const hasDiscounts = preferredAccountId != null && Object.keys(modelDiscounts).length > 0;
     return hasDiscounts
       ? { ...workbench.dynamicParams, discounts: modelDiscounts }
       : workbench.dynamicParams;
-  }, [workbench.dynamicParams, modelDiscounts]);
+  }, [workbench.dynamicParams, modelDiscounts, preferredAccountId]);
   const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
     providerId: inferredProviderId,
     operationType,

@@ -47,6 +47,7 @@ manifest = ProviderManifest(
             "multi_shot",
             "audio",
             "api_method",
+            "discounts",
         ],
         "required_keys": ["model", "quality"],
         "include_operation_type": False,
