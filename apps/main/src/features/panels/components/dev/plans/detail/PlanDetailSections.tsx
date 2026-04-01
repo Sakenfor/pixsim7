@@ -368,14 +368,7 @@ interface AuditEventEntry {
   extra: Record<string, unknown> | null;
 }
 
-interface AuditEventsResponse {
-  events: AuditEventEntry[];
-  total: number | null;
-  limit: number;
-  offset: number;
-}
-
-/** Response shape from /dev/plans/registry/{id}/events (different from generic audit endpoint). */
+/** Response shape from /dev/plans/registry/{id}/events. */
 interface PlanEventsApiResponse {
   planId: string;
   events: {
@@ -662,10 +655,10 @@ export function PlanUnifiedActivityView({
   const loading = loadingAudit || loadingParticipants;
 
   // Participant summary strip
-  const allParticipants = participants?.participants ?? [];
   const dedupedParticipants = useMemo(() => {
+    const all = participants?.participants ?? [];
     const seen = new Map<string, PlanParticipant>();
-    for (const p of allParticipants) {
+    for (const p of all) {
       const key = p.profileId || p.agentId || p.userId?.toString() || p.id;
       const existing = seen.get(key);
       if (!existing || p.touches > existing.touches) {
@@ -673,7 +666,7 @@ export function PlanUnifiedActivityView({
       }
     }
     return [...seen.values()].sort((a, b) => b.touches - a.touches);
-  }, [allParticipants]);
+  }, [participants]);
 
   return (
     <div className="space-y-3">
