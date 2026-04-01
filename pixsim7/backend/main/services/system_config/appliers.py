@@ -42,16 +42,11 @@ register_applier("generation", _apply_generation_config)
 # ---------------------------------------------------------------------------
 
 def _apply_generation_worker_config(data: dict) -> None:
-    from pixsim7.backend.main.shared.config import settings
     from pixsim7.backend.main.services.system_config.settings_store import apply_settings
 
-    # Populate the generic SettingsBase cache
+    # Populate the SettingsBase cache — consumers read via
+    # GenerationWorkerSettings.get() (no global settings sync needed)
     apply_settings("generation_worker", data)
-
-    # Sync onto global settings object for existing readers
-    for key, value in data.items():
-        if hasattr(settings, key):
-            setattr(settings, key, value)
 
 
 register_applier("generation_worker", _apply_generation_worker_config)

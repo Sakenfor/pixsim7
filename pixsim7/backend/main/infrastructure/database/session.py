@@ -34,8 +34,8 @@ _sql_logging_enabled = (
 async_engine = create_async_engine(
     settings.async_database_url,
     echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
-    pool_size=8,
-    max_overflow=12,
+    pool_size=16,
+    max_overflow=24,
     pool_pre_ping=True,  # Test connections before using
     pool_recycle=3600,   # Recycle connections after 1 hour
 )

@@ -6,36 +6,41 @@ paths can import it without introducing service or ORM dependencies.
 """
 import logging
 
-from pixsim7.backend.main.shared.config import settings
-
 logger = logging.getLogger(__name__)
 
+
+def _ws():
+    """Lazy accessor for GenerationWorkerSettings singleton."""
+    from pixsim7.backend.main.services.generation.worker_settings import get_worker_settings
+    return get_worker_settings()
+
+
 def max_submit_content_filter_retries() -> int:
-    return int(settings.content_filter_submit_max_retries)
+    return int(_ws().content_filter_submit_max_retries)
 
 
 def _content_filter_rotate_after_retries() -> int:
-    return int(settings.content_filter_rotate_after_retries)
+    return int(_ws().content_filter_rotate_after_retries)
 
 
 def _content_filter_pinned_yield_after_retries() -> int:
-    return int(settings.content_filter_pinned_yield_after_retries)
+    return int(_ws().content_filter_pinned_yield_after_retries)
 
 
 def _content_filter_retry_defer_seconds() -> int:
-    return int(settings.content_filter_retry_defer_seconds)
+    return int(_ws().content_filter_retry_defer_seconds)
 
 
 def _content_filter_pinned_yield_defer_multiplier() -> int:
-    return int(settings.content_filter_pinned_yield_defer_multiplier)
+    return int(_ws().content_filter_pinned_yield_defer_multiplier)
 
 
 def _content_filter_yield_counts_as_retry() -> bool:
-    return bool(settings.content_filter_yield_counts_as_retry)
+    return bool(_ws().content_filter_yield_counts_as_retry)
 
 
 def _content_filter_yield_counter_ttl_seconds() -> int:
-    return int(settings.content_filter_yield_counter_ttl_seconds)
+    return int(_ws().content_filter_yield_counter_ttl_seconds)
 
 
 def should_rotate_content_filter_account(current_retries: int | None) -> bool:
@@ -60,7 +65,7 @@ def content_filter_yield_counts_as_retry() -> bool:
 
 def content_filter_max_yields() -> int:
     """Configured cap for fairness-only yields (0 disables the cap)."""
-    return int(settings.content_filter_max_yields)
+    return int(_ws().content_filter_max_yields)
 
 
 def _yield_counter_key(generation_id: int) -> str:

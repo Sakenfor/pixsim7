@@ -805,22 +805,24 @@ async def update_generation_worker_config(
     if patch_data:
         row = await patch_config(db, "generation_worker", patch_data, admin.id)
         apply_namespace("generation_worker", row.data)
-        settings.reload()
+
+    ws = get_worker_settings()
+    ws.reload()
 
     logger.info(
         "Generation worker config updated by admin %s: cf_submit=%d cf_yields=%d pixverse_cd=%ds i2i_cd=%ds adaptive=%s probe=%d-%ds max_waits=%d",
         admin.username,
-        settings.content_filter_submit_max_retries,
-        settings.content_filter_max_yields,
-        settings.pixverse_concurrent_cooldown_seconds,
-        settings.pixverse_i2i_concurrent_cooldown_seconds,
-        settings.adaptive_provider_concurrency_enabled,
-        settings.adaptive_provider_concurrency_probe_min_seconds,
-        settings.adaptive_provider_concurrency_probe_max_seconds,
-        settings.max_pinned_concurrent_waits,
+        ws.content_filter_submit_max_retries,
+        ws.content_filter_max_yields,
+        ws.pixverse_concurrent_cooldown_seconds,
+        ws.pixverse_i2i_concurrent_cooldown_seconds,
+        ws.adaptive_provider_concurrency_enabled,
+        ws.adaptive_provider_concurrency_probe_min_seconds,
+        ws.adaptive_provider_concurrency_probe_max_seconds,
+        ws.max_pinned_concurrent_waits,
     )
 
-    return settings
+    return ws
 
 
 # ===== LLM CONFIG (CACHE TUNING) =====

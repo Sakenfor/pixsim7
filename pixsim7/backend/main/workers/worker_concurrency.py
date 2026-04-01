@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
-from pixsim7.backend.main.shared.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -37,12 +36,18 @@ PINNED_YIELD_DEFER_MULTIPLIER = 3
 
 
 # ---------------------------------------------------------------------------
-# Settings helpers
+# Settings helpers — read from GenerationWorkerSettings (DB-backed singleton)
 # ---------------------------------------------------------------------------
+
+def _ws():
+    """Lazy accessor for GenerationWorkerSettings singleton."""
+    from pixsim7.backend.main.services.generation.worker_settings import get_worker_settings
+    return get_worker_settings()
+
 
 def _settings_int(name: str, default: int, minimum: int | None = None) -> int:
     try:
-        value = int(getattr(settings, name, default))
+        value = int(getattr(_ws(), name, default))
     except Exception:
         value = default
     if minimum is not None:
@@ -52,7 +57,7 @@ def _settings_int(name: str, default: int, minimum: int | None = None) -> int:
 
 def _settings_float(name: str, default: float, minimum: float | None = None) -> float:
     try:
-        value = float(getattr(settings, name, default))
+        value = float(getattr(_ws(), name, default))
     except Exception:
         value = default
     if minimum is not None:
@@ -62,7 +67,7 @@ def _settings_float(name: str, default: float, minimum: float | None = None) -> 
 
 def _settings_bool(name: str, default: bool) -> bool:
     try:
-        value = getattr(settings, name, default)
+        value = getattr(_ws(), name, default)
     except Exception:
         return default
     return bool(value)
