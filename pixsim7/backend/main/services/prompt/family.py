@@ -17,6 +17,8 @@ from pixsim7.backend.main.domain.prompt import (
     PromptVersion,
 )
 from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
+from pixsim7.backend.main.services.tag import TagAssignment
 from .utils.diff import generate_inline_diff
 
 
@@ -76,6 +78,12 @@ class PromptFamilyService:
         self.db.add(family)
         await self.db.commit()
         await self.db.refresh(family)
+
+        if tags:
+            await TagAssignment(self.db, PromptFamilyTag, "family_id").assign(
+                family.id, tags, auto_create=True
+            )
+
         return family
 
     async def get_family(self, family_id: UUID) -> Optional[PromptFamily]:
@@ -100,13 +108,22 @@ class PromptFamilyService:
             return None
 
         allowed = {"title", "description", "category", "tags", "is_active"}
+        new_tags = None
         for key, value in fields.items():
             if key in allowed and value is not None:
                 setattr(family, key, value)
+                if key == "tags":
+                    new_tags = value
 
         self.db.add(family)
         await self.db.commit()
         await self.db.refresh(family)
+
+        if new_tags is not None:
+            await TagAssignment(self.db, PromptFamilyTag, "family_id").replace(
+                family.id, new_tags, auto_create=True
+            )
+
         return family
 
     async def get_family_by_slug(self, slug: str) -> Optional[PromptFamily]:
