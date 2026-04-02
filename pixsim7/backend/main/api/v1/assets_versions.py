@@ -30,7 +30,6 @@ class VersionFamilyResponse(BaseModel):
     id: str
     name: Optional[str]
     description: Optional[str]
-    tags: List[str]
     head_asset_id: Optional[int]
     user_id: int
     created_at: datetime
@@ -94,7 +93,6 @@ async def _build_family_response(
         id=str(family.id),
         name=family.name,
         description=family.description,
-        tags=family.tags or [],
         head_asset_id=family.head_asset_id,
         user_id=family.user_id,
         created_at=family.created_at,

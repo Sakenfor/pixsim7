@@ -10,11 +10,10 @@ Key concepts:
 - Asset.version_number: Sequential version within family
 - Asset.parent_asset_id: Direct parent for chain navigation
 """
-from typing import Optional, List, Any, Dict
+from typing import Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID, uuid4
-from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlmodel import SQLModel, Field, Index
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -52,13 +51,6 @@ class AssetVersionFamily(SQLModel, table=True):
     description: Optional[str] = Field(
         default=None,
         description="Detailed description of what this asset family represents"
-    )
-
-    # Classification
-    tags: List[str] = Field(
-        default_factory=list,
-        sa_column=Column(JSON),
-        description="Family-level tags for organization"
     )
 
     # HEAD pointer - single source of truth for current version
