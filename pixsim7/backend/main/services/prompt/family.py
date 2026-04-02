@@ -19,6 +19,8 @@ from pixsim7.backend.main.domain.prompt import (
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
 from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from .events import PROMPT_VERSION_CREATED
 from .utils.diff import generate_inline_diff
 
 
@@ -230,6 +232,16 @@ class PromptFamilyService:
         else:
             await self.db.flush()
         await self.db.refresh(version)
+
+        if commit:
+            family = await self.get_family(family_id)
+            await event_bus.publish(PROMPT_VERSION_CREATED, {
+                "family_id": str(family_id),
+                "version_id": str(version.id),
+                "prompt_text": prompt_text,
+                "category": family.category if family else None,
+            })
+
         return version
 
     async def get_version(self, version_id: UUID) -> Optional[PromptVersion]:

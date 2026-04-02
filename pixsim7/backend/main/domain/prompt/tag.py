@@ -43,6 +43,11 @@ class PromptFamilyTag(SQLModel, table=True):
         index=True,
     )
     created_at: datetime = Field(default_factory=utcnow, index=True)
+    source: str = Field(
+        default="manual",
+        max_length=10,
+        description="Who created this tag link: 'manual' (user) or 'ai' (auto-suggested)",
+    )
 
     def __repr__(self) -> str:
-        return f"<PromptFamilyTag(family_id={self.family_id}, tag_id={self.tag_id})>"
+        return f"<PromptFamilyTag(family_id={self.family_id}, tag_id={self.tag_id}, source={self.source!r})>"
