@@ -3,7 +3,7 @@ Prompt API helper functions.
 
 Mirrors the pattern of api/v1/assets_helpers.py — centralises
 PromptFamilyResponse construction so tag loading always goes through
-the join table and no caller can accidentally read family.tags_json directly.
+the prompt_family_tag join table.
 """
 from typing import List, Optional
 from uuid import UUID

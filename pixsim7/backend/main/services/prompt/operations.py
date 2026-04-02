@@ -17,8 +17,10 @@ from pixsim7.backend.main.domain.prompt import (
     PromptFamily,
     PromptVersion,
 )
+from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.services.tag import TagAssignment
 from .utils.similarity import calculate_text_similarity as calculate_similarity
 
 
@@ -95,7 +97,7 @@ class PromptOperationsService:
                 "description": family.description,
                 "prompt_type": family.prompt_type,
                 "category": family.category,
-                "tags": family.tags_json,
+                "tags": [t.slug for t in await TagAssignment(self.db, PromptFamilyTag, "family_id").get_tags(family.id)],
                 "family_metadata": family.family_metadata,
             }
         }

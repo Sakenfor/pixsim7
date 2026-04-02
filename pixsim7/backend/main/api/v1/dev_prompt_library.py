@@ -24,6 +24,8 @@ from uuid import UUID
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt import PromptVersionService
 from pixsim7.backend.main.services.prompt.parser import analyze_prompt
+from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -97,11 +99,18 @@ async def list_prompt_families(
             offset=offset,
         )
 
+        # Batch-load tags from join table
+        tags_map = await TagAssignment(db, PromptFamilyTag, "family_id").get_tags_batch(
+            [f.id for f in families]
+        )
+
         # Build response with version counts
         result = []
         for family in families:
+            family_tags = [t.slug for t in tags_map.get(family.id, [])]
+
             # Filter by tag if specified
-            if tag and tag not in family.tags_json:
+            if tag and tag not in family_tags:
                 continue
 
             # Count versions for this family
@@ -115,7 +124,7 @@ async def list_prompt_families(
                     title=family.title,
                     prompt_type=family.prompt_type,
                     category=family.category,
-                    tags=family.tags_json,
+                    tags=family_tags,
                     is_active=family.is_active,
                     version_count=version_count,
                 )

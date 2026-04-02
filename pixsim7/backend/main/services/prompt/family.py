@@ -71,7 +71,6 @@ class PromptFamilyService:
             description=description,
             prompt_type=prompt_type,
             category=category,
-            tags_json=tags or [],
             **kwargs
         )
 
@@ -107,15 +106,11 @@ class PromptFamilyService:
         if not family:
             return None
 
-        allowed = {"title", "description", "category", "tags", "is_active"}
-        # "tags" from the request maps to tags_json on the model (SQL column stays "tags")
-        _attr_map = {"tags": "tags_json"}
-        new_tags = None
+        model_fields = {"title", "description", "category", "is_active"}
+        new_tags = fields.pop("tags", None)
         for key, value in fields.items():
-            if key in allowed and value is not None:
-                setattr(family, _attr_map.get(key, key), value)
-                if key == "tags":
-                    new_tags = value
+            if key in model_fields and value is not None:
+                setattr(family, key, value)
 
         self.db.add(family)
         await self.db.commit()

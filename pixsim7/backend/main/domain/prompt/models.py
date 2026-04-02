@@ -39,7 +39,7 @@ class PromptFamily(SQLModel, table=True):
     __tablename__ = "prompt_families"
     __audit__ = AuditMeta(
         domain="prompt", entity_type="prompt_family", label_field="title",
-        tracked_fields=("title", "description", "category", "tags", "is_active"),
+        tracked_fields=("title", "description", "category", "is_active"),
     )
 
     id: Optional[UUID] = Field(
@@ -76,13 +76,6 @@ class PromptFamily(SQLModel, table=True):
         index=True,
         description="Category: 'romance', 'action', 'dialogue', etc."
     )
-    tags_json: List[str] = Field(
-        default_factory=list,
-        sa_column=Column(JSON, name="tags"),
-        description="Legacy JSON tag list — write path now mirrors to prompt_family_tag join table. "
-                    "Read via TagAssignment(db, PromptFamilyTag, 'family_id').get_tags(family.id)."
-    )
-
     # Optional game integration
     game_world_id: Optional[UUID] = Field(
         default=None,
