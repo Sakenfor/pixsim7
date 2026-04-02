@@ -84,6 +84,7 @@ def _run_openapi_check(openapi_url: str, types_dir: str, timeout: float) -> tupl
     env['OPENAPI_URL'] = openapi_url
     env['OPENAPI_TYPES_OUT'] = types_dir
     env['OPENAPI_ORVAL_OUT'] = types_dir
+    env['OPENAPI_FAST_CHECK'] = '1'
 
     # openapi:check runs Orval + directory comparison, so allow longer than HTTP probe.
     process_timeout = max(10.0, timeout * 10.0)

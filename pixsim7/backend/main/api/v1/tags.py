@@ -10,10 +10,11 @@ Handles:
 """
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
-from sqlmodel import Session
+from uuid import UUID
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, AssetSvc
 from pixsim7.backend.main.services.tag_service import TagService
+from pixsim7.backend.main.domain.prompt.models import PromptVersion
 from pixsim7.backend.main.shared.schemas.tag_schemas import (
     TagSummary,
     TagDetail,
@@ -22,6 +23,11 @@ from pixsim7.backend.main.shared.schemas.tag_schemas import (
     UpdateTagRequest,
     CreateAliasRequest,
     TagFilterRequest,
+    TagAssertionTargetType,
+    TagAssertionMutationMode,
+    TagAssertionMutationRequest,
+    TagAssertionRecord,
+    TagAssertionListResponse,
 )
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
@@ -71,6 +77,219 @@ async def list_tags(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list tags: {str(e)}")
+
+
+async def _resolve_assertion_target_id(
+    *,
+    target_type: TagAssertionTargetType,
+    target_id: str,
+    user: CurrentUser,
+    db: DatabaseSession,
+    asset_service: AssetSvc,
+) -> int | UUID:
+    if target_type == TagAssertionTargetType.ASSET:
+        try:
+            asset_id = int(target_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="asset target_id must be an integer")
+        await asset_service.get_asset_for_user(asset_id, user)
+        return asset_id
+
+    if target_type == TagAssertionTargetType.PROMPT_VERSION:
+        try:
+            prompt_version_id = UUID(str(target_id))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="prompt_version target_id must be a UUID")
+        prompt_version = await db.get(PromptVersion, prompt_version_id)
+        if not prompt_version:
+            raise HTTPException(status_code=404, detail="Prompt version not found")
+        return prompt_version_id
+
+    raise HTTPException(status_code=400, detail=f"Unsupported target_type '{target_type}'")
+
+
+def _build_assertion_response(
+    *,
+    target_type: TagAssertionTargetType,
+    target_id: int | UUID,
+    assertions: list[dict],
+) -> TagAssertionListResponse:
+    records = [
+        TagAssertionRecord(
+            tag=TagSummary.model_validate(item["tag"]),
+            source=item.get("source") or "unknown",
+            confidence=item.get("confidence"),
+            created_at=item.get("created_at"),
+        )
+        for item in assertions
+    ]
+    return TagAssertionListResponse(
+        target_type=target_type,
+        target_id=str(target_id),
+        assertions=records,
+        total=len(records),
+    )
+
+
+@router.get(
+    "/tags/assertions/{target_type}/{target_id}",
+    response_model=TagAssertionListResponse,
+)
+async def list_tag_assertions(
+    target_type: TagAssertionTargetType,
+    target_id: str,
+    user: CurrentUser,
+    db: DatabaseSession,
+    asset_service: AssetSvc,
+    tag_service: TagService = Depends(get_tag_service),
+):
+    """List tag assertions (with provenance) for an asset or prompt version."""
+    try:
+        resolved_id = await _resolve_assertion_target_id(
+            target_type=target_type,
+            target_id=target_id,
+            user=user,
+            db=db,
+            asset_service=asset_service,
+        )
+        if target_type == TagAssertionTargetType.ASSET:
+            assertions = await tag_service.list_asset_tag_assertions(int(resolved_id))
+        else:
+            assertions = await tag_service.list_prompt_version_tag_assertions(resolved_id)
+        return _build_assertion_response(
+            target_type=target_type,
+            target_id=resolved_id,
+            assertions=assertions,
+        )
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list tag assertions: {str(e)}")
+
+
+@router.post(
+    "/tags/assertions/{target_type}/{target_id}",
+    response_model=TagAssertionListResponse,
+)
+async def mutate_tag_assertions(
+    target_type: TagAssertionTargetType,
+    target_id: str,
+    request: TagAssertionMutationRequest,
+    user: CurrentUser,
+    db: DatabaseSession,
+    asset_service: AssetSvc,
+    tag_service: TagService = Depends(get_tag_service),
+):
+    """
+    Mutate tag assertions for an asset or prompt version.
+
+    Modes:
+    - add: append assertions for provided slugs
+    - remove: remove assertions for provided slugs
+    - replace: replace all assertions on target with provided slugs
+    - sync_source: replace only assertions from the specified source
+    """
+    try:
+        resolved_id = await _resolve_assertion_target_id(
+            target_type=target_type,
+            target_id=target_id,
+            user=user,
+            db=db,
+            asset_service=asset_service,
+        )
+
+        source = request.source or "manual"
+        mode = request.mode
+
+        if target_type == TagAssertionTargetType.ASSET:
+            asset_id = int(resolved_id)
+            if mode == TagAssertionMutationMode.ADD:
+                await tag_service.assign_tags_to_asset(
+                    asset_id=asset_id,
+                    tag_slugs=request.tag_slugs,
+                    auto_create=request.auto_create,
+                    source=source,
+                )
+            elif mode == TagAssertionMutationMode.REMOVE:
+                await tag_service.remove_tags_from_asset(
+                    asset_id=asset_id,
+                    tag_slugs=request.tag_slugs,
+                )
+            elif mode == TagAssertionMutationMode.REPLACE:
+                await tag_service.replace_asset_tags(
+                    asset_id=asset_id,
+                    tag_slugs=request.tag_slugs,
+                    auto_create=request.auto_create,
+                    source=source,
+                )
+            elif mode == TagAssertionMutationMode.SYNC_SOURCE:
+                await tag_service.sync_asset_tags_by_source(
+                    asset_id=asset_id,
+                    tag_slugs=request.tag_slugs,
+                    source=source,
+                    auto_create=request.auto_create,
+                )
+            assertions = await tag_service.list_asset_tag_assertions(asset_id)
+            return _build_assertion_response(
+                target_type=target_type,
+                target_id=asset_id,
+                assertions=assertions,
+            )
+
+        prompt_version_id = resolved_id
+        if mode == TagAssertionMutationMode.ADD:
+            await tag_service.assign_tags_to_prompt_version(
+                prompt_version_id=prompt_version_id,
+                tag_slugs=request.tag_slugs,
+                auto_create=request.auto_create,
+                source=source,
+                confidence=request.confidence,
+            )
+        elif mode == TagAssertionMutationMode.REMOVE:
+            await tag_service.remove_tags_from_prompt_version(
+                prompt_version_id=prompt_version_id,
+                tag_slugs=request.tag_slugs,
+            )
+        elif mode == TagAssertionMutationMode.REPLACE:
+            await tag_service.replace_prompt_version_tags(
+                prompt_version_id=prompt_version_id,
+                tag_slugs=request.tag_slugs,
+                auto_create=request.auto_create,
+                source=source,
+                confidence=request.confidence,
+            )
+        elif mode == TagAssertionMutationMode.SYNC_SOURCE:
+            await tag_service.sync_prompt_version_tags_by_source(
+                prompt_version_id=prompt_version_id,
+                tag_slugs=request.tag_slugs,
+                source=source,
+                auto_create=request.auto_create,
+                confidence=request.confidence,
+            )
+
+        assertions = await tag_service.list_prompt_version_tag_assertions(prompt_version_id)
+        return _build_assertion_response(
+            target_type=target_type,
+            target_id=prompt_version_id,
+            assertions=assertions,
+        )
+
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to mutate tag assertions: {str(e)}")
 
 
 @router.get("/tags/{tag_id}", response_model=TagDetail)

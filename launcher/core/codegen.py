@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+import os
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
@@ -117,6 +118,14 @@ def run_codegen_task(
         args.append("--check")
 
     start = time.time()
+    env = os.environ.copy()
+    if task_id.startswith("openapi"):
+        default_openapi_out = "packages/shared/api/model/src/generated/openapi"
+        env.setdefault("OPENAPI_URL", "http://localhost:8000/openapi.json")
+        env.setdefault("OPENAPI_ORVAL_OUT", default_openapi_out)
+        env.setdefault("OPENAPI_TYPES_OUT", default_openapi_out)
+        if check_mode:
+            env["OPENAPI_FAST_CHECK"] = "1"
 
     try:
         result = subprocess.run(
@@ -124,6 +133,7 @@ def run_codegen_task(
             cwd=str(root),
             capture_output=True,
             text=True,
+            env=env,
             timeout=timeout_s,
         )
         duration_ms = int((time.time() - start) * 1000)

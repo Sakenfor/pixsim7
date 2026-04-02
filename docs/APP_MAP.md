@@ -162,7 +162,10 @@ Auto-generated from `definePanel()` calls. Run `pnpm docs:app-map` to refresh.
 | Composition Roles | generation | - | - | - | - | Browse composition role definitions and tag mappings |
 | Execution Presets | generation | right | - | - | multi | Manage reusable execution presets for fanout (Each) and future chain/sequential runs. |
 | Gen Workflow Graph | generation | right | - | - | multi | Plan and run simple generation workflows using backend fanout and chain executors (POC). |
+| Prompt Authoring | generation | center | dockview-container | - | - | Version-aware prompt authoring with integrated generation. |
+| Prompt Editor | generation | - | - | prompt-authoring | - | - |
 | Prompt Library | generation | - | - | - | - | Inspect content packs, prompt templates, and blocks with package-focused diagnostics. |
+| Prompt Navigator | generation | - | - | prompt-authoring | - | - |
 | Quick Generate | generation | - | - | asset-viewer | - | Quick generation panel that adapts to current context (asset or scene) |
 | QuickGen Asset | generation | - | - | - | compact | Asset input panel for quick generation workflows |
 | QuickGen Blocks | generation | - | - | - | - | Prompt companion blocks for quick generation |
@@ -171,17 +174,19 @@ Auto-generated from `definePanel()` calls. Run `pnpm docs:app-map` to refresh.
 | QuickGen Settings | generation | - | - | - | - | Generation settings and Go button for quick workflows |
 | Recent Assets | generation | - | - | - | internal, compact | Browse recently generated assets |
 | Scene Prep | generation | right | - | - | multi | Prepare scene batches with cast bindings, guidance refs, candidate assets, and template-fanout launch. |
+| Version Assets | generation | - | - | prompt-authoring | - | - |
 | Block Explorer | prompts | - | - | - | - | Browse and search prompt blocks from content packs |
 | Block Matrix | prompts | - | - | - | multi | Explore prompt block coverage with 2D matrix views |
 | Chain Builder | prompts | center | zone-panel | - | - | Build and execute multi-step generation chains (txt2img → refine → upscale) |
 | Prompt Resolver Workbench | prompts | right | zone-panel | - | multi | Fixture-backed workbench for inspecting ResolutionRequest/Result/Trace and experimenting with next_v1 resolver behavior. |
 | Template Builder | prompts | center | zone-panel | - | - | Create and manage block templates for random prompt composition |
 | Edge Effects | scene | - | - | - | - | Inspect and edit edge effects for the active scene graph. |
-| Scene Builder | scene | - | - | - | - | Build and edit individual scenes |
+| Scene Builder | scene | - | - | - | - | Legacy entrypoint that opens Scene Management on the Builder tab |
 | Scene Management | scene | - | - | - | - | Unified scene workflow management |
-| Control Center | system | left | dockview-container | - | internal | Control Center dock and generation modules |
+| Scene Navigation | scene | - | - | - | internal | Detached scene management navigation sidebar |
 | Health | system | - | - | - | compact | System health and validation |
 | Provider Settings | system | - | - | - | - | API provider settings and configuration |
+| AI Assistant | tools | right | - | - | - | Chat with a connected AI agent — ask questions, run shortcuts, get help |
 | Asset Sets | tools | left | - | - | - | Create and manage named asset collections (manual or smart/tag-based) for use with generation combination strategies. |
 | Asset Tags | tools | - | - | - | - | Manage tags for selected assets |
 | Automation | tools | center | zone-panel | - | - | Manage Android devices and automation loops |
@@ -191,7 +196,6 @@ Auto-generated from `definePanel()` calls. Run `pnpm docs:app-map` to refresh.
 | Gizmo Playground | tools | - | - | gizmo-lab | - | Interactive playground for the selected gizmo |
 | HUD Designer | tools | - | - | - | - | Design HUD layouts using widget compositions |
 | Info | tools | - | - | asset-viewer | - | Information panel that shows metadata for the current context |
-| Interactive Surface | tools | - | - | - | - | Interactive overlay for mask creation, annotations, and image tagging |
 | Mini Gallery | tools | - | - | - | multi, compact | Compact gallery panel for browsing and filtering assets |
 | Model Inspector | tools | - | - | - | multi | View 3D models, animations, and configure contact zones |
 | NPC Brain Lab | tools | - | - | - | - | NPC behavior testing and debugging |
@@ -199,11 +203,11 @@ Auto-generated from `definePanel()` calls. Run `pnpm docs:app-map` to refresh.
 | Template Library | tools | left | - | - | - | Browse and manage templates and runtime entities via the generic CRUD API. Create, edit, and delete location templates, item templates, NPCs, scenes, and more. |
 | Tool Browser | tools | - | - | gizmo-lab | - | Browse and select interactive tools from the registry |
 | Tool Playground | tools | - | - | gizmo-lab | - | Interactive playground for the selected tool |
+| UI Studio | tools | - | - | workspace | - | Unified authoring panel for surfaces, HUD layout editing, and panel-group runtime controls. |
 | Panel Browser | utilities | - | - | workspace, control-center | - | Browse all available panels and launch them docked or floating |
 | Settings | utilities | - | - | - | - | Application settings and preferences |
 | Shortcuts | utilities | - | - | workspace, control-center | compact | Quick navigation shortcuts to common areas |
 | Arc Graph | workspace | center | zone-panel | - | - | Manage story arcs, quests, and narrative flow |
-| Asset Viewer | workspace | center | dockview-container | - | internal | Asset viewer with docked sub-panels |
 | Gallery | workspace | center | zone-panel | - | - | Browse and manage project assets |
 | Generations | workspace | - | - | - | - | Track and manage generation jobs |
 | Graph | workspace | center | zone-panel | - | role:flow-view | Visual node-based editor |
@@ -221,21 +225,22 @@ Auto-generated from `features/*/module.ts`. Shows all modules including infrastr
 | Module | Priority | Dependencies | Lifecycle | Route | CC Panels |
 |--------|----------|-------------|-----------|-------|-----------|
 | Context Hub | 80 | - | ready | - | - |
-| Graph System Module | 75 | plugin-bootstrap | - | - | - |
+| Graph System Module | 70 | plugin-bootstrap | - | - | - |
 | Routine Graph Module | 70 | graph-system, plugin-bootstrap | - | - | - |
 | Cubes Module | 60 | - | - | - | - |
 | Gizmos | 60 | - | - | - | - |
 | Interactions | 60 | - | - | - | - |
-| Automation | - | - | - | `/automation` | - |
+| Automation | - | workspace | - | `/automation` | - |
 | Control Center Module | 50 | - | - | - | 3 |
 | DevTools Module | - | - | - | - | - |
 | Gallery | - | - | - | `/assets` | - |
 | Gallery Module | - | - | init, ready | - | 1 |
-| Game World | - | - | - | `/game-world` | - |
+| Game World | - | workspace | - | `/game-world` | - |
 | Generation Module | - | - | - | - | - |
-| NPCs | - | - | - | `/npc-portraits` | - |
+| NPCs | - | workspace | - | `/npc-portraits` | - |
+| Panels Module | - | - | - | - | - |
 | Plugins Module | - | - | - | - | 1 |
-| Scene Builder | - | - | - | `/workspace` | 1 |
+| Scene Builder | - | graph-system | - | `/workspace` | 1 |
 <!-- MODULES:END -->
 
 ## Store Inventory
@@ -267,7 +272,11 @@ Auto-generated by scanning Zustand stores across features.
 | `useContextHubOverridesStore` | contextHub | `features/contextHub/stores/contextHubOverridesStore.ts` |
 | `useContextHubSettingsStore` | contextHub | `features/contextHub/stores/contextHubSettingsStore.ts` |
 | `useControlCenterStore` | controlCenter | `features/controlCenter/stores/controlCenterStore.ts` |
-| `useCubeSettingsStore` | cubes | `features/cubes/stores/cubeSettingsStore.ts` |
+| `useCubeHighlightStore` | cubes | `features/cubes/stores/cubeHighlightStore.ts` |
+| `useCubeInstanceStore` | cubes | `features/cubes/stores/cubeInstanceStore.ts` |
+| `useDockPanelPrefsStore` | docks | `features/docks/stores/dockPanelPrefsStore.ts` |
+| `useDockUiStore` | docks | `features/docks/stores/dockUiStore.ts` |
+| `useAuthoringHintsStore` | generation | `features/generation/stores/authoringHintsStore.ts` |
 | `useFanoutPresetStore` | generation | `features/generation/stores/fanoutPresetStore.ts` |
 | `useGenerationHistoryStore` | generation | `features/generation/stores/generationHistoryStore.ts` |
 | `useGenerationPresetStore` | generation | `features/generation/stores/generationPresetStore.ts` |
@@ -316,6 +325,7 @@ Auto-generated by scanning exported hooks across features.
 | `useAssetContextMenu` | assets | `features/assets/lib/assetContextResolver.ts` |
 | `useAssets` | assets | `features/assets/hooks/useAssets.ts` |
 | `useAssetsController` | assets | `features/assets/hooks/useAssetsController.ts` |
+| `useAssetUrls` | assets | `features/assets/lib/assetUrlResolver.ts` |
 | `useAssetViewer` | assets | `features/assets/hooks/useAssetViewer.ts` |
 | `useCloudSourceController` | assets | `features/assets/context/SourceControllerContext.tsx` |
 | `useFavoriteToggle` | assets | `features/assets/hooks/useFavoriteToggle.ts` |
@@ -341,6 +351,7 @@ Auto-generated by scanning exported hooks across features.
 | `useCapabilityAll` | contextHub | `features/contextHub/hooks/useCapability.ts` |
 | `useContextHubHostId` | contextHub | `features/contextHub/hooks/contextHubContext.ts` |
 | `useContextHubState` | contextHub | `features/contextHub/hooks/contextHubContext.ts` |
+| `useEffectiveAuthoringIds` | contextHub | `features/contextHub/hooks/useEffectiveAuthoringIds.ts` |
 | `usePanelContext` | contextHub | `features/contextHub/hooks/useCapability.ts` |
 | `useProjectContext` | contextHub | `features/contextHub/hooks/useProjectContext.ts` |
 | `useProvideCapability` | contextHub | `features/contextHub/hooks/useCapability.ts` |
@@ -352,6 +363,9 @@ Auto-generated by scanning exported hooks across features.
 | `useResizablePanels` | controlCenter | `features/controlCenter/components/hooks/useResizablePanels.ts` |
 | `useCubeAssetBinding` | cubes | `features/cubes/integration/contextHub.ts` |
 | `useCubeContext` | cubes | `features/cubes/integration/contextHub.ts` |
+| `useCubeIndicator` | cubes | `features/cubes/components/CubeIndicatorContext.tsx` |
+| `useDockPanelPrefs` | docks | `features/docks/stores/dockPanelPrefsStore.ts` |
+| `useDockState` | docks | `features/docks/stores/dockUiStore.ts` |
 | `useClientFilterPersistence` | gallery | `features/gallery/lib/useClientFilterPersistence.ts` |
 | `useClientFilters` | gallery | `features/gallery/lib/useClientFilters.ts` |
 | `useFilterChipState` | gallery | `features/gallery/lib/useFilterChipState.ts` |
@@ -360,7 +374,6 @@ Auto-generated by scanning exported hooks across features.
 | `useScrollToTopOnChange` | gallery | `features/gallery/lib/useScrollToTopOnChange.ts` |
 | `useAssetPanelState` | generation | `features/generation/components/useAssetPanelState.tsx` |
 | `useBatchCancelGenerations` | generation | `features/generation/hooks/useBatchCancelGenerations.ts` |
-| `useClickOutside` | generation | `features/generation/components/generationSettingsPanel/constants.ts` |
 | `useGenerationDevController` | generation | `features/generation/hooks/useGenerationDevController.ts` |
 | `useGenerationPresets` | generation | `features/generation/hooks/useGenerationPresets.ts` |
 | `useGenerationScopeStores` | generation | `features/generation/hooks/useGenerationScope.tsx` |
@@ -403,12 +416,11 @@ Auto-generated by scanning exported hooks across features.
 | `useValidationContext` | graph | `features/graph/hooks/useValidationContext.ts` |
 | `useValidationContextOptional` | graph | `features/graph/hooks/useValidationContext.ts` |
 | `useActivePanelInZone` | panels | `features/panels/hooks/usePanelManager.ts` |
+| `useDetachableSidebar` | panels | `features/panels/lib/useDetachableSidebar.ts` |
 | `useInitializePanelSystem` | panels | `features/panels/hooks/usePanelSystemInitialization.ts` |
 | `useOpenPanels` | panels | `features/panels/hooks/usePanelManager.ts` |
 | `usePanel` | panels | `features/panels/hooks/usePanelManager.ts` |
-| `usePanelGroup` | panels | `features/panels/hooks/usePanelGroups.ts` |
-| `usePanelGroups` | panels | `features/panels/hooks/usePanelGroups.ts` |
-| `usePanelGroupsByCategory` | panels | `features/panels/hooks/usePanelGroups.ts` |
+| `usePanelCatalogBootstrap` | panels | `features/panels/hooks/usePanelCatalogBootstrap.ts` |
 | `usePanelIdentity` | panels | `features/panels/hooks/usePanelState.ts` |
 | `usePanelIs` | panels | `features/panels/hooks/usePanelManager.ts` |
 | `usePanelManagerActions` | panels | `features/panels/hooks/usePanelManager.ts` |
@@ -436,6 +448,7 @@ Auto-generated by scanning exported hooks across features.
 | `useZoneState` | panels | `features/panels/hooks/usePanelManager.ts` |
 | `usePreviewScopeStores` | preview | `features/preview/hooks/usePreviewScope.tsx` |
 | `usePromptAiEdit` | prompts | `features/prompts/hooks/usePromptAiEdit.ts` |
+| `usePromptAuthoring` | prompts | `features/prompts/context/PromptAuthoringContext.tsx` |
 | `usePromptHistory` | prompts | `features/prompts/hooks/usePromptHistory.ts` |
 | `usePromptInspection` | prompts | `features/prompts/hooks/usePromptInspection.ts` |
 | `useQuickGenerateBindings` | prompts | `features/prompts/hooks/useQuickGenerateBindings.ts` |
@@ -446,6 +459,7 @@ Auto-generated by scanning exported hooks across features.
 | `useCostEstimate` | providers | `features/providers/hooks/useCostEstimate.ts` |
 | `useCostHints` | providers | `features/providers/hooks/useProviderCapabilities.ts` |
 | `useGenerationPlugins` | providers | `features/providers/hooks/useGenerationPlugins.tsx` |
+| `useModelPromotions` | providers | `features/providers/hooks/useModelPromotions.ts` |
 | `useOperationSpec` | providers | `features/providers/hooks/useProviderCapabilities.ts` |
 | `usePluginValidation` | providers | `features/providers/hooks/useGenerationPlugins.tsx` |
 | `usePromptLimit` | providers | `features/providers/hooks/useProviderCapabilities.ts` |

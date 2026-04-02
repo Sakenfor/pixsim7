@@ -13,6 +13,7 @@ Usage:
 """
 from __future__ import annotations
 
+import importlib
 import re
 from typing import Any, Dict, List, Optional, Type
 from uuid import UUID
@@ -29,10 +30,17 @@ from pixsim7.backend.main.services.ownership import (
     assert_session_access,
     assert_world_access,
 )
+from pixsim7.backend.main.services.docs.policy_engine import (
+    DOMAIN_POLICY_REGISTRY,
+    PolicyEngine,
+)
+from pixsim_logging import get_logger
 
 from .crud_registry import TemplateCRUDSpec, NestedEntitySpec, CustomAction, get_template_crud_registry
 from .crud_service import TemplateCRUDService, NestedEntityService, CRUDValidationError
 
+logger = get_logger()
+ENTITY_CRUD_POLICY_DOMAIN = "game"
 
 
 # =============================================================================
@@ -63,6 +71,65 @@ def create_list_response_model(spec: TemplateCRUDSpec) -> Type[BaseModel]:
         offset=(int, ...),
         has_more=(bool, ...),
     )
+
+
+def _ensure_policy_domain_registered(domain: str) -> None:
+    if DOMAIN_POLICY_REGISTRY.get(domain):
+        return
+    if domain == ENTITY_CRUD_POLICY_DOMAIN:
+        importlib.import_module("pixsim7.backend.main.services.game.game_authoring_policy")
+
+
+def _get_domain_policy_engine(domain: str) -> Optional[PolicyEngine]:
+    _ensure_policy_domain_registered(domain)
+    return DOMAIN_POLICY_REGISTRY.get(domain)
+
+
+def _build_entity_policy_endpoint_id(
+    spec: TemplateCRUDSpec,
+    action: str,
+    *,
+    nested: Optional[NestedEntitySpec] = None,
+) -> str:
+    action_key = str(action or "").strip()
+    if nested is not None:
+        return f"{ENTITY_CRUD_POLICY_DOMAIN}.{spec.kind}.{nested.kind}.{action_key}"
+    return f"{ENTITY_CRUD_POLICY_DOMAIN}.{spec.kind}.{action_key}"
+
+
+def _enforce_domain_policy_or_400(
+    *,
+    endpoint_id: str,
+    payload: Dict[str, Any],
+    principal: Any,
+    partial: bool = False,
+) -> None:
+    engine = _get_domain_policy_engine(ENTITY_CRUD_POLICY_DOMAIN)
+    if engine is None:
+        return
+
+    violations, warnings = engine.validate(
+        endpoint_id,
+        payload,
+        principal,
+        partial=partial,
+    )
+    if warnings:
+        logger.info(
+            "entity_crud_policy_warning",
+            domain=ENTITY_CRUD_POLICY_DOMAIN,
+            endpoint_id=endpoint_id,
+            warnings=warnings,
+        )
+    if violations:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Entity authoring policy violation",
+                "errors": violations,
+                "contract": engine.contract_endpoint,
+            },
+        )
 
 
 # =============================================================================
@@ -310,6 +377,15 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
                 world_id=world_id,
                 session_id=session_id,
             )
+        policy_payload = dict(data or {})
+        policy_payload.setdefault("world_id", world_id)
+        policy_payload.setdefault("session_id", session_id)
+        _enforce_domain_policy_or_400(
+            endpoint_id=_build_entity_policy_endpoint_id(spec, "create"),
+            payload=policy_payload,
+            principal=current_user,
+            partial=False,
+        )
         service = TemplateCRUDService(
             db,
             spec,
@@ -370,6 +446,16 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
                 world_id=world_id,
                 session_id=session_id,
             )
+        policy_payload = dict(data or {})
+        policy_payload.setdefault("entity_id", entity_id)
+        policy_payload.setdefault("world_id", world_id)
+        policy_payload.setdefault("session_id", session_id)
+        _enforce_domain_policy_or_400(
+            endpoint_id=_build_entity_policy_endpoint_id(spec, "update"),
+            payload=policy_payload,
+            principal=current_user,
+            partial=True,
+        )
         service = TemplateCRUDService(
             db,
             spec,
@@ -429,6 +515,18 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
                 world_id=world_id,
                 session_id=session_id,
             )
+        _enforce_domain_policy_or_400(
+            endpoint_id=_build_entity_policy_endpoint_id(spec, "delete"),
+            payload={
+                "entity_id": entity_id,
+                "hard": hard,
+                "cascade": cascade,
+                "world_id": world_id,
+                "session_id": session_id,
+            },
+            principal=current_user,
+            partial=True,
+        )
         service = TemplateCRUDService(
             db,
             spec,
@@ -674,6 +772,16 @@ def _register_nested_entity_routes(
                 world_id=world_id,
                 session_id=session_id,
             )
+            policy_payload = dict(data or {})
+            policy_payload.setdefault("parent_id", parent_id)
+            policy_payload.setdefault("world_id", world_id)
+            policy_payload.setdefault("session_id", session_id)
+            _enforce_domain_policy_or_400(
+                endpoint_id=_build_entity_policy_endpoint_id(spec, "create", nested=nested),
+                payload=policy_payload,
+                principal=current_user,
+                partial=False,
+            )
             service = NestedEntityService(
                 db,
                 nested,
@@ -729,6 +837,17 @@ def _register_nested_entity_routes(
                 owner_id=owner_id,
                 world_id=world_id,
                 session_id=session_id,
+            )
+            policy_payload = dict(data or {})
+            policy_payload.setdefault("parent_id", parent_id)
+            policy_payload.setdefault("entity_id", entity_id)
+            policy_payload.setdefault("world_id", world_id)
+            policy_payload.setdefault("session_id", session_id)
+            _enforce_domain_policy_or_400(
+                endpoint_id=_build_entity_policy_endpoint_id(spec, "update", nested=nested),
+                payload=policy_payload,
+                principal=current_user,
+                partial=True,
             )
             service = NestedEntityService(
                 db,
@@ -788,6 +907,17 @@ def _register_nested_entity_routes(
                 owner_id=owner_id,
                 world_id=world_id,
                 session_id=session_id,
+            )
+            _enforce_domain_policy_or_400(
+                endpoint_id=_build_entity_policy_endpoint_id(spec, "delete", nested=nested),
+                payload={
+                    "parent_id": parent_id,
+                    "entity_id": entity_id,
+                    "world_id": world_id,
+                    "session_id": session_id,
+                },
+                principal=current_user,
+                partial=True,
             )
             service = NestedEntityService(
                 db,
@@ -862,6 +992,18 @@ def _register_nested_entity_routes(
             items = data.get("items", data) if isinstance(data, dict) else data
             if not isinstance(items, list):
                 items = [items] if items else []
+
+            _enforce_domain_policy_or_400(
+                endpoint_id=_build_entity_policy_endpoint_id(spec, "replace_all", nested=nested),
+                payload={
+                    "parent_id": parent_id,
+                    "items": items,
+                    "world_id": world_id,
+                    "session_id": session_id,
+                },
+                principal=current_user,
+                partial=False,
+            )
 
             created = await service.replace_all(items)
             return {"items": created, "total": len(created)}

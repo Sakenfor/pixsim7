@@ -337,6 +337,7 @@ class PlanAuthoringRuleEntry(BaseModel):
     sinceVersion: Optional[str] = None
     deprecatedAt: Optional[str] = None
     appliesToPrincipalTypes: List[str] = Field(default_factory=list)
+    appliesTo: Dict[str, Any] = Field(default_factory=dict)
     description: str
     constraint: Dict[str, Any] = Field(default_factory=dict)
     message: str
@@ -344,6 +345,8 @@ class PlanAuthoringRuleEntry(BaseModel):
 
 class PlanAuthoringContractResponse(BaseModel):
     version: str
+    schemaVersion: str
+    domain: str
     endpoint: str
     summary: str
     rules: List[PlanAuthoringRuleEntry] = Field(default_factory=list)
@@ -356,6 +359,8 @@ async def get_plan_authoring_contract_endpoint(
     contract = get_plan_authoring_contract()
     return PlanAuthoringContractResponse(
         version=contract["version"],
+        schemaVersion=contract["schema_version"],
+        domain=contract["domain"],
         endpoint=contract["endpoint"],
         summary=contract["summary"],
         rules=[
@@ -368,6 +373,7 @@ async def get_plan_authoring_contract_endpoint(
                 sinceVersion=(str(rule.get("since_version")) if rule.get("since_version") is not None else None),
                 deprecatedAt=(str(rule.get("deprecated_at")) if rule.get("deprecated_at") is not None else None),
                 appliesToPrincipalTypes=list(rule.get("applies_to_principal_types") or []),
+                appliesTo=dict(rule.get("applies_to") or {}),
                 description=str(rule.get("description") or ""),
                 constraint=dict(rule.get("constraint") or {}),
                 message=str(rule.get("message") or ""),

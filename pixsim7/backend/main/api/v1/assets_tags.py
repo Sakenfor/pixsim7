@@ -45,6 +45,7 @@ async def assign_tags_to_asset(
                 asset_id=asset_id,
                 tag_slugs=request.add,
                 auto_create=True,
+                source="manual",
             )
 
         if request.remove:

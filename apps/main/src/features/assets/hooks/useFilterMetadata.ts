@@ -44,7 +44,7 @@ export function useFilterMetadata(options?: FilterMetadataQueryOptions) {
     return () => {
       cancelled = true;
     };
-  }, [options?.includeCounts, options?.include?.join(','), options?.limit, contextKey]);
+  }, [options?.includeCounts, options?.includeOptions, options?.include?.join(','), options?.limit, contextKey]);
 
   return { metadata, loading, error };
 }

@@ -289,20 +289,21 @@ LIMIT 50;
     {
         "id": "gallery-filter-analysis-tags",
         "name": "Gallery Filter: analysis_tags",
-        "description": "Probe prompt_analysis tags_flat filter path using most common tag",
+        "description": "Probe prompt_version tag assertions path using most common prompt tag",
         "category": "gallery",
         "sql": """
 WITH top_tag AS (
-    SELECT t.tag
+    SELECT t.slug AS tag
     FROM assets a
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE((a.prompt_analysis::jsonb)->'tags_flat', '[]'::jsonb)
-    ) AS t(tag)
+    JOIN prompt_version_tag_assertion pvta
+      ON pvta.prompt_version_id = a.prompt_version_id
+    JOIN tag t
+      ON t.id = pvta.tag_id
     WHERE a.user_id = {{current_user_id}}
       AND a.is_archived = false
       AND a.searchable = true
       AND a.asset_kind = 'content'
-    GROUP BY t.tag
+    GROUP BY t.slug
     ORDER BY COUNT(*) DESC
     LIMIT 1
 )
@@ -311,10 +312,12 @@ SELECT
     a.created_at,
     tt.tag AS analysis_tag
 FROM assets a
-JOIN top_tag tt ON (a.prompt_analysis::jsonb) @> jsonb_build_object(
-    'tags_flat',
-    jsonb_build_array(tt.tag)
-)
+JOIN top_tag tt ON TRUE
+JOIN prompt_version_tag_assertion pvta
+  ON pvta.prompt_version_id = a.prompt_version_id
+JOIN tag t
+  ON t.id = pvta.tag_id
+ AND t.slug = tt.tag
 WHERE a.user_id = {{current_user_id}}
   AND a.is_archived = false
   AND a.searchable = true

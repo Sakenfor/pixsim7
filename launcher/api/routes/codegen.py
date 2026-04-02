@@ -19,6 +19,21 @@ TASK_SERVICE_DEPS: dict[str, dict] = {
         "label": "Backend API",
         "reason": "Fetches OpenAPI schema from http://localhost:8000/openapi.json",
     },
+    "openapi-assets": {
+        "service": "main-api",
+        "label": "Backend API",
+        "reason": "Fetches OpenAPI schema and regenerates scoped assets model types",
+    },
+    "openapi-game": {
+        "service": "main-api",
+        "label": "Backend API",
+        "reason": "Fetches OpenAPI schema and regenerates scoped game model types",
+    },
+    "openapi-dev": {
+        "service": "main-api",
+        "label": "Backend API",
+        "reason": "Fetches OpenAPI schema and regenerates scoped dev/admin model types",
+    },
     "plugin-codegen": {
         "service": "main-api",
         "label": "Backend API",

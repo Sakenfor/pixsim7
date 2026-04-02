@@ -25,6 +25,9 @@ def test_constraint_registry_exposes_known_validators() -> None:
     assert "array_items_required_keys" in policy.CONSTRAINT_VALIDATORS
     assert "evidence_test_suite_refs_exist" in policy.CONSTRAINT_VALIDATORS
     assert "advisory" in policy.CONSTRAINT_VALIDATORS
+    assert "required_field" in policy.CONSTRAINT_VALIDATORS
+    assert "string_min_length" in policy.CONSTRAINT_VALIDATORS
+    assert "enum_values" in policy.CONSTRAINT_VALIDATORS
 
 
 def test_validate_policy_create_enforces_required_rule_for_agent() -> None:
@@ -114,4 +117,32 @@ def test_validate_policy_surfaces_suggested_warnings() -> None:
     violations, warnings = policy.validate_policy("plans.create", payload, principal)
 
     assert violations == []
-    assert any("Provide summary and code_paths" in warning for warning in warnings)
+    assert any("at least 20" in warning for warning in warnings)
+
+
+def test_update_policy_enforces_non_empty_checkpoints_for_automation() -> None:
+    payload = {"checkpoints": []}
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, warnings = policy.evaluate_plan_update_policy(payload, principal)
+
+    assert any("checkpoints cannot be empty for automated updates" in msg for msg in violations)
+    assert warnings == []
+
+
+def test_update_policy_skips_checkpoint_rule_when_field_not_present() -> None:
+    payload = {"summary": "Safe update payload"}
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, _warnings = policy.evaluate_plan_update_policy(payload, principal)
+
+    assert not any("checkpoints cannot be empty" in msg for msg in violations)
+
+
+def test_update_policy_enforces_enum_values_for_automation_status() -> None:
+    payload = {"status": "in-flight"}
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, _warnings = policy.evaluate_plan_update_policy(payload, principal)
+
+    assert any("status must be one of" in msg for msg in violations)

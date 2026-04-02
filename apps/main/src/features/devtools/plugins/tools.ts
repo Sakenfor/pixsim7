@@ -19,6 +19,7 @@ const DocBrowserPanel = lazy(() => import('@features/panels/components/dev/DocBr
 const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/GizmoSurfacesPanel').then(m => ({ default: m.GizmoSurfacesPanel })));
 const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
 const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
+const TagAssertionsPanel = lazy(() => import('@features/panels/components/dev/TagAssertionsPanel').then(m => ({ default: m.TagAssertionsPanel })));
 const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
 const TestOverviewPanel = lazy(() => import('@features/panels/components/dev/TestOverviewPanel').then(m => ({ default: m.TestOverviewPanel })));
 const CodegenDevPage = lazy(() => import('../routes/pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
@@ -234,6 +235,20 @@ export const sqlQueryExplorerTool = defineDevTool({
   tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
   // Visible in dev-tools list for discoverability.
   // Backend endpoint remains permission-gated (admin).
+  safeForNonDev: true,
+});
+
+export const tagAssertionsTool = defineDevTool({
+  id: 'tag-assertions',
+  label: 'Tag Assertions',
+  updatedAt: '2026-04-02T00:00:00Z',
+  changeNote: 'Tag assertion management for asset and prompt_version targets.',
+  featureHighlights: ['Inspect and mutate assertion records by target type/id.'],
+  description: 'Inspect and mutate tag assertions for assets and prompt versions',
+  icon: 'tags',
+  category: 'debug',
+  panelComponent: TagAssertionsPanel,
+  tags: ['tags', 'assertions', 'asset', 'prompt', 'metadata'],
   safeForNonDev: true,
 });
 

@@ -202,9 +202,17 @@ class TestDevPlansCreateEndpoint:
         body = response.json()
         assert body["endpoint"] == "/api/v1/dev/plans/meta/authoring-contract"
         assert body["version"]
+        assert body["schemaVersion"] == "2.0"
+        assert body["domain"] == "plans"
         rule_ids = {r["id"] for r in body["rules"]}
         assert "plans.create.checkpoints.non_empty_for_automation" in rule_ids
+        assert "plans.update.checkpoints.cannot_empty_for_automation" in rule_ids
         assert "plans.progress.evidence.test_suite_refs_registered_for_automation" in rule_ids
+        first_rule = body["rules"][0]
+        assert "severity" in first_rule
+        assert "sinceVersion" in first_rule
+        assert "deprecatedAt" in first_rule
+        assert "appliesTo" in first_rule
 
     @pytest.mark.asyncio
     async def test_create_success_all_fields(self):

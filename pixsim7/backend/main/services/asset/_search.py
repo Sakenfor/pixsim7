@@ -111,7 +111,6 @@ class AssetSearchMixin:
         similar_to_embedding=None,
     ):
         from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
-        from sqlalchemy.dialects.postgresql import JSONB
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
@@ -405,27 +404,59 @@ class AssetSearchMixin:
                 )
 
         # Prompt analysis tags filter (supports multi + all/any)
+        # Uses prompt_version_tag_assertion instead of JSONB prompt_analysis scans.
         analysis_tags = _normalize_list(filters.get("analysis_tags") if filters else None)
         analysis_mode = None
         if filters:
             analysis_mode = filters.get("analysis_tags__mode") or filters.get("analysis_tags_mode")
         if analysis_tags:
-            query = query.where(Asset.prompt_analysis.isnot(None))
-            prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
-            # Use root-level JSONB containment so the existing GIN index on
-            # (prompt_analysis::jsonb) can satisfy analysis-tag filters.
-            if analysis_mode == "all" and len(analysis_tags) > 1:
-                query = query.where(
-                    prompt_jsonb.contains({"tags_flat": analysis_tags})
+            from pixsim7.backend.main.domain.prompt.tag_assertions import PromptVersionTagAssertion
+            from sqlalchemy.dialects.postgresql import JSONB
+
+            def _legacy_analysis_tag_contains(slug: str):
+                prompt_analysis_json = cast(Asset.prompt_analysis, JSONB)
+                return or_(
+                    prompt_analysis_json.op("@>")(
+                        func.jsonb_build_object("tags_flat", func.jsonb_build_array(slug))
+                    ),
+                    prompt_analysis_json.op("@>")(
+                        func.jsonb_build_object(
+                            "tags",
+                            func.jsonb_build_array(func.jsonb_build_object("tag", slug)),
+                        )
+                    ),
+                    prompt_analysis_json.op("@>")(
+                        func.jsonb_build_object("tags", func.jsonb_build_array(slug))
+                    ),
                 )
-            else:
-                query = query.where(
-                    or_(
-                        *[
-                            prompt_jsonb.contains({"tags_flat": [tag]})
-                            for tag in analysis_tags
-                        ]
+
+            if analysis_mode == "all" and len(analysis_tags) > 1:
+                per_tag_conditions = []
+                for slug in analysis_tags:
+                    assertion_has_slug = exists(
+                        select(PromptVersionTagAssertion.prompt_version_id)
+                        .join(Tag, Tag.id == PromptVersionTagAssertion.tag_id)
+                        .where(
+                            PromptVersionTagAssertion.prompt_version_id == Asset.prompt_version_id,
+                            Tag.slug == slug,
+                        )
                     )
+                    per_tag_conditions.append(
+                        or_(assertion_has_slug, _legacy_analysis_tag_contains(slug))
+                    )
+                query = query.where(and_(*per_tag_conditions))
+            else:
+                assertion_any = exists(
+                    select(PromptVersionTagAssertion.prompt_version_id)
+                    .join(Tag, Tag.id == PromptVersionTagAssertion.tag_id)
+                    .where(
+                        PromptVersionTagAssertion.prompt_version_id == Asset.prompt_version_id,
+                        Tag.slug.in_(analysis_tags),
+                    )
+                )
+                legacy_any = or_(*[_legacy_analysis_tag_contains(slug) for slug in analysis_tags])
+                query = query.where(
+                    or_(assertion_any, legacy_any)
                 )
 
         # Group filter (group_by + group_key or group_path)

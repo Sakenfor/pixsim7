@@ -1,6 +1,6 @@
 {
   "$schema": "ui-component-catalog",
-  "generatedAt": "2026-03-16",
+  "generatedAt": "2026-04-02",
   "description": "Auto-generated catalog of shared UI components, icons, and theme tokens. Use these instead of writing inline UI with raw Tailwind classes.",
   "agentGuidance": {
     "rules": [
@@ -20,7 +20,7 @@
       "Tooltip? → Tooltip (not title attribute or custom hover div)"
     ]
   },
-  "componentCount": 69,
+  "componentCount": 73,
   "hookCount": 14,
   "package": "@pixsim7/shared.ui",
   "components": [
@@ -84,6 +84,51 @@
       ],
       "examples": [],
       "useInsteadOf": "inline <span> elements with bg-*/text-* color pill styling"
+    },
+    {
+      "name": "BranchSelector",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/BranchSelector.tsx",
+      "description": "BranchSelector — dropdown to switch between branches. Styled like GitHub Desktop's branch switcher. Shows current branch, dropdown with all branches + metadata, optional \"new branch\" action. Generic — works with any entity that has git-like branches. <BranchSelector branches={branches} currentBranch=\"main\" onSelect={(name) => switchBranch(name)} onCreateBranch={(name) => createBranch(name)} />",
+      "props": [
+        {
+          "name": "branches",
+          "type": "BranchInfo[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "currentBranch",
+          "type": "string | null",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onSelect",
+          "type": "(branchName: string) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onCreateBranch",
+          "type": "(branchName: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
     },
     {
       "name": "Button",
@@ -591,6 +636,22 @@
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
       "description": "Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items / export function DropdownDivider() { return <div className=\"border-t dark:border-neutral-700 my-1\" />; } /** DropdownSectionHeader — small uppercase label for grouping dropdown items. Usage: <DropdownSectionHeader>Strategy</DropdownSectionHeader> <DropdownItem .../>",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "DURATION",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/animations.ts",
+      "description": "Animation Presets Canonical registry of named, imperative animations. Use `runAnimation(element, 'flyTo', { ... })` instead of ad-hoc inline styles so every motion in the app is discoverable and tuneable from one place. Built on Element.animate() (Web Animations API) — no CSS keyframes needed, returns a promise that resolves when the animation finishes or is cancelled.",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "EASING",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/animations.ts",
+      "description": "Animation Presets Canonical registry of named, imperative animations. Use `runAnimation(element, 'flyTo', { ... })` instead of ad-hoc inline styles so every motion in the app is discoverable and tuneable from one place. Built on Element.animate() (Web Animations API) — no CSS keyframes needed, returns a promise that resolves when the animation finishes or is cancelled.",
       "props": [],
       "examples": []
     },
@@ -2215,6 +2276,12 @@
           "description": "Enable collapse toggle on the sidebar."
         },
         {
+          "name": "resizable",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable drag-to-resize on the sidebar edge."
+        },
+        {
           "name": "expandedWidth",
           "type": "number",
           "required": false,
@@ -2355,6 +2422,12 @@
           "type": "boolean",
           "required": false,
           "description": "When true, hide the title when the sidebar is inside a container that already shows a title (floating panel or visible dockview tab bar)."
+        },
+        {
+          "name": "resizable",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable drag-to-resize on the right edge. Works with collapsible."
         },
         {
           "name": "detachable",
@@ -2871,6 +2944,14 @@
       "useInsteadOf": "title attributes or custom hover popover divs"
     },
     {
+      "name": "Z",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/zIndex.ts",
+      "description": "Centralized z-index scale for the entire application. All z-index values should reference this module instead of hardcoding numbers. The Tailwind preset in packages/shared/config mirrors these values as utility classes (z-modal, z-popover, z-float-panel, etc.). Layer ordering (lowest → highest): base           0       Default stacking dropdown      50       Dropdowns, inline popovers sticky       100       Sticky headers, toolbars fixed        500       Fixed UI elements modalBackdrop 1000     Modal backdrops (below floating panels) modal        1001      Modals (below floating panels) popover      1002      Popovers over modals tooltip      1003      Tooltips ─── floating panel boundary ─── floatDropZone 10099    Drop-zone overlay (below floating panels) floatPanel   10100     Floating panels base (+ panel.zIndex for stacking) floatOverlay 10200     Overlays above floating panels (context menus, popovers, advanced settings, cube widget) floatOverlayPopover 10201  Popovers from within float-overlay elements ─── top-level blocking UI ─── globalBackdrop 10300   Modal backdrop that covers everything globalModal   10301    Modals/confirmation dialogs (always visible) globalToast   10400    Toast notifications (always on top)",
+      "props": [],
+      "examples": []
+    },
+    {
       "name": "useDetachableSidebarNav",
       "kind": "hook",
       "sourceFile": "packages/shared/ui/src/hooks/useDetachableSidebar.ts",
@@ -3251,6 +3332,8 @@
       "audio",
       "bar-chart",
       "barChart",
+      "beaker",
+      "bell",
       "blocks",
       "bot",
       "box",
@@ -3310,6 +3393,7 @@
       "gamepad",
       "gauge",
       "git-branch",
+      "gitBranch",
       "globe",
       "google-drive",
       "graph",
@@ -3329,6 +3413,7 @@
       "library",
       "lightbulb",
       "link",
+      "list",
       "listFilter",
       "listPlus",
       "loader",
@@ -3341,6 +3426,7 @@
       "map",
       "maximize-2",
       "maximize2",
+      "messageSquare",
       "minimize-2",
       "minimize2",
       "minus",
@@ -3381,6 +3467,7 @@
       "rows",
       "save",
       "search",
+      "send",
       "settings",
       "shield",
       "shuffle",
@@ -3420,7 +3507,7 @@
       "✨",
       "📦"
     ],
-    "count": 190,
+    "count": 196,
     "usage": "Import { Icon, IconName } from \"@lib/icons\". Use <Icon name=\"iconName\" size={16} />. For white icons on colored backgrounds use color=\"#fff\" prop."
   },
   "theme": {

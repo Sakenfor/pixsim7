@@ -34,9 +34,19 @@ This folder centralizes code generation tooling for the workspace.
 - You can optionally filter paths by OpenAPI tags:
   - `pnpm openapi:gen -- --include-tags assets,game-worlds`
   - `pnpm openapi:gen -- --exclude-tags dev,admin`
+- You can safely merge scoped generation into existing full output:
+  - `pnpm openapi:gen -- --include-tags assets,providers --merge`
+  - Scoped merge tracks per-scope generated files and removes stale files from that same scope on the next run.
+- Scoped checks compare only the selected subset against current output:
+  - `pnpm openapi:check -- --include-tags assets,providers --merge`
 - You can print a generation diff summary:
   - `pnpm openapi:gen -- --report`
   - or `OPENAPI_CHANGE_REPORT=true pnpm openapi:gen`
+- Faster freshness checks are available (used by launcher):
+  - `pnpm openapi:check -- --fast-check`
+  - `OPENAPI_FAST_CHECK=true pnpm openapi:check`
+  - Falls back to full Orval+compare when fingerprints do not match.
+- `--fast-check` is only applied to full-output checks (no tag filters / no merge mode).
 
 ## Notes
 

@@ -1,6 +1,7 @@
 import { Dropdown } from '@pixsim7/shared.ui';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -13,6 +14,7 @@ import { Icon } from '@lib/icons';
 
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
+import { getFilterMetadata } from '../lib/api';
 import type { FilterDefinition, FilterOptionValue } from '../lib/api';
 import { useCollapsedGroupsStore } from '../stores/collapsedGroupsStore';
 import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
@@ -58,6 +60,9 @@ const GROUPED_FILTER_CONFIG: Record<string, {
   source_path:     { separator: '/', rootLabel: '(root)' },
   source_filename: { separator: '/', rootLabel: '(root)', ungroupedKey: 'other' },
 };
+
+// Heavy JSON-derived options should load on explicit open, not passive hover.
+const HOVER_PREFETCH_EXCLUDE = new Set<string>(['analysis_tags']);
 
 /**
  * Group filter options by namespace parsed from a separator character.
@@ -133,15 +138,62 @@ export function DynamicFilters({
     }
     return { upload_method: filters.upload_method };
   }, [filters.upload_method]);
+  const filterContextKey = useMemo(
+    () => JSON.stringify(filterContext ?? {}),
+    [filterContext]
+  );
 
   const { metadata, loading, error } = useFilterMetadata({
     includeCounts: showCounts,
     context: filterContext,
     limit: 150,
+    includeOptions: false,
   });
+  const [optionsByKey, setOptionsByKey] = useState<Record<string, FilterOptionValue[]>>({});
+  const [optionsLoading, setOptionsLoading] = useState<Record<string, boolean>>({});
+  const [optionsError, setOptionsError] = useState<Record<string, string | null>>({});
 
   const pinnedKeys = usePinnedFiltersStore((s) => s.pinnedKeys);
   const togglePin = usePinnedFiltersStore((s) => s.togglePin);
+
+  useEffect(() => {
+    setOptionsByKey(metadata?.options ?? {});
+    setOptionsLoading({});
+    setOptionsError({});
+  }, [metadata, filterContextKey, showCounts]);
+
+  const loadFilterOptions = useCallback(async (key: string) => {
+    if (!metadata) {
+      return;
+    }
+    const spec = metadata.filters.find((filter) => filter.key === key);
+    if (!spec || spec.type !== 'enum') {
+      return;
+    }
+    if (optionsLoading[key] || Object.prototype.hasOwnProperty.call(optionsByKey, key)) {
+      return;
+    }
+
+    setOptionsLoading((prev) => ({ ...prev, [key]: true }));
+    setOptionsError((prev) => ({ ...prev, [key]: null }));
+    try {
+      const optionLimit = key === 'analysis_tags' ? 80 : 150;
+      const data = await getFilterMetadata({
+        include: [key],
+        includeCounts: showCounts,
+        includeOptions: true,
+        context: filterContext,
+        limit: optionLimit,
+      });
+      const loaded = data.options?.[key] ?? [];
+      setOptionsByKey((prev) => ({ ...prev, [key]: loaded }));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load options';
+      setOptionsError((prev) => ({ ...prev, [key]: message }));
+    } finally {
+      setOptionsLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  }, [metadata, optionsLoading, optionsByKey, showCounts, filterContext]);
 
   // Sort and split into primary bar vs overflow menu
   const { primaryFilters, overflowFilters } = useMemo(() => {
@@ -184,6 +236,28 @@ export function DynamicFilters({
     }
     return { primaryFilters: primary, overflowFilters: overflow };
   }, [metadata, include, exclude, pinnedKeys, filters]);
+
+  const effectiveOptions = useMemo(
+    () => ({ ...(metadata?.options ?? {}), ...optionsByKey }),
+    [metadata?.options, optionsByKey]
+  );
+
+  useEffect(() => {
+    if (!metadata) return;
+    const keysToLoad = new Set<string>();
+    openFilters.forEach((key) => keysToLoad.add(key));
+    if (hoveredKey && !HOVER_PREFETCH_EXCLUDE.has(hoveredKey)) {
+      keysToLoad.add(hoveredKey);
+    }
+    for (const filter of overflowFilters) {
+      if (filter.type === 'enum') {
+        keysToLoad.add(filter.key);
+      }
+    }
+    keysToLoad.forEach((key) => {
+      void loadFilterOptions(key);
+    });
+  }, [metadata, openFilters, hoveredKey, overflowFilters, loadFilterOptions]);
 
   const handleFilterChange = useCallback(
     (key: string, value: string | boolean | number | string[] | undefined) => {
@@ -383,7 +457,9 @@ export function DynamicFilters({
             >
               <FilterControl
                 definition={filter}
-                options={metadata.options[filter.key] || []}
+                options={effectiveOptions[filter.key] || []}
+                loading={!!optionsLoading[filter.key]}
+                error={optionsError[filter.key] ?? undefined}
                 value={filters[filter.key as keyof AssetFilters]}
                 onChange={(value) => handleFilterChange(filter.key, value)}
                 matchModes={filter.match_modes}
@@ -399,7 +475,7 @@ export function DynamicFilters({
       {overflowFilters.length > 0 && (
         <OverflowMenu
           filters={overflowFilters}
-          metadata={metadata}
+          metadata={{ options: effectiveOptions }}
           values={filters}
           onChange={handleFilterChange}
           hasSelection={hasOverflowSelection}
@@ -938,6 +1014,8 @@ function FilterDropdown({
 interface FilterControlProps {
   definition: FilterDefinition;
   options: FilterOptionValue[];
+  loading?: boolean;
+  error?: string;
   value: string | boolean | number | string[] | undefined | null;
   onChange: (value: string | boolean | number | string[] | undefined) => void;
   matchModes?: string[];
@@ -949,6 +1027,8 @@ interface FilterControlProps {
 function FilterControl({
   definition,
   options,
+  loading,
+  error,
   value,
   onChange,
   matchModes,
@@ -1036,6 +1116,23 @@ function FilterControl({
       );
 
     case 'enum': {
+      if (loading && options.length === 0) {
+        return (
+          <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+            <Icon name="loader" className="animate-spin w-3.5 h-3.5" />
+            Loading options...
+          </div>
+        );
+      }
+
+      if (error && options.length === 0) {
+        return (
+          <div className="text-xs text-red-500 dark:text-red-400">
+            {error}
+          </div>
+        );
+      }
+
       const groupCfg = GROUPED_FILTER_CONFIG[key];
       const shouldGroup = !!groupCfg && options.length > 0;
       const groupSeparator = groupCfg?.separator ?? ':';

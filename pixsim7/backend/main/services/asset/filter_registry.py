@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists
+from sqlalchemy import select, func, distinct, cast, case, literal, or_, exists, true, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -22,9 +22,7 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
-ANALYSIS_TAG_OPTION_DEFAULT_LIMIT = 150
-ANALYSIS_TAG_OPTION_SCAN_WINDOW = 5000
-ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX = 20000
+ANALYSIS_TAG_OPTION_DEFAULT_LIMIT = 120
 
 EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD: dict[str, str] = {
     "pixverse_sync": "pixverse",
@@ -43,6 +41,7 @@ def _effective_provider_upload_methods(provider_id: str) -> list[str]:
 
 
 def _build_effective_provider_expr() -> Any:
+    normalized_provider = func.lower(func.nullif(func.btrim(Asset.provider_id), ""))
     mapped_provider = case(
         *[
             (Asset.upload_method == upload_method, literal(provider_id))
@@ -50,17 +49,24 @@ def _build_effective_provider_expr() -> Any:
         ],
         else_=None,
     )
-    # Prefer explicit provider_id, fall back to provider inferred from upload route.
-    return func.coalesce(Asset.provider_id, mapped_provider)
+    # Prefer explicit provider_id (normalized), fall back to provider inferred from upload route.
+    return func.coalesce(normalized_provider, mapped_provider)
+
+
+def _provider_uploads_jsonb() -> Any:
+    return cast(Asset.provider_uploads, JSONB)
 
 
 def _effective_provider_condition(value: Any) -> Any | None:
+    normalized_provider = func.lower(func.nullif(func.btrim(Asset.provider_id), ""))
+    provider_uploads = _provider_uploads_jsonb()
+
     if value is None:
         return None
 
     if isinstance(value, (list, tuple, set)):
         selected = [
-            str(v).strip()
+            str(v).strip().lower()
             for v in value
             if v is not None and str(v).strip()
         ]
@@ -71,18 +77,22 @@ def _effective_provider_condition(value: Any) -> Any | None:
             for provider_id in selected
             for upload_method in _effective_provider_upload_methods(provider_id)
         ]
-        clauses: list[Any] = [Asset.provider_id.in_(selected)]
+        clauses: list[Any] = [normalized_provider.in_(selected)]
         if upload_methods:
             clauses.append(Asset.upload_method.in_(list(set(upload_methods))))
+        provider_upload_clauses = [provider_uploads.op("?")(provider_id) for provider_id in selected]
+        if provider_upload_clauses:
+            clauses.append(or_(*provider_upload_clauses))
         return or_(*clauses)
 
-    provider_id = str(value).strip()
+    provider_id = str(value).strip().lower()
     if not provider_id:
         return None
     upload_methods = _effective_provider_upload_methods(provider_id)
-    clauses: list[Any] = [Asset.provider_id == provider_id]
+    clauses: list[Any] = [normalized_provider == provider_id]
     if upload_methods:
         clauses.append(Asset.upload_method.in_(upload_methods))
+    clauses.append(provider_uploads.op("?")(provider_id))
     return or_(*clauses)
 
 
@@ -263,6 +273,8 @@ def _normalize_option_value(value: Any) -> Optional[str]:
         value = value.value
     if isinstance(value, str):
         value = value.strip()
+        if value == "":
+            return None
     return str(value) if value is not None else None
 
 
@@ -386,73 +398,304 @@ async def _load_analysis_tag_options(
     context: dict[str, Any] | None,
     limit: Optional[int],
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
-    prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
+    from pixsim7.backend.main.domain.assets.tag import Tag
+    from pixsim7.backend.main.domain.prompt.tag_assertions import PromptVersionTagAssertion
 
     owner_user_id = resolve_effective_user_id(user) or 0
     filters = [
         Asset.user_id == owner_user_id,
         Asset.is_archived == False,
-        Asset.prompt_analysis.isnot(None),
-        prompt_jsonb.has_key("tags_flat"),
+        Asset.searchable == True,
+        Asset.asset_kind == "content",
+        Asset.prompt_version_id.isnot(None),
     ]
     if context:
         filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="analysis_tags"))
 
     option_limit = limit or ANALYSIS_TAG_OPTION_DEFAULT_LIMIT
     option_limit = max(1, min(option_limit, 500))
-
-    if include_counts:
-        tag_values = func.jsonb_array_elements_text(prompt_jsonb["tags_flat"]).table_valued("value").lateral()
-        stmt = (
-            select(tag_values.c.value, func.count(distinct(Asset.id)).label("count"))
-            .select_from(Asset)
-            .join(tag_values, true())
-            .where(*filters)
-            .group_by(tag_values.c.value)
-            .order_by(func.count(distinct(Asset.id)).desc())
-        )
-        stmt = stmt.limit(option_limit)
-        result = await db.execute(stmt)
-        rows = result.all()
-        return [
-            (row.value, row.value, row.count)
-            for row in rows
-            if row.value
-        ]
-
-    # Lightweight option discovery mode for large libraries:
-    # sample recent matching assets first, then explode tags in-memory.
-    scan_window = max(ANALYSIS_TAG_OPTION_SCAN_WINDOW, option_limit * 50)
-    scan_window = min(scan_window, ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX)
-    recent_assets = (
+    asset_scope = (
         select(
-            Asset.id.label("id"),
-            cast(Asset.prompt_analysis, JSONB).label("prompt_jsonb"),
+            Asset.id.label("asset_id"),
+            Asset.prompt_version_id.label("prompt_version_id"),
         )
         .where(*filters)
-        .order_by(Asset.created_at.desc(), Asset.id.desc())
-        .limit(scan_window)
-        .subquery("recent_assets")
+        .subquery()
     )
-    recent_prompt_jsonb = recent_assets.c.prompt_jsonb
-    tag_values = func.jsonb_array_elements_text(
-        recent_prompt_jsonb["tags_flat"]
-    ).table_valued("value").lateral()
 
-    stmt = (
-        select(distinct(tag_values.c.value))
-        .select_from(recent_assets)
-        .join(tag_values, true())
-        .where(tag_values.c.value.isnot(None), tag_values.c.value != "")
-        .order_by(tag_values.c.value.asc())
-        .limit(option_limit)
+    try:
+        if include_counts:
+            stmt = (
+                select(Tag.slug, Tag.display_name, func.count(distinct(asset_scope.c.asset_id)).label("count"))
+                .select_from(asset_scope)
+                .join(
+                    PromptVersionTagAssertion,
+                    PromptVersionTagAssertion.prompt_version_id == asset_scope.c.prompt_version_id,
+                )
+                .join(Tag, Tag.id == PromptVersionTagAssertion.tag_id)
+                .group_by(Tag.slug, Tag.display_name)
+                .order_by(func.count(distinct(asset_scope.c.asset_id)).desc())
+            )
+            stmt = stmt.limit(option_limit)
+            result = await db.execute(stmt)
+            rows = result.all()
+            assertion_options = [
+                (row.slug, row.display_name or row.slug, row.count)
+                for row in rows
+                if row.slug
+            ]
+            if assertion_options:
+                return assertion_options
+        else:
+            stmt = (
+                select(distinct(Tag.slug), Tag.display_name)
+                .select_from(asset_scope)
+                .join(
+                    PromptVersionTagAssertion,
+                    PromptVersionTagAssertion.prompt_version_id == asset_scope.c.prompt_version_id,
+                )
+                .join(Tag, Tag.id == PromptVersionTagAssertion.tag_id)
+                .order_by(Tag.slug.asc())
+            )
+            stmt = stmt.limit(option_limit)
+            result = await db.execute(stmt)
+            rows = result.all()
+            assertion_options = [
+                (row[0], row[1] or row[0], None)
+                for row in rows
+                if row[0]
+            ]
+            if assertion_options:
+                return assertion_options
+    except Exception as exc:
+        logger.warning("analysis_tag_assertion_options_failed", error=str(exc))
+
+    # Legacy fallback A: derive tags from assets.prompt_analysis.tags_flat.
+    legacy_filters_base = [
+        Asset.user_id == owner_user_id,
+        Asset.is_archived == False,
+        Asset.searchable == True,
+        Asset.asset_kind == "content",
+        Asset.prompt_analysis.isnot(None),
+    ]
+    if context:
+        legacy_filters_base.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="analysis_tags"))
+
+    prompt_analysis_json = cast(Asset.prompt_analysis, JSONB)
+    legacy_filters_flat = [
+        *legacy_filters_base,
+        prompt_analysis_json.op("?")("tags_flat"),
+        func.jsonb_typeof(prompt_analysis_json["tags_flat"]) == "array",
+    ]
+    tag_values = (
+        func.jsonb_array_elements_text(prompt_analysis_json["tags_flat"])
+        .table_valued("value")
+        .alias("analysis_tag")
     )
-    result = await db.execute(stmt)
-    rows = result.all()
+    slug_expr = func.lower(func.nullif(func.btrim(tag_values.c.value), ""))
+
+    try:
+        if include_counts:
+            legacy_stmt = (
+                select(slug_expr.label("slug"), func.count(distinct(Asset.id)).label("count"))
+                .select_from(Asset)
+                .join(tag_values, true())
+                .where(*legacy_filters_flat, slug_expr.isnot(None))
+                .group_by(slug_expr)
+                .order_by(func.count(distinct(Asset.id)).desc())
+                .limit(option_limit)
+            )
+            legacy_result = await db.execute(legacy_stmt)
+            legacy_rows = legacy_result.all()
+            legacy_options = [
+                (row.slug, row.slug, row.count)
+                for row in legacy_rows
+                if row.slug
+            ]
+        else:
+            legacy_stmt = (
+                select(distinct(slug_expr).label("slug"))
+                .select_from(Asset)
+                .join(tag_values, true())
+                .where(*legacy_filters_flat, slug_expr.isnot(None))
+                .order_by(slug_expr.asc())
+                .limit(option_limit)
+            )
+            legacy_result = await db.execute(legacy_stmt)
+            legacy_options = [
+                (slug, slug, None)
+                for slug in legacy_result.scalars().all()
+                if slug
+            ]
+        if legacy_options:
+            return legacy_options
+    except Exception as exc:
+        logger.warning("analysis_tag_legacy_flat_options_failed", error=str(exc))
+
+    # Legacy fallback B: derive tags from assets.prompt_analysis.tags[*].tag.
+    legacy_filters_tags = [
+        *legacy_filters_base,
+        prompt_analysis_json.op("?")("tags"),
+        func.jsonb_typeof(prompt_analysis_json["tags"]) == "array",
+    ]
+    tag_struct_values = (
+        func.jsonb_array_elements(prompt_analysis_json["tags"])
+        .table_valued("value")
+        .alias("analysis_tag_struct")
+    )
+    tag_item_json = cast(tag_struct_values.c.value, JSONB)
+    tag_item_text = case(
+        (func.jsonb_typeof(tag_item_json) == "string", cast(tag_item_json, String)),
+        else_=tag_item_json["tag"].astext,
+    )
+    tag_slug_expr = func.lower(
+        func.nullif(func.btrim(func.btrim(tag_item_text), '"'), "")
+    )
+
+    try:
+        if include_counts:
+            legacy_tags_stmt = (
+                select(tag_slug_expr.label("slug"), func.count(distinct(Asset.id)).label("count"))
+                .select_from(Asset)
+                .join(tag_struct_values, true())
+                .where(*legacy_filters_tags, tag_slug_expr.isnot(None))
+                .group_by(tag_slug_expr)
+                .order_by(func.count(distinct(Asset.id)).desc())
+                .limit(option_limit)
+            )
+            legacy_tags_result = await db.execute(legacy_tags_stmt)
+            legacy_tags_rows = legacy_tags_result.all()
+            return [
+                (row.slug, row.slug, row.count)
+                for row in legacy_tags_rows
+                if row.slug
+            ]
+        legacy_tags_stmt = (
+            select(distinct(tag_slug_expr).label("slug"))
+            .select_from(Asset)
+            .join(tag_struct_values, true())
+            .where(*legacy_filters_tags, tag_slug_expr.isnot(None))
+            .order_by(tag_slug_expr.asc())
+            .limit(option_limit)
+        )
+        legacy_tags_result = await db.execute(legacy_tags_stmt)
+        return [
+            (slug, slug, None)
+            for slug in legacy_tags_result.scalars().all()
+            if slug
+        ]
+    except Exception as exc:
+        logger.warning("analysis_tag_legacy_struct_options_failed", error=str(exc))
+        return []
+
+
+async def _load_provider_options(
+    db: AsyncSession,
+    user: Any,
+    include_counts: bool,
+    context: dict[str, Any] | None,
+    limit: Optional[int],
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    owner_user_id = resolve_effective_user_id(user) or 0
+    filters = [
+        Asset.user_id == owner_user_id,
+        Asset.is_archived == False,
+    ]
+    if context:
+        context_no_provider = dict(context)
+        context_no_provider.pop("provider_id", None)
+        context_no_provider.pop("effective_provider_id", None)
+        filters.extend(asset_filter_registry.build_filter_conditions(context_no_provider))
+
+    option_limit = max(1, min(limit or 120, 500))
+    option_counts: dict[str, int | None] = {}
+
+    provider_expr = _build_effective_provider_expr()
+
+    if include_counts:
+        provider_stmt = (
+            select(provider_expr.label("provider"), func.count(distinct(Asset.id)).label("count"))
+            .where(*filters, provider_expr.isnot(None))
+            .group_by(provider_expr)
+        )
+    else:
+        provider_stmt = (
+            select(distinct(provider_expr).label("provider"))
+            .where(*filters, provider_expr.isnot(None))
+        )
+    provider_result = await db.execute(provider_stmt)
+    provider_rows = provider_result.all() if include_counts else [(value,) for value in provider_result.scalars().all()]
+    for row in provider_rows:
+        provider = _normalize_option_value(row[0])
+        if not provider:
+            continue
+        count = int(row[1]) if include_counts and len(row) > 1 and row[1] is not None else None
+        option_counts[provider] = count if include_counts else None
+
+    key_values = (
+        func.jsonb_object_keys(_provider_uploads_jsonb())
+        .table_valued("provider")
+        .alias("provider_upload_key")
+    )
+    upload_key_expr = func.lower(func.nullif(func.btrim(key_values.c.provider), ""))
+    if include_counts:
+        upload_key_stmt = (
+            select(upload_key_expr.label("provider"), func.count(distinct(Asset.id)).label("count"))
+            .select_from(Asset)
+            .join(key_values, true())
+            .where(*filters, Asset.provider_uploads.isnot(None), upload_key_expr.isnot(None))
+            .group_by(upload_key_expr)
+        )
+    else:
+        upload_key_stmt = (
+            select(distinct(upload_key_expr).label("provider"))
+            .select_from(Asset)
+            .join(key_values, true())
+            .where(*filters, Asset.provider_uploads.isnot(None), upload_key_expr.isnot(None))
+        )
+    upload_key_result = await db.execute(upload_key_stmt)
+    upload_key_rows = (
+        upload_key_result.all()
+        if include_counts
+        else [(value,) for value in upload_key_result.scalars().all()]
+    )
+    for row in upload_key_rows:
+        provider = _normalize_option_value(row[0])
+        if not provider:
+            continue
+        count = int(row[1]) if include_counts and len(row) > 1 and row[1] is not None else None
+        if include_counts:
+            option_counts[provider] = max(option_counts.get(provider) or 0, count or 0)
+        else:
+            option_counts.setdefault(provider, None)
+
+    mapped_methods = list(EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD.keys())
+    if mapped_methods:
+        mapped_stmt = (
+            select(Asset.upload_method, func.count(distinct(Asset.id)).label("count"))
+            .where(*filters, Asset.upload_method.in_(mapped_methods))
+            .group_by(Asset.upload_method)
+        )
+        mapped_result = await db.execute(mapped_stmt)
+        for row in mapped_result.all():
+            provider = EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD.get(str(row.upload_method), "")
+            provider = _normalize_option_value(provider)
+            if not provider:
+                continue
+            count = int(row.count) if include_counts and row.count is not None else None
+            if include_counts:
+                option_counts[provider] = max(option_counts.get(provider) or 0, count or 0)
+            else:
+                option_counts.setdefault(provider, None)
+
+    if include_counts:
+        items = sorted(option_counts.items(), key=lambda item: (-(item[1] or 0), item[0]))
+    else:
+        items = sorted(option_counts.items(), key=lambda item: item[0])
+
     return [
-        (row[0], row[0], None)
-        for row in rows
-        if row[0]
+        (provider, provider.title(), count if include_counts else None)
+        for provider, count in items[:option_limit]
     ]
 
 def _build_source_path_expr() -> Any:
@@ -600,8 +843,9 @@ def register_default_asset_filters() -> None:
             key="provider_id",
             type="enum",
             label="Provider",
-            option_source="distinct",
-            column=Asset.provider_id,
+            option_source="custom",
+            option_loader=_load_provider_options,
+            condition_builder=_effective_provider_condition,
             multi=True,
         )
     )
@@ -610,8 +854,8 @@ def register_default_asset_filters() -> None:
             key="effective_provider_id",
             type="enum",
             label="Upload Provider",
-            option_source="distinct",
-            column=_build_effective_provider_expr(),
+            option_source="custom",
+            option_loader=_load_provider_options,
             multi=True,
             condition_builder=_effective_provider_condition,
         )

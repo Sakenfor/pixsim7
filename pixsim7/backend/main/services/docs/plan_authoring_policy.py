@@ -7,14 +7,20 @@ and MCP contract metadata.
 
 from __future__ import annotations
 
-import copy
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
+from pixsim7.backend.main.services.docs.policy_engine import (
+    DOMAIN_POLICY_REGISTRY,
+    PolicyEngine,
+)
 
 PLAN_AUTHORING_CONTRACT_VERSION = "2026-03-24.1"
+PLAN_AUTHORING_SCHEMA_VERSION = "2.0"
+PLAN_AUTHORING_DOMAIN = "plans"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 logger = get_logger()
+PLAN_POLICY_ENGINE: Optional[PolicyEngine] = None
 
 PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
     {
@@ -60,17 +66,17 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "message": "Add points_total on checkpoints to improve progress visibility.",
     },
     {
-        "id": "plans.create.summary_codepaths_suggested",
+        "id": "plans.create.summary_min_length_suggested",
         "endpoint_id": "plans.create",
         "field": "summary",
         "level": "suggested",
         "applies_to_principal_types": ["agent", "service", "user"],
         "description": (
-            "Include summary and code_paths when known so assignment context is "
-            "clear from the first fetch."
+            "Include a concise summary so assignment context is clear from the "
+            "first fetch."
         ),
-        "constraint": {"type": "advisory"},
-        "message": "Provide summary and code_paths for stronger assignment context.",
+        "constraint": {"type": "string_min_length", "min_length": 20},
+        "message": "Provide a summary with at least 20 non-whitespace characters.",
     },
     {
         "id": "plans.create.companions_as_documents_suggested",
@@ -99,12 +105,51 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
             "can also link tests explicitly via evidence entries with "
             "kind='test_suite' and ref=<suite_id>."
         ),
-        "constraint": {"type": "advisory"},
+        "constraint": {"type": "required_field"},
         "message": (
             "Add code_paths to enable automatic test coverage discovery. "
             "Link specific tests via checkpoint evidence: "
             "{\"kind\": \"test_suite\", \"ref\": \"<suite_id>\"}."
         ),
+    },
+    {
+        "id": "plans.update.checkpoints.cannot_empty_for_automation",
+        "endpoint_id": "plans.update",
+        "field": "checkpoints",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service"],
+        "applies_to": {
+            "principal_types": ["agent", "service"],
+            "conditions": [{"type": "field_present", "field": "checkpoints"}],
+        },
+        "description": (
+            "Automated updates must not clear checkpoints. Progress logging and "
+            "review workflows rely on checkpoint continuity."
+        ),
+        "constraint": {"type": "array_min_items", "min_items": 1},
+        "message": (
+            "checkpoints cannot be empty for automated updates. "
+            "Provide at least one checkpoint when setting checkpoints."
+        ),
+    },
+    {
+        "id": "plans.update.status.enum_for_automation",
+        "endpoint_id": "plans.update",
+        "field": "status",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service"],
+        "applies_to": {
+            "principal_types": ["agent", "service"],
+            "conditions": [{"type": "field_present", "field": "status"}],
+        },
+        "description": (
+            "When automation updates plan status, it must use canonical values."
+        ),
+        "constraint": {
+            "type": "enum_values",
+            "allowed": ["active", "parked", "done", "blocked", "archived", "removed"],
+        },
+        "message": "status must be one of: active, parked, done, blocked, archived, removed.",
     },
     {
         "id": "plans.progress.evidence.test_suite_refs_registered_for_automation",
@@ -123,16 +168,6 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         ),
     },
 ]
-
-
-def _rule_with_defaults(rule: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = copy.deepcopy(rule)
-    level = str(normalized.get("level") or "suggested").strip().lower()
-    normalized.setdefault("severity", "error" if level == "required" else "warning")
-    normalized.setdefault("since_version", PLAN_AUTHORING_CONTRACT_VERSION)
-    normalized.setdefault("deprecated_at", None)
-    return normalized
-
 
 def _principal_type(principal: Any) -> str:
     ptype = getattr(principal, "principal_type", None)
@@ -153,26 +188,18 @@ def _principal_type(principal: Any) -> str:
     return "user"
 
 
+def _policy_engine() -> PolicyEngine:
+    if PLAN_POLICY_ENGINE is None:
+        raise RuntimeError("Plan policy engine is not initialized.")
+    return PLAN_POLICY_ENGINE
+
+
 def get_plan_authoring_rules() -> List[Dict[str, Any]]:
-    return [_rule_with_defaults(rule) for rule in PLAN_AUTHORING_RULES]
+    return _policy_engine().get_rules()
 
 
 def get_plan_authoring_contract() -> Dict[str, Any]:
-    return {
-        "version": PLAN_AUTHORING_CONTRACT_VERSION,
-        "endpoint": PLAN_AUTHORING_CONTRACT_ENDPOINT,
-        "summary": (
-            "Canonical plan authoring policy for required and suggested fields, "
-            "including actor-specific requirements for automated writers."
-        ),
-        "rules": get_plan_authoring_rules(),
-    }
-
-
-def _get_payload_field(payload: Any, field_name: str) -> Any:
-    if isinstance(payload, dict):
-        return payload.get(field_name)
-    return getattr(payload, field_name, None)
+    return _policy_engine().get_contract()
 
 
 def _normalize_rule_message(rule: Dict[str, Any], field_name: str) -> str:
@@ -284,12 +311,86 @@ def _constraint_advisory(
     return []
 
 
+def _constraint_required_field(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del constraint, payload, context
+    if value is None:
+        return [_normalize_rule_message(rule, field_name)]
+    if isinstance(value, str) and not value.strip():
+        return [_normalize_rule_message(rule, field_name)]
+    if isinstance(value, (list, tuple, set, dict)) and not value:
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
+def _constraint_string_min_length(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del payload, context
+    try:
+        min_length = int(constraint.get("min_length", 0))
+    except (TypeError, ValueError):
+        min_length = 0
+    text = str(value or "").strip()
+    if len(text) < min_length:
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
+def _constraint_enum_values(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del payload, context
+    allowed = [str(item) for item in (constraint.get("allowed") or [])]
+    if not allowed:
+        return []
+    if str(value) not in allowed:
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
 CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
     "array_min_items": _constraint_array_min_items,
     "array_items_required_keys": _constraint_array_items_required_keys,
     "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
     "advisory": _constraint_advisory,
+    "required_field": _constraint_required_field,
+    "string_min_length": _constraint_string_min_length,
+    "enum_values": _constraint_enum_values,
 }
+
+
+PLAN_POLICY_ENGINE = PolicyEngine(
+    contract_version=PLAN_AUTHORING_CONTRACT_VERSION,
+    schema_version=PLAN_AUTHORING_SCHEMA_VERSION,
+    domain=PLAN_AUTHORING_DOMAIN,
+    contract_endpoint=PLAN_AUTHORING_CONTRACT_ENDPOINT,
+    summary=(
+        "Canonical plan authoring policy for required and suggested fields, "
+        "including actor-specific requirements for automated writers."
+    ),
+    rules=PLAN_AUTHORING_RULES,
+    constraint_validators=CONSTRAINT_VALIDATORS,
+    principal_type_resolver=_principal_type,
+    logger=logger,
+)
+DOMAIN_POLICY_REGISTRY.register(PLAN_AUTHORING_DOMAIN, PLAN_POLICY_ENGINE)
 
 
 def validate_policy(
@@ -302,63 +403,14 @@ def validate_policy(
     partial: bool = False,
 ) -> tuple[List[str], List[str]]:
     """Return policy violations and warnings for a specific endpoint/principal."""
-    endpoint_key = str(endpoint_id or "").strip()
-    if not endpoint_key:
-        return [], []
-
-    principal_type = _principal_type(principal)
-    violations: List[str] = []
-    warnings: List[str] = []
-    active_levels = {str(level).strip().lower() for level in (levels or {"required", "suggested"})}
-    context = dict(constraint_context or {})
-
-    for rule in get_plan_authoring_rules():
-        if str(rule.get("endpoint_id") or "").strip() != endpoint_key:
-            continue
-
-        level = str(rule.get("level") or "").strip().lower()
-        if level not in active_levels:
-            continue
-
-        applies_to = [
-            str(item).strip().lower()
-            for item in (rule.get("applies_to_principal_types") or [])
-            if isinstance(item, str) and item.strip()
-        ]
-        if principal_type not in applies_to:
-            continue
-
-        field_name = str(rule.get("field") or "").strip()
-        if not field_name:
-            continue
-
-        if partial and isinstance(payload, dict) and field_name not in payload:
-            continue
-        value = _get_payload_field(payload, field_name)
-        constraint = rule.get("constraint") or {}
-        constraint_type = str(constraint.get("type") or "").strip()
-        validator = CONSTRAINT_VALIDATORS.get(constraint_type)
-        if validator is None:
-            continue
-
-        messages = validator(
-            value,
-            field_name,
-            rule,
-            constraint,
-            payload,
-            context,
-        )
-        if not messages:
-            continue
-
-        severity = str(rule.get("severity") or "").strip().lower()
-        if severity == "warning" or level == "suggested":
-            warnings.extend(messages)
-        else:
-            violations.extend(messages)
-
-    return violations, warnings
+    return _policy_engine().validate(
+        endpoint_id,
+        payload,
+        principal,
+        levels=levels,
+        constraint_context=constraint_context,
+        partial=partial,
+    )
 
 
 def evaluate_plan_create_policy(payload: Any, principal: Any) -> tuple[List[str], List[str]]:

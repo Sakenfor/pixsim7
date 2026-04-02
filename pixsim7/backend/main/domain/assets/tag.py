@@ -121,6 +121,12 @@ class AssetTag(SQLModel, table=True):
         primary_key=True,
         index=True
     )
+    source: str = Field(
+        default="manual",
+        max_length=16,
+        index=True,
+        description="Tag provenance: manual/system/analyzer/unknown"
+    )
 
     # Timestamp
     created_at: datetime = Field(
@@ -129,7 +135,7 @@ class AssetTag(SQLModel, table=True):
     )
 
     def __repr__(self):
-        return f"<AssetTag(asset_id={self.asset_id}, tag_id={self.tag_id})>"
+        return f"<AssetTag(asset_id={self.asset_id}, tag_id={self.tag_id}, source={self.source})>"
 
 
 # ===== NORMALIZATION HELPERS =====
