@@ -17,6 +17,7 @@ manifest = DomainModelManifest(
     models=[],
     source_modules=[
         "pixsim7.backend.main.domain.prompt",
+        "pixsim7.backend.main.domain.prompt.tag",
         "pixsim7.backend.main.domain.semantic_pack",
     ],
     auto_discover=True,

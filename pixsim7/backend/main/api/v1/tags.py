@@ -10,7 +10,6 @@ Handles:
 """
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
-from sqlmodel import Session
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.tag import TagRegistry, TagAssignment
@@ -22,7 +21,6 @@ from pixsim7.backend.main.shared.schemas.tag_schemas import (
     CreateTagRequest,
     UpdateTagRequest,
     CreateAliasRequest,
-    TagFilterRequest,
 )
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
