@@ -71,7 +71,7 @@ class PromptFamilyService:
             description=description,
             prompt_type=prompt_type,
             category=category,
-            tags=tags or [],
+            tags_json=tags or [],
             **kwargs
         )
 
@@ -108,10 +108,12 @@ class PromptFamilyService:
             return None
 
         allowed = {"title", "description", "category", "tags", "is_active"}
+        # "tags" from the request maps to tags_json on the model (SQL column stays "tags")
+        _attr_map = {"tags": "tags_json"}
         new_tags = None
         for key, value in fields.items():
             if key in allowed and value is not None:
-                setattr(family, key, value)
+                setattr(family, _attr_map.get(key, key), value)
                 if key == "tags":
                     new_tags = value
 

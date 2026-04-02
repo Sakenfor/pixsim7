@@ -101,7 +101,7 @@ async def list_prompt_families(
         result = []
         for family in families:
             # Filter by tag if specified
-            if tag and tag not in family.tags:
+            if tag and tag not in family.tags_json:
                 continue
 
             # Count versions for this family
@@ -115,7 +115,7 @@ async def list_prompt_families(
                     title=family.title,
                     prompt_type=family.prompt_type,
                     category=family.category,
-                    tags=family.tags,
+                    tags=family.tags_json,
                     is_active=family.is_active,
                     version_count=version_count,
                 )

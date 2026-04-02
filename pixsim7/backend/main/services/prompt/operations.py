@@ -95,7 +95,7 @@ class PromptOperationsService:
                 "description": family.description,
                 "prompt_type": family.prompt_type,
                 "category": family.category,
-                "tags": family.tags,
+                "tags": family.tags_json,
                 "family_metadata": family.family_metadata,
             }
         }

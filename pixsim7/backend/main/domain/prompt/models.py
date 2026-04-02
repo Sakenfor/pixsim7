@@ -76,10 +76,11 @@ class PromptFamily(SQLModel, table=True):
         index=True,
         description="Category: 'romance', 'action', 'dialogue', etc."
     )
-    tags: List[str] = Field(
+    tags_json: List[str] = Field(
         default_factory=list,
-        sa_column=Column(JSON),
-        description="Tags: ['intimacy:high', 'location:park', 'mood:romantic']"
+        sa_column=Column(JSON, name="tags"),
+        description="Legacy JSON tag list — write path now mirrors to prompt_family_tag join table. "
+                    "Read via TagAssignment(db, PromptFamilyTag, 'family_id').get_tags(family.id)."
     )
 
     # Optional game integration
