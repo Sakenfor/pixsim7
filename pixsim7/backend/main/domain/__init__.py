@@ -105,7 +105,6 @@ from .prompt import (
     PromptToolPreset,
     PromptVersionBlock,
     PromptVariantFeedback,
-    PromptVersionTagAssertion,
     PromptSegmentRole,
 )
 
@@ -169,7 +168,6 @@ __all__ = [
     "PromptToolPreset",
     "PromptVersionBlock",
     "PromptVariantFeedback",
-    "PromptVersionTagAssertion",
     "PromptSegmentRole",
     # AI interactions
     "AiInteraction",

@@ -55,8 +55,8 @@ class AssetCreationMixin:
 
     # Default analyzer settings
     DEFAULT_ANALYZER_SETTINGS = {
-        "auto_apply_tags": False,       # Keep prompt-analysis tags separate from asset tags by default
-        "tag_prefix": "prompt:",        # When enabled, isolate analyzer tags from regular tag namespace
+        "auto_apply_tags": True,        # Apply analysis tags to generated assets
+        "tag_prefix": "",               # Optional prefix for analysis tags (e.g., "prompt:")
     }
 
     async def create_from_submission(
@@ -245,10 +245,6 @@ class AssetCreationMixin:
             generation.user_id,
             provider_id=submission.provider_id,
             operation_type=generation.operation_type.value if generation.operation_type else None,
-            prompt_analysis=prompt_analysis_result,
-        )
-        await self._sync_prompt_version_tag_assertions(
-            prompt_version_id=getattr(generation, "prompt_version_id", None),
             prompt_analysis=prompt_analysis_result,
         )
 
@@ -450,12 +446,7 @@ class AssetCreationMixin:
                     if tags_to_apply:
                         from pixsim7.backend.main.services.tag_service import TagService
                         tag_service = TagService(self.db)
-                        await tag_service.assign_tags_to_asset(
-                            asset_id,
-                            tags_to_apply,
-                            auto_create=True,
-                            source="system",
-                        )
+                        await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
                     return
 
             # Get static tags for this source type
@@ -482,12 +473,7 @@ class AssetCreationMixin:
 
             from pixsim7.backend.main.services.tag_service import TagService
             tag_service = TagService(self.db)
-            await tag_service.assign_tags_to_asset(
-                asset_id,
-                tags_to_apply,
-                auto_create=True,
-                source="system",
-            )
+            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
 
         except Exception as e:
             logger.warning(f"Failed to auto-tag asset {asset_id} (source={source_type}): {e}")
@@ -537,7 +523,7 @@ class AssetCreationMixin:
         Apply tags extracted by the prompt analyzer to an asset.
 
         Checks user.preferences["analyzer"] for configuration:
-        - auto_apply_tags: Whether to apply analysis tags (default: False)
+        - auto_apply_tags: Whether to apply analysis tags (default: True)
         - tag_prefix: Optional prefix for tags (default: "")
 
         Args:
@@ -567,7 +553,7 @@ class AssetCreationMixin:
             )
 
             # Check if auto-apply is enabled
-            if not analyzer_config.get("auto_apply_tags", False):
+            if not analyzer_config.get("auto_apply_tags", True):
                 return
 
             # Apply optional prefix
@@ -591,46 +577,12 @@ class AssetCreationMixin:
 
             from pixsim7.backend.main.services.tag_service import TagService
             tag_service = TagService(self.db)
-            await tag_service.assign_tags_to_asset(
-                asset_id,
-                tags_to_apply,
-                auto_create=True,
-                source="analyzer",
-            )
+            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
 
             logger.debug(f"Applied {len(tags_to_apply)} analyzer tags to asset {asset_id}")
 
         except Exception as e:
             logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
-
-    async def _sync_prompt_version_tag_assertions(
-        self,
-        *,
-        prompt_version_id: UUID | None,
-        prompt_analysis: dict | None,
-    ) -> None:
-        """Persist analyzer-derived tags on prompt_version for fast prompt-tag filtering."""
-        if not prompt_version_id or not prompt_analysis:
-            return
-        try:
-            analysis_tags = self._extract_analysis_tags(prompt_analysis)
-            if not analysis_tags:
-                analysis_tags = self._derive_analysis_tags_from_candidates(prompt_analysis)
-            if not analysis_tags:
-                return
-
-            from pixsim7.backend.main.services.tag_service import TagService
-
-            tag_service = TagService(self.db)
-            await tag_service.sync_prompt_version_analyzer_tags(
-                prompt_version_id=prompt_version_id,
-                tag_slugs=analysis_tags,
-                auto_create=True,
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to sync prompt_version tags for {prompt_version_id}: {e}"
-            )
 
     @staticmethod
     def _extract_analysis_tags(prompt_analysis: dict) -> list[str]:

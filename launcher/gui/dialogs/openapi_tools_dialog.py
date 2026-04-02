@@ -81,7 +81,6 @@ class OpenApiWorker(QThread):
         env['OPENAPI_URL'] = self.openapi_url
         env['OPENAPI_TYPES_OUT'] = self.types_path
         env['OPENAPI_ORVAL_OUT'] = self.types_path
-        env['OPENAPI_FAST_CHECK'] = '1'
 
         # Use pnpm from PATH
         pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"

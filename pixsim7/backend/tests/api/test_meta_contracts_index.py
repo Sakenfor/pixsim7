@@ -6,10 +6,7 @@ from datetime import datetime
 import pytest
 from fastapi import FastAPI
 
-from pixsim7.backend.main.api.v1.meta_contracts import (
-    list_contract_endpoints,
-    list_policy_contracts,
-)
+from pixsim7.backend.main.api.v1.meta_contracts import list_contract_endpoints
 from pixsim7.backend.main.shared.config import settings
 
 
@@ -117,10 +114,6 @@ async def test_contracts_index_includes_endpoint_metadata() -> None:
     create_endpoint = endpoints["plans.create"]
     assert create_endpoint.input_schema is not None
     assert create_endpoint.input_schema.get("x-policy-ref") == "/api/v1/dev/plans/meta/authoring-contract"
-    update_endpoint = endpoints["plans.update"]
-    assert update_endpoint.input_schema is not None
-    assert update_endpoint.input_schema.get("x-policy-ref") == "/api/v1/dev/plans/meta/authoring-contract"
-    assert progress_endpoint.input_schema.get("x-policy-ref") == "/api/v1/dev/plans/meta/authoring-contract"
 
     sync_endpoint = endpoints["plans.sync"]
     assert sync_endpoint.availability.status == "disabled"
@@ -186,27 +179,3 @@ async def test_contracts_index_auto_discovers_game_route_groups_from_request_app
     scenes = contracts_by_id.get("game.routes.scenes")
     assert scenes is not None
     assert scenes.endpoint == "/api/v1/game/scenes"
-
-
-@pytest.mark.asyncio
-async def test_policies_index_lists_cross_domain_policy_contracts() -> None:
-    result = await list_policy_contracts()
-
-    assert result.version
-    datetime.fromisoformat(result.generated_at.replace("Z", "+00:00"))
-
-    by_domain = {entry.domain: entry for entry in result.policies}
-    assert "plans" in by_domain
-    assert "prompts" in by_domain
-    assert "game" in by_domain
-
-    plans = by_domain["plans"]
-    assert plans.endpoint == "/api/v1/dev/plans/meta/authoring-contract"
-    assert plans.rules_count >= 1
-    assert "plans.create" in plans.endpoints
-
-    prompts = by_domain["prompts"]
-    assert prompts.endpoint == "/api/v1/prompts/meta/authoring-contract"
-
-    game = by_domain["game"]
-    assert game.endpoint == "/api/v1/game/meta/authoring-contract"

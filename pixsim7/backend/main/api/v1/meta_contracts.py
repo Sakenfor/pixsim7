@@ -29,9 +29,6 @@ from pixsim7.backend.main.domain.docs.models import AgentActivityLog
 from pixsim7.backend.main.services.meta.contract_registry import (
     meta_contract_registry,
 )
-from pixsim7.backend.main.services.docs.policy_engine import (
-    DOMAIN_POLICY_REGISTRY,
-)
 from pixsim7.backend.main.services.meta.agent_sessions import (
     agent_session_registry,
 )
@@ -40,7 +37,6 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 CONTRACTS_INDEX_VERSION = "2026-03-28.1"
-POLICIES_INDEX_VERSION = "2026-04-02.1"
 
 
 # =============================================================================
@@ -159,25 +155,6 @@ class ContractsIndexResponse(BaseModel):
     generated_at: str
     contracts: List[ContractIndexEntry]
     total_active_agents: int = 0
-
-
-class PolicyIndexEntry(BaseModel):
-    domain: str
-    version: str
-    schema_version: str
-    endpoint: str
-    summary: str
-    rules_count: int = 0
-    endpoints: List[str] = Field(
-        default_factory=list,
-        description="Unique endpoint_id values covered by the domain's policy rules.",
-    )
-
-
-class PoliciesIndexResponse(BaseModel):
-    version: str
-    generated_at: str
-    policies: List[PolicyIndexEntry]
 
 
 def _normalize_route_path(path: str) -> str:
@@ -314,16 +291,6 @@ def _resolve_endpoint_availability(
     return EndpointAvailabilityEntry(**payload)
 
 
-def _sync_policy_domains() -> None:
-    """Ensure built-in policy domains are imported and registered."""
-    # Imported for side effects: each module registers its PolicyEngine.
-    import importlib
-
-    importlib.import_module("pixsim7.backend.main.services.docs.plan_authoring_policy")
-    importlib.import_module("pixsim7.backend.main.services.prompt.prompt_authoring_policy")
-    importlib.import_module("pixsim7.backend.main.services.game.game_authoring_policy")
-
-
 @router.get("/contracts", response_model=ContractsIndexResponse)
 async def list_contract_endpoints(
     request: Request = None,
@@ -416,41 +383,6 @@ async def list_contract_endpoints(
         generated_at=datetime.now(timezone.utc).isoformat(),
         contracts=contracts,
         total_active_agents=len(active_sessions),
-    )
-
-
-@router.get("/policies", response_model=PoliciesIndexResponse)
-async def list_policy_contracts() -> PoliciesIndexResponse:
-    """Unified index of registered policy-engine domains and their contracts."""
-    _sync_policy_domains()
-
-    entries: List[PolicyIndexEntry] = []
-    for contract in DOMAIN_POLICY_REGISTRY.list_contracts():
-        rules = contract.get("rules") if isinstance(contract, dict) else []
-        if not isinstance(rules, list):
-            rules = []
-        endpoints = sorted({
-            str(rule.get("endpoint_id") or "").strip()
-            for rule in rules
-            if isinstance(rule, dict) and str(rule.get("endpoint_id") or "").strip()
-        })
-        entries.append(
-            PolicyIndexEntry(
-                domain=str(contract.get("domain") or ""),
-                version=str(contract.get("version") or ""),
-                schema_version=str(contract.get("schema_version") or ""),
-                endpoint=str(contract.get("endpoint") or ""),
-                summary=str(contract.get("summary") or ""),
-                rules_count=len(rules),
-                endpoints=endpoints,
-            )
-        )
-
-    entries.sort(key=lambda item: item.domain.lower())
-    return PoliciesIndexResponse(
-        version=POLICIES_INDEX_VERSION,
-        generated_at=datetime.now(timezone.utc).isoformat(),
-        policies=entries,
     )
 
 

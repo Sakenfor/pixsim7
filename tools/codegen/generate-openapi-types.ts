@@ -15,8 +15,6 @@
  *   pnpm openapi:gen -- --service main-api
  *   pnpm openapi:gen -- --input ./path/to/openapi.json
  *   pnpm openapi:gen -- --report
- *   pnpm openapi:gen -- --include-tags assets,providers --merge
- *   pnpm openapi:check -- --fast-check
  *
  * Optional env overrides:
  *   OPENAPI_INPUT="./path/to/openapi.json"                      # Local JSON spec path
@@ -30,8 +28,6 @@
  *   OPENAPI_EXCLUDE_TAGS="dev,admin"                            # Optional tag denylist
  *   OPENAPI_CHANGE_REPORT="true"                                 # Print file-level generation summary
  *   OPENAPI_CHANGE_REPORT_MAX="8"                                # Sample file paths per change bucket
- *   OPENAPI_FAST_CHECK="true"                                    # Fast staleness check with schema/output fingerprints
- *   OPENAPI_MERGE_OUTPUT="true"                                  # Scoped generation: merge into existing output dir
  *   OPENAPI_SERVICE="main-api"
  *   OPENAPI_SERVICES_ROOT="."
  *
@@ -60,12 +56,7 @@ const DEFAULT_ORVAL_OUT = 'packages/shared/api/model/src/generated/openapi';
 const DEFAULT_ORVAL_MODE = 'tags-split';
 const DEFAULT_ORVAL_CLIENT = 'axios';
 const DEFAULT_MODELS_ONLY = true;
-const DEFAULT_FAST_CHECK = false;
-const DEFAULT_MERGE_OUTPUT = false;
-const SCHEMA_HASH_FILENAME = '.schema-hash';
-const SCHEMA_HASH_VERSION = 1;
-const SCOPED_MANIFEST_DIR = '.scoped-manifests';
-const DIR_COMPARE_IGNORE = new Set([SCHEMA_HASH_FILENAME]);
+const DIR_COMPARE_IGNORE = new Set(['.schema-hash']);
 const OPENAPI_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']);
 
 const SKIP_DIRS = new Set([
@@ -139,13 +130,6 @@ async function readJson(pathname: string): Promise<any | null> {
   }
 }
 
-async function readWorkspaceOrvalVersion(): Promise<string> {
-  const pkgPath = path.join(process.cwd(), 'package.json');
-  const pkg = await readJson(pkgPath);
-  const version = pkg?.devDependencies?.orval ?? pkg?.dependencies?.orval;
-  return typeof version === 'string' ? version : 'unknown';
-}
-
 async function walkDir(root: string): Promise<{ packages: string[]; manifests: string[] }> {
   const packages: string[] = [];
   const manifests: string[] = [];
@@ -197,31 +181,6 @@ async function loadServiceConfigs(rootPath: string): Promise<BackendServiceConfi
     }
   } catch {
     // Fall back to directory scan.
-  }
-
-  const servicesDir = path.join(resolved, 'services');
-  if (await pathExists(servicesDir)) {
-    try {
-      const entries = await fs.readdir(servicesDir, { withFileTypes: true });
-      const services: BackendServiceConfig[] = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-        const manifestPath = path.join(servicesDir, entry.name, MANIFEST_FILENAME);
-        const data = await readJson(manifestPath);
-        const service = data?.service ?? data?.pixsim?.service ?? data;
-        if (!service?.id) {
-          continue;
-        }
-        services.push(service as BackendServiceConfig);
-      }
-      if (services.length > 0) {
-        return services;
-      }
-    } catch {
-      // Fall through to full workspace scan.
-    }
   }
 
   const { packages, manifests } = await walkDir(resolved);
@@ -291,15 +250,6 @@ async function resolveServiceConfig(
   servicesRoot: string,
   preferredId?: string
 ): Promise<BackendServiceConfig | null> {
-  if (preferredId) {
-    const directManifest = path.join(path.resolve(servicesRoot), 'services', preferredId, MANIFEST_FILENAME);
-    const direct = await readJson(directManifest);
-    const directService = direct?.service ?? direct?.pixsim?.service ?? direct;
-    if (directService?.id === preferredId) {
-      return directService as BackendServiceConfig;
-    }
-  }
-
   const services = (await loadServiceConfigs(servicesRoot)).filter((service) => {
     const type = (service.type ?? 'backend').toLowerCase();
     return type === 'backend' || type === 'api';
@@ -424,167 +374,6 @@ type OutputChangeReport = {
   unchangedCount: number;
 };
 
-type SchemaHashContext = {
-  source: string;
-  outputDir: string;
-  sourceHash: string;
-  configHash: string;
-  mode: string;
-  client: string;
-  modelsOnly: boolean;
-  includeTags: string[];
-  excludeTags: string[];
-  orvalVersion: string;
-};
-
-type SchemaHashRecord = {
-  version: number;
-  source: string;
-  output_dir: string;
-  source_hash: string;
-  config_hash: string;
-  output_hash: string;
-  mode: string;
-  client: string;
-  models_only: boolean;
-  include_tags: string[];
-  exclude_tags: string[];
-  orval_version: string;
-  generated_at: string;
-};
-
-function hashText(text: string): string {
-  return createHash('sha1').update(text).digest('hex');
-}
-
-function schemaHashPath(outputDir: string): string {
-  return path.join(outputDir, SCHEMA_HASH_FILENAME);
-}
-
-function normalizeTagsForFingerprint(tags: string[]): string[] {
-  return [...tags].map((tag) => tag.trim()).filter(Boolean).sort();
-}
-
-function buildScopedManifestKey(includeTags: string[], excludeTags: string[]): string {
-  return hashText(
-    JSON.stringify({
-      include_tags: normalizeTagsForFingerprint(includeTags),
-      exclude_tags: normalizeTagsForFingerprint(excludeTags),
-    })
-  ).slice(0, 12);
-}
-
-function scopedManifestPath(absOutDir: string, scopeKey: string): string {
-  return path.join(absOutDir, SCOPED_MANIFEST_DIR, `${scopeKey}.json`);
-}
-
-function buildSchemaConfigHash(params: {
-  mode: string;
-  client: string;
-  modelsOnly: boolean;
-  includeTags: string[];
-  excludeTags: string[];
-  orvalVersion: string;
-}): string {
-  return hashText(
-    JSON.stringify({
-      mode: params.mode,
-      client: params.client,
-      models_only: params.modelsOnly,
-      include_tags: normalizeTagsForFingerprint(params.includeTags),
-      exclude_tags: normalizeTagsForFingerprint(params.excludeTags),
-      orval_version: params.orvalVersion,
-      schema_hash_version: SCHEMA_HASH_VERSION,
-    })
-  );
-}
-
-async function hashOpenApiSource(source: string): Promise<string> {
-  if (isHttpSource(source)) {
-    const response = await fetch(source);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch OpenAPI spec (${response.status}): ${source}`);
-    }
-    return hashText(await response.text());
-  }
-
-  return hashText(await fs.readFile(source, 'utf8'));
-}
-
-async function hashDirectory(root: string): Promise<string | null> {
-  if (!(await pathExists(root))) {
-    return null;
-  }
-  const files = await listFilesRecursive(root);
-  const digest = createHash('sha1');
-  for (const relPath of files) {
-    const content = await fs.readFile(path.join(root, relPath));
-    const fileHash = createHash('sha1').update(content).digest('hex');
-    digest.update(relPath);
-    digest.update('\0');
-    digest.update(fileHash);
-    digest.update('\n');
-  }
-  return digest.digest('hex');
-}
-
-function buildSchemaHashRecord(context: SchemaHashContext, outputHash: string): SchemaHashRecord {
-  return {
-    version: SCHEMA_HASH_VERSION,
-    source: context.source,
-    output_dir: context.outputDir,
-    source_hash: context.sourceHash,
-    config_hash: context.configHash,
-    output_hash: outputHash,
-    mode: context.mode,
-    client: context.client,
-    models_only: context.modelsOnly,
-    include_tags: normalizeTagsForFingerprint(context.includeTags),
-    exclude_tags: normalizeTagsForFingerprint(context.excludeTags),
-    orval_version: context.orvalVersion,
-    generated_at: new Date().toISOString(),
-  };
-}
-
-async function readSchemaHashRecord(outputDir: string): Promise<SchemaHashRecord | null> {
-  const record = await readJson(schemaHashPath(outputDir));
-  if (!record || typeof record !== 'object') {
-    return null;
-  }
-  if (record.version !== SCHEMA_HASH_VERSION) {
-    return null;
-  }
-  if (typeof record.source_hash !== 'string' || typeof record.config_hash !== 'string') {
-    return null;
-  }
-  if (typeof record.output_hash !== 'string') {
-    return null;
-  }
-  return record as SchemaHashRecord;
-}
-
-async function writeSchemaHashRecord(outputDir: string, record: SchemaHashRecord): Promise<void> {
-  await fs.writeFile(schemaHashPath(outputDir), `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-}
-
-async function isFreshBySchemaHash(context: SchemaHashContext, absOutDir: string): Promise<boolean> {
-  const record = await readSchemaHashRecord(absOutDir);
-  if (!record) {
-    return false;
-  }
-  if (record.config_hash !== context.configHash) {
-    return false;
-  }
-  if (record.source_hash !== context.sourceHash) {
-    return false;
-  }
-  const outputHash = await hashDirectory(absOutDir);
-  if (!outputHash) {
-    return false;
-  }
-  return outputHash === record.output_hash;
-}
-
 async function listFilesRecursive(root: string): Promise<string[]> {
   const files: string[] = [];
 
@@ -593,9 +382,6 @@ async function listFilesRecursive(root: string): Promise<string[]> {
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === SCOPED_MANIFEST_DIR) {
-          continue;
-        }
         await walk(fullPath);
       } else if (entry.isFile()) {
         if (DIR_COMPARE_IGNORE.has(entry.name)) {
@@ -650,111 +436,6 @@ async function compareDirectories(expectedDir: string, actualDir: string): Promi
   }
 
   return { equal: true };
-}
-
-function isScopedIgnorePath(relPath: string): boolean {
-  // In scoped mode we deliberately preserve the canonical full model barrel in output.
-  return relPath === 'model/index.ts' || relPath === 'index.ts';
-}
-
-async function compareDirectorySubset(expectedDir: string, actualDir: string): Promise<DirCompareResult> {
-  const expectedExists = await pathExists(expectedDir);
-  const actualExists = await pathExists(actualDir);
-
-  if (!expectedExists) {
-    return { equal: false, reason: `expected directory does not exist: ${expectedDir}` };
-  }
-  if (!actualExists) {
-    return { equal: false, reason: `output directory does not exist: ${actualDir}` };
-  }
-
-  const expectedFiles = (await listFilesRecursive(expectedDir)).filter((relPath) => !isScopedIgnorePath(relPath));
-  if (expectedFiles.length === 0) {
-    return { equal: false, reason: 'scoped expected output has no comparable files' };
-  }
-
-  for (const relPath of expectedFiles) {
-    const actualPath = path.join(actualDir, relPath);
-    if (!(await pathExists(actualPath))) {
-      return { equal: false, reason: `missing file in output: ${relPath}` };
-    }
-    const expectedContent = await fs.readFile(path.join(expectedDir, relPath), 'utf8');
-    const actualContent = await fs.readFile(actualPath, 'utf8');
-    if (expectedContent !== actualContent) {
-      return { equal: false, reason: `content mismatch in ${relPath}` };
-    }
-  }
-
-  return { equal: true };
-}
-
-async function rebuildModelBarrel(modelDir: string): Promise<void> {
-  if (!(await pathExists(modelDir))) {
-    return;
-  }
-  const entries = await fs.readdir(modelDir, { withFileTypes: true });
-  const exportNames = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.ts') && entry.name !== 'index.ts')
-    .map((entry) => entry.name.slice(0, -3))
-    .sort((a, b) => a.localeCompare(b));
-
-  const content =
-    '/**\n' +
-    ' * Auto-generated merged model barrel.\n' +
-    ' * Do not edit manually.\n' +
-    ' */\n\n' +
-    exportNames.map((name) => `export * from './${name}';`).join('\n') +
-    '\n';
-
-  await fs.writeFile(path.join(modelDir, 'index.ts'), content, 'utf8');
-}
-
-async function mergeGeneratedOutput(
-  tempOutDir: string,
-  absOutDir: string,
-  modelsOnly: boolean,
-  scopeKey?: string
-): Promise<void> {
-  await fs.mkdir(absOutDir, { recursive: true });
-  const files = await listFilesRecursive(tempOutDir);
-  const copiedFiles = files.filter((relPath) => !isScopedIgnorePath(relPath));
-  const copiedSet = new Set(copiedFiles);
-
-  if (scopeKey) {
-    const manifestPath = scopedManifestPath(absOutDir, scopeKey);
-    const previousManifest = await readJson(manifestPath);
-    const previousFiles = Array.isArray(previousManifest?.files)
-      ? previousManifest.files.filter((value: unknown) => typeof value === 'string')
-      : [];
-
-    for (const relPath of previousFiles) {
-      if (copiedSet.has(relPath)) {
-        continue;
-      }
-      await fs.rm(path.join(absOutDir, relPath), { force: true });
-    }
-  }
-
-  for (const relPath of copiedFiles) {
-    const src = path.join(tempOutDir, relPath);
-    const dst = path.join(absOutDir, relPath);
-    await fs.mkdir(path.dirname(dst), { recursive: true });
-    await fs.copyFile(src, dst);
-  }
-
-  if (modelsOnly) {
-    await rebuildModelBarrel(path.join(absOutDir, 'model'));
-  }
-
-  if (scopeKey) {
-    const manifestPath = scopedManifestPath(absOutDir, scopeKey);
-    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
-    await fs.writeFile(
-      manifestPath,
-      `${JSON.stringify({ version: 1, files: copiedFiles.sort(), updated_at: new Date().toISOString() }, null, 2)}\n`,
-      'utf8'
-    );
-  }
 }
 
 async function snapshotDirectory(root: string): Promise<FileSnapshot> {
@@ -870,22 +551,9 @@ async function generateOrvalSplit(
   modelsOnly: boolean,
   changeReportEnabled: boolean,
   changeReportSampleLimit: number,
-  isCheckMode: boolean,
-  schemaHashContext: SchemaHashContext | null,
-  fastCheckEnabled: boolean,
-  mergeOutput: boolean,
-  scopedMode: boolean,
-  scopeKey?: string
+  isCheckMode: boolean
 ): Promise<boolean> {
   if (isCheckMode) {
-    if (fastCheckEnabled && schemaHashContext) {
-      const isFresh = await isFreshBySchemaHash(schemaHashContext, absOutDir);
-      if (isFresh) {
-        console.log(`[ok] Orval split output is up-to-date (fast check): ${outDir}`);
-        return true;
-      }
-    }
-
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-orval-check-'));
     const tempOutDir = path.join(tempRoot, 'openapi');
     try {
@@ -893,16 +561,12 @@ async function generateOrvalSplit(
       if (modelsOnly) {
         await pruneToModelOnly(tempOutDir);
       }
-      const comparison = scopedMode
-        ? await compareDirectorySubset(tempOutDir, absOutDir)
-        : await compareDirectories(tempOutDir, absOutDir);
+      const comparison = await compareDirectories(tempOutDir, absOutDir);
       if (comparison.equal) {
-        const modeLabel = scopedMode ? 'scoped' : 'full';
-        console.log(`[ok] Orval split output is up-to-date (${modeLabel} check): ${outDir}`);
+        console.log(`[ok] Orval split output is up-to-date: ${outDir}`);
         return true;
       }
-      const modeLabel = scopedMode ? 'scoped' : 'full';
-      console.error(`[stale] Orval split output is STALE (${modeLabel} check): ${outDir}`);
+      console.error(`[stale] Orval split output is STALE: ${outDir}`);
       if (comparison.reason) {
         console.error(`  ${comparison.reason}`);
       }
@@ -921,13 +585,6 @@ async function generateOrvalSplit(
     if (modelsOnly) {
       await pruneToModelOnly(tempOutDir);
     }
-    if (schemaHashContext && !mergeOutput) {
-      const outputHash = await hashDirectory(tempOutDir);
-      if (!outputHash) {
-        throw new Error(`Failed to fingerprint generated OpenAPI output: ${tempOutDir}`);
-      }
-      await writeSchemaHashRecord(tempOutDir, buildSchemaHashRecord(schemaHashContext, outputHash));
-    }
     if (changeReportEnabled && previousSnapshot) {
       const nextSnapshot = await snapshotDirectory(tempOutDir);
       const report = buildOutputChangeReport(previousSnapshot, nextSnapshot);
@@ -940,38 +597,23 @@ async function generateOrvalSplit(
       );
     }
     await fs.mkdir(path.dirname(absOutDir), { recursive: true });
-    if (mergeOutput) {
-      await mergeGeneratedOutput(tempOutDir, absOutDir, modelsOnly, scopeKey);
-    } else {
-      await fs.rm(absOutDir, { recursive: true, force: true });
-      await fs.cp(tempOutDir, absOutDir, { recursive: true });
-    }
+    await fs.rm(absOutDir, { recursive: true, force: true });
+    await fs.cp(tempOutDir, absOutDir, { recursive: true });
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
-  if (mergeOutput) {
-    console.log(`[ok] Merged scoped Orval OpenAPI output into: ${outDir}`);
-  } else {
-    console.log(`[ok] Generated Orval split OpenAPI output: ${outDir}`);
-  }
+  console.log(`[ok] Generated Orval split OpenAPI output: ${outDir}`);
   return true;
 }
 
 async function main() {
   const args = process.argv.slice(2);
   const isCheckMode = args.includes('--check');
-  const fastCheckEnabled =
-    isCheckMode &&
-    (args.includes('--fast-check') || parseBoolean(process.env.OPENAPI_FAST_CHECK, DEFAULT_FAST_CHECK));
   const inputArg = getArgValue('--input', args);
 
-  const openapiInput = inputArg || process.env.OPENAPI_INPUT;
   const serviceId = getArgValue('--service', args) ?? process.env.OPENAPI_SERVICE;
   const includeTags = parseCsv(getArgValue('--include-tags', args) ?? process.env.OPENAPI_INCLUDE_TAGS);
   const excludeTags = parseCsv(getArgValue('--exclude-tags', args) ?? process.env.OPENAPI_EXCLUDE_TAGS);
-  const mergeOutput =
-    args.includes('--merge') || parseBoolean(process.env.OPENAPI_MERGE_OUTPUT, DEFAULT_MERGE_OUTPUT);
-  const scopedMode = includeTags.length > 0 || excludeTags.length > 0 || mergeOutput;
   const modelsOnly = parseBoolean(process.env.OPENAPI_MODELS_ONLY, DEFAULT_MODELS_ONLY);
   const changeReportEnabled = args.includes('--report') || parseBoolean(process.env.OPENAPI_CHANGE_REPORT, false);
   const parsedSampleLimit = Number(process.env.OPENAPI_CHANGE_REPORT_MAX ?? '8');
@@ -983,25 +625,15 @@ async function main() {
     process.env.OPENAPI_SERVICES_CONFIG ||
     process.cwd();
 
-  const legacyTypesOut = process.env.OPENAPI_TYPES_OUT;
-  const explicitOutDir = process.env.OPENAPI_ORVAL_OUT || legacyTypesOut;
-  const explicitUrl = process.env.OPENAPI_URL;
-
-  // Skip repo-wide service discovery when caller already provided explicit URL/output.
-  const shouldResolveServiceConfig =
-    Boolean(serviceId) ||
-    !explicitOutDir ||
-    (!explicitUrl && !openapiInput);
-
-  const serviceConfig = shouldResolveServiceConfig
-    ? await resolveServiceConfig(servicesRoot, serviceId)
-    : null;
+  const serviceConfig = await resolveServiceConfig(servicesRoot, serviceId);
   if (serviceId && !serviceConfig) {
     throw new Error(`OpenAPI service "${serviceId}" not found in ${servicesRoot}`);
   }
 
+  const legacyTypesOut = process.env.OPENAPI_TYPES_OUT;
   const orvalOutDir =
-    explicitOutDir ||
+    process.env.OPENAPI_ORVAL_OUT ||
+    legacyTypesOut ||
     serviceConfig?.openapi_types_path ||
     DEFAULT_ORVAL_OUT;
   const orvalMode = process.env.OPENAPI_ORVAL_MODE || DEFAULT_ORVAL_MODE;
@@ -1009,8 +641,9 @@ async function main() {
 
   const absOrvalOutDir = path.resolve(process.cwd(), orvalOutDir);
 
+  const openapiInput = inputArg || process.env.OPENAPI_INPUT;
   const resolvedUrl =
-    explicitUrl ||
+    process.env.OPENAPI_URL ||
     (serviceConfig ? resolveOpenapiUrl(serviceConfig) : null) ||
     DEFAULT_OPENAPI_URL;
 
@@ -1044,55 +677,20 @@ async function main() {
     );
   }
 
-  const supportsFastHash = !scopedMode;
-  const scopeKey = scopedMode ? buildScopedManifestKey(includeTags, excludeTags) : undefined;
-  let schemaHashContext: SchemaHashContext | null = null;
-  if (supportsFastHash && (!isCheckMode || fastCheckEnabled)) {
-    const orvalVersion = await readWorkspaceOrvalVersion();
-    const sourceHash = await hashOpenApiSource(orvalSource);
-    schemaHashContext = {
-      source: orvalSource,
-      outputDir: normalizeSlashes(orvalOutDir),
-      sourceHash,
-      configHash: buildSchemaConfigHash({
-        mode: orvalMode,
-        client: orvalClient,
-        modelsOnly,
-        includeTags,
-        excludeTags,
-        orvalVersion,
-      }),
-      mode: orvalMode,
-      client: orvalClient,
-      modelsOnly,
-      includeTags,
-      excludeTags,
-      orvalVersion,
-    };
-  }
+  const orvalOk = await generateOrvalSplit(
+    orvalSource,
+    absOrvalOutDir,
+    orvalOutDir,
+    orvalMode,
+    orvalClient,
+    modelsOnly,
+    changeReportEnabled,
+    changeReportSampleLimit,
+    isCheckMode
+  );
 
-  let orvalOk = false;
-  try {
-    orvalOk = await generateOrvalSplit(
-      orvalSource,
-      absOrvalOutDir,
-      orvalOutDir,
-      orvalMode,
-      orvalClient,
-      modelsOnly,
-      changeReportEnabled,
-      changeReportSampleLimit,
-      isCheckMode,
-      schemaHashContext,
-      fastCheckEnabled && supportsFastHash,
-      mergeOutput,
-      scopedMode,
-      scopeKey
-    );
-  } finally {
-    if (filteredSpecTempDir) {
-      await fs.rm(filteredSpecTempDir, { recursive: true, force: true });
-    }
+  if (filteredSpecTempDir) {
+    await fs.rm(filteredSpecTempDir, { recursive: true, force: true });
   }
 
   if (isCheckMode && !orvalOk) {

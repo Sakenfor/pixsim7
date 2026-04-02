@@ -8,9 +8,7 @@ Handles:
 - Tag hierarchy
 - Tag aliasing
 """
-from dataclasses import dataclass
-from typing import Optional, List, Literal
-from uuid import UUID
+from typing import Optional, List
 from sqlmodel import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain.assets.tag import (
@@ -23,49 +21,11 @@ from pixsim7.backend.main.domain.assets.tag import (
     validate_slug,
     normalize_slug,
 )
-from pixsim7.backend.main.domain.prompt.tag_assertions import PromptVersionTagAssertion
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
 
-TagSource = Literal["manual", "system", "analyzer", "unknown"]
-
-
-@dataclass(frozen=True)
-class TagTargetSpec:
-    """
-    Typed target descriptor for tag assertions.
-
-    Each tagged entity (asset, prompt_version, future game types) provides:
-    - assertion_model: SQLModel table class
-    - target_field: FK field name on assertion table
-    - supports_confidence: whether assertion model stores confidence
-    """
-
-    assertion_model: type
-    target_field: str
-    supports_confidence: bool = False
-
-
 class TagService:
-    """Service for managing tags and typed tag assertions."""
-
-    TAG_SOURCES = ("unknown", "system", "analyzer", "manual")
-    SOURCE_PRIORITY = {
-        "unknown": 0,
-        "system": 1,
-        "analyzer": 2,
-        "manual": 3,
-    }
-    ASSET_TARGET = TagTargetSpec(
-        assertion_model=AssetTag,
-        target_field="asset_id",
-        supports_confidence=False,
-    )
-    PROMPT_VERSION_TARGET = TagTargetSpec(
-        assertion_model=PromptVersionTagAssertion,
-        target_field="prompt_version_id",
-        supports_confidence=True,
-    )
+    """Service for managing tags and asset-tag associations."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -348,274 +308,6 @@ class TagService:
         count = result.scalar()
         return count or 0
 
-    # ===== Assertion Helpers =====
-
-    @staticmethod
-    def _normalize_confidence(confidence: float | None) -> float | None:
-        if confidence is None:
-            return None
-        return max(0.0, min(1.0, float(confidence)))
-
-    def _assert_valid_source(self, source: TagSource) -> None:
-        if source not in self.TAG_SOURCES:
-            raise InvalidOperationError(f"Invalid tag source '{source}'")
-
-    @staticmethod
-    def _normalize_slug_list(tag_slugs: List[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for raw in tag_slugs:
-            if raw is None:
-                continue
-            value = str(raw).strip()
-            if not value:
-                continue
-            if value in seen:
-                continue
-            seen.add(value)
-            normalized.append(value)
-        return normalized
-
-    async def _resolve_tag_for_assignment(self, slug: str, auto_create: bool) -> Tag:
-        if auto_create:
-            return await self.get_or_create_tag(slug)
-        tag = await self.get_tag_by_slug(slug, resolve_canonical=True)
-        if not tag:
-            raise ResourceNotFoundError(f"Tag '{slug}' not found")
-        return tag
-
-    async def _find_existing_assertion(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-        tag_id: int,
-    ):
-        target_column = getattr(spec.assertion_model, spec.target_field)
-        stmt = select(spec.assertion_model).where(
-            target_column == target_id,
-            spec.assertion_model.tag_id == tag_id,
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
-    def _maybe_upgrade_source(self, assertion: object, source: TagSource) -> None:
-        current_source = getattr(assertion, "source", None) or "unknown"
-        if current_source not in self.TAG_SOURCES:
-            current_source = "unknown"
-        if self.SOURCE_PRIORITY[source] > self.SOURCE_PRIORITY[current_source]:
-            setattr(assertion, "source", source)
-
-    async def _assign_tags(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-        tag_slugs: List[str],
-        auto_create: bool,
-        source: TagSource,
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        self._assert_valid_source(source)
-        normalized_confidence = self._normalize_confidence(confidence)
-        normalized_slugs = self._normalize_slug_list(tag_slugs)
-        if not normalized_slugs:
-            return []
-
-        assigned_tags: list[Tag] = []
-        changed = False
-
-        for slug in normalized_slugs:
-            tag = await self._resolve_tag_for_assignment(slug, auto_create=auto_create)
-            existing = await self._find_existing_assertion(
-                spec=spec,
-                target_id=target_id,
-                tag_id=tag.id,
-            )
-
-            if not existing:
-                payload = {
-                    spec.target_field: target_id,
-                    "tag_id": tag.id,
-                    "source": source,
-                }
-                if spec.supports_confidence:
-                    payload["confidence"] = normalized_confidence
-                assertion = spec.assertion_model(**payload)
-                self.db.add(assertion)
-                assigned_tags.append(tag)
-                changed = True
-                continue
-
-            previous_source = getattr(existing, "source", None)
-            self._maybe_upgrade_source(existing, source)
-            if getattr(existing, "source", None) != previous_source:
-                changed = True
-            if spec.supports_confidence and normalized_confidence is not None:
-                existing_confidence = getattr(existing, "confidence", None)
-                if existing_confidence is None or normalized_confidence > existing_confidence:
-                    setattr(existing, "confidence", normalized_confidence)
-                    changed = True
-
-        if changed:
-            await self.db.commit()
-        return assigned_tags
-
-    async def _remove_tags(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-        tag_slugs: List[str],
-    ) -> List[Tag]:
-        removed_tags: list[Tag] = []
-        normalized_slugs = self._normalize_slug_list(tag_slugs)
-        if not normalized_slugs:
-            return removed_tags
-        target_column = getattr(spec.assertion_model, spec.target_field)
-
-        for slug in normalized_slugs:
-            tag = await self.get_tag_by_slug(slug, resolve_canonical=True)
-            if not tag:
-                continue
-            stmt = select(spec.assertion_model).where(
-                target_column == target_id,
-                spec.assertion_model.tag_id == tag.id,
-            )
-            result = await self.db.execute(stmt)
-            assertion = result.scalars().first()
-            if assertion:
-                await self.db.delete(assertion)
-                removed_tags.append(tag)
-
-        if removed_tags:
-            await self.db.commit()
-        return removed_tags
-
-    async def _replace_tags(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-        tag_slugs: List[str],
-        auto_create: bool,
-        source: TagSource,
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        normalized_slugs = self._normalize_slug_list(tag_slugs)
-        target_column = getattr(spec.assertion_model, spec.target_field)
-        stmt = select(spec.assertion_model).where(target_column == target_id)
-        result = await self.db.execute(stmt)
-        existing_assertions = result.scalars().all()
-        changed = False
-        for assertion in existing_assertions:
-            await self.db.delete(assertion)
-            changed = True
-        if changed:
-            await self.db.commit()
-        return await self._assign_tags(
-            spec=spec,
-            target_id=target_id,
-            tag_slugs=normalized_slugs,
-            auto_create=auto_create,
-            source=source,
-            confidence=confidence,
-        )
-
-    async def _get_target_tags(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-    ) -> List[Tag]:
-        target_column = getattr(spec.assertion_model, spec.target_field)
-        stmt = (
-            select(Tag)
-            .join(spec.assertion_model, spec.assertion_model.tag_id == Tag.id)
-            .where(target_column == target_id)
-            .order_by(Tag.namespace, Tag.name)
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def _list_assertions(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-    ) -> list[dict]:
-        target_column = getattr(spec.assertion_model, spec.target_field)
-        stmt = (
-            select(Tag, spec.assertion_model)
-            .join(spec.assertion_model, spec.assertion_model.tag_id == Tag.id)
-            .where(target_column == target_id)
-            .order_by(Tag.namespace, Tag.name)
-        )
-        result = await self.db.execute(stmt)
-        rows = result.all()
-        out: list[dict] = []
-        for tag, assertion in rows:
-            out.append(
-                {
-                    "tag": tag,
-                    "source": getattr(assertion, "source", None) or "unknown",
-                    "confidence": getattr(assertion, "confidence", None),
-                    "created_at": getattr(assertion, "created_at", None),
-                }
-            )
-        return out
-
-    async def _sync_tags_for_source(
-        self,
-        *,
-        spec: TagTargetSpec,
-        target_id: int | UUID,
-        tag_slugs: List[str],
-        source: TagSource,
-        auto_create: bool,
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        self._assert_valid_source(source)
-        normalized_slugs = self._normalize_slug_list(tag_slugs)
-
-        desired_canonical_slugs: list[str] = []
-        desired_tag_ids: set[int] = set()
-        for slug in normalized_slugs:
-            tag = await self._resolve_tag_for_assignment(slug, auto_create=auto_create)
-            if tag.id in desired_tag_ids:
-                continue
-            desired_tag_ids.add(tag.id)
-            desired_canonical_slugs.append(tag.slug)
-
-        target_column = getattr(spec.assertion_model, spec.target_field)
-        existing_stmt = select(spec.assertion_model).where(
-            target_column == target_id,
-            spec.assertion_model.source == source,
-        )
-        existing_result = await self.db.execute(existing_stmt)
-        existing_assertions = existing_result.scalars().all()
-
-        removed = False
-        for assertion in existing_assertions:
-            if assertion.tag_id in desired_tag_ids:
-                continue
-            await self.db.delete(assertion)
-            removed = True
-        if removed:
-            await self.db.commit()
-
-        if not desired_canonical_slugs:
-            return []
-
-        return await self._assign_tags(
-            spec=spec,
-            target_id=target_id,
-            tag_slugs=desired_canonical_slugs,
-            auto_create=False,
-            source=source,
-            confidence=confidence,
-        )
-
     # ===== ASSET TAG ASSIGNMENT =====
 
     async def assign_tags_to_asset(
@@ -623,7 +315,6 @@ class TagService:
         asset_id: int,
         tag_slugs: List[str],
         auto_create: bool = True,
-        source: TagSource = "manual",
     ) -> List[Tag]:
         """
         Assign tags to an asset.
@@ -632,18 +323,38 @@ class TagService:
             asset_id: Asset ID
             tag_slugs: List of tag slugs to assign
             auto_create: If True, create tags that don't exist
-            source: Provenance of assignment
 
         Returns:
             List of assigned tags (canonical)
         """
-        return await self._assign_tags(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
-            tag_slugs=tag_slugs,
-            auto_create=auto_create,
-            source=source,
-        )
+        assigned_tags = []
+
+        for slug in tag_slugs:
+            # Get or create tag
+            if auto_create:
+                tag = await self.get_or_create_tag(slug)
+            else:
+                tag = await self.get_tag_by_slug(slug, resolve_canonical=True)
+                if not tag:
+                    raise ResourceNotFoundError(f"Tag '{slug}' not found")
+
+            # Check if already assigned
+            stmt = select(AssetTag).where(
+                AssetTag.asset_id == asset_id,
+                AssetTag.tag_id == tag.id,
+            )
+            result = await self.db.execute(stmt)
+            existing = result.scalars().first()
+
+            if not existing:
+                # Create assignment
+                asset_tag = AssetTag(asset_id=asset_id, tag_id=tag.id)
+                self.db.add(asset_tag)
+                assigned_tags.append(tag)
+
+        await self.db.commit()
+
+        return assigned_tags
 
     async def remove_tags_from_asset(
         self,
@@ -660,11 +371,29 @@ class TagService:
         Returns:
             List of removed tags
         """
-        return await self._remove_tags(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
-            tag_slugs=tag_slugs,
-        )
+        removed_tags = []
+
+        for slug in tag_slugs:
+            # Resolve tag
+            tag = await self.get_tag_by_slug(slug, resolve_canonical=True)
+            if not tag:
+                continue  # Silently skip non-existent tags
+
+            # Find and delete assignment
+            stmt = select(AssetTag).where(
+                AssetTag.asset_id == asset_id,
+                AssetTag.tag_id == tag.id,
+            )
+            result = await self.db.execute(stmt)
+            asset_tag = result.scalars().first()
+
+            if asset_tag:
+                await self.db.delete(asset_tag)
+                removed_tags.append(tag)
+
+        await self.db.commit()
+
+        return removed_tags
 
     async def get_asset_tags(self, asset_id: int) -> List[Tag]:
         """
@@ -673,17 +402,16 @@ class TagService:
         Returns:
             List of tags (sorted by namespace, name)
         """
-        return await self._get_target_tags(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
+        stmt = (
+            select(Tag)
+            .join(AssetTag, AssetTag.tag_id == Tag.id)
+            .where(AssetTag.asset_id == asset_id)
+            .order_by(Tag.namespace, Tag.name)
         )
 
-    async def list_asset_tag_assertions(self, asset_id: int) -> list[dict]:
-        """Get asset tag assertions with provenance metadata."""
-        return await self._list_assertions(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
-        )
+        result = await self.db.execute(stmt)
+        tags = result.scalars().all()
+        return list(tags)
 
     async def get_tags_for_assets(self, asset_ids: List[int]) -> dict[int, List[Tag]]:
         """
@@ -713,7 +441,6 @@ class TagService:
         asset_id: int,
         tag_slugs: List[str],
         auto_create: bool = True,
-        source: TagSource = "manual",
     ) -> List[Tag]:
         """
         Replace all tags for an asset.
@@ -722,152 +449,19 @@ class TagService:
             asset_id: Asset ID
             tag_slugs: New list of tag slugs
             auto_create: If True, create tags that don't exist
-            source: Provenance of assignment
 
         Returns:
             List of assigned tags
         """
-        return await self._replace_tags(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
-            tag_slugs=tag_slugs,
-            auto_create=auto_create,
-            source=source,
-        )
+        # Remove all existing tags
+        stmt = select(AssetTag).where(AssetTag.asset_id == asset_id)
+        result = await self.db.execute(stmt)
+        existing_assignments = result.scalars().all()
 
-    async def sync_asset_tags_by_source(
-        self,
-        asset_id: int,
-        tag_slugs: List[str],
-        source: TagSource,
-        auto_create: bool = True,
-    ) -> List[Tag]:
-        """
-        Sync asset tags for a single source.
+        for assignment in existing_assignments:
+            await self.db.delete(assignment)
 
-        Existing assertions with the same source are pruned when absent from
-        `tag_slugs`; assertions from other sources are preserved.
-        """
-        return await self._sync_tags_for_source(
-            spec=self.ASSET_TARGET,
-            target_id=asset_id,
-            tag_slugs=tag_slugs,
-            source=source,
-            auto_create=auto_create,
-        )
+        await self.db.commit()
 
-    # ===== PROMPT VERSION TAG ASSIGNMENT =====
-
-    async def assign_tags_to_prompt_version(
-        self,
-        prompt_version_id: UUID,
-        tag_slugs: List[str],
-        auto_create: bool = True,
-        source: TagSource = "analyzer",
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        """
-        Assign tags to a prompt version.
-
-        Args:
-            prompt_version_id: PromptVersion ID
-            tag_slugs: List of tag slugs to assign
-            auto_create: If True, create tags that don't exist
-            source: Provenance of assignment
-            confidence: Optional confidence score for analyzer-produced tags
-
-        Returns:
-            List of assigned tags (canonical)
-        """
-        return await self._assign_tags(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-            tag_slugs=tag_slugs,
-            auto_create=auto_create,
-            source=source,
-            confidence=confidence,
-        )
-
-    async def remove_tags_from_prompt_version(
-        self,
-        prompt_version_id: UUID,
-        tag_slugs: List[str],
-    ) -> List[Tag]:
-        """Remove tags from a prompt version."""
-        return await self._remove_tags(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-            tag_slugs=tag_slugs,
-        )
-
-    async def get_prompt_version_tags(self, prompt_version_id: UUID) -> List[Tag]:
-        """Get all tags for a prompt version (sorted by namespace, name)."""
-        return await self._get_target_tags(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-        )
-
-    async def list_prompt_version_tag_assertions(self, prompt_version_id: UUID) -> list[dict]:
-        """Get prompt-version tag assertions with provenance metadata."""
-        return await self._list_assertions(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-        )
-
-    async def replace_prompt_version_tags(
-        self,
-        prompt_version_id: UUID,
-        tag_slugs: List[str],
-        auto_create: bool = True,
-        source: TagSource = "analyzer",
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        """Replace all prompt-version tag assertions with a new set."""
-        return await self._replace_tags(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-            tag_slugs=tag_slugs,
-            auto_create=auto_create,
-            source=source,
-            confidence=confidence,
-        )
-
-    async def sync_prompt_version_analyzer_tags(
-        self,
-        prompt_version_id: UUID,
-        tag_slugs: List[str],
-        auto_create: bool = True,
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        """
-        Sync analyzer tags for a prompt version.
-
-        This prunes stale analyzer assertions while preserving manual/system
-        assertions, then upserts the requested analyzer tags.
-        """
-        return await self._sync_tags_for_source(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-            tag_slugs=tag_slugs,
-            auto_create=auto_create,
-            source="analyzer",
-            confidence=confidence,
-        )
-
-    async def sync_prompt_version_tags_by_source(
-        self,
-        prompt_version_id: UUID,
-        tag_slugs: List[str],
-        source: TagSource,
-        auto_create: bool = True,
-        confidence: float | None = None,
-    ) -> List[Tag]:
-        """Sync prompt-version tags for a specific source."""
-        return await self._sync_tags_for_source(
-            spec=self.PROMPT_VERSION_TARGET,
-            target_id=prompt_version_id,
-            tag_slugs=tag_slugs,
-            source=source,
-            auto_create=auto_create,
-            confidence=confidence,
-        )
+        # Assign new tags
+        return await self.assign_tags_to_asset(asset_id, tag_slugs, auto_create=auto_create)

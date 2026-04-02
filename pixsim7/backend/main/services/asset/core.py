@@ -157,21 +157,11 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
 
             # Apply tag operations
             if mode == "add":
-                await tag_service.assign_tags_to_asset(
-                    asset_id,
-                    tags,
-                    auto_create=True,
-                    source="manual",
-                )
+                await tag_service.assign_tags_to_asset(asset_id, tags, auto_create=True)
             elif mode == "remove":
                 await tag_service.remove_tags_from_asset(asset_id, tags)
             elif mode == "replace":
-                await tag_service.replace_asset_tags(
-                    asset_id,
-                    tags,
-                    auto_create=True,
-                    source="manual",
-                )
+                await tag_service.replace_asset_tags(asset_id, tags, auto_create=True)
             else:
                 raise InvalidOperationError(f"Invalid mode: {mode}. Use 'add', 'remove', or 'replace'")
 

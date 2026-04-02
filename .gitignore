@@ -150,17 +150,6 @@ tmp_pytest*/
 pytest_tmp*/
 pytest_basetemp/
 
-# Local Codex/Claude workspace state
-.claude/worktrees/
-.pixsim-codex/
-tmp/
-tmp_changed_tests.txt
-
-# Local pytest caches (root-level scratch dirs)
-.pytest_cache/
-.pytest_cache_codex/
-pytest-cache-files-*/
-
 # CUE local binaries (use tools/cue/ensure-cue.* to install)
 tools/cue/cue
 tools/cue/cue.exe

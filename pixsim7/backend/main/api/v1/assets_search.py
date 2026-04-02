@@ -284,10 +284,6 @@ class FilterOptionsRequest(BaseModel):
         description="Current filter context (used for dependent filters)",
     )
     include_counts: bool = Field(False, description="Include asset counts per option (slower)")
-    include_options: bool = Field(
-        True,
-        description="When false, returns filter definitions only (options omitted for faster load).",
-    )
     include: list[str] | None = Field(
         None,
         description="Optional filter keys to include (repeat or comma-separated)",
@@ -325,20 +321,15 @@ async def get_filter_options(
     - search: Free-text search input
     - autocomplete: Async search (use /tags endpoint for values)
     """
-    include_keys: list[str] = []
+    include_keys = None
     if request.include:
+        include_keys = []
         for entry in request.include:
             if not entry:
                 continue
             include_keys.extend([key for key in entry.split(",") if key])
-    requested_include = include_keys or None
 
     context = request.context or None
-    specs = asset_filter_registry.list_filters(include=requested_include, context=context)
-    if requested_include is None:
-        # Hide legacy alias from default gallery metadata so users only see one provider filter.
-        specs = [spec for spec in specs if spec.key != "effective_provider_id"]
-    visible_keys = [spec.key for spec in specs]
     filters = [
         FilterDefinition(
             key=spec.key,
@@ -349,25 +340,24 @@ async def get_filter_options(
             multi=spec.multi,
             match_modes=sorted(spec.match_modes) if spec.match_modes else None,
         )
-        for spec in specs
+        for spec in asset_filter_registry.list_filters(include=include_keys, context=context)
     ]
 
     try:
+        options_raw = await asset_filter_registry.build_options(
+            db,
+            user=user,
+            include_counts=request.include_counts,
+            include=include_keys,
+            context=context,
+            limit=request.limit,
+        )
         options: dict[str, List[FilterOptionValue]] = {}
-        if request.include_options and visible_keys:
-            options_raw = await asset_filter_registry.build_options(
-                db,
-                user=user,
-                include_counts=request.include_counts,
-                include=visible_keys,
-                context=context,
-                limit=request.limit,
-            )
-            for key, values in options_raw.items():
-                options[key] = [
-                    FilterOptionValue(value=value, label=label, count=count)
-                    for value, label, count in values
-                ]
+        for key, values in options_raw.items():
+            options[key] = [
+                FilterOptionValue(value=value, label=label, count=count)
+                for value, label, count in values
+            ]
 
         return FilterOptionsResponse(filters=filters, options=options)
 

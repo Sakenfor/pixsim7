@@ -65,7 +65,6 @@ export type FilterMetadataResponse = FilterOptionsResponse;
 export type FilterOptionsRequest =
   Omit<FilterOptionsRequestSchema, 'include_counts'> & {
     includeCounts?: boolean;
-    includeOptions?: boolean;
   };
 export type FilterMetadataQueryOptions = FilterOptionsRequest;
 
@@ -126,9 +125,6 @@ export function createAssetsApi(client: PixSimApiClient) {
       if (options?.includeCounts) {
         payload.include_counts = true;
       }
-      if (options?.includeOptions === false) {
-        payload.include_options = false;
-      }
       if (options?.include && options.include.length > 0) {
         payload.include = options.include;
       }
@@ -138,7 +134,7 @@ export function createAssetsApi(client: PixSimApiClient) {
       if (options?.limit) {
         payload.limit = options.limit;
       }
-      return client.post<FilterMetadataResponse>('/assets/filter-options', payload, { timeout: 120_000 });
+      return client.post<FilterMetadataResponse>('/assets/filter-options', payload);
     },
 
     /**

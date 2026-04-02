@@ -45,7 +45,6 @@ from .relations import PromptVersionBlock
 
 # Feedback
 from .feedback import PromptVariantFeedback
-from .tag_assertions import PromptVersionTagAssertion
 
 
 __all__ = [
@@ -70,5 +69,4 @@ __all__ = [
     "PromptVersionBlock",
     # Feedback
     "PromptVariantFeedback",
-    "PromptVersionTagAssertion",
 ]

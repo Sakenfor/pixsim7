@@ -59,7 +59,6 @@ function CodegenSection() {
   const [tasks, setTasks] = useState<CodegenTask[]>([])
   const [runResult, setRunResult] = useState<CodegenRunResult | null>(null)
   const [running, setRunning] = useState<string | null>(null)
-  const [openapiExpanded, setOpenapiExpanded] = useState(false)
 
   useEffect(() => {
     getCodegenTasks().then(setTasks)
@@ -77,83 +76,38 @@ function CodegenSection() {
     }
   }, [])
 
-  const isScopedOpenApiTask = useCallback((task: CodegenTask) => task.id.startsWith('openapi-'), [])
-  const openapiParent = tasks.find((task) => task.id === 'openapi')
-  const openapiChildren = tasks.filter(isScopedOpenApiTask)
-  const regularTasks = tasks.filter((task) => task.id !== 'openapi' && !isScopedOpenApiTask(task))
-
-  const renderTask = (task: CodegenTask, nested = false) => {
-    const dep = task.requires_service
-    const depOk = task.service_running !== false
-    const showOpenapiToggle = task.id === 'openapi' && openapiChildren.length > 0
-    const titleText = nested ? task.id.replace(/^openapi-/, '') : task.id
-    const descriptionText = nested
-      ? task.description.replace(/^Scoped OpenAPI merge for\s*/i, '').replace(/\s*tags\s*$/i, '')
-      : task.description
-
-    return (
-      <div
-        key={task.id}
-        className={`flex items-center gap-2 px-3 py-2 rounded border border-border ${nested ? 'bg-surface ml-5' : 'bg-surface-secondary'}`}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            {showOpenapiToggle && (
-              <button
-                type="button"
-                onClick={() => setOpenapiExpanded((prev) => !prev)}
-                className="text-[10px] text-gray-400 hover:text-gray-200 w-3"
-                title={openapiExpanded ? 'Collapse OpenAPI scoped tasks' : 'Expand OpenAPI scoped tasks'}
-              >
-                {openapiExpanded ? 'v' : '>'}
-              </button>
-            )}
-            {nested && <span className="text-[10px] text-gray-500">-&gt;</span>}
-            <span className="text-xs font-medium text-gray-200">{titleText}</span>
-            {!nested && task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)}
-            {showOpenapiToggle && <Badge color="gray" className="text-[9px]">{openapiChildren.length} scoped</Badge>}
-          </div>
-          <div className="text-[10px] text-gray-500 truncate">{descriptionText}</div>
-          {dep && !nested && (
-            <div className={`text-[9px] mt-0.5 flex items-center gap-1 ${depOk ? 'text-green-500' : 'text-amber-400'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${depOk ? 'bg-green-500' : 'bg-amber-500'}`} />
-              Requires {dep.label}
-              {!depOk && <span className="text-gray-500">- start it first</span>}
-            </div>
-          )}
-        </div>
-        <div className="flex gap-1 shrink-0">
-          {task.supports_check && (
-            <Button
-              size="xs"
-              className="bg-amber-700 hover:bg-amber-600 text-white w-8 px-0 text-[11px]"
-              onClick={() => run(task.id, true)}
-              disabled={!!running || !depOk}
-              title={`Check ${task.id}`}
-            >
-              {"\u2713"}
-            </Button>
-          )}
-          <Button
-            size="xs"
-            className="bg-green-700 hover:bg-green-600 text-white w-8 px-0 text-[11px]"
-            onClick={() => run(task.id, false)}
-            disabled={!!running || !depOk}
-            title={`Run ${task.id}`}
-          >
-            {running === task.id ? '...' : "\u25B6"}
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="p-3 space-y-2">
-      {openapiParent && renderTask(openapiParent)}
-      {openapiParent && openapiExpanded && openapiChildren.map((task) => renderTask(task, true))}
-      {!openapiParent && openapiChildren.map((task) => renderTask(task))}
-      {regularTasks.map((task) => renderTask(task))}
+      {tasks.map((task) => {
+        const dep = task.requires_service
+        const depOk = task.service_running !== false
+        return (
+          <div key={task.id} className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded border border-border">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-gray-200">{task.id}</span>
+                {task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)}
+              </div>
+              <div className="text-[10px] text-gray-500 truncate">{task.description}</div>
+              {dep && (
+                <div className={`text-[9px] mt-0.5 flex items-center gap-1 ${depOk ? 'text-green-500' : 'text-amber-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${depOk ? 'bg-green-500' : 'bg-amber-500'}`} />
+                  Requires {dep.label}
+                  {!depOk && <span className="text-gray-500">— start it first</span>}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {task.supports_check && (
+                <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" onClick={() => run(task.id, true)} disabled={!!running || !depOk}>Check</Button>
+              )}
+              <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => run(task.id, false)} disabled={!!running || !depOk}>
+                {running === task.id ? 'Running...' : 'Run'}
+              </Button>
+            </div>
+          </div>
+        )
+      })}
       {runResult && <ResultBox result={runResult} />}
     </div>
   )

@@ -523,7 +523,6 @@ def _builtin_plans_management() -> MetaContract:
                         },
                     },
                     "required": ["plan_id", "body"],
-                    "x-policy-ref": PLAN_AUTHORING_CONTRACT_ENDPOINT,
                 },
                 tags=["update", "planning", "git"],
             ),
@@ -584,7 +583,6 @@ def _builtin_plans_management() -> MetaContract:
                         },
                     },
                     "required": ["plan_id", "body"],
-                    "x-policy-ref": PLAN_AUTHORING_CONTRACT_ENDPOINT,
                 },
                 tags=["update", "progress", "planning", "git"],
             ),
@@ -1066,20 +1064,6 @@ def _builtin_assets_management() -> MetaContract:
             summary="Bulk tag assignment across multiple assets.",
             tags=["tags"],
         ),
-        MetaContractEndpoint(
-            id="tags.assertions_list",
-            method="GET",
-            path="/api/v1/tags/assertions/{target_type}/{target_id}",
-            summary="List target-scoped tag assertions with provenance metadata.",
-            tags=["tags"],
-        ),
-        MetaContractEndpoint(
-            id="tags.assertions_mutate",
-            method="POST",
-            path="/api/v1/tags/assertions/{target_type}/{target_id}",
-            summary="Mutate target-scoped tag assertions (add/remove/replace/sync_source).",
-            tags=["tags"],
-        ),
         # -- Enrichment --
         MetaContractEndpoint(
             id="assets.enrich",
@@ -1406,11 +1390,6 @@ def _builtin_project_files() -> MetaContract:
         owner="platform",
         summary="Read-only access to project source files for AI agents reviewing plans and code.",
         audience=["dev"],
-        provides=[
-            "project_file_read",
-            "project_file_list",
-            "project_file_search",
-        ],
         sub_endpoints=[
             MetaContractEndpoint(
                 id="files_read",

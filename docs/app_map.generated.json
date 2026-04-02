@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-04-02T12:02:33.905Z",
+  "generatedAt": "2026-03-11T03:46:30.320Z",
   "entries": [
     {
       "id": "assets",
@@ -319,7 +319,7 @@
       "id": "dev-tools",
       "title": "Dev Tools",
       "category": "dev",
-      "icon": "flask",
+      "icon": "code",
       "description": "Developer tools and diagnostics",
       "tags": [
         "dev",
@@ -404,7 +404,7 @@
       "id": "interaction-studio",
       "title": "Interaction Studio",
       "category": "game",
-      "icon": "drama",
+      "icon": "sparkles",
       "description": "Design and prototype NPC interactions visually",
       "tags": [
         "interaction",
@@ -422,7 +422,7 @@
       "id": "npc-portraits",
       "title": "NPC Portraits",
       "category": "game",
-      "icon": "users",
+      "icon": "user",
       "description": "Configure NPC expressions mapped to assets",
       "tags": [
         "npc",
@@ -440,7 +440,7 @@
       "id": "scene-plan",
       "title": "Scene Plan",
       "category": "game",
-      "icon": "clipboardList",
+      "icon": "map",
       "description": "Build a behavior-driven scene plan preview with canonical anchors, beats, and camera intent.",
       "tags": [
         "scene",
@@ -459,7 +459,7 @@
       "id": "world-context",
       "title": "World Context",
       "category": "game",
-      "icon": "target",
+      "icon": "map",
       "description": "Select active world and location for the editor context.",
       "tags": [
         "world",
@@ -474,7 +474,7 @@
       "id": "world-visual-roles",
       "title": "World Visual Roles",
       "category": "game",
-      "icon": "paintbrush",
+      "icon": "user",
       "description": "Bind gallery assets to world visual roles (portraits, POV, backgrounds)",
       "tags": [
         "world",
@@ -547,40 +547,10 @@
       "source": "apps/main/src/features/panels/domain/definitions/generation-workflow-graph/index.ts"
     },
     {
-      "id": "prompt-authoring",
-      "title": "Prompt Authoring",
-      "category": "generation",
-      "icon": "gitBranch",
-      "description": "Version-aware prompt authoring with integrated generation.",
-      "tags": [
-        "prompts",
-        "authoring",
-        "versioning",
-        "editor",
-        "quickgen"
-      ],
-      "supportsCompactMode": false,
-      "supportsMultipleInstances": false,
-      "orchestrationType": "dockview-container",
-      "defaultZone": "center",
-      "source": "apps/main/src/features/panels/domain/definitions/prompt-authoring/index.ts"
-    },
-    {
-      "id": "prompt-authoring-editor",
-      "title": "Prompt Editor",
-      "category": "generation",
-      "icon": "edit",
-      "supportsMultipleInstances": false,
-      "availableIn": [
-        "prompt-authoring"
-      ],
-      "source": "apps/main/src/features/panels/domain/definitions/prompt-authoring-editor/index.ts"
-    },
-    {
       "id": "prompt-library-inspector",
       "title": "Prompt Library",
       "category": "generation",
-      "icon": "analysis",
+      "icon": "library",
       "description": "Inspect content packs, prompt templates, and blocks with package-focused diagnostics.",
       "tags": [
         "prompts",
@@ -593,17 +563,6 @@
       "supportsCompactMode": false,
       "supportsMultipleInstances": false,
       "source": "apps/main/src/features/panels/domain/definitions/prompt-library-inspector/index.ts"
-    },
-    {
-      "id": "prompt-authoring-navigator",
-      "title": "Prompt Navigator",
-      "category": "generation",
-      "icon": "list",
-      "supportsMultipleInstances": false,
-      "availableIn": [
-        "prompt-authoring"
-      ],
-      "source": "apps/main/src/features/panels/domain/definitions/prompt-authoring-navigator/index.ts"
     },
     {
       "id": "quickGenerate",
@@ -625,7 +584,7 @@
       "id": "quickgen-asset",
       "title": "QuickGen Asset",
       "category": "generation",
-      "icon": "camera",
+      "icon": "image",
       "description": "Asset input panel for quick generation workflows",
       "tags": [
         "generation",
@@ -642,7 +601,7 @@
       "id": "quickgen-blocks",
       "title": "QuickGen Blocks",
       "category": "generation",
-      "icon": "blocks",
+      "icon": "grid",
       "description": "Prompt companion blocks for quick generation",
       "tags": [
         "generation",
@@ -659,7 +618,7 @@
       "id": "quickgen-history",
       "title": "QuickGen History",
       "category": "generation",
-      "icon": "history",
+      "icon": "clock",
       "description": "Asset history panel for quick generation workflows",
       "tags": [
         "generation",
@@ -707,7 +666,7 @@
       "id": "recent-generations",
       "title": "Recent Assets",
       "category": "generation",
-      "icon": "history",
+      "icon": "sparkles",
       "description": "Browse recently generated assets",
       "tags": [
         "generation",
@@ -741,21 +700,10 @@
       "source": "apps/main/src/features/panels/domain/definitions/scene-prep/index.ts"
     },
     {
-      "id": "prompt-authoring-assets",
-      "title": "Version Assets",
-      "category": "generation",
-      "icon": "image",
-      "supportsMultipleInstances": false,
-      "availableIn": [
-        "prompt-authoring"
-      ],
-      "source": "apps/main/src/features/panels/domain/definitions/prompt-authoring-assets/index.ts"
-    },
-    {
       "id": "block-explorer",
       "title": "Block Explorer",
       "category": "prompts",
-      "icon": "blocks",
+      "icon": "grid",
       "description": "Browse and search prompt blocks from content packs",
       "tags": [
         "blocks",
@@ -772,7 +720,7 @@
       "id": "block-matrix",
       "title": "Block Matrix",
       "category": "prompts",
-      "icon": "barChart",
+      "icon": "grid",
       "description": "Explore prompt block coverage with 2D matrix views",
       "tags": [
         "blocks",
@@ -790,7 +738,7 @@
       "id": "chain-builder",
       "title": "Chain Builder",
       "category": "prompts",
-      "icon": "arrowRightLeft",
+      "icon": "layers",
       "description": "Build and execute multi-step generation chains (txt2img → refine → upscale)",
       "tags": [
         "chains",
@@ -847,7 +795,7 @@
       "id": "edge-effects",
       "title": "Edge Effects",
       "category": "scene",
-      "icon": "wand2",
+      "icon": "zap",
       "description": "Inspect and edit edge effects for the active scene graph.",
       "tags": [
         "scene",
@@ -866,12 +814,11 @@
       "title": "Scene Builder",
       "category": "scene",
       "icon": "layoutGrid",
-      "description": "Legacy entrypoint that opens Scene Management on the Builder tab",
+      "description": "Build and edit individual scenes",
       "tags": [
         "scene",
         "builder",
-        "editor",
-        "legacy"
+        "editor"
       ],
       "supportsCompactMode": false,
       "supportsMultipleInstances": false,
@@ -894,14 +841,22 @@
       "source": "apps/main/src/features/panels/domain/definitions/scene-management/index.ts"
     },
     {
-      "id": "scene-management-nav",
-      "title": "Scene Navigation",
-      "category": "scene",
-      "icon": "folderTree",
-      "description": "Detached scene management navigation sidebar",
+      "id": "controlCenter",
+      "title": "Control Center",
+      "category": "system",
+      "icon": "sliders",
+      "description": "Control Center dock and generation modules",
+      "tags": [
+        "control-center",
+        "generation",
+        "modules"
+      ],
       "internal": true,
+      "supportsCompactMode": false,
       "supportsMultipleInstances": false,
-      "source": "apps/main/src/features/panels/domain/definitions/scene-management-nav/index.ts"
+      "orchestrationType": "dockview-container",
+      "defaultZone": "left",
+      "source": "apps/main/src/features/panels/domain/definitions/control-center/index.ts"
     },
     {
       "id": "health",
@@ -935,25 +890,10 @@
       "source": "apps/main/src/features/panels/domain/definitions/providers/index.ts"
     },
     {
-      "id": "ai-assistant",
-      "title": "AI Assistant",
-      "category": "tools",
-      "icon": "messageSquare",
-      "description": "Chat with a connected AI agent — ask questions, run shortcuts, get help",
-      "tags": [
-        "ai",
-        "assistant",
-        "chat",
-        "claude"
-      ],
-      "defaultZone": "right",
-      "source": "apps/main/src/features/panels/domain/definitions/ai-assistant/index.ts"
-    },
-    {
       "id": "asset-sets",
       "title": "Asset Sets",
       "category": "tools",
-      "icon": "package",
+      "icon": "layers",
       "description": "Create and manage named asset collections (manual or smart/tag-based) for use with generation combination strategies.",
       "tags": [
         "assets",
@@ -1004,7 +944,7 @@
       "id": "game-tools",
       "title": "Game Tools",
       "category": "tools",
-      "icon": "box",
+      "icon": "grid",
       "description": "Browse world tools, interactions, HUD widgets, and dev plugins",
       "tags": [
         "game",
@@ -1077,7 +1017,7 @@
       "id": "hud-designer",
       "title": "HUD Designer",
       "category": "tools",
-      "icon": "layout",
+      "icon": "layoutGrid",
       "description": "Design HUD layouts using widget compositions",
       "tags": [
         "hud",
@@ -1106,6 +1046,24 @@
         "asset-viewer"
       ],
       "source": "apps/main/src/features/panels/domain/definitions/info/index.ts"
+    },
+    {
+      "id": "interactive-surface",
+      "title": "Interactive Surface",
+      "category": "tools",
+      "icon": "layers",
+      "description": "Interactive overlay for mask creation, annotations, and image tagging",
+      "tags": [
+        "interactive",
+        "surface",
+        "mask",
+        "annotation",
+        "inpaint",
+        "overlay"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/interactive-surface/index.ts"
     },
     {
       "id": "mini-gallery",
@@ -1145,7 +1103,7 @@
       "id": "npc-brain-lab",
       "title": "NPC Brain Lab",
       "category": "tools",
-      "icon": "brain",
+      "icon": "bot",
       "description": "NPC behavior testing and debugging",
       "tags": [
         "npc",
@@ -1231,28 +1189,6 @@
       "source": "apps/main/src/features/panels/domain/definitions/tool-playground/index.ts"
     },
     {
-      "id": "ui-studio",
-      "title": "UI Studio",
-      "category": "tools",
-      "icon": "columns",
-      "description": "Unified authoring panel for surfaces, HUD layout editing, and panel-group runtime controls.",
-      "tags": [
-        "ui",
-        "studio",
-        "surfaces",
-        "hud",
-        "panel-groups",
-        "widgets",
-        "authoring"
-      ],
-      "supportsCompactMode": false,
-      "supportsMultipleInstances": false,
-      "availableIn": [
-        "workspace"
-      ],
-      "source": "apps/main/src/features/panels/domain/definitions/ui-studio/index.ts"
-    },
-    {
       "id": "panel-browser",
       "title": "Panel Browser",
       "category": "utilities",
@@ -1326,6 +1262,24 @@
       "source": "apps/main/src/features/panels/domain/definitions/arc-graph/index.ts"
     },
     {
+      "id": "assetViewer",
+      "title": "Asset Viewer",
+      "category": "workspace",
+      "icon": "image",
+      "description": "Asset viewer with docked sub-panels",
+      "tags": [
+        "assets",
+        "viewer",
+        "media"
+      ],
+      "internal": true,
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "dockview-container",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/asset-viewer/index.ts"
+    },
+    {
       "id": "gallery",
       "title": "Gallery",
       "category": "workspace",
@@ -1396,7 +1350,7 @@
       "id": "media-preview",
       "title": "Media Preview",
       "category": "workspace",
-      "icon": "film",
+      "icon": "image",
       "description": "Lightweight media preview panel for selected assets",
       "tags": [
         "media",
@@ -1461,7 +1415,7 @@
     {
       "id": "graph-system",
       "name": "Graph System Module",
-      "priority": 70,
+      "priority": 75,
       "dependsOn": [
         "plugin-bootstrap"
       ],
@@ -1518,9 +1472,6 @@
     {
       "id": "automation",
       "name": "Automation",
-      "dependsOn": [
-        "workspace"
-      ],
       "hasInitialize": false,
       "hasCleanup": false,
       "hasIsReady": false,
@@ -1571,9 +1522,6 @@
     {
       "id": "game",
       "name": "Game World",
-      "dependsOn": [
-        "workspace"
-      ],
       "hasInitialize": false,
       "hasCleanup": false,
       "hasIsReady": false,
@@ -1593,24 +1541,12 @@
     {
       "id": "npcs",
       "name": "NPCs",
-      "dependsOn": [
-        "workspace"
-      ],
       "hasInitialize": false,
       "hasCleanup": false,
       "hasIsReady": false,
       "hasPage": true,
       "route": "/npc-portraits",
       "source": "apps/main/src/features/npcs/module.ts"
-    },
-    {
-      "id": "panels-module",
-      "name": "Panels Module",
-      "hasInitialize": false,
-      "hasCleanup": false,
-      "hasIsReady": false,
-      "hasPage": false,
-      "source": "apps/main/src/features/panels/module.ts"
     },
     {
       "id": "plugins",
@@ -1625,9 +1561,6 @@
     {
       "id": "workspace",
       "name": "Scene Builder",
-      "dependsOn": [
-        "graph-system"
-      ],
       "hasInitialize": false,
       "hasCleanup": false,
       "hasIsReady": false,
@@ -1749,29 +1682,9 @@
       "source": "apps/main/src/features/controlCenter/stores/controlCenterStore.ts"
     },
     {
-      "name": "useCubeHighlightStore",
+      "name": "useCubeSettingsStore",
       "feature": "cubes",
-      "source": "apps/main/src/features/cubes/stores/cubeHighlightStore.ts"
-    },
-    {
-      "name": "useCubeInstanceStore",
-      "feature": "cubes",
-      "source": "apps/main/src/features/cubes/stores/cubeInstanceStore.ts"
-    },
-    {
-      "name": "useDockPanelPrefsStore",
-      "feature": "docks",
-      "source": "apps/main/src/features/docks/stores/dockPanelPrefsStore.ts"
-    },
-    {
-      "name": "useDockUiStore",
-      "feature": "docks",
-      "source": "apps/main/src/features/docks/stores/dockUiStore.ts"
-    },
-    {
-      "name": "useAuthoringHintsStore",
-      "feature": "generation",
-      "source": "apps/main/src/features/generation/stores/authoringHintsStore.ts"
+      "source": "apps/main/src/features/cubes/stores/cubeSettingsStore.ts"
     },
     {
       "name": "useFanoutPresetStore",
@@ -1971,11 +1884,6 @@
       "source": "apps/main/src/features/assets/hooks/useAssetsController.ts"
     },
     {
-      "name": "useAssetUrls",
-      "feature": "assets",
-      "source": "apps/main/src/features/assets/lib/assetUrlResolver.ts"
-    },
-    {
       "name": "useAssetViewer",
       "feature": "assets",
       "source": "apps/main/src/features/assets/hooks/useAssetViewer.ts"
@@ -2101,11 +2009,6 @@
       "source": "apps/main/src/features/contextHub/hooks/contextHubContext.ts"
     },
     {
-      "name": "useEffectiveAuthoringIds",
-      "feature": "contextHub",
-      "source": "apps/main/src/features/contextHub/hooks/useEffectiveAuthoringIds.ts"
-    },
-    {
       "name": "usePanelContext",
       "feature": "contextHub",
       "source": "apps/main/src/features/contextHub/hooks/useCapability.ts"
@@ -2161,21 +2064,6 @@
       "source": "apps/main/src/features/cubes/integration/contextHub.ts"
     },
     {
-      "name": "useCubeIndicator",
-      "feature": "cubes",
-      "source": "apps/main/src/features/cubes/components/CubeIndicatorContext.tsx"
-    },
-    {
-      "name": "useDockPanelPrefs",
-      "feature": "docks",
-      "source": "apps/main/src/features/docks/stores/dockPanelPrefsStore.ts"
-    },
-    {
-      "name": "useDockState",
-      "feature": "docks",
-      "source": "apps/main/src/features/docks/stores/dockUiStore.ts"
-    },
-    {
       "name": "useClientFilterPersistence",
       "feature": "gallery",
       "source": "apps/main/src/features/gallery/lib/useClientFilterPersistence.ts"
@@ -2214,6 +2102,11 @@
       "name": "useBatchCancelGenerations",
       "feature": "generation",
       "source": "apps/main/src/features/generation/hooks/useBatchCancelGenerations.ts"
+    },
+    {
+      "name": "useClickOutside",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/components/generationSettingsPanel/constants.ts"
     },
     {
       "name": "useGenerationDevController",
@@ -2426,11 +2319,6 @@
       "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
     },
     {
-      "name": "useDetachableSidebar",
-      "feature": "panels",
-      "source": "apps/main/src/features/panels/lib/useDetachableSidebar.ts"
-    },
-    {
       "name": "useInitializePanelSystem",
       "feature": "panels",
       "source": "apps/main/src/features/panels/hooks/usePanelSystemInitialization.ts"
@@ -2446,9 +2334,19 @@
       "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
     },
     {
-      "name": "usePanelCatalogBootstrap",
+      "name": "usePanelGroup",
       "feature": "panels",
-      "source": "apps/main/src/features/panels/hooks/usePanelCatalogBootstrap.ts"
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
+    },
+    {
+      "name": "usePanelGroups",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
+    },
+    {
+      "name": "usePanelGroupsByCategory",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
     },
     {
       "name": "usePanelIdentity",
@@ -2586,11 +2484,6 @@
       "source": "apps/main/src/features/prompts/hooks/usePromptAiEdit.ts"
     },
     {
-      "name": "usePromptAuthoring",
-      "feature": "prompts",
-      "source": "apps/main/src/features/prompts/context/PromptAuthoringContext.tsx"
-    },
-    {
       "name": "usePromptHistory",
       "feature": "prompts",
       "source": "apps/main/src/features/prompts/hooks/usePromptHistory.ts"
@@ -2639,11 +2532,6 @@
       "name": "useGenerationPlugins",
       "feature": "providers",
       "source": "apps/main/src/features/providers/hooks/useGenerationPlugins.tsx"
-    },
-    {
-      "name": "useModelPromotions",
-      "feature": "providers",
-      "source": "apps/main/src/features/providers/hooks/useModelPromotions.ts"
     },
     {
       "name": "useOperationSpec",

@@ -49,8 +49,8 @@ const DEFAULT_AUTO_TAGS: AutoTagsPreferences = {
 };
 
 const DEFAULT_ANALYZER: AnalyzerPreferences = {
-  auto_apply_tags: false,
-  tag_prefix: 'prompt:',
+  auto_apply_tags: true,
+  tag_prefix: '',
 };
 
 // =============================================================================
@@ -223,14 +223,14 @@ const analysisTab: SettingTab = {
           type: 'toggle',
           label: 'Apply Analysis Tags',
           description: 'Automatically tag generated assets with extracted tags (e.g., "has:character", "tone:soft").',
-          defaultValue: false,
+          defaultValue: true,
         },
         {
           id: 'analyzer.tag_prefix',
           type: 'text',
           label: 'Tag Prefix',
           description: 'Optional prefix for analysis tags (e.g., "prompt:" -> "prompt:has:character").',
-          defaultValue: 'prompt:',
+          defaultValue: '',
           placeholder: 'e.g., prompt:',
         },
       ],
