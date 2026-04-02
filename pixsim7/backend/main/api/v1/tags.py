@@ -13,7 +13,8 @@ from typing import Optional, List
 from sqlmodel import Session
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.tag_service import TagService
+from pixsim7.backend.main.services.tag import TagRegistry, TagAssignment
+from pixsim7.backend.main.domain.assets.tag import AssetTag
 from pixsim7.backend.main.shared.schemas.tag_schemas import (
     TagSummary,
     TagDetail,
@@ -28,9 +29,8 @@ from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOpe
 router = APIRouter()
 
 
-def get_tag_service(db: DatabaseSession) -> TagService:
-    """Dependency to get TagService instance."""
-    return TagService(db)
+def get_tag_registry(db: DatabaseSession) -> TagRegistry:
+    return TagRegistry(db)
 
 
 # ===== TAG CRUD =====
@@ -41,7 +41,7 @@ async def list_tags(
     q: Optional[str] = Query(None, description="Search query (name or slug)"),
     limit: int = Query(50, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    tag_service: TagService = Depends(get_tag_service),
+    registry: TagRegistry = Depends(get_tag_registry),
 ):
     """
     List tags with optional filters.
@@ -52,7 +52,7 @@ async def list_tags(
     - GET /tags?q=alice → tags matching 'alice'
     """
     try:
-        tags = await tag_service.list_tags(
+        tags = await registry.list_tags(
             namespace=namespace,
             q=q,
             limit=limit,
@@ -76,7 +76,7 @@ async def list_tags(
 @router.get("/tags/{tag_id}", response_model=TagDetail)
 async def get_tag(
     tag_id: int,
-    tag_service: TagService = Depends(get_tag_service),
+    registry: TagRegistry = Depends(get_tag_registry),
 ):
     """
     Get detailed information about a specific tag.
@@ -89,10 +89,11 @@ async def get_tag(
     - Usage count
     """
     try:
-        tag = await tag_service.get_tag_by_id(tag_id)
+        tag = await registry.get_tag_by_id(tag_id)
 
-        # Get usage count
-        usage_count = await tag_service.get_tag_usage_count(tag_id)
+        # Get usage count (assets only for now; extend when more entity types are wired)
+        asset_tags = TagAssignment(registry.db, AssetTag, "asset_id")
+        usage_count = await asset_tags.usage_count(tag_id)
 
         # Build response
         response = TagDetail.model_validate(tag)
@@ -100,12 +101,12 @@ async def get_tag(
 
         # Load parent tag if exists
         if tag.parent_tag_id:
-            parent = await tag_service.get_tag_by_id(tag.parent_tag_id)
+            parent = await registry.get_tag_by_id(tag.parent_tag_id)
             response.parent_tag = TagSummary.model_validate(parent)
 
         # Load canonical tag if exists
         if tag.canonical_tag_id:
-            canonical = await tag_service.get_tag_by_id(tag.canonical_tag_id)
+            canonical = await registry.get_tag_by_id(tag.canonical_tag_id)
             response.canonical_tag = TagSummary.model_validate(canonical)
 
         return response
@@ -119,7 +120,7 @@ async def get_tag(
 @router.post("/tags", response_model=TagDetail, status_code=201)
 async def create_tag(
     request: CreateTagRequest,
-    tag_service: TagService = Depends(get_tag_service),
+    registry: TagRegistry = Depends(get_tag_registry),
 ):
     """
     Create a new tag.
@@ -136,7 +137,7 @@ async def create_tag(
     ```
     """
     try:
-        tag = await tag_service.create_tag(
+        tag = await registry.create_tag(
             namespace=request.namespace,
             name=request.name,
             display_name=request.display_name,
@@ -156,7 +157,7 @@ async def create_tag(
 async def update_tag(
     tag_id: int,
     request: UpdateTagRequest,
-    tag_service: TagService = Depends(get_tag_service),
+    registry: TagRegistry = Depends(get_tag_registry),
 ):
     """
     Update tag fields.
@@ -170,7 +171,7 @@ async def update_tag(
     ```
     """
     try:
-        tag = await tag_service.update_tag(
+        tag = await registry.update_tag(
             tag_id=tag_id,
             display_name=request.display_name,
             parent_tag_id=request.parent_tag_id,
@@ -191,7 +192,7 @@ async def update_tag(
 async def create_alias(
     tag_id: int,
     request: CreateAliasRequest,
-    tag_service: TagService = Depends(get_tag_service),
+    registry: TagRegistry = Depends(get_tag_registry),
 ):
     """
     Create an alias tag pointing to this canonical tag.
@@ -207,7 +208,7 @@ async def create_alias(
     This creates a new tag 'char:alice' that resolves to 'character:alice'.
     """
     try:
-        alias_tag = await tag_service.create_alias(
+        alias_tag = await registry.create_alias(
             canonical_tag_id=tag_id,
             alias_slug=request.alias_slug,
             display_name=request.display_name,

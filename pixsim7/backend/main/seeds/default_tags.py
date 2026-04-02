@@ -18,17 +18,17 @@ async def seed_default_tags(db: AsyncSession) -> int:
     Returns:
         Number of newly created tags.
     """
-    from pixsim7.backend.main.services.tag_service import TagService
+    from pixsim7.backend.main.services.tag import TagRegistry
 
-    tag_service = TagService(db)
+    registry = TagRegistry(db)
     created = 0
 
     for tag_def in DEFAULT_TAGS:
-        existing = await tag_service.get_tag_by_slug(
+        existing = await registry.get_tag_by_slug(
             tag_def["slug"], resolve_canonical=False
         )
         if not existing:
-            await tag_service.get_or_create_tag(
+            await registry.get_or_create_tag(
                 slug=tag_def["slug"],
                 display_name=tag_def.get("display_name"),
             )

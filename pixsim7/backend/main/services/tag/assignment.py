@@ -6,15 +6,15 @@ Usage:
     asset_tags = TagAssignment(db, AssetTag, "asset_id")
     await asset_tags.assign(asset_id, ["character:alice", "style:anime"])
 
-    # Prompts (once PromptTag join table exists)
-    prompt_tags = TagAssignment(db, PromptTag, "prompt_id")
-    await prompt_tags.assign(prompt_id, ["has:character", "location:park"])
+    # Prompt families
+    prompt_tags = TagAssignment(db, PromptFamilyTag, "family_id")
+    await prompt_tags.assign(family_id, ["has:character", "location:park"])
 
 The join model must have two columns:
     - entity FK column (named via entity_fk, e.g. "asset_id")
     - tag_id (FK to tag.id)
 """
-from typing import List
+from typing import Any, List
 from sqlmodel import select, func
 from sqlalchemy import distinct
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,7 @@ class TagAssignment:
 
     async def assign(
         self,
-        entity_id: int,
+        entity_id: Any,
         tag_slugs: List[str],
         auto_create: bool = True,
     ) -> List[Tag]:
@@ -83,7 +83,7 @@ class TagAssignment:
 
     async def remove(
         self,
-        entity_id: int,
+        entity_id: Any,
         tag_slugs: List[str],
     ) -> List[Tag]:
         """
@@ -114,7 +114,7 @@ class TagAssignment:
 
     async def replace(
         self,
-        entity_id: int,
+        entity_id: Any,
         tag_slugs: List[str],
         auto_create: bool = True,
     ) -> List[Tag]:
@@ -129,7 +129,7 @@ class TagAssignment:
 
     # ===== QUERY =====
 
-    async def get_tags(self, entity_id: int) -> List[Tag]:
+    async def get_tags(self, entity_id: Any) -> List[Tag]:
         """Get all tags for a single entity, sorted by namespace + name."""
         stmt = (
             select(Tag)
@@ -140,7 +140,7 @@ class TagAssignment:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_tags_batch(self, entity_ids: List[int]) -> dict[int, List[Tag]]:
+    async def get_tags_batch(self, entity_ids: List[Any]) -> dict[Any, List[Tag]]:
         """
         Batch-load tags for multiple entities in a single query.
 
@@ -157,7 +157,7 @@ class TagAssignment:
             .order_by(self._entity_col, Tag.namespace, Tag.name)
         )
         result = await self.db.execute(stmt)
-        tags_map: dict[int, List[Tag]] = {eid: [] for eid in entity_ids}
+        tags_map: dict[Any, List[Tag]] = {eid: [] for eid in entity_ids}
         for entity_id, tag in result.all():
             tags_map[entity_id].append(tag)
         return tags_map

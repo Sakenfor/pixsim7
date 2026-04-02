@@ -8,7 +8,8 @@ from pixsim7.backend.main.api.dependencies import DatabaseSession
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
-from pixsim7.backend.main.services.tag_service import TagService
+from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.domain.assets.tag import AssetTag
 
 
 def get_effective_owner_user_id(user) -> int:
@@ -55,8 +56,8 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     Returns:
         AssetResponse with tags populated
     """
-    tag_service = TagService(db)
-    tags = await tag_service.get_asset_tags(asset.id)
+    asset_tags = TagAssignment(db, AssetTag, "asset_id")
+    tags = await asset_tags.get_tags(asset.id)
 
     ar = AssetResponse.model_validate(asset)
     ar.provider_status = _compute_provider_status(asset)
@@ -72,8 +73,8 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
     if not assets:
         return []
 
-    tag_service = TagService(db)
-    tags_map = await tag_service.get_tags_for_assets([a.id for a in assets])
+    asset_tags = TagAssignment(db, AssetTag, "asset_id")
+    tags_map = await asset_tags.get_tags_batch([a.id for a in assets])
 
     responses: List[AssetResponse] = []
     for asset in assets:

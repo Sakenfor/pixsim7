@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import AssignTagsRequest
-from pixsim7.backend.main.services.tag_service import TagService
+from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.domain.assets.tag import AssetTag
 from pixsim7.backend.main.domain.enums import MediaType
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 from pixsim_logging import get_logger
@@ -38,18 +39,18 @@ async def assign_tags_to_asset(
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
-        tag_service = TagService(db)
+        asset_tags = TagAssignment(db, AssetTag, "asset_id")
 
         if request.add:
-            await tag_service.assign_tags_to_asset(
-                asset_id=asset_id,
+            await asset_tags.assign(
+                entity_id=asset_id,
                 tag_slugs=request.add,
                 auto_create=True,
             )
 
         if request.remove:
-            await tag_service.remove_tags_from_asset(
-                asset_id=asset_id,
+            await asset_tags.remove(
+                entity_id=asset_id,
                 tag_slugs=request.remove,
             )
 
@@ -87,7 +88,7 @@ async def analyze_asset_for_tags(
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
-        tag_service = TagService(db)
+        asset_tags = TagAssignment(db, AssetTag, "asset_id")
         suggestions = []
 
         # Add media type tag
@@ -120,7 +121,7 @@ async def analyze_asset_for_tags(
                 suggestions.append("long")
             suggestions.append("cinematic")
 
-        existing_tags = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
+        existing_tags = [t.slug for t in await asset_tags.get_tags(asset.id)]
 
         return {
             "suggested_tags": suggestions,
