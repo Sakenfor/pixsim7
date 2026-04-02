@@ -14,6 +14,7 @@ import { interactionRegistry } from '@pixsim7/game.engine';
 import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 
 // Re-export for backward compatibility
@@ -72,7 +73,9 @@ const loadedPlugins = new Set<string>();
  */
 export async function loadPluginInteractions(): Promise<number> {
   try {
-    const response = await fetch('/api/v1/admin/plugins/frontend/all');
+    const response = await fetch('/api/v1/admin/plugins/frontend/all', {
+      headers: withCorrelationHeaders(undefined, 'plugins:dynamic-interaction-loader'),
+    });
 
     if (!response.ok) {
       console.warn('[dynamicLoader] Failed to fetch plugin manifests:', response.status);
@@ -146,6 +149,7 @@ export async function isDynamicLoadingAvailable(): Promise<boolean> {
   try {
     const response = await fetch('/api/v1/admin/plugins/frontend/all', {
       method: 'HEAD',
+      headers: withCorrelationHeaders(undefined, 'plugins:dynamic-interaction-loader:head'),
     });
     return response.ok;
   } catch {

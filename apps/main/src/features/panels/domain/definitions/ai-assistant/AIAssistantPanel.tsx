@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { pixsimClient, API_BASE_URL } from '@lib/api/client';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { Icon, type IconName } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
@@ -277,7 +278,10 @@ function flushPendingSyncs() {
       const url = `${API_BASE_URL}/meta/agents/chat-sessions/${sessionId}/messages`;
       fetch(url, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCorrelationHeaders(
+          { 'Content-Type': 'application/json' },
+          'panel:ai-assistant:flush-pending-syncs',
+        ),
         body: JSON.stringify({ messages: persistable }),
         keepalive: true,
       }).catch(() => {});
@@ -1954,8 +1958,10 @@ export function AIAssistantPanel() {
   const bridgeWasConnectedRef = useRef(false);
   const bridgeManualStopRef = useRef(false);
   useEffect(() => {
+    const pollHeaders = { 'X-Client-Surface': 'panel:ai-assistant' };
     const poll = () => {
-      pixsimClient.get<BridgeStatus>('/meta/agents/bridge').then((status) => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      pixsimClient.get<BridgeStatus>('/meta/agents/bridge', { headers: pollHeaders }).then((status) => {
         const wasConnected = bridgeWasConnectedRef.current;
         const isConnected = status.connected > 0;
         bridgeWasConnectedRef.current = isConnected;

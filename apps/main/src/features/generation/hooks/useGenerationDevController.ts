@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 import type { OperationType } from '@/types/operations';
 
@@ -74,7 +75,9 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
       params.set('limit', '50');
       params.set('_', 'dev-list');
 
-      const response = await fetch(`/api/v1/generations?${params}`);
+      const response = await fetch(`/api/v1/generations?${params}`, {
+        headers: withCorrelationHeaders(undefined, 'panel:generation-dev:list'),
+      });
       const data = await response.json();
       const gens: Generation[] = data.generations || [];
       setGenerations(gens);
@@ -95,7 +98,9 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
 
   const loadProviderHealth = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/generations/telemetry/providers?_=health');
+      const response = await fetch('/api/v1/generations/telemetry/providers?_=health', {
+        headers: withCorrelationHeaders(undefined, 'panel:generation-dev:provider-health'),
+      });
       const data = await response.json();
       setProviderHealth(data.providers || []);
     } catch (error) {
@@ -105,7 +110,9 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
 
   const loadCacheStats = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/generations/cache/stats?_=cache');
+      const response = await fetch('/api/v1/generations/cache/stats?_=cache', {
+        headers: withCorrelationHeaders(undefined, 'panel:generation-dev:cache-stats'),
+      });
       const data = await response.json();
       setCacheStats(data);
     } catch (error) {

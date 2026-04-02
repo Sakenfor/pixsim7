@@ -23,6 +23,15 @@ class LogService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    def _trace_id_filter_clause(self, trace_id: str):
+        """Build a dialect-aware SQL clause filtering by extra.trace_id."""
+        bind = self.db.get_bind()
+        dialect = bind.dialect.name if bind is not None else ""
+        if dialect == "sqlite":
+            return text("json_extract(extra, '$.trace_id') = :trace_id").bindparams(trace_id=trace_id)
+        # PostgreSQL / default
+        return text("extra->>'trace_id' = :trace_id").bindparams(trace_id=trace_id)
+
     def _normalize_log_data(self, log_data: dict) -> dict:
         """Normalize inbound log payload into LogEntry constructor kwargs."""
         timestamp = log_data.get("timestamp")
@@ -105,6 +114,7 @@ class LogService:
         level: Optional[str] = None,
         job_id: Optional[int] = None,
         request_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
         stage: Optional[str] = None,
         stage_prefix: Optional[str] = None,
         channel: Optional[str] = None,
@@ -124,6 +134,7 @@ class LogService:
             level: Filter by log level
             job_id: Filter by job ID
             request_id: Filter by request ID
+            trace_id: Filter by trace ID
             stage: Filter by pipeline stage (exact match)
             stage_prefix: Filter by pipeline stage prefix (e.g. 'provider')
             channel: Filter by log channel (cron, pipeline, api, system)
@@ -148,6 +159,8 @@ class LogService:
             filters.append(LogEntry.job_id == job_id)
         if request_id:
             filters.append(LogEntry.request_id == request_id)
+        if trace_id:
+            filters.append(self._trace_id_filter_clause(trace_id))
         if stage:
             filters.append(LogEntry.stage == stage)
         elif stage_prefix:
@@ -234,6 +247,25 @@ class LogService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def get_trace_id_trace(self, trace_id: str) -> List[LogEntry]:
+        """
+        Get complete log trace for a trace ID.
+
+        Args:
+            trace_id: Trace ID to trace
+
+        Returns:
+            List of log entries for the trace ID
+        """
+        query = (
+            select(LogEntry)
+            .where(self._trace_id_filter_clause(trace_id))
+            .order_by(LogEntry.timestamp)
+        )
+
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
     async def cleanup_old_logs(self, days: int = 30) -> int:
         """
         Delete logs older than specified days.
@@ -304,6 +336,7 @@ class LogService:
         # Known columns from LogEntry model
         known_cols: Set[str] = {
             "id", "timestamp", "level", "service", "env", "msg", "request_id",
+            "trace_id",
             "job_id", "submission_id", "generation_id", "provider_job_id",
             "provider_id", "operation_type", "stage", "domain", "channel", "user_id", "error",
             "error_type", "duration_ms", "attempt", "extra", "created_at"
@@ -399,6 +432,7 @@ class LogService:
         stage: Optional[str] = None,
         domain: Optional[str] = None,
         request_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
         job_id: Optional[int] = None,
         user_id: Optional[int] = None,
         limit: int = 100
@@ -416,6 +450,7 @@ class LogService:
             operation_type: Filter by operation type
             stage: Filter by pipeline stage
             request_id: Filter by request ID
+            trace_id: Filter by trace ID
             job_id: Filter by job ID
             user_id: Filter by user ID
             limit: Maximum number of distinct values to return
@@ -435,6 +470,8 @@ class LogService:
         }
 
         is_base = field in base_cols
+        bind = self.db.get_bind()
+        dialect = bind.dialect.name if bind is not None else ""
 
         # Build WHERE clause from filters
         where_clauses: List[str] = []
@@ -453,6 +490,13 @@ class LogService:
         add_clause("request_id", request_id)
         add_clause("job_id", job_id)
         add_clause("user_id", user_id)
+
+        if trace_id is not None:
+            params["trace_id_filter"] = trace_id
+            if dialect == "sqlite":
+                where_clauses.append("json_extract(extra, '$.trace_id') = :trace_id_filter")
+            else:
+                where_clauses.append("extra->>'trace_id' = :trace_id_filter")
 
         where_sql = ""
         if where_clauses:
@@ -474,21 +518,23 @@ class LogService:
                 )
         else:
             # Query dynamic key from 'extra' JSON field
-            # Use PostgreSQL JSON operators: ? for key existence, ->> for text extraction
-            extra_filter = "extra ? :extra_key"
             params["extra_key"] = field
+            if dialect == "sqlite":
+                value_expr = "json_extract(extra, '$.' || :extra_key)"
+                extra_filter = f"{value_expr} IS NOT NULL"
+            else:
+                value_expr = "extra->>:extra_key"
+                extra_filter = f"{value_expr} IS NOT NULL"
 
             if where_sql:
                 sql = text(
-                    f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries "
-                    f"{where_sql} AND {extra_filter} AND extra->>:extra_key IS NOT NULL "
-                    f"ORDER BY value LIMIT :limit"
+                    f"SELECT DISTINCT {value_expr} AS value FROM log_entries "
+                    f"{where_sql} AND {extra_filter} ORDER BY value LIMIT :limit"
                 )
             else:
                 sql = text(
-                    f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries "
-                    f"WHERE {extra_filter} AND extra->>:extra_key IS NOT NULL "
-                    f"ORDER BY value LIMIT :limit"
+                    f"SELECT DISTINCT {value_expr} AS value FROM log_entries "
+                    f"WHERE {extra_filter} ORDER BY value LIMIT :limit"
                 )
 
         # Execute query

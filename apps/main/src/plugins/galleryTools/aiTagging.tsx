@@ -11,6 +11,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
 
@@ -30,7 +31,9 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
 
     try {
       // Call tag suggestion endpoint
-      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/suggest`);
+      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/suggest`, {
+        headers: withCorrelationHeaders(undefined, 'gallery:ai-tagging:suggest'),
+      });
 
       if (!response.ok) {
         throw new Error('Failed to analyze asset');
@@ -67,9 +70,12 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
       // Call canonical tag assignment endpoint
       const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/assign`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withCorrelationHeaders(
+          {
+            'Content-Type': 'application/json',
+          },
+          'gallery:ai-tagging:assign',
+        ),
         body: JSON.stringify({ add: tags }),
       });
 

@@ -10,6 +10,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
 import { authService } from '@lib/auth';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,7 +61,7 @@ function authHeaders(): Record<string, string> {
 async function apiFetch<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, {
     method,
-    headers: authHeaders(),
+    headers: withCorrelationHeaders(authHeaders(), 'settings:content-packs-dashboard'),
   });
   if (!res.ok) {
     const text = await res.text();

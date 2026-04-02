@@ -39,22 +39,32 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     This allows tracing all logs related to a specific request.
     """
 
+    @staticmethod
+    def _header_or_new(request: Request, header_name: str) -> str:
+        raw = (request.headers.get(header_name) or "").strip()
+        if raw and len(raw) <= 200:
+            return raw
+        return str(uuid.uuid4())
+
     async def dispatch(self, request: Request, call_next) -> Response:
-        # Generate unique request ID
-        request_id = str(uuid.uuid4())
+        # Reuse inbound correlation headers when present.
+        request_id = self._header_or_new(request, "x-request-id")
+        trace_id = self._header_or_new(request, "x-trace-id")
 
         # Store in request state for access in endpoints
         request.state.request_id = request_id
+        request.state.trace_id = trace_id
 
         # Bind request_id to structlog context for this request
         logger = structlog.get_logger()
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id=request_id)
+        structlog.contextvars.bind_contextvars(request_id=request_id, trace_id=trace_id)
 
         try:
             response = await call_next(request)
-            # Add request_id to response headers for client-side debugging
+            # Add correlation headers to response for client-side debugging
             response.headers["X-Request-ID"] = request_id
+            response.headers["X-Trace-ID"] = trace_id
             return response
         finally:
             # Clear contextvars after request

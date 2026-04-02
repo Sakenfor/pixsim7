@@ -5,6 +5,7 @@
  * Shows all connections between characters, instances, NPCs, scenes, and assets.
  */
 import React, { useEffect, useState } from 'react';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 import type {
   CharacterIdentityGraph,
@@ -59,13 +60,17 @@ export const CharacterGraphBrowser: React.FC<CharacterGraphBrowserProps> = ({
         if (worldId) graphUrl.searchParams.set('world_id', worldId.toString());
         graphUrl.searchParams.set('max_depth', maxDepth.toString());
 
-        const graphResponse = await fetch(graphUrl.toString());
+        const graphResponse = await fetch(graphUrl.toString(), {
+          headers: withCorrelationHeaders(undefined, 'panel:character-graph:graph'),
+        });
         if (!graphResponse.ok) throw new Error('Failed to fetch graph');
         const graph = await graphResponse.json();
 
         // Fetch stats
         const statsUrl = `${apiBaseUrl}/character-graph/character/${characterId}/stats`;
-        const statsResponse = await fetch(statsUrl);
+        const statsResponse = await fetch(statsUrl, {
+          headers: withCorrelationHeaders(undefined, 'panel:character-graph:stats'),
+        });
         if (!statsResponse.ok) throw new Error('Failed to fetch stats');
         const stats = await statsResponse.json();
 
@@ -448,7 +453,9 @@ const ScenesView: React.FC<ScenesViewProps> = ({ characterId, apiBaseUrl }) => {
     const fetchScenes = async () => {
       try {
         const url = `${apiBaseUrl}/character-graph/character/${characterId}/scenes`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+          headers: withCorrelationHeaders(undefined, 'panel:character-graph:scenes'),
+        });
         if (!response.ok) throw new Error('Failed to fetch scenes');
         const data = await response.json() as { scenes?: CharacterSceneUsage[] };
         setScenes(data.scenes || []);
@@ -523,7 +530,9 @@ const AssetsView: React.FC<AssetsViewProps> = ({ characterId, worldId, apiBaseUr
         );
         if (worldId) url.searchParams.set('world_id', worldId.toString());
 
-        const response = await fetch(url.toString());
+        const response = await fetch(url.toString(), {
+          headers: withCorrelationHeaders(undefined, 'panel:character-graph:assets'),
+        });
         if (!response.ok) throw new Error('Failed to fetch assets');
         const data = await response.json() as { assets?: CharacterAssetUsage[] };
         setAssets(data.assets || []);

@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { withCorrelationHeaders } from '../../api/correlationHeaders';
 import { defineWidget } from '../defineWidget';
 import type { WidgetComponentProps } from '../types';
 
@@ -39,7 +40,9 @@ function DeviceStatusWidgetComponent({
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('/api/v1/automation/devices');
+        const response = await fetch('/api/v1/automation/devices', {
+          headers: withCorrelationHeaders(undefined, 'widget:device-status'),
+        });
         if (response.ok) {
           const data = await response.json();
           const devices = data.devices || [];

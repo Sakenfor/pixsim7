@@ -13,6 +13,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
@@ -39,9 +40,12 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 
       const response = await fetch('/api/v1/assets/bulk/tags', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withCorrelationHeaders(
+          {
+            'Content-Type': 'application/json',
+          },
+          'gallery:bulk-operations:tag',
+        ),
         body: JSON.stringify(
           toSnakeCaseDeep({
             assetIds,
@@ -79,9 +83,12 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 
       const response = await fetch('/api/v1/assets/bulk/delete', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withCorrelationHeaders(
+          {
+            'Content-Type': 'application/json',
+          },
+          'gallery:bulk-operations:delete',
+        ),
         body: JSON.stringify(
           toSnakeCaseDeep({
             assetIds,
@@ -114,9 +121,12 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 
       const response = await fetch('/api/v1/assets/bulk/export', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withCorrelationHeaders(
+          {
+            'Content-Type': 'application/json',
+          },
+          'gallery:bulk-operations:export',
+        ),
         body: JSON.stringify(
           toSnakeCaseDeep({
             assetIds,

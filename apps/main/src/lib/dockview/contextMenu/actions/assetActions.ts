@@ -41,6 +41,7 @@ import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
+import { withCorrelationHeaders } from '@/lib/api/correlationHeaders';
 import { authService } from '@/lib/auth';
 import { ensureBackendAbsolute } from '@/lib/media/backendUrl';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
@@ -172,7 +173,10 @@ async function postWithAuth(path: string): Promise<Response> {
   const token = authService.getStoredToken();
   const res = await fetch(`${getBackendBase()}${path}`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: withCorrelationHeaders(
+      token ? { Authorization: `Bearer ${token}` } : undefined,
+      'context-menu:asset-actions',
+    ),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);

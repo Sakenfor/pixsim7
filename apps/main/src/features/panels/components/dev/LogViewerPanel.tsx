@@ -13,6 +13,7 @@ import {
   queryLogs,
   getJobTrace,
   getRequestTrace,
+  getTraceIdTrace,
   type LogEntryResponse,
   type LogQueryParams,
   type LogQueryResponse,
@@ -42,12 +43,13 @@ interface FilterState {
   providerId: string;
   jobId: string;
   requestId: string;
+  traceId: string;
   timeRange: TimeRange;
   limit: LimitOption;
 }
 
 interface TraceView {
-  type: 'job' | 'request';
+  type: 'job' | 'request' | 'trace';
   id: string;
   logs: LogEntryResponse[];
   loading: boolean;
@@ -86,6 +88,7 @@ const DEFAULT_FILTERS: FilterState = {
   providerId: '',
   jobId: '',
   requestId: '',
+  traceId: '',
   timeRange: '1h',
   limit: 100,
 };
@@ -133,9 +136,18 @@ function buildQueryParams(filters: FilterState): LogQueryParams {
     if (!isNaN(n)) params.job_id = n;
   }
   if (filters.requestId) params.request_id = filters.requestId;
+  if (filters.traceId) params.trace_id = filters.traceId;
   const startTime = getStartTime(filters.timeRange);
   if (startTime) params.start_time = startTime;
   return params;
+}
+
+function getTraceId(log: LogEntryResponse): string | null {
+  const direct = (log as { trace_id?: string | null }).trace_id;
+  if (direct) return direct;
+  if (!log.extra || typeof log.extra !== 'object') return null;
+  const fromExtra = (log.extra as Record<string, unknown>).trace_id;
+  return typeof fromExtra === 'string' && fromExtra ? fromExtra : null;
 }
 
 function formatTimestamp(iso: string): string {
@@ -177,6 +189,8 @@ function formatLogAsPlainText(log: LogEntryResponse): string {
   const meta: string[] = [];
   if (log.job_id != null) meta.push(`job=${log.job_id}`);
   if (log.request_id) meta.push(`req=${log.request_id.slice(0, 8)}`);
+  const traceId = getTraceId(log);
+  if (traceId) meta.push(`trace=${traceId.slice(0, 8)}`);
   if (log.provider_id) meta.push(`provider=${log.provider_id}`);
   if (log.provider_job_id) meta.push(`pjob=${log.provider_job_id}`);
   if (log.operation_type) meta.push(`op=${log.operation_type}`);
@@ -234,6 +248,7 @@ function useLogQuery(filters: FilterState) {
     filters.providerId,
     filters.jobId,
     filters.requestId,
+    filters.traceId,
     filters.timeRange,
     filters.limit,
   ]);
@@ -517,6 +532,14 @@ function FilterBar({
           className="w-28 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 
+        <input
+          type="text"
+          placeholder="Trace ID"
+          value={filters.traceId}
+          onChange={(e) => onChange({ traceId: e.target.value })}
+          className="w-28 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        />
+
         {/* Time range chips */}
         <div className="flex gap-1 ml-1">
           {TIME_RANGE_OPTIONS.map((t) => (
@@ -561,6 +584,7 @@ function LogRow({
   onToggle,
   onJobClick,
   onRequestClick,
+  onTraceClick,
 }: {
   log: LogEntryResponse;
   expanded: boolean;
@@ -568,8 +592,10 @@ function LogRow({
   onToggle: () => void;
   onJobClick: (jobId: number) => void;
   onRequestClick: (requestId: string) => void;
+  onTraceClick: (traceId: string) => void;
 }) {
   const levelClass = LEVEL_COLORS[log.level] || 'text-neutral-400';
+  const traceId = getTraceId(log);
   const hasExtra =
     log.error || log.extra || log.duration_ms != null || log.attempt != null;
 
@@ -662,6 +688,16 @@ function LogRow({
         <tr className="bg-neutral-850">
           <td colSpan={9} className="px-4 py-2">
             <LogRowDetail log={log} />
+            <div className="flex gap-2 mt-2">
+              {traceId && (
+                <button
+                  onClick={() => onTraceClick(traceId)}
+                  className="text-[11px] text-emerald-400 hover:underline font-mono"
+                >
+                  View Trace {traceId.slice(0, 8)}
+                </button>
+              )}
+            </div>
           </td>
         </tr>
       )}
@@ -674,6 +710,7 @@ function LogRow({
 // =============================================================================
 
 function LogRowDetail({ log }: { log: LogEntryResponse }) {
+  const traceId = getTraceId(log);
   return (
     <div className="space-y-2 text-xs">
       {/* Full message */}
@@ -708,6 +745,7 @@ function LogRowDetail({ log }: { log: LogEntryResponse }) {
         <MetaField label="Env" value={log.env} />
         <MetaField label="Job ID" value={log.job_id != null ? String(log.job_id) : null} />
         <MetaField label="Request ID" value={log.request_id} mono />
+        <MetaField label="Trace ID" value={traceId} mono />
         <MetaField label="Submission ID" value={log.submission_id != null ? String(log.submission_id) : null} />
         <MetaField label="Generation ID" value={log.generation_id != null ? String(log.generation_id) : null} />
         <MetaField label="Provider" value={log.provider_id} />
@@ -763,11 +801,13 @@ function TraceDrawer({
   onClose,
   onJobClick,
   onRequestClick,
+  onTraceClick,
 }: {
   trace: TraceView;
   onClose: () => void;
   onJobClick: (jobId: number) => void;
   onRequestClick: (requestId: string) => void;
+  onTraceClick: (traceId: string) => void;
 }) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
@@ -787,7 +827,7 @@ function TraceDrawer({
         <div className="flex items-center gap-2 min-w-0">
           <Icon name="gitBranch" size={14} className="text-emerald-400 shrink-0" />
           <span className="text-xs font-semibold text-neutral-200 truncate">
-            {trace.type === 'job' ? 'Job' : 'Request'} Trace
+            {trace.type === 'job' ? 'Job' : trace.type === 'request' ? 'Request' : 'Trace'} Trace
           </span>
           <code className="text-xs font-mono text-emerald-400 truncate">{trace.id}</code>
         </div>
@@ -845,6 +885,7 @@ function TraceDrawer({
                     onToggle={() => toggleRow(log.id)}
                     onJobClick={onJobClick}
                     onRequestClick={onRequestClick}
+                    onTraceClick={onTraceClick}
                   />
                 );
               })}
@@ -871,6 +912,7 @@ function TraceLogRow({
   onToggle,
   onJobClick,
   onRequestClick,
+  onTraceClick,
 }: {
   log: LogEntryResponse;
   expanded: boolean;
@@ -879,7 +921,9 @@ function TraceLogRow({
   onToggle: () => void;
   onJobClick: (jobId: number) => void;
   onRequestClick: (requestId: string) => void;
+  onTraceClick: (traceId: string) => void;
 }) {
+  const traceId = getTraceId(log);
   return (
     <>
       <tr
@@ -928,6 +972,14 @@ function TraceLogRow({
                   className="text-[11px] text-emerald-400 hover:underline font-mono"
                 >
                   View Request {log.request_id.slice(0, 8)} Trace
+                </button>
+              )}
+              {traceId && (
+                <button
+                  onClick={() => onTraceClick(traceId)}
+                  className="text-[11px] text-emerald-400 hover:underline font-mono"
+                >
+                  View Trace {traceId.slice(0, 8)}
                 </button>
               )}
             </div>
@@ -997,6 +1049,7 @@ export function LogViewerPanel() {
       providerId: preset.apiFilters.providerId ?? DEFAULT_FILTERS.providerId,
       jobId: preset.apiFilters.jobId ?? DEFAULT_FILTERS.jobId,
       requestId: preset.apiFilters.requestId ?? DEFAULT_FILTERS.requestId,
+      traceId: DEFAULT_FILTERS.traceId,
     }));
     setExpandedRows(new Set());
   }, []);
@@ -1055,6 +1108,28 @@ export function LogViewerPanel() {
     } catch (e: any) {
       setTraceView((prev) =>
         prev?.id === requestId
+          ? { ...prev, loading: false, error: e?.message ?? 'Failed to load trace' }
+          : prev
+      );
+    }
+  }, []);
+
+  const openTraceIdTrace = useCallback(async (traceId: string) => {
+    setTraceView({
+      type: 'trace',
+      id: traceId,
+      logs: [],
+      loading: true,
+      error: null,
+    });
+    try {
+      const logs = await getTraceIdTrace(traceId);
+      setTraceView((prev) =>
+        prev?.id === traceId ? { ...prev, logs, loading: false } : prev
+      );
+    } catch (e: any) {
+      setTraceView((prev) =>
+        prev?.id === traceId
           ? { ...prev, loading: false, error: e?.message ?? 'Failed to load trace' }
           : prev
       );
@@ -1243,6 +1318,7 @@ export function LogViewerPanel() {
                       onToggle={() => toggleRow(log.id)}
                       onJobClick={openJobTrace}
                       onRequestClick={openRequestTrace}
+                      onTraceClick={openTraceIdTrace}
                     />
                   ))}
                 </tbody>
@@ -1265,6 +1341,7 @@ export function LogViewerPanel() {
             onClose={() => setTraceView(null)}
             onJobClick={openJobTrace}
             onRequestClick={openRequestTrace}
+            onTraceClick={openTraceIdTrace}
           />
         )}
       </div>

@@ -9,6 +9,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
 
@@ -120,7 +121,10 @@ function BulkTagToolUI({ context }: { context: GalleryToolContext }) {
       const assetIds = context.selectedAssets.map((asset) => asset.id);
       const response = await fetch('/api/v1/assets/bulk/tags', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCorrelationHeaders(
+          { 'Content-Type': 'application/json' },
+          'gallery:bulk-tag:apply',
+        ),
         body: JSON.stringify(
           toSnakeCaseDeep({
             assetIds,
@@ -168,7 +172,10 @@ function BulkTagToolUI({ context }: { context: GalleryToolContext }) {
       try {
         const response = await fetch(
           `/api/v1/tags?q=${encodeURIComponent(query)}&limit=20`,
-          { signal: controller.signal }
+          {
+            signal: controller.signal,
+            headers: withCorrelationHeaders(undefined, 'gallery:bulk-tag:suggest'),
+          }
         );
         if (!response.ok) {
           throw new Error('Tag search failed');

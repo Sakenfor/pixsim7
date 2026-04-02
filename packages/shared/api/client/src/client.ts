@@ -13,6 +13,16 @@ import type {
   VersionInfo,
 } from './types';
 
+function _generateCorrelationId(): string {
+  const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const rand = Math.floor(Math.random() * 16);
+    const val = ch === 'x' ? rand : ((rand & 0x3) | 0x8);
+    return val.toString(16);
+  });
+}
+
 /**
  * API Client class for making requests to the PixSim7 backend.
  *
@@ -40,6 +50,7 @@ export class PixSimApiClient {
   private client: AxiosInstance;
   private tokenProvider: TokenProvider | undefined;
   private onUnauthorized: (() => void) | undefined;
+  private readonly clientTraceId: string;
 
   /**
    * Flag to prevent multiple unauthorized callbacks.
@@ -53,6 +64,7 @@ export class PixSimApiClient {
 
     this.tokenProvider = config.tokenProvider;
     this.onUnauthorized = config.onUnauthorized;
+    this.clientTraceId = _generateCorrelationId();
 
     this.client = axios.create({
       baseURL,
@@ -65,6 +77,13 @@ export class PixSimApiClient {
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
       async (requestConfig) => {
+        requestConfig.headers = requestConfig.headers ?? {};
+        if (!requestConfig.headers['X-Trace-ID']) {
+          requestConfig.headers['X-Trace-ID'] = this.clientTraceId;
+        }
+        if (!requestConfig.headers['X-Request-ID']) {
+          requestConfig.headers['X-Request-ID'] = _generateCorrelationId();
+        }
         if (this.tokenProvider) {
           const token = await Promise.resolve(this.tokenProvider.getAccessToken());
           if (token) {

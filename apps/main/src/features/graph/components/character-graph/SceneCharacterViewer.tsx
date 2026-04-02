@@ -4,6 +4,7 @@
  * Shows all characters involved in a scene with their roles and relationships.
  */
 import React, { useState, useEffect } from 'react';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 interface SceneCharacterViewerProps {
   /** Scene ID */
@@ -34,7 +35,9 @@ export const SceneCharacterViewer: React.FC<SceneCharacterViewerProps> = ({
         // TODO: Implement backend endpoint for scene characters
         // For now, this is a placeholder
         const url = `${apiBaseUrl}/game-scenes/${sceneId}/characters`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+          headers: withCorrelationHeaders(undefined, 'panel:scene-character-viewer'),
+        });
         if (!response.ok) throw new Error('Failed to fetch scene characters');
         const data = await response.json();
         setCharacters(data.characters || []);

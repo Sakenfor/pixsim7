@@ -39,6 +39,8 @@ interface NotificationListResponse {
   unreadCount: number;
 }
 
+const NOTIFICATION_WIDGET_POLL_HEADERS = { 'X-Client-Surface': 'widget:notifications-activity-bar' } as const;
+
 // ── Hooks ────────────────────────────────────────────────────────
 
 function useNotifications() {
@@ -47,9 +49,12 @@ function useNotifications() {
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     setLoading(true);
     try {
-      const res = await pixsimClient.get<NotificationListResponse>('/notifications?limit=20');
+      const res = await pixsimClient.get<NotificationListResponse>('/notifications?limit=20', {
+        headers: NOTIFICATION_WIDGET_POLL_HEADERS,
+      });
       setNotifications(res.notifications);
       setUnreadCount(res.unreadCount);
     } catch {

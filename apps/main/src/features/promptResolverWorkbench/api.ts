@@ -1,11 +1,15 @@
 import type { ResolutionRequest, ResolutionResult } from './types';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 export async function runNextV1ResolutionRemote(request: ResolutionRequest): Promise<ResolutionResult> {
   const response = await fetch('/api/v1/block-templates/dev/resolver-workbench/resolve', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: withCorrelationHeaders(
+      {
+        'Content-Type': 'application/json',
+      },
+      'panel:resolver-workbench:resolve',
+    ),
     body: JSON.stringify(request),
   });
 
@@ -35,9 +39,12 @@ export async function compileTemplateToResolutionRequestRemote(input: {
 }): Promise<ResolutionRequest> {
   const response = await fetch('/api/v1/block-templates/dev/resolver-workbench/compile-template', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: withCorrelationHeaders(
+      {
+        'Content-Type': 'application/json',
+      },
+      'panel:resolver-workbench:compile-template',
+    ),
     body: JSON.stringify(input),
   });
 

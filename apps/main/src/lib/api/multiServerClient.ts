@@ -16,6 +16,7 @@
  */
 
 import { authService } from '@lib/auth';
+import { withCorrelationHeaders } from './correlationHeaders';
 
 import { useServerManagerStore } from '@/stores/serverManagerStore';
 
@@ -43,12 +44,12 @@ export interface ApiError {
  * Create an API client for a specific server
  */
 export function createServerClient(baseUrl: string, token: string | null) {
-  const headers: Record<string, string> = {
+  const baseHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    baseHeaders['Authorization'] = `Bearer ${token}`;
   }
 
   async function request<T>(
@@ -60,7 +61,7 @@ export function createServerClient(baseUrl: string, token: string | null) {
 
     const response = await fetch(url, {
       method,
-      headers,
+      headers: withCorrelationHeaders(baseHeaders, 'api:multi-server-client'),
       body: body ? JSON.stringify(body) : undefined,
     });
 

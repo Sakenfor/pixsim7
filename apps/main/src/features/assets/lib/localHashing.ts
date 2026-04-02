@@ -1,4 +1,5 @@
 import { authService } from '@lib/auth';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 export {
   computeLocalAssetScopeSignature,
@@ -41,7 +42,7 @@ export async function checkHashesAgainstBackend(
 
   const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/check-by-hash-batch`, {
     method: 'POST',
-    headers,
+    headers: withCorrelationHeaders(headers, 'assets:local-hash-batch-check'),
     body: JSON.stringify({ hashes: uniqueHashes }),
   });
   if (!res.ok) {

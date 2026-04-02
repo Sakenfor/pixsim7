@@ -2,6 +2,7 @@ import { FilterPillGroup } from "@pixsim7/shared.ui";
 import React, { useState, useEffect } from "react";
 
 import { API_BASE_URL } from "@lib/api/client";
+import { withCorrelationHeaders } from "@lib/api/correlationHeaders";
 
 interface BackendArchitectureData {
   version: string;
@@ -71,7 +72,9 @@ export function BackendArchitecturePanel() {
   const fetchArchitectureData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/dev/architecture/map`);
+      const response = await fetch(`${API_BASE_URL}/dev/architecture/map`, {
+        headers: withCorrelationHeaders(undefined, 'panel:backend-architecture'),
+      });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

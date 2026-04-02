@@ -33,6 +33,7 @@ class LogIngestRequest(BaseModel):
 
     # Correlation fields
     request_id: Optional[str] = None
+    trace_id: Optional[str] = None
     job_id: Optional[int] = None
     submission_id: Optional[int] = None
     generation_id: Optional[int] = None
@@ -103,6 +104,7 @@ class LogEntryResponse(BaseModel):
 
     # Correlation fields
     request_id: Optional[str]
+    trace_id: Optional[str] = None
     job_id: Optional[int]
     submission_id: Optional[int]
     generation_id: Optional[int]
@@ -181,6 +183,23 @@ class ConsoleFieldsResponse(BaseModel):
     fields: List[ConsoleFieldDefinitionResponse]
 
 
+def _extract_trace_id(log: LogEntry) -> Optional[str]:
+    extra = log.extra if isinstance(log.extra, dict) else None
+    if not extra:
+        return None
+    value = extra.get("trace_id")
+    if value is None:
+        return None
+    return str(value)
+
+
+def _to_log_entry_response(log: LogEntry) -> LogEntryResponse:
+    item = LogEntryResponse.model_validate(log)
+    if item.trace_id is None:
+        item.trace_id = _extract_trace_id(log)
+    return item
+
+
 # ===== Endpoints =====
 
 @router.post("/ingest", response_model=LogIngestResponse)
@@ -250,6 +269,7 @@ async def query_logs(
     level: Optional[str] = Query(None, description="Filter by log level"),
     job_id: Optional[int] = Query(None, description="Filter by job ID"),
     request_id: Optional[str] = Query(None, description="Filter by request ID"),
+    trace_id: Optional[str] = Query(None, description="Filter by trace ID"),
     stage: Optional[str] = Query(None, description="Filter by pipeline stage (exact)"),
     stage_prefix: Optional[str] = Query(None, description="Filter by pipeline stage prefix (e.g. provider, pipeline)"),
     channel: Optional[str] = Query(None, description="Filter by log channel (cron, pipeline, api, system)"),
@@ -265,7 +285,7 @@ async def query_logs(
     """
     Query structured logs with filters.
 
-    Supports filtering by service, level, job_id, request_id, stage, provider_id, time range, and text search.
+    Supports filtering by service, level, job_id, request_id, trace_id, stage, provider_id, time range, and text search.
     Returns paginated results ordered by timestamp (newest first).
     """
     try:
@@ -275,6 +295,7 @@ async def query_logs(
             level=level,
             job_id=job_id,
             request_id=request_id,
+            trace_id=trace_id,
             stage=stage,
             stage_prefix=stage_prefix,
             channel=channel,
@@ -288,7 +309,7 @@ async def query_logs(
         )
 
         return LogQueryResponse(
-            logs=[LogEntryResponse.model_validate(log) for log in logs],
+            logs=[_to_log_entry_response(log) for log in logs],
             total=total,
             limit=limit,
             offset=offset
@@ -319,7 +340,7 @@ async def get_job_trace(
         service = LogService(db)
         logs = await service.get_job_trace(job_id)
 
-        return [LogEntryResponse.model_validate(log) for log in logs]
+        return [_to_log_entry_response(log) for log in logs]
     except Exception as e:
         logger.error(
             "job_trace_error",
@@ -347,7 +368,7 @@ async def get_request_trace(
         service = LogService(db)
         logs = await service.get_request_trace(request_id)
 
-        return [LogEntryResponse.model_validate(log) for log in logs]
+        return [_to_log_entry_response(log) for log in logs]
     except Exception as e:
         logger.error(
             "request_trace_error",
@@ -357,6 +378,34 @@ async def get_request_trace(
             exc_info=True
         )
         raise HTTPException(status_code=500, detail=f"Failed to get request trace: {str(e)}")
+
+
+@router.get("/trace/trace/{trace_id}", response_model=List[LogEntryResponse])
+async def get_trace_id_trace(
+    # admin: CurrentAdminUser,  # Commented out for local dev access
+    trace_id: str,
+    db: AsyncSession = Depends(get_log_db),
+) -> List[LogEntryResponse]:
+    """
+    Get complete log trace for a trace ID.
+
+    Returns all logs related to a trace ID, ordered chronologically.
+    Useful for debugging multi-request flows.
+    """
+    try:
+        service = LogService(db)
+        logs = await service.get_trace_id_trace(trace_id)
+
+        return [_to_log_entry_response(log) for log in logs]
+    except Exception as e:
+        logger.error(
+            "trace_id_trace_error",
+            trace_id=trace_id,
+            error=str(e),
+            error_type=e.__class__.__name__,
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to get trace_id trace: {str(e)}")
 
 
 @router.get("/fields")
@@ -483,6 +532,7 @@ async def get_distinct(
     stage: Optional[str] = None,
     domain: Optional[str] = None,
     request_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
     job_id: Optional[int] = None,
     user_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=1000),
@@ -506,6 +556,7 @@ async def get_distinct(
             stage=stage,
             domain=domain,
             request_id=request_id,
+            trace_id=trace_id,
             job_id=job_id,
             user_id=user_id,
             limit=limit

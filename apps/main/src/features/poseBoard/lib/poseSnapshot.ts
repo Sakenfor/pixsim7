@@ -5,6 +5,7 @@
  */
 
 import { API_BASE_URL } from '@lib/api';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
 
@@ -51,7 +52,7 @@ export async function uploadPoseSnapshot({
   const res = await fetch(uploadUrl, {
     method: 'POST',
     body: form,
-    headers,
+    headers: withCorrelationHeaders(headers, 'pose-board:upload-snapshot'),
   });
 
   if (!res.ok) {
@@ -94,7 +95,7 @@ async function assignAssetTags(assetId: number, tags: string[], token: string | 
 
   const res = await fetch(tagUrl, {
     method: 'POST',
-    headers,
+    headers: withCorrelationHeaders(headers, 'pose-board:assign-tags'),
     body: JSON.stringify({ add: tags }),
   });
 

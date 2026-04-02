@@ -7,6 +7,7 @@
 
 import { authService } from '@lib/auth';
 
+import { withCorrelationHeaders } from './correlationHeaders';
 import { API_BASE_URL } from './index';
 
 export interface UploadAssetOptions {
@@ -91,7 +92,7 @@ export async function uploadAsset(options: UploadAssetOptions): Promise<UploadAs
   const res = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/assets/upload`, {
     method: 'POST',
     body: form,
-    headers,
+    headers: withCorrelationHeaders(headers, 'api:upload-asset'),
   });
 
   if (!res.ok) {

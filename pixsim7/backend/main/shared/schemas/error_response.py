@@ -73,6 +73,12 @@ class ErrorResponse(BaseModel):
         examples=["req_abc123xyz"]
     )
 
+    trace_id: str | None = Field(
+        default=None,
+        description="Trace ID for correlating related calls across multiple requests (from X-Trace-ID header)",
+        examples=["trace_abc123xyz"]
+    )
+
 
 # Common error codes used across the API
 class ErrorCodes:

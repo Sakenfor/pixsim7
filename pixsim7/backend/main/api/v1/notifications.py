@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
@@ -430,9 +430,14 @@ def _resolve_granularity(category_id: str, user_prefs: Dict[str, NotificationCat
     return "all"
 
 
-def _get_suppressed_categories(user: User) -> Set[str]:
+def _get_suppressed_categories(
+    user: User,
+    *,
+    user_prefs: Optional[Dict[str, NotificationCategoryPref]] = None,
+) -> Set[str]:
     """Categories with effective granularity 'off' — excluded at SQL level."""
-    user_prefs = _get_user_notification_prefs(user)
+    if user_prefs is None:
+        user_prefs = _get_user_notification_prefs(user)
     suppressed: Set[str] = set()
     for spec in notification_category_registry.get_sorted():
         granularity = _resolve_granularity(spec.id, user_prefs)
@@ -441,33 +446,44 @@ def _get_suppressed_categories(user: User) -> Set[str]:
     return suppressed
 
 
+def _passes_granularity_filter(
+    *,
+    category: Optional[str],
+    severity: Optional[str],
+    user_prefs: Dict[str, NotificationCategoryPref],
+) -> bool:
+    granularity = _resolve_granularity(category or "", user_prefs)
+    if granularity == "off":
+        return False
+    if granularity in ("all", "all_changes"):
+        return True
+    if granularity == "failures_only":
+        return severity in ("error", "warning")
+    if granularity == "errors_only":
+        return severity == "error"
+    if granularity == "status_only":
+        # Status-only: allow info (status updates), warnings, and errors.
+        return severity in ("info", "error", "warning")
+    # Unknown granularity: pass through to avoid accidental hiding.
+    return True
+
+
 def _apply_granularity_filter(
     rows: List[Notification],
     user: User,
+    *,
+    user_prefs: Optional[Dict[str, NotificationCategoryPref]] = None,
 ) -> List[Notification]:
     """Apply intermediate granularity filters (failures_only, status_only, errors_only)."""
-    user_prefs = _get_user_notification_prefs(user)
+    if user_prefs is None:
+        user_prefs = _get_user_notification_prefs(user)
     filtered: List[Notification] = []
     for n in rows:
-        granularity = _resolve_granularity(n.category, user_prefs)
-        if granularity == "off":
-            continue
-        if granularity == "all" or granularity == "all_changes":
-            filtered.append(n)
-            continue
-        # Intermediate granularity filters
-        if granularity == "failures_only":
-            if n.severity in ("error", "warning"):
-                filtered.append(n)
-        elif granularity == "errors_only":
-            if n.severity == "error":
-                filtered.append(n)
-        elif granularity == "status_only":
-            # Status-only: let through severity=info (status changes) and errors
-            if n.severity in ("info", "error", "warning"):
-                filtered.append(n)
-        else:
-            # Unknown granularity — pass through
+        if _passes_granularity_filter(
+            category=n.category,
+            severity=n.severity,
+            user_prefs=user_prefs,
+        ):
             filtered.append(n)
     return filtered
 
@@ -556,6 +572,11 @@ async def list_notifications(
 ):
     """List notifications for the current user (broadcasts + targeted)."""
     category_id = _normalize_category_id(category)
+    user_prefs = _get_user_notification_prefs(user)
+    suppressed: Set[str] = set()
+    if not include_suppressed:
+        suppressed = _get_suppressed_categories(user, user_prefs=user_prefs)
+
     stmt = (
         select(Notification)
         .where(_user_filter(user))
@@ -569,37 +590,53 @@ async def list_notifications(
         stmt = stmt.where(Notification.read == False)  # noqa: E712
 
     # SQL-level suppression of "off" categories
-    if not include_suppressed:
-        suppressed = _get_suppressed_categories(user)
-        if suppressed:
-            stmt = _apply_suppressed_scope_filters(stmt, suppressed)
+    if suppressed:
+        stmt = _apply_suppressed_scope_filters(stmt, suppressed)
 
     rows = list((await db.execute(stmt)).scalars().all())
 
     # Python-level intermediate granularity filtering
     if not include_suppressed:
-        rows = _apply_granularity_filter(rows, user)
+        rows = _apply_granularity_filter(rows, user, user_prefs=user_prefs)
 
     actor_names = await _resolve_actor_names(db, rows)
     plan_titles = await _resolve_plan_titles(db, rows)
 
     # Unread count with the same visibility/category suppression semantics.
-    unread_stmt = (
-        select(Notification)
-        .where(_user_filter(user))
-        .where(Notification.read == False)  # noqa: E712
-    )
-    if category_id:
-        unread_stmt = _apply_category_scope_filter(unread_stmt, category_id)
-    if not include_suppressed:
-        suppressed = _get_suppressed_categories(user)
+    if include_suppressed:
+        unread_count_stmt = (
+            select(func.count())
+            .select_from(Notification)
+            .where(_user_filter(user))
+            .where(Notification.read == False)  # noqa: E712
+        )
+        if category_id:
+            unread_count_stmt = _apply_category_scope_filter(unread_count_stmt, category_id)
+        count_result = await db.execute(unread_count_stmt)
+        if hasattr(count_result, "scalar"):
+            unread = int(count_result.scalar() or 0)
+        else:
+            unread = len(count_result.all())
+    else:
+        unread_stmt = (
+            select(Notification.category, Notification.severity)
+            .where(_user_filter(user))
+            .where(Notification.read == False)  # noqa: E712
+        )
+        if category_id:
+            unread_stmt = _apply_category_scope_filter(unread_stmt, category_id)
         if suppressed:
             unread_stmt = _apply_suppressed_scope_filters(unread_stmt, suppressed)
-
-    unread_rows = list((await db.execute(unread_stmt)).scalars().all())
-    if not include_suppressed:
-        unread_rows = _apply_granularity_filter(unread_rows, user)
-    unread = len(unread_rows)
+        unread_rows = (await db.execute(unread_stmt)).all()
+        unread = sum(
+            1
+            for row in unread_rows
+            if _passes_granularity_filter(
+                category=row[0],
+                severity=row[1],
+                user_prefs=user_prefs,
+            )
+        )
 
     return NotificationListResponse(
         notifications=[

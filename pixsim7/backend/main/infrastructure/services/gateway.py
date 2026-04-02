@@ -69,6 +69,12 @@ def _build_forward_headers(req: Request) -> Dict[str, str]:
     request_id = req.headers.get("x-request-id")
     if request_id:
         headers["X-Request-ID"] = request_id
+    trace_id = req.headers.get("x-trace-id")
+    if trace_id:
+        headers["X-Trace-ID"] = trace_id
+    client_surface = req.headers.get("x-client-surface")
+    if client_surface:
+        headers["X-Client-Surface"] = client_surface
     return headers
 
 

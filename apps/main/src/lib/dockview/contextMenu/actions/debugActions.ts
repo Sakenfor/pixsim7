@@ -1,6 +1,7 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 
 import { BACKEND_BASE } from '@lib/api';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
 import { useAssetViewerStore } from '@features/assets';
@@ -819,8 +820,14 @@ async function fetchMaskBlob(maskUrl: string): Promise<{ blob: Blob; resolvedFil
   }
 
   const token = authService.getStoredToken();
+  const headers = isBackendUrl(resolvedFileUrl)
+    ? withCorrelationHeaders(
+        token ? { Authorization: `Bearer ${token}` } : undefined,
+        'context-menu:debug-mask-fetch',
+      )
+    : (token ? { Authorization: `Bearer ${token}` } : undefined);
   const res = await fetch(resolvedFileUrl, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers,
   });
   if (!res.ok) {
     throw new Error(`Mask fetch failed (${res.status}) for ${resolvedFileUrl}`);

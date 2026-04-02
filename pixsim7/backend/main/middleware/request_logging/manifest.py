@@ -46,14 +46,19 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start = _time()
         response = await call_next(request)
         duration_ms = int((_time() - start) * 1000)
+        query = request.url.query
+        full_path = f"{request.url.path}?{query}" if query else request.url.path
 
         try:
             logger.info(
                 "http_request",
                 method=request.method,
-                path=request.url.path,
+                path=full_path,
                 status_code=response.status_code,
                 duration_ms=duration_ms,
+                request_id=getattr(request.state, "request_id", None),
+                trace_id=getattr(request.state, "trace_id", None),
+                client_surface=request.headers.get("x-client-surface"),
             )
         except Exception:
             # Silently fail if logging fails (don't break requests)

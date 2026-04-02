@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, func, distinct, update, or_
@@ -849,8 +850,12 @@ async def get_bridge_status(
 
     # Determine ownership + liveness beyond immediate WS connectivity.
     server_alive = _server_bridge_process is not None and _server_bridge_process.poll() is None
-    launcher_status = _check_launcher_bridge()
-    launcher_alive = _is_launcher_bridge_active(launcher_status)
+    launcher_status: Optional[dict] = None
+    launcher_alive = False
+    # Avoid launcher probe when bridge is already clearly alive.
+    if not agents and not server_alive:
+        launcher_status = await _check_launcher_bridge()
+        launcher_alive = _is_launcher_bridge_active(launcher_status)
 
     managed_by: Optional[str] = None
     if server_alive:
@@ -1180,11 +1185,11 @@ def _is_launcher_bridge_active(status: Optional[dict]) -> bool:
     return False
 
 
-def _check_launcher_bridge() -> Optional[dict]:
+async def _check_launcher_bridge() -> Optional[dict]:
     """Check if the launcher already manages a running ai-client service."""
     from pixsim7.backend.main.shared.launcher_client import get_service_status
 
-    status = get_service_status("ai-client")
+    status = await run_in_threadpool(get_service_status, "ai-client")
     if _is_launcher_bridge_active(status):
         return status
     return None
@@ -1211,7 +1216,7 @@ async def start_server_bridge(
         start_service as launcher_start_service,
     )
 
-    launcher_status = launcher_get_service_status("ai-client")
+    launcher_status = await run_in_threadpool(launcher_get_service_status, "ai-client")
 
     # If the launcher already manages (running/starting) ai-client, don't spawn duplicates.
     if _is_launcher_bridge_active(launcher_status):
@@ -1224,9 +1229,11 @@ async def start_server_bridge(
     # Launcher is available and ai-client exists but is not active yet.
     # Delegate startup to launcher so ownership stays in launcher.
     if launcher_status:
-        started = launcher_start_service("ai-client")
+        started = await run_in_threadpool(launcher_start_service, "ai-client")
         if started:
-            refreshed = launcher_get_service_status("ai-client") or launcher_status
+            refreshed = (
+                await run_in_threadpool(launcher_get_service_status, "ai-client")
+            ) or launcher_status
             return StartBridgeResponse(
                 ok=True,
                 pid=(refreshed or {}).get("pid"),

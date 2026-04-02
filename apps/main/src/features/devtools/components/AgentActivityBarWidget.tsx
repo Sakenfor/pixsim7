@@ -24,6 +24,8 @@ interface AgentSessionsStatus {
   total_active: number;
 }
 
+const AGENT_ACTIVITY_POLL_HEADERS = { 'X-Client-Surface': 'widget:agent-activity-bar' } as const;
+
 function useAgentStatus() {
   const [activeAgents, setActiveAgents] = useState(0);
   const [bridgeConnected, setBridgeConnected] = useState(0);
@@ -32,10 +34,11 @@ function useAgentStatus() {
     let cancelled = false;
 
     const poll = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       try {
         const [sessions, bridge] = await Promise.all([
-          pixsimClient.get<AgentSessionsStatus>('/meta/agents').catch(() => null),
-          pixsimClient.get<AgentBridgeStatus>('/meta/agents/bridge').catch(() => null),
+          pixsimClient.get<AgentSessionsStatus>('/meta/agents', { headers: AGENT_ACTIVITY_POLL_HEADERS }).catch(() => null),
+          pixsimClient.get<AgentBridgeStatus>('/meta/agents/bridge', { headers: AGENT_ACTIVITY_POLL_HEADERS }).catch(() => null),
         ]);
         if (cancelled) return;
         setActiveAgents(sessions?.total_active ?? 0);

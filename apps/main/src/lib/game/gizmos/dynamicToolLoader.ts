@@ -18,6 +18,7 @@ import {
   type ManifestToolPack,
 } from '@pixsim7/interaction.gizmos';
 
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
 
@@ -127,7 +128,9 @@ function registerManifestTool(
  */
 export async function loadPluginTools(): Promise<number> {
   try {
-    const response = await fetch('/api/v1/admin/plugins/frontend/all');
+    const response = await fetch('/api/v1/admin/plugins/frontend/all', {
+      headers: withCorrelationHeaders(undefined, 'plugins:dynamic-tool-loader'),
+    });
 
     if (!response.ok) {
       console.warn('[dynamicToolLoader] Failed to fetch plugin manifests:', response.status);

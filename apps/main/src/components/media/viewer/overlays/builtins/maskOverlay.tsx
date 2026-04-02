@@ -13,6 +13,7 @@ import { PanelShell, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { API_BASE_URL, deleteAsset } from '@lib/api';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
 import { Icon } from '@lib/icons';
@@ -182,7 +183,10 @@ async function fetchMaskAsBaseImage(maskAssetId: number): Promise<ImageBitmap> {
   const token = authService.getStoredToken();
   const url = `${API_BASE_URL.replace(/\/$/, '')}/assets/${maskAssetId}/file`;
   const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: withCorrelationHeaders(
+      token ? { Authorization: `Bearer ${token}` } : undefined,
+      'overlay:mask:fetch-base-image',
+    ),
   });
   if (!res.ok) {
     throw new Error(`Failed to load mask image (${res.status})`);
@@ -984,7 +988,20 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         try {
           const srcUrl = asset.fullUrl || asset.url;
           const token = authService.getStoredToken();
-          const imgRes = await fetch(srcUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+          const sourceHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+          const shouldAttachCorrelation =
+            srcUrl.startsWith('/api/v1/') || srcUrl.startsWith(API_BASE_URL);
+          const imgRes = await fetch(
+            srcUrl,
+            shouldAttachCorrelation
+              ? {
+                  headers: withCorrelationHeaders(
+                    sourceHeaders,
+                    'overlay:mask:auto-save-source',
+                  ),
+                }
+              : (sourceHeaders ? { headers: sourceHeaders } : undefined),
+          );
           const imgBlob = await imgRes.blob();
           const srcFilename = asset.name || `source_${Date.now()}.png`;
           const srcResult = await uploadAsset({
@@ -1502,4 +1519,3 @@ function PresetButton({ preset: resolved, active, onClick }: {
     </button>
   );
 }
-

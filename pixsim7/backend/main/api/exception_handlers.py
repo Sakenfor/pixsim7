@@ -44,6 +44,13 @@ def get_request_id(request: Request) -> str | None:
     return request.headers.get("X-Request-ID")
 
 
+def get_trace_id(request: Request) -> str | None:
+    """Extract trace ID from request state or headers."""
+    if hasattr(request.state, "trace_id"):
+        return request.state.trace_id
+    return request.headers.get("X-Trace-ID")
+
+
 def create_error_response(
     status_code: int,
     code: str,
@@ -51,6 +58,7 @@ def create_error_response(
     detail: str | None = None,
     fields: list | None = None,
     request_id: str | None = None,
+    trace_id: str | None = None,
 ) -> JSONResponse:
     """Create a standardized JSON error response."""
     error = ErrorResponse(
@@ -59,6 +67,7 @@ def create_error_response(
         detail=detail,
         fields=fields,
         request_id=request_id,
+        trace_id=trace_id,
     )
     return JSONResponse(
         status_code=status_code,
@@ -75,6 +84,7 @@ async def http_exception_handler(
     Converts FastAPI/Starlette HTTP exceptions to ErrorResponse format.
     """
     request_id = get_request_id(request)
+    trace_id = get_trace_id(request)
 
     # Map status codes to error codes
     code_map = {
@@ -100,6 +110,7 @@ async def http_exception_handler(
             status_code=exc.status_code,
             detail=detail,
             request_id=request_id,
+            trace_id=trace_id,
             path=request.url.path,
         )
 
@@ -108,6 +119,7 @@ async def http_exception_handler(
         code=error_code,
         message=detail,
         request_id=request_id,
+        trace_id=trace_id,
     )
 
 
@@ -120,6 +132,7 @@ async def validation_exception_handler(
     Provides detailed field-level validation error information.
     """
     request_id = get_request_id(request)
+    trace_id = get_trace_id(request)
 
     # Format field errors
     fields = []
@@ -134,6 +147,7 @@ async def validation_exception_handler(
         "validation_error",
         errors=fields,
         request_id=request_id,
+        trace_id=trace_id,
         path=request.url.path,
     )
 
@@ -144,6 +158,7 @@ async def validation_exception_handler(
         detail="One or more fields failed validation",
         fields=fields,
         request_id=request_id,
+        trace_id=trace_id,
     )
 
 
@@ -156,6 +171,7 @@ async def pixsim_exception_handler(
     Maps custom exception types to appropriate HTTP status codes.
     """
     request_id = get_request_id(request)
+    trace_id = get_trace_id(request)
 
     # Map exception types to status codes and error codes
     if isinstance(exc, ResourceNotFoundError):
@@ -214,6 +230,7 @@ async def pixsim_exception_handler(
         code=code,
         message=exc.message,
         request_id=request_id,
+        trace_id=trace_id,
         path=request.url.path,
     )
 
@@ -222,6 +239,7 @@ async def pixsim_exception_handler(
         code=code,
         message=exc.message,
         request_id=request_id,
+        trace_id=trace_id,
     )
 
 
@@ -234,12 +252,14 @@ async def unhandled_exception_handler(
     Logs the full exception but returns a generic error to avoid leaking details.
     """
     request_id = get_request_id(request)
+    trace_id = get_trace_id(request)
 
     # Log full exception for debugging
     logger.exception(
         "unhandled_exception",
         exception_type=exc.__class__.__name__,
         request_id=request_id,
+        trace_id=trace_id,
         path=request.url.path,
         method=request.method,
     )
@@ -251,6 +271,7 @@ async def unhandled_exception_handler(
         # Don't expose exception details in production
         detail=None,
         request_id=request_id,
+        trace_id=trace_id,
     )
 
 

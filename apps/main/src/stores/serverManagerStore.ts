@@ -20,6 +20,7 @@
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+import { withCorrelationHeaders } from '../lib/api/correlationHeaders';
 
 // =============================================================================
 // Storage Adapter (for cross-platform support)
@@ -148,7 +149,10 @@ async function fetchServerInfo(baseUrl: string): Promise<ServerInfoResponse> {
   const url = `${baseUrl}/api/v1/server/info`;
   const response = await fetch(url, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withCorrelationHeaders(
+      { 'Content-Type': 'application/json' },
+      'store:server-manager',
+    ),
   });
 
   if (!response.ok) {

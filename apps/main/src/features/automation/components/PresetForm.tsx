@@ -7,6 +7,7 @@ import { getAccounts } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
 import { automationService } from '@features/automation';
 import { API_BASE_URL } from '@lib/api/client';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
 interface PresetFormProps {
@@ -209,7 +210,10 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
 
       const token = authService.getStoredToken();
       const response = await fetch(`${API_BASE_URL}/automation/devices/${device.id}/ui-dump`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: withCorrelationHeaders(
+          token ? { Authorization: `Bearer ${token}` } : undefined,
+          'automation:preset-form:ui-dump',
+        ),
       });
       const data = await response.json();
       setUiElements(data.elements || []);

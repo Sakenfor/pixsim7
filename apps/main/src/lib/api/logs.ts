@@ -25,5 +25,5 @@ export const ingestLogBatch = logsApi.ingestLogBatch;
 export const queryLogs = logsApi.queryLogs;
 export const getJobTrace = logsApi.getJobTrace;
 export const getRequestTrace = logsApi.getRequestTrace;
+export const getTraceIdTrace = logsApi.getTraceIdTrace;
 export const getConsoleFields = logsApi.getConsoleFields;
-

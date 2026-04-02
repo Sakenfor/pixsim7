@@ -120,6 +120,11 @@ export interface ErrorResponse {
    * Request ID for debugging and support.
    */
   request_id?: string | null;
+
+  /**
+   * Trace ID for correlating related requests.
+   */
+  trace_id?: string | null;
 }
 
 /**

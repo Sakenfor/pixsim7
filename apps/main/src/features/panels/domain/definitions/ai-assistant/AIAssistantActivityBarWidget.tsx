@@ -14,14 +14,17 @@ import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
+const AI_ASSISTANT_WIDGET_POLL_HEADERS = { 'X-Client-Surface': 'widget:ai-assistant-activity-bar' } as const;
+
 function useBridgeStatus() {
   const [connected, setConnected] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const poll = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       pixsimClient
-        .get<{ connected: number }>('/meta/agents/bridge')
+        .get<{ connected: number }>('/meta/agents/bridge', { headers: AI_ASSISTANT_WIDGET_POLL_HEADERS })
         .then((res) => { if (!cancelled) setConnected(res.connected); })
         .catch(() => { if (!cancelled) setConnected(0); });
     };

@@ -11,6 +11,7 @@
  */
 
 import { API_BASE_URL } from '../api/client';
+import { withCorrelationHeaders } from '../api/correlationHeaders';
 import type { LogIngestRequest } from '../api/logs';
 
 const getBackendUrl = (): string | undefined => {
@@ -134,7 +135,10 @@ async function flushLogs() {
   try {
     await fetch(`${base}/logs/ingest/batch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withCorrelationHeaders(
+        { 'Content-Type': 'application/json' },
+        'frontend:web-logger',
+      ),
       body: JSON.stringify({ logs: batch }),
       keepalive: true,
     });

@@ -10,6 +10,7 @@
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 
 import { API_BASE_URL } from '@lib/api/client';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 export interface ThinkingEntry {
   action: string;
@@ -385,7 +386,10 @@ class AssistantChatBridge {
 
     try {
       const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const headers: Record<string, string> = withCorrelationHeaders(
+        { 'Content-Type': 'application/json' },
+        'panel:ai-assistant:send-stream',
+      );
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const response = await fetch(`${API_BASE_URL}/meta/agents/bridge/send-stream`, {
