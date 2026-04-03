@@ -25,11 +25,14 @@
   //   image: /create/create-image (image generation)
   //   transition: /create/transition
   //   extend: /create/extend
+  //   realtime_generate: realtime.pixverse.ai/generate
   function getPageType(path) {
+    const host = (window.location.hostname || '').toLowerCase();
     if (path.includes('/transition')) return 'transition';
     if (path.includes('/fusion')) return 'fusion';
     if (path.includes('/extend')) return 'extend';
     if (path.includes('/edit') && !path.includes('/extend')) return 'edit';
+    if (host === 'realtime.pixverse.ai' && path.includes('/generate')) return 'realtime_generate';
     // Image generation page
     if (path.includes('/create-image') || path.includes('/create/create-image')) return 'image';
     // Video generation page (image-text means image+text to video)
@@ -311,17 +314,35 @@
     const isFusionPage = pageType === 'fusion';
     const isExtendPage = pageType === 'extend';
     const isImageEditPage = pageType === 'edit';
+    const isRealtimeGeneratePage = pageType === 'realtime_generate';
 
-    const allFileInputs = document.querySelectorAll('input[type="file"]');
-    const inputs = Array.from(allFileInputs).filter(input => {
-      const accept = input.getAttribute('accept') || '';
+    const isImageAccept = (acceptValue = '') => {
+      const accept = String(acceptValue).toLowerCase();
       return accept.includes('image') ||
              accept.includes('.jpg') ||
              accept.includes('.png') ||
              accept.includes('.jpeg') ||
-             accept.includes('.webp') ||
+             accept.includes('.webp');
+    };
+
+    const findLabelForInput = (input) => {
+      if (!input?.id) return null;
+      try {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+          return document.querySelector(`label[for="${window.CSS.escape(input.id)}"]`);
+        }
+      } catch (_) {}
+      return document.querySelector(`label[for="${input.id.replace(/"/g, '\\"')}"]`);
+    };
+
+    const allFileInputs = document.querySelectorAll('input[type="file"]');
+    const inputs = Array.from(allFileInputs).filter(input => {
+      const accept = input.getAttribute('accept') || '';
+      return isImageAccept(accept) ||
              input.closest('.ant-upload') ||
-             input.closest('[class*="upload"]');
+             input.closest('[class*="upload"]') ||
+             input.closest('[class*="slot"], [class*="Slot"]') ||
+             input.closest('[class*="bucket"], [class*="Bucket"]');
     });
 
     inputs.forEach(input => {
@@ -331,7 +352,16 @@
       let container = input.closest('.ant-upload') ||
                       input.closest('.ant-upload-btn') ||
                       input.closest('[class*="ant-upload"]') ||
-                      input.closest('[class*="upload"]');
+                      input.closest('[class*="upload"]') ||
+                      input.closest('[class*="slot"], [class*="Slot"]') ||
+                      input.closest('[class*="bucket"], [class*="Bucket"]');
+
+      if (!container) {
+        container = findLabelForInput(input) ||
+                    input.closest('label') ||
+                    input.closest('button, [role="button"], [class*="cursor-pointer"]') ||
+                    input.parentElement;
+      }
 
       // Check if the slot is visible (not hidden)
       const checkVisibility = (el) => {
@@ -354,9 +384,14 @@
 
       // Skip hidden slots - check container visibility
       const slotContainer = container?.closest('.ant-upload-wrapper') ||
+                           container?.closest('[class*="slot"], [class*="Slot"], [class*="bucket"], [class*="Bucket"], [class*="upload"], [class*="Upload"]') ||
                            container?.parentElement?.parentElement ||
-                           container;
-      const isVisible = checkVisibility(slotContainer) || checkVisibility(container) || checkVisibility(input);
+                           container ||
+                           input.parentElement;
+      const isVisible = checkVisibility(slotContainer) ||
+                        checkVisibility(container) ||
+                        checkVisibility(input) ||
+                        (input.classList.contains('hidden') && checkVisibility(input.parentElement));
 
       // For transition/fusion pages, also check if the slot wrapper is actually rendered
       if (isTransitionPage || isFusionPage) {
@@ -406,8 +441,8 @@
 
       if (priority === 0) {
         const accept = input.getAttribute('accept') || '';
-        const isImageInput = accept.includes('image');
-        if (isImageInput && (isTransitionPage || isFusionPage || isExtendPage)) {
+        const isImageInput = isImageAccept(accept);
+        if (isImageInput && (isTransitionPage || isFusionPage || isExtendPage || isRealtimeGeneratePage)) {
           priority = 10;
         }
       }
@@ -421,7 +456,11 @@
 
       let hasImage = false;
       if (container) {
-        const parentArea = container.closest('.ant-upload-wrapper') || container.parentElement?.parentElement;
+        const parentArea = container.closest('.ant-upload-wrapper') ||
+                           container.closest('[class*="upload"], [class*="Upload"], [class*="slot"], [class*="Slot"], [class*="bucket"], [class*="Bucket"]') ||
+                           container.parentElement?.parentElement ||
+                           container.parentElement ||
+                           container;
         if (parentArea) {
           const existingImg = parentArea.querySelector('img[src]:not([src=""]):not([src="#"])');
           const bgWithImage = parentArea.querySelector('[style*="background-image"]');
@@ -471,6 +510,8 @@
           effectiveContainerId = 'create_image_slot';
         } else if (isVideoPage) {
           effectiveContainerId = 'image_text_slot';
+        } else if (isRealtimeGeneratePage) {
+          effectiveContainerId = 'realtime_generate_slot';
         }
       }
 
@@ -778,7 +819,8 @@
       }
 
       const relevantSlots = uploads.filter(u => u.priority >= 10);
-      const freshSlotSnapshot = relevantSlots.map((s, idx) => ({ idx, containerId: s.containerId, hasImage: s.hasImage }));
+      const candidateSlots = relevantSlots.length > 0 ? relevantSlots : uploads;
+      const freshSlotSnapshot = candidateSlots.map((s, idx) => ({ idx, containerId: s.containerId, hasImage: s.hasImage }));
       debugLog('[Slots] Fresh slots:', JSON.stringify(freshSlotSnapshot));
 
       let targetUpload;
@@ -791,19 +833,19 @@
         return stripSuffix(a) === stripSuffix(b);
       };
 
-      if (targetSlotIndex !== null && targetSlotIndex >= 0 && targetSlotIndex < relevantSlots.length) {
-        targetUpload = relevantSlots[targetSlotIndex];
+      if (targetSlotIndex !== null && targetSlotIndex >= 0 && targetSlotIndex < candidateSlots.length) {
+        targetUpload = candidateSlots[targetSlotIndex];
         debugLog('Using slot index', targetSlotIndex, 'containerId:', targetUpload?.containerId);
 
         if (expectedContainerId && !containerIdMatches(targetUpload?.containerId, expectedContainerId)) {
           debugLog('[Slots] ORDER MISMATCH! Expected:', expectedContainerId, 'Got:', targetUpload?.containerId);
-          const correctSlot = relevantSlots.find(s => containerIdMatches(s.containerId, expectedContainerId));
+          const correctSlot = candidateSlots.find(s => containerIdMatches(s.containerId, expectedContainerId));
           if (correctSlot) {
             debugLog('[Slots] Found correct slot by containerId, using that instead');
             targetUpload = correctSlot;
           } else {
             debugLog('[Slots] Could not find slot by containerId:', expectedContainerId);
-            debugLog('[Slots] Available containerIds:', relevantSlots.map(s => s.containerId));
+            debugLog('[Slots] Available containerIds:', candidateSlots.map(s => s.containerId));
             // Fall back to index-based selection
           }
         } else if (expectedContainerId) {
@@ -811,18 +853,18 @@
         }
       } else if (targetInputOrContainerId) {
         if (typeof targetInputOrContainerId === 'string') {
-          targetUpload = relevantSlots.find(u => containerIdMatches(u.containerId, targetInputOrContainerId));
+          targetUpload = candidateSlots.find(u => containerIdMatches(u.containerId, targetInputOrContainerId));
           if (!targetUpload) {
             targetUpload = uploads.find(u => containerIdMatches(u.containerId, targetInputOrContainerId));
           }
           debugLog('Using containerId:', targetInputOrContainerId, 'found:', !!targetUpload);
         } else {
-          targetUpload = relevantSlots.find(u => u.input === targetInputOrContainerId) ||
+          targetUpload = candidateSlots.find(u => u.input === targetInputOrContainerId) ||
                          uploads.find(u => u.input === targetInputOrContainerId);
           debugLog('Using direct input ref, found:', !!targetUpload);
         }
       } else {
-        targetUpload = relevantSlots.find(u => !u.hasImage) || relevantSlots[0];
+        targetUpload = candidateSlots.find(u => !u.hasImage) || candidateSlots[0];
         debugLog('Auto-selected slot:', targetUpload?.containerId);
       }
 
