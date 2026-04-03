@@ -334,8 +334,8 @@ export const useAssistantChatStore = hmrSingleton(
         } catch {
           /* ignore */
         }
-        const { [tabId]: _removedMsgs, ...restMsgs } = get().messagesByTab;
-        const { [tabId]: _removedDraft, ...restDrafts } = get().draftsByTab;
+        const { [tabId]: _msgs, ...restMsgs } = get().messagesByTab; void _msgs;
+        const { [tabId]: _draft, ...restDrafts } = get().draftsByTab; void _draft;
         set({
           tabs: nextTabs,
           messagesByTab: restMsgs,
