@@ -414,6 +414,20 @@ _LOG_WORK_TOOL = types.Tool(
                 "type": "string",
                 "description": "What was accomplished (1-3 sentences). Focus on outcomes, not process.",
             },
+            "next": {
+                "type": "string",
+                "description": "What to pick up next — unfinished work, next steps, or handoff notes for the next session. Optional.",
+            },
+            "decisions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Non-obvious decisions or trade-offs made during this work (e.g. 'chose Zustand over context because X'). Optional.",
+            },
+            "blockers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Blockers discovered that prevent further progress. Optional.",
+            },
             "plan_id": {
                 "type": "string",
                 "description": "Plan ID to update (e.g. 'unified-task-agent-architecture'). Optional.",
@@ -737,14 +751,26 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     if head_sha and head_sha not in evidence:
         evidence = list(evidence) + [head_sha]
 
+    next_steps = (arguments.get("next") or "").strip() or None
+    decisions = arguments.get("decisions") or []
+    blockers_list = arguments.get("blockers") or []
+
     results: list[str] = []
 
     # 1. Write to activity log (heartbeat endpoint with action=work_summary)
     try:
         client = _get_client()
-        metadata: dict[str, str] = {}
+        metadata: dict[str, object] = {}
         if head_sha:
             metadata["commit"] = head_sha[:8]
+        if next_steps:
+            metadata["next"] = next_steps
+        if decisions:
+            metadata["decisions"] = decisions
+        if blockers_list:
+            metadata["blockers"] = blockers_list
+        if evidence:
+            metadata["evidence"] = evidence
         await client.post(
             "/api/v1/meta/agents/heartbeat",
             headers={"Authorization": f"Bearer {token}"},
