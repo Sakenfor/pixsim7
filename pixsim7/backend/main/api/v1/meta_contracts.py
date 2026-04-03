@@ -11,6 +11,7 @@ which contracts and plans agents are currently working on.
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -32,11 +33,16 @@ from pixsim7.backend.main.services.meta.contract_registry import (
 from pixsim7.backend.main.services.meta.agent_sessions import (
     agent_session_registry,
 )
+from pixsim7.backend.main.services.docs.policy_engine import (
+    DOMAIN_POLICY_REGISTRY,
+    PolicyEngine,
+)
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 CONTRACTS_INDEX_VERSION = "2026-03-28.1"
+POLICIES_INDEX_VERSION = "2026-04-03.1"
 
 
 # =============================================================================
@@ -155,6 +161,51 @@ class ContractsIndexResponse(BaseModel):
     generated_at: str
     contracts: List[ContractIndexEntry]
     total_active_agents: int = 0
+
+
+class PolicyIndexEntry(BaseModel):
+    domain: str
+    version: str
+    schema_version: str
+    endpoint: str
+    summary: str
+    rules_count: int
+    endpoints: List[str] = Field(default_factory=list)
+
+
+class PoliciesIndexResponse(BaseModel):
+    version: str
+    generated_at: str
+    policies: List[PolicyIndexEntry]
+
+
+def _sync_policy_domains() -> None:
+    # Import policy modules for side-effect registration.
+    plan_policy = importlib.import_module("pixsim7.backend.main.services.docs.plan_authoring_policy")
+    importlib.import_module("pixsim7.backend.main.services.prompt.prompt_authoring_policy")
+    importlib.import_module("pixsim7.backend.main.services.game.game_authoring_policy")
+    if DOMAIN_POLICY_REGISTRY.get("plans") is None:
+        plan_contract = plan_policy.get_plan_authoring_contract()
+        DOMAIN_POLICY_REGISTRY.register(
+            "plans",
+            PolicyEngine(
+                contract_version=str(plan_contract.get("version") or "2026-03-24.1"),
+                schema_version=str(plan_contract.get("schema_version") or "1.0"),
+                domain="plans",
+                contract_endpoint=str(
+                    plan_contract.get("endpoint")
+                    or getattr(plan_policy, "PLAN_AUTHORING_CONTRACT_ENDPOINT", "/api/v1/dev/plans/meta/authoring-contract")
+                ),
+                summary=str(
+                    plan_contract.get("summary")
+                    or "Canonical plan authoring policy contract."
+                ),
+                rules=list(getattr(plan_policy, "PLAN_AUTHORING_RULES", []) or []),
+                constraint_validators=dict(getattr(plan_policy, "CONSTRAINT_VALIDATORS", {}) or {}),
+                principal_type_resolver=getattr(plan_policy, "_principal_type", None),
+                logger=getattr(plan_policy, "logger", None),
+            ),
+        )
 
 
 def _normalize_route_path(path: str) -> str:
@@ -383,6 +434,44 @@ async def list_contract_endpoints(
         generated_at=datetime.now(timezone.utc).isoformat(),
         contracts=contracts,
         total_active_agents=len(active_sessions),
+    )
+
+
+@router.get("/policies", response_model=PoliciesIndexResponse)
+async def list_policy_contracts() -> PoliciesIndexResponse:
+    """List registered domain policy contracts."""
+    _sync_policy_domains()
+
+    policies: List[PolicyIndexEntry] = []
+    for domain in sorted(DOMAIN_POLICY_REGISTRY.list_domains()):
+        engine = DOMAIN_POLICY_REGISTRY.get(domain)
+        if engine is None:
+            continue
+        contract = engine.get_contract()
+        rules = contract.get("rules") or []
+        endpoint_ids: List[str] = []
+        for rule in rules if isinstance(rules, list) else []:
+            if not isinstance(rule, dict):
+                continue
+            endpoint_id = str(rule.get("endpoint_id") or "").strip()
+            if endpoint_id and endpoint_id not in endpoint_ids:
+                endpoint_ids.append(endpoint_id)
+        policies.append(
+            PolicyIndexEntry(
+                domain=str(contract.get("domain") or domain),
+                version=str(contract.get("version") or ""),
+                schema_version=str(contract.get("schema_version") or ""),
+                endpoint=str(contract.get("endpoint") or ""),
+                summary=str(contract.get("summary") or ""),
+                rules_count=len(rules) if isinstance(rules, list) else 0,
+                endpoints=sorted(endpoint_ids),
+            )
+        )
+
+    return PoliciesIndexResponse(
+        version=POLICIES_INDEX_VERSION,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        policies=policies,
     )
 
 
@@ -2086,6 +2175,46 @@ async def _upsert_chat_session(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("chat_session_upsert_failed: %s", e)
+
+
+async def _store_session_response(
+    session_id: str,
+    user_message: str,
+    assistant_response: str,
+    duration_ms: int | None = None,
+) -> None:
+    """Append user + assistant messages to the ChatSession's messages JSON.
+
+    Called server-side when the result arrives so the response is persisted
+    even if the WebSocket to the client has already dropped (page refresh).
+    This provides a recovery source for the frontend fallback.
+    """
+    try:
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        async with AsyncSessionLocal() as db:
+            session = await db.get(ChatSession, session_id)
+            if not session:
+                return
+            msgs: list = list(session.messages or [])
+            now = utcnow().isoformat()
+            # Append user message if not already the last user message
+            if not msgs or msgs[-1].get("text") != user_message:
+                msgs.append({"role": "user", "text": user_message, "timestamp": now})
+            # Append assistant response
+            entry: dict = {"role": "assistant", "text": assistant_response, "timestamp": now}
+            if duration_ms is not None:
+                entry["duration_ms"] = duration_ms
+            msgs.append(entry)
+            # Keep last 50
+            session.messages = msgs[-50:]
+            session.last_used_at = utcnow()
+            await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("store_session_response_failed: %s", e)
 
 
 # =============================================================================

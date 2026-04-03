@@ -15,6 +15,7 @@ import {
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
+import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient, API_BASE_URL } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { Icon, type IconName } from '@lib/icons';
@@ -61,6 +62,61 @@ const AGENT_COMMANDS: { id: AgentCommand; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'messageSquare' },
   { id: 'codex', label: 'Codex', icon: 'cpu' },
 ];
+
+const ENGINE_ICON_STYLES: Record<'blue' | 'purple' | 'orange' | 'gray', { icon: string; circle: string }> = {
+  blue: {
+    icon: 'text-blue-600 dark:text-blue-300',
+    circle: 'bg-blue-100 dark:bg-blue-500/20 border-blue-200 dark:border-blue-400/35',
+  },
+  purple: {
+    icon: 'text-violet-600 dark:text-violet-300',
+    circle: 'bg-violet-100 dark:bg-violet-500/20 border-violet-200 dark:border-violet-400/35',
+  },
+  orange: {
+    icon: 'text-orange-600 dark:text-orange-300',
+    circle: 'bg-orange-100 dark:bg-orange-500/20 border-orange-200 dark:border-orange-400/35',
+  },
+  gray: {
+    icon: 'text-neutral-600 dark:text-neutral-300',
+    circle: 'bg-neutral-100 dark:bg-neutral-700/40 border-neutral-200 dark:border-neutral-600/50',
+  },
+};
+
+function iconForEngine(engine: string | null | undefined): IconName {
+  if (engine === 'codex') return 'cpu';
+  if (engine === 'api') return 'zap';
+  return 'messageSquare';
+}
+
+function resolveProfileIcon(engine: string | null | undefined, icon: string | null | undefined): IconName {
+  if (icon && icon.trim()) return icon as IconName;
+  return iconForEngine(engine);
+}
+
+function EngineProfileIcon({
+  engine,
+  icon,
+  size = 12,
+  className = '',
+}: {
+  engine: string | null | undefined;
+  icon: IconName;
+  size?: number;
+  className?: string;
+}) {
+  const brand = getEngineBrand(engine);
+  const style = ENGINE_ICON_STYLES[brand.badgeColor] ?? ENGINE_ICON_STYLES.gray;
+  const circleSize = size + 8;
+  return (
+    <span
+      className={`relative inline-flex shrink-0 items-center justify-center ${className}`}
+      style={{ width: `${circleSize}px`, height: `${circleSize}px` }}
+    >
+      <span className={`absolute inset-0 rounded-full border ${style.circle}`} aria-hidden="true" />
+      <Icon name={icon} size={size} className={`relative z-10 ${style.icon}`} />
+    </span>
+  );
+}
 
 /** Derive engine from profile's agent_type + method */
 function engineFromProfile(profile: UnifiedProfile | null): AgentEngine {
@@ -694,6 +750,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
             const sessionProfileLabel = s.profile_id && profileLabels?.get(s.profile_id)
               ? profileLabels.get(s.profile_id)!
               : null;
+            const engineColor = getEngineBrand(s.engine).textColor;
             const scopeKeyChip = s.scope_key
               && !(s.last_plan_id && s.scope_key === `plan:${s.last_plan_id}`)
               && !(s.last_contract_id && s.scope_key === `contract:${s.last_contract_id}`)
@@ -708,9 +765,13 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                   onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
                   className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 text-left"
                 >
-                  <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className={`shrink-0 ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`} />
+                  <EngineProfileIcon
+                    engine={s.engine}
+                    icon={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? iconForEngine(s.engine)}
+                    size={11}
+                  />
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{s.label}</div>
+                    <div className={`text-[11px] truncate ${engineColor}`}>{s.label}</div>
                     <div className="text-[9px] text-neutral-400">
                       {sessionProfileLabel ? `${sessionProfileLabel} · ` : ''}
                       {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -729,7 +790,7 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       </div>
                     )}
                   </div>
-                  <span className={`text-[8px] uppercase shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ${s.engine === 'claude' ? 'text-blue-400' : s.engine === 'codex' ? 'text-violet-400' : s.engine === 'api' ? 'text-amber-400' : 'text-neutral-400'}`}>{s.engine}</span>
+                  <span className={`text-[8px] uppercase shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ${engineColor}`}>{s.engine}</span>
                 </button>
                 <button
                   onClick={(e) => {
@@ -769,8 +830,6 @@ function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
 // =============================================================================
 // Inline Resume Picker (empty chat state)
 // =============================================================================
-
-import { getEngineBrand } from '@lib/agent/engineBrands';
 
 function InlineResumePicker({ profileId, profileLabels, onResume }: {
   profileId: string | null;
@@ -821,10 +880,10 @@ function InlineResumePicker({ profileId, profileLabels, onResume }: {
                   onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                 >
-                  <Icon
-                    name={s.engine === 'codex' ? 'terminal' : s.engine === 'api' ? 'zap' : 'messageSquare'}
+                  <EngineProfileIcon
+                    engine={s.engine}
+                    icon={s.engine === 'codex' ? 'terminal' : s.engine === 'api' ? 'zap' : 'messageSquare'}
                     size={11}
-                    className={`shrink-0 ${engineColor}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200 truncate">{s.label}</div>
@@ -1016,11 +1075,24 @@ function ThinkingBlock({ entries, live, userMessage }: { entries: Array<{ action
 // Message Bubble
 // =============================================================================
 
-function MessageBubble({ msg, onRetry, userMessage }: { msg: ChatMessage; onRetry?: () => void; userMessage?: string }) {
+function MessageBubble({
+  msg,
+  onRetry,
+  userMessage,
+  engine,
+  profileIcon,
+}: {
+  msg: ChatMessage;
+  onRetry?: () => void;
+  userMessage?: string;
+  engine: AgentEngine;
+  profileIcon: IconName;
+}) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   }, [msg.text]);
+  const showAssistantIcon = msg.role === 'assistant' || msg.role === 'error';
 
   if (msg.role === 'system') {
     return (
@@ -1034,7 +1106,8 @@ function MessageBubble({ msg, onRetry, userMessage }: { msg: ChatMessage; onRetr
   }
 
   return (
-    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group ${showAssistantIcon ? 'items-start gap-2' : ''}`}>
+      {showAssistantIcon && <EngineProfileIcon engine={engine} icon={profileIcon} size={11} className="mt-0.5" />}
       <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
         msg.role === 'user' ? 'bg-accent text-white'
           : msg.role === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
@@ -1433,35 +1506,46 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
   const activity = bridgeReq?.activity ?? null;
 
-  // Consume completed/error results (may have arrived while panel was closed)
-  // Uses setMessages updater to persist synchronously during the state transition,
-  // so a page refresh between paint and the deferred persistence effect can't lose messages.
-   
+  // Consume completed/error results (may have arrived while panel was closed).
+  //
+  // CRITICAL: persist to localStorage EAGERLY (before React state update).
+  // React 18 defers setState updater calls — if HMR unmounts the component
+  // between consume() and React calling the updater, the message is consumed
+  // (marked _consumed=true) but never persisted.  Reading current messages
+  // from localStorage directly and writing back immediately ensures the
+  // message survives HMR, page refresh, or any other unmount timing.
+
   useEffect(() => {
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
     if (!result) return;
 
-    /** Persist inside the updater so it's synchronous with the state change */
-    const persistingUpdate = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-      setMessages((prev) => {
-        const next = updater(prev);
-        persistTabMessages(tab.id, next);
-        return next;
-      });
+    /**
+     * Eagerly persist: read current messages from localStorage, apply the
+     * update, write back, THEN queue the React state update.  Even if React
+     * never processes the setState (HMR unmount), localStorage is correct
+     * and the next mount will load the right messages.
+     */
+    const eagerPersistAndSetState = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      // 1. Eager localStorage write (HMR-safe)
+      const current = loadTabMessages(tab.id);
+      const next = updater(current);
+      persistTabMessages(tab.id, next);
+      // 2. React state update (may be discarded by HMR — that's OK now)
+      setMessages(next);
     };
 
     if (result.error === 'cancelled') {
-      persistingUpdate((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
+      eagerPersistAndSetState((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
         if (prevSessionId) {
-          persistingUpdate((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
+          eagerPersistAndSetState((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
         }
       } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
-        persistingUpdate((prev) => {
+        eagerPersistAndSetState((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
             return [...prev.slice(0, -1), { ...last, text: `Session resumed (verified: ${prevSessionId.slice(0, 8)})` }];
@@ -1470,9 +1554,48 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         });
       }
       const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
-      persistingUpdate((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
+      eagerPersistAndSetState((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
     } else {
-      persistingUpdate((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+      // Reconnect failure — try recovering from server-stored messages.
+      // The backend stores the assistant response in the ChatSession DB
+      // record, so even if the in-memory cache is gone (server restart,
+      // cache eviction), the response can be recovered.
+      const isReconnectFailure = result.reconnected || (result.error || '').includes('not found');
+      if (isReconnectFailure && tab.sessionId) {
+        fetchServerMessages(tab.sessionId).then((serverMsgs) => {
+          if (serverMsgs.length === 0) {
+            eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+            return;
+          }
+          // Find the last user message in local state
+          const current = loadTabMessages(tab.id);
+          let lastLocalUserIdx = -1;
+          for (let i = current.length - 1; i >= 0; i--) { if (current[i].role === 'user') { lastLocalUserIdx = i; break; } }
+          const lastLocalUserText = lastLocalUserIdx >= 0 ? current[lastLocalUserIdx].text : null;
+          // Check if server has an assistant message after this user message
+          let serverLastUserIdx = -1;
+          for (let i = serverMsgs.length - 1; i >= 0; i--) {
+            if (serverMsgs[i].role === 'user' && serverMsgs[i].text === lastLocalUserText) { serverLastUserIdx = i; break; }
+          }
+          if (serverLastUserIdx >= 0 && serverLastUserIdx < serverMsgs.length - 1) {
+            const recovered = serverMsgs.slice(serverLastUserIdx + 1).filter((m) => m.role === 'assistant');
+            if (recovered.length > 0) {
+              eagerPersistAndSetState((m) => [
+                ...m,
+                { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
+                ...recovered,
+              ]);
+              return;
+            }
+          }
+          // No recovery possible — show original error
+          eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+        }).catch(() => {
+          eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+        });
+      } else {
+        eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+      }
     }
   });
 
@@ -1634,6 +1757,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
   // Resolve current profile
   const activeProfile = profiles.find((p) => p.id === tab.profileId);
+  const activeProfileIcon = resolveProfileIcon(tab.engine, activeProfile?.icon);
   const profileDisplay = activeProfile?.label || 'General';
   const isAgentProfile = activeProfile && !activeProfile.id.startsWith('assistant:');
 
@@ -1696,10 +1820,20 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {messages.map((msg, i) => {
           // Find preceding user message for echo filtering in thinking steps
           const prevUserMsg = msg.role === 'assistant' ? messages.slice(0, i).findLast((m) => m.role === 'user')?.text : undefined;
-          return <MessageBubble key={i} msg={msg} onRetry={msg.role === 'error' ? retryLast : undefined} userMessage={prevUserMsg} />;
+          return (
+            <MessageBubble
+              key={i}
+              msg={msg}
+              onRetry={msg.role === 'error' ? retryLast : undefined}
+              userMessage={prevUserMsg}
+              engine={tab.engine}
+              profileIcon={activeProfileIcon}
+            />
+          );
         })}
         {sending && (
           <div className="flex justify-start gap-2 items-end">
+            <EngineProfileIcon engine={tab.engine} icon={activeProfileIcon} size={11} className="mb-1" />
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 max-w-[85%]">
               {bridgeReq && bridgeReq.thinkingLog.length > 0 && (
                 <ThinkingBlock entries={bridgeReq.thinkingLog} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
@@ -1743,7 +1877,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               }`}
               title={`Profile: ${profileDisplay}`}
             >
-              <Icon name={(activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare')) as IconName} size={12} />
+              <EngineProfileIcon
+                engine={tab.engine}
+                icon={resolveProfileIcon(tab.engine, activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare'))}
+                size={12}
+              />
               <span className="max-w-[60px] truncate">{profileDisplay}</span>
               <span className="text-[8px] text-neutral-400 uppercase">{tab.engine}</span>
             </button>
@@ -1801,7 +1939,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                           }}
                           className="flex items-center gap-2 flex-1 min-w-0"
                         >
-                          <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
+                          <EngineProfileIcon
+                            engine={engineFromProfile(p)}
+                            icon={resolveProfileIcon(engineFromProfile(p), p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'))}
+                            size={12}
+                          />
                           <span className="truncate">{p.label}</span>
                           {p.model_id && <span className="text-[9px] text-neutral-400 truncate max-w-[80px]">{p.model_id}</span>}
                         </button>
@@ -2122,7 +2264,10 @@ export function AIAssistantPanel() {
 
   const renderSessionItem = useCallback((tab: ChatTab, isActive: boolean) => {
     const tabProfile = profiles.find((p) => p.id === tab.profileId);
-    const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
+    const tabIcon = resolveProfileIcon(
+      tab.engine,
+      tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'),
+    );
     const bridgeReq = chatBridge.get(tab.id);
     const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
     const isRenaming = renamingTabId === tab.id;
@@ -2142,7 +2287,7 @@ export function AIAssistantPanel() {
         }`}
       >
         <div className="relative shrink-0">
-          <Icon name={tabIcon} size={12} className={isActive ? 'text-accent' : 'text-neutral-400'} />
+          <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
           {isSending && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           )}

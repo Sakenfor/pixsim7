@@ -214,9 +214,20 @@ async def _handle_message(
             user_id=user_id,
             bridge_client_id=bridge_client_id,
         ):
-            if event.get("type") == "heartbeat":
+            if event.get("type") == "task_created":
+                # Send task_id to client immediately — before any agent
+                # heartbeats — so it can persist an inflight entry for
+                # reconnect even if the page refreshes right away.
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "tab_id": tab_id,
+                    "task_id": event["task_id"],
+                    "action": "dispatched",
+                    "detail": "Task dispatched",
+                })
+                task_id_sent = True
+            elif event.get("type") == "heartbeat":
                 task_id = event.get("task_id", "")
-                # Send task_id with first heartbeat so frontend can reconnect
                 msg: dict = {
                     "type": "heartbeat",
                     "tab_id": tab_id,
@@ -265,6 +276,18 @@ async def _handle_message(
                             profile_id=resolved_profile_id,
                             cli_session_id=cli_session_id,
                             source="chat",
+                        ))
+
+                    # Persist the response to the ChatSession DB record so
+                    # the frontend can recover it even if this WS is dead
+                    # (page refresh) or the in-memory cache is lost (restart).
+                    if response_text:
+                        from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                        asyncio.ensure_future(_store_session_response(
+                            session_id=cli_session_id,
+                            user_message=message,
+                            assistant_response=response_text,
+                            duration_ms=duration_ms,
                         ))
 
                 await websocket.send_json({

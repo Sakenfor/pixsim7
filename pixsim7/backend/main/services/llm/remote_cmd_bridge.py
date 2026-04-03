@@ -17,6 +17,7 @@ The user runs a small agent script that:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -63,8 +64,9 @@ class RemoteCommandBridge:
         self._agents: Dict[str, RemoteAgent] = {}
         self._pending_tasks: Dict[str, asyncio.Future] = {}
         self._heartbeat_queues: Dict[str, asyncio.Queue] = {}  # task_id -> queue
-        # Completed task results cache (task_id -> result dict, kept for 5 min)
-        self._completed_results: Dict[str, Dict[str, Any]] = {}
+        # Completed task results cache: task_id -> (result dict, monotonic timestamp)
+        # Kept for up to 5 minutes, max 200 entries.
+        self._completed_results: Dict[str, tuple[Dict[str, Any], float]] = {}
         # Active task tracking: task_id -> {_ts, bridge_id, bridge_client_id, user_id}
         self._active_tasks: Dict[str, Dict[str, Any]] = {}
         # Available models per engine (engine -> list of model dicts)
@@ -201,10 +203,10 @@ class RemoteCommandBridge:
             elif in_flight:
                 # Immediate failure (explicit user stop — no reconnect expected)
                 for tid in in_flight:
-                    self._completed_results[tid] = {
-                        "error": "Remote agent disconnected",
-                        "ok": False,
-                    }
+                    self._completed_results[tid] = (
+                        {"error": "Remote agent disconnected", "ok": False},
+                        time.monotonic(),
+                    )
                     future = self._pending_tasks.pop(tid, None)
                     if future and not future.done():
                         future.set_exception(ConnectionError("Remote agent disconnected"))
@@ -227,10 +229,10 @@ class RemoteCommandBridge:
         for tid in task_ids:
             future = self._pending_tasks.pop(tid, None)
             if future and not future.done():
-                self._completed_results[tid] = {
-                    "error": "Remote agent disconnected",
-                    "ok": False,
-                }
+                self._completed_results[tid] = (
+                    {"error": "Remote agent disconnected", "ok": False},
+                    time.monotonic(),
+                )
                 future.set_exception(ConnectionError("Remote agent disconnected"))
                 self._active_tasks.pop(tid, None)
                 failed += 1
@@ -633,6 +635,10 @@ class RemoteCommandBridge:
             })
             logger.info("remote_task_dispatched", task_id=task_id, bridge_client_id=agent.bridge_client_id)
 
+            # Yield task_id immediately so the client can persist it for
+            # reconnect *before* waiting for the first agent heartbeat.
+            yield {"type": "task_created", "task_id": task_id}
+
             hb_queue = self._heartbeat_queues[task_id]
             deadline = asyncio.get_event_loop().time() + timeout
 
@@ -697,7 +703,7 @@ class RemoteCommandBridge:
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
         """Called when a remote agent sends back a task result."""
         # Cache result for reconnect (even if SSE dropped)
-        self._completed_results[task_id] = result
+        self._completed_results[task_id] = (result, time.monotonic())
         self._active_tasks.pop(task_id, None)
         self._gc_completed()
 
@@ -713,7 +719,7 @@ class RemoteCommandBridge:
 
     def fail_task(self, task_id: str, error: str) -> bool:
         """Called when a remote agent reports a task failure."""
-        self._completed_results[task_id] = {"error": error, "ok": False}
+        self._completed_results[task_id] = ({"error": error, "ok": False}, time.monotonic())
         self._active_tasks.pop(task_id, None)
 
         # Clean up agent tracking
@@ -788,18 +794,29 @@ class RemoteCommandBridge:
         return None
 
     def get_completed_result(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get a cached completed result (for SSE reconnect)."""
-        return self._completed_results.get(task_id)
+        """Get a cached completed result (for reconnect)."""
+        entry = self._completed_results.get(task_id)
+        return entry[0] if entry else None
 
     def pop_completed_result(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get and remove a cached completed result."""
-        return self._completed_results.pop(task_id, None)
+        entry = self._completed_results.pop(task_id, None)
+        return entry[0] if entry else None
+
+    # Results older than this are evicted regardless of cache size.
+    _COMPLETED_TTL_S = 300  # 5 minutes
 
     def _gc_completed(self) -> None:
-        """Keep only the last 20 completed results."""
-        if len(self._completed_results) > 20:
-            keys = list(self._completed_results.keys())
-            for k in keys[:-20]:
+        """Evict results older than TTL, then cap at 200 entries."""
+        now = time.monotonic()
+        expired = [k for k, (_, ts) in self._completed_results.items()
+                   if now - ts > self._COMPLETED_TTL_S]
+        for k in expired:
+            self._completed_results.pop(k, None)
+        # Hard cap — drop oldest if still over limit
+        if len(self._completed_results) > 200:
+            by_age = sorted(self._completed_results.items(), key=lambda kv: kv[1][1])
+            for k, _ in by_age[:len(self._completed_results) - 200]:
                 self._completed_results.pop(k, None)
 
 

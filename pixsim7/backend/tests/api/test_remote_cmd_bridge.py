@@ -209,12 +209,15 @@ class TestTaskLifecycle:
         assert failed is True
         assert future.done()
         assert "task-1" in bridge._completed_results
-        assert bridge._completed_results["task-1"]["error"] == "timeout"
+        cached = bridge.get_completed_result("task-1")
+        assert cached is not None
+        assert cached["error"] == "timeout"
         assert "task-1" not in agent.current_task_ids
 
     def test_pop_completed_result(self):
+        import time
         bridge = RemoteCommandBridge()
-        bridge._completed_results["task-1"] = {"edited_prompt": "hi"}
+        bridge._completed_results["task-1"] = ({"edited_prompt": "hi"}, time.monotonic())
 
         result = bridge.pop_completed_result("task-1")
         assert result is not None
@@ -222,17 +225,30 @@ class TestTaskLifecycle:
         # Gone after pop
         assert bridge.pop_completed_result("task-1") is None
 
-    def test_gc_completed_keeps_last_20(self):
+    def test_gc_completed_caps_at_200_and_ttl(self):
+        import time as _time
         bridge = RemoteCommandBridge()
-        for i in range(25):
-            bridge._completed_results[f"task-{i}"] = {"result": i}
+        now = _time.monotonic()
+        for i in range(210):
+            bridge._completed_results[f"task-{i}"] = ({"result": i}, now + i * 0.001)
         bridge._gc_completed()
 
-        assert len(bridge._completed_results) == 20
+        assert len(bridge._completed_results) == 200
         # Oldest removed
         assert "task-0" not in bridge._completed_results
         # Newest kept
-        assert "task-24" in bridge._completed_results
+        assert "task-209" in bridge._completed_results
+
+    def test_gc_completed_evicts_expired(self):
+        import time as _time
+        bridge = RemoteCommandBridge()
+        old = _time.monotonic() - bridge._COMPLETED_TTL_S - 10
+        bridge._completed_results["old-task"] = ({"result": "old"}, old)
+        bridge._completed_results["fresh-task"] = ({"result": "fresh"}, _time.monotonic())
+        bridge._gc_completed()
+
+        assert "old-task" not in bridge._completed_results
+        assert "fresh-task" in bridge._completed_results
 
 
 class TestAgentRouting:
