@@ -60,6 +60,8 @@ export interface QuickGenWidgetRenderContext {
   error: string | null;
 }
 
+export type GenerationContextExposure = 'none' | 'active' | 'mounted';
+
 export interface QuickGenWidgetProps {
   /** Unique widget identifier (e.g. 'controlCenter' or 'viewerQuickGenerate'). */
   widgetId: string;
@@ -81,8 +83,15 @@ export interface QuickGenWidgetProps {
   setOpen: (open: boolean) => void;
   /** Include blocks panel in layout. */
   showBlocks?: boolean;
-  /** Provide CAP_GENERATION_CONTEXT at root scope (default: true). */
+  /** @deprecated Use contextExposure instead. */
   provideContext?: boolean;
+  /**
+   * Controls whether/how CAP_GENERATION_CONTEXT is exposed:
+   * - 'none': do not register generation context
+   * - 'active': register and mark available only while widget is open (default)
+   * - 'mounted': register and keep available while component is mounted
+   */
+  contextExposure?: GenerationContextExposure;
   /** Priority for the generation context capability. */
   contextPriority?: number;
   /** Prefix for the auto-computed storage key. Defaults to widgetId. */
@@ -159,6 +168,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       setOpen,
       showBlocks = false,
       provideContext = true,
+      contextExposure,
       contextPriority = 50,
       storageKeyPrefix,
       storageKey: storageKeyOverride,
@@ -212,6 +222,10 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
 
     // Step 6: Provide CAP_GENERATION_CONTEXT (optional)
     const isMultiAssetOp = isMultiAssetOperation(operationType);
+    const resolvedContextExposure: GenerationContextExposure = contextExposure
+      ?? (provideContext ? 'active' : 'none');
+    const shouldProvideContext = resolvedContextExposure !== 'none';
+    const contextIsAvailable = resolvedContextExposure === 'mounted' || isOpen;
 
     const generationContextValue = useMemo<GenerationContextSummary>(() => {
       const id = Number(generationId);
@@ -230,18 +244,25 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
         id: `generation:${widgetId}`,
         label,
         priority: contextPriority,
-        exposeToContextMenu: provideContext,
-        isAvailable: () => provideContext,
+        exposeToContextMenu: shouldProvideContext,
+        isAvailable: () => contextIsAvailable,
         getValue: () => generationContextValue,
       }),
-      [widgetId, label, contextPriority, provideContext, generationContextValue],
+      [
+        widgetId,
+        label,
+        contextPriority,
+        shouldProvideContext,
+        contextIsAvailable,
+        generationContextValue,
+      ],
     );
 
     useProvideCapability(
       CAP_GENERATION_CONTEXT,
       generationContextProvider,
-      [generationContextValue, provideContext],
-      { scope: 'root' },
+      [generationContextValue, shouldProvideContext, contextIsAvailable],
+      { scope: 'root', enabled: shouldProvideContext },
     );
 
     // Panel context (merged with extra context from consumer)

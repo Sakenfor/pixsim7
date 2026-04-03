@@ -205,7 +205,7 @@ export function useProvideCapability<T>(
   key: CapabilityKey,
   provider: CapabilityProvider<T>,
   deps: DependencyList = [],
-  options?: { scope?: CapabilityScope },
+  options?: { scope?: CapabilityScope; enabled?: boolean },
 ) {
   const hub = useContextHubState();
   const providerRef = useRef(provider);
@@ -225,6 +225,10 @@ export function useProvideCapability<T>(
     if (!hub) {
       return;
     }
+    const enabled = options?.enabled ?? true;
+    if (!enabled) {
+      return;
+    }
     const scope = options?.scope ?? "local";
     let target: ContextHubState = hub;
     if (scope === "parent") {
@@ -233,7 +237,7 @@ export function useProvideCapability<T>(
       target = getRootHub(hub) ?? hub;
     }
     return target.registry.register(key, stableProvider);
-  }, [hub, key, options?.scope, stableProvider]);
+  }, [hub, key, options?.scope, options?.enabled, stableProvider]);
 
   useEffect(() => {
     providerRef.current = provider;

@@ -54,7 +54,7 @@ export function PromptAuthoringWorkbenchHost() {
       priority={5}
       isOpen={false}
       setOpen={setOpen}
-      provideContext={false}
+      contextExposure="mounted"
       storageKeyPrefix="prompt-authoring-quickgen"
       className="h-full flex flex-col"
       panelHostClassName="hidden"

@@ -13,19 +13,15 @@
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
-import { Ref } from '@pixsim7/shared.types';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { Icon } from '@lib/icons';
 import { hmrSingleton } from '@lib/utils';
 
 import type { ViewerAsset } from '@features/assets';
 import {
-  CAP_GENERATION_CONTEXT,
-  useProvideCapability,
   useCapability,
   CAP_GENERATION_SOURCE,
-  type GenerationContextSummary,
   type GenerationSourceMode,
   type GenerationSourceContext,
 } from '@features/contextHub';
@@ -76,59 +72,6 @@ interface ViewerQuickGenerateProps {
 }
 
 /**
- * Inner component that provides CAP_GENERATION_CONTEXT based on source mode.
- */
-function ViewerGenerationContextProvider({
-  asset,
-  controlCenterOpen,
-}: {
-  asset: ViewerAsset;
-  controlCenterOpen: boolean;
-}) {
-  const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
-  const mode = sourceContext?.mode ?? 'user';
-  const sourceGeneration = sourceContext?.sourceGeneration;
-
-  const generationContextValue = useMemo<GenerationContextSummary>(() => {
-    const generationId =
-      mode === 'asset' ? (sourceGeneration?.id ?? asset.sourceGenerationId) : null;
-    const ref =
-      generationId != null && Number.isFinite(Number(generationId))
-        ? Ref.generation(Number(generationId))
-        : null;
-
-    return {
-      id: 'assetViewer',
-      label: 'Asset Viewer',
-      mode: mode === 'asset' ? 'asset' : 'controlCenter',
-      supportsMultiAsset: false,
-      ref,
-    };
-  }, [mode, sourceGeneration?.id, asset.sourceGenerationId]);
-
-  const generationContextProvider = useMemo(
-    () => ({
-      id: 'generation:assetViewer',
-      label: 'Asset Viewer',
-      priority: 40,
-      exposeToContextMenu: true,
-      isAvailable: () => !controlCenterOpen,
-      getValue: () => generationContextValue,
-    }),
-    [controlCenterOpen, generationContextValue]
-  );
-
-  useProvideCapability(
-    CAP_GENERATION_CONTEXT,
-    generationContextProvider,
-    [generationContextValue, controlCenterOpen],
-    { scope: 'root' }
-  );
-
-  return null;
-}
-
-/**
  * Chrome rendered above the panel host inside the widget.
  * Receives setOperationType/setDynamicParams from the widget's render context.
  */
@@ -136,14 +79,12 @@ function ViewerQuickGenerateChrome({
   asset,
   alwaysExpanded,
   onCollapse,
-  controlCenterOpen,
   mode,
   ctx,
 }: {
   asset: ViewerAsset;
   alwaysExpanded: boolean;
   onCollapse: () => void;
-  controlCenterOpen: boolean;
   mode: GenerationSourceMode;
   ctx: QuickGenWidgetRenderContext;
 }) {
@@ -224,7 +165,6 @@ function ViewerQuickGenerateChrome({
 
       {/* Chrome: capability providers */}
       <ViewerAssetInputProvider asset={asset} />
-      <ViewerGenerationContextProvider asset={asset} controlCenterOpen={controlCenterOpen} />
     </div>
   );
 }
@@ -280,7 +220,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       priority={45}
       isOpen={true}
       setOpen={setOpen}
-      provideContext={false}
+      contextExposure="active"
       storageKeyPrefix="viewer-quickgen"
       className={alwaysExpanded ? 'h-full flex flex-col' : ''}
       panelHostClassName={alwaysExpanded ? 'flex-1 min-h-0 mt-2' : 'h-[360px] min-h-[280px] mt-2'}
@@ -296,7 +236,6 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
           asset={asset}
           alwaysExpanded={alwaysExpanded}
           onCollapse={() => setIsExpanded(false)}
-          controlCenterOpen={controlCenterOpen}
           mode={mode}
           ctx={ctx}
         />
