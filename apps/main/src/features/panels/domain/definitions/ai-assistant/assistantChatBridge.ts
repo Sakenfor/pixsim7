@@ -137,17 +137,6 @@ function saveCompletedResult(tabId: string, result: BridgeResult): void {
   } catch { /* ignore */ }
 }
 
-function loadCompletedResult(tabId: string): BridgeResult | null {
-  try {
-    const raw = localStorage.getItem(COMPLETED_KEY);
-    if (!raw) return null;
-    const map = JSON.parse(raw) as Record<string, { result: BridgeResult; ts: number }>;
-    const entry = map[tabId];
-    if (!entry || Date.now() - entry.ts > 300_000) return null;
-    return entry.result;
-  } catch { return null; }
-}
-
 function clearCompletedResult(tabId: string): void {
   try {
     const raw = localStorage.getItem(COMPLETED_KEY);
