@@ -96,6 +96,8 @@ const STALE_TIMEOUT_S = 90;
 // ── Inflight task persistence (survives page reload / HMR full-reload) ──
 
 const INFLIGHT_KEY = 'ai-assistant:inflight';
+/** Completed results awaiting consume — survives full page reload */
+const COMPLETED_KEY = 'ai-assistant:completed';
 
 interface InflightEntry {
   tabId: string;
@@ -118,6 +120,42 @@ function saveInflight(entries: InflightEntry[]): void {
   try {
     if (entries.length === 0) localStorage.removeItem(INFLIGHT_KEY);
     else localStorage.setItem(INFLIGHT_KEY, JSON.stringify(entries));
+  } catch { /* ignore */ }
+}
+
+/** Persist a completed result so it survives full page reload.
+ *  Cleared when consume() is called. */
+function saveCompletedResult(tabId: string, result: BridgeResult): void {
+  try {
+    const raw = localStorage.getItem(COMPLETED_KEY);
+    const map: Record<string, { result: BridgeResult; ts: number }> = raw ? JSON.parse(raw) : {};
+    map[tabId] = { result, ts: Date.now() };
+    // GC entries older than 5 minutes
+    const cutoff = Date.now() - 300_000;
+    for (const k of Object.keys(map)) { if (map[k].ts < cutoff) delete map[k]; }
+    localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+
+function loadCompletedResult(tabId: string): BridgeResult | null {
+  try {
+    const raw = localStorage.getItem(COMPLETED_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, { result: BridgeResult; ts: number }>;
+    const entry = map[tabId];
+    if (!entry || Date.now() - entry.ts > 300_000) return null;
+    return entry.result;
+  } catch { return null; }
+}
+
+function clearCompletedResult(tabId: string): void {
+  try {
+    const raw = localStorage.getItem(COMPLETED_KEY);
+    if (!raw) return;
+    const map = JSON.parse(raw) as Record<string, { result: BridgeResult; ts: number }>;
+    delete map[tabId];
+    if (Object.keys(map).length === 0) localStorage.removeItem(COMPLETED_KEY);
+    else localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
   } catch { /* ignore */ }
 }
 
@@ -179,10 +217,38 @@ class AssistantChatBridge {
     saveInflight(entries);
   }
 
-  /** Restore in-flight tasks from localStorage and reconnect to them */
+  /** Restore in-flight tasks and unconsumed completed results from localStorage */
   private _restoreInflight(): void {
+    // 1. Restore completed results that were never consumed (page reload
+    //    between result arrival and component consume).
+    let restoredCompleted = false;
+    try {
+      const raw = localStorage.getItem(COMPLETED_KEY);
+      if (raw) {
+        const map = JSON.parse(raw) as Record<string, { result: BridgeResult; ts: number }>;
+        const cutoff = Date.now() - 300_000;
+        for (const [tabId, entry] of Object.entries(map)) {
+          if (entry.ts < cutoff || this._requests.has(tabId)) continue;
+          this._requests.set(tabId, {
+            tabId,
+            status: entry.result.ok ? 'completed' : 'error',
+            activity: null,
+            thinkingLog: entry.result.thinkingLog || [],
+            result: entry.result,
+            abort: new AbortController(),
+            _lastActivity: Date.now(),
+          });
+          restoredCompleted = true;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 2. Restore in-flight (streaming) tasks and reconnect
     const entries = loadInflight();
-    if (entries.length === 0) return;
+    if (entries.length === 0) {
+      if (restoredCompleted) this._notify();
+      return;
+    }
 
     // Create placeholder requests so the UI shows the activity bubble
     for (const entry of entries) {
@@ -367,6 +433,9 @@ class AssistantChatBridge {
         thinkingLog: request.thinkingLog,
         reconnected: data.reconnected as boolean | undefined,
       };
+      // Persist result to localStorage so it survives full page reload
+      // even if the component hasn't consumed it yet.
+      saveCompletedResult(tabId, request.result);
       this._persistInflight();
       this._notify();
     } else if (type === 'error') {
@@ -379,6 +448,7 @@ class AssistantChatBridge {
         error_details: data.error_details as Record<string, unknown> | undefined,
         thinkingLog: request.thinkingLog,
       };
+      saveCompletedResult(tabId, request.result);
       this._persistInflight();
       this._notify();
     }
@@ -527,6 +597,8 @@ class AssistantChatBridge {
     if (!req || req._consumed) return null;
     if (req.status !== 'completed' && req.status !== 'error') return null;
     req._consumed = true;
+    // Clear persisted result — component has it now
+    clearCompletedResult(tabId);
     return req.result;
   }
 
