@@ -149,6 +149,10 @@ tmpclaude-*-cwd
 tmp_pytest*/
 pytest_tmp*/
 pytest_basetemp/
+.pixsim-codex/
+.claude/worktrees/
+tmp/
+tmp_changed_tests.txt
 
 # CUE local binaries (use tools/cue/ensure-cue.* to install)
 tools/cue/cue
