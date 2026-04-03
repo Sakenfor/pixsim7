@@ -58,6 +58,23 @@ interface UnifiedProfile {
   config: Record<string, unknown> | null;
 }
 
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_THINKING_LOG: Array<{ action: string; detail: string; timestamp?: number }> = [];
+
+function isSameThinkingLog(
+  left: Array<{ action: string; detail: string; timestamp?: number }>,
+  right: Array<{ action: string; detail: string; timestamp?: number }>,
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i].action !== right[i].action) return false;
+    if (left[i].detail !== right[i].detail) return false;
+    if ((left[i].timestamp ?? null) !== (right[i].timestamp ?? null)) return false;
+  }
+  return true;
+}
+
 function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_code' | 'error_details'>): string {
   const code = result.error_code || '';
   if (code === 'scoped_session_busy' || code === 'conversation_session_busy') {
@@ -1300,7 +1317,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   onRefreshProfiles: () => void;
 }) {
   // Messages from Zustand store (survives HMR)
-  const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? []);
+  const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? EMPTY_CHAT_MESSAGES);
   // Ensure messages are lazy-loaded from localStorage on first render
   useEffect(() => { useAssistantChatStore.getState().getMessages(tab.id); }, [tab.id]);
 
@@ -1312,19 +1329,26 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
 
   // Sending state derived from the bridge singleton (survives unmount)
-  useSyncExternalStore(chatBridge.subscribe.bind(chatBridge), chatBridge.getSnapshot.bind(chatBridge));
+  const bridgeVersion = useSyncExternalStore(
+    chatBridge.subscribe.bind(chatBridge),
+    chatBridge.getSnapshot.bind(chatBridge),
+  );
   const bridgeReq = chatBridge.get(tab.id);
   const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
   const activity = bridgeReq?.activity ?? null;
 
   // Sync thinking entries from bridge to store (persists across HMR + full reload).
   // The bridge's thinkingLog is in-memory only — mirror it to the store so it survives.
-  const storeThinking = useAssistantChatStore((s) => s.thinkingByTab[tab.id] ?? []);
+  const storeThinking = useAssistantChatStore((s) => s.thinkingByTab[tab.id] ?? EMPTY_THINKING_LOG);
   useEffect(() => {
-    if (bridgeReq && bridgeReq.thinkingLog.length > 0 && sending) {
-      useAssistantChatStore.getState().syncThinking(tab.id, [...bridgeReq.thinkingLog]);
+    if (!bridgeReq || !sending || bridgeReq.thinkingLog.length === 0) {
+      return;
     }
-  }); // runs every render — bridge mutates thinkingLog in place, so we re-sync on each notification
+    if (isSameThinkingLog(storeThinking, bridgeReq.thinkingLog)) {
+      return;
+    }
+    useAssistantChatStore.getState().syncThinking(tab.id, [...bridgeReq.thinkingLog]);
+  }, [bridgeVersion, bridgeReq, sending, storeThinking, tab.id]);
   // Effective thinking entries: bridge (live) or store (survived reload)
   const thinkingEntries = (sending && bridgeReq?.thinkingLog?.length)
     ? bridgeReq.thinkingLog
@@ -1397,7 +1421,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         s.appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
       }
     }
-  });
+  }, [bridgeVersion, bridgeReq, onUpdateTab, tab.id, tab.sessionId]);
 
   const [showProfilePicker, setShowProfilePicker] = useState(false);
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null | 'new'>(null); // null=closed, 'new'=create, UnifiedProfile=edit
@@ -1652,11 +1676,31 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
         <ReferencePicker query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
-        <div className="group/input flex gap-1.5 items-end">
+
+        {/* Textarea — above the toolbar for more space */}
+        <div className="group/input mb-1.5">
+          <div className="flex gap-1.5 items-end">
+            <div className="flex-1">
+              <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
+                disabled={connected === 0 || sending} rows={3}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                style={{ minHeight: '68px', maxHeight: '160px' }}
+                onInput={handleTextareaInput}
+              />
+            </div>
+            <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
+              <Icon name="send" size={14} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Toolbar — profile, model, token, actions below the textarea */}
+        <div className="flex gap-1.5 items-center">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             title="Browse actions">
-            <Icon name="plus" size={16} />
+            <Icon name="plus" size={14} />
           </button>
 
           {/* Profile picker */}
@@ -1664,7 +1708,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <button
               disabled={sending}
               onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
-              className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+              className={`h-7 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                 showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
               title={`Profile: ${profileDisplay}`}
@@ -1814,7 +1858,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           <button
             onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
             disabled={sending || !tab.profileId}
-            className={`shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
+            className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
               tab.injectToken ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
             }`}
             title={tab.injectToken ? 'Token will be auto-injected (click to disable)' : 'Auto-inject session token'}
@@ -1822,33 +1866,17 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="key" size={12} />
           </button>
 
-          <div className="flex-1">
-            <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
-              disabled={connected === 0 || sending} rows={1}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-              style={{ minHeight: '36px', maxHeight: '120px' }}
-              onInput={handleTextareaInput}
-            />
-          </div>
-
-          {/* Session ID â€" copy button, visible on hover */}
+          {/* Session ID */}
           {tab.sessionId && (
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(tab.sessionId!);
-              }}
-              className="shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 opacity-0 group-hover/input:opacity-100 transition-all"
+              onClick={() => { navigator.clipboard.writeText(tab.sessionId!); }}
+              className="shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-all ml-auto"
               title={`Session: ${tab.sessionId}\nClick to copy`}
             >
               <Icon name="hash" size={10} />
               <span>{tab.sessionId.slice(0, 6)}</span>
             </button>
           )}
-
-          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
-            <Icon name="send" size={14} />
-          </Button>
         </div>
       </div>
     </div>
