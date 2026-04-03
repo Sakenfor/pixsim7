@@ -31,7 +31,7 @@ except ImportError:
     websockets = None  # type: ignore
     ws_connect = None  # type: ignore
 
-from pixsim7.client.agent_pool import AgentPool
+from pixsim7.client.agent_pool import AgentPool, SessionBusyError
 from pixsim7.client.session import SessionState
 from pixsim7.client.log import get_logger, redact_url
 from pixsim7.client.token_manager import (
@@ -754,6 +754,27 @@ class Bridge:
             "profile_prompt": msg.get("profile_prompt"),
         }
 
+    @staticmethod
+    def _format_task_error(error: BaseException) -> dict:
+        """Normalize low-level task errors into actionable structured data."""
+        text = str(error or "").strip() or error.__class__.__name__
+        if isinstance(error, SessionBusyError):
+            return {
+                "error": text,
+                "error_code": error.error_code,
+                "error_details": error.error_details,
+            }
+        if "Scoped session '" in text and " is busy" in text:
+            return {
+                "error": (
+                    f"{text} Wait for the previous response in this tab to finish, "
+                    f"or cancel it and retry."
+                ),
+                "error_code": "scoped_session_busy",
+                "error_details": {},
+            }
+        return {"error": text, "error_code": "task_error", "error_details": {}}
+
     async def _handle_task(self, ws, msg: dict) -> None:
         """Handle an incoming task from the backend."""
         task_id = msg.get("task_id", "?")
@@ -926,11 +947,19 @@ class Bridge:
                     pass
 
         except Exception as e:
-            get_logger().error("task_error", task=task_id[:8], error=str(e))
+            error_payload = self._format_task_error(e)
+            get_logger().error(
+                "task_error",
+                task=task_id[:8],
+                error=error_payload["error"],
+                error_code=error_payload["error_code"],
+            )
             error_msg = {
                 "type": "error",
                 "task_id": task_id,
-                "error": str(e),
+                "error": error_payload["error"],
+                "error_code": error_payload["error_code"],
+                "error_details": error_payload["error_details"],
             }
             try:
                 await ws.send(json.dumps(error_msg))

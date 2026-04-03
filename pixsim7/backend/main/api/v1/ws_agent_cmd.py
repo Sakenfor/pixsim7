@@ -564,8 +564,15 @@ async def agent_cmd_websocket(
             elif msg_type == "error":
                 task_id = data.get("task_id")
                 error = data.get("error", "Unknown error from remote agent")
+                error_code = data.get("error_code")
+                error_details = data.get("error_details")
                 if task_id:
-                    remote_cmd_bridge.fail_task(task_id, error)
+                    remote_cmd_bridge.fail_task(
+                        task_id,
+                        str(error),
+                        error_code=str(error_code) if isinstance(error_code, str) and error_code.strip() else None,
+                        error_details=error_details if isinstance(error_details, dict) else None,
+                    )
 
             elif msg_type == "heartbeat":
                 # Timestamp-only tracking for bridge deadline extension

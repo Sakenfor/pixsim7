@@ -98,6 +98,9 @@ class AgentCmdSession:
         self.cli_model: Optional[str] = None         # model reported by CLI
         self.available_models: list[dict] = []       # models from model/list (JSON-RPC agents)
         self._pending_restart: bool = False
+        self._busy_started_at: Optional[datetime] = None
+        self._busy_last_action: Optional[str] = None
+        self._busy_last_detail: Optional[str] = None
 
     # ── Properties ─────────────────────────────────────────────────
 
@@ -112,6 +115,56 @@ class AgentCmdSession:
     @property
     def pid(self) -> Optional[int]:
         return self._process.pid if self._process else None
+
+    def _mark_busy(self) -> None:
+        self.state = SessionState.BUSY
+        self._busy_started_at = datetime.now(timezone.utc)
+        self._busy_last_action = None
+        self._busy_last_detail = None
+
+    def _mark_ready(self) -> None:
+        self.state = SessionState.READY
+        self._busy_started_at = None
+        self._busy_last_action = None
+        self._busy_last_detail = None
+
+    def busy_context(self) -> dict:
+        """Return structured busy-state metadata for diagnostics/UI."""
+        if self.state != SessionState.BUSY:
+            return {}
+        context: dict[str, object] = {
+            "session_id": self.session_id,
+            "is_alive": self.is_alive,
+        }
+        if self._busy_started_at:
+            age_s = int((datetime.now(timezone.utc) - self._busy_started_at).total_seconds())
+            if age_s >= 0:
+                context["busy_for_s"] = age_s
+        if self._busy_last_action:
+            context["action"] = self._busy_last_action
+        if self._busy_last_detail:
+            detail = self._busy_last_detail.replace("\n", " ").strip()
+            if len(detail) > 200:
+                detail = f"{detail[:197]}..."
+            if detail:
+                context["activity"] = detail
+        return context
+
+    def busy_description(self) -> str:
+        """Return a concise description of why this session is currently busy."""
+        context = self.busy_context()
+        if not context:
+            return ""
+        parts = [f"session={context.get('session_id', self.session_id)}"]
+        if isinstance(context.get("busy_for_s"), int):
+            parts.append(f"busy_for={context['busy_for_s']}s")
+        if isinstance(context.get("activity"), str):
+            parts.append(f"activity={context['activity']!r}")
+        elif isinstance(context.get("action"), str):
+            parts.append(f"action={context['action']}")
+        if context.get("is_alive") is False:
+            parts.append("process=not_alive")
+        return ", ".join(parts)
 
     async def start(self) -> bool:
         """Start the CLI process. Returns True if successful."""
@@ -489,7 +542,7 @@ class AgentCmdSession:
         if not self.is_alive or not self._process or not self._process.stdin:
             raise RuntimeError(f"Session {self.session_id} is not running")
 
-        self.state = SessionState.BUSY
+        self._mark_busy()
 
         # Clear stale responses
         while not self._response_queue.empty():
@@ -560,11 +613,11 @@ class AgentCmdSession:
 
                     # For single-turn protocols, process exits after result → we're done
                     if not self._protocol.is_long_running():
-                        self.state = SessionState.READY
+                        self._mark_ready()
                         return result_text or ""
 
                     # For long-running, "result" is the final event
-                    self.state = SessionState.READY
+                    self._mark_ready()
                     if self._pending_restart:
                         self._pending_restart = False
                         self._log.debug("session_deferred_restart")
@@ -573,7 +626,7 @@ class AgentCmdSession:
 
                 elif parsed.kind == "error":
                     self.stats.errors += 1
-                    self.state = SessionState.READY
+                    self._mark_ready()
                     raise RuntimeError(f"Agent error: {parsed.text}")
 
                 elif parsed.kind == "progress":
@@ -618,6 +671,10 @@ class AgentCmdSession:
                         text_len=len(parsed.text) if parsed.text else 0,
                         result_len=len(result_text),
                     )
+                    if raw_type or raw_method_norm:
+                        self._busy_last_action = raw_type or raw_method_norm
+                    if parsed.text:
+                        self._busy_last_detail = parsed.text[:200]
                     # Only forward meaningful progress (tool use, thinking, status) — skip streaming text
                     if on_progress and parsed.text and not is_delta and not is_text_block:
                         on_progress("progress", parsed.text)
@@ -628,8 +685,15 @@ class AgentCmdSession:
 
         except asyncio.TimeoutError:
             self.stats.errors += 1
-            self.state = SessionState.READY
+            self._mark_ready()
             raise RuntimeError(f"No response within {timeout}s")
+        except asyncio.CancelledError:
+            self._log.info("session_send_cancelled")
+            raise
+        finally:
+            if self.state == SessionState.BUSY:
+                # Cancellation may interrupt before the normal result/error path.
+                self._mark_ready()
 
     def _capture_usage(self, raw: dict) -> None:
         """Extract token usage / context info from any event."""
@@ -732,4 +796,7 @@ class AgentCmdSession:
             "context_pct": context_pct,
             "cost_usd": round(self.stats.cost_usd, 4) if self.stats.cost_usd else None,
             "workdir": self._workdir,
+            "busy_started_at": self._busy_started_at.isoformat() if self._busy_started_at else None,
+            "busy_action": self._busy_last_action,
+            "busy_detail": self._busy_last_detail,
         }

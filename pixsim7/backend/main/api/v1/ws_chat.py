@@ -65,6 +65,25 @@ async def _resolve_raw_token(token: str | None) -> str | None:
         return None
 
 
+def _error_payload(
+    message: str,
+    *,
+    code: str,
+    details: dict | None = None,
+) -> dict:
+    payload: dict[str, Any] = {"error": message, "error_code": code}
+    if isinstance(details, dict) and details:
+        payload["error_details"] = details
+    return payload
+
+
+def _error_payload_from_exception(exc: BaseException) -> dict:
+    text = str(exc or "").strip() or exc.__class__.__name__
+    code = getattr(exc, "code", None) or getattr(exc, "error_code", None) or "dispatch_error"
+    details = getattr(exc, "details", None) or getattr(exc, "error_details", None)
+    return _error_payload(text, code=str(code), details=details if isinstance(details, dict) else None)
+
+
 async def _handle_message(
     websocket: WebSocket,
     data: Dict[str, Any],
@@ -78,14 +97,21 @@ async def _handle_message(
     tab_id = data.get("tab_id", "")
     message = data.get("message", "")
     if not message:
-        await websocket.send_json({"type": "error", "tab_id": tab_id, "error": "Empty message"})
+        await websocket.send_json({
+            "type": "error",
+            "tab_id": tab_id,
+            **_error_payload("Empty message", code="empty_message"),
+        })
         return
 
     # Check bridge availability
     if remote_cmd_bridge.connected_count == 0:
         await websocket.send_json({
             "type": "result", "tab_id": tab_id, "ok": False,
-            "error": "No bridge running. Start one from the AI Agents panel.",
+            **_error_payload(
+                "No bridge running. Start one from the AI Agents panel.",
+                code="bridge_offline",
+            ),
         })
         return
 
@@ -95,7 +121,10 @@ async def _handle_message(
         if not agents:
             await websocket.send_json({
                 "type": "result", "tab_id": tab_id, "ok": False,
-                "error": "No bridge available for your account.",
+                **_error_payload(
+                    "No bridge available for your account.",
+                    code="bridge_unavailable",
+                ),
             })
             return
         agent = min(agents, key=lambda a: a.active_tasks)
@@ -300,10 +329,16 @@ async def _handle_message(
                     "duration_ms": duration_ms,
                 })
     except Exception as e:
-        logger.warning("ws_chat_dispatch_error", tab_id=tab_id, error=str(e))
+        err = _error_payload_from_exception(e)
+        logger.warning(
+            "ws_chat_dispatch_error",
+            tab_id=tab_id,
+            error=err["error"],
+            error_code=err["error_code"],
+        )
         await websocket.send_json({
             "type": "result", "tab_id": tab_id, "ok": False,
-            "error": str(e),
+            **err,
         })
 
 
@@ -321,7 +356,7 @@ async def _handle_reconnect(
     if not task_id:
         await websocket.send_json({
             "type": "error", "tab_id": tab_id,
-            "error": "No task_id for reconnect",
+            **_error_payload("No task_id for reconnect", code="reconnect_missing_task_id"),
         })
         return
 
@@ -336,6 +371,8 @@ async def _handle_reconnect(
             "response": response_text,
             "bridge_session_id": cached.get("bridge_session_id"),
             "error": cached.get("error"),
+            "error_code": cached.get("error_code"),
+            "error_details": cached.get("error_details"),
             "reconnected": True,
         })
         return
@@ -407,9 +444,13 @@ async def _handle_reconnect(
                         })
                         return
             except Exception as e:
+                err = _error_payload(
+                    f"Reconnect stream failed: {e}",
+                    code="reconnect_stream_failed",
+                )
                 await websocket.send_json({
                     "type": "error", "tab_id": tab_id,
-                    "error": f"Reconnect stream failed: {e}",
+                    **err,
                 })
             finally:
                 remote_cmd_bridge._heartbeat_queues.pop(task_id, None)
@@ -418,8 +459,28 @@ async def _handle_reconnect(
     # Task not found
     await websocket.send_json({
         "type": "error", "tab_id": tab_id,
-        "error": "Task not found or expired",
+        **_error_payload("Task not found or expired", code="task_not_found"),
     })
+
+
+async def _cancel_dispatch_task(
+    task: asyncio.Task | None,
+    *,
+    tab_id: str,
+    reason: str,
+) -> None:
+    """Cancel a per-tab dispatch and wait briefly for cancellation cleanup."""
+    if not task or task.done():
+        return
+    task.cancel()
+    try:
+        await asyncio.wait_for(task, timeout=1.5)
+    except asyncio.CancelledError:
+        return
+    except asyncio.TimeoutError:
+        logger.warning("ws_chat_cancel_timeout", tab_id=tab_id, reason=reason)
+    except Exception as exc:
+        logger.debug("ws_chat_cancel_error", tab_id=tab_id, reason=reason, error=str(exc))
 
 
 @router.websocket("/ws/chat")
@@ -476,8 +537,7 @@ async def websocket_chat(
                 tab_id = data.get("tab_id", "")
                 # Cancel any existing dispatch for this tab (user re-sent)
                 existing = active_dispatches.pop(tab_id, None)
-                if existing and not existing.done():
-                    existing.cancel()
+                await _cancel_dispatch_task(existing, tab_id=tab_id, reason="resend")
                 # Fire-and-forget dispatch — runs concurrently
                 task = asyncio.create_task(
                     _handle_message(websocket, data, user_id, raw_token)
@@ -489,12 +549,12 @@ async def websocket_chat(
             elif msg_type == "cancel":
                 tab_id = data.get("tab_id", "")
                 existing = active_dispatches.pop(tab_id, None)
-                if existing and not existing.done():
-                    existing.cancel()
+                await _cancel_dispatch_task(existing, tab_id=tab_id, reason="cancel")
                 # Always ack so client knows server processed the cancel
                 await websocket.send_json({
                     "type": "result", "tab_id": tab_id,
-                    "ok": False, "error": "cancelled",
+                    "ok": False,
+                    **_error_payload("cancelled", code="cancelled"),
                 })
 
             elif msg_type == "reconnect":

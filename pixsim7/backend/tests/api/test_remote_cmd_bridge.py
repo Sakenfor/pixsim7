@@ -316,7 +316,7 @@ class TestDisconnect:
         agent = await bridge.connect(ws, bridge_client_id="a1")
         assert "a1" in bridge._agents
 
-        bridge.disconnect("a1")
+        bridge.disconnect("a1", grace=False)
         assert "a1" not in bridge._agents
 
     @pytest.mark.asyncio
@@ -330,7 +330,7 @@ class TestDisconnect:
         future = loop.create_future()
         bridge._pending_tasks["task-1"] = future
 
-        bridge.disconnect("a1")
+        bridge.disconnect("a1", grace=False)
 
         assert future.done()
         with pytest.raises(ConnectionError):
@@ -349,7 +349,7 @@ class TestDisconnect:
         bridge._pending_tasks["task-1"] = future
         bridge._active_tasks["task-1"] = {"_ts": datetime.now(timezone.utc)}
 
-        bridge.disconnect("a1")
+        bridge.disconnect("a1", grace=False)
 
         # Error should be cached for reconnect
         cached = bridge.get_completed_result("task-1")
@@ -372,7 +372,7 @@ class TestDisconnect:
             future = loop.create_future()
             bridge._pending_tasks[tid] = future
 
-        bridge.disconnect("a1")
+        bridge.disconnect("a1", grace=False)
 
         for tid in ("task-1", "task-2"):
             cached = bridge.get_completed_result(tid)

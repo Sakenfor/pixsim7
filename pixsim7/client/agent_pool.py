@@ -65,6 +65,21 @@ def detect_engines() -> list[str]:
     return [e for e in KNOWN_ENGINES if shutil.which(e)]
 
 
+class SessionBusyError(RuntimeError):
+    """Raised when a request targets a session/scope that is already busy."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_details: Optional[dict] = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.error_details = error_details or {}
+
+
 class AgentPool:
     """Manages a pool of agent command sessions with automatic health recovery."""
 
@@ -284,8 +299,16 @@ class AgentPool:
         existing = self._find_by_session_id(bridge_session_id)
         if existing:
             if existing.state == SessionState.BUSY:
-                raise RuntimeError(
-                    f"Session for conversation {bridge_session_id[:8]} is busy"
+                context = existing.busy_description()
+                detail = f" ({context})" if context else ""
+                raise SessionBusyError(
+                    f"Session for conversation {bridge_session_id[:8]} is busy{detail}. "
+                    f"The previous request is still running or cancellation is still settling.",
+                    error_code="conversation_session_busy",
+                    error_details={
+                        "conversation_id": bridge_session_id,
+                        **existing.busy_context(),
+                    },
                 )
             if existing.state == SessionState.READY and existing.is_alive:
                 return existing
@@ -336,7 +359,17 @@ class AgentPool:
         if existing and existing.state == SessionState.READY and existing._command == command:
             return existing
         if existing and existing.state == SessionState.BUSY:
-            raise RuntimeError(f"Scoped session '{scope_key}' is busy")
+            context = existing.busy_description()
+            detail = f" ({context})" if context else ""
+            raise SessionBusyError(
+                f"Scoped session '{scope_key}' is busy{detail}. "
+                f"Another request for this scope is still active or cancellation is still settling.",
+                error_code="scoped_session_busy",
+                error_details={
+                    "scope_key": scope_key,
+                    **existing.busy_context(),
+                },
+            )
 
         session = await self._spawn_session(
             command=command,
@@ -520,6 +553,29 @@ class AgentPool:
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
             return session.session_id, response
+        except asyncio.CancelledError:
+            # Cancel/resend races can interrupt a turn mid-flight. Force a restart
+            # so the session is never left in an ambiguous BUSY state.
+            get_logger().info(
+                "pool_send_cancelled",
+                session=session.session_id,
+                policy=policy,
+                scope_key=scope or None,
+            )
+            try:
+                if not ephemeral and session.is_alive:
+                    await asyncio.shield(session.restart())
+                    self._update_index(session)
+            except Exception as restart_error:
+                get_logger().warning(
+                    "pool_send_cancelled_restart_failed",
+                    session=session.session_id,
+                    error=str(restart_error),
+                )
+            finally:
+                if session.state == SessionState.BUSY:
+                    session.state = SessionState.READY
+            raise
         except Exception:
             # Ensure session is not stuck in BUSY after an unexpected error
             if session.state == SessionState.BUSY:

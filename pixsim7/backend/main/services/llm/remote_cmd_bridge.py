@@ -29,6 +29,21 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 
+class RemoteTaskError(RuntimeError):
+    """Structured task failure propagated from remote bridge clients."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
 @dataclass
 class RemoteAgent:
     """A connected remote bridge client terminal.
@@ -717,9 +732,23 @@ class RemoteCommandBridge:
             return True
         return False
 
-    def fail_task(self, task_id: str, error: str) -> bool:
+    def fail_task(
+        self,
+        task_id: str,
+        error: str,
+        *,
+        error_code: str | None = None,
+        error_details: dict | None = None,
+    ) -> bool:
         """Called when a remote agent reports a task failure."""
-        self._completed_results[task_id] = ({"error": error, "ok": False}, time.monotonic())
+        error_text = str(error or "Unknown error from remote agent")
+        payload: dict[str, Any] = {"error": error_text, "ok": False}
+        if error_code:
+            payload["error_code"] = str(error_code)
+        if isinstance(error_details, dict) and error_details:
+            payload["error_details"] = error_details
+
+        self._completed_results[task_id] = (payload, time.monotonic())
         self._active_tasks.pop(task_id, None)
 
         # Clean up agent tracking
@@ -728,7 +757,13 @@ class RemoteCommandBridge:
 
         future = self._pending_tasks.pop(task_id, None)
         if future and not future.done():
-            future.set_exception(RuntimeError(error))
+            future.set_exception(
+                RemoteTaskError(
+                    error_text,
+                    code=str(error_code) if error_code else None,
+                    details=error_details if isinstance(error_details, dict) else None,
+                )
+            )
             return True
         return False
 

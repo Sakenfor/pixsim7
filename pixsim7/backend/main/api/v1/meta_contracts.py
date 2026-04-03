@@ -1985,7 +1985,7 @@ async def send_message_to_agent_stream(
 
     if remote_cmd_bridge.connected_count == 0:
         async def _err():
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.', 'error_code': 'bridge_offline'})}\n\n"
         return StreamingResponse(_err(), media_type="text/event-stream")
 
     agent = remote_cmd_bridge.get_available_agent(user_id=ctx.user_id)
@@ -1994,7 +1994,7 @@ async def send_message_to_agent_stream(
         agents = remote_cmd_bridge.get_agents(user_id=ctx.user_id)
         if not agents:
             async def _err2():
-                yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge available for your account.'})}\n\n"
+                yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge available for your account.', 'error_code': 'bridge_unavailable'})}\n\n"
             return StreamingResponse(_err2(), media_type="text/event-stream")
         # Bridges exist but all at max capacity — pick least-loaded
         agent = min(agents, key=lambda a: a.active_tasks)
@@ -2057,7 +2057,18 @@ async def send_message_to_agent_stream(
                     yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'bridge_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
             duration_ms = int((time.monotonic() - start) * 1000)
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': bridge_client_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
+            error_payload = {
+                "type": "result",
+                "ok": False,
+                "bridge_client_id": bridge_client_id,
+                "error": str(e),
+                "duration_ms": duration_ms,
+                "error_code": str(getattr(e, "code", None) or getattr(e, "error_code", None) or "dispatch_error"),
+            }
+            details = getattr(e, "details", None) or getattr(e, "error_details", None)
+            if isinstance(details, dict) and details:
+                error_payload["error_details"] = details
+            yield f"data: {_json.dumps(error_payload)}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 

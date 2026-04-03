@@ -23,7 +23,7 @@ import { useReferences, useReferenceInput, ReferencePicker } from '@lib/referenc
 
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
-import { chatBridge } from './assistantChatBridge';
+import { chatBridge, type BridgeResult } from './assistantChatBridge';
 
 
 // =============================================================================
@@ -54,6 +54,21 @@ interface ChatMessage {
   duration_ms?: number;
   thinkingLog?: Array<{ action: string; detail: string }>;
   timestamp: Date;
+}
+
+function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_code' | 'error_details'>): string {
+  const code = result.error_code || '';
+  if (code === 'scoped_session_busy' || code === 'conversation_session_busy') {
+    const details = result.error_details || {};
+    const activity = typeof details.activity === 'string' ? details.activity : null;
+    const busyFor = typeof details.busy_for_s === 'number' ? details.busy_for_s : null;
+    const extra: string[] = [];
+    if (typeof busyFor === 'number' && busyFor >= 0) extra.push(`busy for ${busyFor}s`);
+    if (activity) extra.push(activity);
+    const suffix = extra.length ? ` (${extra.join(' - ')})` : '';
+    return `This tab already has an active request. Wait for it to finish or cancel and retry.${suffix}`;
+  }
+  return result.error || 'No response from agent';
 }
 
 /** Agent commands available in cmd (bridge) mode */
@@ -1519,6 +1534,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
     if (!result) return;
+    const errorText = renderBridgeError(result);
 
     /**
      * Eagerly persist: read current messages from localStorage, apply the
@@ -1535,7 +1551,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       setMessages(next);
     };
 
-    if (result.error === 'cancelled') {
+    if (result.error_code === 'cancelled' || result.error === 'cancelled') {
       eagerPersistAndSetState((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
@@ -1560,11 +1576,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       // The backend stores the assistant response in the ChatSession DB
       // record, so even if the in-memory cache is gone (server restart,
       // cache eviction), the response can be recovered.
-      const isReconnectFailure = result.reconnected || (result.error || '').includes('not found');
+      const isReconnectFailure = result.reconnected || result.error_code === 'task_not_found' || (result.error || '').includes('not found');
       if (isReconnectFailure && tab.sessionId) {
         fetchServerMessages(tab.sessionId).then((serverMsgs) => {
           if (serverMsgs.length === 0) {
-            eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+            eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
             return;
           }
           // Find the last user message in local state
@@ -1589,12 +1605,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             }
           }
           // No recovery possible — show original error
-          eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+          eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
         }).catch(() => {
-          eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+          eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
         });
       } else {
-        eagerPersistAndSetState((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+        eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
       }
     }
   });

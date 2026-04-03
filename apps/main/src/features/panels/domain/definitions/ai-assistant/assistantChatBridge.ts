@@ -37,6 +37,8 @@ export interface BridgeResult {
   ok: boolean;
   response?: string;
   error?: string;
+  error_code?: string;
+  error_details?: Record<string, unknown>;
   duration_ms?: number;
   bridge_session_id?: string;
   thinkingLog?: ThinkingEntry[];
@@ -358,6 +360,8 @@ class AssistantChatBridge {
         ok: !!data.ok,
         response: data.response as string | undefined,
         error: data.error as string | undefined,
+        error_code: data.error_code as string | undefined,
+        error_details: data.error_details as Record<string, unknown> | undefined,
         duration_ms: data.duration_ms as number | undefined,
         bridge_session_id: data.bridge_session_id as string | undefined,
         thinkingLog: request.thinkingLog,
@@ -371,6 +375,8 @@ class AssistantChatBridge {
       request.result = {
         ok: false,
         error: (data.error as string) || 'Unknown error',
+        error_code: data.error_code as string | undefined,
+        error_details: data.error_details as Record<string, unknown> | undefined,
         thinkingLog: request.thinkingLog,
       };
       this._persistInflight();
@@ -453,7 +459,7 @@ class AssistantChatBridge {
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         request.status = 'error';
-        request.result = { ok: false, error: 'cancelled' };
+        request.result = { ok: false, error: 'cancelled', error_code: 'cancelled' };
       } else {
         request.status = 'error';
         request.result = { ok: false, error: err instanceof Error ? err.message : 'Request failed', thinkingLog: request.thinkingLog };
@@ -502,7 +508,7 @@ class AssistantChatBridge {
     if (req && (req.status === 'pending' || req.status === 'streaming')) {
       req.status = 'error';
       req.activity = null;
-      req.result = { ok: false, error: 'cancelled' };
+      req.result = { ok: false, error: 'cancelled', error_code: 'cancelled' };
       this._persistInflight();
       this._notify();
     }

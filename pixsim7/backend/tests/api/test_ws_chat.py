@@ -136,6 +136,7 @@ class TestWsChatMessage:
                 data = json.loads(ws.receive_text())
                 assert data["type"] == "error"
                 assert data["tab_id"] == "t1"
+                assert data["error_code"] == "empty_message"
 
     def test_no_bridge_returns_error(self):
         app = _app()
@@ -153,6 +154,7 @@ class TestWsChatMessage:
                 assert data["type"] == "result"
                 assert data["ok"] is False
                 assert "No bridge" in data["error"]
+                assert data["error_code"] == "bridge_offline"
 
     def test_no_agents_returns_error(self):
         app = _app()
@@ -172,6 +174,45 @@ class TestWsChatMessage:
                 assert data["type"] == "result"
                 assert data["ok"] is False
                 assert "No bridge available" in data["error"]
+                assert data["error_code"] == "bridge_unavailable"
+
+    def test_dispatch_error_propagates_structured_code(self):
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        class _ScopedBusy(RuntimeError):
+            def __init__(self):
+                super().__init__("Scoped session 'tab:t1' is busy")
+                self.code = "scoped_session_busy"
+                self.details = {"scope_key": "tab:t1", "busy_for_s": 5}
+
+        async def fake_stream(*args, **kwargs):
+            if False:
+                yield {}
+            raise _ScopedBusy()
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=1, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t1", "message": "hello",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is False
+                assert data["error_code"] == "scoped_session_busy"
+                assert data["error_details"]["scope_key"] == "tab:t1"
 
     def test_successful_dispatch_streams_result(self):
         app = _app()
@@ -341,6 +382,7 @@ class TestWsChatReconnect:
                 data = json.loads(ws.receive_text())
                 assert data["type"] == "error"
                 assert "No task_id" in data["error"]
+                assert data["error_code"] == "reconnect_missing_task_id"
 
     def test_reconnect_cached_result(self):
         app = _app()
@@ -380,6 +422,7 @@ class TestWsChatReconnect:
                 data = json.loads(ws.receive_text())
                 assert data["type"] == "error"
                 assert "not found" in data["error"].lower()
+                assert data["error_code"] == "task_not_found"
 
     def test_reconnect_after_bridge_disconnect_returns_cached_error(self):
         """When a bridge disconnects mid-task, the error is cached and returned on reconnect."""
@@ -455,6 +498,7 @@ class TestWsChatCancel:
                 assert data["tab_id"] == "t1"
                 assert data["ok"] is False
                 assert data["error"] == "cancelled"
+                assert data["error_code"] == "cancelled"
 
     def test_cancel_nonexistent_tab_acks(self):
         """Cancel for a tab with no active dispatch still returns ack."""
@@ -471,6 +515,7 @@ class TestWsChatCancel:
                 assert data["type"] == "result"
                 assert data["tab_id"] == "no-such-tab"
                 assert data["error"] == "cancelled"
+                assert data["error_code"] == "cancelled"
                 # Connection still alive
                 ws.send_text("ping")
                 assert ws.receive_text() == "pong"
