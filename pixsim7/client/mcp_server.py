@@ -739,7 +739,7 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
         proc = await asyncio.create_subprocess_exec(
             "git", "rev-parse", "HEAD",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
         if proc.returncode == 0 and stdout:
