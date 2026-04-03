@@ -27,6 +27,7 @@ def test_get_op_signature_unknown_returns_none() -> None:
 def test_list_op_signatures_contains_known_ids() -> None:
     signature_ids = {signature.id for signature in list_op_signatures()}
     assert "camera.motion.v1" in signature_ids
+    assert "color.grade.v1" in signature_ids
     assert "scene.relation.v1" in signature_ids
     assert "sequence.continuity.v1" in signature_ids
     assert "subject.motion.v1" in signature_ids

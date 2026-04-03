@@ -513,6 +513,92 @@ class TestCrossDomainAmbiguitySuppression:
         }
 
 
+class TestColorGradeCrossDomainMatching:
+    """Color-grade ops should match style language without stealing pure light prompts."""
+
+    def test_style_driven_grade_prompt_prefers_color_grade(self):
+        competing_index = (
+            {
+                "block_id": "core.color.grade.teal_orange_cinematic",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset(
+                    {
+                        "color",
+                        "grade",
+                        "cinematic",
+                        "teal",
+                        "orange",
+                        "palette",
+                        "style",
+                        "contrast",
+                        "saturation",
+                    }
+                ),
+                "block_tokens": frozenset({"core", "color", "grade", "teal", "orange", "cinematic"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.light.state.soft_warm",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"soft", "warm", "light", "contrast", "temperature", "diffuse"}),
+                "block_tokens": frozenset({"core", "light", "state", "soft", "warm"}),
+                "op_id": "light.state.set",
+                "signature_id": "light.state.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Cinematic teal and orange color grade style.",
+            "role": "style",
+            "matched_keywords": ["cinematic", "color grade"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
+        assert match is not None
+        assert match["block_id"] == "core.color.grade.teal_orange_cinematic"
+
+    def test_lighting_phrase_prefers_light_state_over_color_grade(self):
+        competing_index = (
+            {
+                "block_id": "core.color.grade.warm_golden_hour",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"color", "grade", "warm", "golden", "palette", "contrast", "saturation"}),
+                "block_tokens": frozenset({"core", "color", "grade", "warm", "golden", "hour"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.light.state.soft_warm",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"soft", "warm", "light", "contrast", "temperature", "diffuse"}),
+                "block_tokens": frozenset({"core", "light", "state", "soft", "warm"}),
+                "op_id": "light.state.set",
+                "signature_id": "light.state.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Soft warm light with gentle contrast.",
+            "role": "light",
+            "matched_keywords": ["soft warm light"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
+        assert match is not None
+        assert match["block_id"] == "core.light.state.soft_warm"
+
+
 # ---------------------------------------------------------------------------
 # EDGE CASE 4: False-friend words
 # ---------------------------------------------------------------------------
@@ -1267,17 +1353,23 @@ class TestSequenceContinuityProjection:
 class TestEnrichIdempotency:
 
     def test_already_enriched_skipped(self):
-        """If primitive_match already exists, enrich should not overwrite."""
+        """If primitive_projection already exists, enrich should not overwrite."""
         candidates = [{
             "text": "Slow dolly forward",
             "role": "camera",
             "matched_keywords": ["dolly"],
-            "metadata": {
-                "primitive_match": {
-                    "mode": "shadow",
-                    "block_id": "custom.block",
-                    "score": 0.99,
-                }
+            "primitive_projection": {
+                "engine": "custom",
+                "mode": "shadow",
+                "status": "matched",
+                "selected_index": 0,
+                "hypotheses": [
+                    {
+                        "block_id": "custom.block",
+                        "score": 0.99,
+                        "confidence": 0.99,
+                    }
+                ],
             },
         }]
         enriched = enrich_candidates_with_primitive_projection(
@@ -1286,8 +1378,8 @@ class TestEnrichIdempotency:
             primitive_index=_synthetic_index(),
         )
         # Should keep original match, not overwrite
-        assert enriched[0]["metadata"]["primitive_match"]["block_id"] == "custom.block"
-        assert enriched[0]["metadata"]["primitive_match"]["score"] == 0.99
+        assert enriched[0]["primitive_projection"]["hypotheses"][0]["block_id"] == "custom.block"
+        assert enriched[0]["primitive_projection"]["hypotheses"][0]["score"] == 0.99
 
     def test_mode_off_noop(self):
         candidates = [{
@@ -1301,7 +1393,7 @@ class TestEnrichIdempotency:
             mode="off",
             primitive_index=_synthetic_index(),
         )
-        assert "primitive_match" not in enriched[0].get("metadata", {})
+        assert "primitive_projection" not in enriched[0]
 
     def test_empty_candidates_noop(self):
         result = enrich_candidates_with_primitive_projection(
@@ -1325,11 +1417,13 @@ class TestIntegrationParsePipeline:
         )
         candidates = result.get("candidates", [])
         assert len(candidates) >= 1
-        # At least one candidate should have a primitive_match
+        # At least one candidate should have a matched primitive_projection
         matches = [
-            c["metadata"]["primitive_match"]
+            c["primitive_projection"]["hypotheses"][c["primitive_projection"]["selected_index"]]
             for c in candidates
-            if c.get("metadata", {}).get("primitive_match")
+            if isinstance(c.get("primitive_projection"), dict)
+            and c["primitive_projection"].get("status") == "matched"
+            and isinstance(c["primitive_projection"].get("selected_index"), int)
         ]
         # Note: may or may not match depending on actual content packs loaded
         # This test validates the pipeline doesn't crash
@@ -1351,7 +1445,7 @@ class TestIntegrationParsePipeline:
         )
         candidates = result.get("candidates", [])
         for c in candidates:
-            assert "primitive_match" not in (c.get("metadata") or {})
+            assert "primitive_projection" not in c
 
     def test_multi_sentence_pipeline(self):
         """Multi-sentence prompt should parse into multiple candidates."""

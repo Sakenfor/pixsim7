@@ -52,6 +52,13 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     groups: ['prompt'],
   },
   {
+    id: 'primitive-projection-corpus',
+    description: 'Generate primitive-projection eval corpus from CUE prompt-pack variants',
+    script: 'tools/codegen/generate-primitive-projection-corpus.ts',
+    supportsCheck: true,
+    groups: ['prompt', 'tests'],
+  },
+  {
     id: 'app-map',
     description: 'Generate APP_MAP.md and action registry from code',
     script: 'packages/shared/app-map/src/cli.ts',

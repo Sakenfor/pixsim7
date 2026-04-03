@@ -326,6 +326,7 @@ _EXPECTED_SIGNATURE_IDS = {
     "camera.motion.v1",
     "camera.pov.v1",
     "camera.shot.v1",
+    "color.grade.v1",
     "direction.axis.v1",
     "light.state.v1",
     "scene.anchor.v1",
@@ -361,6 +362,16 @@ class TestLiveRegistryRegression:
         assert sig.op_id_prefix == "camera.motion."
         assert sig.requires_variant_template is True
         assert sig.required_params == ("speed", "direction")
+        assert sig.required_refs == ()
+        assert sig.allowed_modalities == ("image", "video")
+
+    def test_color_grade_fields_preserved(self) -> None:
+        sig = get_op_signature("color.grade.v1")
+        assert sig is not None
+        assert sig.op_namespace == "color.grade"
+        assert sig.op_id_prefix == "color.grade."
+        assert sig.requires_variant_template is False
+        assert sig.required_params == ("temperature", "saturation", "contrast", "exposure")
         assert sig.required_refs == ()
         assert sig.allowed_modalities == ("image", "video")
 

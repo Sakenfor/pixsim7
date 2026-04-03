@@ -22,6 +22,7 @@ This folder centralizes code generation tooling for the workspace.
 - `tools/codegen/generate-branded-types.ts`
 - `tools/codegen/generate-upload-context.ts`
 - `tools/codegen/generate-prompt-pack-schemas.ts`
+- `tools/codegen/generate-primitive-projection-corpus.ts`
 - `tools/codegen/run-plugin-codegen.ts`
 
 ### OpenAPI Generator Notes

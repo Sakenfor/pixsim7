@@ -30,8 +30,10 @@ pnpm prompt-packs:check
 
 ## How it works
 
-1. The generator auto-discovers every `*.cue` file in `tools/cue/prompt_packs/` (excluding `schema_v1.cue`).
-2. Each file is exported with `cue export ... -e pack --out yaml` and `cue export ... -e manifest --out yaml`.
+1. The generator auto-discovers prompt-pack sources in `tools/cue/prompt_packs/`:
+   - single-file packs: `*.cue` (excluding `schema_v1.cue`)
+   - multi-file packs: `<pack>/` directories containing one or more `.cue` files
+2. Each discovered source is exported with `cue export ... -e pack --out yaml` and `cue export ... -e manifest --out yaml`.
 3. Output subdir defaults to `pack.package_name`; override with `meta.output_subdir` in the CUE file.
 4. YAML is written to:
    - `pixsim7/backend/main/content_packs/prompt/<subdir>/schema.yaml`
@@ -39,14 +41,17 @@ pnpm prompt-packs:check
 
 ## Adding a new pack
 
-1. Create `tools/cue/prompt_packs/<pack_name>.cue` using `schema_v1.cue` types.
-2. Define both top-level objects: `pack` and `manifest`.
-3. In `pack`, define one or more `blocks[]` entries, each containing:
+1. Create either:
+   - `tools/cue/prompt_packs/<pack_name>.cue`, or
+   - `tools/cue/prompt_packs/<pack_name>/` with one or more `.cue` files.
+2. Use `schema_v1.cue` types in your source.
+3. Define both top-level objects: `pack` and `manifest`.
+4. In `pack`, define one or more `blocks[]` entries, each containing:
    - `id`
    - `block_schema`
-4. Run `pnpm prompt-packs:gen` to generate YAML.
-5. Verify with `pnpm prompt-packs:check`.
-6. Commit the `.cue` source and generated YAML files.
+5. Run `pnpm prompt-packs:gen` to generate YAML.
+6. Verify with `pnpm prompt-packs:check`.
+7. Commit the `.cue` source and generated YAML files.
 
 ## Rules
 

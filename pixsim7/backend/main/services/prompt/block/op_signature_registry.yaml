@@ -48,6 +48,13 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: color.grade.v1
+    op_namespace: color.grade
+    requires_variant_template: false
+    required_params: [temperature, saturation, contrast, exposure]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: direction.axis.v1
     op_namespace: direction.axis
     requires_variant_template: true

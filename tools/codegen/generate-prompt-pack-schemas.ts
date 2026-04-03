@@ -2,7 +2,9 @@
 /**
  * Generates prompt content-pack schema.yaml + manifest.yaml files from CUE source packs.
  *
- * Auto-discovers all .cue files in tools/cue/prompt_packs/ (excluding schema_v1.cue).
+ * Auto-discovers prompt-pack sources in tools/cue/prompt_packs/:
+ * - single-file packs: <pack>.cue (excluding schema_v1.cue)
+ * - multi-file packs:  <pack>/ directory containing one or more .cue files
  * Output subdir is derived from `pack.package_name` unless `meta.output_subdir` is set.
  *
  * Usage:
@@ -52,7 +54,7 @@ type JsonObject = Record<string, unknown>;
 
 type DiscoveredPack = {
   id: string;
-  cueFile: string;
+  cueSource: string;
   outputSchemaFile: string;
   outputManifestFile: string;
   packJson: JsonObject;
@@ -140,15 +142,43 @@ function loadCanonicalPromptTagKeys(): Set<string> {
   return keys;
 }
 
+function collectCueFilesRecursively(root: string): string[] {
+  const out: string[] = [];
+  const entries = fsSync.readdirSync(root, { withFileTypes: true });
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectCueFilesRecursively(fullPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith('.cue')) {
+      out.push(fullPath);
+    }
+  }
+  return out;
+}
+
+function resolveCueSourceArgs(cueSource: string): string[] {
+  if (fsSync.existsSync(cueSource) && fsSync.statSync(cueSource).isDirectory()) {
+    const cueFiles = collectCueFilesRecursively(cueSource);
+    if (cueFiles.length === 0) {
+      throw new Error(`No .cue files found under prompt-pack source directory: ${cueSource}`);
+    }
+    return cueFiles;
+  }
+  return [cueSource];
+}
+
 function runCueExportRaw(
-  cueFile: string,
+  cueSource: string,
   expression: string,
   out: 'yaml' | 'json'
 ): string {
+  const cueSourceArgs = resolveCueSourceArgs(cueSource);
   const cueArgs = [
     'export',
     SHARED_SCHEMA_FILE,
-    cueFile,
+    ...cueSourceArgs,
     '-e',
     expression,
     '--out',
@@ -161,32 +191,32 @@ function runCueExportRaw(
 
   if (result.error) {
     throw new Error(
-      `Failed to execute cue for ${cueFile}: ${result.error.message}`
+      `Failed to execute cue for ${cueSource}: ${result.error.message}`
     );
   }
 
   if (result.status !== 0) {
     const details = `${result.stderr || result.stdout || ''}`.trim();
     throw new Error(
-      `cue export failed for ${cueFile}${details ? `\n${details}` : ''}\nResolved cue binary: ${CUE_BIN}`
+      `cue export failed for ${cueSource}${details ? `\n${details}` : ''}\nResolved cue binary: ${CUE_BIN}`
     );
   }
 
   return result.stdout || '';
 }
 
-function runCueExportYaml(cueFile: string, expression: string): string {
-  return runCueExportRaw(cueFile, expression, 'yaml');
+function runCueExportYaml(cueSource: string, expression: string): string {
+  return runCueExportRaw(cueSource, expression, 'yaml');
 }
 
-function runCueExportJson(cueFile: string, expression: string): unknown {
-  const raw = runCueExportRaw(cueFile, expression, 'json');
+function runCueExportJson(cueSource: string, expression: string): unknown {
+  const raw = runCueExportRaw(cueSource, expression, 'json');
   try {
     return JSON.parse(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Failed to parse JSON cue export for ${cueFile} expression "${expression}": ${message}`
+      `Failed to parse JSON cue export for ${cueSource} expression "${expression}": ${message}`
     );
   }
 }
@@ -211,10 +241,10 @@ function asRecord(value: unknown): JsonObject {
   return isRecord(value) ? value : {};
 }
 
-function resolveOutputSubdir(cueFile: string, packJson: JsonObject): string {
+function resolveOutputSubdir(cueSource: string, packJson: JsonObject): string {
   // Try meta.output_subdir first
   try {
-    const raw = runCueExportJson(cueFile, 'meta.output_subdir');
+    const raw = runCueExportJson(cueSource, 'meta.output_subdir');
     const subdir = asNonEmptyString(raw);
     if (subdir) {
       validateSubdir(subdir);
@@ -226,34 +256,62 @@ function resolveOutputSubdir(cueFile: string, packJson: JsonObject): string {
 
   const packageName = asNonEmptyString(packJson.package_name);
   if (!packageName) {
-    throw new Error(`Could not resolve package_name from ${cueFile}`);
+    throw new Error(`Could not resolve package_name from ${cueSource}`);
   }
   validateSubdir(packageName);
   return packageName;
 }
 
 async function discoverPacks(): Promise<DiscoveredPack[]> {
-  const entries = await fs.readdir(PROMPT_PACKS_ROOT);
+  const entries = await fs.readdir(PROMPT_PACKS_ROOT, { withFileTypes: true });
   const packs: DiscoveredPack[] = [];
+  const seenIds = new Set<string>();
 
-  for (const entry of entries.sort()) {
-    if (!entry.endsWith('.cue') || EXCLUDED_FILES.has(entry)) {
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    let id: string | null = null;
+    let cueSource: string | null = null;
+
+    if (entry.isFile()) {
+      if (!entry.name.endsWith('.cue') || EXCLUDED_FILES.has(entry.name)) {
+        continue;
+      }
+      id = entry.name.replace(/\.cue$/, '');
+      cueSource = path.join(PROMPT_PACKS_ROOT, entry.name);
+    } else if (entry.isDirectory()) {
+      if (entry.name.startsWith('.') || entry.name === 'cue.mod') {
+        continue;
+      }
+      const dirPath = path.join(PROMPT_PACKS_ROOT, entry.name);
+      const cueFiles = collectCueFilesRecursively(dirPath);
+      if (cueFiles.length === 0) {
+        continue;
+      }
+      id = entry.name;
+      cueSource = dirPath;
+    }
+
+    if (!id || !cueSource) {
       continue;
     }
-
-    const cueFile = path.join(PROMPT_PACKS_ROOT, entry);
-    const id = entry.replace(/\.cue$/, '');
-    const packRaw = runCueExportJson(cueFile, 'pack');
-    if (!isRecord(packRaw)) {
-      throw new Error(`cue export "pack" must produce an object for ${cueFile}`);
+    if (seenIds.has(id)) {
+      throw new Error(
+        `Duplicate prompt-pack id "${id}" discovered in prompt_packs sources. ` +
+        `Use unique file/directory names.`
+      );
     }
-    const subdir = resolveOutputSubdir(cueFile, packRaw);
+    seenIds.add(id);
+
+    const packRaw = runCueExportJson(cueSource, 'pack');
+    if (!isRecord(packRaw)) {
+      throw new Error(`cue export "pack" must produce an object for ${cueSource}`);
+    }
+    const subdir = resolveOutputSubdir(cueSource, packRaw);
     const outputSchemaFile = path.join(OUTPUT_BASE, subdir, 'schema.yaml');
     const outputManifestFile = path.join(OUTPUT_BASE, subdir, 'manifest.yaml');
 
     packs.push({
       id,
-      cueFile,
+      cueSource,
       outputSchemaFile,
       outputManifestFile,
       packJson: packRaw,
@@ -607,9 +665,9 @@ async function main(): Promise<void> {
   let stale = false;
 
   for (const pack of packs) {
-    const generatedSchema = normalizeText(runCueExportYaml(pack.cueFile, 'pack'));
+    const generatedSchema = normalizeText(runCueExportYaml(pack.cueSource, 'pack'));
     const generatedManifest = normalizeText(
-      runCueExportYaml(pack.cueFile, 'manifest')
+      runCueExportYaml(pack.cueSource, 'manifest')
     );
 
     const existingSchema = await readFileIfExists(pack.outputSchemaFile);

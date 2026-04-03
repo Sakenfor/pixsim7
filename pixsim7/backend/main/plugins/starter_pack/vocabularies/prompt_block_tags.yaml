@@ -382,6 +382,62 @@ tags:
         category: composition
     status: active
 
+  grade_temperature:
+    label: "Grade Temperature"
+    description: "Color grade temperature treatment independent of lighting rig."
+    data_type: string
+    allowed_values: [very_warm, warm, neutral, cool, very_cool]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: atmosphere
+      - role: lighting
+        category: composition
+    status: active
+
+  grade_saturation:
+    label: "Grade Saturation"
+    description: "Color grade saturation level."
+    data_type: string
+    allowed_values: [muted, low, medium, high, vibrant]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: atmosphere
+      - role: lighting
+        category: composition
+    status: active
+
+  grade_contrast:
+    label: "Grade Contrast"
+    description: "Color grade contrast curve profile."
+    data_type: string
+    allowed_values: [soft, low, medium, high, punchy]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: atmosphere
+      - role: lighting
+        category: composition
+    status: active
+
+  grade_exposure:
+    label: "Grade Exposure"
+    description: "Color grade exposure bias."
+    data_type: string
+    allowed_values: [dark, low, balanced, bright, high]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: atmosphere
+      - role: lighting
+        category: composition
+    status: active
+
   placement_orientation:
     label: "Placement Orientation"
     description: "Subject orientation relative to camera/anchor."

@@ -1,0 +1,178 @@
+version: 1.0.0
+package_name: core_color
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: grade
+    block_schema:
+      id_prefix: core.color.grade
+      category: color
+      capabilities:
+        - color.grade
+      text_template: 'Color grade token: {variant}.'
+      tags:
+        modifier_family: color_grade
+        modality_support: both
+        temporal: neutral
+        grade_context_synonyms:
+          - color grade
+          - color grading
+          - palette
+          - tone
+          - look
+          - style
+          - lighting
+          - light
+          - cinematic
+      op:
+        op_id: color.grade.apply
+        signature_id: color.grade.v1
+        modalities:
+          - both
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+        params:
+          - key: temperature
+            type: enum
+            enum:
+              - very_warm
+              - warm
+              - neutral
+              - cool
+              - very_cool
+            default: neutral
+            tag_key: grade_temperature
+          - key: saturation
+            type: enum
+            enum:
+              - muted
+              - low
+              - medium
+              - high
+              - vibrant
+            default: medium
+            tag_key: grade_saturation
+          - key: contrast
+            type: enum
+            enum:
+              - soft
+              - low
+              - medium
+              - high
+              - punchy
+            default: medium
+            tag_key: grade_contrast
+          - key: exposure
+            type: enum
+            enum:
+              - dark
+              - low
+              - balanced
+              - bright
+              - high
+            default: balanced
+            tag_key: grade_exposure
+        default_args:
+          temperature: neutral
+          saturation: medium
+          contrast: medium
+          exposure: balanced
+      variants:
+        - key: neutral_clean
+          tags:
+            grade_synonyms:
+              - balanced color
+              - neutral look
+              - clean grade
+          op_args:
+            temperature: neutral
+            saturation: medium
+            contrast: medium
+            exposure: balanced
+        - key: warm_golden_hour
+          tags:
+            grade_synonyms:
+              - golden hour
+              - warm sunlight
+              - amber tones
+              - cozy lighting
+          op_args:
+            temperature: warm
+            saturation: high
+            contrast: low
+            exposure: bright
+        - key: cool_moonlit
+          tags:
+            grade_synonyms:
+              - moonlit
+              - blue hour
+              - cool lighting
+              - steel blue tones
+          op_args:
+            temperature: cool
+            saturation: low
+            contrast: high
+            exposure: low
+        - key: teal_orange_cinematic
+          tags:
+            grade_synonyms:
+              - teal and orange
+              - blockbuster
+              - cinematic grade
+              - film look
+          op_args:
+            temperature: cool
+            saturation: high
+            contrast: high
+            exposure: balanced
+        - key: desaturated_filmic
+          tags:
+            grade_synonyms:
+              - desaturated
+              - muted palette
+              - filmic
+              - matte look
+          op_args:
+            temperature: neutral
+            saturation: muted
+            contrast: medium
+            exposure: low
+        - key: high_contrast_noir
+          tags:
+            grade_synonyms:
+              - noir
+              - moody contrast
+              - dramatic shadows
+              - monochrome feel
+          op_args:
+            temperature: cool
+            saturation: low
+            contrast: punchy
+            exposure: dark
+        - key: pastel_dreamy
+          tags:
+            grade_synonyms:
+              - pastel
+              - dreamy
+              - airy style
+              - soft color
+          op_args:
+            temperature: warm
+            saturation: low
+            contrast: soft
+            exposure: bright
+        - key: vibrant_pop
+          tags:
+            grade_synonyms:
+              - vibrant color
+              - punchy palette
+              - pop art
+              - saturated style
+          op_args:
+            temperature: warm
+            saturation: vibrant
+            contrast: high
+            exposure: high
