@@ -438,6 +438,31 @@ class HealthManager:
             pass
         return None
 
+    def _is_pid_alive(self, pid: Optional[int]) -> bool:
+        """Check whether a PID currently exists."""
+        if not pid:
+            return False
+        try:
+            if os.name == 'nt':
+                result = subprocess.run(
+                    ['tasklist', '/FI', f'PID eq {pid}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    shell=False,
+                )
+                if result.returncode != 0:
+                    return False
+                return re.search(rf"\b{pid}\b", result.stdout or "") is not None
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except Exception:
+            return False
+
     def _check_service(self, key: str, state: ServiceState):
         """Check health for a single service."""
         definition = state.definition
@@ -526,12 +551,28 @@ class HealthManager:
                 if state.health != HealthStatus.STOPPED:
                     self._emit_health_update(key, HealthStatus.STOPPED)
                 return
+
+            # Keep worker PID state honest: stale PIDs can otherwise keep
+            # the card green even when the process is gone.
+            if state.pid and not self._is_pid_alive(state.pid):
+                state.pid = None
+            if state.detected_pid and not self._is_pid_alive(state.detected_pid):
+                state.detected_pid = None
+            has_worker_pid = bool(state.pid or state.detected_pid)
+
             redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
             is_healthy = self._check_redis_health(redis_url)
-            if is_healthy:
+            if is_healthy and has_worker_pid:
                 self.failure_counts[key] = 0
                 self._handle_healthy(key, state)
                 self._emit_health_update(key, HealthStatus.HEALTHY)
+            elif not has_worker_pid:
+                self._increment_failures(key)
+                # Without a live worker PID, the worker is not running even if
+                # Redis is reachable. Mark stopped to avoid false-positive green.
+                state.status = ServiceStatus.STOPPED
+                state.externally_managed = False
+                self._emit_health_update(key, HealthStatus.STOPPED)
             else:
                 self._increment_failures(key)
                 grace = definition.health_grace_attempts
