@@ -110,14 +110,14 @@ async def _suggest_and_apply(
                 tag = await registry.get_or_create_tag(slug)
                 tag_records.append(tag)
 
-            # Load existing manual tags so we don't overwrite them
-            manual_result = await db.execute(
+            # Load existing manual + derived tag_ids — neither is overwritten by ai
+            protected_result = await db.execute(
                 select(PromptFamilyTag).where(
                     PromptFamilyTag.family_id == family_id,
-                    PromptFamilyTag.source == "manual",
+                    PromptFamilyTag.source.in_(["manual", "derived"]),
                 )
             )
-            manual_tag_ids = {row.tag_id for row in manual_result.scalars().all()}
+            protected_tag_ids = {row.tag_id for row in protected_result.scalars().all()}
 
             # Replace all existing AI tags
             await db.execute(
@@ -127,9 +127,9 @@ async def _suggest_and_apply(
                 )
             )
 
-            # Insert new AI tags (skip any already held as manual)
+            # Insert new AI tags (skip any already held as manual or derived)
             for tag in tag_records:
-                if tag.id in manual_tag_ids:
+                if tag.id in protected_tag_ids:
                     continue
                 db.add(PromptFamilyTag(
                     family_id=family_id,

@@ -83,6 +83,12 @@ class PromptFamily(SQLModel, table=True):
         description="Authoring mode used to create this family (soft ref to authoring_modes.id): "
                     "'character_design', 'scene_setup', etc. Used for tag vocabulary selection."
     )
+    primary_character_id: Optional[UUID] = Field(
+        default=None,
+        index=True,
+        description="Primary Character this family is about (soft ref to characters.id). "
+                    "Used for deterministic tag derivation: species, archetype, category."
+    )
     # Optional game integration
     game_world_id: Optional[UUID] = Field(
         default=None,

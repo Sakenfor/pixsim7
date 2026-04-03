@@ -40,6 +40,7 @@ async def build_family_response(
         prompt_type=family.prompt_type,
         category=family.category,
         authoring_mode_id=family.authoring_mode_id,
+        primary_character_id=family.primary_character_id,
         tags=tag_slugs,
         is_active=family.is_active,
         version_count=version_count,
@@ -67,6 +68,7 @@ async def build_family_responses(
             prompt_type=f.prompt_type,
             category=f.category,
             authoring_mode_id=f.authoring_mode_id,
+            primary_character_id=f.primary_character_id,
             tags=[t.slug for t in tags_map.get(f.id, [])],
             is_active=f.is_active,
         )

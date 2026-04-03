@@ -18,9 +18,10 @@ from pixsim7.backend.main.domain.prompt import (
 )
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
-from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.services.tag import TagAssignment, TagRegistry
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from .events import PROMPT_VERSION_CREATED
+from .tag_deriver import derive_structural_tags
 from .utils.diff import generate_inline_diff
 
 
@@ -85,6 +86,8 @@ class PromptFamilyService:
                 family.id, tags, auto_create=True
             )
 
+        await self._apply_derived_tags(family)
+
         return family
 
     async def get_family(self, family_id: UUID) -> Optional[PromptFamily]:
@@ -108,11 +111,17 @@ class PromptFamilyService:
         if not family:
             return None
 
-        model_fields = {"title", "description", "category", "authoring_mode_id", "is_active"}
+        model_fields = {
+            "title", "description", "category", "authoring_mode_id",
+            "primary_character_id", "is_active",
+        }
         new_tags = fields.pop("tags", None)
+        structural_changed = False
         for key, value in fields.items():
             if key in model_fields and value is not None:
                 setattr(family, key, value)
+                if key in {"authoring_mode_id", "primary_character_id", "category"}:
+                    structural_changed = True
 
         self.db.add(family)
         await self.db.commit()
@@ -123,7 +132,65 @@ class PromptFamilyService:
                 family.id, new_tags, auto_create=True
             )
 
+        if structural_changed:
+            await self._apply_derived_tags(family)
+
         return family
+
+    async def _apply_derived_tags(self, family: PromptFamily) -> None:
+        """Derive tags from structured authoring context and apply as source='derived'.
+
+        Replaces any existing derived tags; never touches manual or ai tags.
+        Silently no-ops on any failure.
+        """
+        try:
+            from sqlalchemy import delete, select as sa_select
+
+            derived_slugs = await derive_structural_tags(
+                authoring_mode_id=family.authoring_mode_id,
+                prompt_type=family.prompt_type,
+                category=family.category,
+                primary_character_id=family.primary_character_id,
+                npc_id=family.npc_id,
+                db=self.db,
+            )
+            if not derived_slugs:
+                return
+
+            registry = TagRegistry(self.db)
+
+            # Load existing manual + ai tag_ids so we never overwrite them
+            existing = await self.db.execute(
+                sa_select(PromptFamilyTag).where(
+                    PromptFamilyTag.family_id == family.id,
+                    PromptFamilyTag.source != "derived",
+                )
+            )
+            protected_tag_ids = {row.tag_id for row in existing.scalars().all()}
+
+            # Replace existing derived tags
+            await self.db.execute(
+                delete(PromptFamilyTag).where(
+                    PromptFamilyTag.family_id == family.id,
+                    PromptFamilyTag.source == "derived",
+                )
+            )
+
+            for slug in derived_slugs:
+                tag = await registry.get_or_create_tag(slug)
+                if tag.id not in protected_tag_ids:
+                    self.db.add(PromptFamilyTag(
+                        family_id=family.id,
+                        tag_id=tag.id,
+                        source="derived",
+                    ))
+
+            await self.db.commit()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "derived_tag_application_failed", exc_info=True
+            )
 
     async def get_family_by_slug(self, slug: str) -> Optional[PromptFamily]:
         """Get family by slug"""

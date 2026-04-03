@@ -19,6 +19,11 @@ class CreatePromptFamilyRequest(BaseModel):
         description="Authoring mode used (soft ref to authoring_modes.id). "
                     "Drives tag vocabulary selection — prefer this over category for that purpose."
     )
+    primary_character_id: Optional[UUID] = Field(
+        None,
+        description="Primary Character this family is about. "
+                    "Enables deterministic tag derivation (species, archetype, category)."
+    )
     tags: List[str] = Field(default_factory=list)
     game_world_id: Optional[UUID] = None
     npc_id: Optional[UUID] = None
@@ -31,6 +36,7 @@ class UpdatePromptFamilyRequest(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     authoring_mode_id: Optional[str] = None
+    primary_character_id: Optional[UUID] = None
     tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
@@ -86,6 +92,7 @@ class PromptFamilyResponse(BaseModel):
     prompt_type: str
     category: Optional[str]
     authoring_mode_id: Optional[str] = None
+    primary_character_id: Optional[UUID] = None
     tags: List[str]
     is_active: bool
     version_count: Optional[int] = None
