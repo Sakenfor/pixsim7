@@ -108,7 +108,7 @@ class PromptFamilyService:
         if not family:
             return None
 
-        model_fields = {"title", "description", "category", "is_active"}
+        model_fields = {"title", "description", "category", "authoring_mode_id", "is_active"}
         new_tags = fields.pop("tags", None)
         for key, value in fields.items():
             if key in model_fields and value is not None:
@@ -242,6 +242,7 @@ class PromptFamilyService:
                 "family_id": str(family_id),
                 "version_id": str(version.id),
                 "prompt_text": prompt_text,
+                "authoring_mode_id": family.authoring_mode_id if family else None,
                 "category": family.category if family else None,
             }
             if ai_tags is not None:

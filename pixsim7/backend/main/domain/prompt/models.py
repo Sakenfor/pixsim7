@@ -74,7 +74,14 @@ class PromptFamily(SQLModel, table=True):
         default=None,
         max_length=100,
         index=True,
-        description="Category: 'romance', 'action', 'dialogue', etc."
+        description="Content category label: 'romance', 'action', 'dialogue', etc."
+    )
+    authoring_mode_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Authoring mode used to create this family (soft ref to authoring_modes.id): "
+                    "'character_design', 'scene_setup', etc. Used for tag vocabulary selection."
     )
     # Optional game integration
     game_world_id: Optional[UUID] = Field(

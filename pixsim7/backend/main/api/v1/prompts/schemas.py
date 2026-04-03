@@ -14,6 +14,11 @@ class CreatePromptFamilyRequest(BaseModel):
     slug: Optional[str] = Field(None, description="URL-safe identifier (auto-generated if not provided)")
     description: Optional[str] = None
     category: Optional[str] = None
+    authoring_mode_id: Optional[str] = Field(
+        None,
+        description="Authoring mode used (soft ref to authoring_modes.id). "
+                    "Drives tag vocabulary selection — prefer this over category for that purpose."
+    )
     tags: List[str] = Field(default_factory=list)
     game_world_id: Optional[UUID] = None
     npc_id: Optional[UUID] = None
@@ -25,6 +30,7 @@ class UpdatePromptFamilyRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    authoring_mode_id: Optional[str] = None
     tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
@@ -79,6 +85,7 @@ class PromptFamilyResponse(BaseModel):
     description: Optional[str]
     prompt_type: str
     category: Optional[str]
+    authoring_mode_id: Optional[str] = None
     tags: List[str]
     is_active: bool
     version_count: Optional[int] = None

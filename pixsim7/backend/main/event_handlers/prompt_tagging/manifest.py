@@ -53,7 +53,8 @@ async def handle_event(event: Event) -> None:
 
     family_id_str = event.data.get("family_id")
     prompt_text = event.data.get("prompt_text")
-    category = event.data.get("category")
+    # authoring_mode_id is the canonical vocabulary key; fall back to category
+    mode_id = event.data.get("authoring_mode_id") or event.data.get("category")
 
     if not family_id_str or not prompt_text:
         logger.warning("prompt_tagging_skipped_missing_data", event_data=event.data)
@@ -63,7 +64,7 @@ async def handle_event(event: Event) -> None:
         _suggest_and_apply(
             family_id=UUID(family_id_str),
             prompt_text=prompt_text,
-            category=category,
+            category=mode_id,
             ai_tags=event.data.get("ai_tags"),
         )
     )
