@@ -186,6 +186,18 @@ async def _handle_message(
     except Exception:
         pass
 
+    # Resolve default model when profile didn't specify one.
+    # For Codex the bridge reports available models; for Claude it doesn't,
+    # so we use a static fallback so the task payload carries a real model name.
+    if not model:
+        try:
+            bridge_models = remote_cmd_bridge.get_available_models(agent_type=engine)
+            default_model = next((m["id"] for m in bridge_models if m.get("is_default")), None)
+            if default_model:
+                model = default_model
+        except Exception:
+            pass
+
     if custom_instructions:
         if profile_prompt:
             profile_prompt += "\n\n" + custom_instructions

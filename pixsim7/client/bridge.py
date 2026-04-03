@@ -344,9 +344,14 @@ class Bridge:
         Uses lightweight probes (initialize + model/list only, no thread/MCP)
         for engines that support it. Sessions are stopped immediately after.
         """
+        from pixsim7.client.protocols import get_protocol
         for engine in self._pool._engines:
             engine_name = engine.split("/")[-1].split("\\")[-1]
             models = await self._probe_models(engine)
+            # Fallback to static model list for engines that don't support probes
+            if not models:
+                protocol = get_protocol(engine_name)
+                models = protocol.static_models()
             if models:
                 await ws.send(json.dumps({
                     "type": "models_available",

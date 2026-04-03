@@ -85,6 +85,14 @@ class AgentProtocol:
         """Parse a raw JSON event from stdout into a normalized ParsedEvent."""
         raise NotImplementedError
 
+    def static_models(self) -> list[dict]:
+        """Return a static model list for engines that don't support dynamic probes.
+
+        Override in subclasses to provide known models when the engine
+        can't be probed via JSON-RPC model/list.  Returns [] by default.
+        """
+        return []
+
 
 def _describe_tool_use(block: dict) -> str:
     """Build a human-readable description of a tool_use block."""
@@ -135,6 +143,18 @@ class ClaudeProtocol(AgentProtocol):
     """Claude Code: long-running process, stream-json stdin/stdout."""
 
     name = "claude"
+
+    def static_models(self) -> list[dict]:
+        """Claude Code doesn't support JSON-RPC model/list — return known models.
+
+        IDs match the short names used by the frontend dropdown and accepted
+        by ``claude --model``: ``opus``, ``sonnet``, ``haiku``.
+        """
+        return [
+            {"id": "opus", "model": "opus", "label": "Opus", "is_default": True, "hidden": False, "input_modalities": ["text", "image"]},
+            {"id": "sonnet", "model": "sonnet", "label": "Sonnet", "is_default": False, "hidden": False, "input_modalities": ["text", "image"]},
+            {"id": "haiku", "model": "haiku", "label": "Haiku", "is_default": False, "hidden": False, "input_modalities": ["text", "image"]},
+        ]
 
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
