@@ -14,6 +14,16 @@ class CreatePromptFamilyRequest(BaseModel):
     slug: Optional[str] = Field(None, description="URL-safe identifier (auto-generated if not provided)")
     description: Optional[str] = None
     category: Optional[str] = None
+    authoring_mode_id: Optional[str] = Field(
+        None,
+        description="Authoring mode used (soft ref to authoring_modes.id). "
+                    "Drives tag vocabulary selection — prefer this over category for that purpose."
+    )
+    primary_character_id: Optional[UUID] = Field(
+        None,
+        description="Primary Character this family is about. "
+                    "Enables deterministic tag derivation (species, archetype, category)."
+    )
     tags: List[str] = Field(default_factory=list)
     game_world_id: Optional[UUID] = None
     npc_id: Optional[UUID] = None
@@ -25,6 +35,8 @@ class UpdatePromptFamilyRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    authoring_mode_id: Optional[str] = None
+    primary_character_id: Optional[UUID] = None
     tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
@@ -44,6 +56,14 @@ class CreatePromptVersionRequest(BaseModel):
         description="Canonical structured analysis for this prompt version.",
     )
     tags: List[str] = Field(default_factory=list)
+    ai_tags: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Tags provided directly by an AI agent that authored this version. "
+            "When present, skips the background LLM tag-suggestion step and applies "
+            "these as AI-source tags immediately. Values must be prefix:value slugs."
+        ),
+    )
 
 
 class BatchVersionRequest(CreatePromptVersionRequest):
@@ -71,6 +91,8 @@ class PromptFamilyResponse(BaseModel):
     description: Optional[str]
     prompt_type: str
     category: Optional[str]
+    authoring_mode_id: Optional[str] = None
+    primary_character_id: Optional[UUID] = None
     tags: List[str]
     is_active: bool
     version_count: Optional[int] = None

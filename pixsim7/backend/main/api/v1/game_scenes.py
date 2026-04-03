@@ -15,7 +15,8 @@ from pixsim7.backend.main.domain.game import GameScene, GameSceneEdge, GameScene
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.game.derived_projections import sync_scene_graph_projection
 from pixsim7.backend.main.services.game.events import SCENE_CREATED, SCENE_UPDATED
-from pixsim7.backend.main.services.tag_service import TagService
+from pixsim7.backend.main.services.tag import TagAssignment
+from pixsim7.backend.main.domain.assets.tag import AssetTag
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 
 
@@ -246,7 +247,7 @@ async def _build_scene_response(
     asset_service: AssetSvc,
     user: CurrentGamePrincipal,
 ) -> SceneResponse:
-    tag_service = TagService(db)
+    asset_tags = TagAssignment(db, AssetTag, "asset_id")
 
     nodes_result = await db.execute(
         select(GameSceneNode)
@@ -271,7 +272,7 @@ async def _build_scene_response(
             try:
                 asset = await asset_service.get_asset_for_user(n.asset_id, user)
                 remote_url = asset.remote_url or asset.download_url
-                tag_slugs = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
+                tag_slugs = [t.slug for t in await asset_tags.get_tags(asset.id)]
                 if remote_url:
                     media_segments.append(
                         MediaSegment(
@@ -301,7 +302,7 @@ async def _build_scene_response(
                 try:
                     asset = await asset_service.get_asset_for_user(seg_asset_id_int, user)
                     remote_url = asset.remote_url or asset.download_url
-                    tag_slugs = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
+                    tag_slugs = [t.slug for t in await asset_tags.get_tags(asset.id)]
                     if not remote_url:
                         continue
 

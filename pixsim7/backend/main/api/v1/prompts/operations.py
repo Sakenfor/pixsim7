@@ -21,10 +21,10 @@ from pixsim7.backend.main.services.prompt.parser import analyzer_registry, Analy
 from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
     AnalyzerPresetService,
 )
+from .helpers import build_family_response
 from .schemas import (
     BatchVersionRequest,
     CreatePromptVersionRequest,
-    PromptFamilyResponse,
     PromptVersionResponse,
 )
 
@@ -140,17 +140,7 @@ async def import_family(
     # Get version count
     versions = await service.list_versions(family.id, limit=1000)
 
-    return PromptFamilyResponse(
-        id=family.id,
-        slug=family.slug,
-        title=family.title,
-        description=family.description,
-        prompt_type=family.prompt_type,
-        category=family.category,
-        tags=family.tags,
-        is_active=family.is_active,
-        version_count=len(versions)
-    )
+    return await build_family_response(family, db, version_count=len(versions))
 
 
 # ===== Historical Inference (Phase 3) =====

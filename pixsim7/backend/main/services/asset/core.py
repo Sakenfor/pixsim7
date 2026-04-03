@@ -118,10 +118,6 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
         return asset
 
     # ===== TAG MANAGEMENT =====
-    # NOTE: Tag management has been moved to TagService
-    # Use: from pixsim7.backend.main.services.tag_service import TagService
-    #      tag_service = TagService(db)
-    #      await tag_service.assign_tags_to_asset(asset_id, tag_slugs)
 
     async def bulk_update_tags(
         self,
@@ -131,7 +127,7 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
         mode: str = "add"  # "add", "remove", "replace"
     ) -> List[Asset]:
         """
-        Update tags for multiple assets at once using the new TagService
+        Update tags for multiple assets at once.
 
         Args:
             asset_ids: List of asset IDs
@@ -146,9 +142,10 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
             ResourceNotFoundError: Any asset not found
             PermissionError: User doesn't own any asset
         """
-        from pixsim7.backend.main.services.tag_service import TagService
+        from pixsim7.backend.main.services.tag import TagAssignment
+        from pixsim7.backend.main.domain.assets.tag import AssetTag
 
-        tag_service = TagService(self.db)
+        asset_tags = TagAssignment(self.db, AssetTag, "asset_id")
         assets = []
 
         for asset_id in asset_ids:
@@ -157,11 +154,11 @@ class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin)
 
             # Apply tag operations
             if mode == "add":
-                await tag_service.assign_tags_to_asset(asset_id, tags, auto_create=True)
+                await asset_tags.assign(asset_id, tags, auto_create=True)
             elif mode == "remove":
-                await tag_service.remove_tags_from_asset(asset_id, tags)
+                await asset_tags.remove(asset_id, tags)
             elif mode == "replace":
-                await tag_service.replace_asset_tags(asset_id, tags, auto_create=True)
+                await asset_tags.replace(asset_id, tags, auto_create=True)
             else:
                 raise InvalidOperationError(f"Invalid mode: {mode}. Use 'add', 'remove', or 'replace'")
 

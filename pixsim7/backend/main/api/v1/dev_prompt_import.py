@@ -27,8 +27,8 @@ from pixsim7.backend.main.services.prompt.import_ import (
     PromptImportSpec,
     prepare_import_payloads,
 )
+from pixsim7.backend.main.api.v1.prompts.helpers import build_family_response
 from pixsim7.backend.main.api.v1.prompts.schemas import (
-    PromptFamilyResponse,
     PromptVersionResponse,
 )
 from pixsim_logging import get_logger
@@ -174,17 +174,7 @@ async def import_prompt(
 
         # Build response
         return PromptImportResponse(
-            family=PromptFamilyResponse(
-                id=family.id,
-                slug=family.slug,
-                title=family.title,
-                description=family.description,
-                prompt_type=family.prompt_type,
-                category=family.category,
-                tags=family.tags,
-                is_active=family.is_active,
-                version_count=1,
-            ),
+            family=await build_family_response(family, db, version_count=1),
             version=PromptVersionResponse(
                 id=version.id,
                 family_id=version.family_id,

@@ -444,9 +444,9 @@ class AssetCreationMixin:
                 if source_type == "generated":
                     tags_to_apply = preferences.get("generated_asset_tags", [])
                     if tags_to_apply:
-                        from pixsim7.backend.main.services.tag_service import TagService
-                        tag_service = TagService(self.db)
-                        await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+                        from pixsim7.backend.main.services.tag import TagAssignment
+                        from pixsim7.backend.main.domain.assets.tag import AssetTag
+                        await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
                     return
 
             # Get static tags for this source type
@@ -471,9 +471,9 @@ class AssetCreationMixin:
             if not tags_to_apply:
                 return
 
-            from pixsim7.backend.main.services.tag_service import TagService
-            tag_service = TagService(self.db)
-            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+            from pixsim7.backend.main.services.tag import TagAssignment
+            from pixsim7.backend.main.domain.assets.tag import AssetTag
+            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
 
         except Exception as e:
             logger.warning(f"Failed to auto-tag asset {asset_id} (source={source_type}): {e}")
@@ -575,9 +575,9 @@ class AssetCreationMixin:
             # Preserve order while removing duplicates.
             tags_to_apply = list(dict.fromkeys(tags_to_apply))
 
-            from pixsim7.backend.main.services.tag_service import TagService
-            tag_service = TagService(self.db)
-            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+            from pixsim7.backend.main.services.tag import TagAssignment
+            from pixsim7.backend.main.domain.assets.tag import AssetTag
+            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
 
             logger.debug(f"Applied {len(tags_to_apply)} analyzer tags to asset {asset_id}")
 

@@ -39,7 +39,7 @@ class PromptFamily(SQLModel, table=True):
     __tablename__ = "prompt_families"
     __audit__ = AuditMeta(
         domain="prompt", entity_type="prompt_family", label_field="title",
-        tracked_fields=("title", "description", "category", "tags", "is_active"),
+        tracked_fields=("title", "description", "category", "is_active"),
     )
 
     id: Optional[UUID] = Field(
@@ -74,14 +74,21 @@ class PromptFamily(SQLModel, table=True):
         default=None,
         max_length=100,
         index=True,
-        description="Category: 'romance', 'action', 'dialogue', etc."
+        description="Content category label: 'romance', 'action', 'dialogue', etc."
     )
-    tags: List[str] = Field(
-        default_factory=list,
-        sa_column=Column(JSON),
-        description="Tags: ['intimacy:high', 'location:park', 'mood:romantic']"
+    authoring_mode_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Authoring mode used to create this family (soft ref to authoring_modes.id): "
+                    "'character_design', 'scene_setup', etc. Used for tag vocabulary selection."
     )
-
+    primary_character_id: Optional[UUID] = Field(
+        default=None,
+        index=True,
+        description="Primary Character this family is about (soft ref to characters.id). "
+                    "Used for deterministic tag derivation: species, archetype, category."
+    )
     # Optional game integration
     game_world_id: Optional[UUID] = Field(
         default=None,

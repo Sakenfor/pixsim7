@@ -1,0 +1,138 @@
+# Tag vocabulary for AI-assisted PromptFamily tagging.
+#
+# One entry per authoring mode id (matches AuthoringMode.id).
+# The LLM tagger uses the instruction + prefixes to produce consistent,
+# browsable library-organization tags — not structural analysis tags.
+#
+# "fallback" applies when no mode entry matches the family's category.
+#
+# Schema per entry:
+#   instruction:  sentence(s) telling the LLM what to focus on
+#   prefixes:     list of allowed tag prefixes
+#     prefix:       the slug prefix (e.g. "character" → "character:warrior")
+#     description:  what values under this prefix represent
+#     examples:     bare values (without prefix) to guide the LLM
+
+defaults:
+  min_tags: 2
+  max_tags: 6
+
+modes:
+  character_design:
+    instruction: >
+      Focus on the character type or species, their game/narrative archetype,
+      primary visual design style, and any named NPC identities present.
+    prefixes:
+      - prefix: character
+        description: Primary character type or species
+        examples: [warrior, mage, creature, demon, human, beast, elf, undead]
+      - prefix: archetype
+        description: Narrative or game role
+        examples: [boss, npc, protagonist, companion, merchant, guard, villain]
+      - prefix: design
+        description: Dominant visual design characteristic
+        examples: [armored, ethereal, tattered, ornate, minimal, bestial, regal]
+      - prefix: trait
+        description: A notable distinguishing physical or personality trait
+        examples: [scarred, masked, winged, ancient, volatile, stoic, feral]
+
+  outfit_design:
+    instruction: >
+      Focus on garment category, primary materials, aesthetic style,
+      and formality level of the outfit described.
+    prefixes:
+      - prefix: clothing
+        description: Garment or outfit category
+        examples: [robe, armor, casual, uniform, gown, cloak, streetwear, lingerie]
+      - prefix: material
+        description: Primary fabric or material
+        examples: [leather, silk, metal, cloth, fur, lace, synthetic, chainmail]
+      - prefix: aesthetic
+        description: Overall visual aesthetic
+        examples: [fantasy, gothic, royal, tribal, minimalist, military, elegant]
+      - prefix: fit
+        description: How the garment fits or drapes
+        examples: [form-fitting, loose, layered, revealing, structured]
+
+  scene_setup:
+    instruction: >
+      Focus on the type of location, lighting conditions, emotional mood,
+      and world or genre context of the scene.
+    prefixes:
+      - prefix: location
+        description: Type of environment or place
+        examples: [indoor, outdoor, forest, urban, dungeon, coastal, rooftop, tavern]
+      - prefix: lighting
+        description: Dominant lighting condition
+        examples: [daylight, night, golden-hour, candlelit, overcast, neon, foggy]
+      - prefix: mood
+        description: Emotional tone of the scene
+        examples: [tense, intimate, ominous, joyful, melancholic, mysterious, serene]
+      - prefix: setting
+        description: World or genre context
+        examples: [fantasy, historical, sci-fi, contemporary, mythological, gothic]
+
+  scene_continuation:
+    instruction: >
+      Focus on the primary action type, the emotional tone, and the pacing
+      of how the scene is advancing.
+    prefixes:
+      - prefix: action
+        description: Primary action or event type
+        examples: [combat, dialogue, movement, reaction, exploration, embrace, escape]
+      - prefix: mood
+        description: Emotional tone
+        examples: [tense, playful, dramatic, intimate, urgent, sorrowful]
+      - prefix: pacing
+        description: Scene pacing or narrative beat
+        examples: [slow, fast, buildup, climax, resolution, transition]
+
+  tool_edit:
+    instruction: >
+      Focus on what region of the image is being modified and the nature
+      of the edit being applied.
+    prefixes:
+      - prefix: edit
+        description: Type of edit being applied
+        examples: [replace, refine, stylize, relight, repose, recolor]
+      - prefix: target
+        description: Part of the image being edited
+        examples: [face, background, clothing, pose, expression, hair, environment]
+
+  patch_edit:
+    instruction: >
+      Focus on the specific element being changed and what it is changing to.
+    prefixes:
+      - prefix: edit
+        description: Nature of the targeted change
+        examples: [detail, texture, color, expression, material, lighting]
+      - prefix: target
+        description: The specific element being patched
+        examples: [face, clothing, environment, prop, hair, accessory]
+
+  variation:
+    instruction: >
+      Focus on what aspect of the original is varying and the degree of
+      divergence from the source.
+    prefixes:
+      - prefix: variation
+        description: Aspect that is being varied
+        examples: [lighting, pose, expression, color, style, framing, angle]
+      - prefix: scope
+        description: How much it differs from the original
+        examples: [subtle, moderate, dramatic]
+
+fallback:
+  instruction: >
+    Focus on the primary subject, visual style, and emotional mood
+    of the prompt.
+  prefixes:
+    - prefix: type
+      description: Primary subject type
+      examples: [character, scene, action, object, environment, group]
+    - prefix: mood
+      description: Emotional tone
+      examples: [tense, calm, dramatic, playful, mysterious, romantic]
+    - prefix: style
+      description: Visual or genre style
+      examples: [fantasy, realistic, stylized, dark, vibrant, historical]

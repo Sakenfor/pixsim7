@@ -12,6 +12,7 @@ from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt import PromptVersionService
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.services.prompt.git import GitBranchService
+from .helpers import build_family_response, build_family_responses
 from .schemas import (
     BranchSummary,
     CreateBranchRequest,
@@ -80,16 +81,7 @@ async def create_family(
         ref_id=str(family.id),
     )
 
-    return PromptFamilyResponse(
-        id=family.id,
-        slug=family.slug,
-        title=family.title,
-        description=family.description,
-        prompt_type=family.prompt_type,
-        category=family.category,
-        tags=family.tags,
-        is_active=family.is_active
-    )
+    return await build_family_response(family, db)
 
 
 @router.get("/families", response_model=List[PromptFamilyResponse])
@@ -113,19 +105,7 @@ async def list_families(
         offset=offset
     )
 
-    return [
-        PromptFamilyResponse(
-            id=f.id,
-            slug=f.slug,
-            title=f.title,
-            description=f.description,
-            prompt_type=f.prompt_type,
-            category=f.category,
-            tags=f.tags,
-            is_active=f.is_active
-        )
-        for f in families
-    ]
+    return await build_family_responses(families, db)
 
 
 @router.get("/families/{family_id}", response_model=PromptFamilyResponse)
@@ -144,17 +124,7 @@ async def get_family(
     # Get version count
     versions = await service.list_versions(family_id, limit=1000)
 
-    return PromptFamilyResponse(
-        id=family.id,
-        slug=family.slug,
-        title=family.title,
-        description=family.description,
-        prompt_type=family.prompt_type,
-        category=family.category,
-        tags=family.tags,
-        is_active=family.is_active,
-        version_count=len(versions)
-    )
+    return await build_family_response(family, db, version_count=len(versions))
 
 
 @router.patch("/families/{family_id}", response_model=PromptFamilyResponse)
@@ -193,16 +163,7 @@ async def update_family(
         payload={"changed_fields": changed_fields},
     )
 
-    return PromptFamilyResponse(
-        id=family.id,
-        slug=family.slug,
-        title=family.title,
-        description=family.description,
-        prompt_type=family.prompt_type,
-        category=family.category,
-        tags=family.tags,
-        is_active=family.is_active
-    )
+    return await build_family_response(family, db)
 
 
 # ===== Prompt Version Endpoints =====
@@ -237,7 +198,8 @@ async def create_version(
         variables=request.variables,
         provider_hints=request.provider_hints,
         prompt_analysis=request.prompt_analysis,
-        tags=request.tags
+        tags=request.tags,
+        ai_tags=request.ai_tags,
     )
 
     from pixsim7.backend.main.api.v1.notifications import emit_notification
