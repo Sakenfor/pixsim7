@@ -1690,11 +1690,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       onUpdateTab({ label: text.slice(0, 30) });
     }
     setInput('');
-    setMessages((prev) => {
-      const next = [...prev, { role: 'user', text, timestamp: new Date() }];
-      persistTabMessages(tab.id, next);
-      return next;
-    });
+    // Eager persist: write user message to localStorage immediately
+    // (same pattern as consume — survives HMR between setState and render)
+    const currentMsgs = loadTabMessages(tab.id);
+    const withUserMsg = [...currentMsgs, { role: 'user' as const, text, timestamp: new Date() }];
+    persistTabMessages(tab.id, withUserMsg);
+    setMessages(withUserMsg);
 
     const timeout = tab.engine === 'codex' ? 600 : 300;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
@@ -1745,12 +1746,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
-        setMessages(messages.slice(0, i));
+        const truncated = messages.slice(0, i);
+        persistTabMessages(tab.id, truncated);
+        setMessages(truncated);
         void sendMessage(messages[i].text);
         return;
       }
     }
-  }, [messages, sendMessage]);
+  }, [messages, sendMessage, tab.id]);
 
   // @reference picker (centralized)
   const refs = useReferences();
