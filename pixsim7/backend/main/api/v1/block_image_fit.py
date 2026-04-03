@@ -11,7 +11,7 @@ Design:
 - Dev-only endpoints (no production use yet)
 - Integrates with BlockPrimitive, Asset, and Generation models
 - Stores fit feedback in BlockImageFit table
-- Accepts optional parser context (op_id, signature_id, modality, primitive_match)
+- Accepts optional parser context (op_id, signature_id, modality, primitive_projection)
   for context-aware scoring without duplicating parser matching logic
 - Accepts optional sequence context for continuation/transition continuity scoring
 """
@@ -50,9 +50,9 @@ class ParserContext(BaseModel):
     Block-fit consumes this context to score outcome quality.
     """
 
-    primitive_match: Optional[Dict[str, Any]] = Field(
+    primitive_projection: Optional[Dict[str, Any]] = Field(
         None,
-        description="Full primitive_match payload from primitive_projection parser",
+        description="Full primitive_projection payload from primitive_projection parser",
     )
     op_id: Optional[str] = Field(
         None,
@@ -193,7 +193,7 @@ def _build_parser_context_dict(ctx: Optional[ParserContext]) -> Optional[Dict[st
 
 
 def _build_parser_context_snapshot(ctx: Optional[ParserContext]) -> Dict[str, Any]:
-    """Build the full parser snapshot to persist (includes primitive_match)."""
+    """Build the full parser snapshot to persist (includes primitive_projection)."""
 
     if ctx is None:
         return {}

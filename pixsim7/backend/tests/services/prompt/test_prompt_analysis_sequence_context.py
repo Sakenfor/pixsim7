@@ -1,26 +1,36 @@
 from pixsim7.backend.main.services.prompt.analysis import _attach_sequence_context
 
 
-def test_attach_sequence_context_prefers_highest_scoring_primitive_match():
+def test_attach_sequence_context_prefers_highest_scoring_primitive_projection():
     analysis = {
         "candidates": [
             {
-                "metadata": {
-                    "primitive_match": {
-                        "role_in_sequence": "continuation",
-                        "score": 0.62,
-                        "block_id": "core.sequence.continuity.continuation_subject_lock",
-                    }
-                }
+                "primitive_projection": {
+                    "status": "matched",
+                    "selected_index": 0,
+                    "hypotheses": [
+                        {
+                            "role_in_sequence": "continuation",
+                            "score": 0.62,
+                            "confidence": 0.62,
+                            "block_id": "core.sequence.continuity.continuation_subject_lock",
+                        }
+                    ],
+                },
             },
             {
-                "metadata": {
-                    "primitive_match": {
-                        "role_in_sequence": "transition",
-                        "score": 0.91,
-                        "block_id": "core.sequence.continuity.transition_setting_shift",
-                    }
-                }
+                "primitive_projection": {
+                    "status": "matched",
+                    "selected_index": 0,
+                    "hypotheses": [
+                        {
+                            "role_in_sequence": "transition",
+                            "score": 0.91,
+                            "confidence": 0.91,
+                            "block_id": "core.sequence.continuity.transition_setting_shift",
+                        }
+                    ],
+                },
             },
         ],
         "tags": [],
@@ -29,7 +39,7 @@ def test_attach_sequence_context_prefers_highest_scoring_primitive_match():
     _attach_sequence_context(analysis)
 
     assert analysis["sequence_context"]["role_in_sequence"] == "transition"
-    assert analysis["sequence_context"]["source"] == "analysis.candidates[].metadata.primitive_match"
+    assert analysis["sequence_context"]["source"] == "analysis.candidates[].primitive_projection"
     assert analysis["sequence_context"]["matched_block_id"] == "core.sequence.continuity.transition_setting_shift"
     assert analysis["sequence_context"]["confidence"] == 0.91
 

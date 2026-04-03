@@ -376,7 +376,7 @@ class TestFullScoringWithContext:
         assert score == pytest.approx(1.0 - CONTINUATION_REF_MISS_PENALTY)
         assert details["sequence"]["role_in_sequence"] == "continuation"
 
-    def test_unspecified_role_infers_from_parser_context_primitive_match(self):
+    def test_unspecified_role_infers_from_parser_context_primitive_projection(self):
         block = _make_block(
             ["camera:angle_pov"],
             op={"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
@@ -388,16 +388,27 @@ class TestFullScoringWithContext:
             block,
             asset_tags,
             parser_context={
-                "primitive_match": {
-                    "block_id": "core.sequence.continuity.transition_setting_shift",
-                    "role_in_sequence": "transition",
-                    "op": {"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
-                    "overlap_tokens": ["transition", "setting"],
-                }
+                "primitive_projection": {
+                    "status": "matched",
+                    "selected_index": 0,
+                    "hypotheses": [
+                        {
+                            "block_id": "core.sequence.continuity.transition_setting_shift",
+                            "role_in_sequence": "transition",
+                            "score": 0.92,
+                            "confidence": 0.92,
+                            "op": {
+                                "op_id": "sequence.continuity.apply",
+                                "signature_id": "sequence.continuity.v1",
+                            },
+                            "overlap_tokens": ["transition", "setting"],
+                        }
+                    ],
+                },
             },
         )
 
-        assert score == pytest.approx(0.7 + SEQUENCE_ROLE_MATCH_BONUS)
+        assert score == pytest.approx(0.7 + SEQUENCE_ROLE_MATCH_BONUS + OP_MATCH_BONUS)
         assert details["sequence"]["role_in_sequence"] == "transition"
 
     def test_deterministic_with_same_contexts(self):

@@ -588,24 +588,30 @@ def _derive_sequence_context(analysis: Dict[str, Any]) -> Dict[str, Any]:
     for candidate in analysis.get("candidates") or []:
         if not isinstance(candidate, dict):
             continue
-        metadata = candidate.get("metadata")
-        if not isinstance(metadata, dict):
+        projection = candidate.get("primitive_projection")
+        if not isinstance(projection, dict):
             continue
-        primitive_match = metadata.get("primitive_match")
-        if not isinstance(primitive_match, dict):
+        hypotheses = projection.get("hypotheses")
+        selected_index = projection.get("selected_index")
+        if not isinstance(hypotheses, list) or not isinstance(selected_index, int):
             continue
-        role_in_sequence = _normalize_sequence_role(primitive_match.get("role_in_sequence"))
+        if selected_index < 0 or selected_index >= len(hypotheses):
+            continue
+        selected = hypotheses[selected_index]
+        if not isinstance(selected, dict):
+            continue
+        role_in_sequence = _normalize_sequence_role(selected.get("role_in_sequence"))
         if role_in_sequence == "unspecified":
             continue
 
         confidence = _coerce_optional_float(
-            primitive_match.get("score", primitive_match.get("confidence"))
+            selected.get("score", selected.get("confidence"))
         )
         candidate_match = {
             "role_in_sequence": role_in_sequence,
-            "source": "analysis.candidates[].metadata.primitive_match",
+            "source": "analysis.candidates[].primitive_projection",
             "confidence": confidence,
-            "matched_block_id": _coerce_optional_str(primitive_match.get("block_id")),
+            "matched_block_id": _coerce_optional_str(selected.get("block_id")),
         }
 
         if best_match is None:

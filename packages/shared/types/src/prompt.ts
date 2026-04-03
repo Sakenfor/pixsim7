@@ -42,6 +42,7 @@ export interface PromptBlockCandidate {
   matched_keywords?: string[];
   role_scores?: Record<string, number>;
   metadata?: Record<string, unknown>;
+  primitive_projection?: Record<string, unknown>;
   notes?: string;
 }
 

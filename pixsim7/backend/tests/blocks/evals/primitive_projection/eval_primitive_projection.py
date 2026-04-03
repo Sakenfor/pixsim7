@@ -167,8 +167,19 @@ async def evaluate_entry(
 
     # Also do manual matching against the index for comparison
     for candidate in candidates:
-        pm = (candidate.get("metadata") or {}).get("primitive_match")
-        if pm and pm.get("score", 0) >= threshold:
+        projection = candidate.get("primitive_projection")
+        if not isinstance(projection, dict):
+            continue
+        if projection.get("status") != "matched":
+            continue
+        hypotheses = projection.get("hypotheses")
+        selected_index = projection.get("selected_index")
+        if not isinstance(hypotheses, list) or not isinstance(selected_index, int):
+            continue
+        if selected_index < 0 or selected_index >= len(hypotheses):
+            continue
+        pm = hypotheses[selected_index]
+        if isinstance(pm, dict) and pm.get("score", 0) >= threshold:
             result_obj.all_candidate_matches.append({
                 "candidate_text": candidate.get("text", ""),
                 "candidate_role": candidate.get("role"),

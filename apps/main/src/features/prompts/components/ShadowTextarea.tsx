@@ -70,7 +70,7 @@ function SpanTooltip({
   roleColors?: Record<string, string>;
 }) {
   const { candidate, x, y } = data;
-  const pm = parsePrimitiveMatch(candidate.metadata);
+  const pm = parsePrimitiveMatch(candidate);
 
   return (
     <div

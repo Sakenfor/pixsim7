@@ -57,7 +57,6 @@ def test_match_candidate_to_primitive_prefers_specific_overlap():
     )
     assert match is not None
     assert match.get("block_id") == "core.camera.motion.dolly"
-    assert match.get("mode") == "shadow"
     assert match.get("score", 0.0) >= 0.45
     assert match.get("op", {}).get("signature_id") == "camera.motion.v1"
 
@@ -91,7 +90,7 @@ def test_enrich_candidates_projection_off_is_noop():
         primitive_index=_synthetic_index(),
     )
     assert enriched is candidates
-    assert "primitive_match" not in (enriched[0].get("metadata") or {})
+    assert "primitive_projection" not in enriched[0]
 
 
 def test_parse_prompt_to_candidates_runs_shadow_projection_by_default(monkeypatch):
@@ -101,13 +100,19 @@ def test_parse_prompt_to_candidates_runs_shadow_projection_by_default(monkeypatc
         calls["count"] += 1
         calls["mode"] = mode
         for candidate in candidates:
-            metadata = candidate.get("metadata") or {}
-            metadata["primitive_match"] = {
+            candidate["primitive_projection"] = {
+                "engine": "test_engine",
                 "mode": mode,
-                "block_id": "test.block",
-                "score": 0.5,
+                "status": "matched",
+                "selected_index": 0,
+                "hypotheses": [
+                    {
+                        "block_id": "test.block",
+                        "score": 0.5,
+                        "confidence": 0.5,
+                    }
+                ],
             }
-            candidate["metadata"] = metadata
         return candidates
 
     monkeypatch.setattr(
@@ -121,8 +126,8 @@ def test_parse_prompt_to_candidates_runs_shadow_projection_by_default(monkeypatc
     assert len(result.get("candidates") or []) >= 1
     assert (
         result["candidates"][0]
-        .get("metadata", {})
-        .get("primitive_match", {})
+        .get("primitive_projection", {})
+        .get("hypotheses", [{}])[0]
         .get("block_id")
         == "test.block"
     )
@@ -149,4 +154,4 @@ def test_parse_prompt_to_candidates_can_disable_projection(monkeypatch):
     assert calls["count"] == 0
     assert len(result.get("candidates") or []) >= 1
     for candidate in result["candidates"]:
-        assert "primitive_match" not in (candidate.get("metadata") or {})
+        assert "primitive_projection" not in candidate

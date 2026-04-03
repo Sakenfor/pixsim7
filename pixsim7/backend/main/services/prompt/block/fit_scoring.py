@@ -98,6 +98,22 @@ def _is_sequence_continuity_block(block: TagsCarrier) -> bool:
     return signature_id == "sequence.continuity.v1"
 
 
+def _selected_projection_hypothesis(parser_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    projection = parser_context.get("primitive_projection")
+    if not isinstance(projection, dict):
+        return None
+    hypotheses = projection.get("hypotheses")
+    selected_index = projection.get("selected_index")
+    if not isinstance(hypotheses, list) or not isinstance(selected_index, int):
+        return None
+    if selected_index < 0 or selected_index >= len(hypotheses):
+        return None
+    selected = hypotheses[selected_index]
+    if not isinstance(selected, dict):
+        return None
+    return selected
+
+
 def _infer_sequence_role_from_parser_context(parser_context: Dict[str, Any]) -> str:
     direct_role = parser_context.get("role_in_sequence")
     if isinstance(direct_role, str):
@@ -105,17 +121,17 @@ def _infer_sequence_role_from_parser_context(parser_context: Dict[str, Any]) -> 
         if normalized != "unspecified":
             return normalized
 
-    primitive_match = parser_context.get("primitive_match")
-    if not isinstance(primitive_match, dict):
+    selected = _selected_projection_hypothesis(parser_context)
+    if not isinstance(selected, dict):
         return "unspecified"
 
-    primitive_role = primitive_match.get("role_in_sequence")
+    primitive_role = selected.get("role_in_sequence")
     if isinstance(primitive_role, str):
         normalized = _normalize_sequence_role(primitive_role)
         if normalized != "unspecified":
             return normalized
 
-    block_id = primitive_match.get("block_id")
+    block_id = selected.get("block_id")
     if isinstance(block_id, str):
         block_id_lower = block_id.lower()
         if "transition" in block_id_lower:
@@ -125,7 +141,7 @@ def _infer_sequence_role_from_parser_context(parser_context: Dict[str, Any]) -> 
         if "initial" in block_id_lower:
             return "initial"
 
-    overlap_tokens = primitive_match.get("overlap_tokens")
+    overlap_tokens = selected.get("overlap_tokens")
     if isinstance(overlap_tokens, list):
         overlap_set = {
             str(item).strip().lower()
@@ -156,6 +172,29 @@ def _compute_context_delta(
     ctx_op_id: Optional[str] = parser_context.get("op_id")
     ctx_signature_id: Optional[str] = parser_context.get("signature_id")
     ctx_modality: Optional[str] = parser_context.get("modality")
+    selected = _selected_projection_hypothesis(parser_context)
+    if isinstance(selected, dict):
+        if not ctx_op_id:
+            op_payload = selected.get("op")
+            if isinstance(op_payload, dict):
+                selected_op_id = op_payload.get("op_id")
+                if isinstance(selected_op_id, str) and selected_op_id.strip():
+                    ctx_op_id = selected_op_id.strip()
+        if not ctx_signature_id:
+            op_payload = selected.get("op")
+            if isinstance(op_payload, dict):
+                selected_signature_id = op_payload.get("signature_id")
+                if isinstance(selected_signature_id, str) and selected_signature_id.strip():
+                    ctx_signature_id = selected_signature_id.strip()
+        if not ctx_modality:
+            op_payload = selected.get("op")
+            if isinstance(op_payload, dict):
+                selected_modalities = op_payload.get("modalities")
+                if isinstance(selected_modalities, list):
+                    for item in selected_modalities:
+                        if isinstance(item, str) and item.strip():
+                            ctx_modality = item.strip()
+                            break
 
     # Extract block's own op metadata (if any)
     block_op_id = _block_op_id(block)
@@ -410,11 +449,11 @@ def compute_block_asset_fit(
         block: Block-like object with ``tags`` to evaluate
         asset_tags: Dict with "ontology_ids" from tag_asset_from_metadata
         parser_context: Optional dict with keys: op_id, signature_id, modality,
-            primitive_match (from primitive_projection parser output)
+            primitive_projection (from primitive_projection parser output)
         sequence_context: Optional dict with keys:
             requested_refs, available_refs, requested_relations, available_relations
         role_in_sequence: initial|continuation|transition|unspecified
-            (if unspecified, may be inferred from parser_context.primitive_match)
+            (if unspecified, may be inferred from parser_context.primitive_projection)
 
     Returns:
         Tuple of (score, details_dict)

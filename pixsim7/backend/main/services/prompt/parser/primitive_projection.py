@@ -25,6 +25,7 @@ PROJECTION_MODE_OFF = "off"
 PROJECTION_MODE_SHADOW = "shadow"
 _MIN_MATCH_SCORE = 0.45
 _CROSS_DOMAIN_AMBIGUITY_DELTA = 0.08
+_MAX_HYPOTHESES = 3
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _INDEX_STOP_TOKENS = {
@@ -977,24 +978,76 @@ def _is_cross_domain_ambiguous(
     return False
 
 
-def match_candidate_to_primitive(
+def _build_hypothesis_payload(
+    *,
+    scored: Mapping[str, Any],
+    entry: Mapping[str, Any],
+    mode: str,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "mode": mode,
+        "strategy": "token_overlap_v2",
+        "block_id": entry.get("block_id"),
+        "score": round(float(scored.get("score") or 0.0), 3),
+        "confidence": round(min(0.99, float(scored.get("score") or 0.0)), 3),
+        "package_name": entry.get("package_name"),
+        "role": entry.get("role"),
+        "category": entry.get("category"),
+        "overlap_tokens": list(scored.get("overlap_tokens") or []),
+    }
+    if isinstance(entry.get("role_in_sequence"), str):
+        payload["role_in_sequence"] = entry["role_in_sequence"]
+    if isinstance(entry.get("continuity_focus"), str):
+        payload["continuity_focus"] = entry["continuity_focus"]
+    if isinstance(entry.get("continuity_priority"), str):
+        payload["continuity_priority"] = entry["continuity_priority"]
+
+    op_payload: Dict[str, Any] = {}
+    if isinstance(entry.get("op_id"), str):
+        op_payload["op_id"] = entry["op_id"]
+    if isinstance(entry.get("signature_id"), str):
+        op_payload["signature_id"] = entry["signature_id"]
+    modalities = entry.get("op_modalities")
+    if isinstance(modalities, tuple) and modalities:
+        op_payload["modalities"] = list(modalities)
+    if op_payload:
+        payload["op"] = op_payload
+    return payload
+
+
+def project_candidate_to_primitives(
     candidate: Mapping[str, Any],
     *,
     primitive_index: Sequence[Mapping[str, Any]] | None = None,
     mode: str = PROJECTION_MODE_SHADOW,
-) -> Dict[str, Any] | None:
-    """
-    Match one candidate to best primitive block in shadow mode.
+) -> Dict[str, Any]:
+    """Project one candidate to ranked primitive hypotheses.
 
-    Returns match metadata payload or None.
+    Returns a canonical projection envelope with status and hypotheses.
     """
     normalized_mode = normalize_primitive_projection_mode(mode)
-    if normalized_mode == PROJECTION_MODE_OFF:
-        return None
-
     index = tuple(primitive_index) if primitive_index is not None else _get_primitive_index()
+
+    projection: Dict[str, Any] = {
+        "engine": "token_overlap_v2",
+        "mode": normalized_mode,
+        "status": "no_signal",
+        "selected_index": None,
+        "thresholds": {
+            "min_score": _MIN_MATCH_SCORE,
+            "ambiguity_delta": _CROSS_DOMAIN_AMBIGUITY_DELTA,
+        },
+        "hypotheses": [],
+        "suppression_reason": None,
+    }
+
+    if normalized_mode == PROJECTION_MODE_OFF:
+        projection["status"] = "disabled"
+        projection["suppression_reason"] = "projection_disabled"
+        return projection
     if not index:
-        return None
+        projection["suppression_reason"] = "index_empty"
+        return projection
 
     evidence = _extract_candidate_evidence(candidate)
     ranked_matches: List[Tuple[Dict[str, Any], Mapping[str, Any]]] = []
@@ -1006,7 +1059,9 @@ def match_candidate_to_primitive(
         ranked_matches.append((scored, entry))
 
     if not ranked_matches:
-        return None
+        projection["suppression_reason"] = "no_signal"
+        return projection
+
     ranked_matches.sort(
         key=lambda item: (
             -float(item[0].get("score") or 0.0),
@@ -1015,42 +1070,60 @@ def match_candidate_to_primitive(
         )
     )
 
-    best, best_entry = ranked_matches[0]
-    if float(best["score"]) < _MIN_MATCH_SCORE:
-        return None
+    projection["hypotheses"] = [
+        _build_hypothesis_payload(
+            scored=scored,
+            entry=entry,
+            mode=normalized_mode,
+        )
+        for scored, entry in ranked_matches[:_MAX_HYPOTHESES]
+    ]
+
+    best_scored, _best_entry = ranked_matches[0]
+    best_score = float(best_scored.get("score") or 0.0)
+    if best_score < _MIN_MATCH_SCORE:
+        projection["status"] = "below_threshold"
+        projection["suppression_reason"] = "below_threshold"
+        return projection
+
     if _is_cross_domain_ambiguous(ranked_matches):
+        projection["status"] = "ambiguous"
+        projection["suppression_reason"] = "cross_domain_ambiguity"
+        return projection
+
+    projection["status"] = "matched"
+    projection["selected_index"] = 0
+    return projection
+
+
+def match_candidate_to_primitive(
+    candidate: Mapping[str, Any],
+    *,
+    primitive_index: Sequence[Mapping[str, Any]] | None = None,
+    mode: str = PROJECTION_MODE_SHADOW,
+) -> Dict[str, Any] | None:
+    """
+    Match one candidate to best primitive block in shadow mode.
+
+    Returns match metadata payload or None.
+    """
+    projection = project_candidate_to_primitives(
+        candidate,
+        primitive_index=primitive_index,
+        mode=mode,
+    )
+    if projection.get("status") != "matched":
         return None
-
-    payload: Dict[str, Any] = {
-        "mode": normalized_mode,
-        "strategy": "token_overlap_v1",
-        "block_id": best_entry.get("block_id"),
-        "score": round(float(best["score"]), 3),
-        "confidence": round(min(0.99, float(best["score"])), 3),
-        "package_name": best_entry.get("package_name"),
-        "role": best_entry.get("role"),
-        "category": best_entry.get("category"),
-        "overlap_tokens": list(best["overlap_tokens"]),
-    }
-    if isinstance(best_entry.get("role_in_sequence"), str):
-        payload["role_in_sequence"] = best_entry["role_in_sequence"]
-    if isinstance(best_entry.get("continuity_focus"), str):
-        payload["continuity_focus"] = best_entry["continuity_focus"]
-    if isinstance(best_entry.get("continuity_priority"), str):
-        payload["continuity_priority"] = best_entry["continuity_priority"]
-
-    op_payload: Dict[str, Any] = {}
-    if isinstance(best_entry.get("op_id"), str):
-        op_payload["op_id"] = best_entry["op_id"]
-    if isinstance(best_entry.get("signature_id"), str):
-        op_payload["signature_id"] = best_entry["signature_id"]
-    modalities = best_entry.get("op_modalities")
-    if isinstance(modalities, tuple) and modalities:
-        op_payload["modalities"] = list(modalities)
-    if op_payload:
-        payload["op"] = op_payload
-
-    return payload
+    hypotheses = projection.get("hypotheses")
+    selected_index = projection.get("selected_index")
+    if not isinstance(hypotheses, list) or not isinstance(selected_index, int):
+        return None
+    if selected_index < 0 or selected_index >= len(hypotheses):
+        return None
+    selected = hypotheses[selected_index]
+    if not isinstance(selected, dict):
+        return None
+    return dict(selected)
 
 
 def enrich_candidates_with_primitive_projection(
@@ -1060,7 +1133,7 @@ def enrich_candidates_with_primitive_projection(
     primitive_index: Sequence[Mapping[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
     """
-    Add `metadata.primitive_match` to candidates when a shadow match exists.
+    Add top-level `primitive_projection` envelope to each candidate.
 
     This does not alter role/confidence/selection behavior.
     """
@@ -1075,17 +1148,11 @@ def enrich_candidates_with_primitive_projection(
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
-        metadata_raw = candidate.get("metadata")
-        if metadata_raw is None:
-            metadata: Dict[str, Any] = {}
-        elif isinstance(metadata_raw, dict):
-            metadata = dict(metadata_raw)
-        else:
-            metadata = {}
-        if "primitive_match" in metadata:
+        existing_projection = candidate.get("primitive_projection")
+        if isinstance(existing_projection, dict):
             continue
         try:
-            match = match_candidate_to_primitive(
+            projection = project_candidate_to_primitives(
                 candidate,
                 primitive_index=index,
                 mode=normalized_mode,
@@ -1093,7 +1160,5 @@ def enrich_candidates_with_primitive_projection(
         except Exception:
             logger.exception("Primitive projection failed for candidate")
             continue
-        if match:
-            metadata["primitive_match"] = match
-            candidate["metadata"] = metadata
+        candidate["primitive_projection"] = projection
     return candidates
