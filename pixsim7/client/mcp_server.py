@@ -670,6 +670,10 @@ async def _resolve_bridge_session_id(
                     resolved = scoped[0].get("id")
                     _bridge_session_cache[cache_key] = resolved
                     return resolved
+                # Scope was explicitly requested but no session matches it.
+                # Do NOT fall through to profile-only matching — that would
+                # attribute this work to an unrelated session (cross-contamination).
+                return None
             if normalized_profile_id:
                 for session in sessions:
                     if _normalize_profile_id(session.get("profile_id")) == normalized_profile_id:
