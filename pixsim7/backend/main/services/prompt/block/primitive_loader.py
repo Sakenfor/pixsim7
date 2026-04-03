@@ -242,7 +242,7 @@ async def load_primitives_pack(pack_dir: Path) -> Dict[str, Any]:
     logger.info(
         "primitive_loader_done",
         pack=pack_dir.name,
-        created=stats["created"],
+        created_count=stats["created"],
         updated=stats["updated"],
     )
 

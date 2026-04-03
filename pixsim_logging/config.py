@@ -211,20 +211,40 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
 
 _STDLIB_LOG_KWARGS = frozenset({"exc_info", "stack_info", "stacklevel", "extra"})
 _original_log = logging.Logger._log
+_RESERVED_LOGRECORD_EXTRA_KEYS = frozenset(logging.makeLogRecord({}).__dict__) | frozenset({"message", "asctime"})
+
+
+def _safe_extra_key(key: Any, existing: set[str]) -> str:
+    """Return an ``extra`` key that cannot collide with LogRecord fields."""
+    safe = str(key)
+    while safe in _RESERVED_LOGRECORD_EXTRA_KEYS or safe in existing:
+        safe = f"extra_{safe}"
+    return safe
 
 
 def _patched_log(self, level, msg, args, **kwargs):
     """Accept structlog-style keyword arguments on stdlib loggers.
 
     Captures unknown kwargs into ``extra`` so callers can write
-    ``logger.info("event", key=val)`` without crashing.
+    ``logger.info("event", key=val)`` without crashing. If a field name
+    collides with a native ``LogRecord`` attribute (e.g. ``created``),
+    it is prefixed as ``extra_<name>``.
     """
-    extra = kwargs.pop("extra", None) or {}
+    raw_extra = kwargs.pop("extra", None) or {}
+    extra: dict[str, Any] = {}
+    existing_keys: set[str] = set()
+    for key, value in raw_extra.items():
+        safe_key = _safe_extra_key(key, existing_keys)
+        extra[safe_key] = value
+        existing_keys.add(safe_key)
     native = {}
     for key in list(kwargs):
         if key in _STDLIB_LOG_KWARGS:
             native[key] = kwargs.pop(key)
-    extra.update(kwargs)
+    for key, value in kwargs.items():
+        safe_key = _safe_extra_key(key, existing_keys)
+        extra[safe_key] = value
+        existing_keys.add(safe_key)
     _original_log(self, level, msg, args, extra=extra, **native)
 
 
