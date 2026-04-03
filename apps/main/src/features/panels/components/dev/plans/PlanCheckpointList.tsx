@@ -15,11 +15,21 @@ export interface CheckpointEvidence {
   ref: string;
 }
 
+export interface CheckpointLastUpdate {
+  at: string;
+  by: string;
+  note: string;
+}
+
 export interface Checkpoint {
   id: string;
   label: string;
   status: 'done' | 'active' | 'pending' | 'blocked';
-  criteria: string;
+  /** Legacy field — prefer description + note */
+  criteria?: string;
+  description?: string | null;
+  note?: string | null;
+  lastUpdate?: CheckpointLastUpdate | null;
   progress?: number;
   pointsDone?: number;
   pointsTotal?: number;
@@ -159,7 +169,8 @@ export function CheckpointList({
           const isOpen = expanded.has(cp.id);
           const cpEvidence = cp.evidence ?? [];
           const cpEvidenceGroups = groupCheckpointEvidence(cpEvidence);
-          const hasContent = !!cp.criteria || cpSteps.length > 0 || cpEvidence.length > 0;
+          const cpDescription = cp.description || cp.criteria || null;
+          const hasContent = !!cpDescription || !!cp.note || !!cp.lastUpdate || cpSteps.length > 0 || cpEvidence.length > 0;
 
           return (
             <div
@@ -211,9 +222,28 @@ export function CheckpointList({
 
               {isOpen && (
                 <>
-                  {cp.criteria && (
-                    <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800">
-                      {cp.criteria}
+                  {cpDescription && (
+                    <div className="px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-300 border-t border-neutral-100 dark:border-neutral-800">
+                      {cpDescription}
+                    </div>
+                  )}
+
+                  {cp.note && (
+                    <div className="px-3 py-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 whitespace-pre-wrap">
+                      {cp.note}
+                    </div>
+                  )}
+
+                  {cp.lastUpdate && (
+                    <div className="px-3 py-1.5 border-t border-neutral-100 dark:border-neutral-800">
+                      <div className="text-[10px] text-neutral-400 mb-0.5">
+                        Last update by {cp.lastUpdate.by} &middot; {new Date(cp.lastUpdate.at).toLocaleDateString()}
+                      </div>
+                      {cp.lastUpdate.note && (
+                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap">
+                          {cp.lastUpdate.note}
+                        </div>
+                      )}
                     </div>
                   )}
 
