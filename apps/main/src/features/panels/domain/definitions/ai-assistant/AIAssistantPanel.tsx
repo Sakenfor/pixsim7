@@ -16,14 +16,24 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { getEngineBrand } from '@lib/agent/engineBrands';
-import { pixsimClient, API_BASE_URL } from '@lib/api/client';
-import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
 import { chatBridge, type BridgeResult } from './assistantChatBridge';
+import {
+  useAssistantChatStore,
+  fetchServerMessages,
+  buildResumedTab,
+  normalizeProfileId,
+  createTabId,
+  type ChatTab,
+  type ChatMessage,
+  type AgentEngine,
+  type AgentCommand,
+} from './assistantChatStore';
 
 
 // =============================================================================
@@ -48,14 +58,6 @@ interface UnifiedProfile {
   config: Record<string, unknown> | null;
 }
 
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'error' | 'system';
-  text: string;
-  duration_ms?: number;
-  thinkingLog?: Array<{ action: string; detail: string }>;
-  timestamp: Date;
-}
-
 function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_code' | 'error_details'>): string {
   const code = result.error_code || '';
   if (code === 'scoped_session_busy' || code === 'conversation_session_busy') {
@@ -72,7 +74,6 @@ function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_code' | '
 }
 
 /** Agent commands available in cmd (bridge) mode */
-type AgentCommand = 'claude' | 'codex';
 const AGENT_COMMANDS: { id: AgentCommand; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'messageSquare' },
   { id: 'codex', label: 'Codex', icon: 'cpu' },
@@ -141,25 +142,6 @@ function engineFromProfile(profile: UnifiedProfile | null): AgentEngine {
   return 'claude';
 }
 
-/** Combined engine value sent to backend */
-type AgentEngine = AgentCommand | 'api';
-
-/** A single chat tab */
-interface ChatTab {
-  id: string;
-  label: string;
-  sessionId: string | null;    // conversation UUID (assigned by agent)
-  profileId: string | null;    // persona profile ID (system prompt, scope, etc.)
-  engine: AgentEngine;         // which agent command to use
-  modelOverride: string | null; // per-tab model override (null = use profile default)
-  usePersona: boolean;         // whether to inject profile persona
-  customInstructions: string;  // user text appended to the system prompt
-  focusAreas: string[];        // capability focus tags (from contract provides)
-  injectToken: boolean;        // auto-mint and inject agent token for this session
-  planId: string | null;       // bound plan ID (set via @plan: or "Start Chat" from plan panel)
-  createdAt: string;
-}
-
 interface ReferenceScope {
   planId: string | null;
   scopeKey: string | null;
@@ -187,13 +169,9 @@ function extractReferenceScope(text: string): ReferenceScope {
 }
 
 // =============================================================================
-// Persistence
+// Cross-panel event constants
 // =============================================================================
 
-const TABS_KEY = 'ai-assistant:tabs';
-const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
-const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
-const MSG_KEY_PREFIX = 'ai-assistant:msg:';
 const INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
 const RESUME_SESSION_EVENT = 'ai-assistant:resume-session';
 const OPEN_PLAN_CHAT_EVENT = 'ai-assistant:open-plan-chat';
@@ -213,195 +191,6 @@ interface ResumeSessionDetail {
 interface OpenPlanChatDetail {
   planId: string;
   planTitle?: string;
-}
-
-function normalizeProfileId(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const value = raw.trim();
-  if (!value) return null;
-  if (value.toLowerCase() === 'unknown') return null;
-  return value;
-}
-
-function loadTabs(): ChatTab[] {
-  try {
-    const raw = localStorage.getItem(TABS_KEY);
-    if (raw) {
-      return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => {
-        const normalizedProfileId = normalizeProfileId(t.profileId ?? null);
-        return ({
-        usePersona: true,
-        engine: 'claude' as AgentEngine,
-        modelOverride: null,
-        customInstructions: '',
-        focusAreas: [] as string[],
-        planId: null,
-        ...t,
-        profileId: normalizedProfileId,
-        // Legacy tabs without injectToken inherit profile-bound default.
-        injectToken: typeof t.injectToken === 'boolean' ? t.injectToken : Boolean(normalizedProfileId),
-      });
-      }) as ChatTab[];
-    }
-  } catch { /* ignore */ }
-  return [];
-}
-
-function persistTabs(tabs: ChatTab[]) {
-  try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20))); }
-  catch { /* ignore */ }
-}
-
-function getActiveTabId(): string | null {
-  try { return localStorage.getItem(ACTIVE_TAB_KEY); }
-  catch { return null; }
-}
-
-function setActiveTabId(id: string | null) {
-  try {
-    if (id) localStorage.setItem(ACTIVE_TAB_KEY, id);
-    else localStorage.removeItem(ACTIVE_TAB_KEY);
-  } catch { /* ignore */ }
-}
-
-function msgKey(tabId: string): string { return `${MSG_KEY_PREFIX}${tabId}`; }
-function draftKey(tabId: string): string { return `${DRAFT_KEY_PREFIX}${tabId}`; }
-
-function parseMessages(raw: string | null): ChatMessage[] {
-  if (!raw) return [];
-  try {
-    return (JSON.parse(raw) as Array<Record<string, unknown>>).map((m) => ({
-      role: m.role as ChatMessage['role'],
-      text: m.text as string,
-      duration_ms: m.duration_ms as number | undefined,
-      timestamp: new Date(m.timestamp as string),
-    }));
-  } catch { return []; }
-}
-
-function loadTabMessages(tabId: string): ChatMessage[] {
-  try { return parseMessages(localStorage.getItem(msgKey(tabId))); }
-  catch { return []; }
-}
-
-function persistTabMessages(tabId: string, messages: ChatMessage[]) {
-  try {
-    // Don't persist transient error messages (network errors, cancellations)
-    const persistable = messages.filter((m) => m.role !== 'error');
-    localStorage.setItem(msgKey(tabId), JSON.stringify(persistable.slice(-50)));
-  }
-  catch { /* ignore */ }
-}
-
-function loadTabDraft(tabId: string): string {
-  try { return localStorage.getItem(draftKey(tabId)) || ''; }
-  catch { return ''; }
-}
-
-function persistTabDraft(tabId: string, text: string) {
-  try {
-    if (text) localStorage.setItem(draftKey(tabId), text);
-    else localStorage.removeItem(draftKey(tabId));
-  } catch { /* ignore */ }
-}
-
-function createTabId(): string {
-  return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-// =============================================================================
-// Server-side message sync (for session resume across tabs/sessions)
-// =============================================================================
-
-const _syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
-/** Pending payloads keyed by sessionId — kept so beforeunload can flush them */
-const _pendingSyncs = new Map<string, { sessionId: string; messages: ChatMessage[] }>();
-
-/** Debounced save of messages to the server for a given session. */
-function syncMessagesToServer(sessionId: string, messages: ChatMessage[]) {
-  const existing = _syncTimers.get(sessionId);
-  if (existing) clearTimeout(existing);
-  _pendingSyncs.set(sessionId, { sessionId, messages });
-  _syncTimers.set(sessionId, setTimeout(() => {
-    _syncTimers.delete(sessionId);
-    _pendingSyncs.delete(sessionId);
-    const persistable = messages
-      .filter((m) => m.role !== 'error')
-      .slice(-50)
-      .map((m) => ({ role: m.role, text: m.text, duration_ms: m.duration_ms, timestamp: m.timestamp.toISOString() }));
-    pixsimClient.patch(`/meta/agents/chat-sessions/${sessionId}/messages`, { messages: persistable }).catch(() => {});
-  }, 2000));
-}
-
-/** Flush any pending debounced server syncs — called on page unload */
-function flushPendingSyncs() {
-  for (const [id, { sessionId, messages }] of _pendingSyncs) {
-    const timer = _syncTimers.get(id);
-    if (timer) clearTimeout(timer);
-    _syncTimers.delete(id);
-    _pendingSyncs.delete(id);
-    const persistable = messages
-      .filter((m) => m.role !== 'error')
-      .slice(-50)
-      .map((m) => ({ role: m.role, text: m.text, duration_ms: m.duration_ms, timestamp: m.timestamp.toISOString() }));
-    // keepalive: true survives page unload (like sendBeacon but supports PATCH)
-    try {
-      const url = `${API_BASE_URL}/meta/agents/chat-sessions/${sessionId}/messages`;
-      fetch(url, {
-        method: 'PATCH',
-        headers: withCorrelationHeaders(
-          { 'Content-Type': 'application/json' },
-          'panel:ai-assistant:flush-pending-syncs',
-        ),
-        body: JSON.stringify({ messages: persistable }),
-        keepalive: true,
-      }).catch(() => {});
-    } catch { /* best effort */ }
-  }
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', flushPendingSyncs);
-}
-
-/** Fetch messages from server for a resumed session. */
-async function fetchServerMessages(sessionId: string): Promise<ChatMessage[]> {
-  try {
-    const res = await pixsimClient.get<{ messages?: Array<Record<string, unknown>> | null }>(`/meta/agents/chat-sessions/${sessionId}`);
-    const raw = res.data?.messages;
-    if (!Array.isArray(raw) || raw.length === 0) return [];
-    return raw.map((m) => ({
-      role: m.role as ChatMessage['role'],
-      text: m.text as string,
-      duration_ms: m.duration_ms as number | undefined,
-      timestamp: new Date(m.timestamp as string),
-    }));
-  } catch { return []; }
-}
-
-/** Build a ChatTab from a session record. Single source of truth for resume. */
-function buildResumedTab(session: {
-  id: string;
-  engine: string;
-  label: string;
-  profile_id?: string | null;
-  last_plan_id?: string | null;
-}): ChatTab {
-  const profileId = normalizeProfileId(session.profile_id ?? null);
-  return {
-    id: createTabId(),
-    label: session.label || 'Resumed',
-    sessionId: session.id,
-    profileId,
-    engine: (session.engine || 'claude') as AgentEngine,
-    modelOverride: null,
-    usePersona: true,
-    customInstructions: '',
-    focusAreas: [],
-    injectToken: Boolean(profileId),
-    planId: session.last_plan_id ?? null,
-    createdAt: new Date().toISOString(),
-  };
 }
 
 // =============================================================================
@@ -1510,8 +1299,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   profiles: UnifiedProfile[];
   onRefreshProfiles: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
-  const [input, setInput] = useState(() => loadTabDraft(tab.id));
+  // Messages from Zustand store (survives HMR)
+  const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? []);
+  // Ensure messages are lazy-loaded from localStorage on first render
+  useEffect(() => { useAssistantChatStore.getState().getMessages(tab.id); }, [tab.id]);
+
+  // Draft: local state for responsive typing, synced to store
+  const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
+  useEffect(() => { useAssistantChatStore.getState().setDraft(tab.id, input); }, [input, tab.id]);
+
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
 
@@ -1521,74 +1317,46 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
   const activity = bridgeReq?.activity ?? null;
 
-  // Consume completed/error results (may have arrived while panel was closed).
-  //
-  // CRITICAL: persist to localStorage EAGERLY (before React state update).
-  // React 18 defers setState updater calls — if HMR unmounts the component
-  // between consume() and React calling the updater, the message is consumed
-  // (marked _consumed=true) but never persisted.  Reading current messages
-  // from localStorage directly and writing back immediately ensures the
-  // message survives HMR, page refresh, or any other unmount timing.
-
+  // Consume completed/error results from the bridge singleton.
+  // The Zustand store handles persistence — no need for eager localStorage writes.
   useEffect(() => {
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
     if (!result) return;
     const errorText = renderBridgeError(result);
-
-    /**
-     * Eagerly persist: read current messages from localStorage, apply the
-     * update, write back, THEN queue the React state update.  Even if React
-     * never processes the setState (HMR unmount), localStorage is correct
-     * and the next mount will load the right messages.
-     */
-    const eagerPersistAndSetState = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-      // 1. Eager localStorage write (HMR-safe)
-      const current = loadTabMessages(tab.id);
-      const next = updater(current);
-      persistTabMessages(tab.id, next);
-      // 2. React state update (may be discarded by HMR — that's OK now)
-      setMessages(next);
-    };
+    const s = useAssistantChatStore.getState();
 
     if (result.error_code === 'cancelled' || result.error === 'cancelled') {
-      eagerPersistAndSetState((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
+      s.appendMessage(tab.id, { role: 'system', text: 'Request cancelled', timestamp: new Date() });
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
         if (prevSessionId) {
-          eagerPersistAndSetState((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
+          s.appendMessage(tab.id, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() });
         }
       } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
-        eagerPersistAndSetState((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
-            return [...prev.slice(0, -1), { ...last, text: `Session resumed (verified: ${prevSessionId.slice(0, 8)})` }];
-          }
-          return prev;
-        });
+        const msgs = s.getMessages(tab.id);
+        const last = msgs[msgs.length - 1];
+        if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
+          s.setMessages(tab.id, [...msgs.slice(0, -1), { ...last, text: `Session resumed (verified: ${prevSessionId.slice(0, 8)})` }]);
+        }
       }
       const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
-      eagerPersistAndSetState((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
+      s.appendMessage(tab.id, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() });
     } else {
       // Reconnect failure — try recovering from server-stored messages.
-      // The backend stores the assistant response in the ChatSession DB
-      // record, so even if the in-memory cache is gone (server restart,
-      // cache eviction), the response can be recovered.
       const isReconnectFailure = result.reconnected || result.error_code === 'task_not_found' || (result.error || '').includes('not found');
       if (isReconnectFailure && tab.sessionId) {
         fetchServerMessages(tab.sessionId).then((serverMsgs) => {
           if (serverMsgs.length === 0) {
-            eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
+            useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
             return;
           }
-          // Find the last user message in local state
-          const current = loadTabMessages(tab.id);
+          const current = useAssistantChatStore.getState().getMessages(tab.id);
           let lastLocalUserIdx = -1;
           for (let i = current.length - 1; i >= 0; i--) { if (current[i].role === 'user') { lastLocalUserIdx = i; break; } }
           const lastLocalUserText = lastLocalUserIdx >= 0 ? current[lastLocalUserIdx].text : null;
-          // Check if server has an assistant message after this user message
           let serverLastUserIdx = -1;
           for (let i = serverMsgs.length - 1; i >= 0; i--) {
             if (serverMsgs[i].role === 'user' && serverMsgs[i].text === lastLocalUserText) { serverLastUserIdx = i; break; }
@@ -1596,21 +1364,22 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           if (serverLastUserIdx >= 0 && serverLastUserIdx < serverMsgs.length - 1) {
             const recovered = serverMsgs.slice(serverLastUserIdx + 1).filter((m) => m.role === 'assistant');
             if (recovered.length > 0) {
-              eagerPersistAndSetState((m) => [
-                ...m,
+              const st = useAssistantChatStore.getState();
+              const curr = st.getMessages(tab.id);
+              st.setMessages(tab.id, [
+                ...curr,
                 { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
                 ...recovered,
               ]);
               return;
             }
           }
-          // No recovery possible — show original error
-          eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
+          useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
         }).catch(() => {
-          eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
+          useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
         });
       } else {
-        eagerPersistAndSetState((m) => [...m, { role: 'error', text: errorText, timestamp: new Date() }]);
+        s.appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
       }
     }
   });
@@ -1638,26 +1407,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       const label = tab.sessionId
         ? 'Reconnected — resuming conversation'
         : 'Bridge connected';
-      setMessages((m) => [...m, { role: 'system', text: label, timestamp: new Date() }]);
+      useAssistantChatStore.getState().appendMessage(tab.id, { role: 'system', text: label, timestamp: new Date() });
     } else if (connected === 0 && prev > 0 && messages.length > 0) {
       sawDisconnectRef.current = true;
-      setMessages((m) => [...m, { role: 'system', text: 'Bridge disconnected', timestamp: new Date() }]);
+      useAssistantChatStore.getState().appendMessage(tab.id, { role: 'system', text: 'Bridge disconnected', timestamp: new Date() });
     }
   }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist (guard: don't wipe messages on transient empty state from HMR remount)
-  const hasPersistedRef = useRef(false);
+  // Sync messages to server when they change
   useEffect(() => {
-    if (messages.length > 0 || hasPersistedRef.current) {
-      persistTabMessages(tab.id, messages);
-      hasPersistedRef.current = true;
-      // Also sync to server for session resume
-      if (tab.sessionId && messages.length > 0) {
-        syncMessagesToServer(tab.sessionId, messages);
-      }
+    if (tab.sessionId && messages.length > 0) {
+      useAssistantChatStore.getState().syncToServer(tab.sessionId, messages);
     }
-  }, [messages, tab.id, tab.sessionId]);
-  useEffect(() => { persistTabDraft(tab.id, input); }, [input, tab.id]);
+  }, [messages, tab.sessionId]);
 
   // Inject prompt from other panels
   useEffect(() => {
@@ -1685,17 +1447,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || sending) return;
-    const isFirstUserMessage = !tab.sessionId && !messages.some((m) => m.role === 'user');
+    const msgs = useAssistantChatStore.getState().getMessages(tab.id);
+    const isFirstUserMessage = !tab.sessionId && !msgs.some((m) => m.role === 'user');
     if (isFirstUserMessage) {
       onUpdateTab({ label: text.slice(0, 30) });
     }
     setInput('');
-    // Eager persist: write user message to localStorage immediately
-    // (same pattern as consume — survives HMR between setState and render)
-    const currentMsgs = loadTabMessages(tab.id);
-    const withUserMsg = [...currentMsgs, { role: 'user' as const, text, timestamp: new Date() }];
-    persistTabMessages(tab.id, withUserMsg);
-    setMessages(withUserMsg);
+    // Store handles persist to localStorage
+    useAssistantChatStore.getState().appendMessage(tab.id, { role: 'user', text, timestamp: new Date() });
 
     const timeout = tab.engine === 'codex' ? 600 : 300;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
@@ -1741,19 +1500,18 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Fire-and-forget â€" the bridge singleton manages the SSE fetch.
     // Results are consumed by the useEffect above, even if the panel unmounts.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab, messages]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken, profiles, onUpdateTab]);
 
   const retryLast = useCallback(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        const truncated = messages.slice(0, i);
-        persistTabMessages(tab.id, truncated);
-        setMessages(truncated);
-        void sendMessage(messages[i].text);
+    const msgs = useAssistantChatStore.getState().getMessages(tab.id);
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        useAssistantChatStore.getState().setMessages(tab.id, msgs.slice(0, i));
+        void sendMessage(msgs[i].text);
         return;
       }
     }
-  }, [messages, sendMessage, tab.id]);
+  }, [sendMessage, tab.id]);
 
   // @reference picker (centralized)
   const refs = useReferences();
@@ -1816,7 +1574,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                 });
                 // Fetch server-side message history for this session
                 fetchServerMessages(sessionId).then((serverMsgs) => {
-                  if (serverMsgs.length > 0) setMessages(serverMsgs);
+                  if (serverMsgs.length > 0) useAssistantChatStore.getState().setMessages(tab.id, serverMsgs);
                 });
               }}
             />
@@ -1972,10 +1730,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                             try {
                               const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${p.id}/token`, null, { params: { hours: 24, scope: 'dev' } });
                               await navigator.clipboard.writeText(res.access_token);
-                              setMessages((prev) => [...prev, { role: 'system', text: `Token minted for ${p.label} (24h, copied to clipboard)`, timestamp: new Date() }]);
+                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'system', text: `Token minted for ${p.label} (24h, copied to clipboard)`, timestamp: new Date() });
                               setShowProfilePicker(false);
                             } catch {
-                              setMessages((prev) => [...prev, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() }]);
+                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() });
                             }
                           }}
                           className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
@@ -2003,7 +1761,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                               }
                               onRefreshProfiles();
                             } catch {
-                              setMessages((prev) => [...prev, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() }]);
+                              useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() });
                             }
                           }}
                           className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0"
@@ -2087,14 +1845,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 // =============================================================================
 
 export function AIAssistantPanel() {
-  const [tabs, setTabs] = useState<ChatTab[]>(loadTabs);
-  const [activeTabId, setActiveTabIdState] = useState<string | null>(() => {
-    const stored = getActiveTabId();
-    // Ensure the stored tab still exists
-    const loaded = loadTabs();
-    if (stored && loaded.some((t) => t.id === stored)) return stored;
-    return loaded[0]?.id ?? null;
-  });
+  const tabs = useAssistantChatStore((s) => s.tabs);
+  const activeTabId = useAssistantChatStore((s) => s.activeTabId);
+  const store = useAssistantChatStore;
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
   const [profiles, setProfiles] = useState<UnifiedProfile[]>([]);
@@ -2102,9 +1855,6 @@ export function AIAssistantPanel() {
     () => new Map(profiles.map((profile) => [profile.id, profile.label] as const)),
     [profiles],
   );
-
-  // Persist tabs
-  useEffect(() => { persistTabs(tabs); }, [tabs]);
 
   // Load unified profiles
   const refreshProfiles = useCallback(() => {
@@ -2141,8 +1891,7 @@ export function AIAssistantPanel() {
   }, []);
 
   const setActiveTab = useCallback((id: string | null) => {
-    setActiveTabIdState(id);
-    setActiveTabId(id);
+    store.getState().setActiveTab(id);
   }, []);
 
   const createTab = useCallback((profileId?: string) => {
@@ -2163,28 +1912,21 @@ export function AIAssistantPanel() {
       planId: null,
       createdAt: new Date().toISOString(),
     };
-    setTabs((prev) => [newTab, ...prev]);
-    setActiveTab(id);
-  }, [profiles, setActiveTab]);
+    store.getState().addTab(newTab);
+    store.getState().setActiveTab(id);
+  }, [profiles]);
 
   const closeTab = useCallback((tabId: string) => {
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (activeTabId === tabId) {
-        const newActive = next[0]?.id ?? null;
-        setActiveTab(newActive);
-      }
-      // Clean up storage
-      try {
-        localStorage.removeItem(msgKey(tabId));
-        localStorage.removeItem(draftKey(tabId));
-      } catch { /* ignore */ }
-      return next;
-    });
-  }, [activeTabId, setActiveTab]);
+    const s = store.getState();
+    if (activeTabId === tabId) {
+      const remaining = s.tabs.filter((t) => t.id !== tabId);
+      s.setActiveTab(remaining[0]?.id ?? null);
+    }
+    s.closeTab(tabId);
+  }, [activeTabId]);
 
   const updateTab = useCallback((tabId: string, updates: Partial<ChatTab>) => {
-    setTabs((prev) => prev.map((t) => t.id === tabId ? { ...t, ...updates } : t));
+    store.getState().updateTab(tabId, updates);
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -2212,15 +1954,16 @@ export function AIAssistantPanel() {
         label: detail.label || profile?.label || 'Resumed',
         profile_id: detail.profileId,
       });
+      const s = useAssistantChatStore.getState();
+      s.addTab(newTab);
+      s.setActiveTab(newTab.id);
       fetchServerMessages(detail.sessionId).then((serverMsgs) => {
-        if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
-        setTabs((prev) => [newTab, ...prev]);
-        setActiveTab(newTab.id);
+        if (serverMsgs.length > 0) useAssistantChatStore.getState().setMessages(newTab.id, serverMsgs);
       });
     };
     window.addEventListener(RESUME_SESSION_EVENT, handler);
     return () => window.removeEventListener(RESUME_SESSION_EVENT, handler);
-  }, [tabs, profiles, setActiveTab]);
+  }, [tabs, profiles]);
 
   // Listen for open-plan-chat events (e.g. from Plan panel "Start Chat" button)
   useEffect(() => {
@@ -2247,14 +1990,15 @@ export function AIAssistantPanel() {
         planId,
         createdAt: new Date().toISOString(),
       };
-      setTabs((prev) => [newTab, ...prev]);
-      setActiveTab(id);
+      const s = useAssistantChatStore.getState();
+      s.addTab(newTab);
+      s.setActiveTab(id);
       // Pre-fill the input with @plan: reference so scope flows on first message
-      try { localStorage.setItem(draftKey(id), `@plan:${planId} `); } catch { /* */ }
+      s.setDraft(id, `@plan:${planId} `);
     };
     window.addEventListener(OPEN_PLAN_CHAT_EVENT, handler);
     return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);
-  }, [tabs, profiles, setActiveTab]);
+  }, [tabs, profiles]);
 
   // Group tabs: plan-bound first (grouped by planId), then ungrouped
   const { planGroups, ungroupedTabs } = useMemo(() => {
@@ -2415,10 +2159,11 @@ export function AIAssistantPanel() {
               const existing = tabs.find((t) => t.sessionId === sessionId);
               if (existing) { setActiveTab(existing.id); return; }
               const newTab = buildResumedTab({ id: sessionId, engine, label, profile_id: resumeProfileId, last_plan_id: lastPlanId });
+              const s = useAssistantChatStore.getState();
+              s.addTab(newTab);
+              s.setActiveTab(newTab.id);
               fetchServerMessages(sessionId).then((serverMsgs) => {
-                if (serverMsgs.length > 0) persistTabMessages(newTab.id, serverMsgs);
-                setTabs((prev) => [newTab, ...prev]);
-                setActiveTab(newTab.id);
+                if (serverMsgs.length > 0) useAssistantChatStore.getState().setMessages(newTab.id, serverMsgs);
               });
             }} />
             <div className="ml-auto flex items-center gap-1">
