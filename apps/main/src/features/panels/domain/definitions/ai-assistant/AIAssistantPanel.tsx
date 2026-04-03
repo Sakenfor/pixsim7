@@ -1317,6 +1317,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
   const activity = bridgeReq?.activity ?? null;
 
+  // Sync thinking entries from bridge to store (persists across HMR + full reload).
+  // The bridge's thinkingLog is in-memory only — mirror it to the store so it survives.
+  const storeThinking = useAssistantChatStore((s) => s.thinkingByTab[tab.id] ?? []);
+  useEffect(() => {
+    if (bridgeReq && bridgeReq.thinkingLog.length > 0 && sending) {
+      useAssistantChatStore.getState().syncThinking(tab.id, [...bridgeReq.thinkingLog]);
+    }
+  }); // runs every render — bridge mutates thinkingLog in place, so we re-sync on each notification
+  // Effective thinking entries: bridge (live) or store (survived reload)
+  const thinkingEntries = (sending && bridgeReq?.thinkingLog?.length)
+    ? bridgeReq.thinkingLog
+    : storeThinking;
+
   // Consume completed/error results from the bridge singleton.
   // The Zustand store handles persistence — no need for eager localStorage writes.
   useEffect(() => {
@@ -1325,6 +1338,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (!result) return;
     const errorText = renderBridgeError(result);
     const s = useAssistantChatStore.getState();
+    // Clear persisted thinking entries — they're now part of the final message
+    s.clearThinking(tab.id);
 
     if (result.error_code === 'cancelled' || result.error === 'cancelled') {
       s.appendMessage(tab.id, { role: 'system', text: 'Request cancelled', timestamp: new Date() });
@@ -1612,8 +1627,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           <div className="flex justify-start gap-2 items-end">
             <EngineProfileIcon engine={tab.engine} icon={activeProfileIcon} size={11} className="mb-1" />
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 max-w-[85%]">
-              {bridgeReq && bridgeReq.thinkingLog.length > 0 && (
-                <ThinkingBlock entries={bridgeReq.thinkingLog} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
+              {thinkingEntries.length > 0 && (
+                <ThinkingBlock entries={thinkingEntries} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
               )}
               <div className="flex gap-1">
                 <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />

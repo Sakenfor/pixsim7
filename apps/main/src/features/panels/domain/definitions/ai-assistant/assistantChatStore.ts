@@ -186,6 +186,30 @@ function persistTabDraft(tabId: string, text: string) {
 }
 
 // =============================================================================
+// Thinking entries persistence (survives full reload during streaming)
+// =============================================================================
+
+const THINKING_KEY_PREFIX = 'ai-assistant:thinking:';
+
+function thinkingKey(tabId: string): string {
+  return `${THINKING_KEY_PREFIX}${tabId}`;
+}
+
+function loadThinking(tabId: string): ThinkingEntry[] {
+  try {
+    const raw = localStorage.getItem(thinkingKey(tabId));
+    return raw ? (JSON.parse(raw) as ThinkingEntry[]) : [];
+  } catch { return []; }
+}
+
+function persistThinking(tabId: string, entries: ThinkingEntry[]) {
+  try {
+    if (entries.length === 0) localStorage.removeItem(thinkingKey(tabId));
+    else localStorage.setItem(thinkingKey(tabId), JSON.stringify(entries.slice(-100)));
+  } catch { /* ignore */ }
+}
+
+// =============================================================================
 // Server-side message sync (debounced PATCH)
 // =============================================================================
 
@@ -268,12 +292,20 @@ if (typeof window !== 'undefined') {
 // Store interface
 // =============================================================================
 
+interface ThinkingEntry {
+  action: string;
+  detail: string;
+  timestamp?: number;
+}
+
 interface AssistantChatState {
   // State
   tabs: ChatTab[];
   activeTabId: string | null;
   messagesByTab: Record<string, ChatMessage[]>;
   draftsByTab: Record<string, string>;
+  /** Live thinking entries per tab — persisted so they survive full reload */
+  thinkingByTab: Record<string, ThinkingEntry[]>;
 
   // Tab actions
   addTab: (tab: ChatTab) => void;
@@ -285,6 +317,11 @@ interface AssistantChatState {
   getMessages: (tabId: string) => ChatMessage[];
   appendMessage: (tabId: string, msg: ChatMessage) => void;
   setMessages: (tabId: string, msgs: ChatMessage[]) => void;
+
+  // Thinking actions (live streaming state)
+  syncThinking: (tabId: string, entries: ThinkingEntry[]) => void;
+  clearThinking: (tabId: string) => void;
+  getThinking: (tabId: string) => ThinkingEntry[];
 
   // Draft actions
   getDraft: (tabId: string) => string;
@@ -308,6 +345,7 @@ export const useAssistantChatStore = hmrSingleton(
       activeTabId: getActiveTabId(),
       messagesByTab: {},
       draftsByTab: {},
+      thinkingByTab: {},
 
       // ----- Tab actions -----
 
@@ -324,22 +362,17 @@ export const useAssistantChatStore = hmrSingleton(
         const nextTabs = get().tabs.filter((t) => t.id !== tabId);
         persistTabs(nextTabs);
         // Clean up localStorage
-        try {
-          localStorage.removeItem(msgKey(tabId));
-        } catch {
-          /* ignore */
-        }
-        try {
-          localStorage.removeItem(draftKey(tabId));
-        } catch {
-          /* ignore */
-        }
+        try { localStorage.removeItem(msgKey(tabId)); } catch { /* ignore */ }
+        try { localStorage.removeItem(draftKey(tabId)); } catch { /* ignore */ }
+        try { localStorage.removeItem(thinkingKey(tabId)); } catch { /* ignore */ }
         const { [tabId]: _msgs, ...restMsgs } = get().messagesByTab; void _msgs;
         const { [tabId]: _draft, ...restDrafts } = get().draftsByTab; void _draft;
+        const { [tabId]: _think, ...restThink } = get().thinkingByTab; void _think;
         set({
           tabs: nextTabs,
           messagesByTab: restMsgs,
           draftsByTab: restDrafts,
+          thinkingByTab: restThink,
         });
       },
 
@@ -383,6 +416,36 @@ export const useAssistantChatStore = hmrSingleton(
         set((s) => ({
           messagesByTab: { ...s.messagesByTab, [tabId]: msgs },
         }));
+      },
+
+      // ----- Thinking actions (live streaming state) -----
+
+      syncThinking: (tabId, entries) => {
+        persistThinking(tabId, entries);
+        set((s) => ({
+          thinkingByTab: { ...s.thinkingByTab, [tabId]: entries },
+        }));
+      },
+
+      clearThinking: (tabId) => {
+        persistThinking(tabId, []);
+        set((s) => {
+          const { [tabId]: _removed, ...rest } = s.thinkingByTab; void _removed;
+          return { thinkingByTab: rest };
+        });
+      },
+
+      getThinking: (tabId) => {
+        const existing = get().thinkingByTab[tabId];
+        if (existing !== undefined) return existing;
+        // Lazy load from localStorage (e.g., after full page reload)
+        const loaded = loadThinking(tabId);
+        if (loaded.length > 0) {
+          set((s) => ({
+            thinkingByTab: { ...s.thinkingByTab, [tabId]: loaded },
+          }));
+        }
+        return loaded;
       },
 
       // ----- Draft actions -----
@@ -472,4 +535,4 @@ export function buildResumedTab(session: {
 // =============================================================================
 
 export { normalizeProfileId, createTabId };
-export type { ChatTab, ChatMessage, AgentEngine, AgentCommand, AssistantChatState };
+export type { ChatTab, ChatMessage, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };
