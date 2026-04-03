@@ -24,6 +24,7 @@ __all__ = [
     "analytics",
     "plugins",
     # Dev tools
+    "dev_app_map",
     "dev_architecture",
     "dev_flows",
     "dev_info",
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
         auth,
         automation,
         dev_architecture,
+        dev_app_map,
         dev_flows,
         dev_info,
         dev_ontology,

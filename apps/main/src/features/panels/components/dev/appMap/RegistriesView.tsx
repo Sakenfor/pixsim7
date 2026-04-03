@@ -7,6 +7,7 @@
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
 import type { RegistryDescriptor } from '@pixsim7/shared.api.model';
+import type { AppMapFrontendRegistries } from '@pixsim7/shared.types';
 import { FilterPillGroup } from '@pixsim7/shared.ui';
 import { useState, useMemo, useRef, useSyncExternalStore, useEffect } from 'react';
 
@@ -40,6 +41,8 @@ import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 
 import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
 
+import { AppMapSnapshotRegistrySection } from './AppMapSnapshotRegistrySection';
+
 type RuntimeRegistryCategory = 'tools' | 'surfaces' | 'interactions' | 'resolvers' | 'other';
 type RegistrySourceMode = 'runtime' | 'backend';
 type BackendRegistryCategory = 'plugins' | 'routes' | 'capabilities' | 'services' | 'runtime' | 'other';
@@ -69,6 +72,7 @@ interface BackendRegistryViewModel {
 interface RegistriesViewProps {
   backendRegistryDescriptors?: RegistryDescriptorLike[];
   backendRuntimeRegistries?: RegistryDescriptorLike[];
+  appMapRegistries?: AppMapFrontendRegistries;
 }
 
 const BACKEND_CATEGORY_VALUES: readonly BackendRegistryCategory[] = [
@@ -269,6 +273,7 @@ function formatRegistryCategoryLabel(value: string): string {
 export function RegistriesView({
   backendRegistryDescriptors = [],
   backendRuntimeRegistries = [],
+  appMapRegistries,
 }: RegistriesViewProps) {
   const backendRegistries = useMemo<BackendRegistryViewModel[]>(() => {
     const descriptors = backendRegistryDescriptors.map((item) =>
@@ -323,14 +328,18 @@ export function RegistriesView({
         {sourceMode === 'backend' ? (
           <BackendRegistriesPanel registries={backendRegistries} />
         ) : (
-          <RuntimeRegistriesPanel />
+          <RuntimeRegistriesPanel appMapRegistries={appMapRegistries} />
         )}
       </div>
     </div>
   );
 }
 
-function RuntimeRegistriesPanel() {
+function RuntimeRegistriesPanel({
+  appMapRegistries,
+}: {
+  appMapRegistries?: AppMapFrontendRegistries;
+}) {
   const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(
     REGISTRIES[0]?.id ?? null
   );
@@ -345,81 +354,87 @@ function RuntimeRegistriesPanel() {
   const selectedRegistry = REGISTRIES.find((r) => r.id === selectedRegistryId);
 
   return (
-    <div className="flex h-full">
-      {/* Registry List */}
-      <div className="w-1/3 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
-        {/* Category Filter */}
-        <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
-          <FilterPillGroup
-            options={(['tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => ({
-              value: cat,
-              label: formatRegistryCategoryLabel(cat),
-            }))}
-            value={categoryFilter === 'all' ? null : categoryFilter}
-            onChange={(v) => setCategoryFilter(v ?? 'all')}
-            allLabel="All"
-          />
-        </div>
+    <div className="flex h-full flex-col">
+      {appMapRegistries ? (
+        <AppMapSnapshotRegistrySection registries={appMapRegistries} />
+      ) : null}
 
+      <div className="flex min-h-0 flex-1">
         {/* Registry List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {filteredRegistries.map((registry) => (
-            <RegistryListItem
-              key={registry.id}
-              registry={registry}
-              isSelected={selectedRegistryId === registry.id}
-              onSelect={() => setSelectedRegistryId(registry.id)}
+        <div className="w-1/3 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
+          {/* Category Filter */}
+          <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
+            <FilterPillGroup
+              options={(['tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => ({
+                value: cat,
+                label: formatRegistryCategoryLabel(cat),
+              }))}
+              value={categoryFilter === 'all' ? null : categoryFilter}
+              onChange={(v) => setCategoryFilter(v ?? 'all')}
+              allLabel="All"
             />
-          ))}
-        </div>
-
-        {/* Summary Stats */}
-        <div className="p-3 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
-          <RegistrySummary registries={REGISTRIES} />
-        </div>
-      </div>
-
-      {/* Registry Details */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {selectedRegistry ? (
-          <>
-            {/* Header */}
-            <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
-              <div className="flex items-center gap-3 mb-2">
-                <Icon name={selectedRegistry.icon} size={24} />
-                <div>
-                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                    {selectedRegistry.name}
-                  </h2>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    {selectedRegistry.description}
-                  </p>
-                </div>
-              </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search items..."
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Items */}
-            {selectedRegistry.renderDetails ? (
-              selectedRegistry.renderDetails(searchQuery)
-            ) : (
-              <RegistryItemList
-                registry={selectedRegistry}
-                searchQuery={searchQuery}
-              />
-            )}
-          </>
-        ) : (
-          <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
-            Select a registry to view items
           </div>
-        )}
+
+          {/* Registry List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {filteredRegistries.map((registry) => (
+              <RegistryListItem
+                key={registry.id}
+                registry={registry}
+                isSelected={selectedRegistryId === registry.id}
+                onSelect={() => setSelectedRegistryId(registry.id)}
+              />
+            ))}
+          </div>
+
+          {/* Summary Stats */}
+          <div className="p-3 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
+            <RegistrySummary registries={REGISTRIES} />
+          </div>
+        </div>
+
+        {/* Registry Details */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {selectedRegistry ? (
+            <>
+              {/* Header */}
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon name={selectedRegistry.icon} size={24} />
+                  <div>
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                      {selectedRegistry.name}
+                    </h2>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      {selectedRegistry.description}
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search items..."
+                  className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Items */}
+              {selectedRegistry.renderDetails ? (
+                selectedRegistry.renderDetails(searchQuery)
+              ) : (
+                <RegistryItemList
+                  registry={selectedRegistry}
+                  searchQuery={searchQuery}
+                />
+              )}
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
+              Select a registry to view items
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

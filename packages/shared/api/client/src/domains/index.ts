@@ -18,6 +18,7 @@ export { createAssetsApi } from './assets';
 export { createAutomationApi } from './automation';
 export { createCompositionApi } from './composition';
 export { createConceptsApi } from './concepts';
+export { createDevAppMapApi } from './devAppMap';
 export { createDevArchitectureApi } from './devArchitecture';
 export { createDevDocsApi } from './devDocs';
 export { createGameApi } from './game';
@@ -277,6 +278,9 @@ export type {
   UnifiedArchitectureMetrics,
   UnifiedArchitectureResponse,
 } from './devArchitecture';
+
+// ===== Dev App Map Types =====
+export type { AppMapSnapshotV2 } from './devAppMap';
 
 export type { DocsIndexResponse, DocsSearchResponse } from './devDocs';
 

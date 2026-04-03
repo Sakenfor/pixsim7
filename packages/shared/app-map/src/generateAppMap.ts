@@ -106,6 +106,9 @@ type PanelRegistryEntry = {
   id: string;
   title: string;
   category: string;
+  updatedAt?: string;
+  changeNote?: string;
+  featureHighlights?: string[];
   icon?: string;
   description?: string;
   tags?: string[];
@@ -124,6 +127,9 @@ type PanelRegistryEntry = {
 type ModuleRegistryEntry = {
   id: string;
   name: string;
+  updatedAt?: string;
+  changeNote?: string;
+  featureHighlights?: string[];
   priority?: number;
   dependsOn?: string[];
   hasInitialize: boolean;
@@ -1020,6 +1026,9 @@ function parsePanelDefinition(filePath: string): PanelRegistryEntry | null {
           if (!id || !title) return;
 
           const category = resolveString(getObjectProp(arg, 'category')) ?? 'tools';
+          const updatedAt = resolveString(getObjectProp(arg, 'updatedAt')) ?? undefined;
+          const changeNote = resolveString(getObjectProp(arg, 'changeNote')) ?? undefined;
+          const featureHighlights = resolveStringArray(getObjectProp(arg, 'featureHighlights')) ?? undefined;
           const icon = resolveString(getObjectProp(arg, 'icon')) ?? undefined;
           const description = resolveString(getObjectProp(arg, 'description')) ?? undefined;
           const tags = resolveStringArray(getObjectProp(arg, 'tags')) ?? undefined;
@@ -1041,7 +1050,7 @@ function parsePanelDefinition(filePath: string): PanelRegistryEntry | null {
           }
 
           result = {
-            id, title, category, icon, description, tags, order, internal,
+            id, title, category, updatedAt, changeNote, featureHighlights, icon, description, tags, order, internal,
             supportsCompactMode, supportsMultipleInstances, maxInstances,
             availableIn, orchestrationType, defaultZone, coreEditorRole,
             source: sourcePath,
@@ -1122,6 +1131,9 @@ function parseModuleDefinition(
       if (!id || !name) return;
 
       const priority = resolveNumber(getObjectProp(obj, 'priority')) ?? undefined;
+      const updatedAt = resolveString(getObjectProp(obj, 'updatedAt')) ?? undefined;
+      const changeNote = resolveString(getObjectProp(obj, 'changeNote')) ?? undefined;
+      const featureHighlights = resolveStringArray(getObjectProp(obj, 'featureHighlights')) ?? undefined;
       const dependsOn = resolveStringArray(getObjectProp(obj, 'dependsOn')) ?? undefined;
       const hasInitialize = getObjectProp(obj, 'initialize') !== undefined;
       const hasCleanup = getObjectProp(obj, 'cleanup') !== undefined;
@@ -1141,7 +1153,7 @@ function parseModuleDefinition(
       }
 
       result = {
-        id, name, priority, dependsOn, hasInitialize, hasCleanup,
+        id, name, updatedAt, changeNote, featureHighlights, priority, dependsOn, hasInitialize, hasCleanup,
         hasIsReady, hasPage, route, controlCenterPanelCount, source: sourcePath,
       };
     }
@@ -1349,11 +1361,15 @@ export function generateAppMap(): {
   const hooks = scanHooks()
     .sort((a, b) => a.feature.localeCompare(b.feature) || a.name.localeCompare(b.name));
 
+  const mergedActions = mergeActionEntries(new Map(), actionEntries);
+  const actions = Array.from(mergedActions.values()).sort((a, b) => a.id.localeCompare(b.id));
+
   // 4. Generate JSON output (for debugging/intermediate use)
   const generatedJson = JSON.stringify({
     version: '2.0.0',
     generatedAt: new Date().toISOString(),
     entries: codeEntries,
+    actions,
     panels,
     modules,
     stores,
@@ -1383,8 +1399,6 @@ export function generateAppMap(): {
   appMapMd = updateMarkdownSection(appMapMd, 'HOOKS', generateHooksTable(hooks));
 
   // 8. Generate action registry
-  const mergedActions = mergeActionEntries(new Map(), actionEntries);
-  const actions = Array.from(mergedActions.values()).sort((a, b) => a.id.localeCompare(b.id));
   const actionRegistryMd = formatActionRegistry(actions);
 
   return {

@@ -9,8 +9,9 @@
  * - System health metrics
  */
 
+import { createDevAppMapApi } from '@pixsim7/shared.api.client/domains';
 import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
-import type { AppMapMetadata } from '@pixsim7/shared.types';
+import type { AppMapFrontendRegistries, AppMapMetadata } from '@pixsim7/shared.types';
 import { Button, SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import React, {
   useState,
@@ -21,6 +22,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
+import { pixsimClient } from '@lib/api/client';
 import { canRunCodegen } from '@lib/auth/userRoles';
 import {
   type ActionCapability,
@@ -234,6 +236,8 @@ export function AppMapPanel() {
   // Architecture graph (unified backend + frontend data)
   const [graphData, setGraphData] = useState<ArchitectureGraphV1 | null>(null);
   const [graphSource, setGraphSource] = useState<GraphLoadSource | null>(null);
+  const [appMapRegistries, setAppMapRegistries] = useState<AppMapFrontendRegistries | undefined>(undefined);
+  const devAppMapApi = useMemo(() => createDevAppMapApi(pixsimClient), []);
 
   useEffect(() => {
     loadArchitectureGraph().then((result) => {
@@ -241,6 +245,23 @@ export function AppMapPanel() {
       setGraphSource(result.loadSource);
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    devAppMapApi
+      .getSnapshot()
+      .then((snapshot) => {
+        if (cancelled) return;
+        setAppMapRegistries(snapshot.frontend.registries);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('[AppMap] Snapshot v2 fetch failed:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [devAppMapApi]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -661,6 +682,7 @@ export function AppMapPanel() {
               <RegistriesView
                 backendRegistryDescriptors={backendRegistryDescriptors}
                 backendRuntimeRegistries={backendRuntimeRegistries}
+                appMapRegistries={appMapRegistries}
               />
             )}
 

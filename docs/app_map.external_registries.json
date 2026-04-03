@@ -1,0 +1,22 @@
+{
+  "version": "1.0.0",
+  "description": "Optional external registries to surface in App Map snapshot.",
+  "registries": [
+    {
+      "id": "legacy-manual-app-map",
+      "label": "Legacy Manual App Map",
+      "path": "docs/app_map.sources.json",
+      "format": "json",
+      "owner": "architecture",
+      "description": "Deprecated manual app map fallback registry."
+    },
+    {
+      "id": "plans-registry",
+      "label": "Plans Registry",
+      "path": "docs/plans/registry.yaml",
+      "format": "yaml",
+      "owner": "planning",
+      "description": "External plans registry tracked outside TypeScript module metadata."
+    }
+  ]
+}
