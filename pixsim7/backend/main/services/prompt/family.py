@@ -210,6 +210,9 @@ class PromptFamilyService:
         provider_hints = dict(kwargs.pop("provider_hints", {}) or {})
         provider_hints.pop("prompt_analysis", None)
 
+        # Extract ai_tags before **kwargs reaches PromptVersion (not a model field)
+        ai_tags: Optional[List[str]] = kwargs.pop("ai_tags", None)
+
         version = PromptVersion(
             prompt_text=prompt_text,
             prompt_hash=kwargs.pop("prompt_hash", None) or PromptVersion.compute_hash(prompt_text),
@@ -235,12 +238,15 @@ class PromptFamilyService:
 
         if commit:
             family = await self.get_family(family_id)
-            await event_bus.publish(PROMPT_VERSION_CREATED, {
+            payload: dict = {
                 "family_id": str(family_id),
                 "version_id": str(version.id),
                 "prompt_text": prompt_text,
                 "category": family.category if family else None,
-            })
+            }
+            if ai_tags is not None:
+                payload["ai_tags"] = ai_tags
+            await event_bus.publish(PROMPT_VERSION_CREATED, payload)
 
         return version
 

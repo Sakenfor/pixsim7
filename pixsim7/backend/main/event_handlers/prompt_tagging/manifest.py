@@ -64,6 +64,7 @@ async def handle_event(event: Event) -> None:
             family_id=UUID(family_id_str),
             prompt_text=prompt_text,
             category=category,
+            ai_tags=event.data.get("ai_tags"),
         )
     )
 
@@ -72,6 +73,7 @@ async def _suggest_and_apply(
     family_id: UUID,
     prompt_text: str,
     category: str | None,
+    ai_tags: list[str] | None = None,
 ) -> None:
     try:
         from pixsim7.backend.main.infrastructure.database.session import get_async_session
@@ -81,11 +83,20 @@ async def _suggest_and_apply(
         from sqlalchemy import delete, select
 
         async with get_async_session() as db:
-            suggested = await suggest_family_tags(
-                prompt_text=prompt_text,
-                mode_id=category,
-                db=db,
-            )
+            if ai_tags is not None:
+                # Agent provided tags directly — skip LLM call
+                suggested = ai_tags
+                logger.info(
+                    "prompt_tagging_using_agent_tags",
+                    family_id=str(family_id),
+                    tag_count=len(suggested),
+                )
+            else:
+                suggested = await suggest_family_tags(
+                    prompt_text=prompt_text,
+                    mode_id=category,
+                    db=db,
+                )
             if not suggested:
                 logger.info("prompt_tagging_no_suggestions", family_id=str(family_id))
                 return

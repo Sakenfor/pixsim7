@@ -44,6 +44,14 @@ class CreatePromptVersionRequest(BaseModel):
         description="Canonical structured analysis for this prompt version.",
     )
     tags: List[str] = Field(default_factory=list)
+    ai_tags: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Tags provided directly by an AI agent that authored this version. "
+            "When present, skips the background LLM tag-suggestion step and applies "
+            "these as AI-source tags immediately. Values must be prefix:value slugs."
+        ),
+    )
 
 
 class BatchVersionRequest(CreatePromptVersionRequest):

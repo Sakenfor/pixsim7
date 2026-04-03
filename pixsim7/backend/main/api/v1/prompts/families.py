@@ -198,7 +198,8 @@ async def create_version(
         variables=request.variables,
         provider_hints=request.provider_hints,
         prompt_analysis=request.prompt_analysis,
-        tags=request.tags
+        tags=request.tags,
+        ai_tags=request.ai_tags,
     )
 
     from pixsim7.backend.main.api.v1.notifications import emit_notification
