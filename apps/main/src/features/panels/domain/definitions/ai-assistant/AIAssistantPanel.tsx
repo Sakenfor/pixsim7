@@ -1419,8 +1419,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 }) {
   // Messages from Zustand store (survives HMR)
   const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? EMPTY_CHAT_MESSAGES);
-  // Ensure messages are lazy-loaded from localStorage on first render
-  useEffect(() => { useAssistantChatStore.getState().getMessages(tab.id); }, [tab.id]);
+  // Hydrate store cache from localStorage on mount (safe in effect, not render)
+  useEffect(() => {
+    const s = useAssistantChatStore.getState();
+    if (s.messagesByTab[tab.id] === undefined) {
+      s.setMessages(tab.id, s.getMessages(tab.id));
+    }
+  }, [tab.id]);
 
   // Draft: local state for responsive typing, synced to store
   const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
@@ -1460,7 +1465,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   useEffect(() => {
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
-    if (!result) return;
+    if (!result) {
+      console.warn('[ai-assistant] consume returned null — result already consumed or missing', {
+        tabId: tab.id, status: bridgeReq.status, consumed: (bridgeReq as Record<string, unknown>)._consumed,
+      });
+      return;
+    }
     const errorText = renderBridgeError(result);
     const s = useAssistantChatStore.getState();
     // Clear persisted thinking entries — they're now part of the final message

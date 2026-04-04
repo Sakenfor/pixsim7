@@ -209,6 +209,17 @@ function persistThinking(tabId: string, entries: ThinkingEntry[]) {
   } catch { /* ignore */ }
 }
 
+function isSameThinkingEntries(left: ThinkingEntry[], right: ThinkingEntry[]): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i].action !== right[i].action) return false;
+    if (left[i].detail !== right[i].detail) return false;
+    if ((left[i].timestamp ?? null) !== (right[i].timestamp ?? null)) return false;
+  }
+  return true;
+}
+
 // =============================================================================
 // Server-side message sync (debounced PATCH)
 // =============================================================================
@@ -394,12 +405,9 @@ export const useAssistantChatStore = hmrSingleton(
       getMessages: (tabId) => {
         const existing = get().messagesByTab[tabId];
         if (existing !== undefined) return existing;
-        // Lazy load from localStorage
-        const loaded = loadTabMessages(tabId);
-        set((s) => ({
-          messagesByTab: { ...s.messagesByTab, [tabId]: loaded },
-        }));
-        return loaded;
+        // Read from localStorage without set() — safe to call during render.
+        // The useEffect on mount hydrates the store cache separately.
+        return loadTabMessages(tabId);
       },
 
       appendMessage: (tabId, msg) => {
@@ -421,6 +429,10 @@ export const useAssistantChatStore = hmrSingleton(
       // ----- Thinking actions (live streaming state) -----
 
       syncThinking: (tabId, entries) => {
+        const current = get().thinkingByTab[tabId] ?? [];
+        if (isSameThinkingEntries(current, entries)) {
+          return;
+        }
         persistThinking(tabId, entries);
         set((s) => ({
           thinkingByTab: { ...s.thinkingByTab, [tabId]: entries },
@@ -438,14 +450,8 @@ export const useAssistantChatStore = hmrSingleton(
       getThinking: (tabId) => {
         const existing = get().thinkingByTab[tabId];
         if (existing !== undefined) return existing;
-        // Lazy load from localStorage (e.g., after full page reload)
-        const loaded = loadThinking(tabId);
-        if (loaded.length > 0) {
-          set((s) => ({
-            thinkingByTab: { ...s.thinkingByTab, [tabId]: loaded },
-          }));
-        }
-        return loaded;
+        // Read from localStorage without set() — safe to call during render.
+        return loadThinking(tabId);
       },
 
       // ----- Draft actions -----
@@ -453,15 +459,15 @@ export const useAssistantChatStore = hmrSingleton(
       getDraft: (tabId) => {
         const existing = get().draftsByTab[tabId];
         if (existing !== undefined) return existing;
-        // Lazy load from localStorage
-        const loaded = loadTabDraft(tabId);
-        set((s) => ({
-          draftsByTab: { ...s.draftsByTab, [tabId]: loaded },
-        }));
-        return loaded;
+        // Read from localStorage without set() — safe to call during render.
+        return loadTabDraft(tabId);
       },
 
       setDraft: (tabId, text) => {
+        const current = get().draftsByTab[tabId] ?? '';
+        if (current === text) {
+          return;
+        }
         persistTabDraft(tabId, text);
         set((s) => ({
           draftsByTab: { ...s.draftsByTab, [tabId]: text },
