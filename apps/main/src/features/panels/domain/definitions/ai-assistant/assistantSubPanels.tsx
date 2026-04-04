@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Secondary UI panels/widgets for the AI Assistant — pickers, editors, badges.
  */
@@ -13,14 +14,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
-import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
-
-import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
 import type { AgentEngine } from './assistantChatStore';
-import { EngineProfileIcon, iconForEngine } from './EngineProfileIcon';
 import type { ChatSessionEntry, UnifiedProfile } from './assistantTypes';
 import { AGENT_COMMANDS } from './assistantTypes';
+import { EngineProfileIcon, iconForEngine } from './EngineProfileIcon';
 
 // =============================================================================
 // Profile Editor

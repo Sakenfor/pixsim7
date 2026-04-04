@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Engine/profile icon atom — used by message bubbles, session items, pickers, etc.
  */
