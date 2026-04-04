@@ -191,13 +191,14 @@ describe('Assistant Chat Store', () => {
       // Store doesn't have it in memory
       expect(useAssistantChatStore.getState().messagesByTab['tab-1']).toBeUndefined();
 
-      // getMessages triggers lazy load
+      // getMessages reads from localStorage (without set() — render-safe)
       const msgs = useAssistantChatStore.getState().getMessages('tab-1');
       expect(msgs).toHaveLength(1);
       expect(msgs[0].text).toBe('from localStorage');
 
-      // Now it's cached in the store
-      expect(useAssistantChatStore.getState().messagesByTab['tab-1']).toHaveLength(1);
+      // NOT cached in store (set() removed to prevent setState-during-render).
+      // Hydration happens via useEffect in the component.
+      expect(useAssistantChatStore.getState().messagesByTab['tab-1']).toBeUndefined();
     });
 
     it('appendMessage reads from store, not stale localStorage', () => {
@@ -253,14 +254,14 @@ describe('Assistant Chat Store', () => {
       // Store doesn't have it
       expect(useAssistantChatStore.getState().thinkingByTab['tab-1']).toBeUndefined();
 
-      // getThinking triggers lazy load
+      // getThinking reads from localStorage (without set() — render-safe)
       const loaded = useAssistantChatStore.getState().getThinking('tab-1');
       expect(loaded).toHaveLength(2);
       expect(loaded[0].detail).toBe('Analyzing code');
       expect(loaded[1].detail).toBe('Writing fix');
 
-      // Now cached in store
-      expect(useAssistantChatStore.getState().thinkingByTab['tab-1']).toHaveLength(2);
+      // NOT cached in store (set() removed to prevent setState-during-render).
+      expect(useAssistantChatStore.getState().thinkingByTab['tab-1']).toBeUndefined();
     });
 
     it('getThinking returns empty array when nothing stored', () => {
@@ -426,6 +427,272 @@ describe('Assistant Chat Store', () => {
       expect(msgs[0].text).toBe('help me');
       expect(thinking).toHaveLength(1);
       expect(thinking[0].detail).toBe('Reviewing codebase');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
+  // Page refresh / HMR survival scenarios
+  // ────────────────────────────────────────────────────────
+
+  describe('page refresh & HMR survival', () => {
+
+    it('full reload mid-thinking: user msg + thinking entries survive, ready for reconnect result', () => {
+      const s = useAssistantChatStore.getState();
+
+      // 1. User sends message
+      s.appendMessage('tab-1', makeMsg('user', 'fix the chat'));
+
+      // 2. Agent works — thinking entries accumulate
+      s.syncThinking('tab-1', [
+        { action: 'reading', detail: 'AIAssistantPanel.tsx' },
+      ]);
+      s.syncThinking('tab-1', [
+        { action: 'reading', detail: 'AIAssistantPanel.tsx' },
+        { action: 'editing', detail: 'assistantChatStore.ts' },
+        { action: 'running', detail: 'vitest tests' },
+      ]);
+
+      // Verify both in store AND localStorage before reload
+      expect(useAssistantChatStore.getState().getMessages('tab-1')).toHaveLength(1);
+      expect(JSON.parse(localStorage.getItem('ai-assistant:msg:tab-1')!)).toHaveLength(1);
+      expect(JSON.parse(localStorage.getItem('ai-assistant:thinking:tab-1')!)).toHaveLength(3);
+
+      // 3. PAGE RELOAD — wipe all in-memory state
+      useAssistantChatStore.setState({ messagesByTab: {}, thinkingByTab: {}, draftsByTab: {} });
+
+      // 4. Component remounts — reconstruct from localStorage
+      const msgs = useAssistantChatStore.getState().getMessages('tab-1');
+      const thinking = useAssistantChatStore.getState().getThinking('tab-1');
+
+      expect(msgs).toHaveLength(1);
+      expect(msgs[0].role).toBe('user');
+      expect(msgs[0].text).toBe('fix the chat');
+      expect(thinking).toHaveLength(3);
+      expect(thinking[2].detail).toBe('vitest tests');
+
+      // 5. Reconnect delivers result — append assistant message, clear thinking
+      s.appendMessage('tab-1', {
+        role: 'assistant',
+        text: 'Fixed the chat persistence',
+        thinkingLog: [
+          { action: 'reading', detail: 'AIAssistantPanel.tsx' },
+          { action: 'editing', detail: 'assistantChatStore.ts' },
+          { action: 'running', detail: 'vitest tests' },
+        ],
+        timestamp: new Date(),
+      });
+      s.clearThinking('tab-1');
+
+      const finalMsgs = useAssistantChatStore.getState().getMessages('tab-1');
+      expect(finalMsgs).toHaveLength(2);
+      expect(finalMsgs[1].role).toBe('assistant');
+      expect(finalMsgs[1].thinkingLog).toHaveLength(3);
+      expect(localStorage.getItem('ai-assistant:thinking:tab-1')).toBeNull();
+    });
+
+    it('full reload after result arrived but before consume: completed result in localStorage', () => {
+      const s = useAssistantChatStore.getState();
+
+      // 1. User sends message
+      s.appendMessage('tab-1', makeMsg('user', 'help'));
+
+      // 2. Agent responds — result saved to completed key (simulating bridge behavior)
+      const completedResult = {
+        ok: true,
+        response: 'Here is the help',
+        bridge_session_id: 'sess-123',
+        thinkingLog: [{ action: 'thinking', detail: 'Analyzing...', timestamp: Date.now() }],
+      };
+      // Simulate bridge saving completed result to localStorage
+      localStorage.setItem('ai-assistant:completed', JSON.stringify({
+        'tab-1': { result: completedResult, ts: Date.now() },
+      }));
+
+      // 3. PAGE RELOAD before consume — wipe in-memory
+      useAssistantChatStore.setState({ messagesByTab: {}, thinkingByTab: {} });
+
+      // 4. Messages survive in localStorage
+      const msgs = useAssistantChatStore.getState().getMessages('tab-1');
+      expect(msgs).toHaveLength(1);
+      expect(msgs[0].text).toBe('help');
+
+      // 5. Completed result is in localStorage for bridge to restore
+      const completedRaw = localStorage.getItem('ai-assistant:completed');
+      expect(completedRaw).not.toBeNull();
+      const completedMap = JSON.parse(completedRaw!);
+      expect(completedMap['tab-1']).toBeDefined();
+      expect(completedMap['tab-1'].result.response).toBe('Here is the help');
+
+      // 6. After bridge restores + component consumes, message is appended
+      s.appendMessage('tab-1', {
+        role: 'assistant',
+        text: completedResult.response,
+        thinkingLog: completedResult.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })),
+        timestamp: new Date(),
+      });
+
+      const finalMsgs = useAssistantChatStore.getState().getMessages('tab-1');
+      expect(finalMsgs).toHaveLength(2);
+      expect(finalMsgs[1].text).toBe('Here is the help');
+
+      // Verify persisted to localStorage
+      const persistedMsgs = JSON.parse(localStorage.getItem('ai-assistant:msg:tab-1')!);
+      expect(persistedMsgs).toHaveLength(2);
+    });
+
+    it('HMR: store singleton survives, messages and thinking intact without localStorage roundtrip', () => {
+      const s = useAssistantChatStore.getState();
+
+      // Set up state
+      s.appendMessage('tab-1', makeMsg('user', 'test'));
+      s.syncThinking('tab-1', [{ action: 'working', detail: 'editing' }]);
+
+      // HMR: store object is the SAME reference (hmrSingleton)
+      // — no state reset, no localStorage needed
+      const msgs = useAssistantChatStore.getState().messagesByTab['tab-1'];
+      const thinking = useAssistantChatStore.getState().thinkingByTab['tab-1'];
+
+      // In-memory state is directly available (no getMessages/getThinking lazy load)
+      expect(msgs).toHaveLength(1);
+      expect(msgs![0].text).toBe('test');
+      expect(thinking).toHaveLength(1);
+      expect(thinking![0].detail).toBe('editing');
+    });
+
+    it('multiple tabs: reload preserves each tab independently', () => {
+      const s = useAssistantChatStore.getState();
+
+      s.appendMessage('tab-A', makeMsg('user', 'question A'));
+      s.appendMessage('tab-A', makeMsg('assistant', 'answer A'));
+      s.appendMessage('tab-B', makeMsg('user', 'question B'));
+      s.syncThinking('tab-B', [{ action: 'thinking', detail: 'for B' }]);
+
+      // Reload
+      useAssistantChatStore.setState({ messagesByTab: {}, thinkingByTab: {} });
+
+      const msgsA = useAssistantChatStore.getState().getMessages('tab-A');
+      const msgsB = useAssistantChatStore.getState().getMessages('tab-B');
+      const thinkB = useAssistantChatStore.getState().getThinking('tab-B');
+
+      expect(msgsA).toHaveLength(2);
+      expect(msgsA[1].text).toBe('answer A');
+      expect(msgsB).toHaveLength(1);
+      expect(msgsB[0].text).toBe('question B');
+      expect(thinkB).toHaveLength(1);
+      expect(thinkB[0].detail).toBe('for B');
+    });
+
+    it('tabs metadata survives reload', () => {
+      const s = useAssistantChatStore.getState();
+      const tab = makeTab({ id: 'tab-1', label: 'My Chat', sessionId: 'sess-abc' });
+      s.addTab(tab);
+      s.setActiveTab('tab-1');
+
+      // Reload — wipe in-memory tabs
+      useAssistantChatStore.setState({ tabs: [], activeTabId: null });
+
+      // Reconstruct from localStorage (simulating store re-creation)
+      const storedTabs = JSON.parse(localStorage.getItem('ai-assistant:tabs')!);
+      const storedActive = localStorage.getItem('ai-assistant:active-tab');
+
+      expect(storedTabs).toHaveLength(1);
+      expect(storedTabs[0].id).toBe('tab-1');
+      expect(storedTabs[0].sessionId).toBe('sess-abc');
+      expect(storedActive).toBe('tab-1');
+    });
+
+    it('draft survives reload', () => {
+      useAssistantChatStore.getState().setDraft('tab-1', 'half-typed message');
+
+      // Reload
+      useAssistantChatStore.setState({ draftsByTab: {} });
+
+      const draft = useAssistantChatStore.getState().getDraft('tab-1');
+      expect(draft).toBe('half-typed message');
+    });
+
+    it('error messages are filtered from localStorage but present in store', () => {
+      const s = useAssistantChatStore.getState();
+      s.appendMessage('tab-1', makeMsg('user', 'test'));
+      s.appendMessage('tab-1', makeMsg('error', 'Network error'));
+      s.appendMessage('tab-1', makeMsg('assistant', 'recovered'));
+
+      // Store has all 3
+      expect(useAssistantChatStore.getState().getMessages('tab-1')).toHaveLength(3);
+
+      // Reload — error filtered from localStorage
+      useAssistantChatStore.setState({ messagesByTab: {} });
+      const restored = useAssistantChatStore.getState().getMessages('tab-1');
+
+      // Only 2 (error was filtered during persist)
+      expect(restored).toHaveLength(2);
+      expect(restored[0].role).toBe('user');
+      expect(restored[1].role).toBe('assistant');
+    });
+
+    it('appendMessage after reload builds on restored messages, not empty', () => {
+      const s = useAssistantChatStore.getState();
+
+      // Pre-reload: 2 messages
+      s.appendMessage('tab-1', makeMsg('user', 'first'));
+      s.appendMessage('tab-1', makeMsg('assistant', 'second'));
+
+      // Reload
+      useAssistantChatStore.setState({ messagesByTab: {} });
+
+      // Hydrate from localStorage (simulating the useEffect on mount)
+      const loaded = useAssistantChatStore.getState().getMessages('tab-1');
+      useAssistantChatStore.getState().setMessages('tab-1', loaded);
+
+      // Now append — should build on the 2 restored messages
+      useAssistantChatStore.getState().appendMessage('tab-1', makeMsg('user', 'third'));
+
+      const msgs = useAssistantChatStore.getState().getMessages('tab-1');
+      expect(msgs).toHaveLength(3);
+      expect(msgs[2].text).toBe('third');
+
+      // localStorage should also have 3
+      const persisted = JSON.parse(localStorage.getItem('ai-assistant:msg:tab-1')!);
+      expect(persisted).toHaveLength(3);
+    });
+
+    it('appendMessage WITHOUT prior hydration reads from localStorage via getMessages', () => {
+      const s = useAssistantChatStore.getState();
+
+      // Pre-reload: 1 message
+      s.appendMessage('tab-1', makeMsg('user', 'existing'));
+
+      // Reload — wipe in-memory but localStorage persists
+      useAssistantChatStore.setState({ messagesByTab: {} });
+
+      // Append directly WITHOUT explicit hydration
+      // appendMessage calls getMessages internally which reads localStorage
+      useAssistantChatStore.getState().appendMessage('tab-1', makeMsg('assistant', 'new reply'));
+
+      const msgs = useAssistantChatStore.getState().getMessages('tab-1');
+      expect(msgs).toHaveLength(2);
+      expect(msgs[0].text).toBe('existing');
+      expect(msgs[1].text).toBe('new reply');
+    });
+
+    it('concurrent tabs: appendMessage on one tab does not affect another', () => {
+      const s = useAssistantChatStore.getState();
+
+      s.appendMessage('tab-A', makeMsg('user', 'A question'));
+      s.appendMessage('tab-B', makeMsg('user', 'B question'));
+
+      // Reload
+      useAssistantChatStore.setState({ messagesByTab: {} });
+
+      // Append to tab-A only
+      useAssistantChatStore.getState().appendMessage('tab-A', makeMsg('assistant', 'A answer'));
+
+      const msgsA = useAssistantChatStore.getState().getMessages('tab-A');
+      const msgsB = useAssistantChatStore.getState().getMessages('tab-B');
+
+      expect(msgsA).toHaveLength(2);
+      expect(msgsB).toHaveLength(1);
+      expect(msgsB[0].text).toBe('B question');
     });
   });
 });
