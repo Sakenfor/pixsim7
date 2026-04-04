@@ -11,6 +11,7 @@ Tools are named {contract_id}__{endpoint_id}
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import os
 import re
@@ -88,9 +89,13 @@ def _is_token_expired(token: str) -> bool:
 def _get_token() -> str:
     """Read the freshest non-expired token.
 
-    Priority: refreshed (self-heal) > per-request token file > env var > login token.
+    Priority: per-request (HTTP) > refreshed (self-heal) > token file > env var > login token.
     Skips expired tokens so a stale file doesn't shadow a valid env var.
     """
+    # -1. Per-request token from HTTP headers (set by Starlette middleware)
+    req_token = _request_token.get()
+    if req_token and not _is_token_expired(req_token):
+        return req_token
     # 0. In-memory refreshed token (from self-heal on 401)
     if _refreshed_token and not _is_token_expired(_refreshed_token):
         return _refreshed_token
@@ -110,6 +115,19 @@ def _get_token() -> str:
     return _get_login_token()
 
 server = Server("pixsim")
+
+
+# ── Per-request context (HTTP mode) ────────────────────────────────
+# In STDIO mode these are unset — handlers fall back to env vars.
+# In HTTP mode, Starlette middleware sets them from request headers.
+
+_request_scope: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_scope", default=None)
+_request_token: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_token", default=None)
+_request_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_session_id", default=None)
+_request_profile_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_profile_id", default=None)
+
+# Cached contracts (fetched once, reused for filtering)
+_contracts_cache: list[dict] | None = None
 
 
 # ── Dynamic tool registry (populated on startup) ──────────────────
@@ -308,11 +326,12 @@ async def _fetch_contracts() -> list[dict]:
 
 async def _init_tools() -> None:
     """Populate dynamic tools from meta contracts."""
-    global _initialized
+    global _initialized, _contracts_cache
     if _initialized:
         return
 
     contracts = await _fetch_contracts()
+    _contracts_cache = contracts
     seen_tool_names: set[str] = set()
 
     for contract in contracts:
@@ -638,6 +657,25 @@ def _normalize_scope_key(scope_key: str | None) -> str | None:
     return normalize_scope_value(scope_key)
 
 
+def _read_session_sidecar() -> str | None:
+    """Read the chat session ID from the sidecar file written by the bridge pool.
+
+    The bridge writes ``{token_file}.session`` alongside the token file before
+    each message dispatch, giving the MCP server a deterministic identity
+    instead of guessing via API queries.
+    """
+    token_file = os.environ.get("PIXSIM_TOKEN_FILE", "").strip()
+    if not token_file:
+        return None
+    sidecar = token_file + ".session"
+    try:
+        with open(sidecar, "r") as f:
+            value = f.read().strip()
+        return value if value else None
+    except OSError:
+        return None
+
+
 async def _resolve_bridge_session_id(
     token: str,
     profile_id: str | None,
@@ -716,21 +754,24 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     session_id = _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
 
-    # Bridge-managed: resolve the real chat session ID from the backend.
-    # Always clear the cache first — the CLI process persists across
-    # conversations so stale entries would attribute work to old sessions.
+    # Bridge-managed: read the chat session ID from the sidecar file written
+    # by the bridge pool. Falls back to API-based resolution if file is absent.
     if session_id == "__bridge__":
-        scope_key_hint = f"plan:{plan_id}" if plan_id else None
-        _bridge_session_cache.pop(
-            ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(scope_key_hint)),
-            None,
-        )
-        session_id = await _resolve_bridge_session_id(
-            token,
-            profile_id,
-            agent_type,
-            scope_key=scope_key_hint,
-        ) or "__bridge__"
+        sidecar_id = _read_session_sidecar()
+        if sidecar_id:
+            session_id = sidecar_id
+        else:
+            scope_key_hint = f"plan:{plan_id}" if plan_id else None
+            _bridge_session_cache.pop(
+                ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(scope_key_hint)),
+                None,
+            )
+            session_id = await _resolve_bridge_session_id(
+                token,
+                profile_id,
+                agent_type,
+                scope_key=scope_key_hint,
+            ) or "__bridge__"
     checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
     points_delta = arguments.get("points_delta") or 0
     evidence = arguments.get("evidence") or []
@@ -848,7 +889,18 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
-    return [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools
+    all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools
+
+    # In HTTP mode, filter tools by the per-request scope header
+    scope = _request_scope.get()
+    if scope and _contracts_cache is not None:
+        # Parse comma-separated contract IDs from scope header
+        focus_ids = {s.strip().replace("_", ".") for s in scope.split(",") if s.strip()}
+        if focus_ids:
+            enabled_names = set(resolve_enabled_tool_names_for_focus(_contracts_cache, focus_ids))
+            return [t for t in all_tools if t.name in enabled_names]
+
+    return all_tools
 
 
 async def _signal_tool_activity(tool_name: str) -> None:
@@ -1162,11 +1214,115 @@ async def _proxy(
 # ── Entry point ───────────────────────────────────────────────────
 
 
-async def main() -> None:
-    print(f"[pixsim-mcp] Starting — API: {API_URL}", file=sys.stderr)
+main = None  # defined below — backward compat for importers
+
+
+async def _main_stdio() -> None:
+    """Run MCP server over STDIO (default — backward compat for direct CLI use)."""
+    print(f"[pixsim-mcp] Starting STDIO — API: {API_URL}", file=sys.stderr)
     async with stdio_server() as (read, write):
         await server.run(read, write, server.create_initialization_options())
 
 
+def _build_http_app(mcp_path: str = "/mcp") -> Any:
+    """Build a Starlette ASGI app with StreamableHTTP transport.
+
+    Uses ``StreamableHTTPSessionManager`` in stateless mode — each
+    request is independent, no session affinity needed.
+
+    Per-request contextvars are set from headers via ASGI middleware
+    *before* the MCP handler runs, enabling dynamic tool filtering
+    and per-request token resolution.
+
+    Headers:
+        Authorization: Bearer <token>
+        X-Scope-Key: comma-separated contract IDs for tool filtering
+        X-Chat-Session-Id: conversation session ID
+        X-Profile-Id: agent profile ID
+    """
+    import contextlib
+    from collections.abc import AsyncIterator
+
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+    from starlette.routing import Mount, Route
+    from starlette.types import ASGIApp, Receive, Scope, Send
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+        stateless=True,
+    )
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with session_manager.run():
+            yield
+
+    # Middleware: extract headers into contextvars before MCP handles the request
+    class RequestContextMiddleware:
+        def __init__(self, app: ASGIApp) -> None:
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            if scope["type"] == "http":
+                headers = dict(scope.get("headers", []))
+                # Headers arrive as bytes
+                auth = (headers.get(b"authorization") or b"").decode()
+                if auth.lower().startswith("bearer "):
+                    _request_token.set(auth[7:].strip())
+                scope_key = (headers.get(b"x-scope-key") or b"").decode().strip()
+                _request_scope.set(scope_key or None)
+                session_id = (headers.get(b"x-chat-session-id") or b"").decode().strip()
+                _request_session_id.set(session_id or None)
+                profile_id = (headers.get(b"x-profile-id") or b"").decode().strip()
+                _request_profile_id.set(profile_id or None)
+            await self.app(scope, receive, send)
+
+    async def handle_health(request: Request) -> JSONResponse:
+        return JSONResponse({"status": "ok", "transport": "http", "tools": len(_dynamic_tools)})
+
+    app = Starlette(
+        routes=[
+            Route("/health", handle_health, methods=["GET"]),
+            Mount(mcp_path, app=session_manager.handle_request),
+        ],
+        middleware=[Middleware(RequestContextMiddleware)],
+        lifespan=lifespan,
+    )
+    return app
+
+
+main = _main_stdio  # backward compat
+
+
+def _main_http(port: int = 9100, host: str = "127.0.0.1") -> None:
+    """Run MCP server over HTTP/SSE using StreamableHTTP transport."""
+    import uvicorn
+
+    print(f"[pixsim-mcp] Starting HTTP on {host}:{port} — API: {API_URL}", file=sys.stderr)
+
+    # Pre-init tools before serving (fetch contracts once)
+    async def _pre_init():
+        await _init_tools()
+    asyncio.run(_pre_init())
+
+    app = _build_http_app()
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+    parser = argparse.ArgumentParser(description="PixSim MCP Server")
+    parser.add_argument("--http", action="store_true", help="Run as HTTP server instead of STDIO")
+    parser.add_argument("--port", type=int, default=9100, help="HTTP port (default: 9100)")
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address (default: 127.0.0.1)")
+    args = parser.parse_args()
+
+    if args.http:
+        _main_http(port=args.port, host=args.host)
+    else:
+        asyncio.run(_main_stdio())

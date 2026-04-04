@@ -507,7 +507,14 @@ class AgentCmdSession:
                         pass
 
         self.state = SessionState.STOPPED
-        self._log.info("session_stopped", sent=self.stats.messages_sent, received=self.stats.messages_received)
+        exit_code = self._process.returncode if self._process else None
+        self._log.info(
+            "session_stopped",
+            sent=self.stats.messages_sent,
+            received=self.stats.messages_received,
+            exit_code=exit_code,
+            last_error=self._last_error,
+        )
 
     async def restart(self) -> bool:
         """Stop and restart the session, preserving conversation via --resume."""
@@ -755,9 +762,14 @@ class AgentCmdSession:
             self._last_error = f"stdout reader crashed: {exc}"
 
     async def _read_stderr(self) -> None:
-        """Read stderr for debug/error output."""
+        """Read stderr for debug/error output.
+
+        Collects the last few lines so they're available in _last_error
+        when the process dies unexpectedly.
+        """
         if not self._process or not self._process.stderr:
             return
+        recent_lines: list[str] = []
         try:
             while True:
                 line = await self._process.stderr.readline()
@@ -766,6 +778,12 @@ class AgentCmdSession:
                 text = line.decode(errors="replace").strip()
                 if text:
                     self._log.debug("session_stderr", text=text)
+                    recent_lines.append(text)
+                    if len(recent_lines) > 10:
+                        recent_lines.pop(0)
+            # Process exited — store tail of stderr as last_error for diagnostics
+            if recent_lines and self.stats.messages_received == 0:
+                self._last_error = " | ".join(recent_lines[-5:])
         except asyncio.CancelledError:
             return
 

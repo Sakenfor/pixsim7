@@ -71,6 +71,7 @@ class _UpdateModelMixin:
         for name, field_info in cls.model_fields.items():
             new_field = copy.copy(field_info)
             new_field.default = None
+            new_field.default_factory = None
             new_field.annotation = Optional[field_info.annotation]
             field_definitions[name] = (Optional[field_info.annotation], new_field)
 

@@ -192,6 +192,67 @@ def write_claude_mcp_config(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Claude MCP config — HTTP transport (shared server)
+# ═══════════════════════════════════════════════════════════════════
+
+
+def render_claude_mcp_http_config(
+    *,
+    mcp_url: str,
+    api_token: str = "",
+    scope: str = "",
+    session_id: str = "",
+    profile_id: str = "",
+) -> str:
+    """Render a Claude-compatible MCP config pointing to an HTTP MCP server.
+
+    Instead of ``command``/``args`` (STDIO), uses ``url``/``headers`` (HTTP).
+    The shared MCP server filters tools per-request based on headers.
+    """
+    headers: dict[str, str] = {}
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+    if scope:
+        headers["X-Scope-Key"] = scope
+    if session_id:
+        headers["X-Chat-Session-Id"] = session_id
+    if profile_id:
+        headers["X-Profile-Id"] = profile_id
+
+    config: dict = {
+        "mcpServers": {
+            "pixsim": {"type": "http", "url": mcp_url}
+        }
+    }
+    if headers:
+        config["mcpServers"]["pixsim"]["headers"] = headers
+    return json.dumps(config, indent=2)
+
+
+def write_claude_mcp_http_config(
+    *,
+    mcp_url: str,
+    api_token: str = "",
+    scope: str = "",
+    session_id: str = "",
+    profile_id: str = "",
+    prefix: str = "pixsim-mcp-http",
+) -> str:
+    """Write an HTTP-based Claude MCP config to a temp file. Returns the path."""
+    content = render_claude_mcp_http_config(
+        mcp_url=mcp_url,
+        api_token=api_token,
+        scope=scope,
+        session_id=session_id,
+        profile_id=profile_id,
+    )
+    fd, path = tempfile.mkstemp(suffix=".json", prefix=f"{prefix}-")
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    return path
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Codex MCP config (TOML)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -306,7 +367,11 @@ def clone_mcp_config_for_session(
 ) -> Optional[str]:
     """Clone a Claude MCP JSON config, overriding the token file path.
 
-    Returns the cloned config path, or None on error.
+    For STDIO configs (command+args+env): overrides PIXSIM_TOKEN_FILE in env.
+    For HTTP configs (url+headers): no cloning needed — returns None so
+    the caller falls back to the unmodified base config.
+
+    Returns the cloned config path, or None on error / not applicable.
     """
     try:
         with open(base_config_path) as f:
@@ -314,10 +379,18 @@ def clone_mcp_config_for_session(
     except (json.JSONDecodeError, OSError):
         return None
 
+    has_stdio = False
     for server in config.get("mcpServers", {}).values():
+        if "url" in server:
+            # HTTP transport — token is in headers, no env to patch
+            continue
+        has_stdio = True
         env = server.get("env", {})
         env["PIXSIM_TOKEN_FILE"] = session_token_file.path
         server["env"] = env
+
+    if not has_stdio:
+        return None
 
     fd, path = tempfile.mkstemp(suffix=".json", prefix="pixsim-session-mcp-")
     with os.fdopen(fd, "w") as f:

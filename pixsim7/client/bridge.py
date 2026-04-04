@@ -51,6 +51,7 @@ class Bridge:
         url: str = "ws://localhost:8000/api/v1/ws/agent-cmd",
         agent_type: str | None = None,
         shared: bool = False,
+        hook_port: int = 0,
     ):
         self._pool = pool
         self._url = url
@@ -72,6 +73,17 @@ class Bridge:
         self._mcp_scope: str = "dev"
         self._mcp_python_runtime: Optional[tuple[str, list[str]]] = None
         self._service_token: str = ""
+        # Pending confirmation responses from backend: confirmation_id -> asyncio.Event + result
+        self._pending_confirmations: dict[str, asyncio.Event] = {}
+        self._confirmation_results: dict[str, bool] = {}  # confirmation_id -> approved
+        # Active WebSocket reference for hook server callbacks
+        self._active_ws = None
+        self._hook_server = None
+        self._hook_port = hook_port
+        # HTTP MCP server
+        self._mcp_server_task: asyncio.Task | None = None
+        self._mcp_http_port: int = 9100
+        self._mcp_http_url: str | None = None
         self._repo_root: Path = Path(__file__).resolve().parents[2]
 
     @staticmethod
@@ -162,24 +174,44 @@ class Bridge:
             get_logger().error("missing_dependency", package="websockets", hint="pip install websockets")
             return
 
+        # Start hook HTTP server for Claude Code PreToolUse integration
+        from pixsim7.client.hook_server import HookServer
+        self._hook_server = HookServer(confirm_fn=self._hook_confirm)
+        hook_port = await self._hook_server.start(port=self._hook_port)
+        get_logger().info("hook_server_ready", port=hook_port)
+
+        # Start shared HTTP MCP server (replaces per-session STDIO subprocesses)
+        self._mcp_server_task = asyncio.create_task(self._start_mcp_http_server())
+        # Give it a moment to bind
+        await asyncio.sleep(0.3)
+
         self._shutdown_requested = False
         consecutive_failures = 0
-        while not self._shutdown_requested:
-            try:
-                await self._connect_and_serve()
-                consecutive_failures = 0  # reset on clean disconnect
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                self._connected = False
-                if self._shutdown_requested:
-                    get_logger().info("shutdown_requested", reason="reconnect_suppressed")
+        try:
+            while not self._shutdown_requested:
+                try:
+                    await self._connect_and_serve()
+                    consecutive_failures = 0  # reset on clean disconnect
+                except KeyboardInterrupt:
                     break
-                consecutive_failures += 1
-                delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
-                get_logger().error("connection_error", error=str(e))
-                get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures)
-                await asyncio.sleep(delay)
+                except Exception as e:
+                    self._connected = False
+                    if self._shutdown_requested:
+                        get_logger().info("shutdown_requested", reason="reconnect_suppressed")
+                        break
+                    consecutive_failures += 1
+                    delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
+                    get_logger().error("connection_error", error=str(e))
+                    get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures)
+                    await asyncio.sleep(delay)
+        finally:
+            await self._hook_server.stop()
+            if self._mcp_server_task and not self._mcp_server_task.done():
+                self._mcp_server_task.cancel()
+                try:
+                    await self._mcp_server_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
     async def _connect_and_serve(self) -> None:
         """Single connection session."""
@@ -224,6 +256,7 @@ class Bridge:
                 self._persist_bridge_client_id(connected_bridge_client_id)
             self._bridge_client_id = connected_bridge_client_id
             self._connected = True
+            self._active_ws = ws
 
             # Determine scope: user-scoped bridge vs shared/dev bridge
             user_id = welcome.get("user_id")
@@ -288,6 +321,13 @@ class Bridge:
                         # Fire-and-forget — don't block the message loop
                         # so concurrent tasks can be dispatched to different pool sessions
                         asyncio.ensure_future(self._handle_task(ws, msg))
+
+                    elif msg_type == "confirmation_response":
+                        # User approved/denied a confirmation prompt — unblock the waiting task
+                        conf_id = msg.get("confirmation_id", "")
+                        if conf_id and conf_id in self._pending_confirmations:
+                            self._confirmation_results[conf_id] = bool(msg.get("approved", False))
+                            self._pending_confirmations[conf_id].set()
 
                     elif msg_type == "ping":
                         await ws.send(json.dumps({"type": "pong"}))
@@ -460,18 +500,42 @@ class Bridge:
     ) -> Optional[str]:
         """Generate MCP config file pointing to the pixsim MCP server.
 
+        When the HTTP MCP server is running, generates an HTTP-based config
+        (url + headers). Falls back to STDIO config (command + args) otherwise.
+
         If ``focus`` is provided (list of contract IDs), generates a scoped
-        config that only exposes those contracts.  Focused configs are cached
-        by contract-set so repeated calls with the same focus reuse the file.
+        config.  Focused configs are cached by contract-set to reuse the file.
         """
-        # Focused config: check cache first
+        mcp_scope = ",".join(focus) if focus else scope
+
+        # ── HTTP mode: shared MCP server is running ──
+        if self._mcp_http_url:
+            cache_key = frozenset(focus) if focus else frozenset({"__default__"})
+            cached = self._mcp_config_cache.get(cache_key)
+            if cached and os.path.exists(cached):
+                return cached
+
+            from pixsim7.client.token_manager import write_claude_mcp_http_config
+            effective_token = token
+            if not effective_token and self._token_file:
+                effective_token = self._token_file.read()
+            path = write_claude_mcp_http_config(
+                mcp_url=self._mcp_http_url,
+                api_token=effective_token,
+                scope=mcp_scope,
+            )
+            self._mcp_config_cache[cache_key] = path
+            if not focus:
+                self._mcp_config_path = path
+            return path
+
+        # ── STDIO fallback: spawn MCP server per session ──
         if focus:
             cache_key = frozenset(focus)
             cached = self._mcp_config_cache.get(cache_key)
             if cached and os.path.exists(cached):
                 return cached
 
-        # Default (unfocused) config: reuse if already generated
         if not focus and self._mcp_config_path and os.path.exists(self._mcp_config_path):
             return self._mcp_config_path
 
@@ -481,10 +545,8 @@ class Bridge:
             self._mcp_python_runtime = self._resolve_mcp_python()
         mcp_python_cmd, mcp_python_prefix = self._mcp_python_runtime
 
-        # Shared token file — created once, reused across configs
         if not self._token_file:
             self._token_file = TokenFile.create(seed_token=token, prefix="pixsim-mcp")
-        mcp_scope = ",".join(focus) if focus else scope
 
         env = build_mcp_env(
             api_base=api_base,
@@ -1001,6 +1063,112 @@ class Bridge:
             except Exception:
                 continue
         return images
+
+    async def _start_mcp_http_server(self) -> None:
+        """Start the shared HTTP MCP server in a background task."""
+        try:
+            import uvicorn
+            from pixsim7.client.mcp_server import _build_http_app, _init_tools
+        except (ImportError, SystemExit) as e:
+            get_logger().warning("mcp_http_server_unavailable", error=str(e),
+                                hint="Install missing deps: pip install mcp httpx")
+            return
+
+        # Pre-init tools (fetches contracts from API)
+        try:
+            await _init_tools()
+        except Exception as e:
+            get_logger().warning("mcp_init_tools_failed", error=str(e))
+
+        app = _build_http_app()
+        config = uvicorn.Config(
+            app, host="127.0.0.1", port=self._mcp_http_port,
+            log_level="warning",
+        )
+        server = uvicorn.Server(config)
+        self._mcp_http_url = f"http://127.0.0.1:{self._mcp_http_port}/mcp/"
+        # Publish port so launcher card can show it
+        try:
+            from pathlib import Path
+            port_file = Path.home() / ".pixsim" / "mcp_port"
+            port_file.parent.mkdir(parents=True, exist_ok=True)
+            port_file.write_text(str(self._mcp_http_port))
+        except Exception:
+            pass
+        get_logger().info("mcp_http_server_starting", port=self._mcp_http_port, url=self._mcp_http_url)
+        await server.serve()
+
+    async def _hook_confirm(
+        self,
+        task_id: str,
+        title: str,
+        description: str,
+        tool_name: str | None,
+        tool_input: dict | None,
+        timeout_s: int,
+    ) -> bool:
+        """Called by hook_server when a PreToolUse hook hits /confirm.
+        Routes through the WS confirmation flow to the frontend UI."""
+        ws = self._active_ws
+        if not ws or not self._connected:
+            return True  # auto-approve if bridge not connected (fail-open)
+        # If no task_id provided, use a synthetic one for the hook flow
+        effective_task_id = task_id or f"hook-{uuid.uuid4().hex[:8]}"
+        return await self.request_confirmation(
+            ws, effective_task_id,
+            title=title,
+            description=description,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            timeout_s=timeout_s,
+        )
+
+    async def request_confirmation(
+        self,
+        ws,
+        task_id: str,
+        *,
+        title: str,
+        description: str = "",
+        tool_name: str | None = None,
+        tool_input: dict | None = None,
+        timeout_s: int = 120,
+    ) -> bool:
+        """Send a confirmation request to the backend and block until the user responds.
+
+        Returns True if approved, False if denied or timed out.
+        Used by tasks that need user approval before proceeding (e.g., MCP tool use).
+        """
+        import uuid as _uuid
+        confirmation_id = _uuid.uuid4().hex
+        event = asyncio.Event()
+        self._pending_confirmations[confirmation_id] = event
+
+        try:
+            hb: dict = {
+                "type": "heartbeat",
+                "task_id": task_id,
+                "status": "active",
+                "action": "confirmation_request",
+                "confirmation_id": confirmation_id,
+                "title": title,
+                "description": description,
+                "timeout_s": timeout_s,
+            }
+            if tool_name:
+                hb["tool_name"] = tool_name
+            if tool_input:
+                hb["tool_input"] = tool_input
+            await ws.send(json.dumps(hb))
+
+            try:
+                await asyncio.wait_for(event.wait(), timeout=timeout_s)
+                return self._confirmation_results.get(confirmation_id, False)
+            except asyncio.TimeoutError:
+                return False
+        finally:
+            self._pending_confirmations.pop(confirmation_id, None)
+            self._confirmation_results.pop(confirmation_id, None)
 
     def status(self) -> dict:
         """Bridge status summary."""

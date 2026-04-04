@@ -1,10 +1,10 @@
 # PixSim7 Backend Dependencies
 
 # ===== Core Framework =====
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.27
+pydantic>=2.9,<3.0
+pydantic-settings>=2.1
 
 # ===== Database =====
 sqlmodel==0.0.14
@@ -40,7 +40,7 @@ sora-py  # OpenAI Sora SDK
 # ===== Auth & Security =====
 python-jose[cryptography]==3.3.0  # JWT
 passlib[bcrypt]==1.7.4  # Password hashing
-python-multipart==0.0.6  # Form data parsing
+python-multipart>=0.0.6  # Form data parsing
 
 # ===== ML / Embeddings =====
 torch>=2.0  # PyTorch (for CLIP embeddings)
