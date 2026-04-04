@@ -12,6 +12,7 @@ import {
   Button,
   EmptyState,
   SidebarPaneShell,
+  useHoverExpand,
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
@@ -839,9 +840,76 @@ interface WorkSummaryEntry {
   } | null;
 }
 
+/** Color per summary: green = has commit, blue = plan-linked, amber = no commit, red outline = has blockers */
+function summaryColor(s: WorkSummaryEntry): string {
+  if (s.metadata?.blockers?.length) return 'text-red-500';
+  const hasCommit = s.metadata?.commit || (s.metadata?.evidence ?? []).some((e) => /^[0-9a-f]{7,40}$/i.test(e));
+  if (hasCommit) return 'text-emerald-500';
+  if (s.plan_id) return 'text-blue-500';
+  return 'text-amber-500';
+}
+
+function summaryTooltip(s: WorkSummaryEntry): string {
+  const time = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const commits = (s.metadata?.evidence ?? []).filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
+  const sha = commits[0]?.slice(0, 9) || s.metadata?.commit || '';
+  const parts = [s.detail, `${time}${sha ? ` · ${sha}` : ''}${s.plan_id ? ` · ${s.plan_id}` : ''}`];
+  if (s.metadata?.next) parts.push(`Next: ${s.metadata.next}`);
+  if (s.metadata?.blockers?.length) parts.push(`Blocked: ${s.metadata.blockers.join('; ')}`);
+  return parts.join('\n');
+}
+
+function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
+  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 300 });
+  const commits = (summary.metadata?.evidence ?? []).filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
+  const sha = commits[0]?.slice(0, 9) || summary.metadata?.commit || null;
+  const fullSha = commits[0] || summary.metadata?.commit || null;
+  const time = new Date(summary.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="relative" {...handlers}>
+      <div className={`${summaryColor(summary)} cursor-default`}>
+        <Icon name="fileText" size={12} />
+      </div>
+      {isExpanded && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl z-30 p-2.5">
+          <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">{summary.detail}</div>
+          <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-neutral-400 flex-wrap">
+            <span>{time}</span>
+            {sha && (
+              <button
+                className="font-mono text-blue-400 hover:underline hover:text-blue-300"
+                onClick={() => { if (fullSha) navigator.clipboard.writeText(fullSha); }}
+                title={`${fullSha}\nClick to copy`}
+              >
+                {sha}
+              </button>
+            )}
+            {summary.plan_id && <span className="text-blue-500">{summary.plan_id}</span>}
+          </div>
+          {summary.metadata?.next && (
+            <div className="mt-1.5 pt-1.5 border-t border-neutral-100 dark:border-neutral-800 text-[10px] text-amber-600 dark:text-amber-400">
+              <span className="font-medium">Next:</span> {summary.metadata.next}
+            </div>
+          )}
+          {summary.metadata?.decisions && summary.metadata.decisions.length > 0 && (
+            <div className="mt-1 text-[10px] text-violet-500">
+              <span className="font-medium">Decisions:</span> {summary.metadata.decisions.join('; ')}
+            </div>
+          )}
+          {summary.metadata?.blockers && summary.metadata.blockers.length > 0 && (
+            <div className="mt-1 text-[10px] text-red-500">
+              <span className="font-medium">Blocked:</span> {summary.metadata.blockers.join('; ')}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkSummaryBadge({ sessionId }: { sessionId: string | null }) {
   const [summaries, setSummaries] = useState<WorkSummaryEntry[]>([]);
-  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     if (!sessionId) { setSummaries([]); return; }
@@ -857,46 +925,10 @@ function WorkSummaryBadge({ sessionId }: { sessionId: string | null }) {
   if (summaries.length === 0) return null;
 
   return (
-    <div
-      className="relative shrink-0"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div className="h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] text-emerald-600 dark:text-emerald-400 cursor-default" title={`${summaries.length} work ${summaries.length === 1 ? 'summary' : 'summaries'}`}>
-        <Icon name="clipboardList" size={12} />
-        <span className="font-medium">{summaries.length}</span>
-      </div>
-
-      {hovered && (
-        <div className="absolute bottom-full left-0 mb-1 w-72 max-h-60 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-30 p-2 space-y-1.5">
-          <div className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide px-1">Work Summaries</div>
-          {summaries.map((s, i) => (
-            <div key={i} className="px-1 py-1.5 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800">
-              <div className="flex gap-2 items-start">
-                <Icon name="checkSquare" size={10} className="shrink-0 mt-0.5 text-emerald-500" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] text-neutral-700 dark:text-neutral-300 line-clamp-2">{s.detail}</div>
-                  <div className="text-[9px] text-neutral-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    <span>{new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    {s.plan_id && <span className="text-blue-500">{s.plan_id}</span>}
-                    {s.metadata?.commit && <span className="font-mono text-blue-400">{s.metadata.commit}</span>}
-                  </div>
-                </div>
-              </div>
-              {s.metadata?.next && (
-                <div className="ml-5 mt-1 text-[10px] text-amber-600 dark:text-amber-400">
-                  <span className="font-medium">Next:</span> {s.metadata.next}
-                </div>
-              )}
-              {s.metadata?.blockers && s.metadata.blockers.length > 0 && (
-                <div className="ml-5 mt-0.5 text-[10px] text-red-500">
-                  <span className="font-medium">Blocked:</span> {s.metadata.blockers.join('; ')}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="shrink-0 h-7 flex items-center gap-0.5 px-0.5">
+      {summaries.map((s, i) => (
+        <WorkSummaryIcon key={i} summary={s} />
+      ))}
     </div>
   );
 }
