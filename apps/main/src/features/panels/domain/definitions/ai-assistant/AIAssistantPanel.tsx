@@ -1465,12 +1465,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   useEffect(() => {
     if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
     const result = chatBridge.consume(tab.id);
-    if (!result) {
-      console.warn('[ai-assistant] consume returned null — result already consumed or missing', {
-        tabId: tab.id, status: bridgeReq.status, consumed: (bridgeReq as Record<string, unknown>)._consumed,
-      });
-      return;
-    }
+    if (!result) return; // Already consumed (effect re-fired after store update) — normal
     const errorText = renderBridgeError(result);
     const s = useAssistantChatStore.getState();
     // Clear persisted thinking entries — they're now part of the final message
