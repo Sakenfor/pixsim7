@@ -849,16 +849,6 @@ function summaryColor(s: WorkSummaryEntry): string {
   return 'text-amber-500';
 }
 
-function summaryTooltip(s: WorkSummaryEntry): string {
-  const time = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const commits = (s.metadata?.evidence ?? []).filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
-  const sha = commits[0]?.slice(0, 9) || s.metadata?.commit || '';
-  const parts = [s.detail, `${time}${sha ? ` · ${sha}` : ''}${s.plan_id ? ` · ${s.plan_id}` : ''}`];
-  if (s.metadata?.next) parts.push(`Next: ${s.metadata.next}`);
-  if (s.metadata?.blockers?.length) parts.push(`Blocked: ${s.metadata.blockers.join('; ')}`);
-  return parts.join('\n');
-}
-
 function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 300 });
   const commits = (summary.metadata?.evidence ?? []).filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
