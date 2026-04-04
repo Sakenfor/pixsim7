@@ -23,6 +23,8 @@ type PlacementSnapshot = {
   floatingDefinitionIdSetGlobal: ReadonlySet<string>;
   floatingDefinitionIdSetBySourceDockview: ReadonlyMap<string, ReadonlySet<string>>;
   dockedByDockview: ReadonlyMap<string, DockedDockSnapshot>;
+  placementsByPanel: ReadonlyMap<string, PanelPlacement[]>;
+  diagnostics: PlacementDiagnostic[];
 };
 
 type Listener = () => void;
@@ -40,6 +42,11 @@ type FloatingPlacementEntry = {
   definitionId: string;
   sourceDockviewId: string | null;
 };
+
+const EMPTY_STRING_ARRAY: string[] = [];
+const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>();
+const EMPTY_PLACEMENTS: PanelPlacement[] = [];
+const EMPTY_DIAGNOSTICS: PlacementDiagnostic[] = [];
 
 function normalizeDockviewId(value: string | null | undefined): string {
   return (value ?? "").trim();
@@ -257,12 +264,56 @@ function getSnapshot(): PlacementSnapshot {
     });
   }
 
+  const placementsByPanelMutable = new Map<string, PanelPlacement[]>();
+  for (const floatingPanelId of floatingDefinitionIdSet) {
+    placementsByPanelMutable.set(floatingPanelId, [{ kind: "floating" }]);
+  }
+  for (const [dockviewId, dock] of dockedByDockview) {
+    for (const panelId of dock.ids) {
+      const placements = placementsByPanelMutable.get(panelId);
+      if (placements) {
+        placements.push({ kind: "docked", dockviewId });
+      } else {
+        placementsByPanelMutable.set(panelId, [{ kind: "docked", dockviewId }]);
+      }
+    }
+  }
+
+  const placementsByPanel = new Map<string, PanelPlacement[]>();
+  for (const [panelId, placements] of placementsByPanelMutable) {
+    placementsByPanel.set(panelId, placements);
+  }
+
+  const diagnostics: PlacementDiagnostic[] = [];
+  for (const [panelId, placements] of placementsByPanel) {
+    const dockviewIds = placements
+      .filter((placement): placement is { kind: "docked"; dockviewId: string } => placement.kind === "docked")
+      .map((placement) => placement.dockviewId);
+
+    if (placements.some((placement) => placement.kind === "floating") && dockviewIds.length > 0) {
+      diagnostics.push({
+        kind: "floating-and-docked",
+        panelId,
+        dockviewIds: [...dockviewIds],
+      });
+    }
+    if (dockviewIds.length > 1) {
+      diagnostics.push({
+        kind: "multi-docked",
+        panelId,
+        dockviewIds,
+      });
+    }
+  }
+
   snapshotCache = {
     floatingDefinitionIds,
     floatingDefinitionIdSet,
     floatingDefinitionIdSetGlobal,
     floatingDefinitionIdSetBySourceDockview,
     dockedByDockview,
+    placementsByPanel,
+    diagnostics,
   };
   snapshotCacheVersion = snapshotVersion;
   return snapshotCache;
@@ -295,11 +346,11 @@ export function getFloatingPanelDefinitionIdSet(): ReadonlySet<string> {
 }
 
 export function getDockedPanelDefinitionIds(dockviewId: string): string[] {
-  return getSnapshot().dockedByDockview.get(dockviewId)?.ids ?? [];
+  return getSnapshot().dockedByDockview.get(dockviewId)?.ids ?? EMPTY_STRING_ARRAY;
 }
 
 export function getDockedPanelDefinitionIdSet(dockviewId: string): ReadonlySet<string> {
-  return getSnapshot().dockedByDockview.get(dockviewId)?.idSet ?? new Set<string>();
+  return getSnapshot().dockedByDockview.get(dockviewId)?.idSet ?? EMPTY_STRING_SET;
 }
 
 export function isFloatingPanel(panelId: string): boolean {
@@ -311,17 +362,7 @@ export function isPanelDockedIn(dockviewId: string, panelId: string): boolean {
 }
 
 export function getPanelPlacements(panelId: string): PanelPlacement[] {
-  const snapshot = getSnapshot();
-  const placements: PanelPlacement[] = [];
-  if (snapshot.floatingDefinitionIdSet.has(panelId)) {
-    placements.push({ kind: "floating" });
-  }
-  for (const [dockviewId, dock] of snapshot.dockedByDockview) {
-    if (dock.idSet.has(panelId)) {
-      placements.push({ kind: "docked", dockviewId });
-    }
-  }
-  return placements;
+  return getSnapshot().placementsByPanel.get(panelId) ?? EMPTY_PLACEMENTS;
 }
 
 /**
@@ -353,38 +394,7 @@ export function getDockPlacementExclusions(dockviewId: string, panelIds: readonl
 }
 
 export function getPanelPlacementDiagnostics(): PlacementDiagnostic[] {
-  const snapshot = getSnapshot();
-  const dockedByPanel = new Map<string, string[]>();
-
-  for (const [dockviewId, dock] of snapshot.dockedByDockview) {
-    for (const panelId of dock.ids) {
-      const entries = dockedByPanel.get(panelId);
-      if (entries) {
-        entries.push(dockviewId);
-      } else {
-        dockedByPanel.set(panelId, [dockviewId]);
-      }
-    }
-  }
-
-  const diagnostics: PlacementDiagnostic[] = [];
-  for (const [panelId, dockviewIds] of dockedByPanel) {
-    if (snapshot.floatingDefinitionIdSet.has(panelId)) {
-      diagnostics.push({
-        kind: "floating-and-docked",
-        panelId,
-        dockviewIds: [...dockviewIds],
-      });
-    }
-    if (dockviewIds.length > 1) {
-      diagnostics.push({
-        kind: "multi-docked",
-        panelId,
-        dockviewIds: [...dockviewIds],
-      });
-    }
-  }
-  return diagnostics;
+  return getSnapshot().diagnostics ?? EMPTY_DIAGNOSTICS;
 }
 
 export function hasPanelPlacementConflicts(): boolean {

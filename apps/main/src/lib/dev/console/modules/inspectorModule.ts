@@ -282,11 +282,12 @@ export const modelInspectorModule = createInspectorModule({
 // React Hook for Inspector Tabs
 // =============================================================================
 
-import { useSyncExternalStore, useCallback } from 'react';
+import { useSyncExternalStore, useCallback, useRef } from 'react';
 
 // Simple event system for tab changes
 type Listener = () => void;
 const listeners = new Set<Listener>();
+let revision = 0;
 
 function subscribe(listener: Listener): () => void {
   listeners.add(listener);
@@ -294,6 +295,7 @@ function subscribe(listener: Listener): () => void {
 }
 
 function notifyListeners(): void {
+  revision += 1;
   listeners.forEach((l) => l());
 }
 
@@ -342,8 +344,30 @@ const originalUnregister = unregisterInspectorTab;
  * ```
  */
 export function useInspectorTabs(inspectorId: string): InspectorTab[] {
+  const snapshotRef = useRef<{
+    inspectorId: string;
+    revision: number;
+    value: InspectorTab[];
+  }>({
+    inspectorId: '',
+    revision: -1,
+    value: [],
+  });
+
   const getSnapshot = useCallback(() => {
-    return getInspectorTabs(inspectorId);
+    if (
+      snapshotRef.current.inspectorId === inspectorId &&
+      snapshotRef.current.revision === revision
+    ) {
+      return snapshotRef.current.value;
+    }
+    const tabs = getInspectorTabs(inspectorId);
+    snapshotRef.current = {
+      inspectorId,
+      revision,
+      value: tabs,
+    };
+    return tabs;
   }, [inspectorId]);
 
   // useSyncExternalStore for proper React 18 concurrent mode support

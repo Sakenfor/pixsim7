@@ -135,6 +135,21 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
   const openIds = new Set<string>(defaultOpenIds);
   const itemListeners = new Map<string, Set<(isOpen: boolean) => void>>();
   const groupListeners = new Set<(openIds: string[]) => void>();
+  let openIdsVersion = 0;
+  let cachedOpenIds: string[] = Array.from(openIds);
+  let cachedOpenIdsVersion = -1;
+
+  const markOpenIdsChanged = () => {
+    openIdsVersion += 1;
+  };
+
+  const getStableOpenIds = () => {
+    if (cachedOpenIdsVersion !== openIdsVersion) {
+      cachedOpenIds = Array.from(openIds);
+      cachedOpenIdsVersion = openIdsVersion;
+    }
+    return cachedOpenIds;
+  };
 
   const notifyItem = (id: string, isOpen: boolean) => {
     itemListeners.get(id)?.forEach((listener) => listener(isOpen));
@@ -142,7 +157,7 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
   };
 
   const notifyGroup = () => {
-    const ids = Array.from(openIds);
+    const ids = getStableOpenIds();
     groupListeners.forEach((listener) => listener(ids));
   };
 
@@ -154,16 +169,19 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
     toggle(id: string) {
       if (openIds.has(id)) {
         openIds.delete(id);
+        markOpenIdsChanged();
         notifyItem(id, false);
       } else {
         if (!allowMultiple) {
           // Close all others first
           openIds.forEach((openId) => {
             openIds.delete(openId);
+            markOpenIdsChanged();
             notifyItem(openId, false);
           });
         }
         openIds.add(id);
+        markOpenIdsChanged();
         notifyItem(id, true);
       }
       notifyGroup();
@@ -174,10 +192,12 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
         if (!allowMultiple) {
           openIds.forEach((openId) => {
             openIds.delete(openId);
+            markOpenIdsChanged();
             notifyItem(openId, false);
           });
         }
         openIds.add(id);
+        markOpenIdsChanged();
         notifyItem(id, true);
         notifyGroup();
       }
@@ -186,6 +206,7 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
     close(id: string) {
       if (openIds.has(id)) {
         openIds.delete(id);
+        markOpenIdsChanged();
         notifyItem(id, false);
         notifyGroup();
       }
@@ -194,13 +215,14 @@ export function createDisclosureGroup(options: DisclosureGroupOptions = {}): Dis
     closeAll() {
       openIds.forEach((id) => {
         openIds.delete(id);
+        markOpenIdsChanged();
         notifyItem(id, false);
       });
       notifyGroup();
     },
 
     getOpenIds() {
-      return Array.from(openIds);
+      return getStableOpenIds();
     },
 
     subscribe(id: string, listener: (isOpen: boolean) => void) {

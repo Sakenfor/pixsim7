@@ -19,28 +19,50 @@ import {
   type ContextHubState,
 } from "./contextHubContext";
 
-function shallowEqual(a: unknown, b: unknown): boolean {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function structuralEqual(
+  a: unknown,
+  b: unknown,
+  seenPairs: WeakMap<object, Set<object>> = new WeakMap(),
+): boolean {
   if (Object.is(a, b)) return true;
   if (!a || !b) return false;
   if (typeof a !== "object" || typeof b !== "object") return false;
+
+  const seenForA = seenPairs.get(a);
+  if (seenForA?.has(b)) {
+    return true;
+  }
+  if (seenForA) {
+    seenForA.add(b);
+  } else {
+    seenPairs.set(a, new Set([b]));
+  }
 
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b)) return false;
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i += 1) {
-      if (!Object.is(a[i], b[i])) return false;
+      if (!structuralEqual(a[i], b[i], seenPairs)) return false;
     }
     return true;
   }
 
-  const aRecord = a as Record<string, unknown>;
-  const bRecord = b as Record<string, unknown>;
-  const aKeys = Object.keys(aRecord);
-  const bKeys = Object.keys(bRecord);
+  if (!isPlainObject(a) || !isPlainObject(b)) {
+    return false;
+  }
+
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
   if (aKeys.length !== bKeys.length) return false;
   for (const key of aKeys) {
     if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-    if (!Object.is(aRecord[key], bRecord[key])) return false;
+    if (!structuralEqual(a[key], b[key], seenPairs)) return false;
   }
   return true;
 }
@@ -133,7 +155,7 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
       const provider = resolveProvider<T>(hub, key, preferredProviderId);
       const value = provider ? provider.getValue() : null;
       const last = lastSnapshotRef.current;
-      if (last.provider === provider && shallowEqual(last.value, value)) {
+      if (last.provider === provider && structuralEqual(last.value, value)) {
         return last;
       }
       const next = { provider, value };
@@ -189,7 +211,7 @@ export function useCapabilityAll<T>(key: CapabilityKey): Array<{ provider: Capab
       const last = lastRef.current;
       if (
         last.length === all.length &&
-        last.every((l, i) => l.provider === all[i].provider && shallowEqual(l.value, all[i].value))
+        last.every((l, i) => l.provider === all[i].provider && structuralEqual(l.value, all[i].value))
       ) {
         return last;
       }
