@@ -726,11 +726,15 @@ class Bridge:
         """
         _str = lambda key: str(msg.get(key) or "").strip() or None  # noqa: E731
 
+        from pixsim7.common.scope_helpers import parse_scope_key
+
         ctx = msg.get("context") or {}
         scope_key = _str("scope_key")
         plan_id = ctx.get("plan_id") if isinstance(ctx, dict) else None
-        if not plan_id and scope_key and scope_key.startswith("plan:"):
-            plan_id = scope_key[5:]
+        if not plan_id:
+            parsed_plan, _ = parse_scope_key(scope_key)
+            if parsed_plan:
+                plan_id = parsed_plan
 
         focus_raw = msg.get("focus")
         focus = (

@@ -286,15 +286,9 @@ async def _handle_message(
 
                 # Fire-and-forget chat session upsert
                 if cli_session_id:
-                    from pixsim7.backend.main.api.v1.meta_contracts import (
-                        _upsert_chat_session, _extract_chat_session_scope,
-                    )
-                    # Build a minimal SendMessageRequest-like object for scope extraction
-                    from types import SimpleNamespace
-                    pseudo_payload = SimpleNamespace(
-                        scope_key=scope_key, context=context,
-                    )
-                    chat_scope_key, chat_plan_id, chat_contract_id = _extract_chat_session_scope(pseudo_payload)
+                    from pixsim7.backend.main.api.v1.meta_contracts import _upsert_chat_session
+                    from pixsim7.common.scope_helpers import extract_scope
+                    chat_scope_key, chat_plan_id, chat_contract_id = extract_scope(context, scope_key)
                     asyncio.ensure_future(_upsert_chat_session(
                         session_id=cli_session_id, user_id=user_id or 0,
                         engine=engine, label=message[:60],

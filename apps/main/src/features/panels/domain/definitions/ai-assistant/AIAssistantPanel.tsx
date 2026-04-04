@@ -41,9 +41,6 @@ import {
   SystemPromptPreview,
   QUICK_SHORTCUTS,
 } from './assistantSubPanels';
-import { MessageBubble, ThinkingBlock } from './ChatMessageComponents';
-import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
-import { SessionItem } from './SessionItem';
 import {
   type BridgeStatus,
   type UnifiedProfile,
@@ -59,6 +56,9 @@ import {
   renderBridgeError,
   extractReferenceScope,
 } from './assistantTypes';
+import { MessageBubble, ThinkingBlock } from './ChatMessageComponents';
+import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
+import { SessionItem } from './SessionItem';
 
 // =============================================================================
 // Tab Chat View — one per tab, owns its own message state
@@ -127,6 +127,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     if (result.error_code === 'cancelled' || result.error === 'cancelled') {
       s.appendMessage(tab.id, { role: 'system', text: 'Request cancelled', timestamp: new Date() });
+      chatBridge.ack(tab.id);
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
@@ -143,6 +144,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       }
       const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
       s.appendMessage(tab.id, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() });
+      // Ack AFTER appendMessage has persisted to localStorage — safe to clear backup
+      chatBridge.ack(tab.id);
     } else {
       // Reconnect failure — try recovering from server-stored messages.
       const isReconnectFailure = result.reconnected || result.error_code === 'task_not_found' || (result.error || '').includes('not found');
@@ -150,6 +153,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         fetchServerMessages(tab.sessionId).then((serverMsgs) => {
           if (serverMsgs.length === 0) {
             useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+            chatBridge.ack(tab.id);
             return;
           }
           const current = useAssistantChatStore.getState().getMessages(tab.id);
@@ -170,15 +174,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                 { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
                 ...recovered,
               ]);
+              chatBridge.ack(tab.id);
               return;
             }
           }
           useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+          chatBridge.ack(tab.id);
         }).catch(() => {
           useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+          chatBridge.ack(tab.id);
         });
       } else {
         s.appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+        chatBridge.ack(tab.id);
       }
     }
   }, [bridgeVersion, bridgeReq, onUpdateTab, tab.id, tab.sessionId]);
@@ -870,6 +878,7 @@ export function AIAssistantPanel() {
         onCancelRename={() => setRenamingTabId(null)}
         onSetRenameValue={setRenameValue}
         onClose={closeTab}
+        onUnlinkPlan={(id) => updateTab(id, { planId: null })}
       />
     );
   };

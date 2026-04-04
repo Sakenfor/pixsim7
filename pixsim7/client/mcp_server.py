@@ -495,12 +495,8 @@ def _extract_profile_from_token(token: str) -> str | None:
 
 
 def _normalize_profile_id(profile_id: str | None) -> str | None:
-    value = (profile_id or "").strip()
-    if not value:
-        return None
-    if value.lower() in {"unknown", "none", "null", "agent"}:
-        return None
-    return value
+    from pixsim7.common.scope_helpers import normalize_profile_id
+    return normalize_profile_id(profile_id, extra_sentinels=frozenset({"agent"}))
 
 
 def _extract_agent_type(token: str) -> str:
@@ -638,8 +634,8 @@ _bridge_session_cache: dict[tuple[str | None, str | None, str | None], str] = {}
 
 
 def _normalize_scope_key(scope_key: str | None) -> str | None:
-    value = (scope_key or "").strip()
-    return value or None
+    from pixsim7.common.scope_helpers import normalize_scope_value
+    return normalize_scope_value(scope_key)
 
 
 async def _resolve_bridge_session_id(
@@ -720,9 +716,15 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     session_id = _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
 
-    # Bridge-managed: resolve the real chat session ID from the backend
+    # Bridge-managed: resolve the real chat session ID from the backend.
+    # Always clear the cache first — the CLI process persists across
+    # conversations so stale entries would attribute work to old sessions.
     if session_id == "__bridge__":
         scope_key_hint = f"plan:{plan_id}" if plan_id else None
+        _bridge_session_cache.pop(
+            ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(scope_key_hint)),
+            None,
+        )
         session_id = await _resolve_bridge_session_id(
             token,
             profile_id,

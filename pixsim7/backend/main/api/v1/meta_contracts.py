@@ -21,6 +21,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, model_validator
+
+from pixsim7.common.scope_helpers import (
+    extract_scope,
+    normalize_profile_id as _normalize_profile_id,
+    normalize_scope_value as _normalize_scope_value,
+)
 from sqlalchemy import select, func, distinct, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1728,13 +1734,7 @@ class RegisterSessionRequest(BaseModel):
     last_plan_id: Optional[str] = Field(None, description="Plan ID being worked on")
 
 
-def _normalize_profile_id(profile_id: Optional[str]) -> Optional[str]:
-    value = (profile_id or "").strip()
-    if not value:
-        return None
-    if value.lower() in {"unknown", "none", "null"}:
-        return None
-    return value
+# _normalize_profile_id imported from shared.scope_helpers
 
 
 def _is_generic_cli_profile(profile_id: Optional[str]) -> bool:
@@ -2097,49 +2097,10 @@ async def send_message_to_agent_stream(
 # =============================================================================
 
 
-def _normalize_scope_value(value: Any) -> Optional[str]:
-    if not isinstance(value, str):
-        return None
-    trimmed = value.strip()
-    return trimmed or None
-
-
 def _extract_chat_session_scope(payload: SendMessageRequest) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Extract scope from a SendMessageRequest. Delegates to shared ``extract_scope``."""
     context = payload.context if isinstance(payload.context, dict) else {}
-
-    scope_key = (
-        _normalize_scope_value(payload.scope_key)
-        or _normalize_scope_value(context.get("scope_key"))
-        or _normalize_scope_value(context.get("scopeKey"))
-    )
-    plan_id = (
-        _normalize_scope_value(context.get("plan_id"))
-        or _normalize_scope_value(context.get("planId"))
-        or _normalize_scope_value(context.get("x_plan_id"))
-        or _normalize_scope_value(context.get("xPlanId"))
-    )
-    contract_id = (
-        _normalize_scope_value(context.get("contract_id"))
-        or _normalize_scope_value(context.get("contractId"))
-        or _normalize_scope_value(context.get("contract"))
-    )
-
-    if scope_key is None:
-        if plan_id:
-            scope_key = f"plan:{plan_id}"
-        elif contract_id:
-            scope_key = f"contract:{contract_id}"
-
-    if scope_key and plan_id is None and scope_key.startswith("plan:"):
-        maybe_plan = scope_key.split(":", 1)[1].strip()
-        if maybe_plan:
-            plan_id = maybe_plan
-    if scope_key and contract_id is None and scope_key.startswith("contract:"):
-        maybe_contract = scope_key.split(":", 1)[1].strip()
-        if maybe_contract:
-            contract_id = maybe_contract
-
-    return scope_key, plan_id, contract_id
+    return extract_scope(context, payload.scope_key)
 
 
 async def _upsert_chat_session(

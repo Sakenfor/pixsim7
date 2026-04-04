@@ -6,8 +6,8 @@
 import { Icon } from '@lib/icons';
 
 import type { ChatTab } from './assistantChatStore';
-import { EngineProfileIcon, resolveProfileIcon } from './EngineProfileIcon';
 import type { UnifiedProfile } from './assistantTypes';
+import { EngineProfileIcon, resolveProfileIcon } from './EngineProfileIcon';
 
 export interface SessionItemProps {
   tab: ChatTab;
@@ -23,6 +23,7 @@ export interface SessionItemProps {
   onCancelRename: () => void;
   onSetRenameValue: (value: string) => void;
   onClose: (id: string) => void;
+  onUnlinkPlan?: (id: string) => void;
 }
 
 export function SessionItem({
@@ -39,6 +40,7 @@ export function SessionItem({
   onCancelRename,
   onSetRenameValue,
   onClose,
+  onUnlinkPlan,
 }: SessionItemProps) {
   const tabProfile = profiles.find((p) => p.id === tab.profileId);
   const tabIcon = resolveProfileIcon(
@@ -101,6 +103,15 @@ export function SessionItem({
         >
           <Icon name="edit" size={10} />
         </button>
+        {tab.planId && onUnlinkPlan && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onUnlinkPlan(tab.id); }}
+            className="text-neutral-400 hover:text-green-600 dark:hover:text-green-400"
+            title="Unlink from plan"
+          >
+            <Icon name="link" size={10} />
+          </button>
+        )}
         {tabCount > 1 && (
           <button
             onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}

@@ -7,6 +7,8 @@ Defines what to ask an agent, not how to deliver it.  Both the bridge
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from pixsim7.common.scope_helpers import derive_scope_key, normalize_scope_value
+
 # ── Task types ───────────────────────────────────────────────────
 
 TASK_MESSAGE = "message"
@@ -20,42 +22,6 @@ METHOD_REMOTE = "remote"       # via WebSocket bridge
 METHOD_CMD = "cmd"             # via WebSocket bridge (alias)
 METHOD_API = "api"             # direct provider API call
 REMOTE_METHODS = frozenset({METHOD_REMOTE, METHOD_CMD})
-
-
-def _normalize_scope_value(value: Any) -> str:
-    if not isinstance(value, str):
-        return ""
-    return value.strip()
-
-
-def _derive_scope_key(context: Dict[str, Any], explicit_scope_key: Optional[str]) -> str:
-    """Resolve canonical scope key from explicit scope first, then context aliases."""
-    scope = _normalize_scope_value(explicit_scope_key)
-    if scope:
-        return scope
-
-    scope = _normalize_scope_value(context.get("scope_key")) or _normalize_scope_value(context.get("scopeKey"))
-    if scope:
-        return scope
-
-    plan_id = (
-        _normalize_scope_value(context.get("plan_id"))
-        or _normalize_scope_value(context.get("planId"))
-        or _normalize_scope_value(context.get("x_plan_id"))
-        or _normalize_scope_value(context.get("xPlanId"))
-    )
-    if plan_id:
-        return f"plan:{plan_id}"
-
-    contract_id = (
-        _normalize_scope_value(context.get("contract_id"))
-        or _normalize_scope_value(context.get("contractId"))
-        or _normalize_scope_value(context.get("contract"))
-    )
-    if contract_id:
-        return f"contract:{contract_id}"
-
-    return ""
 
 
 def build_task_payload(
@@ -99,10 +65,10 @@ def build_task_payload(
         payload["profile_prompt"] = profile_prompt
     if profile_config:
         payload["profile_config"] = profile_config
-    session_id = _normalize_scope_value(bridge_session_id)
+    session_id = normalize_scope_value(bridge_session_id)
     if session_id:
         payload["bridge_session_id"] = session_id
-    scoped_key = _derive_scope_key(context_payload, scope_key)
+    scoped_key = derive_scope_key(context_payload, scope_key)
     policy = (session_policy or "").strip().lower()
     if policy in {"ephemeral", "scoped", "persistent"}:
         payload["session_policy"] = policy
