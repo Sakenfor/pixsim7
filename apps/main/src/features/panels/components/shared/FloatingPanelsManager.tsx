@@ -6,7 +6,7 @@ import { Rnd } from "react-rnd";
 import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
 import { PanelErrorBoundary } from "@lib/dockview/PanelErrorBoundary";
 import { Icon } from "@lib/icons";
-import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
+import { devToolSelectors, dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
@@ -291,7 +291,6 @@ const FloatingPanel = memo(function FloatingPanel({
   activeProjectName,
   activeProjectSource,
 }: FloatingPanelProps) {
-  void catalogVersion;
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
@@ -345,11 +344,42 @@ const FloatingPanel = memo(function FloatingPanel({
 
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
+  const floatingOriginMeta = readFloatingOriginMeta(panel.context);
+
+  const knownDockTargets = useMemo(() => {
+    // Recompute when plugin catalog changes, so newly registered dock widgets
+    // become valid drag-to-dock targets without a reload.
+    void catalogVersion;
+    const known = new Set<string>();
+    for (const widget of dockWidgetSelectors.getAll()) {
+      known.add(normalizeDockviewId(widget.id));
+      known.add(normalizeDockviewId(widget.dockviewId));
+    }
+    return known;
+  }, [catalogVersion]);
 
   // Build canDockInto filter from panel's availableIn
   const canDockInto = useCallback((dockviewId: string) => {
+    const normalizedTargetId = normalizeDockviewId(dockviewId);
+    const sourceDockviewId = floatingOriginMeta?.sourceDockviewId;
+    const canReturnToOrigin =
+      typeof sourceDockviewId === "string" &&
+      sourceDockviewId.length > 0 &&
+      dockviewIdMatches(sourceDockviewId, dockviewId);
+    const isKnownDockTarget = knownDockTargets.has(normalizedTargetId);
+    if (!isKnownDockTarget && !canReturnToOrigin) {
+      // Ignore nested/internal dockview hosts (e.g. embedded quickgen widgets)
+      // unless this panel explicitly originated from that host.
+      return false;
+    }
+
     const isDevTool = typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
-    if (isDevTool) return true; // dev tools can dock anywhere
+    if (isDevTool) {
+      // Dev-tool panels are currently floating-only.
+      // Workspace store rejects docking for them, so treat them as non-dockable
+      // here to keep normal drag-stop positioning behavior.
+      return false;
+    }
     const panelDef = panelSelectors.get(definitionId);
     if (!panelDef) return false;
     if (panelDef.isInternal && (!panelDef.availableIn || panelDef.availableIn.length === 0)) {
@@ -357,7 +387,7 @@ const FloatingPanel = memo(function FloatingPanel({
     }
     if (!panelDef.availableIn || panelDef.availableIn.length === 0) return true; // no restriction
     return panelDef.availableIn.some((scope) => dockviewIdMatches(scope, dockviewId));
-  }, [definitionId]);
+  }, [definitionId, floatingOriginMeta?.sourceDockviewId, knownDockTargets]);
 
   const rndRef = useRef<Rnd | null>(null);
   const dragElRef = useRef<HTMLElement | null>(null);
@@ -384,7 +414,6 @@ const FloatingPanel = memo(function FloatingPanel({
   let panelCategoryBadge: string | null = null;
   let panelContextSummary: string | null = null;
 
-  const floatingOriginMeta = readFloatingOriginMeta(panel.context);
   const basePanelContext = stripFloatingOriginMeta(panel.context) ?? {};
 
   // For dev-tool panels, extract toolId from definition ID and ensure it's in context
@@ -501,6 +530,14 @@ const FloatingPanel = memo(function FloatingPanel({
         direction: result.zone === "center" ? "within" : result.zone,
         targetDockviewId: result.targetDockviewId ?? undefined,
       });
+      const stillFloating = useWorkspaceStore
+        .getState()
+        .floatingPanels.some((floating) => floating.id === panel.id);
+      if (stillFloating) {
+        // Safety fallback: if docking was rejected/failed, preserve the dropped position
+        // instead of snapping back to the previous floating coordinates.
+        updateFloatingPanelPosition(panel.id, d.x, d.y);
+      }
     } else {
       updateFloatingPanelPosition(panel.id, d.x, d.y);
     }
