@@ -15,6 +15,8 @@ export interface ReferenceItem {
   detail?: string;
   /** Optional CSS color class for the detail text (e.g. status color). */
   detailColor?: string;
+  /** Nesting depth for hierarchical display (0 = top-level, 1 = child, etc.). */
+  indent?: number;
 }
 
 export interface ReferenceSource {

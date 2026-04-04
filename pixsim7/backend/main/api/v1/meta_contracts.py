@@ -490,7 +490,7 @@ class AgentHeartbeatRequest(BaseModel):
     plan_id: Optional[str] = Field(None, description="Plan the agent is working on")
     action: str = Field("", description="Current action (reading_plan, editing_code, running_codegen, etc.)")
     detail: str = Field("", description="Free-form detail about current activity")
-    metadata: Optional[Dict[str, str]] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata (supports nested values)")
 
 
 class AgentSessionEntry(BaseModel):
@@ -504,7 +504,7 @@ class AgentSessionEntry(BaseModel):
     contract_id: Optional[str] = None
     action: str = ""
     detail: str = ""
-    metadata: Dict[str, str] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     recent_activity: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -642,7 +642,7 @@ class AgentHistoryEntry(BaseModel):
     action: str
     detail: Optional[str] = None
     endpoint: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
+    metadata: Optional[Dict[str, Any]] = None
     timestamp: str
 
 
@@ -1577,6 +1577,7 @@ async def _resolve_send_context(
 @router.get("/agents/chat-sessions")
 async def list_chat_sessions(
     engine: Optional[str] = Query(None, description="Filter by engine (claude, codex, api)"),
+    status: Optional[str] = Query(None, description="Filter by status (active, archived). Defaults to 'active'."),
     limit: int = Query(20, ge=1, le=100),
     include_empty: bool = Query(False, description="Include sessions with zero messages"),
     user: Optional[Any] = Depends(get_current_user_optional),
@@ -1585,7 +1586,9 @@ async def list_chat_sessions(
     """List recent chat sessions for the /resume picker, scoped by engine."""
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
-    if not include_empty:
+    effective_status = status or "active"
+
+    if not include_empty and effective_status == "active":
         # Remove stale startup placeholders ("CLI session (...)") with no messages.
         prune_stmt = (
             update(ChatSession)
@@ -1604,7 +1607,7 @@ async def list_chat_sessions(
 
     stmt = (
         select(ChatSession)
-        .where(ChatSession.status == "active")
+        .where(ChatSession.status == effective_status)
     )
     if user:
         # Include user's own sessions + shared sessions (user_id=0)
@@ -1695,6 +1698,22 @@ async def archive_chat_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     session.status = "archived"
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/agents/chat-sessions/{session_id}/restore")
+async def restore_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Restore an archived chat session back to active."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.status = "active"
     await db.commit()
     return {"ok": True}
 

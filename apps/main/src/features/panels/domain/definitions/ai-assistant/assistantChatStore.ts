@@ -89,12 +89,15 @@ function loadTabs(): ChatTab[] {
       return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => {
         const normalizedProfileId = normalizeProfileId(t.profileId ?? null);
         return {
+          label: 'Chat',
+          sessionId: null,
           usePersona: true,
           engine: 'claude' as AgentEngine,
           modelOverride: null,
           customInstructions: '',
           focusAreas: [] as string[],
           planId: null,
+          createdAt: new Date().toISOString(),
           ...t,
           profileId: normalizedProfileId,
           // Legacy tabs without injectToken inherit profile-bound default.

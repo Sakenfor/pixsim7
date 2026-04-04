@@ -211,6 +211,141 @@ class TestArchiveChatSession:
         assert r.status_code == 404
 
 
+class TestGetChatSession:
+    """GET /agents/chat-sessions/{session_id} — single session with messages."""
+
+    @pytest.mark.asyncio
+    async def test_get_existing_session(self):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1", label="hello world")
+        session_obj.cli_session_id = "cli-abc"
+        session_obj.messages = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00Z"},
+            {"role": "assistant", "text": "Hi!", "timestamp": "2026-04-01T00:00:01Z"},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/sess-1")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["id"] == "sess-1"
+        assert data["label"] == "hello world"
+        assert data["messages"] is not None
+        assert len(data["messages"]) == 2
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][1]["text"] == "Hi!"
+
+    @pytest.mark.asyncio
+    async def test_get_session_with_null_messages(self):
+        """Sessions created by CLI/MCP may have messages=null."""
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-cli", label="CLI session")
+        session_obj.cli_session_id = None
+        session_obj.messages = None
+        db.get_values["sess-cli"] = session_obj
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/sess-cli")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["messages"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_nonexistent_session_returns_404(self):
+        db = _FakeDB()
+        app = _app(db)
+
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/nonexistent")
+
+        assert r.status_code == 404
+
+
+class TestSaveChatSessionMessages:
+    """PATCH /agents/chat-sessions/{session_id}/messages — persist messages."""
+
+    @pytest.mark.asyncio
+    async def test_save_messages(self):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = None
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        messages = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00Z"},
+            {"role": "assistant", "text": "Hi!", "timestamp": "2026-04-01T00:00:01Z"},
+        ]
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": messages},
+            )
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is True
+        assert data["count"] == 2
+        assert session_obj.messages == messages
+        assert session_obj.message_count == 2
+        assert db.commit_count == 1
+
+    @pytest.mark.asyncio
+    async def test_save_caps_at_50_messages(self):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = None
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        messages = [{"role": "user", "text": f"msg-{i}"} for i in range(60)]
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": messages},
+            )
+
+        assert r.status_code == 200
+        assert r.json()["count"] == 50
+        # Should keep the last 50
+        assert session_obj.messages[0]["text"] == "msg-10"
+        assert session_obj.messages[-1]["text"] == "msg-59"
+        assert len(session_obj.messages) == 50
+
+    @pytest.mark.asyncio
+    async def test_save_messages_nonexistent_session_returns_404(self):
+        db = _FakeDB()
+        app = _app(db)
+
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/nonexistent/messages",
+                json={"messages": []},
+            )
+
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_save_messages_invalid_body_returns_422(self):
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": "not a list"},
+            )
+
+        assert r.status_code == 422
+
+
 class TestActiveTask:
     """GET /agents/bridge/active-task."""
 

@@ -15,6 +15,58 @@ const _STATUS_COLOR: Record<string, string> = {
   parked: 'text-amber-400',
 };
 
+interface PlanEntry {
+  id: string;
+  title: string;
+  status: string;
+  stage?: string;
+  parent_id?: string | null;
+  children?: Array<{ id: string; title: string; status: string; stage?: string }>;
+}
+
+function _buildPlanTree(plans: PlanEntry[]): import('./types').ReferenceItem[] {
+  const sorted = [...plans].sort((a, b) => (_STATUS_ORDER[a.status] ?? 9) - (_STATUS_ORDER[b.status] ?? 9));
+  const childIds = new Set<string>();
+  // Collect children from the inline `children` array on each plan
+  for (const p of sorted) {
+    if (p.children) {
+      for (const c of p.children) childIds.add(c.id);
+    }
+  }
+  // Also collect plans that have parent_id set (in case children aren't inlined)
+  for (const p of sorted) {
+    if (p.parent_id) childIds.add(p.id);
+  }
+
+  const result: import('./types').ReferenceItem[] = [];
+  for (const p of sorted) {
+    // Skip children at top level — they'll appear under their parent
+    if (childIds.has(p.id)) continue;
+    result.push({
+      type: 'plan' as const,
+      id: p.id,
+      label: p.title,
+      detail: `${p.status}${p.stage ? ` · ${p.stage}` : ''}`,
+      detailColor: _STATUS_COLOR[p.status],
+    });
+    // Append inline children directly beneath
+    if (p.children && p.children.length > 0) {
+      const sortedChildren = [...p.children].sort((a, b) => (_STATUS_ORDER[a.status] ?? 9) - (_STATUS_ORDER[b.status] ?? 9));
+      for (const c of sortedChildren) {
+        result.push({
+          type: 'plan' as const,
+          id: c.id,
+          label: c.title,
+          detail: `${c.status}${c.stage ? ` · ${c.stage}` : ''}`,
+          detailColor: _STATUS_COLOR[c.status],
+          indent: 1,
+        });
+      }
+    }
+  }
+  return result;
+}
+
 referenceRegistry.register({
   type: 'plan',
   icon: 'clipboard',
@@ -22,18 +74,8 @@ referenceRegistry.register({
   label: 'Plans',
   fetch: () =>
     pixsimClient
-      .get<{ plans: Array<{ id: string; title: string; status: string; stage?: string }> }>('/dev/plans', { params: { limit: 200, include_hidden: false } })
-      .then((r) =>
-        (r.plans || [])
-          .sort((a, b) => (_STATUS_ORDER[a.status] ?? 9) - (_STATUS_ORDER[b.status] ?? 9))
-          .map((p) => ({
-            type: 'plan' as const,
-            id: p.id,
-            label: p.title,
-            detail: `${p.status}${p.stage ? ` · ${p.stage}` : ''}`,
-            detailColor: _STATUS_COLOR[p.status],
-          })),
-      )
+      .get<{ plans: PlanEntry[] }>('/dev/plans', { params: { limit: 200, include_hidden: false } })
+      .then((r) => _buildPlanTree(r.plans || []))
       .catch(() => []),
 });
 

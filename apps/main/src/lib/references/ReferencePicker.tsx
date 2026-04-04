@@ -108,34 +108,41 @@ export function ReferencePicker({
       )}
 
       {/* Items list */}
-      {filtered.map((item, i) => (
-        <button
-          key={`${item.type}:${item.id}`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onSelect(item);
-          }}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left transition-colors ${
-            i === selectedIdx
-              ? 'bg-accent/10 text-accent'
-              : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Icon
-            name={referenceRegistry.getIcon(item.type)}
-            size={11}
-            className={`shrink-0 ${referenceRegistry.getColor(item.type)}`}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="truncate font-medium">{item.label}</div>
-            {item.detail && (
-              <div className={`text-[9px] truncate ${item.detailColor ?? 'text-neutral-400'}`}>
-                {item.detail}
-              </div>
+      {filtered.map((item, i) => {
+        const indent = item.indent ?? 0;
+        return (
+          <button
+            key={`${item.type}:${item.id}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onSelect(item);
+            }}
+            className={`w-full flex items-center gap-2 py-1.5 text-[11px] text-left transition-colors ${
+              i === selectedIdx
+                ? 'bg-accent/10 text-accent'
+                : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+            }`}
+            style={{ paddingLeft: `${12 + indent * 16}px`, paddingRight: '12px' }}
+          >
+            {indent > 0 && (
+              <span className="text-neutral-300 dark:text-neutral-600 text-[9px] shrink-0">&#x2514;</span>
             )}
-          </div>
-        </button>
-      ))}
+            <Icon
+              name={referenceRegistry.getIcon(item.type)}
+              size={indent > 0 ? 10 : 11}
+              className={`shrink-0 ${indent > 0 ? 'opacity-60' : ''} ${referenceRegistry.getColor(item.type)}`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className={`truncate font-medium ${indent > 0 ? 'text-[10px]' : ''}`}>{item.label}</div>
+              {item.detail && (
+                <div className={`text-[9px] truncate ${item.detailColor ?? 'text-neutral-400'}`}>
+                  {item.detail}
+                </div>
+              )}
+            </div>
+          </button>
+        );
+      })}
 
       {/* No results hint when filtered */}
       {typeFilter && filtered.length === 0 && (
