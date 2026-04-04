@@ -207,6 +207,7 @@ class Bridge:
             ws_url,
             ping_interval=None,  # disabled — app-level heartbeats handle liveness
             close_timeout=10,
+            max_size=5 * 1024 * 1024,  # 5MB — default 1MB is tight when payloads carry base64 images
         ) as ws:
             # Welcome message
             welcome = json.loads(await ws.recv())
@@ -818,11 +819,14 @@ class Bridge:
         elif meta["focus"]:
             mcp_config_override = self._ensure_mcp_config(focus=meta["focus"])
 
-        # On first message of a new conversation, inject system context + persona.
+        # On first message of a new conversation, inject persona + token.
         # Resumed conversations already have these in history.
         if not meta["bridge_session_id"]:
             preamble_parts: list[str] = []
-            if self._system_prompt:
+            # System context: Claude gets it via --append-system-prompt (pool-level),
+            # so only inject in preamble for engines that lack CLI flag support (Codex).
+            engine = meta.get("engine") or ""
+            if self._system_prompt and engine not in ("claude", ""):
                 preamble_parts.append(f"[System context]\n{self._system_prompt}")
             if meta["profile_prompt"]:
                 preamble_parts.append(f"[Persona: {meta['profile_prompt']}]")
