@@ -583,12 +583,11 @@ async def create_agent_profile(
     )
     db.add(profile)
 
-    from pixsim7.backend.main.services.audit import emit_audit
-    actor = getattr(principal, 'source', f"user:{principal.id}")
-    await emit_audit(
-        db, domain="agent", entity_type="agent_profile",
+    from pixsim7.backend.main.services.audit import AuditService
+    await AuditService(db).record(
+        domain="agent", entity_type="agent_profile",
         entity_id=payload.id, entity_label=payload.label,
-        action="created", actor=actor,
+        action="created",
     )
 
     await db.commit()
@@ -620,17 +619,18 @@ async def update_agent_profile(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Snapshot old values for diff, then apply
+    old_snapshot = {field: getattr(profile, field, None) for field in updates}
     for field, value in updates.items():
         setattr(profile, field, value)
     profile.updated_at = utcnow()
 
-    from pixsim7.backend.main.services.audit import emit_audit
-    actor = getattr(principal, 'source', f"user:{principal.id}")
-    await emit_audit(
-        db, domain="agent", entity_type="agent_profile",
+    from pixsim7.backend.main.services.audit import AuditService
+    await AuditService(db).record_diff(
+        domain="agent", entity_type="agent_profile",
         entity_id=profile_id, entity_label=profile.label,
-        action="updated", actor=actor,
-        extra={"changed_fields": list(updates.keys())},
+        old_obj=old_snapshot, new_obj=profile,
+        fields=list(updates.keys()),
     )
 
     await db.commit()
@@ -654,12 +654,11 @@ async def delete_agent_profile(
     profile.status = "archived"
     profile.updated_at = utcnow()
 
-    from pixsim7.backend.main.services.audit import emit_audit
-    actor = getattr(principal, 'source', f"user:{principal.id}")
-    await emit_audit(
-        db, domain="agent", entity_type="agent_profile",
+    from pixsim7.backend.main.services.audit import AuditService
+    await AuditService(db).record(
+        domain="agent", entity_type="agent_profile",
         entity_id=profile_id, entity_label=profile.label,
-        action="deleted", actor=actor,
+        action="deleted",
     )
 
     await db.commit()
@@ -724,12 +723,11 @@ async def mint_profile_token(
         svc = AgentTrackingService(db)
         await svc.create_run(profile_id=profile.id, run_id=run_id, token_jti=token_id)
 
-        from pixsim7.backend.main.services.audit import emit_audit
-        actor = getattr(principal, 'source', f"user:{principal.id}")
-        await emit_audit(
-            db, domain="agent", entity_type="agent_token",
+        from pixsim7.backend.main.services.audit import AuditService
+        await AuditService(db).record(
+            domain="agent", entity_type="agent_token",
             entity_id=token_id, entity_label=f"{profile.label} ({hours}h)",
-            action="created", actor=actor,
+            action="created",
             extra={"profile_id": profile.id, "hours": hours, "scope": scope, "run_id": run_id},
         )
         await db.commit()

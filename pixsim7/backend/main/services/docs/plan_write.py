@@ -993,12 +993,26 @@ async def update_plan(
     doc.revision = (doc.revision or 0) + 1
     result.changes = changes
 
-    # Audit: PlanRegistry.__audit__ model hook handles field-level tracking.
-    # Set commit_sha in context so the hook picks it up.
+    # Audit: PlanRegistry.__audit__ and Document.__audit__ use excluded_fields mode,
+    # so most field changes are tracked automatically by model hooks.
+    # Emit explicit audit entries only for fields excluded from hooks (e.g. markdown).
     if evidence_commit_sha:
         from pixsim7.backend.main.services.audit.context import set_audit_commit_sha
         set_audit_commit_sha(evidence_commit_sha)
-    actor_source = principal.source if principal else None
+
+    _HOOK_EXCLUDED = {"markdown"}
+    manual_changes = [c for c in changes if c["field"] in _HOOK_EXCLUDED]
+    if manual_changes:
+        from pixsim7.backend.main.services.audit import AuditService
+        await AuditService(db).record_changes(
+            domain="plan",
+            entity_type="plan_registry",
+            entity_id=plan_id,
+            entity_label=doc.title,
+            changes=manual_changes,
+            plan_id=plan_id,
+            commit_sha=evidence_commit_sha,
+        )
     revision_row = await record_plan_revision(
         db,
         bundle,

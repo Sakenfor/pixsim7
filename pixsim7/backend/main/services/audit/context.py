@@ -23,6 +23,7 @@ from contextvars import ContextVar
 
 _audit_actor: ContextVar[str] = ContextVar("audit_actor", default="system")
 _audit_commit_sha: ContextVar[Optional[str]] = ContextVar("audit_commit_sha", default=None)
+_audit_run_id: ContextVar[Optional[str]] = ContextVar("audit_run_id", default=None)
 
 
 def set_audit_actor(actor: str) -> None:
@@ -45,7 +46,18 @@ def get_audit_commit_sha() -> Optional[str]:
     return _audit_commit_sha.get()
 
 
+def set_audit_run_id(run_id: Optional[str]) -> None:
+    """Attach an agent run ID to the current request scope (optional)."""
+    _audit_run_id.set(run_id)
+
+
+def get_audit_run_id() -> Optional[str]:
+    """Get the agent run ID for the current request scope, if set."""
+    return _audit_run_id.get()
+
+
 def clear_audit_context() -> None:
     """Reset audit context (call at end of request)."""
     _audit_actor.set("system")
     _audit_commit_sha.set(None)
+    _audit_run_id.set(None)

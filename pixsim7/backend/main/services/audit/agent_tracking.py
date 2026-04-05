@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
 from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
-from pixsim7.backend.main.services.audit.emit import emit_audit
+from pixsim7.backend.main.services.audit.service import AuditService
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
@@ -28,6 +28,7 @@ class AgentTrackingService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._audit = AuditService(db)
 
     # ── Runs ─────────────────────────────────────────────────────
 
@@ -78,8 +79,7 @@ class AgentTrackingService:
         if summary:
             run.summary = {**(run.summary or {}), **summary}
 
-        await emit_audit(
-            self.db,
+        await self._audit.record(
             domain="agent",
             entity_type="agent_run",
             entity_id=run_id,
@@ -159,8 +159,7 @@ class AgentTrackingService:
                 summary["last_commit_at"] = utcnow().isoformat()
                 run.summary = summary
 
-        return await emit_audit(
-            self.db,
+        return await self._audit.record(
             domain="agent",
             entity_type="git_commit",
             entity_id=commit_sha,

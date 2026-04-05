@@ -303,9 +303,11 @@ async def get_current_principal(
             except Exception:
                 pass
 
-    # Bind actor to request-scoped audit context for model-level hooks
-    from pixsim7.backend.main.services.audit.context import set_audit_actor
+    # Bind actor + run_id to request-scoped audit context for model-level hooks
+    from pixsim7.backend.main.services.audit.context import set_audit_actor, set_audit_run_id
     set_audit_actor(principal.source)
+    if principal.run_id:
+        set_audit_run_id(principal.run_id)
 
     return principal
 

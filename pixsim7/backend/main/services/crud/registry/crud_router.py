@@ -60,23 +60,18 @@ class RegistryCrudSpec:
     disable_update: bool = False
 
 
-def _resolve_actor(user: Any) -> str:
-    """Derive audit actor string from a user/principal object."""
-    from pixsim7.backend.main.services.audit import resolve_actor
-    return resolve_actor(user)
-
-
 async def _registry_audit_created(
     db: AsyncSession, spec: RegistryCrudSpec, item: Any, user: Any,
 ) -> None:
     if not (spec.audit_config and spec.audit_config.enabled):
         return
-    from pixsim7.backend.main.services.audit import emit_audit
-    await emit_audit(
-        db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
+    from pixsim7.backend.main.services.audit import AuditService
+    cfg = spec.audit_config
+    await AuditService(db).record(
+        domain=cfg.domain, entity_type=cfg.entity_type,
         entity_id=str(getattr(item, 'id', '')),
-        entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
-        action="created", actor=_resolve_actor(user),
+        entity_label=str(getattr(item, cfg.label_field, '') or ''),
+        action="created",
     )
     await db.commit()
 
@@ -87,28 +82,24 @@ async def _registry_audit_updated(
 ) -> None:
     if not (spec.audit_config and spec.audit_config.enabled):
         return
-    from pixsim7.backend.main.services.audit import emit_audit, emit_audit_batch
-    from pixsim7.backend.main.services.audit.emit import _serialize_value
-    actor = _resolve_actor(user)
-    label = str(getattr(updated, spec.audit_config.label_field, '') or '')
-    req_fields = request.model_fields_set if hasattr(request, 'model_fields_set') else set()
-    changes = []
-    for fn in req_fields:
-        ov = getattr(existing, fn, None)
-        nv = getattr(updated, fn, None)
-        if ov != nv:
-            changes.append({"field": fn, "old": _serialize_value(ov), "new": _serialize_value(nv)})
-    if changes:
-        await emit_audit_batch(
-            db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
-            entity_id=str(getattr(updated, 'id', '')), entity_label=label,
-            changes=changes, actor=actor,
-        )
-    else:
-        await emit_audit(
-            db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
-            entity_id=str(getattr(updated, 'id', '')), entity_label=label,
-            action="updated", actor=actor,
+    from pixsim7.backend.main.services.audit import AuditService
+    cfg = spec.audit_config
+    req_fields = list(request.model_fields_set) if hasattr(request, 'model_fields_set') else []
+    audit = AuditService(db)
+    entries = await audit.record_diff(
+        domain=cfg.domain, entity_type=cfg.entity_type,
+        entity_id=str(getattr(updated, 'id', '')),
+        entity_label=str(getattr(updated, cfg.label_field, '') or ''),
+        old_obj=existing, new_obj=updated,
+        fields=req_fields,
+    )
+    if not entries:
+        # No field-level diffs detected — emit a generic "updated" entry
+        await audit.record(
+            domain=cfg.domain, entity_type=cfg.entity_type,
+            entity_id=str(getattr(updated, 'id', '')),
+            entity_label=str(getattr(updated, cfg.label_field, '') or ''),
+            action="updated",
         )
     await db.commit()
 
@@ -148,7 +139,7 @@ def mount_registry_crud(router: APIRouter, spec: RegistryCrudSpec) -> None:
             current_user=Depends(get_current_user),
         ):
             item_id = getattr(request, "id", None)
-            if item_id and spec.registry.get(item_id):
+            if item_id and spec.registry.has(item_id):
                 raise HTTPException(
                     status_code=409,
                     detail=f"{noun.title()} '{item_id}' already exists",

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
-from pixsim7.backend.main.services.audit import emit_audit
+from pixsim7.backend.main.services.audit import AuditService
 from pixsim7.backend.main.services.docs.plans import PlanEntry, build_plans_index
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
@@ -282,8 +282,8 @@ async def sync_plans(
                 bundle.plan.updated_at = now
                 bundle.plan.last_synced_at = now
 
-                await emit_audit(
-                    db, domain="plan", entity_type="plan_registry",
+                await AuditService(db).record(
+                    domain="plan", entity_type="plan_registry",
                     entity_id=plan_id, entity_label=bundle.doc.title,
                     action="updated", field="status",
                     old_value=old_status, new_value="removed",

@@ -23,8 +23,9 @@ import {
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient } from '@lib/api/client';
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { openWorkspacePanel } from '@features/workspace';
@@ -144,6 +145,61 @@ function formatTimestamp(iso: string): string {
   return d.toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+}
+
+const ENGINE_ICON_STYLES: Record<'blue' | 'purple' | 'orange' | 'gray', { icon: string; circle: string }> = {
+  blue: {
+    icon: 'text-blue-600 dark:text-blue-300',
+    circle: 'bg-blue-100 dark:bg-blue-500/20 border-blue-200 dark:border-blue-400/35',
+  },
+  purple: {
+    icon: 'text-violet-600 dark:text-violet-300',
+    circle: 'bg-violet-100 dark:bg-violet-500/20 border-violet-200 dark:border-violet-400/35',
+  },
+  orange: {
+    icon: 'text-orange-600 dark:text-orange-300',
+    circle: 'bg-orange-100 dark:bg-orange-500/20 border-orange-200 dark:border-orange-400/35',
+  },
+  gray: {
+    icon: 'text-neutral-600 dark:text-neutral-300',
+    circle: 'bg-neutral-100 dark:bg-neutral-700/40 border-neutral-200 dark:border-neutral-600/50',
+  },
+};
+
+function iconForEngine(engine: string | null | undefined): IconName {
+  if (engine === 'codex') return 'cpu';
+  if (engine === 'api') return 'zap';
+  return 'messageSquare';
+}
+
+function resolveProfileIcon(engine: string | null | undefined, icon: string | null | undefined): IconName {
+  if (icon && icon.trim()) return icon as IconName;
+  return iconForEngine(engine);
+}
+
+function EngineProfileIcon({
+  engine,
+  icon,
+  size = 10,
+  className = '',
+}: {
+  engine: string | null | undefined;
+  icon: IconName;
+  size?: number;
+  className?: string;
+}) {
+  const brand = getEngineBrand(engine);
+  const style = ENGINE_ICON_STYLES[brand.badgeColor] ?? ENGINE_ICON_STYLES.gray;
+  const circleSize = size + 8;
+  return (
+    <span
+      className={`relative inline-flex shrink-0 items-center justify-center ${className}`}
+      style={{ width: `${circleSize}px`, height: `${circleSize}px` }}
+    >
+      <span className={`absolute inset-0 rounded-full border ${style.circle}`} aria-hidden="true" />
+      <Icon name={icon} size={size} className={`relative z-10 ${style.icon}`} />
+    </span>
+  );
 }
 
 function navigateToPlan(planId: string) {
@@ -705,7 +761,7 @@ function ActiveSessionsView() {
             {bridgeAgents.map((a) => (
               <div key={a.bridge_client_id} className="flex items-center gap-1.5">
                 {a.engines.map((e) => (
-                  <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{e}</Badge>
+                  <Badge key={e} color={getEngineBrand(e).badgeColor} className="text-[10px]">{e}</Badge>
                 ))}
                 <span className="text-[10px] text-neutral-400">
                   {a.tasks_completed} task{a.tasks_completed !== 1 ? 's' : ''} · {a.pool_sessions.length} session{a.pool_sessions.length !== 1 ? 's' : ''}
@@ -764,7 +820,7 @@ function ActiveSessionsView() {
                 <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {agent.engines.map((e) => (
-                      <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{e}</Badge>
+                      <Badge key={e} color={getEngineBrand(e).badgeColor} className="text-[10px]">{e}</Badge>
                     ))}
                     {agent.user_id != null ? (
                       <Badge color="purple" className="text-[10px]">user:{agent.user_id}</Badge>
@@ -846,7 +902,7 @@ function ActiveSessionsView() {
                 </Badge>
                 <span className="font-mono text-neutral-500">{m.bridge_client_id}</span>
                 {m.agent_type && (
-                  <Badge color={m.agent_type === 'claude' ? 'blue' : m.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[9px]">
+                  <Badge color={getEngineBrand(m.agent_type).badgeColor} className="text-[9px]">
                     {m.agent_type}
                   </Badge>
                 )}
@@ -869,7 +925,7 @@ function ActiveSessionsView() {
                 <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Badge color={STATUS_COLORS[session.status] ?? 'gray'}>{session.status}</Badge>
-                    <Badge color={session.agent_type === 'claude' ? 'blue' : session.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{session.agent_type}</Badge>
+                    <Badge color={getEngineBrand(session.agent_type).badgeColor} className="text-[10px]">{session.agent_type}</Badge>
                     <span className="font-mono text-[10px] text-neutral-400">{session.session_id.slice(0, 12)}</span>
                   </div>
                   <span className="text-[10px] text-neutral-400">{formatDuration(session.duration_seconds)}</span>
@@ -992,7 +1048,12 @@ function HistoryEntryRow({ entry, allEntries }: {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
       >
-        <Icon name={ACTION_ICONS[entry.action] ?? 'activity'} size={12} className={`shrink-0 mt-0.5 ${entry.agent_type === 'claude' ? 'text-blue-400' : entry.agent_type === 'codex' ? 'text-violet-400' : 'text-neutral-400'}`} />
+        <EngineProfileIcon
+          engine={entry.agent_type}
+          icon={ACTION_ICONS[entry.action] ?? 'activity'}
+          size={12}
+          className="mt-0.5"
+        />
         <Badge color={STATUS_COLORS[entry.status] ?? 'gray'} className="text-[10px] shrink-0">
           {HISTORY_ACTION_LABELS[entry.action] || entry.action || entry.status}
         </Badge>
@@ -1223,8 +1284,6 @@ const ACTION_LABELS: Record<string, string> = {
   status_changed: 'updated',
 };
 
-import { getEngineBrand } from '@lib/agent/engineBrands';
-
 const ACTION_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   created: 'green',
   deleted: 'red',
@@ -1254,6 +1313,9 @@ function WriteEntryRow({
   const actionLabel = ACTION_LABELS[entry.event_type] || entry.event_type;
   const badgeColor = ACTION_BADGE_COLORS[entry.event_type] || 'gray';
 
+  // Suppress entity_label when it duplicates the agentName badge (e.g. agent profile self-updates)
+  const showEntityLabel = entry.entity_label && entry.entity_label !== agentName;
+
   // Short inline transition: "proposed → implementation-ready"
   const showInlineTransition =
     !hasExpandableContent && entry.field && (isInlineValue(entry.old_value) || isInlineValue(entry.new_value));
@@ -1272,8 +1334,10 @@ function WriteEntryRow({
         <div className="flex-1 min-w-0">
           {entry.domain === 'plan' ? (
             <span className="mr-1"><PlanLink planId={entry.entity_id} /></span>
-          ) : (
+          ) : showEntityLabel ? (
             <span className="mr-1 text-neutral-600 dark:text-neutral-300">{entry.entity_label}</span>
+          ) : (
+            <span className="mr-1 text-neutral-400">{entry.domain}</span>
           )}
           <Badge color={badgeColor} className="text-[9px] ml-0.5">{actionLabel}</Badge>
           {entry.field && (
@@ -1394,6 +1458,9 @@ function GroupedWriteRow({
   const eventTypes = [...new Set(group.entries.map((e) => e.event_type))];
   const hasMultiple = group.entries.length > 1;
 
+  // Suppress entity_label when it duplicates the agentName badge (e.g. agent profile self-updates)
+  const showEntityLabel = group.entity_label && group.entity_label !== agentName;
+
   // Primary action label — prefer the most specific if uniform, else "updated"
   const primaryAction = eventTypes.length === 1
     ? (ACTION_LABELS[eventTypes[0]] || eventTypes[0])
@@ -1427,8 +1494,10 @@ function GroupedWriteRow({
         <div className="flex-1 min-w-0">
           {group.domain === 'plan' ? (
             <span className="mr-1"><PlanLink planId={group.entity_id} /></span>
-          ) : (
+          ) : showEntityLabel ? (
             <span className="mr-1 text-neutral-600 dark:text-neutral-300">{group.entity_label}</span>
+          ) : (
+            <span className="mr-1 text-neutral-400">{group.domain}</span>
           )}
           <Badge color={badgeColor} className="text-[9px] ml-0.5">{primaryAction}</Badge>
           {hasMultiple && fieldNames.length > 0 && (
@@ -1569,10 +1638,11 @@ function SummariesView() {
               onClick={() => setExpandedIdx(expanded ? null : i)}
               className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
             >
-              <Icon
-                name="fileText"
+              <EngineProfileIcon
+                engine={sessionInfo?.engine ?? e.agent_type}
+                icon="fileText"
                 size={12}
-                className={`shrink-0 mt-0.5 ${engineColor}`}
+                className="mt-0.5"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 flex-wrap">
@@ -2090,7 +2160,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
               <span className="font-mono text-neutral-500">{ba.bridge_client_id}</span>
               {ba.engines.map((e) => (
-                <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{e}</Badge>
+                <Badge key={e} color={getEngineBrand(e).badgeColor} className="text-[9px]">{e}</Badge>
               ))}
               <span className="text-neutral-400 ml-auto">{ba.tasks_completed} tasks</span>
             </div>
@@ -2215,6 +2285,11 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                           return (
                             <div key={s.id} className="group/session flex items-center gap-2 text-[11px] py-1">
                               <div className={`w-2 h-2 rounded-full shrink-0 ${sessionDot}`} />
+                              <EngineProfileIcon
+                                engine={s.engine}
+                                icon={iconForEngine(s.engine)}
+                                size={10}
+                              />
                               <Badge color={getEngineBrand(s.engine).badgeColor} className="text-[9px]">{s.engine}</Badge>
                               {sourceIcon && (
                                 <Icon name={sourceIcon} size={10} className="shrink-0 text-neutral-400" title={`Source: ${s.source}`} />
@@ -2478,7 +2553,7 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 <span className="text-[10px] text-neutral-400">{formatTimestamp(entry.timestamp)}</span>
                 {entry.agent_type && (
-                  <Badge color={entry.agent_type === 'claude' ? 'blue' : entry.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[9px]">
+                  <Badge color={getEngineBrand(entry.agent_type).badgeColor} className="text-[9px]">
                     {entry.agent_type}
                   </Badge>
                 )}
@@ -2681,8 +2756,12 @@ function ProfilesView() {
               {profile.status}
             </Badge>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">
-                {profile.icon && <Icon name={profile.icon as import('@lib/icons').IconName} size={10} className="inline mr-1" />}
+              <div className="font-medium truncate flex items-center gap-1.5">
+                <EngineProfileIcon
+                  engine={profile.agent_type}
+                  icon={resolveProfileIcon(profile.agent_type, profile.icon)}
+                  size={10}
+                />
                 {profile.label}
               </div>
               <div className="text-neutral-500 font-mono text-[10px]">{profile.id}</div>

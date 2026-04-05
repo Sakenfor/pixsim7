@@ -27,6 +27,11 @@ class Document(SQLModel, table=True):
 
     __tablename__ = "documents"
     __table_args__ = {"schema": PLAN_META_SCHEMA}
+    __audit__ = AuditMeta(
+        domain="document", entity_type="document",
+        label_field="title",
+        excluded_fields=("markdown", "extra", "tags", "revision", "user_id"),
+    )
 
     id: str = Field(primary_key=True, max_length=120)
     doc_type: str = Field(max_length=32, index=True)
@@ -116,7 +121,9 @@ class PlanRegistry(SQLModel, table=True):
     __table_args__ = {"schema": PLAN_META_SCHEMA}
     __audit__ = AuditMeta(
         domain="plan", entity_type="plan_registry",
-        tracked_fields=("stage", "priority", "scope", "task_scope", "plan_type"),
+        excluded_fields=("document_id", "parent_id", "plan_path",
+                         "manifest_hash", "last_synced_at"),
+        plan_id_field="id",
     )
 
     id: str = Field(primary_key=True, max_length=120)

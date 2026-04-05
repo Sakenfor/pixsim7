@@ -45,8 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
 from .crud_registry import TemplateCRUDSpec, FilterOperator, NestedEntitySpec
-from pixsim7.backend.main.services.audit import emit_audit, emit_audit_batch, resolve_actor
-from pixsim7.backend.main.services.audit.emit import _serialize_value
+from pixsim7.backend.main.services.audit import AuditService
 from pixsim7.backend.main.services.ownership import OwnershipScope, apply_ownership_filter
 
 T = TypeVar("T", bound=SQLModel)
@@ -104,8 +103,9 @@ class TemplateCRUDService(Generic[T]):
         cfg = self.spec.audit_config
         return bool(cfg and cfg.enabled)
 
-    def _resolve_actor(self) -> str:
-        return resolve_actor(self.user)
+    @property
+    def _audit(self) -> AuditService:
+        return AuditService(self.db)
 
     def _entity_label(self, entity: Any) -> str:
         if not self.spec.audit_config:
@@ -466,11 +466,11 @@ class TemplateCRUDService(Generic[T]):
         # Audit
         if self._audit_enabled:
             cfg = self.spec.audit_config
-            await emit_audit(
-                self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+            await self._audit.record(
+                domain=cfg.domain, entity_type=cfg.entity_type,
                 entity_id=self._entity_id_str(entity),
                 entity_label=self._entity_label(entity),
-                action="created", actor=self._resolve_actor(),
+                action="created",
             )
 
         return entity
@@ -550,25 +550,19 @@ class TemplateCRUDService(Generic[T]):
         # Audit — per-field diff
         if self._audit_enabled:
             cfg = self.spec.audit_config
-            actor = self._resolve_actor()
-            changes = [
-                {"field": fn, "old": _serialize_value(ov), "new": _serialize_value(getattr(entity, fn, None))}
-                for fn, ov in old_snapshot.items()
-                if ov != getattr(entity, fn, None)
-            ]
-            if changes:
-                await emit_audit_batch(
-                    self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+            entries = await self._audit.record_diff(
+                domain=cfg.domain, entity_type=cfg.entity_type,
+                entity_id=self._entity_id_str(entity),
+                entity_label=self._entity_label(entity),
+                old_obj=old_snapshot, new_obj=entity,
+                fields=list(old_snapshot.keys()),
+            )
+            if not entries:
+                await self._audit.record(
+                    domain=cfg.domain, entity_type=cfg.entity_type,
                     entity_id=self._entity_id_str(entity),
                     entity_label=self._entity_label(entity),
-                    changes=changes, actor=actor,
-                )
-            else:
-                await emit_audit(
-                    self.db, domain=cfg.domain, entity_type=cfg.entity_type,
-                    entity_id=self._entity_id_str(entity),
-                    entity_label=self._entity_label(entity),
-                    action="updated", actor=actor,
+                    action="updated",
                 )
 
         return entity
@@ -618,11 +612,10 @@ class TemplateCRUDService(Generic[T]):
         # Audit
         if self._audit_enabled:
             cfg = self.spec.audit_config
-            await emit_audit(
-                self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+            await self._audit.record(
+                domain=cfg.domain, entity_type=cfg.entity_type,
                 entity_id=audit_eid, entity_label=audit_label,
                 action="deactivated" if is_soft else "deleted",
-                actor=self._resolve_actor(),
             )
 
         return True
