@@ -16,6 +16,7 @@ Protocol:
     Server -> Client:
         {"type": "connected", "user_id": ...}
         {"type": "heartbeat", "tab_id": "...", "task_id": "...", "action": "...", "detail": "..."}
+        {"type": "confirmation_request", "tab_id": "...", "confirmation_id": "...", "title": "...", ...}
         {"type": "result", "tab_id": "...", "ok": true, "response": "...", ...}
         {"type": "error", "tab_id": "...", "error": "..."}
         "pong"
@@ -279,6 +280,22 @@ async def _handle_message(
                     msg["task_id"] = task_id
                     task_id_sent = True
                 await websocket.send_json(msg)
+            elif event.get("type") == "confirmation_request":
+                msg = {
+                    "type": "confirmation_request",
+                    "tab_id": tab_id,
+                    "confirmation_id": event.get("confirmation_id", ""),
+                    "title": event.get("title", "Confirmation Required"),
+                    "description": event.get("description", ""),
+                    "tool_name": event.get("tool_name"),
+                    "tool_input": event.get("tool_input"),
+                    "timeout_s": event.get("timeout_s"),
+                }
+                # Forward interaction type fields for choice/text_input prompts
+                for key in ("interaction_type", "choices", "placeholder"):
+                    if event.get(key) is not None:
+                        msg[key] = event[key]
+                await websocket.send_json(msg)
             elif event.get("type") == "result":
                 duration_ms = int((time.monotonic() - start) * 1000)
                 response_text = extract_response_text(event)
@@ -294,8 +311,8 @@ async def _handle_message(
                         engine=engine, label=message[:60],
                         profile_id=resolved_profile_id,
                         scope_key=chat_scope_key,
-                        last_plan_id=chat_plan_id,
-                        last_contract_id=chat_contract_id,
+                        last_plan_id=chat_plan_id or "",
+                        last_contract_id=chat_contract_id or "",
                         increment_messages=True,
                         source="chat",
                     ))
@@ -562,6 +579,19 @@ async def websocket_chat(
                     "ok": False,
                     **_error_payload("cancelled", code="cancelled"),
                 })
+
+            elif msg_type == "confirmation_response":
+                # User responded to a prompt — resolve the gate with full response
+                from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+                conf_id = data.get("confirmation_id", "")
+                approved = bool(data.get("approved", False))
+                extra = {}
+                if data.get("choice") is not None:
+                    extra["choice"] = data["choice"]
+                if data.get("text") is not None:
+                    extra["text"] = data["text"]
+                if conf_id:
+                    remote_cmd_bridge.resolve_confirmation(conf_id, approved, **extra)
 
             elif msg_type == "reconnect":
                 tab_id = data.get("tab_id", "")

@@ -2070,8 +2070,8 @@ async def send_message_to_agent_stream(
                             engine=payload.engine, label=payload.message[:60],
                             profile_id=payload.assistant_id,
                             scope_key=chat_scope_key,
-                            last_plan_id=chat_plan_id,
-                            last_contract_id=chat_contract_id,
+                            last_plan_id=chat_plan_id or "",
+                            last_contract_id=chat_contract_id or "",
                         ))
                     yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'bridge_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
@@ -2141,9 +2141,10 @@ async def _upsert_chat_session(
                 if scope_key is not None:
                     existing.scope_key = scope_key
                 if last_plan_id is not None:
-                    existing.last_plan_id = last_plan_id
+                    # Empty string means "clear" — normalize to None for DB
+                    existing.last_plan_id = last_plan_id or None
                 if last_contract_id is not None:
-                    existing.last_contract_id = last_contract_id
+                    existing.last_contract_id = last_contract_id or None
                 if source and not existing.source:
                     existing.source = source  # set once, don't overwrite
                 if cli_session_id:
@@ -2332,8 +2333,8 @@ async def _send_via_bridge(
                 label=payload.message[:60],
                 profile_id=payload.assistant_id,
                 scope_key=chat_scope_key,
-                last_plan_id=chat_plan_id,
-                last_contract_id=chat_contract_id,
+                last_plan_id=chat_plan_id or "",
+                last_contract_id=chat_contract_id or "",
             )
         return SendMessageResponse(
             ok=True,
