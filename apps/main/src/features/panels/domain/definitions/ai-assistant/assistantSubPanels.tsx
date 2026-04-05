@@ -659,12 +659,17 @@ export function WorkSummaryBadge({ sessionId }: { sessionId: string | null }) {
   useEffect(() => {
     if (!sessionId) { setSummaries([]); return; }
     let cancelled = false;
-    pixsimClient.get<{ entries: WorkSummaryEntry[] }>('/meta/agents/history', {
-      params: { session_id: sessionId, action: 'work_summary', limit: 20 },
-    }).then((res) => {
-      if (!cancelled) setSummaries(res.entries ?? []);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    const fetchSummaries = () => {
+      pixsimClient.get<{ entries: WorkSummaryEntry[] }>('/meta/agents/history', {
+        params: { session_id: sessionId, action: 'work_summary', limit: 20 },
+      }).then((res) => {
+        if (!cancelled) setSummaries(res.entries ?? []);
+      }).catch(() => {});
+    };
+    fetchSummaries();
+    // Poll every 30s so new summaries appear without manual refresh
+    const interval = setInterval(fetchSummaries, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [sessionId]);
 
   if (summaries.length === 0) return null;
