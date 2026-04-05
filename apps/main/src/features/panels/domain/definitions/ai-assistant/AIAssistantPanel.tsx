@@ -56,7 +56,7 @@ import {
   renderBridgeError,
   extractReferenceScope,
 } from './assistantTypes';
-import { MessageBubble, ThinkingBlock } from './ChatMessageComponents';
+import { MessageBubble, ThinkingBlock, ConfirmationCard } from './ChatMessageComponents';
 import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
 import { SessionItem } from './SessionItem';
 
@@ -428,11 +428,56 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               {thinkingEntries.length > 0 && (
                 <ThinkingBlock entries={thinkingEntries} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
               )}
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
+              {bridgeReq?.pendingConfirmation ? (
+                <ConfirmationCard
+                  title={bridgeReq.pendingConfirmation.title}
+                  description={bridgeReq.pendingConfirmation.description}
+                  toolName={bridgeReq.pendingConfirmation.toolName}
+                  toolInput={bridgeReq.pendingConfirmation.toolInput}
+                  interactionType={bridgeReq.pendingConfirmation.interactionType}
+                  choices={bridgeReq.pendingConfirmation.choices}
+                  placeholder={bridgeReq.pendingConfirmation.placeholder}
+                  onApprove={() => {
+                    const conf = bridgeReq.pendingConfirmation!;
+                    chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true);
+                    useAssistantChatStore.getState().appendMessage(tab.id, {
+                      role: 'system', text: `Approved: ${conf.toolName || conf.title}`, timestamp: new Date(),
+                      confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, toolName: conf.toolName, resolved: 'approved' },
+                    });
+                  }}
+                  onDeny={() => {
+                    const conf = bridgeReq.pendingConfirmation!;
+                    chatBridge.respondToConfirmation(tab.id, conf.confirmationId, false);
+                    useAssistantChatStore.getState().appendMessage(tab.id, {
+                      role: 'system', text: `Denied: ${conf.toolName || conf.title}`, timestamp: new Date(),
+                      confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, toolName: conf.toolName, resolved: 'denied' },
+                    });
+                  }}
+                  onChoice={(choiceId) => {
+                    const conf = bridgeReq.pendingConfirmation!;
+                    const label = conf.choices?.find((c) => c.id === choiceId)?.label || choiceId;
+                    chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true, { choice: choiceId });
+                    useAssistantChatStore.getState().appendMessage(tab.id, {
+                      role: 'system', text: `Selected: ${label}`, timestamp: new Date(),
+                      confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, resolved: 'approved' },
+                    });
+                  }}
+                  onTextSubmit={(text) => {
+                    const conf = bridgeReq.pendingConfirmation!;
+                    chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true, { text });
+                    useAssistantChatStore.getState().appendMessage(tab.id, {
+                      role: 'system', text: `Responded: ${text}`, timestamp: new Date(),
+                      confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, resolved: 'approved' },
+                    });
+                  }}
+                />
+              ) : (
+                <div className="flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              )}
             </div>
             <button
               onClick={() => chatBridge.cancel(tab.id)}
@@ -641,7 +686,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           </button>
 
           {/* Work summaries */}
-          <WorkSummaryBadge sessionId={tab.sessionId} />
+          <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} />
 
           {/* Session ID */}
           {tab.sessionId && (

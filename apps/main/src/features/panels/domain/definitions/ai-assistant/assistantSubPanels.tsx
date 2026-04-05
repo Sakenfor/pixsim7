@@ -653,24 +653,20 @@ function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
   );
 }
 
-export function WorkSummaryBadge({ sessionId }: { sessionId: string | null }) {
+export function WorkSummaryBadge({ sessionId, messageCount }: { sessionId: string | null; messageCount?: number }) {
   const [summaries, setSummaries] = useState<WorkSummaryEntry[]>([]);
 
+  // Re-fetch when session changes or new messages arrive (agent finished work)
   useEffect(() => {
     if (!sessionId) { setSummaries([]); return; }
     let cancelled = false;
-    const fetchSummaries = () => {
-      pixsimClient.get<{ entries: WorkSummaryEntry[] }>('/meta/agents/history', {
-        params: { session_id: sessionId, action: 'work_summary', limit: 20 },
-      }).then((res) => {
-        if (!cancelled) setSummaries(res.entries ?? []);
-      }).catch(() => {});
-    };
-    fetchSummaries();
-    // Poll every 30s so new summaries appear without manual refresh
-    const interval = setInterval(fetchSummaries, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [sessionId]);
+    pixsimClient.get<{ entries: WorkSummaryEntry[] }>('/meta/agents/history', {
+      params: { session_id: sessionId, action: 'work_summary', limit: 20 },
+    }).then((res) => {
+      if (!cancelled) setSummaries(res.entries ?? []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId, messageCount]);
 
   if (summaries.length === 0) return null;
 
