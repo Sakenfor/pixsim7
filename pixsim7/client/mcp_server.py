@@ -37,6 +37,8 @@ API_URL = os.environ.get("PIXSIM_API_URL", "http://localhost:8000")
 API_TOKEN = os.environ.get("PIXSIM_API_TOKEN", "")
 API_TOKEN_FILE = os.environ.get("PIXSIM_TOKEN_FILE", "")  # Per-request token file
 API_SCOPE = os.environ.get("PIXSIM_SCOPE", "")  # "user", "dev", or comma-separated contract IDs; empty = all
+MCP_APPROVAL_TOOLS = os.environ.get("PIXSIM_MCP_APPROVAL_TOOLS", "")  # comma-separated tool names requiring approval
+HOOK_PORT = os.environ.get("PIXSIM_HOOK_PORT", "")  # bridge hook server port for confirmations
 
 
 def _get_login_token() -> str:
@@ -209,6 +211,7 @@ _ALWAYS_INCLUDED_TOOLS: tuple[str, ...] = (
     "register_session",
     "log_work",
     "call_api",
+    "ask_user",
 )
 
 
@@ -227,6 +230,9 @@ def resolve_enabled_tool_names_for_focus(
     - Focused contracts
     - Core contracts (always)
     - Built-in tools (`register_session`, `log_work`, `call_api`)
+
+    In grouped mode, returns the contract-level tool name (e.g. `blocks_discovery`).
+    In fine-grained mode, returns per-endpoint tool names.
 
     Uses contract-level ``tool_names`` from meta/contracts when present,
     with endpoint-based fallback for older payloads.
@@ -254,6 +260,11 @@ def resolve_enabled_tool_names_for_focus(
     for contract in contracts:
         contract_id = _normalize_contract_id(contract.get("id", ""))
         if not contract_id or contract_id not in include_contract_ids:
+            continue
+
+        if MCP_GROUPED:
+            # In grouped mode, the tool name is the sanitized contract ID
+            _add(_sanitize_tool_fragment(contract_id))
             continue
 
         # Preferred source (from /api/v1/meta/contracts)
@@ -324,6 +335,87 @@ async def _fetch_contracts() -> list[dict]:
         return []
 
 
+MCP_GROUPED = os.environ.get("PIXSIM_MCP_GROUPED", "1").strip() in ("1", "true", "yes")
+
+
+def _build_grouped_tool(
+    contract_id: str,
+    contract_name: str,
+    endpoints: list[dict[str, Any]],
+) -> tuple[types.Tool, dict[str, dict[str, Any]]]:
+    """Build a single MCP tool from all endpoints in a contract.
+
+    Returns (Tool, routes_dict) where routes_dict maps endpoint_id to
+    route metadata for the call handler.
+    """
+    tool_name = _sanitize_tool_fragment(contract_id)
+
+    # Build endpoint enum and descriptions for the tool schema
+    endpoint_entries = []
+    routes: dict[str, dict[str, Any]] = {}
+    lines = [f"{contract_name}\n\nEndpoints:"]
+
+    for ep in endpoints:
+        ep_id = ep.get("id", "")
+        method = ep.get("method", "GET")
+        path = ep.get("path", "")
+        summary = ep.get("summary", "")
+
+        if not ep_id or not path or not path.startswith("/"):
+            continue
+        availability = ep.get("availability") or {}
+        if availability.get("status") == "disabled":
+            continue
+
+        endpoint_entries.append(ep_id)
+        routes[ep_id] = {
+            "method": method,
+            "path_template": path,
+            "summary": summary,
+        }
+        lines.append(f"- {ep_id}: {method} {path} — {summary}")
+
+    if not endpoint_entries:
+        return None, {}  # type: ignore[return-value]
+
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "endpoint": {
+                "type": "string",
+                "enum": endpoint_entries,
+                "description": "Which endpoint to call",
+            },
+            "params": {
+                "type": "object",
+                "description": "Query parameters (for GET endpoints)",
+            },
+            "body": {
+                "type": "object",
+                "description": "Request body (for POST/PATCH endpoints)",
+            },
+        },
+        "required": ["endpoint"],
+    }
+
+    # Add path parameter properties (union of all endpoints)
+    all_path_params: set[str] = set()
+    for ep_routes in routes.values():
+        all_path_params.update(_path_params(ep_routes["path_template"]))
+    for param in sorted(all_path_params):
+        schema["properties"][param] = {
+            "type": "string",
+            "description": f"Path parameter: {param}",
+        }
+
+    tool = types.Tool(
+        name=tool_name,
+        description="\n".join(lines),
+        inputSchema=schema,
+    )
+    return tool, routes
+
+
 async def _init_tools() -> None:
     """Populate dynamic tools from meta contracts."""
     global _initialized, _contracts_cache
@@ -334,53 +426,90 @@ async def _init_tools() -> None:
     _contracts_cache = contracts
     seen_tool_names: set[str] = set()
 
-    for contract in contracts:
-        contract_id = contract.get("id", "")
-        for ep in contract.get("sub_endpoints", []):
-            ep_id = ep.get("id", "")
-            method = ep.get("method", "GET")
-            path = ep.get("path", "")
-            summary = ep.get("summary", "")
-            availability = ep.get("availability") or {}
+    if MCP_GROUPED:
+        # ── Grouped mode: one tool per contract ──
+        for contract in contracts:
+            contract_id = contract.get("id", "")
+            contract_name = contract.get("name", contract_id)
+            endpoints = contract.get("sub_endpoints", [])
 
-            if not ep_id or not path:
+            result = _build_grouped_tool(contract_id, contract_name, endpoints)
+            if result[0] is None:
                 continue
+            tool, routes = result
 
-            # Skip non-API paths (e.g. filesystem references)
-            if not path.startswith("/"):
-                continue
-
-            # Skip endpoints explicitly marked disabled in runtime metadata.
-            if availability.get("status") == "disabled":
-                continue
-
-            base_tool_name = _make_tool_name(contract_id, ep_id)
-            tool_name = _unique_tool_name(base_tool_name, seen_tool_names)
+            tool_name = tool.name
+            tool_name = _unique_tool_name(tool_name, seen_tool_names)
+            if tool_name != tool.name:
+                tool = types.Tool(
+                    name=tool_name,
+                    description=tool.description,
+                    inputSchema=tool.inputSchema,
+                )
             seen_tool_names.add(tool_name)
 
-            input_schema = ep.get("input_schema")
-            if not isinstance(input_schema, dict):
-                input_schema = _build_input_schema(method, path)
+            # Store routes keyed by "toolname::endpoint_id" for the call handler
+            for ep_id, route in routes.items():
+                _dynamic_routes[f"{tool_name}::{ep_id}"] = route
 
-            _dynamic_routes[tool_name] = {
-                "method": method,
-                "path_template": path,
-                "summary": summary,
-            }
-            _dynamic_tools.append(types.Tool(
-                name=tool_name,
-                description=f"[{contract_id}] {summary}" if summary else f"{method} {path}",
-                inputSchema=input_schema,
-            ))
+            # Also store a marker so the call handler knows this is a grouped tool
+            _dynamic_routes[f"_grouped::{tool_name}"] = {"grouped": True}
 
-            # Backward-compat alias for previously endpoint-only names.
-            legacy_name = _make_legacy_tool_name(ep_id)
-            if (
-                legacy_name != tool_name
-                and legacy_name not in _dynamic_routes
-                and legacy_name not in _tool_aliases
-            ):
-                _tool_aliases[legacy_name] = tool_name
+            _dynamic_tools.append(tool)
+
+            # Legacy aliases: map old fine-grained names to grouped tool
+            for ep_id in routes:
+                old_name = _make_tool_name(contract_id, ep_id)
+                if old_name not in _tool_aliases:
+                    _tool_aliases[old_name] = f"{tool_name}::{ep_id}"
+                legacy = _make_legacy_tool_name(ep_id)
+                if legacy not in _tool_aliases:
+                    _tool_aliases[legacy] = f"{tool_name}::{ep_id}"
+
+    else:
+        # ── Fine-grained mode: one tool per endpoint (original behavior) ──
+        for contract in contracts:
+            contract_id = contract.get("id", "")
+            for ep in contract.get("sub_endpoints", []):
+                ep_id = ep.get("id", "")
+                method = ep.get("method", "GET")
+                path = ep.get("path", "")
+                summary = ep.get("summary", "")
+                availability = ep.get("availability") or {}
+
+                if not ep_id or not path:
+                    continue
+                if not path.startswith("/"):
+                    continue
+                if availability.get("status") == "disabled":
+                    continue
+
+                base_tool_name = _make_tool_name(contract_id, ep_id)
+                tool_name = _unique_tool_name(base_tool_name, seen_tool_names)
+                seen_tool_names.add(tool_name)
+
+                input_schema = ep.get("input_schema")
+                if not isinstance(input_schema, dict):
+                    input_schema = _build_input_schema(method, path)
+
+                _dynamic_routes[tool_name] = {
+                    "method": method,
+                    "path_template": path,
+                    "summary": summary,
+                }
+                _dynamic_tools.append(types.Tool(
+                    name=tool_name,
+                    description=f"[{contract_id}] {summary}" if summary else f"{method} {path}",
+                    inputSchema=input_schema,
+                ))
+
+                legacy_name = _make_legacy_tool_name(ep_id)
+                if (
+                    legacy_name != tool_name
+                    and legacy_name not in _dynamic_routes
+                    and legacy_name not in _tool_aliases
+                ):
+                    _tool_aliases[legacy_name] = tool_name
 
     # Always add the generic escape hatch
     _dynamic_tools.append(types.Tool(
@@ -409,9 +538,10 @@ async def _init_tools() -> None:
     ))
 
     _initialized = True
+    mode = "grouped" if MCP_GROUPED else "fine-grained"
     print(
-        f"[pixsim-mcp] Loaded {len(_dynamic_routes)} tools from "
-        f"{len(contracts)} contracts",
+        f"[pixsim-mcp] Loaded {len(_dynamic_tools) - 1} tools from "
+        f"{len(contracts)} contracts ({mode} mode)",
         file=sys.stderr,
     )
 
@@ -488,6 +618,55 @@ _REGISTER_SESSION_TOOL = types.Tool(
                 "description": "Optional stable ID. Defaults to a generated one if omitted.",
             },
         },
+    },
+)
+
+
+_ASK_USER_TOOL = types.Tool(
+    name="ask_user",
+    description=(
+        "Prompt the user for input via the assistant panel UI. "
+        "Supports three interaction types: approve_deny (yes/no), "
+        "choice (pick from options), and text_input (free-text). "
+        "The tool blocks until the user responds. Use this when you need "
+        "clarification, confirmation, or a decision from the user."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Short title for the prompt (shown as header)",
+            },
+            "description": {
+                "type": "string",
+                "description": "Detailed description or question for the user",
+            },
+            "interaction_type": {
+                "type": "string",
+                "enum": ["approve_deny", "choice", "text_input"],
+                "description": "Type of interaction: approve_deny (yes/no buttons), choice (pick one option), text_input (free text field)",
+                "default": "approve_deny",
+            },
+            "choices": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string", "description": "Unique choice identifier"},
+                        "label": {"type": "string", "description": "Display label"},
+                        "description": {"type": "string", "description": "Optional description"},
+                    },
+                    "required": ["id", "label"],
+                },
+                "description": "Available choices (only for interaction_type=choice)",
+            },
+            "placeholder": {
+                "type": "string",
+                "description": "Placeholder text for text input field (only for interaction_type=text_input)",
+            },
+        },
+        "required": ["title"],
     },
 )
 
@@ -658,12 +837,23 @@ def _normalize_scope_key(scope_key: str | None) -> str | None:
 
 
 def _read_session_sidecar() -> str | None:
-    """Read the chat session ID from the sidecar file written by the bridge pool.
+    """Read the chat session ID written by the bridge before each task dispatch.
 
-    The bridge writes ``{token_file}.session`` alongside the token file before
-    each message dispatch, giving the MCP server a deterministic identity
-    instead of guessing via API queries.
+    Checks two locations:
+    1. ``~/.pixsim/bridge_chat_session`` — shared HTTP MCP mode (bridge writes here)
+    2. ``{PIXSIM_TOKEN_FILE}.session`` — legacy STDIO mode (pool writes per-session)
     """
+    # HTTP mode: fixed well-known path
+    try:
+        from pathlib import Path
+        fixed = Path.home() / ".pixsim" / "bridge_chat_session"
+        if fixed.exists():
+            value = fixed.read_text().strip()
+            if value:
+                return value
+    except OSError:
+        pass
+    # STDIO fallback: per-session sidecar
     token_file = os.environ.get("PIXSIM_TOKEN_FILE", "").strip()
     if not token_file:
         return None
@@ -883,13 +1073,64 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     return [types.TextContent(type="text", text="\n".join(results))]
 
 
+async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Prompt the user via the hook server and return their response."""
+    port = _get_hook_port()
+    if not port:
+        return [types.TextContent(type="text", text="Cannot prompt user: hook server not available. The bridge must be running with the hook server enabled.")]
+
+    title = arguments.get("title", "Agent Question")
+    description = arguments.get("description", "")
+    interaction_type = arguments.get("interaction_type", "approve_deny")
+    choices = arguments.get("choices")
+    placeholder = arguments.get("placeholder")
+
+    payload: dict[str, Any] = {
+        "title": title,
+        "description": description,
+        "interaction_type": interaction_type,
+        "timeout_s": 120,
+    }
+    if choices:
+        payload["choices"] = choices
+    if placeholder:
+        payload["placeholder"] = placeholder
+
+    try:
+        client = httpx.AsyncClient(timeout=130)
+        resp = await client.post(f"http://127.0.0.1:{port}/confirm", json=payload)
+        await client.aclose()
+        if resp.status_code == 200:
+            data = resp.json()
+            approved = data.get("approved", False)
+            if not approved:
+                return [types.TextContent(type="text", text="User declined / cancelled the prompt.")]
+            # Return the response based on interaction type
+            if interaction_type == "choice":
+                choice = data.get("choice", "")
+                label = choice
+                if choices:
+                    match = next((c for c in choices if c.get("id") == choice), None)
+                    if match:
+                        label = match.get("label", choice)
+                return [types.TextContent(type="text", text=f"User selected: {label} (id: {choice})")]
+            elif interaction_type == "text_input":
+                text = data.get("text", "")
+                return [types.TextContent(type="text", text=f"User responded: {text}")]
+            else:
+                return [types.TextContent(type="text", text="User approved.")]
+        return [types.TextContent(type="text", text=f"Hook server returned status {resp.status_code}")]
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Failed to prompt user: {e}")]
+
+
 # ── Handlers ──────────────────────────────────────────────────────
 
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
-    all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools
+    all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL, _ASK_USER_TOOL] + _dynamic_tools
 
     # In HTTP mode, filter tools by the per-request scope header
     scope = _request_scope.get()
@@ -1000,6 +1241,67 @@ async def _auto_register_if_needed() -> None:
         pass  # Non-fatal — tool call proceeds regardless
 
 
+def _tool_needs_approval(tool_name: str, approval_set: set[str]) -> bool:
+    """Check if a tool matches the approval set (full name or short suffix)."""
+    if tool_name in approval_set:
+        return True
+    # Check short form: "species_create" matches "blocks_discovery__species_create"
+    suffix = tool_name.split("__", 1)[-1] if "__" in tool_name else ""
+    return suffix in approval_set if suffix else False
+
+
+def _get_mcp_approval_set() -> set[str]:
+    """Parse the MCP approval tools list. Checks env var and hook port file."""
+    raw = MCP_APPROVAL_TOOLS.strip()
+    if not raw:
+        return set()
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
+def _get_hook_port() -> int | None:
+    """Resolve the hook server port from env var or well-known file."""
+    if HOOK_PORT:
+        try:
+            return int(HOOK_PORT)
+        except ValueError:
+            pass
+    try:
+        from pathlib import Path
+        port_file = Path.home() / ".pixsim" / "hook_port"
+        if port_file.exists():
+            return int(port_file.read_text().strip())
+    except Exception:
+        pass
+    return None
+
+
+async def _request_mcp_tool_approval(tool_name: str, arguments: dict) -> bool:
+    """Ask the bridge hook server for user approval. Returns True if approved."""
+    port = _get_hook_port()
+    if not port:
+        return True  # no hook server — auto-approve (fail-open)
+
+    try:
+        client = httpx.AsyncClient(timeout=130)
+        resp = await client.post(
+            f"http://127.0.0.1:{port}/confirm",
+            json={
+                "tool_name": tool_name,
+                "tool_input": arguments,
+                "title": f"MCP Tool: {tool_name}",
+                "description": f"The agent wants to call {tool_name}",
+                "timeout_s": 120,
+            },
+        )
+        await client.aclose()
+        if resp.status_code == 200:
+            return resp.json().get("approved", False)
+        return True  # non-200 — fail-open
+    except Exception as e:
+        print(f"[pixsim-mcp] Approval request failed: {e}", file=sys.stderr)
+        return True  # fail-open
+
+
 @server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
@@ -1010,11 +1312,21 @@ async def handle_call_tool(
     # Signal activity on every tool call (fire-and-forget)
     asyncio.ensure_future(_signal_tool_activity(name))
 
+    # MCP tool approval gate — check if this tool requires user confirmation.
+    # Matches full name (blocks_discovery__species_create) or short suffix (species_create).
+    approval_set = _get_mcp_approval_set()
+    if approval_set and _tool_needs_approval(name, approval_set):
+        approved = await _request_mcp_tool_approval(name, arguments)
+        if not approved:
+            return [types.TextContent(type="text", text=f"Tool call denied by user: {name}")]
+
     # Built-in tools
     if name == "register_session":
         return await _handle_register_session(arguments)
     if name == "log_work":
         return await _handle_log_work(arguments)
+    if name == "ask_user":
+        return await _handle_ask_user(arguments)
 
     # Generic escape-hatch tool
     if name == "call_api":
@@ -1025,8 +1337,49 @@ async def handle_call_tool(
             body=arguments.get("body"),
         )
 
+    # ── Grouped tool dispatch ──
+    # If this tool name has a grouped marker, resolve the endpoint from the
+    # "endpoint" argument and look up the route as "toolname::endpoint_id".
+    if _dynamic_routes.get(f"_grouped::{name}"):
+        endpoint_id = arguments.get("endpoint")
+        if not endpoint_id:
+            return [types.TextContent(type="text", text=f"Missing 'endpoint' parameter for grouped tool: {name}")]
+
+        route_key = f"{name}::{endpoint_id}"
+        route = _dynamic_routes.get(route_key)
+        if not route:
+            return [types.TextContent(type="text", text=f"Unknown endpoint '{endpoint_id}' in tool {name}")]
+
+        method = route["method"]
+        path_template = route["path_template"]
+
+        path = path_template
+        remaining = dict(arguments)
+        remaining.pop("endpoint", None)
+        for key in list(remaining):
+            placeholder = f"{{{key}}}"
+            if placeholder in path:
+                path = path.replace(placeholder, str(remaining.pop(key)))
+
+        if method == "GET":
+            query = remaining.pop("params", None) or remaining or None
+            return await _proxy(method="GET", path=path, query_params=query)
+        else:
+            body = remaining.pop("body", remaining or None)
+            return await _proxy(method=method, path=path, body=body)
+
+    # ── Fine-grained tool dispatch (original) ──
     resolved_name = _tool_aliases.get(name, name)
-    route = _dynamic_routes.get(resolved_name)
+
+    # Handle aliases that point to grouped routes (e.g. "toolname::endpoint_id")
+    if "::" in resolved_name:
+        tool_name, endpoint_id = resolved_name.split("::", 1)
+        route = _dynamic_routes.get(resolved_name)
+        if not route:
+            return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
+    else:
+        route = _dynamic_routes.get(resolved_name)
+
     if not route:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -1285,9 +1638,28 @@ def _build_http_app(mcp_path: str = "/mcp") -> Any:
     async def handle_health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "transport": "http", "tools": len(_dynamic_tools)})
 
+    async def handle_tools(request: Request) -> JSONResponse:
+        """Return the list of available MCP tool names with group info."""
+        await _init_tools()
+        tools = []
+        for t in [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools:
+            full_name = t.name
+            if "__" in full_name:
+                group, short_name = full_name.split("__", 1)
+            else:
+                group, short_name = "built_in", full_name
+            tools.append({
+                "name": full_name,
+                "short_name": short_name,
+                "group": group,
+                "description": t.description or "",
+            })
+        return JSONResponse({"tools": tools, "total": len(tools)})
+
     app = Starlette(
         routes=[
             Route("/health", handle_health, methods=["GET"]),
+            Route("/tools", handle_tools, methods=["GET"]),
             Mount(mcp_path, app=session_manager.handle_request),
         ],
         middleware=[Middleware(RequestContextMiddleware)],

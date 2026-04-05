@@ -909,6 +909,17 @@ class Bridge:
             if preamble_parts:
                 prompt = "\n\n".join(preamble_parts) + "\n\n" + prompt
 
+        # Write chat session ID to sidecar so the shared HTTP MCP server can
+        # attribute log_work and other tools to the correct session.
+        if meta["bridge_session_id"]:
+            try:
+                from pathlib import Path
+                sidecar_path = Path.home() / ".pixsim" / "bridge_chat_session"
+                sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+                sidecar_path.write_text(meta["bridge_session_id"])
+            except OSError:
+                pass
+
         # Report busy (use original user text, not persona-prefixed prompt)
         user_text = msg.get("instruction") or msg.get("prompt", "")
         hb_base: dict[str, object] = {"type": "heartbeat", "task_id": task_id, "status": "active"}
