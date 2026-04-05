@@ -1256,7 +1256,26 @@ def _tool_needs_approval(tool_name: str, approval_set: set[str]) -> bool:
 
 
 def _get_mcp_approval_set() -> set[str]:
-    """Parse the MCP approval tools list. Checks env var and hook port file."""
+    """Read the MCP approval tools list.
+
+    Resolution order:
+    1. Persisted service settings file (live — reflects launcher UI changes without restart)
+    2. PIXSIM_MCP_APPROVAL_TOOLS env var (fallback — set at bridge startup)
+    """
+    # 1. Read from persisted settings file (data/launcher/service_settings/ai-client.json)
+    try:
+        from pathlib import Path as _Path
+        # Derive project root from this file's location: pixsim7/client/mcp_server.py → 2 levels up
+        project_root = _Path(__file__).resolve().parents[2]
+        settings_file = project_root / "data" / "launcher" / "service_settings" / "ai-client.json"
+        if settings_file.exists():
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            tools = data.get("mcp_approval_tools", [])
+            if isinstance(tools, list) and tools:
+                return {str(t).strip() for t in tools if t}
+    except Exception:
+        pass
+    # 2. Fallback to env var
     raw = MCP_APPROVAL_TOOLS.strip()
     if not raw:
         return set()

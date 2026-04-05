@@ -304,6 +304,74 @@ def render_codex_mcp_config(
     return "\n".join(lines)
 
 
+def render_codex_mcp_http_config(
+    *,
+    mcp_url: str,
+    api_token: str = "",
+    scope: str = "",
+    enabled_tools: list[str] | None = None,
+) -> str:
+    """Render a Codex-compatible MCP config pointing to an HTTP MCP server.
+
+    Instead of ``command``/``args`` (STDIO), uses ``url`` (HTTP).
+    Returns TOML string for ``<workdir>/.codex/config.toml``.
+    """
+    lines: list[str] = [
+        "[mcp_servers.pixsim]",
+        f"url = {_toml_quote(mcp_url)}",
+    ]
+    if enabled_tools is not None:
+        sorted_tools = sorted({tool for tool in enabled_tools if tool})
+        lines.append(f"enabled_tools = {_toml_string_list(sorted_tools)}")
+
+    # Headers for per-request context
+    headers: dict[str, str] = {}
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+    if scope:
+        headers["X-Scope-Key"] = scope
+    if headers:
+        lines.append("")
+        lines.append("[mcp_servers.pixsim.headers]")
+        for key, value in headers.items():
+            lines.append(f"{_toml_quote(key)} = {_toml_quote(value)}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_codex_mcp_http_config(
+    *,
+    mcp_url: str,
+    api_token: str = "",
+    scope: str = "",
+    enabled_tools: list[str] | None = None,
+    workdir: str | Path,
+) -> str:
+    """Write an HTTP-based Codex MCP config to ``<workdir>/.codex/config.toml``.
+
+    Returns the config file path. Only writes if content changed.
+    """
+    content = render_codex_mcp_http_config(
+        mcp_url=mcp_url,
+        api_token=api_token,
+        scope=scope,
+        enabled_tools=enabled_tools,
+    )
+    codex_dir = Path(workdir) / ".codex"
+    codex_dir.mkdir(parents=True, exist_ok=True)
+    config_path = codex_dir / "config.toml"
+    existing = ""
+    if config_path.exists():
+        try:
+            existing = config_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    if existing != content:
+        config_path.write_text(content, encoding="utf-8")
+    return str(config_path)
+
+
 def write_codex_mcp_config(
     env: McpEnv,
     *,

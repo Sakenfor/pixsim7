@@ -762,6 +762,21 @@ class Bridge:
             focus_hash = hashlib.sha1(f"{scope}|{focus_seed}".encode("utf-8")).hexdigest()[:12]
             workdir = self._repo_root / ".pixsim-codex" / f"{scope}-{focus_hash}"
 
+            # ── HTTP mode: shared MCP server is running ──
+            if self._mcp_http_url:
+                from pixsim7.client.token_manager import write_codex_mcp_http_config
+                config_path = write_codex_mcp_http_config(
+                    mcp_url=self._mcp_http_url,
+                    api_token=token,
+                    scope=scope,
+                    enabled_tools=enabled_tools,
+                    workdir=str(workdir),
+                )
+                get_logger().debug("codex_config_http", path=str(config_path))
+                self._codex_workdir_cache[cache_key] = str(workdir)
+                return str(workdir)
+
+            # ── STDIO fallback ──
             env = build_mcp_env(
                 api_base=api_base,
                 token_file=token_file,
