@@ -28,6 +28,78 @@ from ..dependencies import get_process_manager, get_health_manager
 router = APIRouter(prefix="/services", tags=["services"])
 
 
+def _enrich_mcp_tool_options(schema: list[dict]) -> list[dict]:
+    """Replace static mcp_approval_tools options with live grouped tool data from the MCP server."""
+    from pathlib import Path as _Path
+    import json as _json
+
+    try:
+        mcp_file = _Path.home() / ".pixsim" / "mcp_port"
+        if not mcp_file.exists():
+            return schema
+        port = int(mcp_file.read_text().strip())
+    except Exception:
+        return schema
+
+    try:
+        import urllib.request
+        resp = urllib.request.urlopen(f"http://127.0.0.1:{port}/tools", timeout=3)
+        data = _json.loads(resp.read())
+        raw_tools = data.get("tools", [])
+    except Exception:
+        return schema
+
+    if not raw_tools:
+        return schema
+
+    # Filter out built-in tools that aren't meaningful for approval
+    skip = {"register_session", "log_work", "call_api"}
+
+    # Build grouped structure: [{group, label, tools: [{name, short_name, description}]}]
+    from collections import OrderedDict
+    groups: OrderedDict[str, list[dict]] = OrderedDict()
+    for t in raw_tools:
+        if t["short_name"] in skip:
+            continue
+        group = t.get("group", "other")
+        groups.setdefault(group, []).append({
+            "name": t["short_name"],
+            "description": t.get("description", ""),
+        })
+
+    option_groups = [
+        {"group": g, "label": g.replace("_", " ").title(), "tools": tools}
+        for g, tools in groups.items()
+    ]
+    flat_options = [t["short_name"] for t in raw_tools if t["short_name"] not in skip]
+
+    # Enrich the field with both flat options (for value storage) and grouped options (for UI)
+    return [
+        {**f, "options": sorted(set(flat_options)), "option_groups": option_groups}
+        if f.get("key") == "mcp_approval_tools" else f
+        for f in schema
+    ]
+
+
+def _read_ai_client_extras() -> dict | None:
+    """Read hook + MCP server ports from well-known files (written by bridge)."""
+    from pathlib import Path
+    extras: dict = {}
+    try:
+        hook_file = Path.home() / ".pixsim" / "hook_port"
+        if hook_file.exists():
+            extras["hook_port"] = int(hook_file.read_text().strip())
+    except Exception:
+        pass
+    try:
+        mcp_file = Path.home() / ".pixsim" / "mcp_port"
+        if mcp_file.exists():
+            extras["mcp_port"] = int(mcp_file.read_text().strip())
+    except Exception:
+        pass
+    return extras or None
+
+
 def _infer_category(service_key: str) -> str:
     """Derive a category from the service key when not explicitly set."""
     if service_key.startswith("launcher"):
@@ -76,6 +148,10 @@ async def list_services(
             health = HealthStatusEnum.HEALTHY
             pid = pid or os.getpid()
 
+        extras = None
+        if key == "ai-client" and health == HealthStatusEnum.HEALTHY:
+            extras = _read_ai_client_extras()
+
         services.append(ServiceStateResponse(
             key=key,
             title=state.definition.title,
@@ -88,6 +164,7 @@ async def list_services(
             url=getattr(state.definition, 'url', None),
             dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
             category=getattr(state.definition, 'category', None) or _infer_category(key),
+            extras=extras,
         ))
 
     return ServicesListResponse(
@@ -411,4 +488,153 @@ async def stop_all_services(
         success=True,
         message=f"Stopped {stopped} services",
         service_key="all"
+    )
+
+
+# ── Per-service settings ──
+
+from ..models import (
+    SettingFieldResponse,
+    ServiceSettingsResponse,
+    ServiceSettingsUpdateRequest,
+)
+
+
+@router.get("/{service_key}/settings", response_model=ServiceSettingsResponse)
+async def get_service_settings(
+    service_key: str = Path(..., description="Service key"),
+    process_mgr: ProcessManager = Depends(get_process_manager),
+):
+    """Get the settings schema and current values for a service."""
+    state = process_mgr.get_state(service_key)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Service '{service_key}' not found")
+
+    from launcher.core.service_settings import parse_schema, load_persisted, get_effective
+
+    raw_schema = getattr(state.definition, "settings_schema", None)
+    schema = parse_schema(raw_schema)
+
+    # Enrich mcp_approval_tools options dynamically from running MCP server
+    if service_key == "ai-client":
+        schema = _enrich_mcp_tool_options(schema)
+
+    persisted = load_persisted(service_key)
+    values = get_effective(schema, persisted)
+
+    return ServiceSettingsResponse(
+        service_key=service_key,
+        schema=[SettingFieldResponse(**f) for f in schema],
+        values=values,
+    )
+
+
+@router.patch("/{service_key}/settings", response_model=ServiceSettingsResponse)
+async def update_service_settings(
+    service_key: str = Path(..., description="Service key"),
+    body: ServiceSettingsUpdateRequest = Body(...),
+    process_mgr: ProcessManager = Depends(get_process_manager),
+):
+    """Update settings for a service. Returns updated schema + values."""
+    state = process_mgr.get_state(service_key)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Service '{service_key}' not found")
+
+    from launcher.core.service_settings import (
+        parse_schema, load_persisted, save_persisted, get_effective, validate_update,
+    )
+
+    raw_schema = getattr(state.definition, "settings_schema", None)
+    schema = parse_schema(raw_schema)
+    if not schema:
+        raise HTTPException(status_code=400, detail="Service has no configurable settings")
+
+    validated = validate_update(schema, body.values)
+    persisted = load_persisted(service_key)
+    persisted.update(validated)
+    save_persisted(service_key, persisted)
+
+    # Enrich with dynamic options (same as GET)
+    if service_key == "ai-client":
+        schema = _enrich_mcp_tool_options(schema)
+
+    values = get_effective(schema, persisted)
+
+    return ServiceSettingsResponse(
+        service_key=service_key,
+        schema=[SettingFieldResponse(**f) for f in schema],
+        values=values,
+    )
+
+
+# ── Claude Code hook config writer ──
+
+from pydantic import BaseModel as _BaseModel
+
+
+class ApplyHookConfigRequest(_BaseModel):
+    hook_tools: List[str] = ["Bash", "Write", "Edit"]
+
+
+class ApplyHookConfigResponse(_BaseModel):
+    ok: bool
+    path: str
+    message: str
+
+
+@router.post("/{service_key}/apply-hook-config", response_model=ApplyHookConfigResponse)
+async def apply_hook_config(
+    service_key: str = Path(...),
+    body: ApplyHookConfigRequest = Body(...),
+):
+    """Merge PreToolUse hook config into the global Claude Code settings.json."""
+    if service_key != "ai-client":
+        raise HTTPException(status_code=400, detail="Hook config only applies to ai-client")
+
+    import json as _json
+    from pathlib import Path as _Path
+
+    settings_path = _Path.home() / ".claude" / "settings.json"
+
+    # Read existing
+    existing: dict = {}
+    if settings_path.exists():
+        try:
+            existing = _json.loads(settings_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing = {}
+
+    # Build the hook entry
+    matcher = "|".join(body.hook_tools) if body.hook_tools else "Bash|Write|Edit"
+    new_entry = {
+        "matcher": matcher,
+        "command": "python -m pixsim7.client.hook_pretool",
+    }
+
+    # Merge into hooks.PreToolUse — replace any existing pixsim hook, keep others
+    hooks = existing.setdefault("hooks", {})
+    pre_tool = hooks.get("PreToolUse", [])
+    if not isinstance(pre_tool, list):
+        pre_tool = []
+
+    # Remove any existing pixsim hook entries, preserve user's other hooks
+    pre_tool = [
+        h for h in pre_tool
+        if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
+    ]
+    pre_tool.append(new_entry)
+    hooks["PreToolUse"] = pre_tool
+    existing["hooks"] = hooks
+
+    # Write
+    try:
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write {settings_path}: {e}")
+
+    return ApplyHookConfigResponse(
+        ok=True,
+        path=str(settings_path),
+        message=f"Saved PreToolUse hook ({matcher}) to {settings_path}",
     )

@@ -58,6 +58,8 @@ class ServiceDef:
     auto_start: bool = False
     # Peer relationship
     dev_peer_of: Optional[str] = None
+    # Per-service settings schema
+    settings_schema: Optional[List] = None
 
 
 def _iter_package_json_paths(root: Path) -> Iterable[Path]:
@@ -310,6 +312,7 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         auto_start=service_config.get("auto_start", False),
         openapi_url=openapi_url,
         openapi_types_path=openapi_types_path,
+        settings_schema=service_config.get("settings"),
     )
 
 
@@ -349,6 +352,7 @@ def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
         dev_peer_of=service_config.get("dev_peer_of"),
+        settings_schema=service_config.get("settings"),
     )
 
 
@@ -387,6 +391,7 @@ def _convert_worker_service_to_def(service_config: Dict, ports) -> ServiceDef:
         depends_on=service_config.get("depends_on", []),
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
+        settings_schema=service_config.get("settings"),
     )
 
 
@@ -412,6 +417,7 @@ def _convert_docker_compose_service_to_def(service_config: Dict, ports) -> Servi
         depends_on=service_config.get("depends_on", []),
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
+        settings_schema=service_config.get("settings"),
     )
 
 

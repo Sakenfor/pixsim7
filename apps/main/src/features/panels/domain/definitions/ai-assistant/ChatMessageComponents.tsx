@@ -173,6 +173,147 @@ export function ThinkingBlock({ entries, live, userMessage }: { entries: Array<{
 }
 
 // =============================================================================
+// Agent Prompt Card — inline prompt from agent (approve/deny, choice, text input)
+// =============================================================================
+
+import type { AgentPromptType, AgentPromptChoice } from './assistantChatBridge';
+
+/** Live agent prompt — rendered in the sending area while agent is blocked. */
+export function ConfirmationCard({
+  title,
+  description,
+  toolName,
+  toolInput,
+  interactionType = 'approve_deny',
+  choices,
+  placeholder,
+  onApprove,
+  onDeny,
+  onChoice,
+  onTextSubmit,
+}: {
+  title: string;
+  description: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  interactionType?: AgentPromptType;
+  choices?: AgentPromptChoice[];
+  placeholder?: string;
+  onApprove: () => void;
+  onDeny: () => void;
+  onChoice?: (choiceId: string) => void;
+  onTextSubmit?: (text: string) => void;
+}) {
+  const [textValue, setTextValue] = useState('');
+
+  return (
+    <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Icon name="alertCircle" size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />
+        <span className="text-xs font-medium text-amber-800 dark:text-amber-200">{title}</span>
+      </div>
+      {description && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">{description}</p>
+      )}
+      {toolName && (
+        <div className="rounded-lg bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1.5 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Icon name="terminal" size={10} className="text-amber-600 dark:text-amber-400" />
+            <code className="text-[10px] font-mono font-medium text-amber-800 dark:text-amber-200">{toolName}</code>
+          </div>
+          {toolInput && Object.keys(toolInput).length > 0 && (
+            <pre className="text-[10px] font-mono text-amber-700 dark:text-amber-300/80 whitespace-pre-wrap max-h-[120px] overflow-y-auto leading-relaxed">
+              {JSON.stringify(toolInput, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Approve / Deny */}
+      {interactionType === 'approve_deny' && (
+        <div className="flex items-center gap-2 pt-0.5">
+          <button onClick={onApprove} className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors">
+            Approve
+          </button>
+          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] font-medium bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-700 dark:text-neutral-300 transition-colors">
+            Deny
+          </button>
+        </div>
+      )}
+
+      {/* Multiple Choice */}
+      {interactionType === 'choice' && choices && (
+        <div className="space-y-1 pt-0.5">
+          {choices.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onChoice?.(c.id)}
+              className="w-full text-left px-3 py-1.5 rounded-md text-[11px] border border-amber-200 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-800/30 transition-colors"
+            >
+              <span className="font-medium text-amber-800 dark:text-amber-200">{c.label}</span>
+              {c.description && <span className="text-amber-600 dark:text-amber-400 ml-1.5">— {c.description}</span>}
+            </button>
+          ))}
+          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Text Input */}
+      {interactionType === 'text_input' && (
+        <div className="space-y-1.5 pt-0.5">
+          <input
+            type="text"
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && textValue.trim()) onTextSubmit?.(textValue.trim()); }}
+            placeholder={placeholder || 'Type your response...'}
+            className="w-full px-2.5 py-1.5 rounded-md text-[11px] border border-amber-200 dark:border-amber-700/60 bg-white dark:bg-neutral-900 text-amber-900 dark:text-amber-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            autoFocus
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { if (textValue.trim()) onTextSubmit?.(textValue.trim()); }}
+              disabled={!textValue.trim()}
+              className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-40"
+            >
+              Submit
+            </button>
+            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Resolved confirmation — rendered inline within a system message. */
+export function ResolvedConfirmationBadge({
+  title,
+  toolName,
+  resolved,
+}: {
+  title: string;
+  toolName?: string;
+  resolved: 'approved' | 'denied';
+}) {
+  const isApproved = resolved === 'approved';
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] ${
+      isApproved
+        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+    }`}>
+      <Icon name={isApproved ? 'check' : 'x'} size={9} />
+      <span>{isApproved ? 'Approved' : 'Denied'}: {toolName || title}</span>
+    </div>
+  );
+}
+
+// =============================================================================
 // Message Bubble
 // =============================================================================
 
@@ -199,8 +340,10 @@ export function MessageBubble({
     return (
       <div className="flex justify-center">
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800/50 text-[10px] text-neutral-500 dark:text-neutral-400">
-          <Icon name="refreshCw" size={9} />
-          <span>{msg.text}</span>
+          {msg.confirmation
+            ? <ResolvedConfirmationBadge title={msg.confirmation.title} toolName={msg.confirmation.toolName} resolved={msg.confirmation.resolved} />
+            : <><Icon name="refreshCw" size={9} /><span>{msg.text}</span></>
+          }
         </div>
       </div>
     );

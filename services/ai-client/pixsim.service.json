@@ -8,5 +8,55 @@
   "args": ["--url", "ws://localhost:8000/api/v1/ws/agent-cmd", "--shared"],
   "depends_on": ["main-api"],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "hook_port",
+      "type": "number",
+      "label": "Hook Server Port",
+      "description": "Port for Claude Code PreToolUse hooks (0 = auto-assign)",
+      "default": 0,
+      "arg_map": "--hook-port"
+    },
+    {
+      "key": "pool_size",
+      "type": "number",
+      "label": "Pool Size",
+      "description": "Number of parallel CLI sessions",
+      "default": 1,
+      "arg_map": "--pool-size"
+    },
+    {
+      "key": "timeout",
+      "type": "number",
+      "label": "Task Timeout (s)",
+      "description": "Maximum seconds per task before timeout",
+      "default": 120,
+      "arg_map": "--timeout"
+    },
+    {
+      "key": "hook_tools",
+      "type": "multi_select",
+      "label": "Claude Built-in Tools Requiring Approval",
+      "description": "Which Claude Code tools route through the PreToolUse hook for user confirmation (Claude only, not Codex)",
+      "options": ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch"],
+      "default": ["Bash", "Write", "Edit"]
+    },
+    {
+      "key": "mcp_approval_tools",
+      "type": "multi_select",
+      "label": "MCP Tools Requiring Approval",
+      "description": "Which PixSim MCP tools require user confirmation before executing (works with both Claude and Codex)",
+      "options": [
+        "assets_delete", "assets_archive", "assets_bulk_tags", "assets_reupload",
+        "generations_create", "generations_cancel", "generations_delete",
+        "generations_chain_execute",
+        "plans_create", "plans_update",
+        "prompts_apply_edit", "prompts_create_family", "prompts_create_version",
+        "species_create", "species_update",
+        "notifications_emit", "notifications_create"
+      ],
+      "default": ["assets_delete", "generations_create", "species_create"]
+    }
+  ]
 }

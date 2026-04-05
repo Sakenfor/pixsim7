@@ -125,9 +125,35 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
         </div>
       )}
 
+      {/* Hook server status (ai-client only) */}
+      {service.key === 'ai-client' && isRunning && service.health === 'healthy' && (
+        <div className="mt-1 text-[10px] pl-[30px] flex items-center gap-1.5">
+          {service.extras?.mcp_port ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="text-emerald-400/80 font-mono">:{String(service.extras.mcp_port)}</span>
+              <span className="text-gray-500">MCP server</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />
+              <span className="text-gray-500">MCP server not detected</span>
+            </>
+          )}
+          {!!service.extras?.hook_port && (
+            <>
+              <span className="text-gray-700 mx-0.5">|</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+              <span className="text-cyan-400/80 font-mono">:{String(service.extras.hook_port)}</span>
+              <span className="text-gray-500">hooks</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Error line */}
       {service.last_error && (
-        <div className="mt-1.5 text-[10px] text-red-400 truncate pl-[30px]">
+        <div className="mt-1.5 text-[10px] text-red-400 whitespace-pre-wrap break-words select-text pl-[30px]">
           {service.last_error}
         </div>
       )}

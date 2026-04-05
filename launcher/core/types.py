@@ -4,7 +4,7 @@ Core types and enums for the launcher.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Optional, Callable
+from typing import Any, List, Dict, Optional, Callable
 
 
 class HealthStatus(Enum):
@@ -52,6 +52,9 @@ class ServiceDefinition:
 
     # Peer relationships
     dev_peer_of: Optional[str] = None  # This service is the dev-mode peer of another service
+
+    # Per-service settings schema (from manifest "settings" array)
+    settings_schema: Optional[List[Dict[str, Any]]] = None
 
     # Service-specific handlers (for special cases like docker-compose)
     is_detached: bool = False  # True for services that run detached (like docker-compose)

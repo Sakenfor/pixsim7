@@ -72,6 +72,33 @@ class RemoteAgent:
         return self.active_tasks >= self.max_concurrent
 
 
+@dataclass
+class ConfirmationGate:
+    """Blocks an agent task until the user responds to a prompt."""
+
+    confirmation_id: str
+    task_id: str
+    _event: asyncio.Event = field(default_factory=asyncio.Event)
+    approved: bool | None = None
+    response: Dict[str, Any] = field(default_factory=dict)
+    created_at: float = field(default_factory=time.monotonic)
+
+    async def wait(self, timeout: float = 120) -> Dict[str, Any]:
+        """Block until resolved or timeout. Returns full response dict."""
+        try:
+            await asyncio.wait_for(self._event.wait(), timeout)
+            return self.response
+        except asyncio.TimeoutError:
+            self.approved = False
+            self.response = {"approved": False}
+            return self.response
+
+    def resolve(self, approved: bool, **extra: Any) -> None:
+        self.approved = approved
+        self.response = {"approved": approved, **extra}
+        self._event.set()
+
+
 class RemoteCommandBridge:
     """Manages remote agent WebSocket connections and task dispatch."""
 
@@ -86,6 +113,8 @@ class RemoteCommandBridge:
         self._active_tasks: Dict[str, Dict[str, Any]] = {}
         # Available models per engine (engine -> list of model dicts)
         self._engine_models: Dict[str, List[Dict[str, Any]]] = {}
+        # Pending confirmation gates: confirmation_id -> ConfirmationGate
+        self._confirmation_gates: Dict[str, ConfirmationGate] = {}
 
     async def connect(
         self,
@@ -566,6 +595,9 @@ class RemoteCommandBridge:
         If the heartbeat includes a ``task_id``, it is routed to that specific
         task's queue.  Otherwise it is broadcast to all in-flight task queues
         for the agent (backward-compatible with clients that don't send task_id).
+
+        Confirmation requests (action=confirmation_request) are forwarded as-is
+        so the WS chat handler can relay them to the frontend.
         """
         agent = self._agents.get(bridge_client_id)
         if not agent:
@@ -685,7 +717,38 @@ class RemoteCommandBridge:
                     hb = hb_wait.result()
                     # Each heartbeat resets the deadline
                     deadline = asyncio.get_event_loop().time() + timeout
-                    yield {"type": "heartbeat", **hb}
+
+                    # Confirmation request — yield as distinct event and block until resolved
+                    if hb.get("action") == "confirmation_request" and hb.get("confirmation_id"):
+                        conf_id = hb["confirmation_id"]
+                        gate = self.create_confirmation_gate(task_id, conf_id)
+                        yield {
+                            "type": "confirmation_request",
+                            "task_id": task_id,
+                            "confirmation_id": conf_id,
+                            "title": hb.get("title", "Confirmation Required"),
+                            "description": hb.get("description", ""),
+                            "tool_name": hb.get("tool_name"),
+                            "tool_input": hb.get("tool_input"),
+                            "timeout_s": hb.get("timeout_s", 120),
+                        }
+                        # Block until user responds — deadline paused while waiting
+                        conf_timeout = float(hb.get("timeout_s", 120))
+                        response = await gate.wait(timeout=conf_timeout)
+                        # Send full response back to the agent bridge
+                        try:
+                            await agent.websocket.send_json({
+                                "type": "confirmation_response",
+                                "task_id": task_id,
+                                "confirmation_id": conf_id,
+                                **response,
+                            })
+                        except Exception:
+                            pass
+                        # Reset deadline after confirmation resolved
+                        deadline = asyncio.get_event_loop().time() + timeout
+                    else:
+                        yield {"type": "heartbeat", **hb}
                 else:
                     hb_wait.cancel()
 
@@ -766,6 +829,39 @@ class RemoteCommandBridge:
             )
             return True
         return False
+
+    # ── Confirmation gates ──
+
+    def create_confirmation_gate(
+        self,
+        task_id: str,
+        confirmation_id: str,
+    ) -> ConfirmationGate:
+        """Create a gate that blocks until the user responds to a confirmation request."""
+        gate = ConfirmationGate(confirmation_id=confirmation_id, task_id=task_id)
+        self._confirmation_gates[confirmation_id] = gate
+        return gate
+
+    def resolve_confirmation(self, confirmation_id: str, approved: bool, **extra: Any) -> bool:
+        """Resolve a pending confirmation gate (called when user responds).
+        Returns True if the gate existed and was resolved."""
+        gate = self._confirmation_gates.pop(confirmation_id, None)
+        if gate:
+            gate.resolve(approved, **extra)
+            return True
+        return False
+
+    def get_confirmation_gate(self, confirmation_id: str) -> Optional[ConfirmationGate]:
+        return self._confirmation_gates.get(confirmation_id)
+
+    def _gc_confirmation_gates(self) -> None:
+        """Clean up expired confirmation gates (older than 5 minutes)."""
+        now = time.monotonic()
+        expired = [k for k, g in self._confirmation_gates.items() if now - g.created_at > 300]
+        for k in expired:
+            gate = self._confirmation_gates.pop(k, None)
+            if gate and gate.approved is None:
+                gate.resolve(False)  # auto-deny expired
 
     def get_active_task_for_user(self, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Get the currently active task for a user (if any).

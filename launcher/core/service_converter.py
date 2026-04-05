@@ -93,6 +93,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         category=service_def.category,
         auto_start=service_def.auto_start,
         dev_peer_of=service_def.dev_peer_of,
+        settings_schema=service_def.settings_schema,
         is_detached=is_detached,
         custom_start=custom_start,
         custom_stop=custom_stop,

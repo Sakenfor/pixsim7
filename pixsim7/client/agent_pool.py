@@ -549,9 +549,27 @@ class AgentPool:
                         f.write(user_token)
                 except OSError:
                     pass
+            # Write chat session ID sidecar so MCP server can resolve identity
+            # without guessing. The CLI session's cli_session_id is the ChatSession
+            # ID for resumed sessions; for new sessions it's set after first response.
+            chat_session_id = bridge_session_id or (session.cli_session_id if hasattr(session, 'cli_session_id') else None)
+            if chat_session_id and session.token_file_path:
+                try:
+                    with open(session.token_file_path + ".session", "w") as f:
+                        f.write(chat_session_id)
+                except OSError:
+                    pass
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
+            # Update sidecar after response — new sessions get cli_session_id on first turn
+            post_session_id = session.cli_session_id if hasattr(session, 'cli_session_id') else None
+            if post_session_id and session.token_file_path:
+                try:
+                    with open(session.token_file_path + ".session", "w") as f:
+                        f.write(post_session_id)
+                except OSError:
+                    pass
             return session.session_id, response
         except asyncio.CancelledError:
             # Cancel/resend races can interrupt a turn mid-flight. Force a restart

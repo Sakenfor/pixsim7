@@ -18,6 +18,30 @@ export interface ThinkingEntry {
   timestamp: number;
 }
 
+export type AgentPromptType = 'approve_deny' | 'choice' | 'text_input';
+
+export interface AgentPromptChoice {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface ConfirmationRequest {
+  confirmationId: string;
+  title: string;
+  description: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  timeoutS?: number;
+  requestedAt: number;
+  /** Interaction type — defaults to 'approve_deny' for backward compat */
+  interactionType?: AgentPromptType;
+  /** Available choices when interactionType === 'choice' */
+  choices?: AgentPromptChoice[];
+  /** Placeholder text when interactionType === 'text_input' */
+  placeholder?: string;
+}
+
 export interface BridgeRequest {
   tabId: string;
   status: 'pending' | 'streaming' | 'completed' | 'error';
@@ -31,6 +55,8 @@ export interface BridgeRequest {
   _lastActivity: number;
   /** True after consume() has been called — prevents double-processing */
   _consumed?: boolean;
+  /** Non-null when the agent is blocked waiting for user approval */
+  pendingConfirmation?: ConfirmationRequest | null;
 }
 
 export interface BridgeResult {
@@ -103,6 +129,8 @@ interface InflightEntry {
   tabId: string;
   taskId: string;
   ts: number; // Date.now() when persisted
+  /** Thinking log snapshot — survives page reload so progress isn't lost */
+  thinkingLog?: ThinkingEntry[];
 }
 
 function loadInflight(): InflightEntry[] {
@@ -120,7 +148,9 @@ function saveInflight(entries: InflightEntry[]): void {
   try {
     if (entries.length === 0) localStorage.removeItem(INFLIGHT_KEY);
     else localStorage.setItem(INFLIGHT_KEY, JSON.stringify(entries));
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn('[ai-assistant] Failed to persist inflight state — localStorage may be full', err);
+  }
 }
 
 /** Persist a completed result so it survives full page reload.
@@ -130,11 +160,13 @@ function saveCompletedResult(tabId: string, result: BridgeResult): void {
     const raw = localStorage.getItem(COMPLETED_KEY);
     const map: Record<string, { result: BridgeResult; ts: number }> = raw ? JSON.parse(raw) : {};
     map[tabId] = { result, ts: Date.now() };
-    // GC entries older than 5 minutes
-    const cutoff = Date.now() - 300_000;
+    // GC entries older than 30 minutes (generous window for unmounted panels)
+    const cutoff = Date.now() - 1_800_000;
     for (const k of Object.keys(map)) { if (map[k].ts < cutoff) delete map[k]; }
     localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn('[ai-assistant] Failed to persist completed result — localStorage may be full', err);
+  }
 }
 
 function clearCompletedResult(tabId: string): void {
@@ -169,6 +201,10 @@ class AssistantChatBridge {
     this._staleTimer = setInterval(() => this._checkStale(), 15_000);
     // Restore in-flight tasks from a previous page session (reload / HMR full-reload)
     this._restoreInflight();
+    // Flush in-flight state (including thinkingLog) on page unload so it survives refresh
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => this._persistInflight(true));
+    }
   }
 
   /** Mark requests as errored if no heartbeat/result has arrived for too long */
@@ -195,12 +231,18 @@ class AssistantChatBridge {
 
   // ── Inflight persistence ──
 
-  /** Save current in-flight tabId→taskId mappings to localStorage */
-  private _persistInflight(): void {
+  /** Save current in-flight tabId→taskId mappings to localStorage.
+   *  Optionally snapshots thinkingLog so progress survives page reload. */
+  private _persistInflight(includeThinking = false): void {
     const entries: InflightEntry[] = [];
     for (const [, req] of this._requests) {
       if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
-        entries.push({ tabId: req.tabId, taskId: req.taskId, ts: Date.now() });
+        const entry: InflightEntry = { tabId: req.tabId, taskId: req.taskId, ts: Date.now() };
+        if (includeThinking && req.thinkingLog.length > 0) {
+          // Keep last 50 to avoid blowing localStorage budget
+          entry.thinkingLog = req.thinkingLog.slice(-50);
+        }
+        entries.push(entry);
       }
     }
     saveInflight(entries);
@@ -215,7 +257,7 @@ class AssistantChatBridge {
       const raw = localStorage.getItem(COMPLETED_KEY);
       if (raw) {
         const map = JSON.parse(raw) as Record<string, { result: BridgeResult; ts: number }>;
-        const cutoff = Date.now() - 300_000;
+        const cutoff = Date.now() - 1_800_000;
         for (const [tabId, entry] of Object.entries(map)) {
           if (entry.ts < cutoff || this._requests.has(tabId)) continue;
           this._requests.set(tabId, {
@@ -239,14 +281,15 @@ class AssistantChatBridge {
       return;
     }
 
-    // Create placeholder requests so the UI shows the activity bubble
+    // Create placeholder requests so the UI shows the activity bubble.
+    // Restore persisted thinkingLog so progress from before the reload isn't lost.
     for (const entry of entries) {
       if (this._requests.has(entry.tabId)) continue;
       const request: BridgeRequest = {
         tabId: entry.tabId,
         status: 'streaming',
         activity: 'Reconnecting...',
-        thinkingLog: [],
+        thinkingLog: entry.thinkingLog ?? [],
         result: null,
         abort: new AbortController(),
         taskId: entry.taskId,
@@ -427,6 +470,26 @@ class AssistantChatBridge {
       saveCompletedResult(tabId, request.result);
       this._persistInflight();
       this._notify();
+    } else if (type === 'confirmation_request') {
+      request._lastActivity = Date.now();
+      const interactionType = (data.interaction_type as AgentPromptType) || 'approve_deny';
+      request.activity = interactionType === 'approve_deny' ? 'Awaiting approval...'
+        : interactionType === 'choice' ? 'Awaiting selection...'
+        : 'Awaiting input...';
+      request.pendingConfirmation = {
+        confirmationId: data.confirmation_id as string,
+        title: (data.title as string) || 'Agent Prompt',
+        description: (data.description as string) || '',
+        toolName: data.tool_name as string | undefined,
+        toolInput: data.tool_input as Record<string, unknown> | undefined,
+        timeoutS: data.timeout_s as number | undefined,
+        requestedAt: Date.now(),
+        interactionType,
+        choices: data.choices as AgentPromptChoice[] | undefined,
+        placeholder: data.placeholder as string | undefined,
+      };
+      appendHeartbeat(request.thinkingLog, 'awaiting_input', request.pendingConfirmation.title);
+      this._notify();
     } else if (type === 'error') {
       request.status = 'error';
       request.activity = null;
@@ -580,15 +643,47 @@ class AssistantChatBridge {
 
   /** Mark a completed/errored request as consumed and return its result.
    *  The request stays in the map (so other panel instances can see
-   *  the thinking log) until a new send() for this tab replaces it. */
+   *  the thinking log) until a new send() for this tab replaces it.
+   *
+   *  IMPORTANT: The persisted result is NOT cleared here — call ack()
+   *  after the result has been safely appended to the store so that an
+   *  HMR or crash between consume and appendMessage doesn't lose data. */
   consume(tabId: string): BridgeResult | null {
     const req = this._requests.get(tabId);
     if (!req || req._consumed) return null;
     if (req.status !== 'completed' && req.status !== 'error') return null;
     req._consumed = true;
-    // Clear persisted result — component has it now
-    clearCompletedResult(tabId);
     return req.result;
+  }
+
+  /** Acknowledge that a consumed result has been persisted to the store.
+   *  Safe to clear the localStorage backup now. */
+  ack(tabId: string): void {
+    clearCompletedResult(tabId);
+  }
+
+  /** Respond to a pending agent prompt (approve/deny, choice, or text input).
+   *  Sends the response over WS and clears the pending state. */
+  respondToConfirmation(tabId: string, confirmationId: string, approved: boolean, response?: { choice?: string; text?: string }): void {
+    const req = this._requests.get(tabId);
+    if (!req?.pendingConfirmation || req.pendingConfirmation.confirmationId !== confirmationId) return;
+    const iType = req.pendingConfirmation.interactionType || 'approve_deny';
+    req.pendingConfirmation = null;
+    req.activity = iType === 'approve_deny'
+      ? (approved ? 'Approved — resuming...' : 'Denied — stopping...')
+      : 'Resuming...';
+    appendHeartbeat(req.thinkingLog, approved ? 'responded' : 'denied', req.activity);
+    this._notify();
+    if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({
+        type: 'confirmation_response',
+        tab_id: tabId,
+        confirmation_id: confirmationId,
+        approved,
+        ...(response?.choice != null && { choice: response.choice }),
+        ...(response?.text != null && { text: response.text }),
+      }));
+    }
   }
 
   /** Subscribe for React re-renders */

@@ -71,6 +71,7 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
         pool=pool,
         url=args.url,
         shared=args.shared,
+        hook_port=args.hook_port,
     )
 
     async def run() -> None:
@@ -169,6 +170,7 @@ def main() -> None:
     parser.add_argument("--resume-session", default=None, help="Session UUID to resume")
     parser.add_argument("--no-auto-restart", action="store_true", help="Disable automatic restart of crashed sessions")
     parser.add_argument("--shared", action="store_true", help="Run as shared bridge (no user token). Default: user-scoped if logged in.")
+    parser.add_argument("--hook-port", type=int, default=0, help="Port for hook HTTP server (0 = auto). Writes port to ~/.pixsim/hook_port.")
 
     args, claude_args = parser.parse_known_args()
     if claude_args and claude_args[0] == "--":

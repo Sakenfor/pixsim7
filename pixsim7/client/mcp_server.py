@@ -837,13 +837,18 @@ def _normalize_scope_key(scope_key: str | None) -> str | None:
 
 
 def _read_session_sidecar() -> str | None:
-    """Read the chat session ID written by the bridge before each task dispatch.
+    """Read the chat session ID for the current request.
 
-    Checks two locations:
-    1. ``~/.pixsim/bridge_chat_session`` — shared HTTP MCP mode (bridge writes here)
-    2. ``{PIXSIM_TOKEN_FILE}.session`` — legacy STDIO mode (pool writes per-session)
+    Resolution order:
+    1. Per-request contextvar (HTTP mode — set from X-Chat-Session-Id header)
+    2. ``~/.pixsim/bridge_chat_session`` — shared HTTP MCP mode (bridge writes here)
+    3. ``{PIXSIM_TOKEN_FILE}.session`` — legacy STDIO mode (pool writes per-session)
     """
-    # HTTP mode: fixed well-known path
+    # HTTP mode: per-request header (cleanest path — no file I/O)
+    ctx_session = _request_session_id.get()
+    if ctx_session:
+        return ctx_session
+    # HTTP mode fallback: fixed well-known path (sidecar file)
     try:
         from pathlib import Path
         fixed = Path.home() / ".pixsim" / "bridge_chat_session"

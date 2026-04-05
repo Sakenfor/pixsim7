@@ -22,12 +22,22 @@ import { hmrSingleton } from '@lib/utils/hmrSafe';
 type AgentCommand = 'claude' | 'codex';
 type AgentEngine = AgentCommand | 'api';
 
+interface ChatMessageConfirmation {
+  confirmationId: string;
+  title: string;
+  description: string;
+  toolName?: string;
+  resolved: 'approved' | 'denied';
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'error' | 'system';
   text: string;
   duration_ms?: number;
   thinkingLog?: Array<{ action: string; detail: string }>;
   timestamp: Date;
+  /** Present when this message records a resolved confirmation prompt */
+  confirmation?: ChatMessageConfirmation;
 }
 
 interface ChatTab {
@@ -166,8 +176,8 @@ function persistTabMessages(tabId: string, messages: ChatMessage[]) {
     // Don't persist transient error messages (network errors, cancellations)
     const persistable = messages.filter((m) => m.role !== 'error');
     localStorage.setItem(msgKey(tabId), JSON.stringify(persistable.slice(-50)));
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn('[ai-assistant] Failed to persist messages — localStorage may be full', err);
   }
 }
 
@@ -209,7 +219,9 @@ function persistThinking(tabId: string, entries: ThinkingEntry[]) {
   try {
     if (entries.length === 0) localStorage.removeItem(thinkingKey(tabId));
     else localStorage.setItem(thinkingKey(tabId), JSON.stringify(entries.slice(-100)));
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn('[ai-assistant] Failed to persist thinking entries — localStorage may be full', err);
+  }
 }
 
 function isSameThinkingEntries(left: ThinkingEntry[], right: ThinkingEntry[]): boolean {
@@ -544,4 +556,4 @@ export function buildResumedTab(session: {
 // =============================================================================
 
 export { normalizeProfileId, createTabId };
-export type { ChatTab, ChatMessage, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };
+export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };
