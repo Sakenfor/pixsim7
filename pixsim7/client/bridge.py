@@ -75,7 +75,7 @@ class Bridge:
         self._service_token: str = ""
         # Pending confirmation responses from backend: confirmation_id -> asyncio.Event + result
         self._pending_confirmations: dict[str, asyncio.Event] = {}
-        self._confirmation_results: dict[str, bool] = {}  # confirmation_id -> approved
+        self._confirmation_results: dict[str, dict] = {}  # confirmation_id -> {approved, choice?, text?}
         # Active WebSocket reference for hook server callbacks
         self._active_ws = None
         self._hook_server = None
@@ -323,10 +323,14 @@ class Bridge:
                         asyncio.ensure_future(self._handle_task(ws, msg))
 
                     elif msg_type == "confirmation_response":
-                        # User approved/denied a confirmation prompt — unblock the waiting task
+                        # User responded to a prompt — unblock the waiting task
                         conf_id = msg.get("confirmation_id", "")
                         if conf_id and conf_id in self._pending_confirmations:
-                            self._confirmation_results[conf_id] = bool(msg.get("approved", False))
+                            self._confirmation_results[conf_id] = {
+                                "approved": bool(msg.get("approved", False)),
+                                "choice": msg.get("choice"),
+                                "text": msg.get("text"),
+                            }
                             self._pending_confirmations[conf_id].set()
 
                     elif msg_type == "ping":
@@ -1066,6 +1070,19 @@ class Bridge:
 
     async def _start_mcp_http_server(self) -> None:
         """Start the shared HTTP MCP server in a background task."""
+        # Set env vars before importing the MCP server module
+        if self._hook_server and self._hook_server.port:
+            os.environ["PIXSIM_HOOK_PORT"] = str(self._hook_server.port)
+        # Load MCP approval tools from persisted service settings
+        try:
+            from launcher.core.service_settings import load_persisted
+            settings = load_persisted("ai-client")
+            approval_tools = settings.get("mcp_approval_tools", [])
+            if isinstance(approval_tools, list) and approval_tools:
+                os.environ["PIXSIM_MCP_APPROVAL_TOOLS"] = ",".join(approval_tools)
+        except Exception:
+            pass  # launcher module may not be available in standalone mode
+
         try:
             import uvicorn
             from pixsim7.client.mcp_server import _build_http_app, _init_tools
@@ -1073,6 +1090,9 @@ class Bridge:
             get_logger().warning("mcp_http_server_unavailable", error=str(e),
                                 hint="Install missing deps: pip install mcp httpx")
             return
+
+        # Mark as bridge-managed so the MCP server skips auto-registration
+        os.environ["PIXSIM_BRIDGE_MANAGED"] = "1"
 
         # Pre-init tools (fetches contracts from API)
         try:
@@ -1098,46 +1118,25 @@ class Bridge:
         get_logger().info("mcp_http_server_starting", port=self._mcp_http_port, url=self._mcp_http_url)
         await server.serve()
 
-    async def _hook_confirm(
-        self,
-        task_id: str,
-        title: str,
-        description: str,
-        tool_name: str | None,
-        tool_input: dict | None,
-        timeout_s: int,
-    ) -> bool:
-        """Called by hook_server when a PreToolUse hook hits /confirm.
-        Routes through the WS confirmation flow to the frontend UI."""
+    async def _hook_confirm(self, payload: dict) -> dict:
+        """Called by hook_server when /confirm is hit.
+        Routes through the WS confirmation flow to the frontend UI.
+        Returns full response dict: {approved, choice?, text?}."""
         ws = self._active_ws
         if not ws or not self._connected:
-            return True  # auto-approve if bridge not connected (fail-open)
-        # If no task_id provided, use a synthetic one for the hook flow
-        effective_task_id = task_id or f"hook-{uuid.uuid4().hex[:8]}"
-        return await self.request_confirmation(
-            ws, effective_task_id,
-            title=title,
-            description=description,
-            tool_name=tool_name,
-            tool_input=tool_input,
-            timeout_s=timeout_s,
-        )
+            return {"approved": True}  # auto-approve if bridge not connected (fail-open)
+        task_id = payload.get("task_id") or f"hook-{uuid.uuid4().hex[:8]}"
+        return await self.request_confirmation(ws, task_id, payload)
 
     async def request_confirmation(
         self,
         ws,
         task_id: str,
-        *,
-        title: str,
-        description: str = "",
-        tool_name: str | None = None,
-        tool_input: dict | None = None,
-        timeout_s: int = 120,
-    ) -> bool:
-        """Send a confirmation request to the backend and block until the user responds.
+        payload: dict,
+    ) -> dict:
+        """Send a confirmation/prompt request to the backend and block until the user responds.
 
-        Returns True if approved, False if denied or timed out.
-        Used by tasks that need user approval before proceeding (e.g., MCP tool use).
+        Returns response dict: {approved: bool, choice?: str, text?: str}.
         """
         import uuid as _uuid
         confirmation_id = _uuid.uuid4().hex
@@ -1151,21 +1150,22 @@ class Bridge:
                 "status": "active",
                 "action": "confirmation_request",
                 "confirmation_id": confirmation_id,
-                "title": title,
-                "description": description,
-                "timeout_s": timeout_s,
+                "title": payload.get("title", "Agent Prompt"),
+                "description": payload.get("description", ""),
+                "timeout_s": payload.get("timeout_s", 120),
             }
-            if tool_name:
-                hb["tool_name"] = tool_name
-            if tool_input:
-                hb["tool_input"] = tool_input
+            # Pass through all optional fields
+            for key in ("tool_name", "tool_input", "interaction_type", "choices", "placeholder"):
+                if payload.get(key) is not None:
+                    hb[key] = payload[key]
             await ws.send(json.dumps(hb))
 
+            timeout_s = int(payload.get("timeout_s", 120))
             try:
                 await asyncio.wait_for(event.wait(), timeout=timeout_s)
-                return self._confirmation_results.get(confirmation_id, False)
+                return self._confirmation_results.get(confirmation_id, {"approved": False})
             except asyncio.TimeoutError:
-                return False
+                return {"approved": False}
         finally:
             self._pending_confirmations.pop(confirmation_id, None)
             self._confirmation_results.pop(confirmation_id, None)
