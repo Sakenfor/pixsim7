@@ -22,5 +22,21 @@
     }
   ],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "postgres_port",
+      "type": "number",
+      "label": "Postgres Port",
+      "description": "PostgreSQL port (requires docker-compose restart)",
+      "default": 5434
+    },
+    {
+      "key": "redis_port",
+      "type": "number",
+      "label": "Redis Port",
+      "description": "Redis port (requires docker-compose restart)",
+      "default": 6380
+    }
+  ]
 }

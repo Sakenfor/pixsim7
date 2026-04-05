@@ -1,7 +1,7 @@
 """Custom console renderer for cleaner, more readable log output."""
 from __future__ import annotations
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from structlog.typing import EventDict, WrappedLogger
 from structlog.dev import _pad
@@ -43,18 +43,21 @@ class CleanConsoleRenderer:
         event = event_dict.pop("event", "")
         service = event_dict.pop("service", "")
 
-        # Format timestamp (extract just HH:MM:SS)
+        # Format timestamp (extract just HH:MM:SS in local time)
         if timestamp:
             try:
-                # Handle ISO format: 2024-01-15T14:23:45.123456Z
-                time_part = timestamp.split("T")[1] if "T" in timestamp else timestamp
-                time_part = time_part.split(".")[0]  # Remove microseconds
-                time_str = time_part[:8]  # HH:MM:SS
+                # Parse ISO format and convert UTC → local time
+                ts = timestamp.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone()  # convert to local timezone
+                time_str = dt.strftime("%H:%M:%S")
             except Exception:
-                time_str = timestamp[:8]
+                # Fallback: just extract time portion as-is
+                time_part = timestamp.split("T")[1] if "T" in timestamp else timestamp
+                time_str = time_part.split(".")[0][:8]
         else:
-            # Fallback for logs that didn't go through TimeStamper (e.g., plain stdlib logs)
-            time_str = datetime.utcnow().strftime("%H:%M:%S")
+            time_str = datetime.now().strftime("%H:%M:%S")
 
         # Build line
         parts = []

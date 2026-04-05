@@ -12,5 +12,14 @@
   "tags": ["launcher"],
   "auto_start": true,
   "enabled": true,
-  "depends_on": ["launcher-api"]
+  "depends_on": ["launcher-api"],
+  "settings": [
+    {
+      "key": "port",
+      "type": "number",
+      "label": "Dev Server Port",
+      "description": "Vite dev server port",
+      "default": 3100
+    }
+  ]
 }

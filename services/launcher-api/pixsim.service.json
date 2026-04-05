@@ -14,5 +14,14 @@
   "openapi_endpoint": "/openapi.json",
   "tags": ["launcher", "admin"],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "port",
+      "type": "number",
+      "label": "Port",
+      "description": "Launcher API port",
+      "default": 8100
+    }
+  ]
 }

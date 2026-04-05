@@ -17,8 +17,9 @@ import { ToolsPage } from './ToolsPage'
 import { TracePanel } from './TracePanel'
 import { DebugPanel } from './DebugPanel'
 import { StatusBar } from './StatusBar'
+import { ServiceSettingsPanel } from './ServiceSettingsPanel'
 import { useServicesStore } from '../stores/services'
-import { checkWindowAvailable } from '../api/client'
+import { checkWindowAvailable, applyHookConfig } from '../api/client'
 import type { ServiceState } from '../api/client'
 
 // ── Panel components registry ──
@@ -143,10 +144,17 @@ function ServiceInfoPanel() {
         {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
       </div>
 
+      <ServiceSettingsPanel
+        serviceKey={service.key}
+        title={service.key === 'ai-client' ? 'Bridge & Hook Settings' : undefined}
+      >
+        {service.key === 'ai-client' ? (values) => <HookConfigOutput values={values} hookPort={service.extras?.hook_port as number | undefined} /> : undefined}
+      </ServiceSettingsPanel>
+
       {service.last_error && (
         <div className="bg-red-900/20 rounded border border-red-800/50 p-3">
           <div className="text-[10px] text-red-400 font-medium mb-1">Last Error</div>
-          <div className="text-[10px] text-red-300 font-mono">{service.last_error}</div>
+          <div className="text-[10px] text-red-300 font-mono select-text whitespace-pre-wrap break-words">{service.last_error}</div>
         </div>
       )}
 
@@ -164,6 +172,78 @@ function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono
     <div className="flex items-center gap-2 text-[11px]">
       <span className="text-gray-500 w-20 shrink-0">{label}</span>
       <span className={`text-gray-300 truncate ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
+
+function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown>; hookPort?: number }) {
+  const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState<'idle' | 'saved' | 'error'>('idle')
+  const hookTools = (values.hook_tools as string[] | undefined) ?? ['Bash', 'Write', 'Edit']
+
+  if (hookTools.length === 0) return null
+
+  const matcher = hookTools.join('|')
+  const hookConfig = JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher,
+        command: 'python -m pixsim7.client.hook_pretool',
+      }],
+    },
+  }, null, 2)
+
+  const copyConfig = () => {
+    navigator.clipboard.writeText(hookConfig).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  const saveToClaudeSettings = () => {
+    setSaved('idle')
+    applyHookConfig(hookTools)
+      .then((res) => {
+        setSaved('saved')
+        setTimeout(() => setSaved('idle'), 3000)
+      })
+      .catch(() => {
+        setSaved('error')
+        setTimeout(() => setSaved('idle'), 3000)
+      })
+  }
+
+  return (
+    <div className="pt-2 border-t border-gray-800 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-gray-400">Claude Code Hook Config</span>
+        {hookPort && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 font-mono">
+            :{hookPort}
+          </span>
+        )}
+      </div>
+      <pre className="text-[9px] font-mono text-gray-400 bg-gray-900/50 rounded p-2 overflow-x-auto select-text whitespace-pre leading-relaxed">
+        {hookConfig}
+      </pre>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={copyConfig}
+          className="px-2 py-0.5 text-[9px] rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors"
+        >
+          {copied ? 'Copied!' : 'Copy to clipboard'}
+        </button>
+        <button
+          onClick={saveToClaudeSettings}
+          className="px-2 py-0.5 text-[9px] rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors"
+          title="Save hook config to Claude Code settings.json"
+        >
+          {saved === 'saved' ? 'Saved to ~/.claude/settings.json' : saved === 'error' ? 'Failed to save' : 'Save to Claude settings'}
+        </button>
+      </div>
+      <div className="text-[9px] text-gray-600 leading-relaxed">
+        Add this to your Claude Code <code className="text-gray-500">settings.json</code> to route tool approval through the assistant panel.
+      </div>
     </div>
   )
 }
@@ -356,6 +436,9 @@ export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
       </div>
       <div className="flex items-center border-t border-border shrink-0 h-7 bg-surface-secondary">
         <StatusBar onShowSetup={onShowSetup} />
+        <Button size="xs" variant="ghost" onClick={() => window.location.reload()} className="mr-2 text-gray-500 hover:text-gray-300" title="Reload the launcher UI">
+          Refresh
+        </Button>
         <Button size="xs" variant="ghost" onClick={resetLayout} className="mr-2 text-gray-500 hover:text-gray-300" title="Reset panel layout to default">
           Reset Layout
         </Button>

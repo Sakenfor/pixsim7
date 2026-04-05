@@ -69,6 +69,33 @@ class ServiceStateResponse(BaseModel):
     url: Optional[str] = None
     dev_peer_of: Optional[str] = None
     category: Optional[str] = None
+    extras: Optional[Dict[str, Any]] = None
+
+
+class SettingFieldResponse(BaseModel):
+    """Schema for a single configurable setting field."""
+    key: str
+    type: str
+    label: str
+    description: Optional[str] = None
+    default: Any = None
+    options: Optional[List[Any]] = None
+    option_groups: Optional[List[Dict[str, Any]]] = None
+    arg_map: Optional[str] = None
+
+
+class ServiceSettingsResponse(BaseModel):
+    """Schema + current values for a service's settings."""
+    service_key: str
+    schema_: List[SettingFieldResponse] = Field(default_factory=list, alias="schema")
+    values: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
+
+
+class ServiceSettingsUpdateRequest(BaseModel):
+    """Partial update to a service's settings."""
+    values: Dict[str, Any]
 
 
 class ServiceActionRequest(BaseModel):

@@ -34,6 +34,7 @@ export interface ServiceState {
   url: string | null
   dev_peer_of: string | null
   category: string | null
+  extras: Record<string, unknown> | null
 }
 
 export interface ServicesListResponse {
@@ -56,6 +57,51 @@ export const restartService = (key: string) => request<ActionResponse>(`/service
 export const startAllServices = () => request<ActionResponse>('/services/start-all', { method: 'POST' })
 export const stopAllServices = (graceful = true) =>
   request<ActionResponse>('/services/stop-all', { method: 'POST', body: JSON.stringify({ graceful }) })
+
+// ── Service Settings ────────────────────────────────────────────────
+
+export interface ToolOption {
+  name: string
+  description?: string
+}
+
+export interface OptionGroup {
+  group: string
+  label: string
+  tools: ToolOption[]
+}
+
+export interface SettingField {
+  key: string
+  type: 'string' | 'number' | 'boolean' | 'select' | 'multi_select'
+  label: string
+  description?: string
+  default: unknown
+  options?: string[]
+  option_groups?: OptionGroup[]
+  arg_map?: string
+}
+
+export interface ServiceSettingsResponse {
+  service_key: string
+  schema: SettingField[]
+  values: Record<string, unknown>
+}
+
+export const getServiceSettings = (key: string) =>
+  request<ServiceSettingsResponse>(`/services/${key}/settings`)
+
+export const updateServiceSettings = (key: string, values: Record<string, unknown>) =>
+  request<ServiceSettingsResponse>(`/services/${key}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify({ values }),
+  })
+
+export const applyHookConfig = (hookTools: string[]) =>
+  request<{ ok: boolean; path: string; message: string }>('/services/ai-client/apply-hook-config', {
+    method: 'POST',
+    body: JSON.stringify({ hook_tools: hookTools }),
+  })
 
 // ── Logs ────────────────────────────────────────────────────────────
 

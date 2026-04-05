@@ -26,6 +26,24 @@
   "tags": ["api", "generation", "ai", "microservice", "chrome-extension", "automation", "lightweight"],
   "provides": ["generations", "prompts", "providers", "analytics", "auth", "accounts", "automation"],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "port",
+      "type": "number",
+      "label": "Port",
+      "description": "Generation API server port",
+      "default": 8001
+    },
+    {
+      "key": "log_level",
+      "type": "select",
+      "label": "Uvicorn Log Level",
+      "description": "Uvicorn server log level (app logs use Debug tab)",
+      "options": ["debug", "info", "warning", "error"],
+      "default": "info",
+      "arg_map": "--log-level"
+    }
+  ]
 }
 

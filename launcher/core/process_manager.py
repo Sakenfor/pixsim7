@@ -217,8 +217,32 @@ class ProcessManager:
             if definition.env_overrides:
                 env.update(definition.env_overrides)
 
-            # Build command
-            cmd = [definition.program] + definition.args
+            # Build command — append per-service settings as CLI args
+            extra_args: list[str] = []
+            base_args = list(definition.args)
+            if definition.settings_schema:
+                from .service_settings import (
+                    parse_schema, load_persisted, get_effective, settings_to_args,
+                )
+                schema = parse_schema(definition.settings_schema)
+                if schema:
+                    persisted = load_persisted(service_key)
+                    effective = get_effective(schema, persisted)
+                    extra_args = settings_to_args(schema, effective)
+                    # Patch base args from settings overrides
+                    for field in schema:
+                        key = field.get("key")
+                        if key not in effective:
+                            continue
+                        # Port: update existing --port value
+                        if key == "port" and "--port" in base_args:
+                            idx = base_args.index("--port")
+                            if idx + 1 < len(base_args):
+                                base_args[idx + 1] = str(effective["port"])
+                        # Reload toggle: remove --reload if disabled
+                        if key == "reload" and not effective.get("reload") and "--reload" in base_args:
+                            base_args.remove("--reload")
+            cmd = [definition.program] + base_args + extra_args
 
             # Open log file for output
             log_file_path = self.log_dir / f"{service_key}.log"
