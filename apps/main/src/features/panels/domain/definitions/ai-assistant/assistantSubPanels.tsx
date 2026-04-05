@@ -653,10 +653,11 @@ function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
   );
 }
 
-export function WorkSummaryBadge({ sessionId, messageCount }: { sessionId: string | null; messageCount?: number }) {
+export function WorkSummaryBadge({ sessionId, messageCount, sending }: { sessionId: string | null; messageCount?: number; sending?: boolean }) {
   const [summaries, setSummaries] = useState<WorkSummaryEntry[]>([]);
+  const prevSendingRef = useRef(sending);
 
-  // Re-fetch when session changes or new messages arrive (agent finished work)
+  // Re-fetch when session changes or new messages arrive
   useEffect(() => {
     if (!sessionId) { setSummaries([]); return; }
     let cancelled = false;
@@ -667,6 +668,21 @@ export function WorkSummaryBadge({ sessionId, messageCount }: { sessionId: strin
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [sessionId, messageCount]);
+
+  // Also re-fetch when agent stops working (sending true→false) — log_work is typically called then
+  useEffect(() => {
+    const wasSending = prevSendingRef.current;
+    prevSendingRef.current = sending;
+    if (wasSending && !sending && sessionId) {
+      // Small delay — log_work may run slightly after the result is delivered
+      const timer = setTimeout(() => {
+        pixsimClient.get<{ entries: WorkSummaryEntry[] }>('/meta/agents/history', {
+          params: { session_id: sessionId, action: 'work_summary', limit: 20 },
+        }).then((res) => setSummaries(res.entries ?? [])).catch(() => {});
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [sending, sessionId]);
 
   if (summaries.length === 0) return null;
 

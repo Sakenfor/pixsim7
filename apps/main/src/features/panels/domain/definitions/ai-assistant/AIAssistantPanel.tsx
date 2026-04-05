@@ -686,7 +686,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           </button>
 
           {/* Work summaries */}
-          <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} />
+          <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} sending={sending} />
 
           {/* Session ID */}
           {tab.sessionId && (
