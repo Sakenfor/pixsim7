@@ -94,6 +94,46 @@ def stop_service(service_key: str) -> bool:
         return False
 
 
+# ── Service settings ────────────────────────────────────────────────
+
+
+def get_service_settings(service_key: str) -> Optional[dict]:
+    """Fetch schema + current values for a service.
+
+    Returns ``{"service_key": str, "schema": [...], "values": {...}}``
+    or ``None`` if the launcher is unreachable.
+    """
+    try:
+        req = urllib.request.Request(
+            _launcher_url(f"/services/{service_key}/settings"),
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def update_service_settings(service_key: str, values: dict) -> Optional[dict]:
+    """Update settings for a service.
+
+    Returns updated ``{"service_key": str, "schema": [...], "values": {...}}``
+    or ``None`` if the launcher is unreachable.
+    """
+    body = json.dumps({"values": values}).encode()
+    try:
+        req = urllib.request.Request(
+            _launcher_url(f"/services/{service_key}/settings"),
+            data=body,
+            method="PATCH",
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
 # ── AI-client hook config ───────────────────────────────────────────
 
 

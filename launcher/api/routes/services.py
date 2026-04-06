@@ -782,7 +782,7 @@ async def apply_hook_config(
 
 
 class HookConfigState(_BaseModel):
-    """Current state of Claude Code hook config (read from .claude/ files)."""
+    """Current state of hook config (read from launcher service settings)."""
     hook_tools: List[str] = []
     mcp_allowed: bool = False
     hook_configured: bool = False
@@ -790,53 +790,21 @@ class HookConfigState(_BaseModel):
 
 @router.get("/{service_key}/hook-config", response_model=HookConfigState)
 async def get_hook_config(service_key: str = Path(...)):
-    """Read current PreToolUse hook config and MCP permissions from .claude/ files."""
+    """Read current hook config from launcher service settings (source of truth)."""
     if service_key != "ai-client":
         raise HTTPException(status_code=400, detail="Hook config only applies to ai-client")
 
-    import json as _json
-    from pathlib import Path as _Path
+    from launcher.core.service_settings import load_persisted
 
-    project_root = _Path(__file__).resolve().parents[3]
-    project_settings_path = project_root / ".claude" / "settings.json"
-    project_local_settings_path = project_root / ".claude" / "settings.local.json"
-
-    # ── 1. Read hook tools from settings.json ──
-    hook_tools: list[str] = []
-    hook_configured = False
-
-    if project_settings_path.exists():
-        try:
-            settings = _json.loads(project_settings_path.read_text(encoding="utf-8"))
-            pre_tool = settings.get("hooks", {}).get("PreToolUse", [])
-            if isinstance(pre_tool, list):
-                for h in pre_tool:
-                    if isinstance(h, dict) and "pixsim7.client.hook_pretool" in h.get("command", ""):
-                        matcher = h.get("matcher", "")
-                        if matcher:
-                            hook_tools = [t.strip() for t in matcher.split("|") if t.strip()]
-                        hook_configured = True
-                        break
-        except Exception:
-            pass
-
-    # ── 2. Read MCP permission state from settings.local.json ──
-    mcp_allowed = False
-
-    if project_local_settings_path.exists():
-        try:
-            local = _json.loads(project_local_settings_path.read_text(encoding="utf-8"))
-            allow_list = local.get("permissions", {}).get("allow", [])
-            if isinstance(allow_list, list):
-                mcp_allowed = any(
-                    isinstance(e, str) and e.startswith(_MCP_PERMISSION_PREFIX)
-                    for e in allow_list
-                )
-        except Exception:
-            pass
+    settings = load_persisted(service_key)
+    hook_tools = settings.get("hook_tools", [])
+    if not isinstance(hook_tools, list):
+        hook_tools = []
+    mcp_tools = settings.get("mcp_approval_tools", [])
+    mcp_allowed = isinstance(mcp_tools, list) and len(mcp_tools) > 0
 
     return HookConfigState(
         hook_tools=hook_tools,
         mcp_allowed=mcp_allowed,
-        hook_configured=hook_configured,
+        hook_configured=len(hook_tools) > 0,
     )

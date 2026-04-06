@@ -67,6 +67,8 @@ from .client import (
     is_service_running,
     start_service,
     stop_service,
+    get_service_settings,
+    update_service_settings,
     get_hook_config,
     apply_hook_config,
 )
@@ -118,6 +120,8 @@ __all__ = [
     'is_service_running',
     'start_service',
     'stop_service',
+    'get_service_settings',
+    'update_service_settings',
     'get_hook_config',
     'apply_hook_config',
 ]

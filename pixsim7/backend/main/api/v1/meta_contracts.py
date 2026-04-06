@@ -1374,6 +1374,18 @@ async def start_server_bridge(
     if payload.extra_args:
         cmd.extend(payload.extra_args.split())
 
+    # If no PreToolUse hooks are configured, auto-add --dangerously-skip-permissions
+    # so Claude CLI doesn't hang waiting for TTY approval in headless mode.
+    if "--dangerously-skip-permissions" not in cmd:
+        try:
+            from launcher.core.service_settings import load_persisted as _load_svc
+            svc_settings = _load_svc("ai-client")
+            hook_tools = svc_settings.get("hook_tools", [])
+            if not hook_tools:
+                cmd.append("--dangerously-skip-permissions")
+        except Exception:
+            cmd.append("--dangerously-skip-permissions")
+
     env = dict(os.environ)
     pythonpath = env.get("PYTHONPATH", "")
     if repo_root not in pythonpath:
@@ -1450,6 +1462,102 @@ async def stop_server_bridge() -> StartBridgeResponse:
     return StartBridgeResponse(ok=True, pid=pid, message=f"Stopped: {', '.join(parts)}")
 
 
+# ── Bridge settings proxy (schema-driven, via launcher) ──
+
+
+class SettingField(BaseModel):
+    key: str
+    type: str
+    label: str
+    description: Optional[str] = None
+    default: Any = None
+    options: Optional[List[Any]] = None
+    option_groups: Optional[List[Dict[str, Any]]] = None
+
+
+class BridgeSettingsResponse(BaseModel):
+    service_key: str = "ai-client"
+    schema_: List[SettingField] = Field(default_factory=list, alias="schema")
+    values: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
+
+
+class BridgeSettingsUpdateRequest(BaseModel):
+    values: Dict[str, Any]
+
+
+@router.get("/agents/bridge/settings", response_model=BridgeSettingsResponse)
+async def get_bridge_settings() -> BridgeSettingsResponse:
+    """Get ai-client settings schema + values from the launcher."""
+    from launcher.core.client import get_service_settings
+
+    result = await run_in_threadpool(get_service_settings, "ai-client")
+    if result:
+        return BridgeSettingsResponse(**result)
+
+    # Launcher offline — read service settings file directly
+    try:
+        from launcher.core.service_settings import load_persisted, parse_schema, get_effective
+        import json as _json
+        from pathlib import Path as _p
+        manifest_path = _p(__file__).resolve().parents[5] / "services" / "ai-client" / "pixsim.service.json"
+        raw_schema = _json.loads(manifest_path.read_text(encoding="utf-8")).get("settings", [])
+        schema = parse_schema(raw_schema)
+        persisted = load_persisted("ai-client")
+        values = get_effective(schema, persisted)
+        return BridgeSettingsResponse(
+            service_key="ai-client",
+            schema=[SettingField(**f) for f in schema],
+            values=values,
+        )
+    except Exception:
+        return BridgeSettingsResponse(service_key="ai-client")
+
+
+@router.patch("/agents/bridge/settings", response_model=BridgeSettingsResponse)
+async def update_bridge_settings(
+    payload: BridgeSettingsUpdateRequest,
+) -> BridgeSettingsResponse:
+    """Update ai-client settings via the launcher, then sync to .claude/ files."""
+    from launcher.core.client import update_service_settings
+
+    result = await run_in_threadpool(update_service_settings, "ai-client", payload.values)
+    if not result:
+        # Launcher offline — write directly
+        try:
+            from launcher.core.service_settings import (
+                load_persisted, save_persisted, parse_schema, get_effective, validate_update,
+            )
+            import json as _json
+            from pathlib import Path as _p
+            manifest_path = _p(__file__).resolve().parents[5] / "services" / "ai-client" / "pixsim.service.json"
+            raw_schema = _json.loads(manifest_path.read_text(encoding="utf-8")).get("settings", [])
+            schema = parse_schema(raw_schema)
+            validated = validate_update(schema, payload.values)
+            persisted = load_persisted("ai-client")
+            persisted.update(validated)
+            save_persisted("ai-client", persisted)
+            values = get_effective(schema, persisted)
+            result = {"service_key": "ai-client", "schema": schema, "values": values}
+        except Exception as e:
+            from fastapi import HTTPException as _H
+            raise _H(status_code=500, detail=f"Failed to update settings: {e}")
+
+    # Sync to .claude/ files so Claude CLI picks up the changes immediately
+    try:
+        from launcher.core.service_settings import load_persisted as _load
+        from launcher.core.client import apply_hook_config
+        settings = await run_in_threadpool(_load, "ai-client")
+        hook_tools = settings.get("hook_tools", [])
+        mcp_tools = settings.get("mcp_approval_tools", [])
+        await run_in_threadpool(apply_hook_config, hook_tools, len(mcp_tools) > 0)
+    except Exception:
+        pass  # non-critical — .claude sync is best-effort
+
+    return BridgeSettingsResponse(**result)
+
+
 # ── Hook config proxy (reads/writes via launcher) ──
 
 
@@ -1472,14 +1580,29 @@ class ApplyHookConfigResponse(BaseModel):
 
 @router.get("/agents/bridge/hook-config", response_model=HookConfigState)
 async def get_bridge_hook_config() -> HookConfigState:
-    """Read current hook config — proxies to launcher or reads files directly."""
-    from launcher.core.client import get_hook_config
+    """Read current hook config from launcher service settings (source of truth).
 
-    result = await run_in_threadpool(get_hook_config)
-    if result:
-        return HookConfigState(**result)
+    Falls back to .claude/settings.json if service settings are unavailable.
+    """
+    # Primary: read launcher service settings (same source the launcher UI uses)
+    try:
+        from launcher.core.service_settings import load_persisted
+        settings = await run_in_threadpool(load_persisted, "ai-client")
+        if settings is not None:
+            hook_tools = settings.get("hook_tools", [])
+            if not isinstance(hook_tools, list):
+                hook_tools = []
+            mcp_tools = settings.get("mcp_approval_tools", [])
+            mcp_allowed = isinstance(mcp_tools, list) and len(mcp_tools) > 0
+            return HookConfigState(
+                hook_tools=hook_tools,
+                mcp_allowed=mcp_allowed,
+                hook_configured=len(hook_tools) > 0,
+            )
+    except Exception:
+        pass
 
-    # Launcher offline — read files directly as fallback
+    # Fallback: read .claude/settings.json directly
     import json as _json
     from pixsim7.backend.main.shared.config import _resolve_repo_root
 
@@ -1525,7 +1648,17 @@ async def get_bridge_hook_config() -> HookConfigState:
 async def apply_bridge_hook_config(
     payload: ApplyHookConfigRequest,
 ) -> ApplyHookConfigResponse:
-    """Write hook config — proxies to launcher or writes files directly."""
+    """Write hook config to launcher service settings + .claude/ files."""
+    # 1. Update launcher service settings (source of truth for launcher UI)
+    try:
+        from launcher.core.service_settings import load_persisted, save_persisted
+        current = await run_in_threadpool(load_persisted, "ai-client")
+        current["hook_tools"] = payload.hook_tools
+        await run_in_threadpool(save_persisted, "ai-client", current)
+    except Exception:
+        pass
+
+    # 2. Also write to .claude/ files (what Claude CLI reads) via launcher API
     from launcher.core.client import apply_hook_config
 
     result = await run_in_threadpool(apply_hook_config, payload.hook_tools, payload.mcp_allowed)

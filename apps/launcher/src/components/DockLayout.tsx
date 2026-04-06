@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Layout, Model, Actions, IJsonModel, TabNode } from 'flexlayout-react'
+import { Layout, Model, Actions, IJsonModel, TabNode, type ITabRenderValues } from 'flexlayout-react'
 import { Button } from '@pixsim7/shared.ui'
 import 'flexlayout-react/style/dark.css'
 
@@ -18,14 +18,71 @@ import { TracePanel } from './TracePanel'
 import { DebugPanel } from './DebugPanel'
 import { StatusBar } from './StatusBar'
 import { ServiceSettingsPanel } from './ServiceSettingsPanel'
+import { AccountPanel } from './AccountPanel'
 import { useServicesStore } from '../stores/services'
 import { checkWindowAvailable, applyHookConfig } from '../api/client'
 import type { ServiceState } from '../api/client'
 
+// ── Tab icons (14px stroke icons for the flexlayout tab bar) ──
+
+const ti = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, stroke: 'currentColor' }
+
+function IcoServer() { return <svg {...ti}><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none" /></svg> }
+function IcoTerminal() { return <svg {...ti}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M6 10l4 2-4 2" /><path d="M12 16h4" /></svg> }
+function IcoDatabase() { return <svg {...ti}><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" /><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" /></svg> }
+function IcoInfo() { return <svg {...ti}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg> }
+function IcoWrench() { return <svg {...ti}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg> }
+function IcoBug() { return <svg {...ti}><path d="M8 2l1.88 1.88" /><path d="M14.12 3.88L16 2" /><path d="M9 7.13v-1a3 3 0 0 1 6 0v1" /><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" /><path d="M12 20v-9" /><path d="M6.53 9C4.6 8.8 3 7.1 3 5" /><path d="M6 13H2" /><path d="M3 21c0-2.1 1.7-3.9 3.8-4" /><path d="M17.47 9c1.93-.2 3.53-1.9 3.53-4" /><path d="M18 13h4" /><path d="M21 21c0-2.1-1.7-3.9-3.8-4" /></svg> }
+function IcoActivity() { return <svg {...ti}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg> }
+function IcoUser() { return <svg {...ti}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> }
+function IcoGlobe() { return <svg {...ti}><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg> }
+function IcoCog() { return <svg {...ti}><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z" /><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M4.93 4.93l1.41 1.41" /><path d="M17.66 17.66l1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M4.93 19.07l1.41-1.41" /><path d="M17.66 6.34l1.41-1.41" /></svg> }
+function IcoBot() { return <svg {...ti}><rect x="3" y="11" width="18" height="10" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" /><circle cx="8" cy="16" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="16" r="1" fill="currentColor" stroke="none" /></svg> }
+function IcoSparkles() { return <svg {...ti}><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" /><path d="M18 14l.7 2.3L21 17l-2.3.7L18 20l-.7-2.3L15 17l2.3-.7L18 14z" /></svg> }
+function IcoGamepad() { return <svg {...ti}><path d="M6 11h4" /><path d="M8 9v4" /><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="18" cy="10" r="1" fill="currentColor" stroke="none" /><rect x="2" y="6" width="20" height="12" rx="4" /></svg> }
+
+/** Static tab icon by component ID. */
+const TAB_ICONS: Record<string, () => React.ReactNode> = {
+  'services': IcoServer,
+  'console': IcoTerminal,
+  'db-logs': IcoDatabase,
+  'service-detail': IcoInfo,
+  'tools': IcoWrench,
+  'debug': IcoBug,
+  'trace': IcoActivity,
+  'account': IcoUser,
+}
+
+/** Service key → tab icon (mirrors ServiceIcon mapping). */
+const SERVICE_TAB_ICONS: Record<string, () => React.ReactNode> = {
+  'db': IcoDatabase,
+  'main-api': IcoServer,
+  'launcher-api': IcoTerminal,
+  'launcher-dev': IcoTerminal,
+  'frontend': IcoGlobe,
+  'worker': IcoCog,
+  'simulation-worker': IcoGamepad,
+  'generation-api': IcoSparkles,
+  'ai-client': IcoBot,
+}
+
+/** Tabs whose icon should reflect the currently selected service. */
+const SERVICE_CONTEXTUAL_TABS = new Set(['console', 'service-detail'])
+
+/** Health → Tailwind color for contextual tab icons. */
+const HEALTH_TAB_COLOR: Record<string, string> = {
+  healthy: 'text-green-400',
+  unhealthy: 'text-red-400',
+  starting: 'text-yellow-400',
+  stopped: 'text-gray-500',
+  unknown: 'text-gray-500',
+}
+
 // ── Panel components registry ──
 
-const CATEGORY_ORDER = ['core', 'apps', 'services', 'launcher']
+const CATEGORY_ORDER = ['platform', 'core', 'apps', 'services', 'launcher']
 const CATEGORY_LABELS: Record<string, string> = {
+  platform: 'Platform',
   core: 'Core',
   apps: 'Apps',
   services: 'Services',
@@ -259,7 +316,7 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
         </button>
       </div>
       <div className="text-[9px] text-gray-600 leading-relaxed">
-        Saves hook config to <code className="text-gray-500">~/.claude/settings.json</code> and MCP permissions to <code className="text-gray-500">settings.local.json</code>.
+        Saves hook and MCP permissions to <code className="text-gray-500">.claude/</code> (project-level).
       </div>
     </div>
   )
@@ -401,6 +458,7 @@ const DEFAULT_LAYOUT: IJsonModel = {
           { type: 'tab', name: 'Tools', component: 'tools' },
           { type: 'tab', name: 'Debug', component: 'debug' },
           { type: 'tab', name: 'Trace', component: 'trace' },
+          { type: 'tab', name: 'Account', component: 'account', id: 'account-tab' },
         ],
       },
     ],
@@ -480,7 +538,7 @@ function loadSavedLayout(): IJsonModel {
 
 // ── Main layout component ──
 
-export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
+export function DockLayout({ onShowSetup, onIdentityCreated }: { onShowSetup?: () => void; onIdentityCreated?: () => void }) {
   const modelRef = useRef(Model.fromJson(loadSavedLayout()))
   const [traceTarget, setTraceTarget] = useState<{ fieldName: string; fieldValue: string } | null>(null)
 
@@ -490,6 +548,24 @@ export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
     try {
       const model = modelRef.current
       model.doAction(Actions.selectTab('trace-tab'))
+    } catch {}
+  }, [])
+
+  const selectAccountTab = useCallback(() => {
+    try {
+      const model = modelRef.current
+      // Find the account tab node and select it
+      const node = model.getNodeById('account-tab')
+      if (node) {
+        model.doAction(Actions.selectTab('account-tab'))
+      } else {
+        // Fallback: search by component name
+        model.visitNodes((n) => {
+          if (n instanceof TabNode && n.getComponent() === 'account') {
+            model.doAction(Actions.selectTab(n.getId()))
+          }
+        })
+      }
     } catch {}
   }, [])
 
@@ -516,10 +592,35 @@ export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
             Click a field badge in logs to trace
           </div>
         )
+      case 'account':
+        return <AccountPanel onIdentityCreated={onIdentityCreated} />
       default:
         return <div className="p-4 text-gray-500">Unknown panel: {component}</div>
     }
   }, [handleFieldClick, traceTarget])
+
+  const selectedKey = useServicesStore((s) => s.selectedKey)
+  const selectedHealth = useServicesStore((s) => {
+    if (!s.selectedKey) return ''
+    return s.services.find((svc) => svc.key === s.selectedKey)?.health ?? ''
+  })
+
+  const onRenderTab = useCallback((node: TabNode, renderValues: ITabRenderValues) => {
+    const component = node.getComponent() ?? ''
+    const isContextual = SERVICE_CONTEXTUAL_TABS.has(component) && selectedKey
+    let Icon: (() => React.ReactNode) | undefined
+
+    if (isContextual) {
+      Icon = SERVICE_TAB_ICONS[selectedKey!]
+    }
+    if (!Icon) {
+      Icon = TAB_ICONS[component]
+    }
+    if (Icon) {
+      const colorCls = isContextual ? (HEALTH_TAB_COLOR[selectedHealth] ?? 'text-gray-500') : 'opacity-60'
+      renderValues.leading = <span className={`mr-0.5 flex items-center ${colorCls}`}><Icon /></span>
+    }
+  }, [selectedKey, selectedHealth])
 
   const handleModelChange = useCallback((model: Model) => {
     try {
@@ -541,11 +642,12 @@ export function DockLayout({ onShowSetup }: { onShowSetup?: () => void }) {
         <Layout
           model={modelRef.current}
           factory={factory}
+          onRenderTab={onRenderTab}
           onModelChange={handleModelChange}
         />
       </div>
       <div className="flex items-center border-t border-border shrink-0 h-7 bg-surface-secondary">
-        <StatusBar onShowSetup={onShowSetup} />
+        <StatusBar onShowSetup={selectAccountTab} />
         <Button size="xs" variant="ghost" onClick={() => window.location.reload()} className="mr-2 text-gray-500 hover:text-gray-300" title="Reload the launcher UI">
           Refresh
         </Button>

@@ -696,58 +696,53 @@ export function WorkSummaryBadge({ sessionId, messageCount, sending }: { session
 }
 
 // =============================================================================
-// Bridge Settings Popover — hook config & permissions
+// Bridge Settings Popover — schema-driven from launcher service settings
 // =============================================================================
 
-interface HookConfigState {
-  hook_tools: string[];
-  mcp_allowed: boolean;
-  hook_configured: boolean;
+interface SettingFieldSchema {
+  key: string;
+  type: string;
+  label: string;
+  description?: string;
+  default?: unknown;
+  options?: string[];
+  option_groups?: { group: string; options: string[] }[];
 }
 
-const DEFAULT_HOOK_TOOLS = ['Bash', 'Write', 'Edit'];
-const ALL_HOOK_TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'Agent'];
+interface BridgeSettingsData {
+  service_key: string;
+  schema: SettingFieldSchema[];
+  values: Record<string, unknown>;
+}
 
 export function BridgeSettingsPopover() {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [config, setConfig] = useState<HookConfigState | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  // Local editable state
-  const [hookTools, setHookTools] = useState<string[]>(DEFAULT_HOOK_TOOLS);
-  const [mcpAllowed, setMcpAllowed] = useState(true);
-  const [hookEnabled, setHookEnabled] = useState(false);
+  const [data, setData] = useState<BridgeSettingsData | null>(null);
 
-  // Fetch current config when popover opens
+  // Fetch schema + values when popover opens
   useEffect(() => {
     if (!open) return;
-    pixsimClient.get<HookConfigState>('/meta/agents/bridge/hook-config')
-      .then((data) => {
-        setConfig(data);
-        setHookTools(data.hook_tools.length > 0 ? data.hook_tools : DEFAULT_HOOK_TOOLS);
-        setMcpAllowed(data.mcp_allowed);
-        setHookEnabled(data.hook_configured);
-        setDirty(false);
-      })
+    pixsimClient.get<BridgeSettingsData>('/meta/agents/bridge/settings')
+      .then(setData)
       .catch(() => {});
   }, [open]);
 
-  const toggleTool = (tool: string) => {
-    setHookTools((prev) => {
-      const next = prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool];
-      setDirty(true);
-      return next;
-    });
+  const updateField = (key: string, value: unknown) => {
+    // Optimistic update
+    setData((prev) => prev ? { ...prev, values: { ...prev.values, [key]: value } } : prev);
+    pixsimClient.patch<BridgeSettingsData>('/meta/agents/bridge/settings', { values: { [key]: value } })
+      .then(setData)
+      .catch(() => {
+        // Revert on error — re-fetch
+        pixsimClient.get<BridgeSettingsData>('/meta/agents/bridge/settings').then(setData).catch(() => {});
+      });
   };
 
-  const save = () => {
-    setSaving(true);
-    const tools = hookEnabled ? hookTools : [];
-    pixsimClient.post<{ ok: boolean; message: string }>('/meta/agents/bridge/hook-config', { hook_tools: tools, mcp_allowed: mcpAllowed })
-      .then(() => { setDirty(false); setSaving(false); })
-      .catch(() => setSaving(false));
-  };
+  // Only show fields relevant to the chat UI (skip hook_port, log_level, etc.)
+  const visibleFields = data?.schema.filter((f) =>
+    ['multi_select', 'boolean'].includes(f.type) || f.key === 'pool_size' || f.key === 'timeout'
+  ) ?? [];
 
   return (
     <>
@@ -768,72 +763,91 @@ export function BridgeSettingsPopover() {
         open={open}
         onClose={() => setOpen(false)}
         triggerRef={ref}
-        className="w-64 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
+        className="w-72 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
       >
         <div className="p-3 space-y-3">
           <div className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">
             Bridge Settings
           </div>
+          <div className="text-[9px] text-neutral-400">
+            Changes take effect on next restart.
+          </div>
 
-          {/* Tool approval toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hookEnabled}
-              onChange={(e) => { setHookEnabled(e.target.checked); setDirty(true); }}
-              className="rounded text-accent focus:ring-accent h-3.5 w-3.5"
+          {!data && (
+            <div className="text-[10px] text-neutral-400 py-2 text-center">Loading...</div>
+          )}
+
+          {visibleFields.map((field) => (
+            <BridgeSettingField
+              key={field.key}
+              field={field}
+              value={data!.values[field.key]}
+              onChange={(v) => updateField(field.key, v)}
             />
-            <span className="text-[11px] text-neutral-700 dark:text-neutral-300">Require tool approval</span>
-          </label>
-
-          {/* Tool chips — only shown when hook enabled */}
-          {hookEnabled && (
-            <div className="flex flex-wrap gap-1">
-              {ALL_HOOK_TOOL_OPTIONS.map((tool) => (
-                <button
-                  key={tool}
-                  onClick={() => toggleTool(tool)}
-                  className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${
-                    hookTools.includes(tool)
-                      ? 'bg-accent/10 border-accent/30 text-accent dark:text-accent'
-                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:border-neutral-300'
-                  }`}
-                >
-                  {tool}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* MCP permissions toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={mcpAllowed}
-              onChange={(e) => { setMcpAllowed(e.target.checked); setDirty(true); }}
-              className="rounded text-accent focus:ring-accent h-3.5 w-3.5"
-            />
-            <span className="text-[11px] text-neutral-700 dark:text-neutral-300">Allow MCP tools</span>
-          </label>
-
-          {/* Status line */}
-          {config && !dirty && (
-            <div className="text-[9px] text-neutral-400">
-              {config.hook_configured
-                ? `Hook active: ${config.hook_tools.join(', ') || 'none'}`
-                : 'No hooks configured'}
-            </div>
-          )}
-
-          {/* Save button */}
-          {dirty && (
-            <Button size="sm" onClick={save} disabled={saving} className="w-full">
-              {saving ? 'Saving...' : 'Save'}
-            </Button>
-          )}
+          ))}
         </div>
       </Popover>
     </>
+  );
+}
+
+function BridgeSettingField({ field, value, onChange }: {
+  field: SettingFieldSchema;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">{field.label}</div>
+      {field.description && (
+        <div className="text-[9px] text-neutral-400 dark:text-neutral-500 leading-relaxed">{field.description}</div>
+      )}
+      {field.type === 'multi_select' && (
+        <div className="flex flex-wrap gap-1">
+          {(field.options ?? []).map((opt) => {
+            const active = Array.isArray(value) && value.includes(opt);
+            return (
+              <button
+                key={opt}
+                onClick={() => {
+                  const arr = Array.isArray(value) ? value as string[] : [];
+                  onChange(active ? arr.filter((v) => v !== opt) : [...arr, opt]);
+                }}
+                className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${
+                  active
+                    ? 'bg-accent/10 border-accent/30 text-accent'
+                    : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {field.type === 'number' && (
+        <input
+          type="number"
+          value={typeof value === 'number' ? value : 0}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            if (!isNaN(n)) onChange(n);
+          }}
+          className="w-20 px-2 py-0.5 text-[10px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      )}
+      {field.type === 'boolean' && (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => onChange(e.target.checked)}
+            className="rounded text-accent focus:ring-accent h-3.5 w-3.5"
+          />
+          <span className="text-[10px] text-neutral-600 dark:text-neutral-400">{value ? 'Enabled' : 'Disabled'}</span>
+        </label>
+      )}
+    </div>
   );
 }
 
