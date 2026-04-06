@@ -36,6 +36,14 @@ TIMEOUT_S = 120
 
 
 def main() -> None:
+    # Breadcrumb: verify hook is actually being invoked by Claude Code
+    try:
+        Path.home().joinpath(".pixsim", "hook_fired.log").write_text(
+            f"{__import__('datetime').datetime.now().isoformat()} hook_pretool invoked\n",
+        )
+    except Exception:
+        pass
+
     # Read tool info from stdin
     try:
         raw = sys.stdin.read()

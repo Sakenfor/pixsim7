@@ -619,6 +619,17 @@ class RemoteCommandBridge:
         else:
             target_task_ids = list(agent.current_task_ids)
 
+        # Diagnostic: log confirmation_request routing
+        if data.get("action") == "confirmation_request":
+            logger.info(
+                "confirmation_hb_routing",
+                bridge_client_id=bridge_client_id,
+                explicit_task_id=explicit_task_id,
+                current_task_ids=list(agent.current_task_ids),
+                target_task_ids=target_task_ids,
+                has_queues=[tid for tid in target_task_ids if self._heartbeat_queues.get(tid)],
+            )
+
         now = datetime.now(timezone.utc)
         for task_id in target_task_ids:
             row = self._active_tasks.get(task_id) or {}

@@ -883,6 +883,10 @@ class Bridge:
         # - Claude: per-session temp MCP config
         # - Codex: project-local .codex/config.toml selected by workdir
         mcp_config_override = None
+        # Claude sessions need the project root as cwd so they can find
+        # .claude/settings.json (hooks, permissions).  Codex sessions get
+        # a focus-scoped workdir with a project-local .codex/config.toml.
+        session_workdir: str | None = str(self._repo_root)
         codex_workdir = None
         if meta["engine"] == "codex":
             if self._token_file:
@@ -1011,7 +1015,7 @@ class Bridge:
                     session_policy=meta["session_policy"],
                     scope_key=meta["scope_key"],
                     mcp_config_path=mcp_config_override,
-                    workdir=codex_workdir,
+                    workdir=codex_workdir or session_workdir,
                     user_token=user_token,
                 )
                 self._tasks_handled += 1
@@ -1150,9 +1154,13 @@ class Bridge:
         Returns full response dict: {approved, choice?, text?}."""
         ws = self._active_ws
         if not ws or not self._connected:
+            get_logger().warning("hook_confirm_no_ws", connected=self._connected, has_ws=ws is not None)
             return {"approved": True}  # auto-approve if bridge not connected (fail-open)
         task_id = payload.get("task_id") or f"hook-{uuid.uuid4().hex[:8]}"
-        return await self.request_confirmation(ws, task_id, payload)
+        get_logger().info("hook_confirm_routing", task_id=task_id, tool=payload.get("tool_name"), connected=self._connected)
+        result = await self.request_confirmation(ws, task_id, payload)
+        get_logger().info("hook_confirm_result", task_id=task_id, approved=result.get("approved"), result_keys=list(result.keys()))
+        return result
 
     async def request_confirmation(
         self,
