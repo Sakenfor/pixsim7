@@ -35,12 +35,16 @@ _ENV_KEY_MAP: Dict[str, tuple[str, str]] = {
     "BACKEND_BASE_URL": ("main-api", "base_url"),
     "GENERATION_BASE_URL": ("generation-api", "base_url"),
     "LAUNCHER_BASE_URL": ("launcher-api", "base_url"),
+    # Database (on db service card)
+    "DATABASE_URL": ("db", "database_url"),
+    "LOG_DATABASE_URL": ("db", "log_database_url"),
+    "BLOCKS_DATABASE_URL": ("db", "blocks_database_url"),
+    "REDIS_URL": ("db", "redis_url"),
     # Platform
-    "DATABASE_URL": ("_platform", "database_url"),
-    "REDIS_URL": ("_platform", "redis_url"),
     "SECRET_KEY": ("_platform", "secret_key"),
     "CORS_ORIGINS": ("_platform", "cors_origins"),
     "DEBUG": ("_platform", "debug"),
+    "PIXSIM_HOME": ("_platform", "pixsim_home"),
 }
 
 # old settings.json paths → (target_service, setting_key)

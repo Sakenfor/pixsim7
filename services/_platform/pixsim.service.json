@@ -15,22 +15,6 @@
       "env_export": "PIXSIM_HOME"
     },
     {
-      "key": "database_url",
-      "type": "string",
-      "label": "Database URL",
-      "description": "PostgreSQL connection string",
-      "default": "postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7",
-      "env_export": "DATABASE_URL"
-    },
-    {
-      "key": "redis_url",
-      "type": "string",
-      "label": "Redis URL",
-      "description": "Redis connection string",
-      "default": "redis://localhost:6380/0",
-      "env_export": "REDIS_URL"
-    },
-    {
       "key": "secret_key",
       "type": "string",
       "label": "Secret Key",
