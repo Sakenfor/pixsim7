@@ -42,6 +42,18 @@ from pixsim7.client.token_manager import (
 )
 
 
+def _describe_tool_for_gate(tool_name: str, tool_input: dict) -> str:
+    """Human-readable description for tool gate confirmation dialog."""
+    if tool_name == "Bash" and "command" in tool_input:
+        cmd = tool_input["command"]
+        return f"Run command: {cmd[:200]}" if len(cmd) > 200 else f"Run command: {cmd}"
+    if tool_name in ("Write", "Edit") and "file_path" in tool_input:
+        return f"{tool_name} file: {tool_input['file_path']}"
+    if tool_name == "NotebookEdit" and "file_path" in tool_input:
+        return f"Edit notebook: {tool_input['file_path']}"
+    return f"{tool_name}({json.dumps(tool_input)[:200]})"
+
+
 class Bridge:
     """WebSocket bridge between local agent pool and pixsim backend."""
 
@@ -1004,10 +1016,31 @@ class Bridge:
                     last_detail = detail[:200]
                 asyncio.ensure_future(send_progress(event_type, detail))
 
+            # ── Tool gate: intercept built-in tool_use events ──
+            gated_tools = self._get_gated_tools()
+
+            async def tool_gate(tool_name: str, tool_input: dict) -> bool:
+                if not gated_tools or tool_name not in gated_tools:
+                    return True  # not gated — allow
+                get_logger().info("tool_gate_requesting", tool=tool_name, task=task_id[:8])
+                # Route through the same confirmation flow as ask_user
+                result = await self._hook_confirm({
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                    "title": f"Tool: {tool_name}",
+                    "description": _describe_tool_for_gate(tool_name, tool_input),
+                    "timeout_s": 120,
+                    "task_id": task_id,
+                })
+                approved = result.get("approved", False)
+                get_logger().info("tool_gate_result", tool=tool_name, approved=approved)
+                return approved
+
             keepalive_task = asyncio.create_task(send_keepalive())
             try:
                 session_id, response = await self._pool.send_message(
                     prompt, timeout=timeout, images=images, on_progress=on_progress,
+                    tool_gate=tool_gate if gated_tools else None,
                     bridge_session_id=meta["bridge_session_id"],
                     engine=meta["engine"],
                     model=meta["model"],
@@ -1147,6 +1180,23 @@ class Bridge:
             pass
         get_logger().info("mcp_http_server_starting", port=self._mcp_http_port, url=self._mcp_http_url)
         await server.serve()
+
+    def _get_gated_tools(self) -> set[str]:
+        """Read the tool approval list from launcher service settings (live).
+
+        Returns set of built-in tool names that require user approval.
+        Falls back to empty set (all allowed) on any error.
+        """
+        try:
+            settings_file = self._repo_root / "data" / "launcher" / "service_settings" / "ai-client.json"
+            if settings_file.exists():
+                data = json.loads(settings_file.read_text(encoding="utf-8"))
+                tools = data.get("hook_tools", [])
+                if isinstance(tools, list) and tools:
+                    return {str(t).strip() for t in tools if t}
+        except Exception:
+            pass
+        return set()
 
     async def _hook_confirm(self, payload: dict) -> dict:
         """Called by hook_server when /confirm is hit.

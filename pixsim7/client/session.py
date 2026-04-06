@@ -178,11 +178,17 @@ class AgentCmdSession:
         # aren't found by asyncio.create_subprocess_exec with bare names
         resolved_command = shutil.which(self._command) or self._command
 
+        # Validate MCP config still exists (temp files can be cleaned up by OS)
+        mcp_config = self._mcp_config_path
+        if mcp_config and not os.path.exists(mcp_config):
+            self._log.warning("mcp_config_missing", path=mcp_config)
+            mcp_config = None
+
         cmd = self._protocol.build_start_cmd(
             resolved_command,
             resume_session_id=self._resume_session_id,
             system_prompt=self._system_prompt,
-            mcp_config_path=self._mcp_config_path,
+            mcp_config_path=mcp_config,
             model=self._model,
             reasoning_effort=self._reasoning_effort,
             extra_args=self._extra_args,
@@ -530,11 +536,18 @@ class AgentCmdSession:
         timeout: int = 120,
         images: list[dict] | None = None,
         on_progress: "Callable[[str, str], None] | None" = None,
+        tool_gate: "Callable[[str, dict], Awaitable[bool]] | None" = None,
     ) -> str:
         """Send a message and wait for the complete response.
 
         For long-running protocols (Claude): sends via stdin to existing process.
         For single-turn protocols (Codex): restarts the process with --resume.
+
+        Args:
+            tool_gate: Optional async callback ``(tool_name, tool_input) -> bool``.
+                Called before a built-in tool executes. Pauses the stdout reader
+                (back-pressuring the CLI) until the callback resolves. Return
+                True to allow, False to cancel the session.
         """
         # Single-turn protocol: (re)start process per message
         if not self._protocol.is_long_running():
@@ -682,6 +695,16 @@ class AgentCmdSession:
                         self._busy_last_action = raw_type or raw_method_norm
                     if parsed.text:
                         self._busy_last_detail = parsed.text[:200]
+                    # ── Tool gate: pause stdout reader until user approves ──
+                    if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
+                        gate_name = _first_block.get("name", "")
+                        gate_input = _first_block.get("input") or {}
+                        approved = await tool_gate(gate_name, gate_input if isinstance(gate_input, dict) else {})
+                        if not approved:
+                            self._log.info("tool_gate_denied", tool=gate_name)
+                            self._mark_ready()
+                            raise RuntimeError(f"Tool denied by user: {gate_name}")
+
                     # Only forward meaningful progress (tool use, thinking, status) — skip streaming text
                     if on_progress and parsed.text and not is_delta and not is_text_block:
                         on_progress("progress", parsed.text)

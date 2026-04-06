@@ -314,6 +314,9 @@ class AgentPool:
                 return existing
             # Dead or errored — restart in-place (preserves cli_session_id for proper resume)
             if not existing.is_alive:
+                # Refresh MCP config if the temp file was cleaned up
+                if existing._mcp_config_path and not os.path.exists(existing._mcp_config_path):
+                    existing._mcp_config_path = self._mcp_config_path
                 get_logger().info("pool_session_restart", session=existing.session_id, reason="died")
                 if await existing.restart():
                     self._update_index(existing)
@@ -466,6 +469,7 @@ class AgentPool:
         timeout: int = 120,
         images: list[dict] | None = None,
         on_progress: "Callable[[str, str], None] | None" = None,
+        tool_gate: "Callable[[str, dict], Awaitable[bool]] | None" = None,
         bridge_session_id: str | None = None,
         engine: str | None = None,
         model: str | None = None,
@@ -559,7 +563,7 @@ class AgentPool:
                         f.write(chat_session_id)
                 except OSError:
                     pass
-            response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
+            response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress, tool_gate=tool_gate)
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
             # Update sidecar after response — new sessions get cli_session_id on first turn
