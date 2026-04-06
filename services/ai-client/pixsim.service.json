@@ -42,8 +42,13 @@
       "key": "hook_tools",
       "type": "multi_select",
       "label": "Claude Built-in Tools",
-      "description": "Which Claude Code tools route through PreToolUse hook for confirmation",
-      "options": ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch"],
+      "description": "Which Claude Code built-in tools require user approval before execution",
+      "options": [
+        "Bash", "Write", "Edit", "NotebookEdit",
+        "WebFetch", "WebSearch",
+        "EnterPlanMode", "ExitPlanMode",
+        "Agent", "TodoWrite"
+      ],
       "default": ["Bash", "Write", "Edit"],
       "section": "Tool Approval"
     },
