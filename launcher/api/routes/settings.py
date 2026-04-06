@@ -1,22 +1,22 @@
 """
 Settings & Profile Routes.
 
-The old monolithic LauncherSettings endpoints are replaced by:
-- Per-service settings: GET/PATCH /services/{key}/settings (in services.py)
-- Profiles: GET /profiles, GET/PUT /profiles/active (here)
+Configuration is managed via per-service settings:
+  GET/PATCH /services/{key}/settings (in services.py)
 
-Legacy GET/PUT /settings is kept temporarily for backward compatibility
-but delegates to the new system.
+Profiles provide named presets:
+  GET /settings/profiles
+  GET/PUT /settings/profiles/active
 """
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from typing import List
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-# ── Profile endpoints ──
+# ── Models ──
 
 class ProfileSummary(BaseModel):
     name: str
@@ -35,6 +35,8 @@ class ActiveProfileRequest(BaseModel):
 class ActiveProfileResponse(BaseModel):
     active: str
 
+
+# ── Profile endpoints ──
 
 @router.get("/profiles", response_model=ProfileListResponse)
 async def list_profiles():
@@ -64,34 +66,7 @@ async def set_active_profile_endpoint(body: ActiveProfileRequest = Body(...)):
 
     profiles = load_profiles()
     if body.name not in profiles:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Profile '{body.name}' not found")
 
     set_active_profile(body.name)
     return ActiveProfileResponse(active=body.name)
-
-
-# ── Legacy endpoints (backward compat — will be removed) ──
-
-@router.get("")
-async def get_settings():
-    """Legacy: return launcher settings. Prefer per-service settings API."""
-    try:
-        from launcher.core.launcher_settings import load_launcher_settings
-        from launcher.api.models import LauncherSettingsResponse
-        settings = load_launcher_settings()
-        return LauncherSettingsResponse.from_settings(settings)
-    except ImportError:
-        return {"message": "LauncherSettings removed. Use per-service settings and /settings/profiles."}
-
-
-@router.put("")
-async def update_settings(request: Dict[str, Any] = Body(...)):
-    """Legacy: update launcher settings. Prefer per-service settings API."""
-    try:
-        from launcher.core.launcher_settings import load_launcher_settings, update_launcher_settings
-        from launcher.api.models import LauncherSettingsResponse
-        settings = update_launcher_settings(request)
-        return LauncherSettingsResponse.from_settings(settings)
-    except ImportError:
-        return {"message": "LauncherSettings removed. Use per-service settings and /settings/profiles."}
