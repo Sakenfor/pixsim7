@@ -1,48 +1,23 @@
 {
   "default": {
     "label": "Local HTTP (default)",
-    "use_local_datastores": false,
-    "ports": {
-      "backend": 8000,
-      "generation": 8001,
-      "frontend": 5173,
-      "game_frontend": 5174,
-      "game_service": 8050,
-      "devtools": 5176,
-      "admin": 5175
+    "_platform": {
+      "use_local_datastores": false
     },
-    "base_urls": {
-      "backend": "",
-      "generation": "",
-      "frontend": "",
-      "game_frontend": "",
-      "launcher": "",
-      "devtools": "",
-      "admin": "",
-      "docs": ""
-    }
+    "main-api": { "port": 8000, "base_url": "" },
+    "generation-api": { "port": 8001, "base_url": "" },
+    "launcher-api": { "port": 8100, "base_url": "" },
+    "db": { "postgres_port": 5434, "redis_port": 6380 }
   },
   "https_local": {
     "label": "Local HTTPS (pixsim7.local)",
-    "use_local_datastores": false,
-    "ports": {
-      "backend": 8000,
-      "generation": 8001,
-      "frontend": 5173,
-      "game_frontend": 5174,
-      "game_service": 8050,
-      "devtools": 5176,
-      "admin": 5175
+    "_platform": {
+      "use_local_datastores": false,
+      "cors_origins": "https://api.pixsim7.local,https://gen.pixsim7.local,https://app.pixsim7.local,https://game.pixsim7.local,https://launcher.pixsim7.local,https://dev.pixsim7.local,https://admin.pixsim7.local"
     },
-    "base_urls": {
-      "backend": "https://api.pixsim7.local",
-      "generation": "https://gen.pixsim7.local",
-      "frontend": "https://app.pixsim7.local",
-      "game_frontend": "https://game.pixsim7.local",
-      "launcher": "https://launcher.pixsim7.local",
-      "devtools": "https://dev.pixsim7.local",
-      "admin": "https://admin.pixsim7.local",
-      "docs": "https://docs.pixsim7.local"
-    }
+    "main-api": { "port": 8000, "base_url": "https://api.pixsim7.local" },
+    "generation-api": { "port": 8001, "base_url": "https://gen.pixsim7.local" },
+    "launcher-api": { "port": 8100, "base_url": "https://launcher.pixsim7.local" },
+    "db": { "postgres_port": 5434, "redis_port": 6380 }
   }
 }

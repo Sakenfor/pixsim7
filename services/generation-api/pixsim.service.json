@@ -30,19 +30,17 @@
   "settings": [
     {
       "key": "port",
-      "type": "number",
-      "label": "Port",
+      "default": 8001,
       "description": "Generation API server port",
-      "default": 8001
+      "env_export": "GENERATION_API_PORT"
+    },
+    {
+      "key": "base_url",
+      "env_export": "GENERATION_BASE_URL"
     },
     {
       "key": "log_level",
-      "type": "select",
-      "label": "Uvicorn Log Level",
-      "description": "Uvicorn server log level (app logs use Debug tab)",
-      "options": ["debug", "info", "warning", "error"],
-      "default": "info",
-      "arg_map": "--log-level"
+      "label": "Uvicorn Log Level"
     }
   ]
 }

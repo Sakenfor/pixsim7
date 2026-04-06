@@ -4,51 +4,48 @@ import shutil
 from dataclasses import dataclass, asdict
 from typing import Dict, Optional
 
-from launcher.core.launcher_settings import (
-    load_launcher_settings,
-    update_launcher_settings,
-    launcher_settings_to_env,
-)
+# Legacy import — kept for backward compat with Qt GUI. Will be removed.
+try:
+    from launcher.core.launcher_settings import (
+        load_launcher_settings,
+        update_launcher_settings,
+        launcher_settings_to_env,
+    )
+except ImportError:
+    load_launcher_settings = None  # type: ignore[assignment]
+    update_launcher_settings = None  # type: ignore[assignment]
+    launcher_settings_to_env = None  # type: ignore[assignment]
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Global setting for SQL logging (set by launcher on startup)
-_sql_logging_enabled = False
-
-# Global setting for worker debug categories (set by launcher on startup)
-_worker_debug_flags = ""
-# Global setting for backend log level
-_backend_log_level = "INFO"
-
 
 def set_sql_logging(enabled: bool) -> None:
-    """Set the global SQL logging preference."""
-    global _sql_logging_enabled
-    _sql_logging_enabled = enabled
-    if update_launcher_settings:
-        update_launcher_settings({"logging": {"sql_logging_enabled": bool(enabled)}})
+    """Set SQL logging via _platform settings."""
+    from launcher.core.service_settings import load_persisted, save_persisted
+    p = load_persisted("_platform")
+    p["sql_logging"] = bool(enabled)
+    save_persisted("_platform", p)
 
 
 def set_worker_debug_flags(flags: str) -> None:
-    """Set global worker debug categories (comma-separated)."""
-    global _worker_debug_flags
-    _worker_debug_flags = flags or ""
-    if update_launcher_settings:
-        update_launcher_settings({"logging": {"worker_debug_flags": _worker_debug_flags}})
+    """Set worker debug flags via _platform settings."""
+    from launcher.core.service_settings import load_persisted, save_persisted
+    p = load_persisted("_platform")
+    p["worker_debug_flags"] = flags or ""
+    save_persisted("_platform", p)
 
 
 def set_backend_log_level(level: str) -> None:
-    """Set global backend log level (LOG_LEVEL env)."""
-    global _backend_log_level
-    _backend_log_level = (level or "INFO").upper()
-    if update_launcher_settings:
-        update_launcher_settings({"logging": {"backend_log_level": _backend_log_level}})
+    """Set backend log level — no-op, now per-service via log_level setting."""
+    pass
 
 
 def set_use_local_datastores(enabled: bool) -> None:
-    """Set preference for local datastores and persist launcher settings."""
-    if update_launcher_settings:
-        update_launcher_settings({"datastores": {"use_local_datastores": bool(enabled)}})
+    """Set local datastores preference via _platform settings."""
+    from launcher.core.service_settings import load_persisted, save_persisted
+    p = load_persisted("_platform")
+    p["use_local_datastores"] = bool(enabled)
+    save_persisted("_platform", p)
 
 
 @dataclass
@@ -165,60 +162,52 @@ def find_python_executable() -> str:
 
 
 def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports] = None, sql_logging: Optional[bool] = None) -> Dict[str, str]:
+    """Build the environment dict for a spawned service process.
+
+    Uses :func:`collect_global_exports` as the primary source for platform
+    config (DATABASE_URL, SECRET_KEY, ports, base URLs, etc.).  Falls back
+    to legacy ``.env`` / ``LauncherSettings`` if exports are unavailable.
+    """
     env = dict(base_env or os.environ)
-    # Merge variables from .env so services inherit configuration (DB URLs, keys, etc.)
-    try:
-        for k, v in read_env_file().items():
-            # Don't overwrite explicit environment variables
-            if k not in env:
-                env[k] = v
-    except Exception:
-        pass
+
+    # Global exports are already in os.environ (applied during lifespan startup).
+    # Only recompute if os.environ lacks critical keys (e.g. running outside API).
+    if "DATABASE_URL" not in env:
+        try:
+            from launcher.core.service_settings import collect_global_exports
+            from launcher.core.services import build_services_from_manifests
+            exports = collect_global_exports(build_services_from_manifests())
+            for k, v in exports.items():
+                if v and k not in env:
+                    env[k] = v
+        except Exception:
+            # Fallback: merge .env vars
+            try:
+                for k, v in read_env_file().items():
+                    if k not in env:
+                        env[k] = v
+            except Exception:
+                pass
+
+    # Vite env for frontend/devtools (derived from exports/env)
     p = ports or read_env_ports()
-    # Vite env for frontend/devtools
     if 'VITE_BACKEND_URL' not in env:
-        backend_base_url = os.getenv("BACKEND_BASE_URL")
-        env['VITE_BACKEND_URL'] = backend_base_url or f"http://localhost:{p.backend}"
+        env['VITE_BACKEND_URL'] = env.get("BACKEND_BASE_URL") or f"http://localhost:{p.backend}"
     if 'VITE_GAME_URL' not in env:
-        game_base_url = os.getenv("GAME_FRONTEND_BASE_URL")
-        env['VITE_GAME_URL'] = game_base_url or f"http://localhost:{p.game_frontend}"
+        env['VITE_GAME_URL'] = env.get("GAME_FRONTEND_BASE_URL") or f"http://localhost:{p.game_frontend}"
     if 'VITE_DEVTOOLS_URL' not in env:
-        devtools_base_url = os.getenv("DEVTOOLS_BASE_URL")
-        # Only set if explicitly configured; the frontend infers the correct
-        # proxy URL at runtime via devtoolsUrl.ts (same-origin /devtools path)
+        devtools_base_url = env.get("DEVTOOLS_BASE_URL")
         if devtools_base_url:
             env['VITE_DEVTOOLS_URL'] = devtools_base_url
-    env['PORT'] = str(p.backend)  # backend FastAPI if read by app
-    settings = None
-    if load_launcher_settings:
-        try:
-            settings = load_launcher_settings()
-        except Exception:
-            settings = None
+    env.setdefault('PORT', str(p.backend))
 
-    if settings and launcher_settings_to_env:
-        env.update(launcher_settings_to_env(settings))
-    else:
-        if _worker_debug_flags:
-            env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
-        env['LOG_LEVEL'] = _backend_log_level
-        env['PIXSIM_LOG_LEVEL'] = _backend_log_level
-
-    # SQL logging control (use parameter if provided, otherwise use shared setting if available)
-    if sql_logging is not None:
-        sql_log_enabled = sql_logging
-    elif settings:
-        sql_log_enabled = settings.logging.sql_logging_enabled
-    else:
-        sql_log_enabled = _sql_logging_enabled
-
-    # Build PIXSIM_LOG_DOMAINS from individual toggles.
-    # This is the canonical env var that pixsim_logging reads.
+    # Build PIXSIM_LOG_DOMAINS from platform settings
     domain_parts: list[str] = []
-    if sql_log_enabled:
+    if env.get("SQL_LOGGING_ENABLED") == "1" or (sql_logging is True):
         domain_parts.append("sql:DEBUG")
-    if _worker_debug_flags:
-        for cat in _worker_debug_flags.split(","):
+    worker_flags = env.get("PIXSIM_WORKER_DEBUG", "")
+    if worker_flags:
+        for cat in worker_flags.split(","):
             cat = cat.strip()
             if cat:
                 domain_parts.append(f"{cat}:DEBUG")
@@ -228,11 +217,6 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
             domain_parts.insert(0, existing)
         env["PIXSIM_LOG_DOMAINS"] = ",".join(domain_parts)
 
-    # Legacy env vars — kept for backward compat during transition
-    env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
-    # Prefer direct DB ingestion via env if configured globally (.env)
-    # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
-    # We intentionally do NOT set PIXSIM_LOG_INGESTION_URL here to avoid routing through backend.
     return env
 
 
@@ -319,7 +303,18 @@ def load_ui_state() -> UIState:
 
 
 def _apply_launcher_settings(state: UIState) -> UIState:
-    """Sync UI state fields from launcher settings if available."""
+    """Sync UI state fields from platform settings (or legacy LauncherSettings)."""
+    try:
+        from launcher.core.service_settings import load_persisted
+        platform = load_persisted("_platform")
+        if platform:
+            state.sql_logging_enabled = bool(platform.get("sql_logging", state.sql_logging_enabled))
+            state.worker_debug_flags = str(platform.get("worker_debug_flags", state.worker_debug_flags))
+            state.use_local_datastores = bool(platform.get("use_local_datastores", state.use_local_datastores))
+            return state
+    except Exception:
+        pass
+    # Legacy fallback
     if not load_launcher_settings:
         return state
     try:

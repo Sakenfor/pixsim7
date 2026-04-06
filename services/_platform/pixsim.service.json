@@ -1,0 +1,83 @@
+{
+  "id": "_platform",
+  "type": "platform",
+  "name": "Platform",
+  "description": "Cross-cutting configuration shared across all services",
+  "enabled": true,
+  "auto_start": false,
+  "settings": [
+    {
+      "key": "pixsim_home",
+      "type": "string",
+      "label": "Data Directory",
+      "description": "Root directory for all app data (media, logs, cache, settings). Leave empty for OS default.",
+      "default": "G:/code/pixsim7/data",
+      "env_export": "PIXSIM_HOME"
+    },
+    {
+      "key": "database_url",
+      "type": "string",
+      "label": "Database URL",
+      "description": "PostgreSQL connection string",
+      "default": "postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7",
+      "env_export": "DATABASE_URL"
+    },
+    {
+      "key": "redis_url",
+      "type": "string",
+      "label": "Redis URL",
+      "description": "Redis connection string",
+      "default": "redis://localhost:6380/0",
+      "env_export": "REDIS_URL"
+    },
+    {
+      "key": "secret_key",
+      "type": "string",
+      "label": "Secret Key",
+      "description": "JWT signing key (change in production)",
+      "default": "change-this-in-production",
+      "env_export": "SECRET_KEY"
+    },
+    {
+      "key": "cors_origins",
+      "type": "string",
+      "label": "CORS Origins",
+      "description": "Allowed origins (or * for all)",
+      "separator": ",",
+      "default": "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:8000,http://localhost:8001,http://localhost:8002,http://localhost:8100,http://localhost:3100",
+      "env_export": "CORS_ORIGINS"
+    },
+    {
+      "key": "debug",
+      "type": "boolean",
+      "label": "Debug Mode",
+      "description": "Enable debug mode for backends",
+      "default": true,
+      "env_export": "DEBUG"
+    },
+    {
+      "key": "use_local_datastores",
+      "type": "boolean",
+      "label": "Use Local Datastores",
+      "description": "Skip Docker DB service; use local Postgres/Redis instead",
+      "default": false,
+      "env_export": "USE_LOCAL_DATASTORES"
+    },
+    {
+      "key": "sql_logging",
+      "type": "boolean",
+      "label": "SQL Logging",
+      "description": "Enable SQLAlchemy query echo",
+      "default": false,
+      "env_export": "SQL_LOGGING_ENABLED"
+    },
+    {
+      "key": "worker_debug_flags",
+      "type": "string",
+      "label": "Worker Debug Flags",
+      "description": "Comma-separated debug categories (generation, provider, worker)",
+      "default": "",
+      "env_export": "PIXSIM_WORKER_DEBUG"
+    }
+  ]
+}

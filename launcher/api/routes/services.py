@@ -10,7 +10,6 @@ from typing import List
 from pixsim_logging import get_logger
 
 from launcher.core import ProcessManager, HealthManager
-from launcher.core.launcher_settings import load_launcher_settings
 from launcher.core.types import ServiceStatus, HealthStatus
 
 from ..models import (
@@ -451,8 +450,9 @@ async def start_all_services(
     """
     states = process_mgr.get_all_states()
     try:
-        settings = load_launcher_settings()
-        skip_db = settings.datastores.use_local_datastores
+        from launcher.core.service_settings import load_persisted
+        platform = load_persisted("_platform")
+        skip_db = bool(platform.get("use_local_datastores", False))
     except Exception:
         skip_db = False
     started = 0
@@ -532,7 +532,7 @@ async def get_service_settings(
     if not state:
         raise HTTPException(status_code=404, detail=f"Service '{service_key}' not found")
 
-    from launcher.core.service_settings import parse_schema, load_persisted, get_effective
+    from launcher.core.service_settings import parse_schema, load_persisted, get_effective, get_profile_overrides
 
     raw_schema = getattr(state.definition, "settings_schema", None)
     schema = parse_schema(raw_schema)
@@ -542,7 +542,8 @@ async def get_service_settings(
         schema = _enrich_mcp_tool_options(schema)
 
     persisted = load_persisted(service_key)
-    values = get_effective(schema, persisted)
+    profile_ov = get_profile_overrides(service_key)
+    values = get_effective(schema, persisted, profile_ov)
 
     return ServiceSettingsResponse(
         service_key=service_key,
@@ -563,7 +564,8 @@ async def update_service_settings(
         raise HTTPException(status_code=404, detail=f"Service '{service_key}' not found")
 
     from launcher.core.service_settings import (
-        parse_schema, load_persisted, save_persisted, get_effective, validate_update,
+        parse_schema, load_persisted, save_persisted, get_effective,
+        validate_update, get_profile_overrides,
     )
 
     raw_schema = getattr(state.definition, "settings_schema", None)
@@ -576,11 +578,15 @@ async def update_service_settings(
     persisted.update(validated)
     save_persisted(service_key, persisted)
 
+    # Invalidate global exports cache so next service start picks up changes
+    process_mgr.invalidate_exports_cache()
+
     # Enrich with dynamic options (same as GET)
     if service_key == "ai-client":
         schema = _enrich_mcp_tool_options(schema)
 
-    values = get_effective(schema, persisted)
+    profile_ov = get_profile_overrides(service_key)
+    values = get_effective(schema, persisted, profile_ov)
 
     return ServiceSettingsResponse(
         service_key=service_key,

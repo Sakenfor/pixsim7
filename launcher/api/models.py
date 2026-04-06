@@ -81,7 +81,10 @@ class SettingFieldResponse(BaseModel):
     default: Any = None
     options: Optional[List[Any]] = None
     option_groups: Optional[List[Dict[str, Any]]] = None
+    separator: Optional[str] = None
     arg_map: Optional[str] = None
+    env_map: Optional[str] = None
+    env_export: Optional[str] = None
 
 
 class ServiceSettingsResponse(BaseModel):

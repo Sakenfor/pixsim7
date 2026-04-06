@@ -39,26 +39,15 @@
   "settings": [
     {
       "key": "port",
-      "type": "number",
-      "label": "Port",
-      "description": "API server port",
-      "default": 8000
+      "env_export": "BACKEND_PORT"
+    },
+    {
+      "key": "base_url",
+      "env_export": "BACKEND_BASE_URL"
     },
     {
       "key": "log_level",
-      "type": "select",
-      "label": "Uvicorn Log Level",
-      "description": "Uvicorn server log level (app logs use Debug tab)",
-      "options": ["debug", "info", "warning", "error"],
-      "default": "info",
-      "arg_map": "--log-level"
-    },
-    {
-      "key": "reload",
-      "type": "boolean",
-      "label": "Auto-Reload",
-      "description": "Watch for file changes and restart automatically",
-      "default": true
+      "label": "Uvicorn Log Level"
     }
   ]
 }

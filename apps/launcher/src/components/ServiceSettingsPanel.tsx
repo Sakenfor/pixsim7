@@ -78,8 +78,8 @@ function SettingFieldControl({
     <div className="space-y-0.5">
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-gray-400 font-medium">{field.label}</label>
-        {field.arg_map && (
-          <span className="text-[8px] font-mono text-gray-600">{field.arg_map}</span>
+        {(field.arg_map || field.env_map) && (
+          <span className="text-[8px] font-mono text-gray-600">{field.arg_map || field.env_map}</span>
         )}
       </div>
       {field.description && (
@@ -92,8 +92,11 @@ function SettingFieldControl({
         {field.type === 'number' && (
           <NumberControl value={value as number} onChange={onChange} />
         )}
-        {field.type === 'string' && (
+        {field.type === 'string' && !field.separator && (
           <StringControl value={(value as string) ?? ''} onChange={onChange} />
+        )}
+        {field.type === 'string' && field.separator && (
+          <StringListControl value={(value as string) ?? ''} separator={field.separator} onChange={onChange} />
         )}
         {field.type === 'select' && (
           <SelectControl value={(value as string) ?? ''} options={field.options ?? []} onChange={onChange} />
@@ -165,6 +168,46 @@ function StringControl({ value, onChange }: { value: string; onChange: (v: strin
       onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
       className="w-full px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
     />
+  )
+}
+
+function StringListControl({ value, separator, onChange }: { value: string; separator: string; onChange: (v: string) => void }) {
+  const items = value ? value.split(separator).map((s) => s.trim()).filter(Boolean) : []
+  const [draft, setDraft] = useState('')
+
+  const add = () => {
+    const trimmed = draft.trim()
+    if (!trimmed || items.includes(trimmed)) return
+    onChange([...items, trimmed].join(separator))
+    setDraft('')
+  }
+
+  const remove = (index: number) => {
+    onChange(items.filter((_, i) => i !== index).join(separator))
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {items.map((item, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700 text-[10px] text-gray-300 font-mono">
+            <span className="truncate max-w-[200px]">{item}</span>
+            <button onClick={() => remove(i)} className="text-gray-500 hover:text-red-400 transition-colors text-[9px] leading-none">&times;</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={draft}
+          placeholder="Add entry..."
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          className="flex-1 px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-900 text-gray-300 focus:outline-none focus:border-cyan-600"
+        />
+        <button onClick={add} className="px-2 py-0.5 text-[10px] rounded border border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors">+</button>
+      </div>
+    </div>
   )
 }
 

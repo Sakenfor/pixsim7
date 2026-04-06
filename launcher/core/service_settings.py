@@ -1,19 +1,21 @@
 """
-Per-service settings — schema, persistence, and CLI arg generation.
+Per-service settings — schema, persistence, profiles, and CLI arg generation.
 
 Each service can declare a ``settings`` array in its ``pixsim.service.json``.
 Values are persisted per-service under ``LAUNCHER_STATE_DIR/service_settings/``.
-This module is independent of the global ``LauncherSettings`` system.
+Profiles provide named preset overrides layered between defaults and user values.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from .paths import LAUNCHER_STATE_DIR
+from .paths import LAUNCHER_STATE_DIR, PROJECT_ROOT
 
 SETTINGS_DIR = LAUNCHER_STATE_DIR / "service_settings"
+_PROFILES_PATH = PROJECT_ROOT / "launcher" / "profiles.json"
+_ACTIVE_PROFILE_PATH = LAUNCHER_STATE_DIR / "active_profile"
 
 # ── Type-level base schemas ──
 # Every service of a given type inherits these settings automatically.
@@ -28,6 +30,13 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "label": "Port",
             "description": "API server port",
             "default": 8000,
+        },
+        {
+            "key": "base_url",
+            "type": "string",
+            "label": "Base URL",
+            "description": "Public base URL (empty = http://localhost:{port})",
+            "default": "",
         },
         {
             "key": "reload",
@@ -164,6 +173,10 @@ def parse_schema(raw: Optional[List[Dict]]) -> List[Dict]:
             field["arg_map"] = entry["arg_map"]
         if entry.get("env_map"):
             field["env_map"] = entry["env_map"]
+        if entry.get("env_export"):
+            field["env_export"] = entry["env_export"]
+        if entry.get("separator"):
+            field["separator"] = entry["separator"]
         fields.append(field)
     return fields
 
@@ -195,15 +208,62 @@ def save_persisted(service_key: str, values: Dict[str, Any]) -> None:
         json.dump(values, f, indent=2)
 
 
+# ── Profiles ──
+
+def load_profiles() -> Dict[str, Any]:
+    """Load all profiles from ``launcher/profiles.json``."""
+    if not _PROFILES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_PROFILES_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def get_active_profile_name() -> str:
+    """Return the active profile name (empty string if none)."""
+    if _ACTIVE_PROFILE_PATH.exists():
+        try:
+            return _ACTIVE_PROFILE_PATH.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    return "default"
+
+
+def set_active_profile(name: str) -> None:
+    """Persist the active profile name."""
+    LAUNCHER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    _ACTIVE_PROFILE_PATH.write_text(name, encoding="utf-8")
+
+
+def get_profile_overrides(service_key: str) -> Dict[str, Any]:
+    """Return the active profile's overrides for a specific service (empty dict if none)."""
+    profiles = load_profiles()
+    active = get_active_profile_name()
+    profile = profiles.get(active, {})
+    overrides = profile.get(service_key, {})
+    return overrides if isinstance(overrides, dict) else {}
+
+
 # ── Merge + resolve ──
 
-def get_effective(schema: List[Dict], persisted: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge persisted values over schema defaults. Returns {key: effective_value}."""
+def get_effective(
+    schema: List[Dict],
+    persisted: Dict[str, Any],
+    profile_overrides: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Merge values: defaults → profile overrides → persisted user values.
+
+    Returns ``{key: effective_value}``.
+    """
     result: Dict[str, Any] = {}
     for field in schema:
         key = field["key"]
         if key in persisted:
             result[key] = _coerce(field, persisted[key])
+        elif profile_overrides and key in profile_overrides:
+            result[key] = _coerce(field, profile_overrides[key])
         else:
             result[key] = field.get("default")
     return result
@@ -295,6 +355,76 @@ def settings_to_env(schema: List[Dict], effective: Dict[str, Any]) -> Dict[str, 
         else:
             env[env_var] = str(value)
     return env
+
+
+def settings_to_exports(schema: List[Dict], effective: Dict[str, Any]) -> Dict[str, str]:
+    """Convert effective settings into exported environment variables using ``env_export``.
+
+    Same conversion rules as :func:`settings_to_env` but reads the
+    ``env_export`` field instead of ``env_map``.  Exported vars are intended
+    to be injected into *all* service processes, not just the owning service.
+    """
+    env: Dict[str, str] = {}
+    for field in schema:
+        env_var = field.get("env_export")
+        if not env_var:
+            continue
+        key = field["key"]
+        value = effective.get(key)
+        if value is None:
+            continue
+
+        ftype = field["type"]
+        if ftype == "boolean":
+            env[env_var] = "1" if value else "0"
+        elif ftype == "multi_select":
+            if isinstance(value, list) and value:
+                env[env_var] = ",".join(str(v) for v in value)
+        elif ftype == "select":
+            env[env_var] = str(value).upper()
+        else:
+            env[env_var] = str(value)
+    return env
+
+
+def collect_global_exports(
+    service_defs: List,
+) -> Dict[str, str]:
+    """Collect all ``env_export`` values from every service into a global dict.
+
+    Iterates services sorted by key (so ``_platform`` is processed first),
+    loads each service's schema + persisted values, and calls
+    :func:`settings_to_exports`.  Later services can override earlier ones.
+
+    After collection, empty ``*_BASE_URL`` exports are auto-derived from
+    the corresponding ``*_PORT`` export (e.g. ``BACKEND_BASE_URL`` from
+    ``BACKEND_PORT`` → ``http://localhost:8000``).
+
+    *service_defs* is a list of objects with ``.key`` and ``.settings_schema``
+    attributes (i.e. :class:`ServiceDef` or :class:`ServiceDefinition`).
+    """
+    exports: Dict[str, str] = {}
+    for sdef in sorted(service_defs, key=lambda s: s.key):
+        raw_schema = getattr(sdef, "settings_schema", None)
+        if not raw_schema:
+            continue
+        schema = parse_schema(raw_schema)
+        if not schema:
+            continue
+        persisted = load_persisted(sdef.key)
+        profile_ov = get_profile_overrides(sdef.key)
+        effective = get_effective(schema, persisted, profile_ov)
+        exports.update(settings_to_exports(schema, effective))
+
+    # Auto-derive empty base URLs from port exports
+    for key in list(exports):
+        if key.endswith("_BASE_URL") and not exports[key]:
+            prefix = key.replace("_BASE_URL", "")
+            # Try *_PORT, then *_API_PORT (handles GENERATION_API_PORT etc.)
+            port = exports.get(f"{prefix}_PORT") or exports.get(f"{prefix}_API_PORT")
+            if port:
+                exports[key] = f"http://localhost:{port}"
+    return exports
 
 
 def validate_update(schema: List[Dict], values: Dict[str, Any]) -> Dict[str, Any]:

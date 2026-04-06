@@ -67,6 +67,13 @@ class ProcessManager:
         for service in services:
             self.states[service.key] = ServiceState(definition=service)
 
+        # Cached global exports (computed once, invalidated on settings change)
+        self._global_exports_cache: Optional[Dict[str, str]] = None
+
+    def invalidate_exports_cache(self) -> None:
+        """Clear the cached global exports so the next start() recomputes them."""
+        self._global_exports_cache = None
+
     def _emit_event(self, event: ProcessEvent):
         """Emit a process event to the callback if registered."""
         if self.event_callback:
@@ -141,6 +148,18 @@ class ProcessManager:
             return True
 
         definition = state.definition
+
+        # Config-only services (e.g. _platform) have no process to start
+        if not definition.program:
+            state.status = ServiceStatus.RUNNING
+            state.health = HealthStatus.HEALTHY
+            self._emit_event(ProcessEvent(
+                service_key=service_key,
+                event_type="started",
+                data={"config_only": True}
+            ))
+            return True
+
         # Enforce dependencies (if defined)
         if definition.depends_on:
             missing: list[str] = []
@@ -212,8 +231,13 @@ class ProcessManager:
 
         # Standard subprocess start
         try:
-            # Prepare environment
+            # Prepare environment: os.environ + global exports + service overrides
             env = os.environ.copy()
+            if self._global_exports_cache is None:
+                from .service_settings import collect_global_exports
+                all_defs = [s.definition for s in self.states.values()]
+                self._global_exports_cache = collect_global_exports(all_defs)
+            env.update(self._global_exports_cache)
             if definition.env_overrides:
                 env.update(definition.env_overrides)
 
@@ -222,13 +246,16 @@ class ProcessManager:
             base_args = list(definition.args)
             if definition.settings_schema:
                 from .service_settings import (
-                    parse_schema, load_persisted, get_effective, settings_to_args,
+                    parse_schema, load_persisted, get_effective,
+                    settings_to_args, settings_to_env, get_profile_overrides,
                 )
                 schema = parse_schema(definition.settings_schema)
                 if schema:
                     persisted = load_persisted(service_key)
-                    effective = get_effective(schema, persisted)
+                    profile_ov = get_profile_overrides(service_key)
+                    effective = get_effective(schema, persisted, profile_ov)
                     extra_args = settings_to_args(schema, effective)
+                    env.update(settings_to_env(schema, effective))
                     # Patch base args from settings overrides
                     for field in schema:
                         key = field.get("key")

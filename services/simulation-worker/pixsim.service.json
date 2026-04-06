@@ -8,5 +8,17 @@
   "args": ["pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"],
   "depends_on": ["db"],
   "auto_start": false,
-  "enabled": true
+  "enabled": true,
+  "settings": [
+    {
+      "key": "max_jobs",
+      "default": 2,
+      "description": "Simulation jobs are heavy — keep concurrency low"
+    },
+    {
+      "key": "job_timeout",
+      "default": 120,
+      "description": "Simulation tick timeout in seconds"
+    }
+  ]
 }

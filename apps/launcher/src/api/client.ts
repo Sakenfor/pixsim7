@@ -79,7 +79,10 @@ export interface SettingField {
   default: unknown
   options?: string[]
   option_groups?: OptionGroup[]
+  separator?: string
   arg_map?: string
+  env_map?: string
+  env_export?: string
 }
 
 export interface ServiceSettingsResponse {
@@ -97,10 +100,10 @@ export const updateServiceSettings = (key: string, values: Record<string, unknow
     body: JSON.stringify({ values }),
   })
 
-export const applyHookConfig = (hookTools: string[]) =>
+export const applyHookConfig = (hookTools: string[], mcpAllowed: boolean = true) =>
   request<{ ok: boolean; path: string; message: string }>('/services/ai-client/apply-hook-config', {
     method: 'POST',
-    body: JSON.stringify({ hook_tools: hookTools }),
+    body: JSON.stringify({ hook_tools: hookTools, mcp_allowed: mcpAllowed }),
   })
 
 // ── Logs ────────────────────────────────────────────────────────────
@@ -137,6 +140,8 @@ export interface IdentityStatus {
   email: string | null
   backend_url: string | null
   keypair_id: string | null
+  token_expires_at: number | null
+  token_valid: boolean
 }
 
 export interface SetupCreateRequest {
@@ -157,7 +162,39 @@ export interface SetupResponse {
   username?: string
 }
 
+export interface RefreshTokenResponse {
+  ok: boolean
+  token_expires_at: number | null
+  message: string
+}
+
+export interface BackendStatus {
+  reachable: boolean
+  status: string | null
+  database: string | null
+  redis: string | null
+  providers: string[]
+  api_version: string | null
+  build_sha: string | null
+  server_time: string | null
+}
+
+export interface LauncherStatus {
+  version: string
+  uptime_seconds: number
+  managers: Record<string, boolean>
+}
+
+export interface SystemInfo {
+  launcher: LauncherStatus
+  backend: BackendStatus
+  identity: IdentityStatus
+}
+
 export const getIdentity = () => request<IdentityStatus>('/identity')
+export const getSystemInfo = () => request<SystemInfo>('/system-info')
+export const refreshToken = () =>
+  request<RefreshTokenResponse>('/identity/refresh-token', { method: 'POST' })
 export const setupCreate = (body: SetupCreateRequest) =>
   request<SetupResponse>('/identity/setup/create', { method: 'POST', body: JSON.stringify(body) })
 export const setupLink = (body: SetupLinkRequest) =>

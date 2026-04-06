@@ -29,14 +29,16 @@
       "type": "number",
       "label": "Postgres Port",
       "description": "PostgreSQL port (requires docker-compose restart)",
-      "default": 5434
+      "default": 5434,
+      "env_export": "POSTGRES_PORT"
     },
     {
       "key": "redis_port",
       "type": "number",
       "label": "Redis Port",
       "description": "Redis port (requires docker-compose restart)",
-      "default": 6380
+      "default": 6380,
+      "env_export": "REDIS_PORT"
     }
   ]
 }

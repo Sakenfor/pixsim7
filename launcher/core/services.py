@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .gui_config import ROOT, read_env_ports, find_python_executable, read_env_file
+from .service_settings import merge_with_base_schema
 
 
 MANIFEST_FILENAME = "pixsim.service.json"
@@ -168,7 +169,17 @@ def _get_env_value(key: str, env_vars: Optional[Dict[str, str]] = None) -> Optio
 
 
 def _resolve_port(service_config: Dict) -> int:
-    """Resolve port from environment or .env, fallback to default."""
+    """Resolve port: persisted settings → .env (legacy fallback) → manifest default."""
+    from .service_settings import load_persisted
+    service_id = service_config.get("id")
+    if service_id:
+        persisted = load_persisted(service_id)
+        if "port" in persisted:
+            try:
+                return int(persisted["port"])
+            except (ValueError, TypeError):
+                pass
+    # Legacy fallback: read from env / .env
     port_env = service_config.get("port_env")
     if port_env:
         value = _get_env_value(port_env)
@@ -211,49 +222,63 @@ def _get_command_executable(command: str) -> str:
 
 
 def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int = None) -> Dict[str, str]:
-    """Substitute port placeholders in environment variables.
+    """Substitute $VAR_NAME placeholders in environment variable values.
 
-    Args:
-        env_overrides: Dict with potential $PORT, $BACKEND_PORT, etc. placeholders
-        ports: Ports object with all port values
-        service_port: The port for this specific service (replaces $PORT)
+    Resolution order for each ``$VAR_NAME``:
+    1. Global exports from ``collect_global_exports`` (settings-derived).
+    2. Legacy ``ports`` object (for backward compat during transition).
+    3. ``os.environ`` / ``.env`` file (fallback).
+
+    ``$PORT`` is special — it resolves to *service_port* (the port for
+    the service being started).
     """
+    import re
     if not env_overrides:
         return {}
 
-    env_vars = read_env_file()
-    backend_base_url = _get_env_value("BACKEND_BASE_URL", env_vars) or f"http://localhost:{ports.backend}"
-    frontend_base_url = _get_env_value("FRONTEND_BASE_URL", env_vars) or f"http://localhost:{ports.frontend}"
-    game_frontend_base_url = _get_env_value("GAME_FRONTEND_BASE_URL", env_vars) or f"http://localhost:{ports.game_frontend}"
-    devtools_base_url = _get_env_value("DEVTOOLS_BASE_URL", env_vars) or f"http://localhost:{ports.devtools}"
-    launcher_base_url = _get_env_value("LAUNCHER_BASE_URL", env_vars) or "http://localhost:8100"
-    admin_port = _get_env_value("ADMIN_PORT", env_vars) or str(getattr(ports, "admin", 5175))
-    admin_base_url = _get_env_value("ADMIN_BASE_URL", env_vars)
-    if not admin_base_url:
-        admin_base_url = f"http://localhost:{admin_port}"
-    generation_port = _get_env_value("GENERATION_API_PORT", env_vars)
-    generation_base_url = _get_env_value("GENERATION_BASE_URL", env_vars)
-    if not generation_base_url and generation_port:
-        generation_base_url = f"http://localhost:{generation_port}"
+    # Build the lookup namespace for placeholder resolution.
+    # At ServiceDef construction time, global exports aren't available yet
+    # (manifests are still loading), so we fall back to the ports object
+    # and .env file. At actual process start time, process_manager injects
+    # the full global exports into the env separately.
+    namespace: Dict[str, str] = {}
+
+    # Legacy ports fallback (will be removed once all manifests migrate)
+    if ports:
+        namespace["BACKEND_PORT"] = str(getattr(ports, "backend", 8000))
+        namespace["FRONTEND_PORT"] = str(getattr(ports, "frontend", 5173))
+        namespace["GAME_FRONTEND_PORT"] = str(getattr(ports, "game_frontend", 5174))
+        namespace["GAME_SERVICE_PORT"] = str(getattr(ports, "game_service", 8050))
+        namespace["DEVTOOLS_PORT"] = str(getattr(ports, "devtools", 5176))
+        namespace["ADMIN_PORT"] = str(getattr(ports, "admin", 5175))
+
+    # .env / os.environ fallback
+    try:
+        env_file = read_env_file()
+        namespace.update(env_file)
+    except Exception:
+        pass
+
+    # Auto-derive base URLs from ports in namespace
+    for key in list(namespace):
+        if key.endswith("_PORT"):
+            base_url_key = key.replace("_PORT", "_BASE_URL")
+            if base_url_key not in namespace or not namespace[base_url_key]:
+                namespace[base_url_key] = f"http://localhost:{namespace[key]}"
+        if key.endswith("_API_PORT"):
+            base_url_key = key.replace("_API_PORT", "_BASE_URL")
+            if base_url_key not in namespace or not namespace[base_url_key]:
+                namespace[base_url_key] = f"http://localhost:{namespace[key]}"
+
+    def _replace(match: re.Match) -> str:
+        var_name = match.group(1)
+        if var_name == "PORT" and service_port is not None:
+            return str(service_port)
+        return namespace.get(var_name, match.group(0))
 
     substituted = {}
     for key, value in env_overrides.items():
-        if service_port is not None:
-            value = value.replace("$PORT", str(service_port))
-        value = value.replace("$BACKEND_PORT", str(ports.backend))
-        value = value.replace("$FRONTEND_PORT", str(ports.frontend))
-        value = value.replace("$GAME_FRONTEND_PORT", str(ports.game_frontend))
-        value = value.replace("$DEVTOOLS_PORT", str(ports.devtools))
-        value = value.replace("$ADMIN_PORT", str(admin_port))
-        value = value.replace("$BACKEND_BASE_URL", backend_base_url)
-        value = value.replace("$FRONTEND_BASE_URL", frontend_base_url)
-        value = value.replace("$GENERATION_BASE_URL", generation_base_url or "")
-        if generation_port:
-            value = value.replace("$GENERATION_API_PORT", generation_port)
-        value = value.replace("$GAME_FRONTEND_BASE_URL", game_frontend_base_url)
-        value = value.replace("$DEVTOOLS_BASE_URL", devtools_base_url)
-        value = value.replace("$ADMIN_BASE_URL", admin_base_url)
-        value = value.replace("$LAUNCHER_BASE_URL", launcher_base_url)
+        value = re.sub(r'\$([A-Z_][A-Z0-9_]*)', _replace, value)
         substituted[key] = value
 
     return substituted
@@ -312,7 +337,10 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         auto_start=service_config.get("auto_start", False),
         openapi_url=openapi_url,
         openapi_types_path=openapi_types_path,
-        settings_schema=service_config.get("settings"),
+        settings_schema=merge_with_base_schema(
+            "backend", service_config.get("settings"),
+            exclude_base=service_config.get("exclude_base_settings"),
+        ),
     )
 
 
@@ -352,7 +380,10 @@ def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
         dev_peer_of=service_config.get("dev_peer_of"),
-        settings_schema=service_config.get("settings"),
+        settings_schema=merge_with_base_schema(
+            "frontend", service_config.get("settings"),
+            exclude_base=service_config.get("exclude_base_settings"),
+        ),
     )
 
 
@@ -391,7 +422,10 @@ def _convert_worker_service_to_def(service_config: Dict, ports) -> ServiceDef:
         depends_on=service_config.get("depends_on", []),
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
-        settings_schema=service_config.get("settings"),
+        settings_schema=merge_with_base_schema(
+            "worker", service_config.get("settings"),
+            exclude_base=service_config.get("exclude_base_settings"),
+        ),
     )
 
 
@@ -417,6 +451,23 @@ def _convert_docker_compose_service_to_def(service_config: Dict, ports) -> Servi
         depends_on=service_config.get("depends_on", []),
         category=service_config.get("category"),
         auto_start=service_config.get("auto_start", False),
+        settings_schema=merge_with_base_schema(
+            "docker-compose", service_config.get("settings"),
+            exclude_base=service_config.get("exclude_base_settings"),
+        ),
+    )
+
+
+def _convert_platform_service_to_def(service_config: Dict) -> ServiceDef:
+    """Convert a platform (config-only, no process) manifest to ServiceDef."""
+    service_id = service_config["id"]
+    return ServiceDef(
+        key=service_id,
+        title=service_config.get("name", service_id),
+        program="",
+        args=[],
+        cwd=ROOT,
+        category=service_config.get("category", "platform"),
         settings_schema=service_config.get("settings"),
     )
 
@@ -437,7 +488,9 @@ def build_services_from_manifests() -> List[ServiceDef]:
         runtime = (service_config.get("runtime") or "").lower()
 
         try:
-            if service_type in {"frontend", "ui", "web"}:
+            if service_type == "platform":
+                services.append(_convert_platform_service_to_def(service_config))
+            elif service_type in {"frontend", "ui", "web"}:
                 services.append(_convert_frontend_service_to_def(service_config, ports))
             elif service_type in {"backend", "api"}:
                 services.append(_convert_backend_service_to_def(service_config, ports))

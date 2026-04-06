@@ -9,6 +9,7 @@
   "depends_on": ["main-api"],
   "auto_start": false,
   "enabled": true,
+  "exclude_base_settings": ["max_jobs", "job_timeout"],
   "settings": [
     {
       "key": "hook_port",

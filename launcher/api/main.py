@@ -88,7 +88,7 @@ def _setup_logging():
 _logger = _setup_logging()
 
 from launcher.core import create_container, __version__
-from launcher.core.launcher_settings import load_launcher_settings, apply_launcher_settings_to_env
+from launcher.core.migrate_settings import maybe_migrate
 
 from .routes import (
     services_router,
@@ -110,6 +110,45 @@ from .dependencies import set_container
 _container = None
 
 
+_token_refresh_task: "asyncio.Task[None] | None" = None
+
+
+async def _token_refresh_loop(app: FastAPI, check_interval: float = 300):
+    """Background loop that refreshes the stored launcher token.
+
+    Checks every *check_interval* seconds (default 5 min) whether the
+    token is past its refresh threshold and mints a new one if so.
+    Events are emitted so the launcher UI can react.
+    """
+    import asyncio
+    from launcher.core.auth import token_needs_refresh, refresh_stored_token
+    from launcher.core.event_bus import get_event_bus, EventTypes
+
+    bus = get_event_bus()
+
+    while True:
+        await asyncio.sleep(check_interval)
+        identity = getattr(app.state, "launcher_identity", None)
+        if not identity:
+            continue
+        try:
+            if token_needs_refresh():
+                ok = refresh_stored_token(identity)
+                if ok:
+                    _logger.info("token_auto_refreshed", backend=identity.backend_url)
+                    from launcher.core.auth import get_token_info
+                    info = get_token_info()
+                    bus.publish_simple(EventTypes.TOKEN_REFRESHED, "auth", {
+                        "expires_at": info.get("exp") if info else None,
+                    })
+                else:
+                    _logger.warning("token_auto_refresh_failed")
+                    bus.publish_simple(EventTypes.TOKEN_REFRESH_FAILED, "auth")
+        except Exception:
+            _logger.exception("token_refresh_error")
+            bus.publish_simple(EventTypes.TOKEN_REFRESH_FAILED, "auth")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -118,7 +157,7 @@ async def lifespan(app: FastAPI):
     If a container was already injected (e.g. by the GUI's embedded API),
     skip creating a new one — the GUI's facade manages the lifecycle.
     """
-    global _container
+    global _container, _token_refresh_task
 
     from .dependencies import get_container as _get_existing
 
@@ -149,19 +188,36 @@ async def lifespan(app: FastAPI):
             refreshed = refresh_stored_token(identity)
             if refreshed:
                 _logger.info("token_refreshed", backend=identity.backend_url)
+
+            # Start background token refresh loop
+            import asyncio
+            _token_refresh_task = asyncio.create_task(_token_refresh_loop(app))
         else:
             _logger.info("identity_missing", hint="first-time setup required")
         app.state.launcher_identity = identity
 
+        # Migrate .env → per-service settings on first run
         try:
-            apply_launcher_settings_to_env(load_launcher_settings())
+            maybe_migrate()
         except Exception:
-            pass
+            _logger.exception("settings_migration_error")
 
         from launcher.core.services import build_services_from_manifests
         from launcher.core.service_converter import convert_service_def
 
         raw_services = build_services_from_manifests()
+
+        # Apply global exports from per-service settings to os.environ
+        # so child processes inherit platform config (DATABASE_URL, etc.)
+        try:
+            from launcher.core.service_settings import collect_global_exports
+            _exports = collect_global_exports(raw_services)
+            for k, v in _exports.items():
+                if v:
+                    os.environ.setdefault(k, v)
+        except Exception:
+            _logger.exception("global_exports_error")
+
         services_list = [convert_service_def(sd) for sd in raw_services]
         _logger.info("services_loaded", count=len(services_list))
 
@@ -211,6 +267,11 @@ async def lifespan(app: FastAPI):
                     _logger.warning("auto_start_failed", service=key, error=state.last_error)
 
     yield
+
+    # Cancel token refresh background task
+    if _token_refresh_task and not _token_refresh_task.done():
+        _token_refresh_task.cancel()
+        _token_refresh_task = None
 
     # Shutdown — only stop managers we created
     if not already_injected and _container:

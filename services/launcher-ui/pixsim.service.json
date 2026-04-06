@@ -16,10 +16,10 @@
   "settings": [
     {
       "key": "port",
-      "type": "number",
+      "default": 3100,
       "label": "Dev Server Port",
       "description": "Vite dev server port",
-      "default": 3100
+      "env_export": "LAUNCHER_DEV_PORT"
     }
   ]
 }
