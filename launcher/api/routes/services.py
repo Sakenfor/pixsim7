@@ -714,7 +714,12 @@ async def apply_hook_config(
     # Claude Code skips PreToolUse hooks for tools already in permissions.allow,
     # so hooked tools must be removed from the allow list for the hook to fire.
     # Conversely, un-hooked built-in tools should be re-added so they auto-allow.
-    _MANAGED_BUILTIN_TOOLS = {"Bash", "Write", "Edit", "NotebookEdit", "WebFetch"}
+    _MANAGED_BUILTIN_TOOLS = {
+        "Bash", "Write", "Edit", "NotebookEdit",
+        "WebFetch", "WebSearch",
+        "EnterPlanMode", "ExitPlanMode",
+        "Agent", "TodoWrite",
+    }
     permissions = project_settings.setdefault("permissions", {})
     allow_list_settings: list = permissions.get("allow", [])
     if not isinstance(allow_list_settings, list):

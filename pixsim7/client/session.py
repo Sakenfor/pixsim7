@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from pixsim7.client.log import get_logger
 

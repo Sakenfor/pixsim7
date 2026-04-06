@@ -15,7 +15,7 @@ import json
 import os
 import shutil
 import tempfile
-from typing import Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from pixsim7.client.session import AgentCmdSession, SessionState
 from pixsim7.client.log import get_logger
