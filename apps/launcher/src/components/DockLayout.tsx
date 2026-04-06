@@ -202,15 +202,17 @@ function ServiceInfoPanel() {
         {service.dev_peer_of && <SvcInfoRow label="Dev peer of" value={service.dev_peer_of} />}
       </div>
 
-      <ServiceSettingsPanel
-        serviceKey={service.key}
-        title={selectedSection || (service.key === 'ai-client' ? 'Bridge & Hook Settings' : undefined)}
-        activeSection={selectedSection}
-      >
-        {service.key === 'ai-client' ? (values) => <HookConfigOutput values={values} hookPort={service.extras?.hook_port as number | undefined} /> : undefined}
-      </ServiceSettingsPanel>
+      {selectedSection !== 'Sessions' && (
+        <ServiceSettingsPanel
+          serviceKey={service.key}
+          title={selectedSection || (service.key === 'ai-client' ? 'Bridge & Hook Settings' : undefined)}
+          activeSection={selectedSection}
+        >
+          {service.key === 'ai-client' ? (values) => <HookConfigOutput values={values} hookPort={service.extras?.hook_port as number | undefined} /> : undefined}
+        </ServiceSettingsPanel>
+      )}
 
-      {service.key === 'ai-client' && !!service.extras?.bridge_status && (
+      {service.key === 'ai-client' && !!service.extras?.bridge_status && (!selectedSection || selectedSection === 'Sessions') && (
         <BridgeSessionsPanel bridgeStatus={service.extras.bridge_status as Record<string, unknown>} />
       )}
 

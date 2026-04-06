@@ -44,6 +44,8 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
     getServiceSettings(service.key)
       .then((res) => {
         const names = [...new Map(res.schema.filter((f) => f.section).map((f) => [f.section!, f.section!])).keys()]
+        // Add virtual sections for runtime panels
+        if (service.key === 'ai-client') names.push('Sessions')
         setSections(names)
       })
       .catch(() => {})
