@@ -24,8 +24,15 @@ import type {
 
 // ===== Prompt Types =====
 
-export type PromptFamilySummary = PromptFamilyResponse;
-export type PromptFamilyDetail = PromptFamilyResponse;
+// Extend with fields added after last Orval codegen (tags branch: authoring_mode_id, primary_character_id)
+export type PromptFamilySummary = PromptFamilyResponse & {
+  authoring_mode_id?: string | null;
+  primary_character_id?: string | null;
+};
+export type PromptFamilyDetail = PromptFamilyResponse & {
+  authoring_mode_id?: string | null;
+  primary_character_id?: string | null;
+};
 export type PromptVersionSummary = PromptVersionResponse & {
   parent_version_id?: string | null;
   branch_name?: string | null;

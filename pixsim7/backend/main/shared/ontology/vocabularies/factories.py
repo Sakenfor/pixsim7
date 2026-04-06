@@ -3,7 +3,9 @@ Vocabulary factory functions.
 
 Each factory converts raw YAML dict data into typed dataclasses.
 """
-from typing import Any, Dict
+import logging
+import re
+from typing import Any, Dict, List
 
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
@@ -22,7 +24,13 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     CameraDef,
     ProgressionDef,
     GenericVocabDef,
+    REQUIRED_ANATOMY_KEYS,
+    REQUIRED_MODIFIER_ROLES,
+    DEFAULT_MODIFIER_ROLE_MAPPING,
+    KNOWN_VISUAL_TRAIT_KEYS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def make_slot(id: str, data: Dict[str, Any], source: str) -> SlotDef:
@@ -168,14 +176,79 @@ def make_part(id: str, data: Dict[str, Any], source: str) -> PartDef:
     )
 
 
+def _validate_species_schema(id: str, data: Dict[str, Any]) -> List[str]:
+    """Validate species data against the schema contract.
+
+    Returns a list of error messages.  Empty list means valid.
+    Warnings are logged but not included in the error list.
+    """
+    errors: List[str] = []
+    anatomy_map = data.get("anatomy_map", {})
+    word_lists = data.get("word_lists", {})
+
+    # --- Required anatomy_map keys ---
+    missing_anatomy = REQUIRED_ANATOMY_KEYS - anatomy_map.keys()
+    if missing_anatomy:
+        errors.append(
+            f"species {id}: missing required anatomy_map keys: "
+            f"{sorted(missing_anatomy)}"
+        )
+
+    # --- render_template placeholder validation ---
+    render_template = data.get("render_template", "")
+    if render_template:
+        placeholders = {m.group(1) for m in re.finditer(r"\{(\w+)\}", render_template)}
+        valid_keys = set(anatomy_map.keys()) | KNOWN_VISUAL_TRAIT_KEYS
+        unknown = placeholders - valid_keys
+        if unknown:
+            logger.warning(
+                "species %s: render_template references unknown keys: %s",
+                id,
+                sorted(unknown),
+            )
+
+    # --- modifier_roles validation ---
+    explicit_roles = data.get("modifier_roles", {})
+    # Build effective roles: explicit overrides on top of defaults
+    effective_roles = {**DEFAULT_MODIFIER_ROLE_MAPPING, **explicit_roles}
+
+    for role in REQUIRED_MODIFIER_ROLES:
+        mapped_key = effective_roles.get(role)
+        if not mapped_key:
+            errors.append(f"species {id}: modifier_roles missing required role '{role}'")
+        elif mapped_key not in word_lists:
+            errors.append(
+                f"species {id}: modifier_role '{role}' maps to '{mapped_key}' "
+                f"which is not in word_lists"
+            )
+
+    # --- word_list type validation ---
+    for key, val in word_lists.items():
+        if isinstance(val, list) and len(val) == 0:
+            errors.append(f"species {id}: word_list '{key}' is empty")
+
+    return errors
+
+
 def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
-    """Create a SpeciesDef from YAML data."""
+    """Create a SpeciesDef from YAML data.
+
+    Validates the species schema contract and raises ValueError on
+    malformed entries.
+    """
     from pixsim7.backend.main.shared.ontology.vocabularies.modifiers import (
         FixedValue,
         GradedList,
         PronounSet,
         hydrate_modifier,
     )
+
+    # Validate schema contract
+    errors = _validate_species_schema(id, data)
+    if errors:
+        raise ValueError(
+            f"Species schema validation failed:\n  " + "\n  ".join(errors)
+        )
 
     anatomy_map = data.get("anatomy_map", {})
     movement_verbs = data.get("movement_verbs", [])
@@ -197,6 +270,10 @@ def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
     for key, val in data.get("word_lists", {}).items():
         modifiers[key] = hydrate_modifier(val)
 
+    # Build effective modifier_roles (explicit overrides + defaults)
+    explicit_roles = data.get("modifier_roles", {})
+    modifier_roles = {**DEFAULT_MODIFIER_ROLE_MAPPING, **explicit_roles}
+
     return SpeciesDef(
         id=id,
         label=data.get("label", ""),
@@ -209,6 +286,7 @@ def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
         visual_priority=data.get("visual_priority", []),
         render_template=data.get("render_template", ""),
         source=source,
+        modifier_roles=modifier_roles,
         modifiers=modifiers,
     )
 

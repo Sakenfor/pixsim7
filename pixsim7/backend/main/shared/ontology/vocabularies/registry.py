@@ -663,6 +663,14 @@ class VocabularyRegistry:
         return self.get("parts", part_id)
 
     def get_species(self, species_id: str) -> Optional[SpeciesDef]:
+        # Delegate to SpeciesRegistry when it has been synced (post-startup).
+        # During initial plugin loading, falls through to vocab data.
+        try:
+            from pixsim7.backend.main.services.prompt.species_registry import species_registry
+            if len(species_registry) > 0:
+                return species_registry.get_or_none(species_id)
+        except ImportError:
+            pass
         return self.get("species", species_id)
 
     def get_influence_region(self, region_id: str) -> Optional[InfluenceRegionDef]:
@@ -712,6 +720,13 @@ class VocabularyRegistry:
         return self.all_of("parts")
 
     def all_species(self) -> List[SpeciesDef]:
+        # Delegate to SpeciesRegistry when synced.
+        try:
+            from pixsim7.backend.main.services.prompt.species_registry import species_registry
+            if len(species_registry) > 0:
+                return species_registry.list_all()
+        except ImportError:
+            pass
         return self.all_of("species")
 
     def all_influence_regions(self) -> List[InfluenceRegionDef]:

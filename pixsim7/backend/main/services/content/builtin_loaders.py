@@ -177,6 +177,34 @@ async def _seed_authoring_modes(_spec: ContentLoaderSpec) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Species registry (synced from blocks DB, seeds YAML builtins on first run)
+# ---------------------------------------------------------------------------
+
+async def _seed_species_registry(_spec: ContentLoaderSpec) -> Dict[str, Any]:
+    from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+    from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+    from pixsim7.backend.main.services.prompt.species_registry import species_registry
+    from sqlalchemy.exc import ProgrammingError
+
+    # Pull YAML-loaded species from VocabularyRegistry (populated by plugin system)
+    vocab_species = get_registry().all_species()
+    species_registry.seed_from_yaml(vocab_species)
+
+    # Sync with blocks DB (seeds missing builtins, loads DB overrides)
+    async with get_async_blocks_session() as db:
+        try:
+            await species_registry.sync_from_db(db)
+        except ProgrammingError as exc:
+            if 'relation "species" does not exist' in str(exc).lower():
+                raise RuntimeError(
+                    "Missing table 'species' in blocks schema. "
+                    "Run `python scripts/migrate_all.py --scope blocks`."
+                ) from exc
+            raise
+    return {"count": len(species_registry.list_all())}
+
+
+# ---------------------------------------------------------------------------
 # Register all built-in loaders
 # ---------------------------------------------------------------------------
 
@@ -243,6 +271,13 @@ def register_builtin_loaders() -> None:
         label="Authoring Modes",
         category="other",
         seed=_seed_authoring_modes,
+    ))
+
+    content_loader_registry.register(ContentLoaderSpec(
+        id="species-registry",
+        label="Species Registry",
+        category="other",
+        seed=_seed_species_registry,
     ))
 
 

@@ -55,7 +55,7 @@ export const createPromptFamily = (request: CreatePromptFamilyRequest): Promise<
 
 export const updatePromptFamily = (
   familyId: string,
-  data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean },
+  data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean; primary_character_id?: string | null },
 ): Promise<PromptFamilyDetail> => promptsApi.updateFamily(familyId, data);
 
 export const listBranches = (familyId: string): Promise<BranchSummary[]> =>

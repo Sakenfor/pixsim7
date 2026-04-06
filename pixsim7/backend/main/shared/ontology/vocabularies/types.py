@@ -134,6 +134,45 @@ class PartDef:
     source: str = "core"
 
 
+# ---------------------------------------------------------------------------
+# Species schema constants
+# ---------------------------------------------------------------------------
+
+# Every species must define at least these anatomy_map keys (values may be "").
+REQUIRED_ANATOMY_KEYS = frozenset({"limbs", "grip", "stance", "feet", "forelimbs"})
+
+# Abstract modifier roles every species must map to a concrete word_list key.
+# Modeled after composition_role_inference.py's category→role pattern.
+REQUIRED_MODIFIER_ROLES = frozenset({
+    "pleasure_expression",
+    "pain_expression",
+    "surprise_expression",
+    "effort_expression",
+    "breath_pattern",
+    "body_posture",
+    "tension_indicator",
+})
+
+# Default mapping from abstract modifier role → word_list key.
+# Applied when a species omits explicit modifier_roles (works for mammals).
+DEFAULT_MODIFIER_ROLE_MAPPING: Dict[str, str] = {
+    "pleasure_expression": "vocal_pleasure",
+    "pain_expression": "vocal_pain",
+    "surprise_expression": "vocal_surprise",
+    "effort_expression": "vocal_effort",
+    "breath_pattern": "breath",
+    "body_posture": "posture",
+    "tension_indicator": "muscle",
+}
+
+# Known character visual_trait keys (not species-owned, but valid in
+# render_template placeholders alongside anatomy_map keys).
+KNOWN_VISUAL_TRAIT_KEYS = frozenset({
+    "build", "height", "skin_fur", "eyes",
+    "distinguishing_marks", "clothing", "accessories",
+})
+
+
 @dataclass
 class SpeciesDef:
     """A species definition with anatomy/movement mappings."""
@@ -148,6 +187,9 @@ class SpeciesDef:
     visual_priority: List[str] = field(default_factory=list)
     render_template: str = ""
     source: str = "core"
+    # Abstract role → concrete word_list key mapping.
+    # Allows {{role.pleasure_expression}} to resolve species-appropriately.
+    modifier_roles: Dict[str, str] = field(default_factory=dict)
     # Generic modifier registry — populated by factory from existing fields
     # plus any extra word_lists/modifiers in YAML.  Keyed by attr name.
     modifiers: Dict[str, Any] = field(default_factory=dict)
@@ -287,4 +329,9 @@ __all__ = [
     "DurationConstraints",
     "ScoringConfig",
     "VocabPackInfo",
+    # Species schema constants
+    "REQUIRED_ANATOMY_KEYS",
+    "REQUIRED_MODIFIER_ROLES",
+    "DEFAULT_MODIFIER_ROLE_MAPPING",
+    "KNOWN_VISUAL_TRAIT_KEYS",
 ]

@@ -206,6 +206,14 @@ species:
       possessive: "its"
     default_stance: "upright on two walking tentacles"
     keywords: [cephalopod, octopod, octopus, squid, cuttlefish]
+    modifier_roles:
+      pleasure_expression: chromatophore_mood
+      pain_expression: tentacle_motion
+      surprise_expression: vocal_surprise
+      effort_expression: vocal_effort
+      breath_pattern: breath
+      body_posture: tentacle_motion
+      tension_indicator: sucker_state
     visual_priority:
       - stance
       - mantle

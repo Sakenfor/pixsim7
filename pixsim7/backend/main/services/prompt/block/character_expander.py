@@ -29,6 +29,7 @@ class CharacterBindingExpander:
       {{role.pronoun.subject}}   -> pronoun_set["subject"]
       {{role.pronoun.object}}    -> pronoun_set["object"]
       {{role.pronoun.possessive}} -> pronoun_set["possessive"]
+      {{role.pleasure_expression}} -> modifier_roles indirection to species word_list
       Any anatomy_map key     -> direct lookup
     """
 
@@ -162,6 +163,14 @@ class CharacterBindingExpander:
             if character.visual_traits and attr_path in character.visual_traits:
                 val = character.visual_traits[attr_path]
                 return str(val) if val is not None else match.group(0)
+
+            # Modifier roles indirection — abstract roles like
+            # "pleasure_expression" resolve to species-specific word_list keys
+            # (e.g. "vocal_pleasure" for mammals, "chromatophore_mood" for cephalopod)
+            if species and attr_path in species.modifier_roles:
+                mapped_key = species.modifier_roles[attr_path]
+                if mapped_key in species.modifiers:
+                    return species.modifiers[mapped_key].resolve(rng, intensity)
 
             # Species modifier lookup — handles movement, stance,
             # anatomy keys, pronouns, and any YAML word_lists

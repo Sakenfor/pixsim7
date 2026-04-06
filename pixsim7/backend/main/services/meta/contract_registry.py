@@ -670,6 +670,20 @@ def _builtin_plans_management() -> MetaContract:
     )
 
 
+def _species_meta_endpoints() -> list:
+    """Generate species CRUD MetaContractEndpoints for game.authoring."""
+    try:
+        from pixsim7.backend.main.api.v1.species_meta import species_crud_spec
+        from pixsim7.backend.main.services.crud.registry import spec_to_meta_sub_endpoints
+        eps = spec_to_meta_sub_endpoints(species_crud_spec)
+        # Re-tag for game_authoring:characters focus group
+        for ep in eps:
+            ep.tags = ["game_authoring", "game_authoring:characters"]
+        return eps
+    except ImportError:
+        return []
+
+
 def _builtin_game_authoring(version: str = "unknown") -> MetaContract:
     # Auto-generate sub-endpoints from the entity CRUD registry so that new
     # game entity types are automatically surfaced in the contract (and in the
@@ -717,6 +731,8 @@ def _builtin_game_authoring(version: str = "unknown") -> MetaContract:
         ),
         provides=[
             "game_authoring",
+            "game_authoring:characters",
+            "species_crud",
             *child_groups,
             "world_bootstrap_workflows",
             "behavior_authoring_workflows",
@@ -738,6 +754,46 @@ def _builtin_game_authoring(version: str = "unknown") -> MetaContract:
                 path="/api/v1/game/meta/authoring-contract",
                 summary="Machine-readable workflow contract for game creation and iteration.",
                 tags=["game_authoring"],
+            ),
+            # Species vocabulary CRUD (blocks DB, but conceptually part of
+            # character/creature authoring — agents use species when creating characters).
+            *_species_meta_endpoints(),
+            # Character registry endpoints (mounted outside /api/v1/game/ so
+            # not auto-discovered by entity_crud, listed explicitly here).
+            MetaContractEndpoint(
+                id="characters.list",
+                method="GET",
+                path="/api/v1/characters",
+                summary="List all characters. Filter by category, species, archetype.",
+                tags=["game_authoring", "game_authoring:characters"],
+            ),
+            MetaContractEndpoint(
+                id="characters.create",
+                method="POST",
+                path="/api/v1/characters",
+                summary="Create a character with species, visual_traits, personality, and behavioral patterns.",
+                tags=["game_authoring", "game_authoring:characters"],
+            ),
+            MetaContractEndpoint(
+                id="characters.get",
+                method="GET",
+                path="/api/v1/characters/{character_id}",
+                summary="Get a character by ID with full detail.",
+                tags=["game_authoring", "game_authoring:characters"],
+            ),
+            MetaContractEndpoint(
+                id="characters.update",
+                method="PUT",
+                path="/api/v1/characters/{character_id}",
+                summary="Update a character (full replace).",
+                tags=["game_authoring", "game_authoring:characters"],
+            ),
+            MetaContractEndpoint(
+                id="characters.expand_template",
+                method="POST",
+                path="/api/v1/characters/expand-template",
+                summary="Expand a character's visual description template using species + visual_traits.",
+                tags=["game_authoring", "game_authoring:characters"],
             ),
             *auto_endpoints,
         ],
@@ -1390,6 +1446,11 @@ def _builtin_project_files() -> MetaContract:
         owner="platform",
         summary="Read-only access to project source files for AI agents reviewing plans and code.",
         audience=["dev"],
+        provides=[
+            "project_file_read",
+            "project_file_list",
+            "project_file_search",
+        ],
         sub_endpoints=[
             MetaContractEndpoint(
                 id="files_read",

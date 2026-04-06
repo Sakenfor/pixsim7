@@ -128,6 +128,74 @@ _BUILTIN_WORKFLOWS: List[AuthoringWorkflow] = [
             ),
         ],
     ),
+    AuthoringWorkflow(
+        id="character_authoring",
+        label="Character Authoring",
+        description=(
+            "Cross-contract workflow: resolve or create species, create character, "
+            "then create prompt family with character_design authoring mode. "
+            "Bridges blocks.discovery, characters, and prompts.authoring contracts."
+        ),
+        audience=[AUDIENCE_AGENT],
+        steps=[
+            WorkflowStep(
+                step=1,
+                endpoint_id="species.list",
+                outputs=["species_id"],
+                required=True,
+                note=(
+                    "GET /api/v1/meta/species — check if target species exists. "
+                    "If found, use its id and skip step 2."
+                ),
+            ),
+            WorkflowStep(
+                step=2,
+                endpoint_id="species.create",
+                outputs=["species_id"],
+                required=False,
+                precondition="Only if step 1 did not find the species.",
+                note=(
+                    "POST /api/v1/meta/species — create novel species with "
+                    "anatomy_map, word_lists, and modifier_roles. "
+                    "Schema validation enforces required anatomy keys and "
+                    "modifier_role → word_list consistency."
+                ),
+            ),
+            WorkflowStep(
+                step=3,
+                endpoint_id="characters.create",
+                consumes=["species_id"],
+                outputs=["character_id"],
+                note=(
+                    "POST /api/v1/characters — create character with species set "
+                    "to the species_id from step 1 or 2. Include visual_traits "
+                    "for character-specific overrides (build, height, etc.)."
+                ),
+            ),
+            WorkflowStep(
+                step=4,
+                endpoint_id="prompts.create_family",
+                consumes=["character_id"],
+                outputs=["family_id"],
+                note=(
+                    "POST /api/v1/prompts/families — set "
+                    "authoring_mode_id='character_design' and "
+                    "primary_character_id to the character_id from step 3."
+                ),
+            ),
+            WorkflowStep(
+                step=5,
+                endpoint_id="prompts.create_version",
+                consumes=["family_id"],
+                outputs=["version_id"],
+                note=(
+                    "POST /api/v1/prompts/families/{family_id}/versions — "
+                    "prompt text can use {{role.attr}} placeholders that resolve "
+                    "via species modifier_roles (e.g. {{role.pleasure_expression}})."
+                ),
+            ),
+        ],
+    ),
 ]
 
 

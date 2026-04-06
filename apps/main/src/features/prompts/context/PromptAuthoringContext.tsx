@@ -51,6 +51,8 @@ export interface PromptAuthoringState {
   setNewFamilyCategory: (v: string) => void;
   newFamilyTagsInput: string;
   setNewFamilyTagsInput: (v: string) => void;
+  newFamilyCharacterId: string | null;
+  setNewFamilyCharacterId: (v: string | null) => void;
 
   // Versions
   versions: PromptVersionSummary[];
@@ -92,7 +94,7 @@ export interface PromptAuthoringState {
   refreshVersions: (familyId: string | null, preferredVersionId?: string | null) => Promise<void>;
   refreshScopeAssets: () => Promise<void>;
   handleCreateFamily: () => Promise<void>;
-  handleUpdateFamily: (familyId: string, data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean }) => Promise<void>;
+  handleUpdateFamily: (familyId: string, data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean; primary_character_id?: string | null }) => Promise<void>;
   handleCreateVersion: () => Promise<void>;
   handleApplyEdit: () => Promise<void>;
   /** Hydrate all editor fields from a version object. */
@@ -171,6 +173,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [newFamilyPromptType, setNewFamilyPromptType] = useState<'visual' | 'narrative' | 'hybrid'>('visual');
   const [newFamilyCategory, setNewFamilyCategory] = useState('');
   const [newFamilyTagsInput, setNewFamilyTagsInput] = useState('');
+  const [newFamilyCharacterId, setNewFamilyCharacterId] = useState<string | null>(null);
 
   // ── Version state ──
   const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
@@ -402,6 +405,8 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
         slug: slugBase || undefined,
         category: newFamilyCategory.trim() || undefined,
         tags: parseTags(newFamilyTagsInput),
+        primary_character_id: newFamilyCharacterId || undefined,
+        authoring_mode_id: newFamilyCategory.trim() || undefined,
       });
       await refreshFamilies(created.id);
       setStatusMessage(`Family created: ${created.title}`);
@@ -410,11 +415,11 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
     } finally {
       setBusyAction(null);
     }
-  }, [newFamilyCategory, newFamilyPromptType, newFamilyTagsInput, newFamilyTitle, refreshFamilies]);
+  }, [newFamilyCategory, newFamilyCharacterId, newFamilyPromptType, newFamilyTagsInput, newFamilyTitle, refreshFamilies]);
 
   const handleUpdateFamily = useCallback(async (
     familyId: string,
-    data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean },
+    data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean; primary_character_id?: string | null },
   ) => {
     setStatusMessage(null);
     try {
@@ -495,6 +500,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       families, familiesLoading, familiesError, selectedFamilyId, setSelectedFamilyId,
       newFamilyTitle, setNewFamilyTitle, newFamilyPromptType, setNewFamilyPromptType,
       newFamilyCategory, setNewFamilyCategory, newFamilyTagsInput, setNewFamilyTagsInput,
+      newFamilyCharacterId, setNewFamilyCharacterId,
       versions, versionsLoading, versionsError, selectedVersionId, setSelectedVersionId,
       editorText, setEditorText, instructionInput, setInstructionInput,
       commitMessageInput, setCommitMessageInput, versionTagsInput, setVersionTagsInput,
@@ -507,7 +513,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
     }),
     [
       families, familiesLoading, familiesError, selectedFamilyId,
-      newFamilyTitle, newFamilyPromptType, newFamilyCategory, newFamilyTagsInput,
+      newFamilyTitle, newFamilyPromptType, newFamilyCategory, newFamilyTagsInput, newFamilyCharacterId,
       versions, versionsLoading, versionsError, selectedVersionId,
       editorText, setEditorText, instructionInput, commitMessageInput, versionTagsInput,
       scopeMode, scopeAssets, assetsLoading, assetsError,

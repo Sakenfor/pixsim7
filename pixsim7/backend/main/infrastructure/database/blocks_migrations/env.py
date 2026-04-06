@@ -15,8 +15,9 @@ from alembic import context
 from sqlmodel import SQLModel
 from pixsim7.backend.main.shared.config import settings
 
-# Import BlockPrimitive so its table is registered in SQLModel.metadata
+# Import models so their tables are registered in SQLModel.metadata
 from pixsim7.backend.main.domain.blocks.models import BlockPrimitive  # noqa: F401
+from pixsim7.backend.main.domain.blocks.species_model import SpeciesRecord  # noqa: F401
 
 # Alembic Config object
 config = context.config
@@ -35,7 +36,7 @@ target_metadata = SQLModel.metadata
 VERSION_TABLE = "alembic_version_blocks"
 
 # Only manage blocks-related tables
-BLOCKS_TABLES = {"block_primitives"}
+BLOCKS_TABLES = {"block_primitives", "species"}
 
 
 def include_object(obj, name, type_, reflected, compare_to):

@@ -11,9 +11,25 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
+import { listCharacters, type CharacterSummary } from '@lib/api/characters';
 import { listBranches, createBranch, type BranchSummary } from '@lib/api/prompts';
 import type { PromptFamilySummary } from '@lib/api/prompts';
 import { Icon } from '@lib/icons';
+
+const CHARACTER_MODES = new Set(['character_design', 'outfit_design']);
+const SELECT_CLASS = 'rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-0.5 text-[10px]';
+
+function useCharacterList() {
+  const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void listCharacters().then((result) => {
+      if (!cancelled) setCharacters(result);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return characters;
+}
 
 
 
@@ -36,6 +52,55 @@ function formatRelativeTime(value?: string | null): string {
 }
 
 
+/** Persistent info bar below family selector — authoring mode + character picker inline. */
+function FamilyInfoBar({
+  family,
+  categoryOptions,
+  characters,
+  onUpdate,
+}: {
+  family: PromptFamilySummary;
+  categoryOptions: string[];
+  characters: CharacterSummary[];
+  onUpdate: (familyId: string, data: { category?: string; primary_character_id?: string | null }) => Promise<void>;
+}) {
+  const mode = family.category ?? '';
+  const showCharacter = CHARACTER_MODES.has(mode);
+  const charId = family.primary_character_id ?? null;
+  const boundChar = charId ? characters.find((c) => c.id === charId) : null;
+
+  return (
+    <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
+      <select
+        value={mode}
+        onChange={(e) => void onUpdate(family.id, { category: e.target.value || undefined })}
+        className={clsx(SELECT_CLASS, 'font-medium text-neutral-600 dark:text-neutral-300')}
+      >
+        {categoryOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt || '(no mode)'}</option>
+        ))}
+      </select>
+      {showCharacter && (
+        <select
+          value={charId ?? ''}
+          onChange={(e) => void onUpdate(family.id, { primary_character_id: e.target.value || null })}
+          className={clsx(SELECT_CLASS, 'max-w-[140px] truncate', charId ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-400 dark:text-neutral-500')}
+          title={boundChar ? `${boundChar.display_name || boundChar.name} (${boundChar.species || 'no species'})` : 'No character'}
+        >
+          <option value="">character...</option>
+          {characters.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.display_name || c.name || c.character_id}
+              {c.species ? ` (${c.species})` : ''}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+
 function FamilyEditPopover({
   family,
   onUpdate,
@@ -44,16 +109,19 @@ function FamilyEditPopover({
   categoryOptions,
 }: {
   family: PromptFamilySummary;
-  onUpdate: (familyId: string, data: { title?: string; category?: string; tags?: string[] }) => Promise<void>;
+  onUpdate: (familyId: string, data: { title?: string; category?: string; tags?: string[]; primary_character_id?: string | null }) => Promise<void>;
   onClose: () => void;
   triggerRef: React.RefObject<HTMLElement | null>;
   categoryOptions: string[];
 }) {
   const [title, setTitle] = useState(family.title);
   const [category, setCategory] = useState(family.category ?? '');
+  const [characterId, setCharacterId] = useState<string | null>(family.primary_character_id ?? null);
   const [tags, setTags] = useState<string[]>(family.tags ?? []);
   const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const characters = useCharacterList();
+  const showCharacterPicker = CHARACTER_MODES.has(category);
 
   const addTag = (raw: string) => {
     const t = raw.trim();
@@ -64,9 +132,11 @@ function FamilyEditPopover({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates: { title?: string; category?: string; tags?: string[] } = {};
+      const updates: { title?: string; category?: string; tags?: string[]; primary_character_id?: string | null } = {};
       if (title.trim() !== family.title) updates.title = title.trim();
       if (category !== (family.category ?? '')) updates.category = category || undefined;
+      const oldCharId = family.primary_character_id ?? null;
+      if (characterId !== oldCharId) updates.primary_character_id = characterId;
       const oldTags = family.tags ?? [];
       if (JSON.stringify(tags) !== JSON.stringify(oldTags)) updates.tags = tags;
       if (Object.keys(updates).length > 0) {
@@ -108,6 +178,24 @@ function FamilyEditPopover({
           ))}
         </select>
       </div>
+      {showCharacterPicker && (
+        <div>
+          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mb-0.5">Character</div>
+          <select
+            value={characterId ?? ''}
+            onChange={(e) => setCharacterId(e.target.value || null)}
+            className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+          >
+            <option value="">(none)</option>
+            {characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name || c.name || c.character_id}
+                {c.species ? ` (${c.species})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div>
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mb-0.5">Tags</div>
         {tags.length > 0 && (
@@ -185,8 +273,11 @@ function FamilyCreatePopover({
     newFamilyPromptType, setNewFamilyPromptType,
     newFamilyCategory, setNewFamilyCategory,
     newFamilyTagsInput, setNewFamilyTagsInput,
+    newFamilyCharacterId, setNewFamilyCharacterId,
     busyAction, handleCreateFamily,
   } = usePromptAuthoring();
+  const characters = useCharacterList();
+  const showCharacterPicker = CHARACTER_MODES.has(newFamilyCategory);
 
   const handleCreate = async () => {
     await handleCreateFamily();
@@ -231,6 +322,24 @@ function FamilyCreatePopover({
           ))}
         </select>
       </div>
+      {showCharacterPicker && (
+        <div>
+          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mb-0.5">Character</div>
+          <select
+            value={newFamilyCharacterId ?? ''}
+            onChange={(e) => setNewFamilyCharacterId(e.target.value || null)}
+            className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+          >
+            <option value="">(none)</option>
+            {characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name || c.name || c.character_id}
+                {c.species ? ` (${c.species})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <input
         value={newFamilyTagsInput}
         onChange={(e) => setNewFamilyTagsInput(e.target.value)}
@@ -271,6 +380,7 @@ export function PromptAuthoringNavigator() {
     () => ['', ...authoringModes.map((m) => m.id)],
     [authoringModes],
   );
+  const characters = useCharacterList();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
@@ -360,16 +470,12 @@ export function PromptAuthoringNavigator() {
           )}
         </div>
         {selectedFamily && (
-          <div className="flex items-center gap-1.5 px-0.5">
-            {selectedFamily.category && (
-              <span className="inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
-                {selectedFamily.category}
-              </span>
-            )}
-            <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
-              {selectedFamily.prompt_type}
-            </span>
-          </div>
+          <FamilyInfoBar
+            family={selectedFamily}
+            categoryOptions={categoryOptions}
+            characters={characters}
+            onUpdate={handleUpdateFamily}
+          />
         )}
         {familiesError && (
           <div className="text-[11px] text-red-600 dark:text-red-300">{familiesError}</div>
