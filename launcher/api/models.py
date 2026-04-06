@@ -85,6 +85,7 @@ class SettingFieldResponse(BaseModel):
     arg_map: Optional[str] = None
     env_map: Optional[str] = None
     env_export: Optional[str] = None
+    section: Optional[str] = None
 
 
 class ServiceSettingsResponse(BaseModel):

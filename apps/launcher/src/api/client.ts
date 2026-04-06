@@ -83,6 +83,7 @@ export interface SettingField {
   arg_map?: string
   env_map?: string
   env_export?: string
+  section?: string
 }
 
 export interface ServiceSettingsResponse {

@@ -5,7 +5,7 @@
  * controls for each field type (string, number, boolean, select, multi_select).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type SettingField,
   type OptionGroup,
@@ -13,6 +13,22 @@ import {
   getServiceSettings,
   updateServiceSettings,
 } from '../api/client'
+
+/** Group fields by section, preserving declaration order. */
+function groupBySection(fields: SettingField[]) {
+  const groups: { name: string | null; fields: SettingField[] }[] = []
+  const seen = new Map<string | null, number>()
+  for (const field of fields) {
+    const key = field.section ?? null
+    if (seen.has(key)) {
+      groups[seen.get(key)!].fields.push(field)
+    } else {
+      seen.set(key, groups.length)
+      groups.push({ name: key, fields: [field] })
+    }
+  }
+  return groups
+}
 
 export function ServiceSettingsPanel({
   serviceKey,
@@ -35,8 +51,22 @@ export function ServiceSettingsPanel({
 
   useEffect(() => { load() }, [load])
 
-  if (error) return null // silently hide if no settings endpoint
+  const sections = useMemo(
+    () => data ? groupBySection(data.schema) : [],
+    [data],
+  )
+
+  if (error) return null
   if (!data || data.schema.length === 0) return null
+
+  const hasSections = sections.some((s) => s.name !== null)
+
+  const handleChange = (fieldKey: string, value: unknown) => {
+    setData((prev) => prev ? { ...prev, values: { ...prev.values, [fieldKey]: value } } : prev)
+    updateServiceSettings(serviceKey, { [fieldKey]: value })
+      .then(setData)
+      .catch(() => load())
+  }
 
   return (
     <div className="bg-surface-secondary rounded border border-border p-3 space-y-2.5">
@@ -44,22 +74,40 @@ export function ServiceSettingsPanel({
       <div className="text-[10px] text-gray-500 leading-relaxed">
         Changes take effect on next restart.
       </div>
-      <div className="space-y-2">
-        {data.schema.map((field) => (
-          <SettingFieldControl
-            key={field.key}
-            field={field}
-            value={data.values[field.key]}
-            onChange={(value) => {
-              // Optimistic update
-              setData((prev) => prev ? { ...prev, values: { ...prev.values, [field.key]: value } } : prev)
-              updateServiceSettings(serviceKey, { [field.key]: value })
-                .then(setData)
-                .catch(() => load()) // revert on error
-            }}
-          />
-        ))}
-      </div>
+      {hasSections ? (
+        <div className="space-y-3">
+          {sections.map((section, i) => (
+            <div key={section.name ?? i}>
+              {section.name && (
+                <div className="text-[10px] font-medium text-gray-400 mb-1.5 pt-1 border-t border-gray-800 first:border-0 first:pt-0">
+                  {section.name}
+                </div>
+              )}
+              <div className="space-y-2">
+                {section.fields.map((field) => (
+                  <SettingFieldControl
+                    key={field.key}
+                    field={field}
+                    value={data.values[field.key]}
+                    onChange={(value) => handleChange(field.key, value)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {data.schema.map((field) => (
+            <SettingFieldControl
+              key={field.key}
+              field={field}
+              value={data.values[field.key]}
+              onChange={(value) => handleChange(field.key, value)}
+            />
+          ))}
+        </div>
+      )}
       {children?.(data.values)}
     </div>
   )

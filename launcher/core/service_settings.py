@@ -177,6 +177,8 @@ def parse_schema(raw: Optional[List[Dict]]) -> List[Dict]:
             field["env_export"] = entry["env_export"]
         if entry.get("separator"):
             field["separator"] = entry["separator"]
+        if entry.get("section"):
+            field["section"] = entry["section"]
         fields.append(field)
     return fields
 

@@ -27,50 +27,56 @@
     {
       "key": "postgres_port",
       "type": "number",
-      "label": "Postgres Port",
-      "description": "Docker-compose port mapping for PostgreSQL",
+      "label": "Port",
+      "description": "Docker-compose port mapping",
       "default": 5434,
-      "env_export": "POSTGRES_PORT"
-    },
-    {
-      "key": "redis_port",
-      "type": "number",
-      "label": "Redis Port",
-      "description": "Docker-compose port mapping for Redis",
-      "default": 6380,
-      "env_export": "REDIS_PORT"
+      "env_export": "POSTGRES_PORT",
+      "section": "Main PostgreSQL"
     },
     {
       "key": "database_url",
       "type": "string",
-      "label": "Main Database URL",
-      "description": "PostgreSQL connection for the main pixsim7 database",
+      "label": "Connection URL",
+      "description": "Main pixsim7 database",
       "default": "postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7",
-      "env_export": "DATABASE_URL"
+      "env_export": "DATABASE_URL",
+      "section": "Main PostgreSQL"
     },
     {
       "key": "blocks_database_url",
       "type": "string",
-      "label": "Blocks Database URL",
-      "description": "PostgreSQL for block primitives (empty = use main database)",
+      "label": "Connection URL",
+      "description": "Block primitives database (empty = use main)",
       "default": "",
-      "env_export": "BLOCKS_DATABASE_URL"
+      "env_export": "BLOCKS_DATABASE_URL",
+      "section": "Blocks Database"
     },
     {
       "key": "log_database_url",
       "type": "string",
-      "label": "Log Database URL",
-      "description": "PostgreSQL/TimescaleDB for log ingestion (empty = use main database)",
+      "label": "Connection URL",
+      "description": "TimescaleDB for log ingestion (empty = use main)",
       "default": "",
-      "env_export": "LOG_DATABASE_URL"
+      "env_export": "LOG_DATABASE_URL",
+      "section": "Log Database"
+    },
+    {
+      "key": "redis_port",
+      "type": "number",
+      "label": "Port",
+      "description": "Docker-compose port mapping",
+      "default": 6380,
+      "env_export": "REDIS_PORT",
+      "section": "Redis"
     },
     {
       "key": "redis_url",
       "type": "string",
-      "label": "Redis URL",
-      "description": "Redis connection for cache and job queues",
+      "label": "Connection URL",
+      "description": "Cache and job queues",
       "default": "redis://localhost:6380/0",
-      "env_export": "REDIS_URL"
+      "env_export": "REDIS_URL",
+      "section": "Redis"
     }
   ]
 }
