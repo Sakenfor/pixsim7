@@ -1,6 +1,6 @@
 import { IconButton, Z } from "@pixsim7/shared.ui";
 import { runAnimation } from "@pixsim7/shared.ui";
-import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
+import { memo, useCallback, useMemo, useState, useRef, useEffect, Suspense } from "react";
 import { Rnd } from "react-rnd";
 
 import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
@@ -385,8 +385,33 @@ const FloatingPanel = memo(function FloatingPanel({
     if (panelDef.isInternal && (!panelDef.availableIn || panelDef.availableIn.length === 0)) {
       return false; // floating-only/internal panels without dock scopes are not dock targets
     }
-    if (!panelDef.availableIn || panelDef.availableIn.length === 0) return true; // no restriction
-    return panelDef.availableIn.some((scope) => dockviewIdMatches(scope, dockviewId));
+    // Check from the panel's perspective: does the panel allow this dock?
+    if (panelDef.availableIn && panelDef.availableIn.length > 0) {
+      if (!panelDef.availableIn.some((scope) => dockviewIdMatches(scope, dockviewId))) {
+        return false;
+      }
+    }
+
+    // Check from the target dock's perspective: does it accept this panel?
+    // Mirrors getScopedDockPanelIds logic in workspaceStore.
+    const targetWidget = dockWidgetSelectors.getAll().find(
+      (w) =>
+        normalizeDockviewId(w.dockviewId) === normalizedTargetId ||
+        normalizeDockviewId(w.id) === normalizedTargetId,
+    );
+    if (targetWidget) {
+      let scopedPanelIds: string[] = [];
+      if (Array.isArray(targetWidget.allowedPanels) && targetWidget.allowedPanels.length > 0) {
+        scopedPanelIds = targetWidget.allowedPanels;
+      } else if (typeof targetWidget.panelScope === "string" && targetWidget.panelScope.length > 0) {
+        scopedPanelIds = panelSelectors.getIdsForScope(targetWidget.panelScope);
+      }
+      if (scopedPanelIds.length > 0 && !scopedPanelIds.includes(definitionId)) {
+        return false;
+      }
+    }
+
+    return true;
   }, [definitionId, floatingOriginMeta?.sourceDockviewId, knownDockTargets]);
 
   const rndRef = useRef<Rnd | null>(null);
@@ -654,9 +679,15 @@ const FloatingPanel = memo(function FloatingPanel({
                 context={panelContext}
                 instanceId={floatingInstanceId}
               >
-                <PanelErrorBoundary panelId={definitionId}>
-                  {renderPanelContent()}
-                </PanelErrorBoundary>
+                <Suspense fallback={
+                  <div className="h-full w-full flex items-center justify-center text-xs text-neutral-400">
+                    Loading…
+                  </div>
+                }>
+                  <PanelErrorBoundary panelId={definitionId}>
+                    {renderPanelContent()}
+                  </PanelErrorBoundary>
+                </Suspense>
               </FloatingPanelContextProvider>
             </ContextHubHost>
           </div>

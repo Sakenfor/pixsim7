@@ -160,8 +160,8 @@ export const floatPanelAction: MenuAction = {
       : existingPanelContext;
     const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, ctx.groupId ?? panel?.group?.id);
     const floatOptions = {
-      width: 600,
-      height: 400,
+      // Don't hard-code dimensions — let the store resolve from lastFloatingPanelStates
+      // so user-resized floating panels remember their size.
       context: {
         ...existingContext,
         ...(mergedPanelContext ? { context: mergedPanelContext } : {}),

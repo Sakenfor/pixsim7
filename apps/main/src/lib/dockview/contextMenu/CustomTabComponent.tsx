@@ -161,8 +161,6 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
       try {
         const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(containerApi, candidate.groupId);
         floatPanelHandler(candidate.panelId, panel, {
-          width: 600,
-          height: 400,
           context: {
             ...buildFloatingOriginMetaRecord({
               sourceDockviewId: currentDockviewId ?? null,

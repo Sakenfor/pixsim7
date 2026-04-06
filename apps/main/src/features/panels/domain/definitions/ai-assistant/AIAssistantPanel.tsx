@@ -39,6 +39,7 @@ import {
   WorkSummaryBadge,
   ModelSelector,
   SystemPromptPreview,
+  BridgeSettingsPopover,
   QUICK_SHORTCUTS,
 } from './assistantSubPanels';
 import {
@@ -400,7 +401,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             ) : (
               <>
                 <EmptyState message="AI assistant is offline" description="Start an agent bridge to connect" size="sm" />
-                <Button size="sm" onClick={() => { pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); }}>
+                <Button size="sm" onClick={() => { pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {}); }}>
                   <Icon name="play" size={12} className="mr-1.5" />Start Bridge
                 </Button>
               </>
@@ -743,7 +744,7 @@ export function AIAssistantPanel() {
         bridgeWasConnectedRef.current = isConnected;
 
         if (wasConnected && !isConnected && !bridgeManualStopRef.current && !status.process_alive) {
-          pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {});
+          pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {});
         }
         if (isConnected) bridgeManualStopRef.current = false;
         setBridge(status);
@@ -999,10 +1000,11 @@ export function AIAssistantPanel() {
                 }
               });
             }} />
+            <BridgeSettingsPopover />
             <div className="ml-auto flex items-center gap-1">
               {connected === 0 && !bridge?.process_alive && (
                 <button
-                  onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
+                  onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
                   disabled={bridgeStarting}
                   className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
                 >

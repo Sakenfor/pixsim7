@@ -69,6 +69,14 @@ from .launcher_settings import (
     update_launcher_settings,
     apply_launcher_settings_to_env,
 )
+from .client import (
+    get_service_status,
+    is_service_running,
+    start_service,
+    stop_service,
+    get_hook_config,
+    apply_hook_config,
+)
 
 __all__ = [
     # Core types
@@ -118,6 +126,14 @@ __all__ = [
     'save_launcher_settings',
     'update_launcher_settings',
     'apply_launcher_settings_to_env',
+
+    # API client
+    'get_service_status',
+    'is_service_running',
+    'start_service',
+    'stop_service',
+    'get_hook_config',
+    'apply_hook_config',
 ]
 
 __version__ = '0.2.0'  # Phase 3-4 complete

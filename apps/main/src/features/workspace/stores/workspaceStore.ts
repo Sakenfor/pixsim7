@@ -662,6 +662,16 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
               targetDockviewId = sourceDockviewId;
               api = sourceApi;
               dockPosition = { direction: "within" };
+            } else {
+              // Panel not supported by target scope and no origin to fall back to.
+              // Don't force it into an incompatible dock — keep it floating.
+              console.warn("[dockFloatingPanel] Panel not supported by target scope, no origin fallback:", {
+                panelId,
+                defId,
+                requestedDockviewId,
+                targetDockviewId,
+              });
+              return;
             }
           }
         }

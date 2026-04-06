@@ -608,13 +608,54 @@ class ApplyHookConfigResponse(_BaseModel):
 # Marker prefix so we can identify our managed entries in permissions.allow
 _MCP_PERMISSION_PREFIX = "mcp__pixsim__"
 
+# Built-in MCP tools that are always included (not from contracts)
+_MCP_BUILTIN_TOOLS = [
+    f"{_MCP_PERMISSION_PREFIX}call_api",
+    f"{_MCP_PERMISSION_PREFIX}ask_user",
+    f"{_MCP_PERMISSION_PREFIX}log_work",
+    f"{_MCP_PERMISSION_PREFIX}register_session",
+]
+
+
+def _fetch_mcp_tool_names() -> List[str]:
+    """Fetch live MCP tool names from the running MCP server.
+
+    Returns exact permission entries like 'mcp__pixsim__plans_management'.
+    Falls back to builtins if the MCP server is unreachable.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    tools = list(_MCP_BUILTIN_TOOLS)
+
+    try:
+        mcp_file = _Path.home() / ".pixsim" / "mcp_port"
+        if not mcp_file.exists():
+            return tools
+        port = int(mcp_file.read_text().strip())
+    except Exception:
+        return tools
+
+    try:
+        import urllib.request
+        resp = urllib.request.urlopen(f"http://127.0.0.1:{port}/tools", timeout=3)
+        data = _json.loads(resp.read())
+        for t in data.get("tools", []):
+            name = t.get("name", "")
+            if name and name not in ("register_session", "log_work", "call_api", "ask_user"):
+                tools.append(f"{_MCP_PERMISSION_PREFIX}{name}")
+    except Exception:
+        pass
+
+    return tools
+
 
 @router.post("/{service_key}/apply-hook-config", response_model=ApplyHookConfigResponse)
 async def apply_hook_config(
     service_key: str = Path(...),
     body: ApplyHookConfigRequest = Body(...),
 ):
-    """Merge PreToolUse hook config into settings.json and MCP permissions into settings.local.json."""
+    """Merge PreToolUse hook config into settings.json and MCP permissions into project settings.local.json."""
     if service_key != "ai-client":
         raise HTTPException(status_code=400, detail="Hook config only applies to ai-client")
 
@@ -622,20 +663,26 @@ async def apply_hook_config(
     from pathlib import Path as _Path
 
     claude_dir = _Path.home() / ".claude"
-    settings_path = claude_dir / "settings.json"
-    local_settings_path = claude_dir / "settings.local.json"
 
-    # ── 1. Write PreToolUse hook to settings.json ──
+    # Project-level settings is what Claude Code actually reads
+    # for MCP permissions. It lives at .claude/settings.local.json in the
+    # project root (not in the global ~/.claude/ directory).
+    project_root = _Path(__file__).resolve().parents[3]  # launcher/api/routes/ -> project root
+    project_local_settings_path = project_root / ".claude" / "settings.local.json"
 
-    existing: dict = {}
-    if settings_path.exists():
+    # ── 1. Write PreToolUse hook to project settings.json ──
+
+    project_settings_path = project_root / ".claude" / "settings.json"
+
+    project_settings: dict = {}
+    if project_settings_path.exists():
         try:
-            existing = _json.loads(settings_path.read_text(encoding="utf-8"))
+            project_settings = _json.loads(project_settings_path.read_text(encoding="utf-8"))
         except Exception:
-            existing = {}
+            project_settings = {}
 
     # Merge into hooks.PreToolUse — replace any existing pixsim hook, keep others
-    hooks = existing.setdefault("hooks", {})
+    hooks = project_settings.setdefault("hooks", {})
     pre_tool = hooks.get("PreToolUse", [])
     if not isinstance(pre_tool, list):
         pre_tool = []
@@ -655,20 +702,42 @@ async def apply_hook_config(
         })
 
     hooks["PreToolUse"] = pre_tool
-    existing["hooks"] = hooks
+    project_settings["hooks"] = hooks
 
     try:
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
+        project_settings_path.parent.mkdir(parents=True, exist_ok=True)
+        project_settings_path.write_text(_json.dumps(project_settings, indent=2), encoding="utf-8")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write {settings_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to write {project_settings_path}: {e}")
 
-    # ── 2. Manage MCP permissions in settings.local.json ──
+    # Clean up stale global hooks if any were written by older launcher versions
+    global_settings_path = claude_dir / "settings.json"
+    if global_settings_path.exists():
+        try:
+            global_settings = _json.loads(global_settings_path.read_text(encoding="utf-8"))
+            global_hooks = global_settings.get("hooks", {}).get("PreToolUse", [])
+            if isinstance(global_hooks, list):
+                cleaned = [
+                    h for h in global_hooks
+                    if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
+                ]
+                if len(cleaned) != len(global_hooks):
+                    global_settings.setdefault("hooks", {})["PreToolUse"] = cleaned
+                    global_settings_path.write_text(_json.dumps(global_settings, indent=2), encoding="utf-8")
+        except Exception:
+            pass  # non-critical cleanup
+
+    # ── 2. Manage MCP permissions in project settings.local.json ──
+    #
+    # Claude Code reads MCP tool permissions from the project-level
+    # .claude/settings.local.json, not the global ~/.claude/ one.
+    # We fetch the live tool names from the MCP server to write exact names
+    # (Claude Code doesn't support wildcards for MCP tools).
 
     local: dict = {}
-    if local_settings_path.exists():
+    if project_local_settings_path.exists():
         try:
-            local = _json.loads(local_settings_path.read_text(encoding="utf-8"))
+            local = _json.loads(project_local_settings_path.read_text(encoding="utf-8"))
         except Exception:
             local = {}
 
@@ -684,20 +753,84 @@ async def apply_hook_config(
     ]
 
     if body.mcp_allowed:
-        # Add wildcard permission for all pixsim MCP tools
-        allow_list.append(f"{_MCP_PERMISSION_PREFIX}*")
+        # Fetch live tool names from the MCP server
+        mcp_tool_names = _fetch_mcp_tool_names()
+        allow_list.extend(mcp_tool_names)
 
     permissions["allow"] = allow_list
     local["permissions"] = permissions
 
     try:
-        local_settings_path.write_text(_json.dumps(local, indent=2), encoding="utf-8")
+        project_local_settings_path.parent.mkdir(parents=True, exist_ok=True)
+        project_local_settings_path.write_text(_json.dumps(local, indent=2), encoding="utf-8")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write {local_settings_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to write {project_local_settings_path}: {e}")
 
+    hook_msg = f"hook ({','.join(body.hook_tools)})" if body.hook_tools else "no hooks"
     mcp_status = "granted" if body.mcp_allowed else "revoked"
     return ApplyHookConfigResponse(
         ok=True,
-        path=str(settings_path),
-        message=f"Saved PreToolUse hook ({matcher}) to {settings_path}. MCP permissions {mcp_status} in {local_settings_path}.",
+        path=str(project_root / ".claude"),
+        message=f"Saved {hook_msg} + MCP permissions ({mcp_status}) to {project_root / '.claude'}.",
+    )
+
+
+class HookConfigState(_BaseModel):
+    """Current state of Claude Code hook config (read from .claude/ files)."""
+    hook_tools: List[str] = []
+    mcp_allowed: bool = False
+    hook_configured: bool = False
+
+
+@router.get("/{service_key}/hook-config", response_model=HookConfigState)
+async def get_hook_config(service_key: str = Path(...)):
+    """Read current PreToolUse hook config and MCP permissions from .claude/ files."""
+    if service_key != "ai-client":
+        raise HTTPException(status_code=400, detail="Hook config only applies to ai-client")
+
+    import json as _json
+    from pathlib import Path as _Path
+
+    project_root = _Path(__file__).resolve().parents[3]
+    project_settings_path = project_root / ".claude" / "settings.json"
+    project_local_settings_path = project_root / ".claude" / "settings.local.json"
+
+    # ── 1. Read hook tools from settings.json ──
+    hook_tools: list[str] = []
+    hook_configured = False
+
+    if project_settings_path.exists():
+        try:
+            settings = _json.loads(project_settings_path.read_text(encoding="utf-8"))
+            pre_tool = settings.get("hooks", {}).get("PreToolUse", [])
+            if isinstance(pre_tool, list):
+                for h in pre_tool:
+                    if isinstance(h, dict) and "pixsim7.client.hook_pretool" in h.get("command", ""):
+                        matcher = h.get("matcher", "")
+                        if matcher:
+                            hook_tools = [t.strip() for t in matcher.split("|") if t.strip()]
+                        hook_configured = True
+                        break
+        except Exception:
+            pass
+
+    # ── 2. Read MCP permission state from settings.local.json ──
+    mcp_allowed = False
+
+    if project_local_settings_path.exists():
+        try:
+            local = _json.loads(project_local_settings_path.read_text(encoding="utf-8"))
+            allow_list = local.get("permissions", {}).get("allow", [])
+            if isinstance(allow_list, list):
+                mcp_allowed = any(
+                    isinstance(e, str) and e.startswith(_MCP_PERMISSION_PREFIX)
+                    for e in allow_list
+                )
+        except Exception:
+            pass
+
+    return HookConfigState(
+        hook_tools=hook_tools,
+        mcp_allowed=mcp_allowed,
+        hook_configured=hook_configured,
     )

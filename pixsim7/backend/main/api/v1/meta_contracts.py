@@ -1282,7 +1282,7 @@ def _is_launcher_bridge_active(status: Optional[dict]) -> bool:
 
 async def _check_launcher_bridge() -> Optional[dict]:
     """Check if the launcher already manages a running ai-client service."""
-    from pixsim7.backend.main.shared.launcher_client import get_service_status
+    from launcher.core.client import get_service_status
 
     status = await run_in_threadpool(get_service_status, "ai-client")
     if _is_launcher_bridge_active(status):
@@ -1306,7 +1306,7 @@ async def start_server_bridge(
     global _server_bridge_process
     import subprocess
     import sys
-    from pixsim7.backend.main.shared.launcher_client import (
+    from launcher.core.client import (
         get_service_status as launcher_get_service_status,
         start_service as launcher_start_service,
     )
@@ -1448,6 +1448,150 @@ async def stop_server_bridge() -> StartBridgeResponse:
     if ws_count:
         parts.append(f"{ws_count} WebSocket client{'s' if ws_count != 1 else ''}")
     return StartBridgeResponse(ok=True, pid=pid, message=f"Stopped: {', '.join(parts)}")
+
+
+# ── Hook config proxy (reads/writes via launcher) ──
+
+
+class HookConfigState(BaseModel):
+    hook_tools: List[str] = []
+    mcp_allowed: bool = False
+    hook_configured: bool = False
+
+
+class ApplyHookConfigRequest(BaseModel):
+    hook_tools: List[str] = ["Bash", "Write", "Edit"]
+    mcp_allowed: bool = True
+
+
+class ApplyHookConfigResponse(BaseModel):
+    ok: bool
+    path: str = ""
+    message: str = ""
+
+
+@router.get("/agents/bridge/hook-config", response_model=HookConfigState)
+async def get_bridge_hook_config() -> HookConfigState:
+    """Read current hook config — proxies to launcher or reads files directly."""
+    from launcher.core.client import get_hook_config
+
+    result = await run_in_threadpool(get_hook_config)
+    if result:
+        return HookConfigState(**result)
+
+    # Launcher offline — read files directly as fallback
+    import json as _json
+    from pixsim7.backend.main.shared.config import _resolve_repo_root
+
+    project_root = _resolve_repo_root()
+    settings_path = project_root / ".claude" / "settings.json"
+    local_path = project_root / ".claude" / "settings.local.json"
+
+    hook_tools: list[str] = []
+    hook_configured = False
+    mcp_allowed = False
+
+    if settings_path.exists():
+        try:
+            settings = _json.loads(settings_path.read_text(encoding="utf-8"))
+            for h in settings.get("hooks", {}).get("PreToolUse", []):
+                if isinstance(h, dict) and "pixsim7.client.hook_pretool" in h.get("command", ""):
+                    matcher = h.get("matcher", "")
+                    hook_tools = [t.strip() for t in matcher.split("|") if t.strip()]
+                    hook_configured = True
+                    break
+        except Exception:
+            pass
+
+    if local_path.exists():
+        try:
+            local = _json.loads(local_path.read_text(encoding="utf-8"))
+            allow_list = local.get("permissions", {}).get("allow", [])
+            mcp_allowed = any(
+                isinstance(e, str) and e.startswith("mcp__pixsim__")
+                for e in (allow_list if isinstance(allow_list, list) else [])
+            )
+        except Exception:
+            pass
+
+    return HookConfigState(
+        hook_tools=hook_tools,
+        mcp_allowed=mcp_allowed,
+        hook_configured=hook_configured,
+    )
+
+
+@router.post("/agents/bridge/hook-config", response_model=ApplyHookConfigResponse)
+async def apply_bridge_hook_config(
+    payload: ApplyHookConfigRequest,
+) -> ApplyHookConfigResponse:
+    """Write hook config — proxies to launcher or writes files directly."""
+    from launcher.core.client import apply_hook_config
+
+    result = await run_in_threadpool(apply_hook_config, payload.hook_tools, payload.mcp_allowed)
+    if result and result.get("ok"):
+        return ApplyHookConfigResponse(**result)
+
+    # Launcher offline — write files directly as fallback
+    import json as _json
+    from pixsim7.backend.main.shared.config import _resolve_repo_root
+
+    project_root = _resolve_repo_root()
+    settings_path = project_root / ".claude" / "settings.json"
+    local_path = project_root / ".claude" / "settings.local.json"
+
+    # Write hook to settings.json
+    settings: dict = {}
+    if settings_path.exists():
+        try:
+            settings = _json.loads(settings_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    hooks = settings.setdefault("hooks", {})
+    pre_tool = hooks.get("PreToolUse", [])
+    if not isinstance(pre_tool, list):
+        pre_tool = []
+    pre_tool = [
+        h for h in pre_tool
+        if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
+    ]
+    if payload.hook_tools:
+        pre_tool.append({
+            "matcher": "|".join(payload.hook_tools),
+            "command": "python -m pixsim7.client.hook_pretool",
+        })
+    hooks["PreToolUse"] = pre_tool
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(_json.dumps(settings, indent=2), encoding="utf-8")
+
+    # Write MCP permissions to settings.local.json
+    local: dict = {}
+    if local_path.exists():
+        try:
+            local = _json.loads(local_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    permissions = local.setdefault("permissions", {})
+    allow_list: list = permissions.get("allow", [])
+    if not isinstance(allow_list, list):
+        allow_list = []
+    allow_list = [e for e in allow_list if not (isinstance(e, str) and e.startswith("mcp__pixsim__"))]
+    if payload.mcp_allowed:
+        allow_list.extend([
+            "mcp__pixsim__call_api", "mcp__pixsim__ask_user",
+            "mcp__pixsim__log_work", "mcp__pixsim__register_session",
+        ])
+    permissions["allow"] = allow_list
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(_json.dumps(local, indent=2), encoding="utf-8")
+
+    return ApplyHookConfigResponse(
+        ok=True,
+        path=str(project_root / ".claude"),
+        message="Saved hook config (direct write, launcher offline).",
+    )
 
 
 class SendMessageRequest(BaseModel):

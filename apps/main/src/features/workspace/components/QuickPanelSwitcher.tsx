@@ -53,7 +53,7 @@ export function QuickPanelSwitcher() {
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const handleOpenPanel = (panelId: string) => {
-    openFloatingPanel(panelId, { width: 800, height: 600 });
+    openFloatingPanel(panelId);
     setIsOpen(false);
   };
 

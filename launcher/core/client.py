@@ -1,12 +1,20 @@
-"""Lightweight client for querying the launcher API.
+"""Lightweight HTTP client for the launcher REST API.
 
 The launcher (when running) exposes a REST API for managing services.
-This module provides thin helpers so backend code can coordinate with it
-without duplicating URL construction and error handling.
+This module provides thin helpers so any consumer (backend, bridge, CLI)
+can coordinate with it without duplicating URL construction and error handling.
 
 All functions return ``None`` or ``False`` on failure (launcher offline,
 service not found, network timeout) — callers should always treat the
 launcher as optional.
+
+Usage::
+
+    from launcher.core.client import get_service_status, start_service
+
+    status = get_service_status("ai-client")
+    if status and status.get("status") == "running":
+        ...
 """
 from __future__ import annotations
 
@@ -24,6 +32,9 @@ _RETRIES = 2
 def _launcher_url(path: str) -> str:
     port = os.environ.get("LAUNCHER_PORT", "8100")
     return f"http://localhost:{port}{path}"
+
+
+# ── Generic service operations ──────────────────────────────────────
 
 
 def get_service_status(service_key: str) -> Optional[dict]:
@@ -81,3 +92,43 @@ def stop_service(service_key: str) -> bool:
             return data.get("success", False)
     except Exception:
         return False
+
+
+# ── AI-client hook config ───────────────────────────────────────────
+
+
+def get_hook_config() -> Optional[dict]:
+    """Read current hook config from the launcher.
+
+    Returns ``{"hook_tools": [...], "mcp_allowed": bool, "hook_configured": bool}``
+    or ``None`` if the launcher is unreachable.
+    """
+    try:
+        req = urllib.request.Request(
+            _launcher_url("/services/ai-client/hook-config"),
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def apply_hook_config(hook_tools: list[str], mcp_allowed: bool = True) -> Optional[dict]:
+    """Write hook config via the launcher.
+
+    Returns response dict ``{"ok": bool, "path": str, "message": str}``
+    or ``None`` if the launcher is unreachable.
+    """
+    body = json.dumps({"hook_tools": hook_tools, "mcp_allowed": mcp_allowed}).encode()
+    try:
+        req = urllib.request.Request(
+            _launcher_url("/services/ai-client/apply-hook-config"),
+            data=body,
+            method="POST",
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None

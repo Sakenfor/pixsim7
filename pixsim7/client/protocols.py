@@ -94,6 +94,29 @@ class AgentProtocol:
         return []
 
 
+def _describe_hook_event(raw: dict) -> str:
+    """Build a human-readable description of a hook lifecycle event."""
+    hook_type = raw.get("hook_type", raw.get("hook", ""))
+    status = raw.get("status", "")
+    tool_name = raw.get("tool_name", "")
+
+    if hook_type == "PreToolUse":
+        if status == "started":
+            return f"Awaiting approval: {tool_name}" if tool_name else "Awaiting tool approval..."
+        if status == "completed":
+            exit_code = raw.get("exit_code", raw.get("exitCode", 0))
+            if exit_code == 2:
+                return f"Tool denied: {tool_name}" if tool_name else "Tool denied"
+            return f"Tool approved: {tool_name}" if tool_name else "Tool approved"
+        if status == "error":
+            return f"Hook error: {tool_name}" if tool_name else "Hook error"
+    if hook_type == "PostToolUse":
+        return f"Post-tool hook: {tool_name}" if tool_name else "Post-tool hook"
+
+    # Generic fallback
+    return f"Hook: {hook_type} {status}".strip()
+
+
 def _describe_tool_use(block: dict) -> str:
     """Build a human-readable description of a tool_use block."""
     name = block.get("name", "?")
@@ -157,7 +180,7 @@ class ClaudeProtocol(AgentProtocol):
         ]
 
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
-        cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
+        cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--include-hook-events"]
         if model:
             cmd.extend(["--model", model])
         if reasoning_effort:
@@ -208,6 +231,9 @@ class ClaudeProtocol(AgentProtocol):
                 return ParsedEvent(kind="progress", text="Thinking...", raw=raw)
             if bt == "text":
                 return ParsedEvent(kind="progress", text=block.get("text", "")[:100], raw=raw)
+        # Hook lifecycle events (from --include-hook-events)
+        if t == "hook":
+            return ParsedEvent(kind="progress", text=_describe_hook_event(raw), raw=raw)
         return ParsedEvent(kind="other", raw=raw)
 
 
