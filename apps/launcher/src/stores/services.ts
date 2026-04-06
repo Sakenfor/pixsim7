@@ -5,12 +5,14 @@ import type { ServiceState } from '../api/client'
 interface ServicesStore {
   services: ServiceState[]
   selectedKey: string | null
+  selectedSection: string | null
   loading: boolean
   error: string | null
 
   loadServices: () => Promise<void>
   refreshService: (key: string) => Promise<void>
   selectService: (key: string) => void
+  selectSection: (section: string | null) => void
   startService: (key: string) => Promise<void>
   stopService: (key: string) => Promise<void>
   restartService: (key: string) => Promise<void>
@@ -25,6 +27,7 @@ interface ServicesStore {
 export const useServicesStore = create<ServicesStore>((set, get) => ({
   services: [],
   selectedKey: null,
+  selectedSection: null,
   loading: false,
   error: null,
 
@@ -51,7 +54,9 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
     } catch {}
   },
 
-  selectService: (key) => set({ selectedKey: key }),
+  selectService: (key) => set({ selectedKey: key, selectedSection: null }),
+
+  selectSection: (section) => set({ selectedSection: section }),
 
   startService: async (key) => {
     try {

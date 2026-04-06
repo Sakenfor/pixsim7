@@ -181,6 +181,7 @@ function ConsolePanel({ onFieldClick }: { onFieldClick?: (n: string, v: string) 
 
 function ServiceInfoPanel() {
   const selectedKey = useServicesStore((s) => s.selectedKey)
+  const selectedSection = useServicesStore((s) => s.selectedSection)
   const services = useServicesStore((s) => s.services)
   const service = services.find((s) => s.key === selectedKey)
 
@@ -203,7 +204,8 @@ function ServiceInfoPanel() {
 
       <ServiceSettingsPanel
         serviceKey={service.key}
-        title={service.key === 'ai-client' ? 'Bridge & Hook Settings' : undefined}
+        title={selectedSection || (service.key === 'ai-client' ? 'Bridge & Hook Settings' : undefined)}
+        activeSection={selectedSection}
       >
         {service.key === 'ai-client' ? (values) => <HookConfigOutput values={values} hookPort={service.extras?.hook_port as number | undefined} /> : undefined}
       </ServiceSettingsPanel>

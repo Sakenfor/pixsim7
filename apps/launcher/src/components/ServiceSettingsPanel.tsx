@@ -33,10 +33,13 @@ function groupBySection(fields: SettingField[]) {
 export function ServiceSettingsPanel({
   serviceKey,
   title,
+  activeSection,
   children,
 }: {
   serviceKey: string
   title?: string
+  /** When set, only fields from this section are shown */
+  activeSection?: string | null
   /** Render extra content below the settings controls (receives current values) */
   children?: (values: Record<string, unknown>) => React.ReactNode
 }) {
@@ -60,6 +63,9 @@ export function ServiceSettingsPanel({
   if (!data || data.schema.length === 0) return null
 
   const hasSections = sections.some((s) => s.name !== null)
+  const visibleSections = activeSection
+    ? sections.filter((s) => s.name === activeSection)
+    : sections
 
   const handleChange = (fieldKey: string, value: unknown) => {
     setData((prev) => prev ? { ...prev, values: { ...prev.values, [fieldKey]: value } } : prev)
@@ -76,9 +82,9 @@ export function ServiceSettingsPanel({
       </div>
       {hasSections ? (
         <div className="space-y-3">
-          {sections.map((section, i) => (
+          {visibleSections.map((section, i) => (
             <div key={section.name ?? i}>
-              {section.name && (
+              {section.name && !activeSection && (
                 <div className="text-[10px] font-medium text-gray-400 mb-1.5 pt-1 border-t border-gray-800 first:border-0 first:pt-0">
                   {section.name}
                 </div>

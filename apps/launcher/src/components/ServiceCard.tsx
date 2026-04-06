@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import type { ServiceState } from '../api/client'
-import { openWindow } from '../api/client'
+import { openWindow, getServiceSettings } from '../api/client'
 import { ServiceIcon } from './ServiceIcon'
+import { useServicesStore } from '../stores/services'
 
 const healthColor: Record<string, string> = {
   healthy: 'text-green-400',
@@ -31,7 +33,20 @@ interface Props {
 
 export function ServiceCard({ service, services, selected, desktopAvailable, onSelect, onStart, onStop, onRestart }: Props) {
   const isRunning = service.status === 'running' || service.status === 'starting'
-  const color = healthColor[service.health] ?? healthColor.unknown
+  const isConfigOnly = service.category === 'platform'
+  const selectedSection = useServicesStore((s) => s.selectedSection)
+  const selectSection = useServicesStore((s) => s.selectSection)
+  const [sections, setSections] = useState<string[]>([])
+
+  useEffect(() => {
+    getServiceSettings(service.key)
+      .then((res) => {
+        const names = [...new Map(res.schema.filter((f) => f.section).map((f) => [f.section!, f.section!])).keys()]
+        setSections(names)
+      })
+      .catch(() => {})
+  }, [service.key])
+  const color = isConfigOnly ? 'text-gray-500' : (healthColor[service.health] ?? healthColor.unknown)
 
   // Peer relationships
   const devPeer = service.dev_peer_of
@@ -64,13 +79,16 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
             )}
           </div>
           <div className="text-[11px] text-gray-400 truncate">
-            {healthLabel[service.health] ?? service.health}
+            {isConfigOnly ? 'Config' : (healthLabel[service.health] ?? service.health)}
             {service.pid ? ` | PID ${service.pid}` : ''}
           </div>
         </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {isConfigOnly ? (
+            <span className="text-[10px] text-gray-600 italic">settings only</span>
+          ) : <>
           {/* Auth indicator */}
           {isRunning && service.health === 'healthy' && service.key === 'ai-client' && (
             <span className="text-green-500/60" title="Authenticated via launcher">
@@ -108,6 +126,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
               </IconButton>
             </>
           )}
+          </>}
         </div>
       </div>
 
@@ -162,6 +181,28 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
       {!service.tool_available && (
         <div className="mt-1.5 text-[10px] text-yellow-400 truncate pl-[30px]">
           {service.tool_check_message}
+        </div>
+      )}
+
+      {/* Sub-resource sections */}
+      {selected && sections.length > 0 && (
+        <div className="mt-1.5 pl-[30px] space-y-0.5">
+          {sections.map((name) => (
+            <button
+              key={name}
+              onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name) }}
+              className={`flex items-center gap-1.5 text-[10px] w-full text-left rounded px-1.5 py-0.5 transition-colors ${
+                selected && selectedSection === name
+                  ? 'text-blue-300 bg-blue-500/15'
+                  : 'text-gray-500 hover:text-gray-400 hover:bg-white/5'
+              }`}
+            >
+              <span className={`w-1 h-1 rounded-full shrink-0 ${
+                selected && selectedSection === name ? 'bg-blue-400' : 'bg-gray-600'
+              }`} />
+              {name}
+            </button>
+          ))}
         </div>
       )}
     </div>
