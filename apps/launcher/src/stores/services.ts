@@ -9,6 +9,10 @@ interface ServicesStore {
   loading: boolean
   error: string | null
 
+  /** Callback set by DockLayout to focus the service-detail tab */
+  focusServiceTab: (() => void) | null
+  setFocusServiceTab: (fn: (() => void) | null) => void
+
   loadServices: () => Promise<void>
   refreshService: (key: string) => Promise<void>
   selectService: (key: string) => void
@@ -28,6 +32,8 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
   services: [],
   selectedKey: null,
   selectedSection: null,
+  focusServiceTab: null,
+  setFocusServiceTab: (fn) => set({ focusServiceTab: fn }),
   loading: false,
   error: null,
 

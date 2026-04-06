@@ -36,6 +36,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
   const isConfigOnly = service.category === 'platform'
   const selectedSection = useServicesStore((s) => s.selectedSection)
   const selectSection = useServicesStore((s) => s.selectSection)
+  const focusServiceTab = useServicesStore((s) => s.focusServiceTab)
   const [sections, setSections] = useState<string[]>([])
   const [expanded, setExpanded] = useState(false)
 
@@ -62,7 +63,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
 
   return (
     <div
-      onClick={onSelect}
+      onClick={() => { onSelect(); focusServiceTab?.() }}
       className={`
         rounded-lg border px-3 py-2.5 cursor-pointer transition-colors select-none
         ${selected
@@ -210,7 +211,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
               {sections.map((name) => (
                 <button
                   key={name}
-                  onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name) }}
+                  onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name); focusServiceTab?.() }}
                   className={`flex items-center gap-1.5 text-[10px] w-full text-left rounded px-1.5 py-0.5 transition-colors ${
                     selectedSection === name
                       ? 'text-blue-300 bg-blue-500/15'

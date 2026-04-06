@@ -450,7 +450,7 @@ const DEFAULT_LAYOUT: IJsonModel = {
         children: [
           { type: 'tab', name: 'Console', component: 'console' },
           { type: 'tab', name: 'DB Logs', component: 'db-logs' },
-          { type: 'tab', name: 'Service', component: 'service-detail' },
+          { type: 'tab', name: 'Service', component: 'service-detail', id: 'service-detail-tab' },
         ],
       },
       {
@@ -543,6 +543,14 @@ function loadSavedLayout(): IJsonModel {
 export function DockLayout({ onShowSetup, onIdentityCreated }: { onShowSetup?: () => void; onIdentityCreated?: () => void }) {
   const modelRef = useRef(Model.fromJson(loadSavedLayout()))
   const [traceTarget, setTraceTarget] = useState<{ fieldName: string; fieldValue: string } | null>(null)
+
+  // Register tab-focus callback for ServiceCard
+  useEffect(() => {
+    useServicesStore.getState().setFocusServiceTab(() => {
+      try { modelRef.current.doAction(Actions.selectTab('service-detail-tab')) } catch {}
+    })
+    return () => { useServicesStore.getState().setFocusServiceTab(null) }
+  }, [])
 
   const handleFieldClick = useCallback((fieldName: string, fieldValue: string) => {
     setTraceTarget({ fieldName, fieldValue })
