@@ -37,12 +37,20 @@ ConfirmationCallback = Callable[
     Coroutine[Any, Any, dict],
 ]
 
+# Type for the status callback — returns bridge status dict.
+StatusCallback = Optional[Callable[[], dict]]
+
 
 class HookServer:
     """Minimal asyncio HTTP server for Claude Code PreToolUse hooks."""
 
-    def __init__(self, confirm_fn: ConfirmationCallback) -> None:
+    def __init__(
+        self,
+        confirm_fn: ConfirmationCallback,
+        status_fn: StatusCallback = None,
+    ) -> None:
         self._confirm_fn = confirm_fn
+        self._status_fn = status_fn
         self._server: Optional[asyncio.AbstractServer] = None
         self._port: int = 0
 
@@ -107,6 +115,9 @@ class HookServer:
             # Route
             if path == "/health" and method == "GET":
                 self._send_json(writer, 200, {"status": "ok"})
+            elif path == "/status" and method == "GET":
+                status = self._status_fn() if self._status_fn else {"status": "ok"}
+                self._send_json(writer, 200, status)
             elif path == "/confirm" and method == "POST":
                 await self._handle_confirm(writer, body)
             else:

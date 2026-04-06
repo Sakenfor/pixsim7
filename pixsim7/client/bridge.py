@@ -176,7 +176,7 @@ class Bridge:
 
         # Start hook HTTP server for Claude Code PreToolUse integration
         from pixsim7.client.hook_server import HookServer
-        self._hook_server = HookServer(confirm_fn=self._hook_confirm)
+        self._hook_server = HookServer(confirm_fn=self._hook_confirm, status_fn=self.status)
         hook_port = await self._hook_server.start(port=self._hook_port)
         get_logger().info("hook_server_ready", port=hook_port)
 
@@ -1197,10 +1197,14 @@ class Bridge:
             self._confirmation_results.pop(confirmation_id, None)
 
     def status(self) -> dict:
-        """Bridge status summary."""
+        """Bridge status summary — exposed via hook server /status for launcher UI."""
         return {
             "connected": self._connected,
             "bridge_client_id": self._bridge_client_id,
             "tasks_handled": self._tasks_handled,
+            "hook_port": self._hook_server.port if self._hook_server else None,
+            "mcp_http_url": self._mcp_http_url,
+            "mcp_http_port": self._mcp_http_port if self._mcp_http_url else None,
+            "pending_confirmations": len(self._pending_confirmations),
             "pool": self._pool.status(),
         }

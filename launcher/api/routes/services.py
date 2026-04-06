@@ -82,21 +82,37 @@ def _enrich_mcp_tool_options(schema: list[dict]) -> list[dict]:
 
 
 def _read_ai_client_extras() -> dict | None:
-    """Read hook + MCP server ports from well-known files (written by bridge)."""
-    from pathlib import Path
+    """Read bridge status from hook server, with port file fallback."""
+    from pathlib import Path as _Path
+    import json as _json
+
     extras: dict = {}
+
+    # Try to get full status from hook server /status endpoint
     try:
-        hook_file = Path.home() / ".pixsim" / "hook_port"
+        hook_file = _Path.home() / ".pixsim" / "hook_port"
         if hook_file.exists():
-            extras["hook_port"] = int(hook_file.read_text().strip())
+            hook_port = int(hook_file.read_text().strip())
+            extras["hook_port"] = hook_port
+            import urllib.request
+            resp = urllib.request.urlopen(f"http://127.0.0.1:{hook_port}/status", timeout=2)
+            bridge_status = _json.loads(resp.read())
+            extras["bridge_status"] = bridge_status
+            # Extract MCP port from bridge status
+            if bridge_status.get("mcp_http_port"):
+                extras["mcp_port"] = bridge_status["mcp_http_port"]
     except Exception:
         pass
-    try:
-        mcp_file = Path.home() / ".pixsim" / "mcp_port"
-        if mcp_file.exists():
-            extras["mcp_port"] = int(mcp_file.read_text().strip())
-    except Exception:
-        pass
+
+    # Fallback: read MCP port from file if not in bridge status
+    if "mcp_port" not in extras:
+        try:
+            mcp_file = _Path.home() / ".pixsim" / "mcp_port"
+            if mcp_file.exists():
+                extras["mcp_port"] = int(mcp_file.read_text().strip())
+        except Exception:
+            pass
+
     return extras or None
 
 
@@ -198,11 +214,16 @@ async def get_service_status(
             detail=f"Service '{service_key}' not found"
         )
 
+    extras = None
+    health = map_health_status(state.health)
+    if service_key == "ai-client" and health == HealthStatusEnum.HEALTHY:
+        extras = _read_ai_client_extras()
+
     return ServiceStateResponse(
         key=service_key,
         title=state.definition.title,
         status=map_service_status(state.status),
-        health=map_health_status(state.health),
+        health=health,
         pid=state.pid or state.detected_pid,
         last_error=state.last_error,
         tool_available=state.tool_available,
@@ -210,6 +231,7 @@ async def get_service_status(
         url=getattr(state.definition, 'url', None),
         dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
         category=getattr(state.definition, 'category', None) or _infer_category(service_key),
+        extras=extras,
     )
 
 
@@ -574,6 +596,7 @@ from pydantic import BaseModel as _BaseModel
 
 class ApplyHookConfigRequest(_BaseModel):
     hook_tools: List[str] = ["Bash", "Write", "Edit"]
+    mcp_allowed: bool = True  # Whether to grant MCP tool permissions
 
 
 class ApplyHookConfigResponse(_BaseModel):
@@ -582,21 +605,28 @@ class ApplyHookConfigResponse(_BaseModel):
     message: str
 
 
+# Marker prefix so we can identify our managed entries in permissions.allow
+_MCP_PERMISSION_PREFIX = "mcp__pixsim__"
+
+
 @router.post("/{service_key}/apply-hook-config", response_model=ApplyHookConfigResponse)
 async def apply_hook_config(
     service_key: str = Path(...),
     body: ApplyHookConfigRequest = Body(...),
 ):
-    """Merge PreToolUse hook config into the global Claude Code settings.json."""
+    """Merge PreToolUse hook config into settings.json and MCP permissions into settings.local.json."""
     if service_key != "ai-client":
         raise HTTPException(status_code=400, detail="Hook config only applies to ai-client")
 
     import json as _json
     from pathlib import Path as _Path
 
-    settings_path = _Path.home() / ".claude" / "settings.json"
+    claude_dir = _Path.home() / ".claude"
+    settings_path = claude_dir / "settings.json"
+    local_settings_path = claude_dir / "settings.local.json"
 
-    # Read existing
+    # ── 1. Write PreToolUse hook to settings.json ──
+
     existing: dict = {}
     if settings_path.exists():
         try:
@@ -604,37 +634,70 @@ async def apply_hook_config(
         except Exception:
             existing = {}
 
-    # Build the hook entry
-    matcher = "|".join(body.hook_tools) if body.hook_tools else "Bash|Write|Edit"
-    new_entry = {
-        "matcher": matcher,
-        "command": "python -m pixsim7.client.hook_pretool",
-    }
-
     # Merge into hooks.PreToolUse — replace any existing pixsim hook, keep others
     hooks = existing.setdefault("hooks", {})
     pre_tool = hooks.get("PreToolUse", [])
     if not isinstance(pre_tool, list):
         pre_tool = []
 
-    # Remove any existing pixsim hook entries, preserve user's other hooks
+    # Remove any existing pixsim hook entries first
     pre_tool = [
         h for h in pre_tool
         if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
     ]
-    pre_tool.append(new_entry)
+
+    # Only add hook entry if there are tools to gate
+    if body.hook_tools:
+        matcher = "|".join(body.hook_tools)
+        pre_tool.append({
+            "matcher": matcher,
+            "command": "python -m pixsim7.client.hook_pretool",
+        })
+
     hooks["PreToolUse"] = pre_tool
     existing["hooks"] = hooks
 
-    # Write
     try:
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write {settings_path}: {e}")
 
+    # ── 2. Manage MCP permissions in settings.local.json ──
+
+    local: dict = {}
+    if local_settings_path.exists():
+        try:
+            local = _json.loads(local_settings_path.read_text(encoding="utf-8"))
+        except Exception:
+            local = {}
+
+    permissions = local.setdefault("permissions", {})
+    allow_list: list = permissions.get("allow", [])
+    if not isinstance(allow_list, list):
+        allow_list = []
+
+    # Remove all our managed MCP entries (anything starting with our prefix)
+    allow_list = [
+        entry for entry in allow_list
+        if not isinstance(entry, str) or not entry.startswith(_MCP_PERMISSION_PREFIX)
+    ]
+
+    if body.mcp_allowed:
+        # Add wildcard permission for all pixsim MCP tools
+        allow_list.append(f"{_MCP_PERMISSION_PREFIX}*")
+
+    permissions["allow"] = allow_list
+    local["permissions"] = permissions
+
+    try:
+        local_settings_path.write_text(_json.dumps(local, indent=2), encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write {local_settings_path}: {e}")
+
+    mcp_status = "granted" if body.mcp_allowed else "revoked"
     return ApplyHookConfigResponse(
         ok=True,
         path=str(settings_path),
-        message=f"Saved PreToolUse hook ({matcher}) to {settings_path}",
+        message=f"Saved PreToolUse hook ({matcher}) to {settings_path}. MCP permissions {mcp_status} in {local_settings_path}.",
     )

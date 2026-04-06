@@ -15,6 +15,123 @@ from .paths import LAUNCHER_STATE_DIR
 
 SETTINGS_DIR = LAUNCHER_STATE_DIR / "service_settings"
 
+# ── Type-level base schemas ──
+# Every service of a given type inherits these settings automatically.
+# Per-service manifests can override defaults (e.g. a different port) or add
+# extra fields, but they can never "forget" the fundamentals.
+
+TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
+    "backend": [
+        {
+            "key": "port",
+            "type": "number",
+            "label": "Port",
+            "description": "API server port",
+            "default": 8000,
+        },
+        {
+            "key": "reload",
+            "type": "boolean",
+            "label": "Auto-Reload",
+            "description": "Watch for file changes and restart automatically",
+            "default": True,
+        },
+        {
+            "key": "log_level",
+            "type": "select",
+            "label": "Log Level",
+            "description": "Uvicorn server log level (app logs use Debug tab)",
+            "options": ["debug", "info", "warning", "error"],
+            "default": "info",
+            "arg_map": "--log-level",
+        },
+    ],
+    "frontend": [
+        {
+            "key": "port",
+            "type": "number",
+            "label": "Port",
+            "description": "Dev server port",
+            "default": 3000,
+        },
+    ],
+    "worker": [
+        {
+            "key": "log_level",
+            "type": "select",
+            "label": "Log Level",
+            "description": "Python logging level for the worker process",
+            "options": ["debug", "info", "warning", "error"],
+            "default": "info",
+            "env_map": "LOG_LEVEL",
+        },
+        {
+            "key": "max_jobs",
+            "type": "number",
+            "label": "Max Concurrent Jobs",
+            "description": "Maximum number of jobs processed in parallel",
+            "default": 30,
+            "env_map": "ARQ_MAX_JOBS",
+        },
+        {
+            "key": "job_timeout",
+            "type": "number",
+            "label": "Job Timeout (s)",
+            "description": "Maximum seconds per job before timeout",
+            "default": 3600,
+            "env_map": "ARQ_JOB_TIMEOUT",
+        },
+    ],
+}
+
+
+def merge_with_base_schema(
+    service_type: str,
+    manifest_settings: Optional[List[Dict[str, Any]]],
+    *,
+    exclude_base: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Merge a manifest's ``settings`` array on top of the base schema for its type.
+
+    - Base fields are always present (unless listed in *exclude_base*).
+    - Manifest fields with a matching ``key`` override individual properties
+      (e.g. a different ``default``, ``label``, or ``description``).
+    - Extra manifest fields (keys not in the base) are appended after the base.
+    """
+    base = TYPE_BASE_SCHEMAS.get(service_type.lower())
+    if not base:
+        return list(manifest_settings or [])
+
+    excluded = set(exclude_base or [])
+
+    if not manifest_settings:
+        return [dict(f) for f in base if f["key"] not in excluded]
+
+    manifest_by_key = {f["key"]: f for f in manifest_settings if "key" in f}
+
+    merged: List[Dict[str, Any]] = []
+    seen_keys: set = set()
+
+    # Base fields first — overlay manifest overrides per-property
+    for base_field in base:
+        if base_field["key"] in excluded:
+            continue
+        field = dict(base_field)
+        override = manifest_by_key.get(field["key"])
+        if override:
+            field.update(override)
+        merged.append(field)
+        seen_keys.add(field["key"])
+
+    # Append any extra manifest-only fields
+    for mf in manifest_settings:
+        if mf.get("key") and mf["key"] not in seen_keys:
+            merged.append(mf)
+            seen_keys.add(mf["key"])
+
+    return merged
+
+
 # ── Schema types ──
 
 FIELD_TYPES = {"string", "number", "boolean", "select", "multi_select"}
@@ -45,6 +162,8 @@ def parse_schema(raw: Optional[List[Dict]]) -> List[Dict]:
             field["options"] = entry["options"]
         if entry.get("arg_map"):
             field["arg_map"] = entry["arg_map"]
+        if entry.get("env_map"):
+            field["env_map"] = entry["env_map"]
         fields.append(field)
     return fields
 
@@ -143,6 +262,39 @@ def settings_to_args(schema: List[Dict], effective: Dict[str, Any]) -> List[str]
         else:
             args.extend([arg, str(value)])
     return args
+
+
+def settings_to_env(schema: List[Dict], effective: Dict[str, Any]) -> Dict[str, str]:
+    """Convert effective settings into environment variables using each field's ``env_map``.
+
+    Rules:
+      - boolean + truthy  → ``"1"``
+      - boolean + falsy   → ``"0"``
+      - multi_select      → ``"a,b,c"`` (comma-joined)
+      - other             → ``str(value)``
+      - no ``env_map``    → omitted
+    """
+    env: Dict[str, str] = {}
+    for field in schema:
+        env_var = field.get("env_map")
+        if not env_var:
+            continue
+        key = field["key"]
+        value = effective.get(key)
+        if value is None:
+            continue
+
+        ftype = field["type"]
+        if ftype == "boolean":
+            env[env_var] = "1" if value else "0"
+        elif ftype == "multi_select":
+            if isinstance(value, list) and value:
+                env[env_var] = ",".join(str(v) for v in value)
+        elif ftype == "select":
+            env[env_var] = str(value).upper()
+        else:
+            env[env_var] = str(value)
+    return env
 
 
 def validate_update(schema: List[Dict], values: Dict[str, Any]) -> Dict[str, Any]:

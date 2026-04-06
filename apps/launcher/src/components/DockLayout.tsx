@@ -151,6 +151,10 @@ function ServiceInfoPanel() {
         {service.key === 'ai-client' ? (values) => <HookConfigOutput values={values} hookPort={service.extras?.hook_port as number | undefined} /> : undefined}
       </ServiceSettingsPanel>
 
+      {service.key === 'ai-client' && !!service.extras?.bridge_status && (
+        <BridgeSessionsPanel bridgeStatus={service.extras.bridge_status as Record<string, unknown>} />
+      )}
+
       {service.last_error && (
         <div className="bg-red-900/20 rounded border border-red-800/50 p-3">
           <div className="text-[10px] text-red-400 font-medium mb-1">Last Error</div>
@@ -179,22 +183,22 @@ function SvcInfoRow({ label, value, mono }: { label: string; value: string; mono
 function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown>; hookPort?: number }) {
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [mcpAllowed, setMcpAllowed] = useState(true)
   const hookTools = (values.hook_tools as string[] | undefined) ?? ['Bash', 'Write', 'Edit']
 
-  if (hookTools.length === 0) return null
-
+  const hasHooks = hookTools.length > 0
   const matcher = hookTools.join('|')
-  const hookConfig = JSON.stringify({
+  const hookConfig = hasHooks ? JSON.stringify({
     hooks: {
       PreToolUse: [{
         matcher,
         command: 'python -m pixsim7.client.hook_pretool',
       }],
     },
-  }, null, 2)
+  }, null, 2) : null
 
   const copyConfig = () => {
-    navigator.clipboard.writeText(hookConfig).then(() => {
+    navigator.clipboard.writeText(hookConfig || '').then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
@@ -202,7 +206,7 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
 
   const saveToClaudeSettings = () => {
     setSaved('idle')
-    applyHookConfig(hookTools)
+    applyHookConfig(hookTools, mcpAllowed)
       .then((res) => {
         setSaved('saved')
         setTimeout(() => setSaved('idle'), 3000)
@@ -216,36 +220,142 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
   return (
     <div className="pt-2 border-t border-gray-800 space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-medium text-gray-400">Claude Code Hook Config</span>
+        <span className="text-[10px] font-medium text-gray-400">Claude Code Config</span>
         {hookPort && (
           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 font-mono">
             :{hookPort}
           </span>
         )}
       </div>
-      <pre className="text-[9px] font-mono text-gray-400 bg-gray-900/50 rounded p-2 overflow-x-auto select-text whitespace-pre leading-relaxed">
-        {hookConfig}
-      </pre>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={copyConfig}
-          className="px-2 py-0.5 text-[9px] rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors"
-        >
-          {copied ? 'Copied!' : 'Copy to clipboard'}
-        </button>
+      {hookConfig && (
+        <pre className="text-[9px] font-mono text-gray-400 bg-gray-900/50 rounded p-2 overflow-x-auto select-text whitespace-pre leading-relaxed">
+          {hookConfig}
+        </pre>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="flex items-center gap-1.5 text-[9px] text-gray-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={mcpAllowed}
+            onChange={(e) => setMcpAllowed(e.target.checked)}
+            className="w-3 h-3 rounded border-gray-600 accent-cyan-500"
+          />
+          Allow MCP tools
+        </label>
+        {hookConfig && (
+          <button
+            onClick={copyConfig}
+            className="px-2 py-0.5 text-[9px] rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors"
+          >
+            {copied ? 'Copied!' : 'Copy hook config'}
+          </button>
+        )}
         <button
           onClick={saveToClaudeSettings}
           className="px-2 py-0.5 text-[9px] rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors"
-          title="Save hook config to Claude Code settings.json"
+          title="Save hook config and MCP permissions to Claude Code settings"
         >
-          {saved === 'saved' ? 'Saved to ~/.claude/settings.json' : saved === 'error' ? 'Failed to save' : 'Save to Claude settings'}
+          {saved === 'saved' ? 'Saved!' : saved === 'error' ? 'Failed to save' : 'Save to Claude settings'}
         </button>
       </div>
       <div className="text-[9px] text-gray-600 leading-relaxed">
-        Add this to your Claude Code <code className="text-gray-500">settings.json</code> to route tool approval through the assistant panel.
+        Saves hook config to <code className="text-gray-500">~/.claude/settings.json</code> and MCP permissions to <code className="text-gray-500">settings.local.json</code>.
       </div>
     </div>
   )
+}
+
+function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, unknown> }) {
+  const pool = bridgeStatus.pool as Record<string, unknown> | undefined
+  const sessions = (pool?.sessions ?? []) as Array<Record<string, unknown>>
+  const connected = bridgeStatus.connected as boolean
+  const bridgeId = bridgeStatus.bridge_client_id as string | undefined
+  const tasksHandled = bridgeStatus.tasks_handled as number | undefined
+
+  return (
+    <div className="bg-surface-secondary rounded border border-border p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <div className="text-[11px] font-semibold text-gray-300">Bridge Sessions</div>
+        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+          connected ? 'bg-green-900/40 text-green-400 border border-green-700/50' : 'bg-gray-800 text-gray-500 border border-gray-700'
+        }`}>
+          {connected ? 'Connected' : 'Disconnected'}
+        </span>
+      </div>
+
+      {/* Bridge summary */}
+      <div className="space-y-0.5 text-[10px]">
+        {bridgeId && (
+          <div className="flex gap-2"><span className="text-gray-500 w-24 shrink-0">Bridge ID</span><span className="text-gray-400 font-mono truncate">{bridgeId}</span></div>
+        )}
+        {tasksHandled != null && (
+          <div className="flex gap-2"><span className="text-gray-500 w-24 shrink-0">Tasks handled</span><span className="text-gray-400">{tasksHandled}</span></div>
+        )}
+        {pool && (
+          <div className="flex gap-2"><span className="text-gray-500 w-24 shrink-0">Pool</span><span className="text-gray-400">{String(pool.ready ?? 0)} ready / {String(pool.busy ?? 0)} busy / {String(pool.total ?? 0)} total</span></div>
+        )}
+      </div>
+
+      {/* Session list */}
+      {sessions.length > 0 && (
+        <div className="space-y-1.5">
+          {sessions.map((s, i) => {
+            const state = s.state as string
+            const model = s.cli_model as string | null
+            const contextPct = s.context_pct as number | null
+            const cost = s.cost_usd as number | null
+            const msgSent = s.messages_sent as number
+            const msgRecv = s.messages_received as number
+            const errors = s.errors as number
+            const lastActivity = s.last_activity as string | null
+            const busyDetail = s.busy_detail as string | null
+            const pid = s.pid as number | null
+
+            return (
+              <div key={i} className={`rounded border p-2 space-y-1 ${
+                state === 'busy' ? 'border-amber-700/50 bg-amber-900/10' : 'border-gray-700/50 bg-gray-900/30'
+              }`}>
+                {/* Header row */}
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    state === 'ready' ? 'bg-green-400' : state === 'busy' ? 'bg-amber-400 animate-pulse' : state === 'starting' ? 'bg-blue-400 animate-pulse' : 'bg-gray-500'
+                  }`} />
+                  <span className="text-[10px] text-gray-300 font-medium">{state}</span>
+                  {model && <span className="text-[9px] text-gray-500 font-mono">{model}</span>}
+                  {pid && <span className="text-[9px] text-gray-600">PID {pid}</span>}
+                  {contextPct != null && (
+                    <span className={`text-[9px] font-mono ml-auto ${contextPct > 80 ? 'text-red-400' : contextPct > 50 ? 'text-amber-400' : 'text-gray-500'}`}>
+                      {contextPct}% ctx
+                    </span>
+                  )}
+                </div>
+                {/* Detail row */}
+                <div className="flex items-center gap-3 text-[9px] text-gray-500">
+                  <span>{msgSent}↑ {msgRecv}↓</span>
+                  {errors > 0 && <span className="text-red-400">{errors} err</span>}
+                  {cost != null && cost > 0 && <span>${cost.toFixed(3)}</span>}
+                  {lastActivity && <span className="ml-auto">{_relativeTime(lastActivity)}</span>}
+                </div>
+                {/* Busy detail */}
+                {state === 'busy' && busyDetail && (
+                  <div className="text-[9px] text-amber-400/80 truncate">{busyDetail}</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function _relativeTime(iso: string): string {
+  try {
+    const ms = Date.now() - new Date(iso).getTime()
+    if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`
+    if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`
+    return `${Math.round(ms / 3_600_000)}h ago`
+  } catch { return iso }
 }
 
 function DbLogsPanel({ onFieldClick }: { onFieldClick?: (n: string, v: string) => void }) {
