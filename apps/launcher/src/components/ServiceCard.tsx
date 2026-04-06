@@ -211,7 +211,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
               {sections.map((name) => (
                 <button
                   key={name}
-                  onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name); focusServiceTab?.() }}
+                  onClick={(e) => { e.stopPropagation(); onSelect(); selectSection(selectedSection === name ? null : name); focusServiceTab?.() }}
                   className={`flex items-center gap-1.5 text-[10px] w-full text-left rounded px-1.5 py-0.5 transition-colors ${
                     selectedSection === name
                       ? 'text-blue-300 bg-blue-500/15'
