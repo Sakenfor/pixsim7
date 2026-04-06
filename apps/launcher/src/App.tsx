@@ -12,7 +12,6 @@ export function App() {
 
   const [identityChecked, setIdentityChecked] = useState(false)
   const [identityExists, setIdentityExists] = useState(false)
-  const [showSetup, setShowSetup] = useState(false)
 
   // Check identity on mount — retry until API is reachable
   useEffect(() => {
@@ -49,17 +48,11 @@ export function App() {
     if (connected) loadServices()
   }, [connected])
 
-  const handleSetupComplete = useCallback(() => {
+  const handleIdentityCreated = useCallback(() => {
     setIdentityExists(true)
-    setShowSetup(false)
   }, [])
 
-  // Manual setup toggle — show immediately
-  if (showSetup) {
-    return <SetupPage onComplete={handleSetupComplete} />
-  }
-
-  // Waiting for API — show minimal loading (not the dashboard)
+  // Waiting for API — show minimal loading
   if (!identityChecked) {
     return (
       <div className="min-h-screen bg-[#0d1117] flex items-center justify-center">
@@ -68,10 +61,10 @@ export function App() {
     )
   }
 
-  // No identity — show setup
+  // No identity — full-screen setup gate
   if (!identityExists) {
-    return <SetupPage onComplete={handleSetupComplete} />
+    return <SetupPage onComplete={handleIdentityCreated} />
   }
 
-  return <DockLayout onShowSetup={() => setShowSetup(true)} />
+  return <DockLayout onIdentityCreated={handleIdentityCreated} />
 }

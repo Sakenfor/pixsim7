@@ -61,9 +61,9 @@ export function StatusBar({ onShowSetup }: Props) {
         <button
           onClick={onShowSetup}
           className="flex items-center gap-1 hover:text-gray-200 transition-colors"
-          title={`Signed in as ${identity.username}\nKey: ${identity.keypair_id ?? 'none'}`}
+          title={`Signed in as ${identity.username}\nKey: ${identity.keypair_id ?? 'none'}${identity.token_valid ? '' : '\nToken expired!'}`}
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          <span className={`w-1.5 h-1.5 rounded-full ${identity.token_valid ? 'bg-blue-400' : 'bg-yellow-400 animate-pulse'}`} />
           {identity.username}
         </button>
       )}

@@ -169,6 +169,51 @@ def mint_token(
 
 TOKEN_PATH = PIXSIM_DIR / "token"
 
+# Refresh the token when less than this fraction of TTL remains.
+# e.g. 0.5 means refresh at the halfway point of the 24h window (= 12h).
+_REFRESH_THRESHOLD = 0.5
+
+
+def get_token_info() -> Optional[dict]:
+    """Decode the stored token and return its claims, or None.
+
+    Does NOT verify the signature — this is for local introspection only.
+    """
+    if not TOKEN_PATH.exists():
+        return None
+    try:
+        import jwt
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+        if not token:
+            return None
+        return jwt.decode(token, options={"verify_signature": False})
+    except Exception:
+        return None
+
+
+def token_needs_refresh(threshold: float = _REFRESH_THRESHOLD) -> bool:
+    """Return True if the stored token should be refreshed.
+
+    Triggers when remaining lifetime is below *threshold* fraction of the
+    original TTL, or if the token is already expired / missing.
+    """
+    info = get_token_info()
+    if not info:
+        return True
+    exp = info.get("exp")
+    iat = info.get("iat")
+    if not exp:
+        return True
+    now = time.time()
+    if now >= exp:
+        return True  # already expired
+    if iat:
+        ttl = exp - iat
+        remaining = exp - now
+        if remaining < ttl * threshold:
+            return True
+    return False
+
 
 def ensure_identity() -> Optional[LauncherIdentity]:
     """Load existing identity, or return None if first-time setup is needed.

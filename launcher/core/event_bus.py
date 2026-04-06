@@ -286,3 +286,8 @@ class EventTypes:
     MANAGER_STARTED = "manager.started"
     MANAGER_STOPPED = "manager.stopped"
     MANAGER_ERROR = "manager.error"
+
+    # Token lifecycle events
+    TOKEN_REFRESHED = "token.refreshed"
+    TOKEN_EXPIRING = "token.expiring"
+    TOKEN_REFRESH_FAILED = "token.refresh_failed"

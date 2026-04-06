@@ -931,6 +931,8 @@ async def update_plan(
         else:
             updates["checkpoints"] = _validate_checkpoints(checkpoints)
 
+    actor_source = principal.source if principal else None
+
     bundle = await _ensure_bundle(db, plan_id)
     doc, plan = bundle.doc, bundle.plan
     if isinstance(expected_revision, int):

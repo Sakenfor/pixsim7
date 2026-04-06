@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Input } from '@pixsim7/shared.ui'
-import { getIdentity, setupCreate, setupLink, type IdentityStatus } from '../api/client'
+import { getIdentity, refreshToken, setupCreate, setupLink, type IdentityStatus } from '../api/client'
 
 type Mode = 'choose' | 'create' | 'link'
 
@@ -39,7 +39,24 @@ export function SetupPage({ onComplete }: Props) {
 
 // ── Account info (when logged in) ─────────────────────────────────
 
-function AccountInfo({ identity, onBack }: { identity: IdentityStatus; onBack: () => void }) {
+function AccountInfo({ identity: initialIdentity, onBack }: { identity: IdentityStatus; onBack: () => void }) {
+  const [identity, setIdentity] = useState(initialIdentity)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const tokenExpiry = identity.token_expires_at
+    ? new Date(identity.token_expires_at * 1000).toLocaleString()
+    : 'Unknown'
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await refreshToken()
+      const updated = await getIdentity()
+      setIdentity(updated)
+    } catch {}
+    setRefreshing(false)
+  }
+
   return (
     <div className="rounded-lg border border-[#30363d] bg-[#161b22] p-5 space-y-4">
       <div className="flex items-center gap-3">
@@ -55,10 +72,22 @@ function AccountInfo({ identity, onBack }: { identity: IdentityStatus; onBack: (
       <div className="space-y-1.5 text-xs">
         <InfoRow label="Backend" value={identity.backend_url ?? 'http://localhost:8000'} />
         <InfoRow label="Keypair" value={identity.keypair_id ?? 'Not generated'} />
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500 w-16 shrink-0">Token</span>
+          <span className={`font-mono ${identity.token_valid ? 'text-green-400' : 'text-yellow-400'}`}>
+            {identity.token_valid ? 'Valid' : 'Expired'}
+          </span>
+          <span className="text-gray-500">
+            {identity.token_valid ? `expires ${tokenExpiry}` : ''}
+          </span>
+        </div>
       </div>
 
       <div className="pt-2 flex gap-2">
         <Button variant="primary" size="sm" onClick={onBack}>Back to Dashboard</Button>
+        <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? 'Refreshing...' : 'Refresh Token'}
+        </Button>
       </div>
     </div>
   )
@@ -138,7 +167,7 @@ function CreateForm({ onBack, onComplete }: { onBack: () => void; onComplete: ()
         <Field label="Email" value={email} onChange={setEmail} type="email" placeholder="Optional" />
         <Field label="Password" value={password} onChange={setPassword} type="password" />
         <Field label="Confirm Password" value={confirm} onChange={setConfirm} type="password" />
-        {error && <div className="text-xs text-red-400">{error}</div>}
+        {error && <div className="text-xs text-red-400 select-text whitespace-pre-wrap break-words">{error}</div>}
         {password && confirm && password !== confirm && (
           <div className="text-xs text-yellow-400">Passwords don't match</div>
         )}
@@ -182,7 +211,7 @@ function LinkForm({ onBack, onComplete }: { onBack: () => void; onComplete: () =
         <Field label="Backend URL" value={backendUrl} onChange={setBackendUrl} placeholder="http://localhost:8000" />
         <Field label="Username" value={username} onChange={setUsername} autoFocus />
         <Field label="Password" value={password} onChange={setPassword} type="password" />
-        {error && <div className="text-xs text-red-400">{error}</div>}
+        {error && <div className="text-xs text-red-400 select-text whitespace-pre-wrap break-words">{error}</div>}
         <Button variant="primary" className="w-full" loading={loading} disabled={!valid} type="submit">
           Connect
         </Button>

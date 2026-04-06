@@ -1,12 +1,21 @@
 """Identity routes — launcher auth status and first-time setup."""
 from __future__ import annotations
 
+import asyncio
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
-from launcher.core.auth import create_identity, identity_exists, LauncherIdentity, PIXSIM_DIR
+from launcher.core.auth import (
+    create_identity,
+    get_token_info,
+    identity_exists,
+    LauncherIdentity,
+    PIXSIM_DIR,
+    refresh_stored_token,
+    token_needs_refresh,
+)
 
 router = APIRouter(tags=["identity"])
 
@@ -30,6 +39,8 @@ class IdentityStatus(BaseModel):
     email: Optional[str] = None
     backend_url: Optional[str] = None
     keypair_id: Optional[str] = None
+    token_expires_at: Optional[int] = None   # unix epoch
+    token_valid: bool = False
 
 
 class SetupCreateRequest(BaseModel):
@@ -52,17 +63,62 @@ class SetupResponse(BaseModel):
 
 @router.get("/identity", response_model=IdentityStatus)
 async def get_identity_status(request: Request) -> IdentityStatus:
-    """Check if launcher identity is set up."""
+    """Check if launcher identity is set up, including token health."""
     identity = getattr(request.app.state, "launcher_identity", None)
     if not identity:
         return IdentityStatus(exists=False)
+
+    import time
+    info = get_token_info()
+    expires_at = info.get("exp") if info else None
+    valid = bool(expires_at and time.time() < expires_at)
+
     return IdentityStatus(
         exists=True,
         username=identity.username,
         email=identity.email,
         backend_url=identity.backend_url,
         keypair_id=identity.keypair_id,
+        token_expires_at=expires_at,
+        token_valid=valid,
     )
+
+
+class RefreshResponse(BaseModel):
+    ok: bool
+    token_expires_at: Optional[int] = None
+    message: str = ""
+
+
+@router.post("/identity/refresh-token", response_model=RefreshResponse)
+async def refresh_token(request: Request) -> RefreshResponse:
+    """Manually refresh the launcher token.
+
+    Mints a new RS256 JWT and writes it to ~/.pixsim/token.
+    MCP/bridge pick up the new token on their next read.
+    """
+    identity = getattr(request.app.state, "launcher_identity", None)
+    if not identity:
+        raise HTTPException(status_code=404, detail="No identity configured")
+
+    ok = refresh_stored_token(identity)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Token refresh failed — keypair may be missing")
+
+    info = get_token_info()
+    expires_at = info.get("exp") if info else None
+
+    # Emit event so WebSocket subscribers see the refresh
+    try:
+        from launcher.core.event_bus import get_event_bus, EventTypes
+        get_event_bus().publish_simple(EventTypes.TOKEN_REFRESHED, "auth", {
+            "expires_at": expires_at,
+            "manual": True,
+        })
+    except Exception:
+        pass
+
+    return RefreshResponse(ok=True, token_expires_at=expires_at, message="Token refreshed")
 
 
 @router.post("/identity/setup/create", response_model=SetupResponse)
@@ -179,6 +235,105 @@ async def setup_link(payload: SetupLinkRequest, request: Request) -> SetupRespon
         _store_login_token(token)
 
     return SetupResponse(ok=True, message=f"Linked to {backend_url}", username=identity.username)
+
+
+# ── System info (aggregated launcher + backend status) ─────────────
+
+
+class BackendStatus(BaseModel):
+    reachable: bool = False
+    status: Optional[str] = None         # healthy / degraded
+    database: Optional[str] = None       # connected / error
+    redis: Optional[str] = None          # connected / disconnected
+    providers: list[str] = []
+    api_version: Optional[str] = None
+    build_sha: Optional[str] = None
+    server_time: Optional[str] = None
+
+
+class LauncherStatus(BaseModel):
+    version: str
+    uptime_seconds: float
+    managers: dict[str, bool] = {}
+
+
+class SystemInfo(BaseModel):
+    launcher: LauncherStatus
+    backend: BackendStatus
+    identity: IdentityStatus
+
+
+@router.get("/system-info", response_model=SystemInfo)
+async def get_system_info(request: Request) -> SystemInfo:
+    """Combined launcher + backend status for the Account panel."""
+    import time as _time
+    from launcher.core import __version__
+
+    # --- Identity ---
+    identity_obj = getattr(request.app.state, "launcher_identity", None)
+    if identity_obj:
+        info = get_token_info()
+        expires_at = info.get("exp") if info else None
+        valid = bool(expires_at and _time.time() < expires_at)
+        identity_resp = IdentityStatus(
+            exists=True,
+            username=identity_obj.username,
+            email=identity_obj.email,
+            backend_url=identity_obj.backend_url,
+            keypair_id=identity_obj.keypair_id,
+            token_expires_at=expires_at,
+            token_valid=valid,
+        )
+    else:
+        identity_resp = IdentityStatus(exists=False)
+
+    # --- Launcher ---
+    from ..dependencies import get_process_manager as _get_pm, get_health_manager as _get_hm, get_log_manager as _get_lm
+    try:
+        pm = _get_pm()
+        hm = _get_hm()
+        lm = _get_lm()
+    except Exception:
+        pm = hm = lm = None
+
+    from launcher.api.routes.health import _api_start_time
+    launcher_resp = LauncherStatus(
+        version=__version__,
+        uptime_seconds=_time.time() - _api_start_time,
+        managers={
+            "process_manager": pm is not None,
+            "health_manager": hm.is_running() if hm else False,
+            "log_manager": lm.is_monitoring() if lm else False,
+        },
+    )
+
+    # --- Backend (proxy health + version) ---
+    backend_url = identity_obj.backend_url if identity_obj else "http://localhost:8000"
+    backend_resp = BackendStatus()
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            health_r, version_r = await asyncio.gather(
+                client.get(f"{backend_url}/health"),
+                client.get(f"{backend_url}/api/v1/version"),
+                return_exceptions=True,
+            )
+            if isinstance(health_r, httpx.Response) and health_r.status_code == 200:
+                h = health_r.json()
+                backend_resp.reachable = True
+                backend_resp.status = h.get("status")
+                backend_resp.database = h.get("database")
+                backend_resp.redis = h.get("redis")
+                backend_resp.providers = h.get("providers", [])
+            if isinstance(version_r, httpx.Response) and version_r.status_code == 200:
+                v = version_r.json()
+                backend_resp.reachable = True
+                backend_resp.api_version = v.get("api_version")
+                backend_resp.build_sha = v.get("build_sha")
+                backend_resp.server_time = v.get("server_time")
+    except Exception:
+        pass
+
+    return SystemInfo(launcher=launcher_resp, backend=backend_resp, identity=identity_resp)
 
 
 def _extract_detail(resp: httpx.Response) -> str:

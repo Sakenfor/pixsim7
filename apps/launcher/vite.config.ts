@@ -17,6 +17,7 @@ export default defineConfig({
       '/debug': 'http://localhost:8100',
       '/_debug': 'http://localhost:8100',
       '/identity': 'http://localhost:8100',
+      '/system-info': 'http://localhost:8100',
       '/window': 'http://localhost:8100',
     },
   },
