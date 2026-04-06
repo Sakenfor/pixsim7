@@ -37,6 +37,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
   const selectedSection = useServicesStore((s) => s.selectedSection)
   const selectSection = useServicesStore((s) => s.selectSection)
   const [sections, setSections] = useState<string[]>([])
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     getServiceSettings(service.key)
@@ -46,6 +47,11 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
       })
       .catch(() => {})
   }, [service.key])
+
+  // Collapse when deselected
+  useEffect(() => {
+    if (!selected) { setExpanded(false); selectSection(null) }
+  }, [selected])
   const color = isConfigOnly ? 'text-gray-500' : (healthColor[service.health] ?? healthColor.unknown)
 
   // Peer relationships
@@ -184,25 +190,41 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
         </div>
       )}
 
-      {/* Sub-resource sections */}
-      {selected && sections.length > 0 && (
-        <div className="mt-1.5 pl-[30px] space-y-0.5">
-          {sections.map((name) => (
-            <button
-              key={name}
-              onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name) }}
-              className={`flex items-center gap-1.5 text-[10px] w-full text-left rounded px-1.5 py-0.5 transition-colors ${
-                selected && selectedSection === name
-                  ? 'text-blue-300 bg-blue-500/15'
-                  : 'text-gray-500 hover:text-gray-400 hover:bg-white/5'
-              }`}
-            >
-              <span className={`w-1 h-1 rounded-full shrink-0 ${
-                selected && selectedSection === name ? 'bg-blue-400' : 'bg-gray-600'
-              }`} />
-              {name}
-            </button>
-          ))}
+      {/* Sub-resource sections (expandable) */}
+      {sections.length > 0 && (
+        <div className="mt-1.5 pl-[26px]">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              const next = !expanded
+              setExpanded(next)
+              if (!next) selectSection(null)
+            }}
+            className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-400 transition-colors px-1 py-0.5"
+          >
+            <span className={`text-[8px] transition-transform ${expanded ? 'rotate-90' : ''}`}>&#9654;</span>
+            <span>{sections.length} sections</span>
+          </button>
+          {expanded && (
+            <div className="mt-0.5 space-y-0.5">
+              {sections.map((name) => (
+                <button
+                  key={name}
+                  onClick={(e) => { e.stopPropagation(); selectSection(selectedSection === name ? null : name) }}
+                  className={`flex items-center gap-1.5 text-[10px] w-full text-left rounded px-1.5 py-0.5 transition-colors ${
+                    selectedSection === name
+                      ? 'text-blue-300 bg-blue-500/15'
+                      : 'text-gray-500 hover:text-gray-400 hover:bg-white/5'
+                  }`}
+                >
+                  <span className={`w-1 h-1 rounded-full shrink-0 ${
+                    selectedSection === name ? 'bg-blue-400' : 'bg-gray-600'
+                  }`} />
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
