@@ -92,13 +92,29 @@ export interface ServiceSettingsResponse {
   values: Record<string, unknown>
 }
 
-export const getServiceSettings = (key: string) =>
-  request<ServiceSettingsResponse>(`/services/${key}/settings`)
+// Settings cache — deduplicates fetches between ServiceCard (sections) and ServiceSettingsPanel
+const _settingsCache = new Map<string, { data: ServiceSettingsResponse; ts: number; promise?: Promise<ServiceSettingsResponse> }>()
+const SETTINGS_CACHE_TTL = 5_000 // 5s
+
+export const getServiceSettings = (key: string): Promise<ServiceSettingsResponse> => {
+  const cached = _settingsCache.get(key)
+  if (cached && Date.now() - cached.ts < SETTINGS_CACHE_TTL) return Promise.resolve(cached.data)
+  if (cached?.promise) return cached.promise
+  const promise = request<ServiceSettingsResponse>(`/services/${key}/settings`).then((data) => {
+    _settingsCache.set(key, { data, ts: Date.now() })
+    return data
+  })
+  _settingsCache.set(key, { data: cached?.data as ServiceSettingsResponse, ts: 0, promise })
+  return promise
+}
 
 export const updateServiceSettings = (key: string, values: Record<string, unknown>) =>
   request<ServiceSettingsResponse>(`/services/${key}/settings`, {
     method: 'PATCH',
     body: JSON.stringify({ values }),
+  }).then((data) => {
+    _settingsCache.set(key, { data, ts: Date.now() })
+    return data
   })
 
 export const applyHookConfig = (hookTools: string[], mcpAllowed: boolean = true) =>
