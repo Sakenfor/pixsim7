@@ -126,6 +126,15 @@ class Settings(BaseSettings):
 
         return origins
 
+    # ===== SERVICE FILTER =====
+    pixsim_services: str = Field(
+        default="",
+        description=(
+            "Comma-separated list of logical services to mount (e.g. 'generation,content'). "
+            "Empty string = mount all. 'core' is always included automatically."
+        ),
+    )
+
     # ===== APP =====
     debug: bool = Field(
         default=True,
@@ -169,7 +178,7 @@ class Settings(BaseSettings):
         description="Host to bind to (0.0.0.0 for all interfaces)"
     )
     port: int = Field(
-        default=8001,
+        default=8000,
         description="Port to bind to"
     )
     zerotier_network: str = Field(

@@ -85,7 +85,11 @@
         "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
-      "enabled": false
+      "enabled": false,
+      "settings": [
+        { "key": "port", "env_export": "DEVTOOLS_PORT" },
+        { "key": "base_url", "env_export": "DEVTOOLS_BASE_URL" }
+      ]
     }
   }
 }

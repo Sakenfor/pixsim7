@@ -41,14 +41,18 @@
       "command": "pnpm",
       "args": ["dev", "--port"],
       "port_env": "GAME_FRONTEND_PORT",
-      "default_port": 5175,
+      "default_port": 5174,
       "base_url_env": "GAME_FRONTEND_BASE_URL",
       "subdomain": "game",
       "env_overrides": {
         "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
-      "enabled": true
+      "enabled": true,
+      "settings": [
+        { "key": "port", "env_export": "GAME_FRONTEND_PORT" },
+        { "key": "base_url", "env_export": "GAME_FRONTEND_BASE_URL" }
+      ]
     }
   }
 }

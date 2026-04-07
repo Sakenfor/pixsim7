@@ -65,7 +65,8 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
 
   return (
     <div
-      onClick={() => { onSelect(); focusServiceTab?.() }}
+      onClick={() => { onSelect() }}
+      onDoubleClick={() => { focusServiceTab?.() }}
       className={`
         rounded-lg border px-3 py-2.5 cursor-pointer transition-colors select-none
         ${selected

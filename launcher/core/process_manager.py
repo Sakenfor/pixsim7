@@ -238,8 +238,13 @@ class ProcessManager:
                 all_defs = [s.definition for s in self.states.values()]
                 self._global_exports_cache = collect_global_exports(all_defs)
             env.update(self._global_exports_cache)
+
+            # Resolve $VAR_NAME placeholders in env_overrides using the
+            # global exports as the authoritative namespace.
             if definition.env_overrides:
-                env.update(definition.env_overrides)
+                from .services import substitute_env_vars
+                resolved = substitute_env_vars(definition.env_overrides, env)
+                env.update(resolved)
 
             # Build command — append per-service settings as CLI args
             extra_args: list[str] = []
@@ -261,11 +266,23 @@ class ProcessManager:
                         key = field.get("key")
                         if key not in effective:
                             continue
-                        # Port: update existing --port value
+                        # Port: update existing --port value and sync health URL
                         if key == "port" and "--port" in base_args:
+                            new_port = str(effective["port"])
                             idx = base_args.index("--port")
                             if idx + 1 < len(base_args):
-                                base_args[idx + 1] = str(effective["port"])
+                                base_args[idx + 1] = new_port
+                            # Keep health_url / url in sync so the health
+                            # checker probes the port we actually start on.
+                            from urllib.parse import urlparse, urlunparse
+                            for attr in ("health_url", "url"):
+                                old_url = getattr(definition, attr, None)
+                                if old_url:
+                                    parsed = urlparse(old_url)
+                                    patched = parsed._replace(
+                                        netloc=f"{parsed.hostname}:{new_port}"
+                                    )
+                                    setattr(definition, attr, urlunparse(patched))
                         # Reload toggle: remove --reload if disabled
                         if key == "reload" and not effective.get("reload") and "--reload" in base_args:
                             base_args.remove("--reload")

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from .gui_config import ROOT
+from .environment import ROOT
 from .services import ServiceDef
 from .types import ServiceDefinition, ServiceStatus, HealthStatus
 

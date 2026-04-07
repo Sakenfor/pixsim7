@@ -61,7 +61,14 @@ TYPE_BASE_SCHEMAS: Dict[str, List[Dict[str, Any]]] = {
             "type": "number",
             "label": "Port",
             "description": "Dev server port",
-            "default": 3000,
+            "default": 5173,
+        },
+        {
+            "key": "base_url",
+            "type": "string",
+            "label": "Base URL",
+            "description": "Public base URL (empty = http://localhost:{port})",
+            "default": "",
         },
     ],
     "worker": [

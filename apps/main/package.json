@@ -136,7 +136,11 @@
         "VITE_DEVTOOLS_URL": "$DEVTOOLS_BASE_URL"
       },
       "auto_start": false,
-      "enabled": true
+      "enabled": true,
+      "settings": [
+        { "key": "port", "env_export": "FRONTEND_PORT" },
+        { "key": "base_url", "env_export": "FRONTEND_BASE_URL" }
+      ]
     }
   }
 }

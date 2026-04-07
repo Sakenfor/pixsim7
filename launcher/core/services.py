@@ -4,7 +4,7 @@ import os
 import json
 from pathlib import Path
 
-from .gui_config import ROOT, read_env_ports, find_python_executable, read_env_file
+from .environment import ROOT, find_python_executable
 from .service_settings import merge_with_base_schema
 
 
@@ -157,19 +157,8 @@ def load_backend_service_configs(root: Optional[Path] = None) -> List[Dict]:
     return [cfg for cfg in configs if (cfg.get("type") or "").lower() in backend_types]
 
 
-def _get_env_value(key: str, env_vars: Optional[Dict[str, str]] = None) -> Optional[str]:
-    if key in os.environ:
-        return os.environ[key]
-    if env_vars is None:
-        try:
-            env_vars = read_env_file()
-        except Exception:
-            env_vars = {}
-    return env_vars.get(key)
-
-
 def _resolve_port(service_config: Dict) -> int:
-    """Resolve port: persisted settings → .env (legacy fallback) → manifest default."""
+    """Resolve port: persisted settings → os.environ → manifest default."""
     from .service_settings import load_persisted
     service_id = service_config.get("id")
     if service_id:
@@ -179,10 +168,9 @@ def _resolve_port(service_config: Dict) -> int:
                 return int(persisted["port"])
             except (ValueError, TypeError):
                 pass
-    # Legacy fallback: read from env / .env
     port_env = service_config.get("port_env")
     if port_env:
-        value = _get_env_value(port_env)
+        value = os.environ.get(port_env)
         if value:
             return int(value)
     return service_config.get("default_port", 8000)
@@ -205,7 +193,7 @@ def _resolve_base_url(service_config: Dict, port: int) -> str:
     base_url = None
     base_url_env = service_config.get("base_url_env")
     if base_url_env:
-        base_url = _get_env_value(base_url_env)
+        base_url = os.environ.get(base_url_env)
     if not base_url:
         base_url = service_config.get("base_url")
     if base_url:
@@ -221,259 +209,269 @@ def _get_command_executable(command: str) -> str:
     return command
 
 
-def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int = None) -> Dict[str, str]:
-    """Substitute $VAR_NAME placeholders in environment variable values.
+def substitute_env_vars(
+    env_overrides: Dict[str, str],
+    namespace: Dict[str, str],
+) -> Dict[str, str]:
+    """Substitute ``$VAR_NAME`` placeholders in environment variable values.
 
-    Resolution order for each ``$VAR_NAME``:
-    1. Global exports from ``collect_global_exports`` (settings-derived).
-    2. Legacy ``ports`` object (for backward compat during transition).
-    3. ``os.environ`` / ``.env`` file (fallback).
-
-    ``$PORT`` is special — it resolves to *service_port* (the port for
-    the service being started).
+    *namespace* should contain global exports + os.environ / .env fallbacks.
+    Auto-derives ``*_BASE_URL`` from ``*_PORT`` entries if not present.
     """
     import re
     if not env_overrides:
         return {}
 
-    # Build the lookup namespace for placeholder resolution.
-    # At ServiceDef construction time, global exports aren't available yet
-    # (manifests are still loading), so we fall back to the ports object
-    # and .env file. At actual process start time, process_manager injects
-    # the full global exports into the env separately.
-    namespace: Dict[str, str] = {}
-
-    # Legacy ports fallback (will be removed once all manifests migrate)
-    if ports:
-        namespace["BACKEND_PORT"] = str(getattr(ports, "backend", 8000))
-        namespace["FRONTEND_PORT"] = str(getattr(ports, "frontend", 5173))
-        namespace["GAME_FRONTEND_PORT"] = str(getattr(ports, "game_frontend", 5174))
-        namespace["GAME_SERVICE_PORT"] = str(getattr(ports, "game_service", 8050))
-        namespace["DEVTOOLS_PORT"] = str(getattr(ports, "devtools", 5176))
-        namespace["ADMIN_PORT"] = str(getattr(ports, "admin", 5175))
-
-    # .env / os.environ fallback
-    try:
-        env_file = read_env_file()
-        namespace.update(env_file)
-    except Exception:
-        pass
+    # Work on a copy so we don't mutate the caller's dict
+    ns: Dict[str, str] = dict(namespace)
 
     # Auto-derive base URLs from ports in namespace
-    for key in list(namespace):
+    for key in list(ns):
         if key.endswith("_PORT"):
             base_url_key = key.replace("_PORT", "_BASE_URL")
-            if base_url_key not in namespace or not namespace[base_url_key]:
-                namespace[base_url_key] = f"http://localhost:{namespace[key]}"
+            if not ns.get(base_url_key):
+                ns[base_url_key] = f"http://localhost:{ns[key]}"
         if key.endswith("_API_PORT"):
             base_url_key = key.replace("_API_PORT", "_BASE_URL")
-            if base_url_key not in namespace or not namespace[base_url_key]:
-                namespace[base_url_key] = f"http://localhost:{namespace[key]}"
+            if not ns.get(base_url_key):
+                ns[base_url_key] = f"http://localhost:{ns[key]}"
 
     def _replace(match: re.Match) -> str:
-        var_name = match.group(1)
-        if var_name == "PORT" and service_port is not None:
-            return str(service_port)
-        return namespace.get(var_name, match.group(0))
+        return ns.get(match.group(1), "")
 
     substituted = {}
     for key, value in env_overrides.items():
-        value = re.sub(r'\$([A-Z_][A-Z0-9_]*)', _replace, value)
-        substituted[key] = value
+        resolved = re.sub(r'\$([A-Z_][A-Z0-9_]*)', _replace, value)
+        if resolved:  # skip empty results (disabled service)
+            substituted[key] = resolved
 
     return substituted
 
 
-def _merge_env_overrides(base: Dict[str, str], service_config: Dict, ports, service_port: Optional[int] = None) -> Dict[str, str]:
+def _merge_env_overrides(base: Dict[str, str], service_config: Dict) -> Dict[str, str]:
+    """Merge base env with raw (unsubstituted) manifest env_overrides."""
     overrides = dict(base)
-    overrides.update(_substitute_env_vars(service_config.get("env_overrides", {}), ports, service_port))
+    overrides.update(service_config.get("env_overrides", {}))
     return overrides
 
 
-def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a backend service manifest to ServiceDef."""
-    python_exe = find_python_executable()
-    service_id = service_config["id"]
-    port = _resolve_port(service_config)
-    base_url = _resolve_base_url(service_config, port)
+# ── Service converters ──
+# Each converter class turns a manifest dict into a ServiceDef.
+# The base class handles shared fields (key, title, cwd, depends_on, …);
+# subclasses override hooks for program, args, env, and URLs.
 
-    module = service_config.get("module", "pixsim7.backend.main.main:app")
-
-    openapi_endpoint = service_config.get("openapi_endpoint")
-    openapi_url = _join_base_url(base_url, openapi_endpoint) if openapi_endpoint else None
-    openapi_types_path = service_config.get("openapi_types_path")
-
-    docs_endpoint = service_config.get("docs_endpoint", "/docs")
-    health_endpoint = service_config.get("health_endpoint", "/health")
-    cwd = service_config.get("cwd")
-    if not cwd:
-        directory = service_config.get("directory")
-        cwd = os.path.join(ROOT, directory) if directory else ROOT
-
-    env_overrides = _merge_env_overrides(
-        {
-            "PYTHONPATH": ROOT,
-            "PIXSIM_LOG_FORMAT": "human",
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
-        service_config,
-        ports,
-        service_port=port,
-    )
-
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get("name", service_id),
-        program=python_exe,
-        args=["-m", "uvicorn", module, "--host", "0.0.0.0", "--port", str(port), "--reload"],
-        cwd=cwd,
-        env_overrides=env_overrides,
-        url=_join_base_url(base_url, docs_endpoint),
-        health_url=_join_base_url(base_url, health_endpoint),
-        health_grace_attempts=service_config.get("health_grace_attempts", 6),
-        depends_on=service_config.get("depends_on", []),
-        category=service_config.get("category"),
-        auto_start=service_config.get("auto_start", False),
-        openapi_url=openapi_url,
-        openapi_types_path=openapi_types_path,
-        settings_schema=merge_with_base_schema(
-            "backend", service_config.get("settings"),
-            exclude_base=service_config.get("exclude_base_settings"),
-        ),
-    )
+_PYTHON_ENV = {
+    "PYTHONPATH": ROOT,
+    "PIXSIM_LOG_FORMAT": "human",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
+}
 
 
-def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a frontend service manifest to ServiceDef."""
-    service_id = service_config["id"]
-    port = _resolve_port(service_config)
-    base_url = _resolve_base_url(service_config, port)
+class ServiceConverter:
+    """Base converter — shared logic for all service types."""
 
-    command = _get_command_executable(service_config.get("command", "pnpm"))
+    schema_type: str = ""
+    default_grace: int = 5
 
-    args = service_config.get("args", ["dev", "--port"])
-    if "--port" in args:
-        args = args + [str(port)]
+    def convert(self, config: Dict) -> ServiceDef:
+        sid = config["id"]
+        cwd = self._resolve_cwd(config)
+        schema = self._build_schema(config)
+        extra = self._extra_fields(config)
 
-    env_overrides = _substitute_env_vars(
-        service_config.get("env_overrides", {}),
-        ports,
-        service_port=port,
-    )
+        return ServiceDef(
+            key=sid,
+            title=config.get("name", sid),
+            program=self._program(config),
+            args=self._args(config),
+            cwd=cwd,
+            env_overrides=self._env(config),
+            url=self._url(config),
+            health_url=self._health_url(config),
+            required_tool=self._required_tool(config),
+            health_grace_attempts=config.get("health_grace_attempts", self.default_grace),
+            depends_on=config.get("depends_on", []),
+            category=config.get("category"),
+            auto_start=config.get("auto_start", False),
+            dev_peer_of=config.get("dev_peer_of"),
+            settings_schema=schema,
+            **extra,
+        )
 
-    directory = service_config.get("directory")
-    cwd = service_config.get("cwd") or (os.path.join(ROOT, directory) if directory else ROOT)
+    # ── hooks (override in subclasses) ──
 
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get("name", service_id),
-        program=command,
-        args=args,
-        cwd=cwd,
-        env_overrides=env_overrides,
-        url=base_url,
-        health_url=_join_base_url(base_url, service_config.get("health_endpoint", "/")),
-        required_tool=command.replace(".cmd", ""),
-        health_grace_attempts=service_config.get("health_grace_attempts", 15),
-        depends_on=service_config.get("depends_on", []),
-        category=service_config.get("category"),
-        auto_start=service_config.get("auto_start", False),
-        dev_peer_of=service_config.get("dev_peer_of"),
-        settings_schema=merge_with_base_schema(
-            "frontend", service_config.get("settings"),
-            exclude_base=service_config.get("exclude_base_settings"),
-        ),
-    )
+    def _program(self, config: Dict) -> str:
+        return ""
 
+    def _args(self, config: Dict) -> List[str]:
+        return []
 
-def _convert_worker_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a worker/background service manifest to ServiceDef."""
-    python_exe = find_python_executable()
-    service_id = service_config["id"]
-    module = service_config.get("module", "arq")
-    args = ["-m", module] + service_config.get("args", [])
-    cwd = service_config.get("cwd")
-    if not cwd:
-        directory = service_config.get("directory")
-        cwd = os.path.join(ROOT, directory) if directory else ROOT
+    def _env(self, config: Dict) -> Dict[str, str]:
+        return config.get("env_overrides", {})
 
-    env_overrides = _merge_env_overrides(
-        {
-            "PYTHONPATH": ROOT,
-            "PIXSIM_LOG_FORMAT": "human",
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
-        service_config,
-        ports,
-    )
+    def _url(self, config: Dict) -> Optional[str]:
+        return None
 
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get("name", service_id),
-        program=python_exe,
-        args=args,
-        cwd=cwd,
-        env_overrides=env_overrides,
-        url=None,
-        health_url=None,
-        health_grace_attempts=service_config.get("health_grace_attempts", 10),
-        depends_on=service_config.get("depends_on", []),
-        category=service_config.get("category"),
-        auto_start=service_config.get("auto_start", False),
-        settings_schema=merge_with_base_schema(
-            "worker", service_config.get("settings"),
-            exclude_base=service_config.get("exclude_base_settings"),
-        ),
-    )
+    def _health_url(self, config: Dict) -> Optional[str]:
+        return None
 
+    def _required_tool(self, config: Dict) -> Optional[str]:
+        return None
 
-def _convert_docker_compose_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a docker-compose service manifest to ServiceDef."""
-    service_id = service_config["id"]
-    compose_file = service_config.get("file", "docker-compose.db-only.yml")
-    cwd = service_config.get("cwd")
-    if not cwd:
-        directory = service_config.get("directory")
-        cwd = os.path.join(ROOT, directory) if directory else ROOT
+    def _extra_fields(self, config: Dict) -> Dict:
+        """Return additional ServiceDef kwargs (e.g. openapi_url)."""
+        return {}
 
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get("name", service_id),
-        program="docker-compose",
-        args=["-f", os.path.join(ROOT, compose_file), "up", "-d"],
-        cwd=cwd,
-        url=None,
-        health_url=None,
-        required_tool="docker|docker-compose",
-        health_grace_attempts=service_config.get("health_grace_attempts", 8),
-        depends_on=service_config.get("depends_on", []),
-        category=service_config.get("category"),
-        auto_start=service_config.get("auto_start", False),
-        settings_schema=merge_with_base_schema(
-            "docker-compose", service_config.get("settings"),
-            exclude_base=service_config.get("exclude_base_settings"),
-        ),
-    )
+    # ── shared helpers ──
+
+    def _resolve_cwd(self, config: Dict) -> str:
+        cwd = config.get("cwd")
+        if cwd:
+            return cwd
+        directory = config.get("directory")
+        return os.path.join(ROOT, directory) if directory else ROOT
+
+    def _resolve_port(self, config: Dict) -> int:
+        return _resolve_port(config)
+
+    def _resolve_base_url(self, config: Dict) -> str:
+        port = self._resolve_port(config)
+        return _resolve_base_url(config, port)
+
+    def _build_schema(self, config: Dict) -> Optional[List]:
+        if not self.schema_type:
+            return config.get("settings")
+        schema = merge_with_base_schema(
+            self.schema_type, config.get("settings"),
+            exclude_base=config.get("exclude_base_settings"),
+        )
+        # Sync schema port default with resolved port
+        port = self._resolve_port(config)
+        for field in schema:
+            if field.get("key") == "port":
+                field["default"] = port
+                break
+        return schema
 
 
-def _convert_platform_service_to_def(service_config: Dict) -> ServiceDef:
-    """Convert a platform (config-only, no process) manifest to ServiceDef."""
-    service_id = service_config["id"]
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get("name", service_id),
-        program="",
-        args=[],
-        cwd=ROOT,
-        category=service_config.get("category", "platform"),
-        settings_schema=service_config.get("settings"),
-    )
+class PlatformConverter(ServiceConverter):
+    default_grace = 0
+
+
+class FrontendConverter(ServiceConverter):
+    schema_type = "frontend"
+    default_grace = 15
+
+    def _program(self, config):
+        return _get_command_executable(config.get("command", "pnpm"))
+
+    def _args(self, config):
+        port = self._resolve_port(config)
+        args = list(config.get("args", ["dev", "--port"]))
+        if "--port" in args:
+            args.append(str(port))
+        return args
+
+    def _url(self, config):
+        return self._resolve_base_url(config)
+
+    def _health_url(self, config):
+        return _join_base_url(self._resolve_base_url(config), config.get("health_endpoint", "/"))
+
+    def _required_tool(self, config):
+        return _get_command_executable(config.get("command", "pnpm")).replace(".cmd", "")
+
+
+class BackendConverter(ServiceConverter):
+    schema_type = "backend"
+    default_grace = 6
+
+    def _program(self, _config):
+        return find_python_executable()
+
+    def _args(self, config):
+        port = self._resolve_port(config)
+        module = config.get("module", "pixsim7.backend.main.main:app")
+        return ["-m", "uvicorn", module, "--host", "0.0.0.0", "--port", str(port), "--reload"]
+
+    def _env(self, config):
+        return _merge_env_overrides(_PYTHON_ENV, config)
+
+    def _url(self, config):
+        return _join_base_url(self._resolve_base_url(config), config.get("docs_endpoint", "/docs"))
+
+    def _health_url(self, config):
+        return _join_base_url(self._resolve_base_url(config), config.get("health_endpoint", "/health"))
+
+    def _extra_fields(self, config):
+        base_url = self._resolve_base_url(config)
+        ep = config.get("openapi_endpoint")
+        return {
+            "openapi_url": _join_base_url(base_url, ep) if ep else None,
+            "openapi_types_path": config.get("openapi_types_path"),
+        }
+
+
+class WorkerConverter(ServiceConverter):
+    schema_type = "worker"
+    default_grace = 10
+
+    def _program(self, _config):
+        return find_python_executable()
+
+    def _args(self, config):
+        module = config.get("module", "arq")
+        return ["-m", module] + config.get("args", [])
+
+    def _env(self, config):
+        return _merge_env_overrides(_PYTHON_ENV, config)
+
+
+class DockerComposeConverter(ServiceConverter):
+    schema_type = "docker-compose"
+    default_grace = 8
+
+    def _program(self, _config):
+        return "docker-compose"
+
+    def _args(self, config):
+        compose_file = config.get("file", "docker-compose.db-only.yml")
+        return ["-f", os.path.join(ROOT, compose_file), "up", "-d"]
+
+    def _required_tool(self, _config):
+        return "docker|docker-compose"
+
+
+# ── Dispatch ──
+
+_CONVERTERS: Dict[str, ServiceConverter] = {
+    "platform":       PlatformConverter(),
+    "frontend":       FrontendConverter(),
+    "ui":             FrontendConverter(),
+    "web":            FrontendConverter(),
+    "backend":        BackendConverter(),
+    "api":            BackendConverter(),
+    "worker":         WorkerConverter(),
+    "python":         WorkerConverter(),
+    "docker-compose": DockerComposeConverter(),
+    "docker":         DockerComposeConverter(),
+}
+
+
+def _infer_converter(service_config: Dict) -> Optional[ServiceConverter]:
+    """Infer converter from runtime field or manifest shape."""
+    runtime = (service_config.get("runtime") or "").lower()
+    if runtime in _CONVERTERS:
+        return _CONVERTERS[runtime]
+    if service_config.get("command"):
+        return _CONVERTERS["frontend"]
+    if service_config.get("module"):
+        return _CONVERTERS["worker"]
+    return None
 
 
 def build_services_from_manifests() -> List[ServiceDef]:
-    ports = read_env_ports()
     services: List[ServiceDef] = []
     configs = load_service_configs()
     if not configs:
@@ -485,26 +483,14 @@ def build_services_from_manifests() -> List[ServiceDef]:
             continue
 
         service_type = (service_config.get("type") or "").lower()
-        runtime = (service_config.get("runtime") or "").lower()
+        converter = _CONVERTERS.get(service_type) or _infer_converter(service_config)
+
+        if not converter:
+            print(f"Warning: unsupported service type '{service_type}' for {service_config.get('id')}")
+            continue
 
         try:
-            if service_type == "platform":
-                services.append(_convert_platform_service_to_def(service_config))
-            elif service_type in {"frontend", "ui", "web"}:
-                services.append(_convert_frontend_service_to_def(service_config, ports))
-            elif service_type in {"backend", "api"}:
-                services.append(_convert_backend_service_to_def(service_config, ports))
-            elif service_type in {"worker", "python"} or runtime == "python":
-                services.append(_convert_worker_service_to_def(service_config, ports))
-            elif service_type in {"docker-compose", "docker"} or runtime == "docker-compose":
-                services.append(_convert_docker_compose_service_to_def(service_config, ports))
-            else:
-                if service_config.get("command"):
-                    services.append(_convert_frontend_service_to_def(service_config, ports))
-                elif service_config.get("module"):
-                    services.append(_convert_worker_service_to_def(service_config, ports))
-                else:
-                    print(f"Warning: unsupported service type '{service_type}' for {service_config.get('id')}")
+            services.append(converter.convert(service_config))
         except Exception as e:
             print(f"Warning: failed to convert service {service_config.get('id', 'unknown')}: {e}")
 
