@@ -95,10 +95,12 @@ class _ProcessingGenerationSnapshot:
     operation_type: OperationType | str | None
     started_at: datetime | None
     attempt_id: int
+    deferred_action: str | None = None
 
     @classmethod
-    def from_row(cls, row: tuple[Any, Any, Any, Any, Any]) -> "_ProcessingGenerationSnapshot | None":
-        generation_id, account_id, operation_type, started_at, attempt_id = row
+    def from_row(cls, row: tuple[Any, ...]) -> "_ProcessingGenerationSnapshot | None":
+        generation_id, account_id, operation_type, started_at, attempt_id = row[:5]
+        deferred_action = row[5] if len(row) > 5 else None
         if generation_id is None:
             return None
         started_ts: datetime | None = started_at if isinstance(started_at, datetime) else None
@@ -121,6 +123,7 @@ class _ProcessingGenerationSnapshot:
             operation_type=operation_type,
             started_at=started_ts,
             attempt_id=parsed_attempt_id,
+            deferred_action=str(deferred_action) if deferred_action else None,
         )
 
 
@@ -152,6 +155,21 @@ _transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
 _NON_TRANSIENT_POLL_MAX_FAILURES = 3
 _NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC: tuple[int, ...] = (15, 30, 60)
 _non_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
+
+# Grace period before honouring a deferred cancel on a PROCESSING generation.
+# Gives the provider time to finish so we don't lose completed results.
+_CANCEL_GRACE_PERIOD_SEC = 120
+_cancel_first_seen: dict[int, float] = {}  # generation_id -> monotonic timestamp
+
+
+def _has_pending_cancel(generation_model: Any) -> bool:
+    """Check if a generation has a pending cancel (deferred action or already cancelled)."""
+    if generation_model is None:
+        return False
+    return (
+        generation_model.status == GenerationStatus.CANCELLED
+        or generation_model.deferred_action == "cancel"
+    )
 
 
 def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
@@ -270,6 +288,11 @@ def _prune_transient_poll_backoff(*, now_mono: float) -> None:
         ]
         for key in stale_keys:
             backoff_dict.pop(key, None)
+    # Prune stale cancel-grace entries (generation finished or was never polled again).
+    cancel_stale = now_mono - _CANCEL_GRACE_PERIOD_SEC - _TRANSIENT_POLL_PRUNE_STALE_SEC
+    stale_cancel = [gid for gid, ts in _cancel_first_seen.items() if ts <= cancel_stale]
+    for gid in stale_cancel:
+        _cancel_first_seen.pop(gid, None)
 
 
 def _record_non_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
@@ -705,6 +728,7 @@ async def _load_processing_generation_snapshots(
             Generation.operation_type,
             Generation.started_at,
             Generation.attempt_id,
+            Generation.deferred_action,
         )
         .where(Generation.status == GenerationStatus.PROCESSING)
         .order_by(Generation.started_at)
@@ -767,8 +791,11 @@ async def _poll_single_generation(
                 )
 
                 # Check for deferred cancel on unsubmitted generations
-                gen_model = await db.get(Generation, generation.id)
-                if gen_model and getattr(gen_model, "deferred_action", None) == "cancel":
+                if generation.deferred_action == "cancel":
+                    gen_model = await db.get(Generation, generation.id)
+                else:
+                    gen_model = None
+                if gen_model and gen_model.deferred_action == "cancel":
                     logger.info(
                         "generation_cancel_before_submission",
                         generation_id=generation.id,
@@ -1281,31 +1308,23 @@ async def _poll_single_generation(
 
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
-                    # Re-check: generation may have a deferred action or
-                    # been cancelled while we polled
+                    _cancel_first_seen.pop(generation.id, None)
+                    # If a cancel was requested while we polled, honour the
+                    # completion anyway — the provider already generated the
+                    # result and the user should receive it.  Clear the
+                    # deferred action so downstream doesn't re-cancel.
                     generation_model = await db.get(Generation, generation.id)
-                    if generation_model and (
-                        generation_model.status == GenerationStatus.CANCELLED
-                        or getattr(generation_model, "deferred_action", None) == "cancel"
-                    ):
+                    if _has_pending_cancel(generation_model):
                         logger.info(
-                            "generation_cancel_during_poll",
+                            "generation_cancel_overridden_by_completion",
                             generation_id=generation.id,
-                            deferred_action=getattr(generation_model, "deferred_action", None),
+                            deferred_action=generation_model.deferred_action,
                         )
                         generation_model.deferred_action = None
+                        if generation_model.status == GenerationStatus.CANCELLED:
+                            generation_model.status = GenerationStatus.PROCESSING
                         await db.commit()
-                        account = await account_service.release_account(account.id)
-                        if generation_model.status != GenerationStatus.CANCELLED:
-                            await generation_service.update_status(
-                                generation.id, GenerationStatus.CANCELLED,
-                            )
-                        return _PollGenerationResult(
-                            generation_id=generation_id,
-                            outcome='completed',
-                            missing_provider_job=missing_provider_job,
-                        )
-                    if generation_model is None:
+                    elif generation_model is None:
                         logger.warning(
                             "generation_not_found_during_poll",
                             generation_id=generation.id,
@@ -1391,17 +1410,15 @@ async def _poll_single_generation(
                     ProviderStatus.FILTERED,
                     ProviderStatus.CANCELLED,
                 }:
+                    _cancel_first_seen.pop(generation.id, None)
                     # Re-check: generation may have a deferred cancel or
                     # been cancelled while we polled
                     generation_model = await db.get(Generation, generation.id)
-                    if generation_model and (
-                        generation_model.status == GenerationStatus.CANCELLED
-                        or getattr(generation_model, "deferred_action", None) == "cancel"
-                    ):
+                    if _has_pending_cancel(generation_model):
                         logger.info(
                             "generation_cancel_during_poll",
                             generation_id=generation.id,
-                            deferred_action=getattr(generation_model, "deferred_action", None),
+                            deferred_action=generation_model.deferred_action,
                         )
                         generation_model.deferred_action = None
                         await db.commit()
@@ -1492,25 +1509,40 @@ async def _poll_single_generation(
                     )
 
                 elif status_result.status == ProviderStatus.PROCESSING:
-                    # Check for deferred cancel — user wants to stop even
-                    # though the provider is still working on it.
-                    generation_model = await db.get(Generation, generation.id)
-                    if generation_model and getattr(generation_model, "deferred_action", None) == "cancel":
-                        logger.info(
-                            "generation_cancel_while_provider_processing",
-                            generation_id=generation.id,
-                        )
-                        generation_model.deferred_action = None
-                        await db.commit()
-                        account = await account_service.release_account(account.id)
-                        await generation_service.update_status(
-                            generation.id, GenerationStatus.CANCELLED,
-                        )
-                        return _PollGenerationResult(
-                            generation_id=generation_id,
-                            outcome='failed',
-                            missing_provider_job=missing_provider_job,
-                        )
+                    # Check for deferred cancel — wait a grace period first
+                    # so near-complete images aren't lost.  Use the snapshot's
+                    # deferred_action to skip the DB query in the common case.
+                    if generation.deferred_action == "cancel" or generation.id in _cancel_first_seen:
+                        generation_model = await db.get(Generation, generation.id)
+                        if generation_model and generation_model.deferred_action == "cancel":
+                            now_mono = time.monotonic()
+                            first_seen = _cancel_first_seen.setdefault(generation.id, now_mono)
+                            elapsed = now_mono - first_seen
+                            if elapsed < _CANCEL_GRACE_PERIOD_SEC:
+                                logger.info(
+                                    "generation_cancel_grace_period",
+                                    generation_id=generation.id,
+                                    elapsed_sec=round(elapsed, 1),
+                                    grace_remaining_sec=round(_CANCEL_GRACE_PERIOD_SEC - elapsed, 1),
+                                )
+                            else:
+                                logger.info(
+                                    "generation_cancel_while_provider_processing",
+                                    generation_id=generation.id,
+                                    grace_elapsed_sec=round(elapsed, 1),
+                                )
+                                _cancel_first_seen.pop(generation.id, None)
+                                generation_model.deferred_action = None
+                                await db.commit()
+                                account = await account_service.release_account(account.id)
+                                await generation_service.update_status(
+                                    generation.id, GenerationStatus.CANCELLED,
+                                )
+                                return _PollGenerationResult(
+                                    generation_id=generation_id,
+                                    outcome='failed',
+                                    missing_provider_job=missing_provider_job,
+                                )
                     return _PollGenerationResult(
                         generation_id=generation_id,
                         outcome='still_processing',
