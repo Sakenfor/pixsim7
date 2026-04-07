@@ -17,7 +17,8 @@
 import { useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useAssetAutoContextMenu } from '@lib/dockview';
+import { useAssetAutoContextMenu, useContextMenuOptional } from '@lib/dockview';
+import { contextDataRegistry } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 import { OverlayContainer, VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 import type { OverlayWidget } from '@lib/ui/overlay';
@@ -219,8 +220,25 @@ export function CompactAssetCard({
   }), [asset]);
   useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
 
-  // Context menu: automatic registration with type-specific preset
+  // Context menu: data-attribute registration + direct onContextMenu fallback
   const contextMenuProps = useAssetAutoContextMenu(asset);
+  const contextMenu = useContextMenuOptional();
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!contextMenu || !asset?.id) return;
+      // Only handle if the dockview capture handler didn't already consume the event
+      if (e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const resolved = contextDataRegistry.resolve('asset', asset.id);
+      contextMenu.showContextMenu({
+        contextType: 'asset',
+        position: { x: e.clientX, y: e.clientY },
+        data: resolved ?? { id: asset.id },
+      });
+    },
+    [contextMenu, asset?.id],
+  );
 
   // Shared overlay widgets (favorite, quick-tag, etc.) from overlay context settings.
   const effectiveContext = overlayContext ?? 'compact';
@@ -290,6 +308,7 @@ export function CompactAssetCard({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}
+      onContextMenu={handleContextMenu}
       {...contextMenuProps}
     >
       {label && (

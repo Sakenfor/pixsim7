@@ -105,8 +105,16 @@ export function GenerationParamControls({
         if (param.type === 'boolean') return null;
         if (param.type === 'string' && !param.enum) return null;
 
+        // Hide params restricted to specific models
+        const appliesToModels = param.metadata?.applies_to_models as string[] | undefined;
+        if (appliesToModels && appliesToModels.length > 0) {
+          const currentModel = typeof values?.model === 'string' ? values.model : '';
+          if (currentModel && !appliesToModels.includes(currentModel)) return null;
+        }
+
         if (param.name === 'duration' && param.type === 'number' && durationOptions) {
           const currentDuration = Number(values[param.name]) || durationOptions[0];
+          const currentIdx = durationOptions.indexOf(currentDuration);
           // Audio toggle: find the audio boolean param and check if applicable to current model
           const audioParam = paramSpecs.find((p) => p.name === 'audio' && p.type === 'boolean');
           const audioAppliesTo: string[] | undefined = audioParam?.metadata?.applies_to_models;
@@ -115,19 +123,53 @@ export function GenerationParamControls({
           const audioOn = !!values?.audio;
           return (
             <div key="duration" className="flex items-center gap-1">
-              <select
-                value={currentDuration}
-                onChange={(e) => onChange('duration', Number(e.target.value))}
-                disabled={generating}
-                className="flex-1 min-w-0 px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-                title="Duration"
+              <div
+                className="flex items-center flex-1 min-w-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
+                onWheel={(e) => {
+                  if (generating) return;
+                  e.preventDefault();
+                  const next = e.deltaY < 0
+                    ? Math.min(currentIdx + 1, durationOptions.length - 1)
+                    : Math.max(currentIdx - 1, 0);
+                  if (next !== currentIdx) onChange('duration', durationOptions[next]);
+                }}
               >
-                {durationOptions.map((seconds) => (
-                  <option key={seconds} value={seconds}>
-                    {seconds}s
-                  </option>
-                ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentIdx > 0) onChange('duration', durationOptions[currentIdx - 1]);
+                  }}
+                  disabled={generating || currentIdx <= 0}
+                  className="flex items-center justify-center px-1 py-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Decrease duration"
+                >
+                  <Icon name="minus" size={12} />
+                </button>
+                <select
+                  value={currentDuration}
+                  onChange={(e) => onChange('duration', Number(e.target.value))}
+                  disabled={generating}
+                  className="flex-1 min-w-0 px-0.5 py-1.5 text-[11px] text-center bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
+                  title="Duration"
+                >
+                  {durationOptions.map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {seconds}s
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentIdx < durationOptions.length - 1) onChange('duration', durationOptions[currentIdx + 1]);
+                  }}
+                  disabled={generating || currentIdx >= durationOptions.length - 1}
+                  className="flex items-center justify-center px-1 py-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Increase duration"
+                >
+                  <Icon name="plus" size={12} />
+                </button>
+              </div>
               {showAudio && (
                 <button
                   type="button"

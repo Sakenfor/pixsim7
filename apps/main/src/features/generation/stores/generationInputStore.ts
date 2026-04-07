@@ -255,9 +255,8 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         addInputs: ({ assets, operationType }) => {
           if (!assets || assets.length === 0) return;
 
-          // In replace mode with a single asset, delegate to addInput for replace logic
-          const inputMode = get().inputModeByOperation?.[operationType];
-          if (inputMode === 'replace' && assets.length === 1) {
+          // Single asset: delegate to addInput so armed slot / replace logic applies
+          if (assets.length === 1) {
             get().addInput({ asset: assets[0], operationType });
             return;
           }

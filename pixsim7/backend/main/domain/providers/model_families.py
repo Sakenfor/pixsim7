@@ -19,6 +19,7 @@ class ModelVariant:
     tier: int         # rank within family (higher = better)
     color: str | None = None       # badge bg override (None → family default)
     text_color: str | None = None  # badge text override (None → white)
+    short: str | None = None       # badge text override (None → family default)
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,38 @@ class ModelFamily:
 
 
 # ---------------------------------------------------------------------------
+# Pixverse family (auto-derived from pixverse-py SDK)
+# ---------------------------------------------------------------------------
+
+def _build_pixverse_family() -> ModelFamily:
+    """Build the pixverse model family from the SDK's VideoModel registry."""
+    try:
+        from pixverse.models import VideoModel  # type: ignore
+        variants = tuple(
+            ModelVariant(
+                id=str(spec),
+                family="pixverse",
+                tier=idx + 1,
+                short=spec.badge or str(spec),
+            )
+            for idx, spec in enumerate(VideoModel.ALL)
+        )
+    except ImportError:
+        # Fallback if pixverse-py not installed
+        variants = (
+            ModelVariant("v5",      "pixverse", tier=1, short="5"),
+            ModelVariant("v5-fast", "pixverse", tier=2, short="5F"),
+            ModelVariant("v5.5",    "pixverse", tier=3, short="5.5"),
+            ModelVariant("v5.6",    "pixverse", tier=4, short="5.6"),
+            ModelVariant("v6",      "pixverse", tier=5, short="6"),
+        )
+    return ModelFamily(
+        id="pixverse", label="Pixverse", short="Px", color="#8b5cf6",
+        variants=variants,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -90,16 +123,7 @@ MODEL_FAMILIES: dict[str, ModelFamily] = {
             ModelVariant("seedream-5.0-lite", "seedream", tier=3, color="#dc2626"),
         ),
     ),
-    "pixverse": ModelFamily(
-        id="pixverse", label="Pixverse", short="Px", color="#8b5cf6",
-        variants=(
-            ModelVariant("v5",      "pixverse", tier=1),
-            ModelVariant("v5-fast", "pixverse", tier=2),
-            ModelVariant("v5.5",    "pixverse", tier=3),
-            ModelVariant("v5.6",    "pixverse", tier=4),
-            ModelVariant("v6",      "pixverse", tier=5),
-        ),
-    ),
+    "pixverse": _build_pixverse_family(),
 }
 
 # Flat lookup: model ID → family key (built from variants)
@@ -155,7 +179,7 @@ def build_model_families_metadata(
         entry: dict[str, Any] = {
             "family": fam.id,
             "label": fam.label,
-            "short": fam.short,
+            "short": (variant.short if variant and variant.short else fam.short),
             "color": variant.color if variant and variant.color else fam.color,
             "tier": variant.tier if variant else 0,
         }

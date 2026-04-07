@@ -63,6 +63,7 @@ const TABS_KEY = 'ai-assistant:tabs';
 const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
 const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
 const MSG_KEY_PREFIX = 'ai-assistant:msg:';
+const SESSION_MSG_PREFIX = 'ai-assistant:session-msg:';
 
 // =============================================================================
 // Helpers
@@ -82,6 +83,10 @@ function createTabId(): string {
 
 function msgKey(tabId: string): string {
   return `${MSG_KEY_PREFIX}${tabId}`;
+}
+
+function sessionMsgKey(sessionId: string): string {
+  return `${SESSION_MSG_PREFIX}${sessionId}`;
 }
 
 function draftKey(tabId: string): string {
@@ -249,7 +254,25 @@ const _pendingSyncs = hmrSingleton(
   () => new Map<string, { sessionId: string; messages: ChatMessage[] }>(),
 );
 
+function persistSessionMessages(sessionId: string, messages: ChatMessage[]) {
+  try {
+    const persistable = messages.filter((m) => m.role !== 'error');
+    localStorage.setItem(sessionMsgKey(sessionId), JSON.stringify(persistable.slice(-50)));
+  } catch { /* ignore */ }
+}
+
+function loadSessionMessages(sessionId: string): ChatMessage[] {
+  try {
+    return parseMessages(localStorage.getItem(sessionMsgKey(sessionId)));
+  } catch {
+    return [];
+  }
+}
+
 function syncMessagesToServer(sessionId: string, messages: ChatMessage[]) {
+  // Always persist to session-keyed localStorage immediately (backup for resume)
+  persistSessionMessages(sessionId, messages);
+
   const existing = _syncTimers.get(sessionId);
   if (existing) clearTimeout(existing);
   _pendingSyncs.set(sessionId, { sessionId, messages });
@@ -385,6 +408,34 @@ export const useAssistantChatStore = hmrSingleton(
       },
 
       closeTab: (tabId) => {
+        // Flush messages to server before closing (don't wait for debounce)
+        const closingTab = get().tabs.find((t) => t.id === tabId);
+        if (closingTab?.sessionId) {
+          const msgs = get().getMessages(tabId);
+          if (msgs.length > 0) {
+            // Persist to session-keyed localStorage immediately
+            persistSessionMessages(closingTab.sessionId, msgs);
+            // Cancel debounced timer and fire sync now
+            const timer = _syncTimers.get(closingTab.sessionId);
+            if (timer) clearTimeout(timer);
+            _syncTimers.delete(closingTab.sessionId);
+            _pendingSyncs.delete(closingTab.sessionId);
+            const persistable = msgs
+              .filter((m) => m.role !== 'error')
+              .slice(-50)
+              .map((m) => ({
+                role: m.role,
+                text: m.text,
+                duration_ms: m.duration_ms,
+                timestamp: m.timestamp.toISOString(),
+              }));
+            pixsimClient
+              .patch(`/meta/agents/chat-sessions/${closingTab.sessionId}/messages`, {
+                messages: persistable,
+              })
+              .catch(() => {});
+          }
+        }
         const nextTabs = get().tabs.filter((t) => t.id !== tabId);
         persistTabs(nextTabs);
         // Clean up localStorage
@@ -505,25 +556,37 @@ export const useAssistantChatStore = hmrSingleton(
 // Standalone async helpers (not store actions)
 // =============================================================================
 
-/** Fetch messages from server for a resumed session. */
+/** Fetch messages from server for a resumed session, with localStorage fallback. */
 export async function fetchServerMessages(
   sessionId: string,
 ): Promise<ChatMessage[]> {
+  // Try server first
   try {
     const res = await pixsimClient.get<{
       messages?: Array<Record<string, unknown>> | null;
     }>(`/meta/agents/chat-sessions/${sessionId}`);
     const raw = res.data?.messages;
-    if (!Array.isArray(raw) || raw.length === 0) return [];
-    return raw.map((m) => ({
-      role: m.role as ChatMessage['role'],
-      text: m.text as string,
-      duration_ms: m.duration_ms as number | undefined,
-      timestamp: new Date(m.timestamp as string),
-    }));
-  } catch {
-    return [];
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw.map((m) => ({
+        role: m.role as ChatMessage['role'],
+        text: m.text as string,
+        duration_ms: m.duration_ms as number | undefined,
+        timestamp: new Date(m.timestamp as string),
+      }));
+    }
+    console.warn(`[ai-assistant] Session ${sessionId}: server returned ${raw === null ? 'null' : 'empty'} messages`);
+  } catch (err) {
+    console.warn(`[ai-assistant] Session ${sessionId}: failed to fetch from server`, err);
   }
+
+  // Fallback to session-keyed localStorage
+  const local = loadSessionMessages(sessionId);
+  if (local.length > 0) {
+    console.info(`[ai-assistant] Session ${sessionId}: recovered ${local.length} messages from localStorage`);
+    return local;
+  }
+
+  return [];
 }
 
 /** Build a ChatTab from a session record. Single source of truth for resume. */

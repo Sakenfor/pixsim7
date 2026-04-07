@@ -263,6 +263,11 @@ def build_operation_parameter_spec() -> dict:
         # Fallback if SDK doesn't have CameraMovement yet
         camera_movement_enum.extend(["zoom_in", "zoom_out"])
 
+    camera_movement_models = (
+        [str(m) for m in VideoModel.supporting("camera_movement")]
+        if VideoModel is not None
+        else ["v5"]
+    )
     camera_movement = {
         "name": "camera_movement",
         "type": "enum",
@@ -271,6 +276,9 @@ def build_operation_parameter_spec() -> dict:
         "enum": camera_movement_enum,
         "description": "Camera movement preset (image_to_video only)",
         "group": "style",
+        "metadata": {
+            "applies_to_models": camera_movement_models,
+        },
     }
     # Image generation model options (from pixverse-py ImageModel)
     image_model = {
