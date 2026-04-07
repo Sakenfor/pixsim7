@@ -594,6 +594,10 @@ _LOG_WORK_TOOL = types.Tool(
                 "items": {"type": "string"},
                 "description": "File paths or git commit SHAs as evidence. Optional.",
             },
+            "session_id": {
+                "type": "string",
+                "description": "Target chat session ID. If omitted, uses the registered session.",
+            },
         },
         "required": ["summary"],
     },
@@ -946,7 +950,8 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
 
     agent_type = _extract_agent_type(token)
     profile_id = _normalize_profile_id(_extract_profile_from_token(token))
-    session_id = _registered_session_id or "unregistered"
+    explicit_session = (arguments.get("session_id") or "").strip() or None
+    session_id = explicit_session or _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
 
     # Bridge-managed: read the chat session ID from the sidecar file written
