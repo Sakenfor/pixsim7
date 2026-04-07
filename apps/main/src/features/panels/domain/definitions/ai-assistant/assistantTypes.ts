@@ -12,7 +12,29 @@ import type { ChatMessage, AgentCommand } from './assistantChatStore';
 // Types
 // =============================================================================
 
-export interface BridgeStatus { connected: number; available: number; process_alive?: boolean; managed_by?: string | null }
+export interface PoolSessionInfo {
+  session_id: string;
+  cli_session_id?: string | null;
+  cli_model?: string | null;
+  state: string;
+  context_window: number;
+  total_tokens: number;
+  context_pct?: number | null;
+  cost_usd?: number | null;
+}
+
+export interface BridgeAgentEntry {
+  bridge_client_id: string;
+  pool_sessions: PoolSessionInfo[];
+}
+
+export interface BridgeStatus {
+  connected: number;
+  available: number;
+  process_alive?: boolean;
+  managed_by?: string | null;
+  agents?: BridgeAgentEntry[];
+}
 
 /** Unified profile — both agent identity and assistant persona */
 export interface UnifiedProfile {
@@ -118,6 +140,17 @@ export function renderBridgeError(result: Pick<BridgeResult, 'error' | 'error_co
     return `This tab already has an active request. Wait for it to finish or cancel and retry.${suffix}`;
   }
   return result.error || 'No response from agent';
+}
+
+/** Find the pool session matching a tab's CLI session ID. */
+export function findPoolSession(bridge: BridgeStatus | null, cliSessionId: string | null): PoolSessionInfo | null {
+  if (!bridge?.agents || !cliSessionId) return null;
+  for (const agent of bridge.agents) {
+    for (const ps of agent.pool_sessions) {
+      if (ps.cli_session_id === cliSessionId) return ps;
+    }
+  }
+  return null;
 }
 
 export function normalizeReferenceId(raw: string | null | undefined): string | null {

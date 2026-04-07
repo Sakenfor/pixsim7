@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
-import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
+import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
 
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
@@ -56,8 +56,10 @@ import {
   isSameThinkingLog,
   renderBridgeError,
   extractReferenceScope,
+  findPoolSession,
 } from './assistantTypes';
 import { MessageBubble, ThinkingBlock, ConfirmationCard } from './ChatMessageComponents';
+import { ContextBar } from './ContextBar';
 import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
 import { SessionItem } from './SessionItem';
 
@@ -319,7 +321,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
   // @reference picker (centralized)
   const refs = useReferences();
-  const refInput = useReferenceInput(refs);
+  const pickerRef = useRef<ReferencePickerHandle>(null);
+  const refInput = useReferenceInput(refs, pickerRef);
 
   const handleTextareaInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
@@ -495,7 +498,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       {/* Input */}
       <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
-        <ReferencePicker query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
+        <ReferencePicker ref={pickerRef} query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
+
+        {/* Context bar — shows active scope/session info above the textarea */}
+        <ContextBar tab={tab} profile={activeProfile ?? null} poolSession={findPoolSession(bridge, tab.sessionId)} />
 
         {/* Textarea — above the toolbar for more space */}
         <div className="group/input mb-1.5">

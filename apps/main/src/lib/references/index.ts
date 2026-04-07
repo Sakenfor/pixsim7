@@ -4,7 +4,7 @@ export type { ReferenceSourceRegistration } from './registry';
 export { useReferences } from './useReferences';
 export { useReferenceInput } from './useReferenceInput';
 export { ReferencePicker } from './ReferencePicker';
-export type { ReferencePickerProps } from './ReferencePicker';
+export type { ReferencePickerProps, ReferencePickerHandle } from './ReferencePicker';
 
 // Auto-register built-in platform sources (plans, contracts, worlds, projects).
 // Feature-specific sources (game entities, assets, etc.) register themselves

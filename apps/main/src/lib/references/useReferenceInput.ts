@@ -6,16 +6,21 @@
  *
  * Usage:
  *   const refs = useReferences();
- *   const refInput = useReferenceInput(refs);
+ *   const pickerRef = useRef<ReferencePickerHandle>(null);
+ *   const refInput = useReferenceInput(refs, pickerRef);
  *
  *   <textarea onInput={refInput.handleInput} onKeyDown={refInput.handleKeyDown} />
- *   <ReferencePicker visible={refInput.active} query={refInput.query} ... onSelect={refInput.select} />
+ *   <ReferencePicker ref={pickerRef} visible={refInput.active} query={refInput.query} ... />
  */
 import { useCallback, useRef, useState } from 'react';
 
+import type { ReferencePickerHandle } from './ReferencePicker';
 import type { ReferenceItem } from './types';
 
-export function useReferenceInput(loader: { load: () => void }) {
+export function useReferenceInput(
+  loader: { load: () => void },
+  pickerRef?: React.RefObject<ReferencePickerHandle | null>,
+) {
   const [query, setQuery] = useState<string | null>(null);
   const triggerPos = useRef(-1);
 
@@ -66,14 +71,18 @@ export function useReferenceInput(loader: { load: () => void }) {
   /** Call from textarea onKeyDown — returns true if the event was consumed. */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (active && e.key === 'Escape') {
+      if (!active) return false;
+      // Delegate to picker for arrow/enter/escape navigation
+      if (pickerRef?.current?.handleKeyDown(e)) return true;
+      // Fallback Escape if picker didn't handle it
+      if (e.key === 'Escape') {
         e.preventDefault();
         setQuery(null);
         return true;
       }
       return false;
     },
-    [active],
+    [active, pickerRef],
   );
 
   return { query: query ?? '', active, handleInput, handleKeyDown, select, dismiss };
