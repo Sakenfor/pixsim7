@@ -868,19 +868,7 @@ class PixverseOperationsMixin:
                     if raw_status == 1 or raw_status == "completed":
                         status = ProviderStatus.COMPLETED
                     elif raw_status == 7 or raw_status == "filtered":
-                        # Pixverse sometimes flags images as "filtered" even
-                        # though the image was fully generated (URL present).
-                        # Treat as completed when a result URL exists.
-                        if image_url:
-                            logger.info(
-                                "provider:status",
-                                msg="filtered_but_has_url_treating_as_completed",
-                                image_id=provider_job_id,
-                                image_url=image_url,
-                            )
-                            status = ProviderStatus.COMPLETED
-                        else:
-                            status = ProviderStatus.FILTERED
+                        status = ProviderStatus.FILTERED
                     elif (
                         raw_status == -1
                         or raw_status == "failed"
@@ -1056,42 +1044,6 @@ class PixverseOperationsMixin:
             retry_on_session_error=True,
         )
 
-    @staticmethod
-    def _build_list_status_result(
-        img: Dict[str, Any],
-        image_id: str,
-        source: str,
-        page: int,
-    ) -> ProviderStatusResult:
-        """Map a raw image list row to a ProviderStatusResult."""
-        raw_status = img.get("image_status") or img.get("status") or 0
-        image_url = img.get("image_url") or img.get("url")
-
-        if raw_status == 1 or raw_status == "completed":
-            status = ProviderStatus.COMPLETED
-        elif raw_status == 7 or raw_status == "filtered":
-            status = ProviderStatus.COMPLETED if image_url else ProviderStatus.FILTERED
-        elif raw_status in (-1, 8, 9) or raw_status == "failed":
-            status = ProviderStatus.FAILED
-        else:
-            status = ProviderStatus.PROCESSING
-
-        return ProviderStatusResult(
-            status=status,
-            video_url=image_url,
-            thumbnail_url=image_url,
-            width=img.get("width"),
-            height=img.get("height"),
-            duration_sec=None,
-            provider_video_id=str(img.get("image_id") or image_id),
-            metadata={
-                "provider_status": raw_status,
-                "is_image": True,
-                "source": source,
-                "page": page,
-            },
-        )
-
     async def check_image_status_from_list(
         self,
         account: ProviderAccount,
@@ -1102,7 +1054,7 @@ class PixverseOperationsMixin:
         max_pages: int = 3,
     ) -> ProviderStatusResult:
         """
-        Fallback image status check using both personal and library lists.
+        Fallback image status check using the personal image list.
 
         This bypasses the message list gate used by the Web API polling path,
         which can miss IDs when the message window rolls over or notifications
@@ -1110,34 +1062,48 @@ class PixverseOperationsMixin:
         """
         async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client_from_session(session, account)
-            sdk_account = client.pool.get_next()
-            image_ops = client.api._image_ops  # type: ignore[attr-defined]
             current_offset = offset
             page = 0
 
             for page in range(max_pages):
-                personal_images = await image_ops._list_images_personal_page(
-                    sdk_account,
+                # Use the image list endpoint directly (Web API only).
+                images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
+                    account=client.pool.get_next(),
                     limit=limit,
                     offset=current_offset,
-                    include_cache=False,
                 )
-                for img in personal_images:
-                    if str(img.get("image_id")) == str(image_id):
-                        return self._build_list_status_result(img, image_id, "list_fallback", page)
 
-                library_images = await image_ops._list_images_library_page(
-                    sdk_account,
-                    limit=limit,
-                    offset=current_offset,
-                    include_cache=False,
-                )
-                for img in library_images:
+                for img in images:
                     if str(img.get("image_id")) == str(image_id):
-                        return self._build_list_status_result(img, image_id, "list_fallback_library", page)
+                        raw_status = img.get("image_status") or img.get("status") or 0
+                        image_url = img.get("image_url") or img.get("url")
 
-                # Stop only when both lists return empty
-                if not personal_images and not library_images:
+                        if raw_status == 1 or raw_status == "completed":
+                            status = ProviderStatus.COMPLETED
+                        elif raw_status == 7 or raw_status == "filtered":
+                            status = ProviderStatus.FILTERED
+                        elif raw_status in (-1, 8, 9) or raw_status == "failed":
+                            status = ProviderStatus.FAILED
+                        else:
+                            status = ProviderStatus.PROCESSING
+
+                        return ProviderStatusResult(
+                            status=status,
+                            video_url=image_url,
+                            thumbnail_url=image_url,
+                            width=img.get("width"),
+                            height=img.get("height"),
+                            duration_sec=None,
+                            provider_video_id=str(img.get("image_id") or image_id),
+                            metadata={
+                                "provider_status": raw_status,
+                                "is_image": True,
+                                "source": "list_fallback",
+                                "page": page,
+                            },
+                        )
+
+                if len(images) < limit:
                     break
                 current_offset += limit
 
@@ -1162,40 +1128,27 @@ class PixverseOperationsMixin:
         offset: int = 0,
     ) -> Dict[str, ProviderStatusResult]:
         """
-        Batch image status lookup using both personal and library lists.
+        Batch image status lookup using the personal image list.
 
         Returns a mapping of ``image_id -> ProviderStatusResult`` for images
-        present in the fetched pages. Intended for per-poll caching in the
+        present in the fetched page. Intended for per-poll caching in the
         status poller to reduce one-request-per-generation status checks.
         """
 
         async def _operation(session: PixverseSessionData) -> Dict[str, ProviderStatusResult]:
             client = self._create_client_from_session(session, account)
-            sdk_account = client.pool.get_next()
-            image_ops = client.api._image_ops  # type: ignore[attr-defined]
-
-            personal_images = await image_ops._list_images_personal_page(
-                sdk_account,
+            images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
+                account=client.pool.get_next(),
                 limit=limit,
                 offset=offset,
-                include_cache=False,
-            )
-            library_images = await image_ops._list_images_library_page(
-                sdk_account,
-                limit=limit,
-                offset=offset,
-                include_cache=False,
             )
 
             results: Dict[str, ProviderStatusResult] = {}
-            # Personal first, library fills gaps (personal takes precedence)
-            for img in (*personal_images, *library_images):
+            for img in images:
                 raw_image_id = img.get("image_id") or img.get("id")
                 if raw_image_id is None:
                     continue
                 image_id = str(raw_image_id)
-                if image_id in results:
-                    continue
                 raw_status = img.get("image_status") or img.get("status") or 0
                 image_url = img.get("image_url") or img.get("url")
 
@@ -1474,27 +1427,23 @@ class PixverseOperationsMixin:
             return []
 
 
-    def _map_pixverse_status(self, pv_video, *, has_url: bool | None = None) -> ProviderStatus:
+    def _map_pixverse_status(self, pv_video) -> ProviderStatus:
         """
-        Map Pixverse video status to universal ProviderStatus.
+        Map Pixverse video status to universal ProviderStatus
 
-        When *has_url* is True and the raw status is "filtered", the result
-        is promoted to COMPLETED — Pixverse sometimes flags content but
-        still delivers the generated media.
+        Args:
+            pv_video: Pixverse video object or dict from pixverse-py
+
+        Returns:
+            Universal ProviderStatus
         """
         # Get status from dict or object
         if isinstance(pv_video, dict):
             status = pv_video.get('video_status') or pv_video.get('status')
-            if has_url is None:
-                has_url = bool(pv_video.get('url') or pv_video.get('video_url'))
         elif hasattr(pv_video, 'video_status'):
             status = pv_video.video_status
-            if has_url is None:
-                has_url = bool(getattr(pv_video, 'url', None))
         elif hasattr(pv_video, 'status'):
             status = pv_video.status
-            if has_url is None:
-                has_url = bool(getattr(pv_video, 'url', None))
         else:
             return ProviderStatus.PROCESSING
 
@@ -1513,8 +1462,6 @@ class PixverseOperationsMixin:
             elif status in (4, 8, 9):
                 return ProviderStatus.FAILED
             elif status in (3, 7):
-                if has_url:
-                    return ProviderStatus.COMPLETED
                 return ProviderStatus.FILTERED
             else:
                 return ProviderStatus.PROCESSING
@@ -1529,8 +1476,6 @@ class PixverseOperationsMixin:
             elif status == 'failed':
                 return ProviderStatus.FAILED
             elif status in ['filtered', 'rejected']:
-                if has_url:
-                    return ProviderStatus.COMPLETED
                 return ProviderStatus.FILTERED
             elif status == 'cancelled':
                 return ProviderStatus.CANCELLED
