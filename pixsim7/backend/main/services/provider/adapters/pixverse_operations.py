@@ -878,14 +878,13 @@ class PixverseOperationsMixin:
                     else:
                         status = ProviderStatus.PROCESSING
 
-                    logger.debug(
-                        "provider:image_status_detail",
-                        provider_job_id=provider_job_id,
-                        raw_status=raw_status,
-                        mapped_status=str(status),
-                        has_image_url=bool(image_url),
-                        image_url_preview=str(image_url_raw)[:120] if image_url_raw else None,
-                    )
+                    if status == ProviderStatus.COMPLETED:
+                        logger.info(
+                            "provider:image_completed_cdn",
+                            provider_job_id=provider_job_id,
+                            has_image_url=bool(image_url),
+                            image_url_preview=str(image_url_raw)[:120] if image_url_raw else None,
+                        )
 
                     return ProviderStatusResult(
                         status=status,
@@ -926,16 +925,15 @@ class PixverseOperationsMixin:
                     raw_thumb = _get_field(video, "first_frame", "thumbnail")
                     raw_status = _get_field(video, "video_status", "status")
 
-                    logger.debug(
-                        "provider:video_status_detail",
-                        provider_job_id=provider_job_id,
-                        raw_status=raw_status,
-                        mapped_status=str(status),
-                        has_video_url=bool(raw_video_url),
-                        video_url_preview=str(raw_video_url)[:120] if raw_video_url else None,
-                        has_thumbnail=bool(raw_thumb),
-                        thumbnail_preview=str(raw_thumb)[:120] if raw_thumb else None,
-                    )
+                    if status == ProviderStatus.COMPLETED:
+                        logger.info(
+                            "provider:video_completed_cdn",
+                            provider_job_id=provider_job_id,
+                            has_video_url=bool(raw_video_url),
+                            video_url_preview=str(raw_video_url)[:120] if raw_video_url else None,
+                            has_thumbnail=bool(raw_thumb),
+                            thumbnail_preview=str(raw_thumb)[:120] if raw_thumb else None,
+                        )
 
                     return ProviderStatusResult(
                         status=status,
