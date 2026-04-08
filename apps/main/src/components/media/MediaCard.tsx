@@ -288,6 +288,10 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const resolvedVideoSrc = useMemo(() => {
     if (!videoSrc) return undefined;
     if (!videoRetryToken || !videoSrc.startsWith('http')) return videoSrc;
+    // Don't cache-bust external CDN URLs — it bypasses edge caches and
+    // causes 404s during CDN propagation.
+    const isExternal = videoSrc.startsWith('http') && !videoSrc.includes(window.location.host);
+    if (isExternal) return videoSrc;
     const separator = videoSrc.includes('?') ? '&' : '?';
     return `${videoSrc}${separator}cb=${videoRetryToken}`;
   }, [videoSrc, videoRetryToken]);

@@ -237,9 +237,11 @@ export function VideoScrubWidgetRenderer({
     }
 
     retryCountRef.current += 1;
-    const nextToken = resolvedUrl.startsWith('http') ? Date.now() : null;
-    if (nextToken) {
-      setCacheBustToken(nextToken);
+    // Don't cache-bust external CDN URLs — it bypasses edge caches and
+    // causes 404s during CDN propagation.  Only bust local/API URLs.
+    const isExternal = resolvedUrl.startsWith('http') && !resolvedUrl.includes(window.location.host);
+    if (!isExternal) {
+      setCacheBustToken(Date.now());
     }
 
     if (retryTimeoutRef.current) {
