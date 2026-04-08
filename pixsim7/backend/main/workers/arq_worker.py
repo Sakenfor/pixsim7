@@ -342,10 +342,11 @@ class WorkerSettings:
 
     # Cron jobs (periodic tasks)
     cron_jobs = [
-        # Poll job statuses every 5 seconds
+        # Poll job statuses every 2 seconds (fast enough for early CDN,
+        # guarded by _poll_in_flight to prevent duplicate processing)
         cron(
             poll_job_statuses,
-            second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},  # Every 5 seconds
+            second={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58},  # Every 2 seconds
             run_at_startup=True,  # Run immediately on startup
         ),
         # Run automation loops every 30 seconds

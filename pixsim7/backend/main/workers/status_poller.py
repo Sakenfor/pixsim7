@@ -161,6 +161,10 @@ _non_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
 _CANCEL_GRACE_PERIOD_SEC = 120
 _cancel_first_seen: dict[int, float] = {}  # generation_id -> monotonic timestamp
 
+# In-flight guard: prevents overlapping poll cycles from processing
+# the same generation concurrently (important at ≤2s poll intervals).
+_poll_in_flight: set[int] = {}  # generation IDs currently being polled
+
 
 def _has_pending_cancel(generation_model: Any) -> bool:
     """Check if a generation has a pending cancel (deferred action or already cancelled)."""
@@ -1766,14 +1770,20 @@ async def poll_job_statuses(ctx: dict) -> dict:
             _poll_semaphore = asyncio.Semaphore(max_concurrent_polls)
 
             async def _bounded_poll(gen):
-                async with _poll_semaphore:
-                    return await _poll_single_generation(
-                        gen, poll_status_cache,
-                        timeout_threshold, unsubmitted_timeout_threshold,
-                        mixed_submission_timeout_threshold,
-                        TIMEOUT_HOURS, UNSUBMITTED_TIMEOUT_MINUTES,
-                        MIXED_SUBMISSION_TIMEOUT_MINUTES,
-                    )
+                if gen.id in _poll_in_flight:
+                    return None  # Already being polled by an overlapping cycle
+                _poll_in_flight.add(gen.id)
+                try:
+                    async with _poll_semaphore:
+                        return await _poll_single_generation(
+                            gen, poll_status_cache,
+                            timeout_threshold, unsubmitted_timeout_threshold,
+                            mixed_submission_timeout_threshold,
+                            TIMEOUT_HOURS, UNSUBMITTED_TIMEOUT_MINUTES,
+                            MIXED_SUBMISSION_TIMEOUT_MINUTES,
+                        )
+                finally:
+                    _poll_in_flight.discard(gen.id)
 
             _poll_results = await asyncio.gather(
                 *[_bounded_poll(gen) for gen in processing_generations],
@@ -1781,6 +1791,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
             )
 
             for _poll_result in _poll_results:
+                if _poll_result is None:
+                    continue  # Skipped (in-flight guard)
                 if isinstance(_poll_result, Exception):
                     logger.error("poll_gather_error", error=str(_poll_result), exc_info=True)
                     continue
