@@ -299,9 +299,10 @@ function ProviderStatusContent({ data, widgetProps }: {
 
   // Status ring overlay
   const effectiveStatus = data.status || 'unknown';
+  const hasModerationTag = data.tags?.includes('moderation-retry');
   const statusRing = effectiveStatus === 'local_only'
     ? 'ring-2 ring-amber-400 ring-offset-1'
-    : effectiveStatus === 'flagged'
+    : (effectiveStatus === 'flagged' || hasModerationTag)
       ? 'ring-2 ring-red-500 ring-offset-1'
       : '';
 
@@ -395,18 +396,18 @@ function ProviderStatusContent({ data, widgetProps }: {
             <button
               ref={triggerRef}
               onClick={handleClick}
-              className={`inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold ${hasActions ? 'cursor-pointer' : 'cursor-default'} ${statusRing}`}
+              className={`inline-flex items-center justify-center ${displayText.length > 2 ? 'min-w-[var(--cq-btn-md)] h-[var(--cq-btn-md)] px-[0.2em]' : 'cq-btn-md'} rounded-full shadow-md font-bold ${hasActions ? 'cursor-pointer' : 'cursor-default'} ${statusRing}`}
               style={{ ...badgeStyle, color: textColor }}
               title={titleParts.join(' · ')}
             >
-              <span className="text-[0.55em] leading-none">{displayText}</span>
+              <span className={`${displayText.length > 2 ? 'text-[0.45em]' : 'text-[0.55em]'} leading-none whitespace-nowrap`}>{displayText}</span>
             </button>
           )}
         </ProviderBadge>
       </div>
 
-      {/* Operation type label */}
-      {opShort && (
+      {/* Operation type label — only for non-obvious operations (extend, transition, etc.) */}
+      {opShort && !['i2v', 't2v', 'i2i', 't2i'].includes(opShort) && (
         <span className="text-[8px] font-semibold leading-none px-1.5 py-0.5 rounded bg-black/40 text-white backdrop-blur-sm">
           {opShort}
         </span>
