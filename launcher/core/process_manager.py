@@ -288,8 +288,10 @@ class ProcessManager:
                             base_args.remove("--reload")
             cmd = [definition.program] + base_args + extra_args
 
-            # Open log file for output
+            # Open log file for output (rotate if oversized)
             log_file_path = self.log_dir / f"{service_key}.log"
+            from pixsim_logging.file_rotation import rotate_file
+            rotate_file(str(log_file_path), max_bytes=50 * 1024 * 1024, backups=2)  # 50 MB, keep 2 old
             log_file = open(log_file_path, 'a', encoding='utf-8', buffering=1)
 
             # Platform-specific process group creation for detachment
