@@ -269,6 +269,25 @@ export function AssetPanelHeader({
             <span>{completedGenerationCount}</span>
           </button>
 
+          {/* Display mode cycle */}
+          {operationInputsLength > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const modes = ['carousel', 'strip', 'grid'] as const;
+                const currentMode = assetInstanceOverrides?.displayMode ?? globalDisplayMode;
+                const currentIdx = modes.indexOf(currentMode as typeof modes[number]);
+                const nextMode = modes[(currentIdx + 1) % modes.length];
+                handleComponentSetting('displayMode', nextMode);
+              }}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors bg-neutral-800 hover:bg-neutral-700 text-neutral-400"
+              title={`Display: ${resolvedDisplayMode} (click to cycle)`}
+              type="button"
+            >
+              <Icon name={resolvedDisplayMode === 'grid' ? 'layoutGrid' : resolvedDisplayMode === 'strip' ? 'columns' : 'image'} size={10} />
+            </button>
+          )}
+
           {/* Settings */}
           <button
             ref={settingsTriggerRef}
