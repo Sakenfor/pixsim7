@@ -879,7 +879,7 @@ class PixverseOperationsMixin:
                         status = ProviderStatus.PROCESSING
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
-                        logger.info(
+                        logger.debug(
                             "provider:image_terminal_cdn",
                             provider_job_id=provider_job_id,
                             status=str(status),
@@ -928,7 +928,7 @@ class PixverseOperationsMixin:
                     raw_status = _get_field(video, "video_status", "status")
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
-                        logger.info(
+                        logger.debug(
                             "provider:video_terminal_cdn",
                             provider_job_id=provider_job_id,
                             status=str(status),
