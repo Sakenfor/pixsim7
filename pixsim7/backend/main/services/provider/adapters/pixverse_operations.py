@@ -878,10 +878,12 @@ class PixverseOperationsMixin:
                     else:
                         status = ProviderStatus.PROCESSING
 
-                    if status == ProviderStatus.COMPLETED:
+                    if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.info(
-                            "provider:image_completed_cdn",
+                            "provider:image_terminal_cdn",
                             provider_job_id=provider_job_id,
+                            status=str(status),
+                            raw_status=raw_status,
                             has_image_url=bool(image_url),
                             image_url_preview=str(image_url_raw)[:120] if image_url_raw else None,
                         )
@@ -925,10 +927,12 @@ class PixverseOperationsMixin:
                     raw_thumb = _get_field(video, "first_frame", "thumbnail")
                     raw_status = _get_field(video, "video_status", "status")
 
-                    if status == ProviderStatus.COMPLETED:
+                    if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.info(
-                            "provider:video_completed_cdn",
+                            "provider:video_terminal_cdn",
                             provider_job_id=provider_job_id,
+                            status=str(status),
+                            raw_status=raw_status,
                             has_video_url=bool(raw_video_url),
                             video_url_preview=str(raw_video_url)[:120] if raw_video_url else None,
                             has_thumbnail=bool(raw_thumb),
