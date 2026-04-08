@@ -878,6 +878,15 @@ class PixverseOperationsMixin:
                     else:
                         status = ProviderStatus.PROCESSING
 
+                    logger.debug(
+                        "provider:image_status_detail",
+                        provider_job_id=provider_job_id,
+                        raw_status=raw_status,
+                        mapped_status=str(status),
+                        has_image_url=bool(image_url),
+                        image_url_preview=str(image_url_raw)[:120] if image_url_raw else None,
+                    )
+
                     return ProviderStatusResult(
                         status=status,
                         video_url=image_url,  # Image URL
@@ -913,18 +922,30 @@ class PixverseOperationsMixin:
                         video_id=provider_job_id,
                     )
                     status = self._map_pixverse_status(video)
+                    raw_video_url = _get_field(video, "url")
+                    raw_thumb = _get_field(video, "first_frame", "thumbnail")
+                    raw_status = _get_field(video, "video_status", "status")
+
+                    logger.debug(
+                        "provider:video_status_detail",
+                        provider_job_id=provider_job_id,
+                        raw_status=raw_status,
+                        mapped_status=str(status),
+                        has_video_url=bool(raw_video_url),
+                        video_url_preview=str(raw_video_url)[:120] if raw_video_url else None,
+                        has_thumbnail=bool(raw_thumb),
+                        thumbnail_preview=str(raw_thumb)[:120] if raw_thumb else None,
+                    )
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=_normalize_pixverse_url(_get_field(video, "url")),
-                        thumbnail_url=_normalize_pixverse_url(
-                            _get_field(video, "first_frame", "thumbnail")
-                        ),
+                        video_url=_normalize_pixverse_url(raw_video_url),
+                        thumbnail_url=_normalize_pixverse_url(raw_thumb),
                         width=_get_field(video, "output_width", "width"),
                         height=_get_field(video, "output_height", "height"),
                         duration_sec=_get_field(video, "video_duration", "duration"),
                         provider_video_id=str(_get_field(video, "video_id", "id")),
-                        metadata={"provider_status": _get_field(video, "video_status", "status")},
+                        metadata={"provider_status": raw_status},
                     )
 
             except Exception as exc:
