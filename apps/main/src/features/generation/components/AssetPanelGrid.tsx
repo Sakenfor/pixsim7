@@ -160,10 +160,9 @@ export function AssetPanelGrid({
         return (
           <div
             key={inputItem.id ?? idx}
-            className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} ${!isClamped ? 'cursor-grab transition-shadow' : ''}`}
-            {...(isClamped ? getDropTargetProps(idx) : getDragItemProps(idx))}
+            className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} cursor-grab transition-shadow`}
+            {...getDragItemProps(idx)}
             onClick={() => {
-              if (isClamped) return;
               if (armedSlotIndex !== undefined) {
                 setArmedSlot(operationType, undefined);
               }
@@ -177,7 +176,6 @@ export function AssetPanelGrid({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                if (isClamped) return;
                 if (armedSlotIndex !== undefined) {
                   setArmedSlot(operationType, undefined);
                 }
