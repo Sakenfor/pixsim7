@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Interactive SQL query explorer for diagnostics and data exploration",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",  # Empty prefix normalizes to /api/v1
     tags=["dev", "sql", "diagnostics", "admin"],
     dependencies=[],

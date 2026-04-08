@@ -7,9 +7,6 @@ Contains:
 - GenerationChain model (sequential orchestration plan)
 - ChainExecution model (chain execution tracking)
 - BlockImageFit model (fit scoring between blocks and images)
-
-Note: PromptBlock has moved to domain.prompt.
-Import it from: from pixsim7.backend.main.domain.prompt import PromptBlock
 """
 from .models import Generation, GenerationBatchItemManifest
 from .chain import GenerationChain, ChainExecution

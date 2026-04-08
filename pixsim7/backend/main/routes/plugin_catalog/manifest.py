@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="UI plugin discovery, enabling/disabling, and settings management",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",
     tags=["plugins"],
     dependencies=[],

@@ -17,6 +17,7 @@ manifest = PluginManifest(
     description="Dynamic discovery of registered conditions, effects, and scoring factors",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/behavior",
     tags=["behavior-registry"],
     dependencies=[],

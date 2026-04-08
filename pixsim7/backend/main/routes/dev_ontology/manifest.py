@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoints for ontology ID inspection and usage tracking",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/ontology
     tags=["dev", "ontology"],
     dependencies=[],  # Standalone, uses ontology loader

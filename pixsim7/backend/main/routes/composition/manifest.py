@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Exposes composition packages and roles for multi-image generation",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["composition"],
     dependencies=[],

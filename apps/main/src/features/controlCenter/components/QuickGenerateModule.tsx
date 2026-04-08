@@ -25,10 +25,6 @@ export function QuickGenerateModule() {
     [setDockOpen],
   );
 
-  // Keep QuickGen scope identity stable across HMR/prop shape jitter.
-  // This module is only mounted for the fixed `cc-generate` control-center panel.
-  const hostPanelId = 'cc-generate';
-
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenPanelHostRef>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
@@ -54,9 +50,7 @@ export function QuickGenerateModule() {
       ref={dockviewRef}
       widgetId="controlCenter"
       label="Control Center"
-      panelManagerId="ccQuickgen"
-      hostDockviewId="controlCenter"
-      hostPanelId={hostPanelId}
+      panelManagerId="controlCenter"
       panelIds={CC_PANEL_IDS}
       priority={50}
       isOpen={ccIsOpen}

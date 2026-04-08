@@ -538,6 +538,7 @@ class PlanUpdateRequest(BaseModel):
     markdown: Optional[str] = Field(None, description="Plan markdown content")
     visibility: Optional[str] = Field(None, description="private | shared | public")
     namespace: Optional[str] = Field(None, description="Optional taxonomy namespace")
+    parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
     companions: Optional[List[str]] = Field(None)
@@ -672,6 +673,16 @@ async def update_plan_endpoint(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Validate parent_id exists
+    new_parent = updates.get("parent_id")
+    if new_parent is not None:
+        from pixsim7.backend.main.domain.docs.models import PlanRegistry as _PR
+        parent = await db.get(_PR, new_parent)
+        if not parent:
+            raise HTTPException(status_code=400, detail=f"Parent plan not found: {new_parent}")
+        if new_parent == plan_id:
+            raise HTTPException(status_code=400, detail="A plan cannot be its own parent")
 
     # Validate depends_on plan IDs exist
     depends_on = updates.get("depends_on")
@@ -1001,6 +1012,69 @@ def _extract_checkpoint_test_suite_refs(evidence_value: Any) -> List[str]:
         seen.add(suite_id)
         refs.append(suite_id)
     return refs
+
+
+def _collect_checkpoint_tests(checkpoint: Dict[str, Any]) -> List[str]:
+    refs: List[str] = []
+    seen: Set[str] = set()
+
+    raw_tests = checkpoint.get("tests")
+    for raw in raw_tests if isinstance(raw_tests, list) else []:
+        suite_id = str(raw or "").strip()
+        if not suite_id or suite_id in seen:
+            continue
+        seen.add(suite_id)
+        refs.append(suite_id)
+
+    for suite_id in _extract_checkpoint_test_suite_refs(checkpoint.get("evidence")):
+        if suite_id in seen:
+            continue
+        seen.add(suite_id)
+        refs.append(suite_id)
+    return refs
+
+
+def _normalize_checkpoint_steps_for_active_work(checkpoint: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows = checkpoint.get("steps")
+    normalized: List[Dict[str, Any]] = []
+
+    for raw in rows if isinstance(rows, list) else []:
+        if not isinstance(raw, dict):
+            continue
+
+        label = str(raw.get("label") or "").strip()
+        if not label:
+            continue
+
+        step_id_raw = raw.get("id")
+        step_id = str(step_id_raw).strip() if isinstance(step_id_raw, str) and step_id_raw.strip() else None
+
+        done_raw = raw.get("done")
+        if isinstance(done_raw, bool):
+            done = done_raw
+        else:
+            done = str(raw.get("status") or "").strip().lower() in {"done", "completed"}
+
+        step_tests: List[str] = []
+        step_seen: Set[str] = set()
+        raw_tests = raw.get("tests")
+        for raw_test in raw_tests if isinstance(raw_tests, list) else []:
+            test_id = str(raw_test or "").strip()
+            if not test_id or test_id in step_seen:
+                continue
+            step_seen.add(test_id)
+            step_tests.append(test_id)
+
+        normalized.append(
+            {
+                "step_id": step_id,
+                "label": label,
+                "done": done,
+                "tests": step_tests,
+            }
+        )
+
+    return normalized
 
 
 async def _emit_plan_progress_notification(
@@ -1471,11 +1545,24 @@ async def delete_plan_endpoint(
 # ── Active work inference ────────────────────────────────────────
 
 
+class ActiveWorkStep(BaseModel):
+    step_id: Optional[str] = None
+    label: str
+    done: bool = False
+    tests: List[str] = Field(default_factory=list)
+
+
 class ActiveWorkCheckpoint(BaseModel):
     checkpoint_id: str
     checkpoint_label: str
     confidence: Literal["high", "medium", "low"]
     reason: str
+    status: Optional[str] = None
+    points_done: Optional[int] = None
+    points_total: Optional[int] = None
+    tests: List[str] = Field(default_factory=list)
+    evidence_count: int = 0
+    steps: List[ActiveWorkStep] = Field(default_factory=list)
 
 
 class ActiveWorkResponse(BaseModel):
@@ -1511,11 +1598,24 @@ async def get_active_work(
     # Build checkpoint lookup
     cp_map: dict[str, dict] = {}
     for cp in checkpoints:
-        cp_id = cp.get("id", "") if isinstance(cp, dict) else getattr(cp, "id", "")
-        cp_label = cp.get("label", cp_id) if isinstance(cp, dict) else getattr(cp, "label", cp_id)
-        cp_status = cp.get("status", "") if isinstance(cp, dict) else getattr(cp, "status", "")
-        if cp_id:
-            cp_map[cp_id] = {"id": cp_id, "label": cp_label or cp_id, "status": cp_status}
+        cp_data = dict(cp) if isinstance(cp, dict) else {}
+        cp_id = str(cp_data.get("id", "")).strip()
+        if not cp_id:
+            continue
+        cp_label = str(cp_data.get("label", cp_id)).strip() or cp_id
+        cp_status = str(cp_data.get("status", "")).strip().lower()
+        points_done, points_total = _derive_checkpoint_points(cp_data)
+        evidence_value = cp_data.get("evidence")
+        cp_map[cp_id] = {
+            "id": cp_id,
+            "label": cp_label,
+            "status": cp_status,
+            "points_done": points_done,
+            "points_total": points_total,
+            "tests": _collect_checkpoint_tests(cp_data),
+            "evidence_count": len(evidence_value) if isinstance(evidence_value, list) else 0,
+            "steps": _normalize_checkpoint_steps_for_active_work(cp_data),
+        }
 
     # Heuristic 1: checkpoints with status "active" — direct match (high confidence)
     for cp_id, cp in cp_map.items():
@@ -1525,6 +1625,12 @@ async def get_active_work(
                 checkpoint_label=cp["label"],
                 confidence="high",
                 reason="Checkpoint status is active",
+                status=cp.get("status"),
+                points_done=cp.get("points_done"),
+                points_total=cp.get("points_total"),
+                tests=cp.get("tests") or [],
+                evidence_count=int(cp.get("evidence_count") or 0),
+                steps=cp.get("steps") or [],
             ))
             seen_ids.add(cp_id)
 
@@ -1543,12 +1649,18 @@ async def get_active_work(
                     checkpoint_label=cp["label"],
                     confidence="medium",
                     reason=f"Referenced in audit: {event.action} {event.entity_type}",
+                    status=cp.get("status"),
+                    points_done=cp.get("points_done"),
+                    points_total=cp.get("points_total"),
+                    tests=cp.get("tests") or [],
+                    evidence_count=int(cp.get("evidence_count") or 0),
+                    steps=cp.get("steps") or [],
                 ))
                 seen_ids.add(cp_id)
 
     # Heuristic 3: most recently updated checkpoint (from last_update timestamps)
     if not active:
-        latest_cp = None
+        latest_cp_id: Optional[str] = None
         latest_ts = ""
         for cp in checkpoints:
             lu = cp.get("last_update") if isinstance(cp, dict) else getattr(cp, "last_update", None)
@@ -1556,16 +1668,24 @@ async def get_active_work(
                 ts = lu.get("at", "") if isinstance(lu, dict) else getattr(lu, "at", "")
                 if ts > latest_ts:
                     latest_ts = ts
-                    latest_cp = cp
-        if latest_cp:
-            cp_id = latest_cp.get("id", "") if isinstance(latest_cp, dict) else getattr(latest_cp, "id", "")
-            cp_label = latest_cp.get("label", cp_id) if isinstance(latest_cp, dict) else getattr(latest_cp, "label", cp_id)
-            if cp_id and cp_id not in seen_ids:
+                    latest_cp_id = (
+                        str(cp.get("id", "")).strip() if isinstance(cp, dict)
+                        else str(getattr(cp, "id", "")).strip()
+                    )
+        if latest_cp_id and latest_cp_id not in seen_ids:
+            cp = cp_map.get(latest_cp_id)
+            if cp:
                 active.append(ActiveWorkCheckpoint(
-                    checkpoint_id=cp_id,
-                    checkpoint_label=cp_label or cp_id,
+                    checkpoint_id=latest_cp_id,
+                    checkpoint_label=cp["label"],
                     confidence="low",
                     reason="Most recently updated checkpoint",
+                    status=cp.get("status"),
+                    points_done=cp.get("points_done"),
+                    points_total=cp.get("points_total"),
+                    tests=cp.get("tests") or [],
+                    evidence_count=int(cp.get("evidence_count") or 0),
+                    steps=cp.get("steps") or [],
                 ))
 
     return ActiveWorkResponse(planId=plan_id, activeCheckpoints=active)

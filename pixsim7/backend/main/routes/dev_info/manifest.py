@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Service metadata and discovery endpoint",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",  # Routes already include /dev/info
     tags=["dev", "discovery", "metadata"],
     dependencies=[],

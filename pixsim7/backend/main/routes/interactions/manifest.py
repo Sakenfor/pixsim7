@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Interaction availability and execution - core interaction framework",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/interactions",
     tags=["interactions", "game"],
     dependencies=["auth"],

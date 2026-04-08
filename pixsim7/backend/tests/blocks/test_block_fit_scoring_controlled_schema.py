@@ -1,6 +1,7 @@
+from types import SimpleNamespace
+
 import pytest
 
-from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.prompt.block.fit_scoring import (
     compute_block_asset_fit,
     explain_fit_score,
@@ -24,13 +25,13 @@ def _make_block(
     ontology_ids: list[str],
     op: dict | None = None,
     extra_tags: dict | None = None,
-) -> PromptBlock:
+) -> SimpleNamespace:
     tags: dict = {"ontology_ids": ontology_ids}
     if op is not None:
         tags["op"] = op
     if extra_tags is not None:
         tags.update(extra_tags)
-    return PromptBlock(
+    return SimpleNamespace(
         block_id="test_block",
         text="test block",
         tags=tags,

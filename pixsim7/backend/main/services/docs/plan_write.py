@@ -63,7 +63,7 @@ DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown
 PLAN_LIST_FIELDS = ("code_paths", "companions", "handoffs", "depends_on", "phases")
 
 PLAN_MUTABLE_FIELDS = frozenset(
-    {"stage", "priority", "task_scope", "plan_type", "target", "checkpoints"}
+    {"stage", "priority", "task_scope", "plan_type", "target", "checkpoints", "parent_id"}
     | set(PLAN_LIST_FIELDS)
 )
 LIST_MUTABLE_FIELDS = frozenset({"tags"} | set(PLAN_LIST_FIELDS))

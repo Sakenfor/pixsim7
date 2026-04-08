@@ -18,6 +18,7 @@ manifest = PluginManifest(
     description="Preview stat tiers and levels for any stat type using world stat configurations",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/stats",
     tags=["stats", "preview"],
     dependencies=["auth"],

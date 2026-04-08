@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoints for AI model catalog and default model selection",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/ai-models
     tags=["dev", "ai", "models"],
     dependencies=[],  # Standalone, uses AI model registry

@@ -84,6 +84,47 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     }
   }, [tab.id]);
 
+  // Reconcile with server on mount — recover assistant responses lost during
+  // full page reload (e.g. Vite HMR fallback) where the bridge result arrived
+  // but the panel effect hadn't consumed it into the store yet.
+  useEffect(() => {
+    if (!tab.sessionId) return;
+    // Only reconcile if the last message is from the user (expecting a response)
+    const s = useAssistantChatStore.getState();
+    const local = s.getMessages(tab.id);
+    if (local.length === 0) return;
+    const last = local[local.length - 1];
+    if (last.role !== 'user') return;
+    // Don't reconcile if bridge is actively handling this tab
+    if (chatBridge.get(tab.id)) return;
+
+    // Small delay: give beforeunload keepalive flush time to land on the server
+    const timer = setTimeout(() => {
+      fetchServerMessages(tab.sessionId!).then((serverMsgs) => {
+        if (serverMsgs.length === 0) return;
+        // Find the matching user message on the server
+        const lastUserText = last.text;
+        let serverIdx = -1;
+        for (let i = serverMsgs.length - 1; i >= 0; i--) {
+          if (serverMsgs[i].role === 'user' && serverMsgs[i].text === lastUserText) {
+            serverIdx = i;
+            break;
+          }
+        }
+        if (serverIdx < 0 || serverIdx >= serverMsgs.length - 1) return;
+        const recovered = serverMsgs.slice(serverIdx + 1).filter((m) => m.role === 'assistant');
+        if (recovered.length === 0) return;
+        const st = useAssistantChatStore.getState();
+        // Re-check: another effect may have already appended
+        const current = st.getMessages(tab.id);
+        const currentLast = current[current.length - 1];
+        if (currentLast?.role !== 'user') return;
+        st.setMessages(tab.id, [...current, ...recovered]);
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [tab.id, tab.sessionId]);  
+
   // Draft: local state for responsive typing, synced to store
   const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
   useEffect(() => { useAssistantChatStore.getState().setDraft(tab.id, input); }, [input, tab.id]);

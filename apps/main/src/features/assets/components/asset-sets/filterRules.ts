@@ -18,7 +18,8 @@ export type FilterRuleType =
   | 'uploadSource'
   | 'sourceFolder'
   | 'providerStatus'
-  | 'analysisTags'
+  | 'contentElements'
+  | 'styleTags'
   | 'missingMetadata'
   | 'includeArchived';
 
@@ -42,7 +43,8 @@ export const RULE_DEFINITIONS: Record<FilterRuleType, RuleDefinition> = {
   uploadSource:    { label: 'Upload Source',    icon: 'upload',      filterKeys: ['upload_method' as keyof AssetFilters] },
   sourceFolder:    { label: 'Source Folder',    icon: 'folderTree',  filterKeys: ['source_path' as keyof AssetFilters] },
   providerStatus:  { label: 'Provider Status',  icon: 'shield',      filterKeys: ['provider_status'] },
-  analysisTags:    { label: 'Prompt Tags',      icon: 'sparkles',    filterKeys: ['analysis_tags'] },
+  contentElements: { label: 'Content',           icon: 'layers',      filterKeys: ['content_elements'] },
+  styleTags:       { label: 'Style',             icon: 'sparkles',    filterKeys: ['style_tags'] },
   missingMetadata: { label: 'Missing Metadata', icon: 'fileQuestion', filterKeys: ['missing_prompt' as keyof AssetFilters, 'missing_analysis' as keyof AssetFilters, 'missing_embedding' as keyof AssetFilters, 'missing_tags' as keyof AssetFilters] },
   includeArchived: { label: 'Include Archived', icon: 'archive',     filterKeys: ['include_archived'] },
 };
@@ -50,7 +52,7 @@ export const RULE_DEFINITIONS: Record<FilterRuleType, RuleDefinition> = {
 export const RULE_ORDER: FilterRuleType[] = [
   'tags', 'mediaType', 'search', 'provider', 'uploadSource', 'sourceFolder',
   'dateRange', 'dimensions', 'operationType', 'lineage',
-  'analysisTags', 'providerStatus', 'missingMetadata',
+  'contentElements', 'styleTags', 'providerStatus', 'missingMetadata',
   'sortOrder', 'maxResults', 'includeArchived',
 ];
 
@@ -61,7 +63,7 @@ export const PRIMARY_RULES: FilterRuleType[] = [
 
 /** Overflow chips — shown in the "..." menu. */
 export const OVERFLOW_RULES: FilterRuleType[] = [
-  'provider', 'dimensions', 'operationType', 'lineage', 'analysisTags', 'providerStatus',
+  'provider', 'dimensions', 'operationType', 'lineage', 'contentElements', 'styleTags', 'providerStatus',
   'missingMetadata', 'sortOrder', 'maxResults', 'includeArchived',
 ];
 
@@ -119,10 +121,15 @@ export function getActiveCount(
       return maxResults != null ? 1 : 0;
     case 'providerStatus':
       return filters.provider_status ? 1 : 0;
-    case 'analysisTags': {
-      const tags = filters.analysis_tags;
-      if (!tags) return 0;
-      return Array.isArray(tags) ? tags.length : 1;
+    case 'contentElements': {
+      const ce = filters.content_elements;
+      if (!ce) return 0;
+      return Array.isArray(ce) ? ce.length : 1;
+    }
+    case 'styleTags': {
+      const st = filters.style_tags;
+      if (!st) return 0;
+      return Array.isArray(st) ? st.length : 1;
     }
     case 'missingMetadata': {
       let c = 0;

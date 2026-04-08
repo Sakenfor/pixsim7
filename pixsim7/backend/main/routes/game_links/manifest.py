@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Template-to-runtime entity resolution via ObjectLink",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/links",
     tags=["game-links"],
     dependencies=["auth"],

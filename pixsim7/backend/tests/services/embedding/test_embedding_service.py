@@ -28,7 +28,7 @@ except ImportError:
 # ===== Helpers =====
 
 def _make_block(**overrides):
-    """Create a minimal mock PromptBlock."""
+    """Create a minimal mock block."""
     block = MagicMock()
     block.id = overrides.get("id", uuid4())
     block.block_id = overrides.get("block_id", "test_block")

@@ -90,7 +90,11 @@ async def prepare_import_payloads(
     )
 
     analysis = await analyze_prompt(spec.prompt_text)
-    auto_tags: List[str] = analysis.get("tags", [])
+    candidates = analysis.get("candidates", [])
+
+    # Derive flat tag slugs from candidates for auto-tagging
+    from pixsim7.backend.main.services.prompt.tag_derivation import derive_flat_tags
+    auto_tags: List[str] = derive_flat_tags(candidates) if candidates else []
 
     # Family tags: explicit + auto tags (deduplicated)
     family_tags = sorted(set(spec.family_tags + auto_tags))

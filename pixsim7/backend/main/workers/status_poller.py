@@ -15,6 +15,7 @@ from typing import Any, Iterable
 
 from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation
@@ -167,10 +168,12 @@ _cancel_first_seen: dict[int, float] = {}  # generation_id -> monotonic timestam
 _poll_in_flight: set[int] = set()  # generation IDs currently being polled
 
 # Delayed moderation re-check: after a video completes, re-check status
-# after a delay to see if Pixverse flagged it post-delivery.
-# Key: asset_id, Value: (provider_job_id, account_id, monotonic_deadline, generation_id)
-_moderation_recheck: dict[int, tuple[str, int, float, int]] = {}
-_MODERATION_RECHECK_DELAY_SEC = 90
+# at staggered intervals to detect post-delivery flagging by Pixverse.
+# Key: asset_id, Value: (provider_job_id, account_id, monotonic_deadline, generation_id, attempt, operation_type)
+_moderation_recheck: dict[int, tuple[str, int, float, int, int, OperationType]] = {}
+# Staggered delays: 90s, 3min, 5min — catches flagging that happens up to ~5min post-delivery
+_MODERATION_RECHECK_DELAYS_SEC = (90, 180, 300)
+_MODERATION_RECHECK_MAX_ATTEMPTS = len(_MODERATION_RECHECK_DELAYS_SEC)
 
 
 def _has_pending_cancel(generation_model: Any) -> bool:
@@ -1391,11 +1394,13 @@ async def _poll_single_generation(
                         _moderation_recheck[asset.id] = (
                             submission.provider_job_id,
                             account.id,
-                            time.monotonic() + _MODERATION_RECHECK_DELAY_SEC,
+                            time.monotonic() + _MODERATION_RECHECK_DELAYS_SEC[0],
                             generation.id,
+                            0,  # attempt index
+                            generation.operation_type,
                         )
 
-                    # Tag assets that completed despite a prior filtered attempt
+                    # Mark assets that completed despite a prior filtered attempt
                     if generation.attempt_id and generation.attempt_id > 1:
                         had_filtered = (await db.execute(
                             select(func.count()).select_from(ProviderSubmission).where(
@@ -1405,10 +1410,17 @@ async def _poll_single_generation(
                             )
                         )).scalar_one()
                         if had_filtered > 0:
-                            existing_tags = asset.tags or []
-                            if "moderation-retry" not in existing_tags:
-                                asset.tags = existing_tags + ["moderation-retry"]
+                            meta = asset.media_metadata or {}
+                            if not meta.get("moderation_retry"):
+                                meta["moderation_retry"] = True
+                                asset.media_metadata = meta
+                                flag_modified(asset, "media_metadata")
                                 await db.commit()
+                                logger.info(
+                                    "moderation_retry_tagged",
+                                    asset_id=asset.id,
+                                    generation_id=generation.id,
+                                )
 
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
@@ -1824,13 +1836,14 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     missing_provider_job_generation_ids.append(_poll_result.generation_id)
 
             # ===== MODERATION RE-CHECKS =====
-            # Re-check recently completed videos to detect post-delivery flagging.
+            # Re-check recently completed videos at staggered intervals
+            # to detect post-delivery flagging (90s, 3min, 5min).
             now_mono = time.monotonic()
             due_rechecks = [
                 (asset_id, info) for asset_id, info in _moderation_recheck.items()
                 if now_mono >= info[2]
             ]
-            for asset_id, (provider_job_id, account_id, _, gen_id) in due_rechecks:
+            for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type) in due_rechecks:
                 _moderation_recheck.pop(asset_id, None)
                 try:
                     recheck_account = await db.get(ProviderAccount, account_id)
@@ -1839,26 +1852,49 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         result = await PixverseProvider().check_status(
                             account=recheck_account,
                             provider_job_id=provider_job_id,
-                            operation_type=OperationType.IMAGE_TO_VIDEO,
+                            operation_type=op_type,
                         )
                         if result.status == ProviderStatus.FILTERED:
                             asset = await db.get(Asset, asset_id)
-                            if asset and asset.provider_status != "flagged":
-                                asset.provider_status = "flagged"
-                                existing_tags = asset.tags or []
-                                if "moderation-flagged" not in existing_tags:
-                                    asset.tags = existing_tags + ["moderation-flagged"]
-                                await db.commit()
-                                logger.info(
-                                    "moderation_recheck_flagged",
+                            if asset:
+                                meta = asset.media_metadata or {}
+                                if not meta.get("provider_flagged"):
+                                    meta["provider_flagged"] = True
+                                    meta["provider_flagged_reason"] = "post_delivery_moderation"
+                                    asset.media_metadata = meta
+                                    flag_modified(asset, "media_metadata")
+                                    await db.commit()
+                                    logger.info(
+                                        "moderation_recheck_flagged",
+                                        asset_id=asset_id,
+                                        generation_id=gen_id,
+                                        provider_job_id=provider_job_id,
+                                        attempt=attempt,
+                                    )
+                        else:
+                            # Not flagged yet — schedule next attempt if we have retries left
+                            next_attempt = attempt + 1
+                            if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
+                                delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
+                                _moderation_recheck[asset_id] = (
+                                    provider_job_id,
+                                    account_id,
+                                    time.monotonic() + delay,
+                                    gen_id,
+                                    next_attempt,
+                                    op_type,
+                                )
+                                logger.debug(
+                                    "moderation_recheck_retry_scheduled",
                                     asset_id=asset_id,
-                                    generation_id=gen_id,
-                                    provider_job_id=provider_job_id,
+                                    attempt=next_attempt,
+                                    delay_sec=delay,
                                 )
                 except Exception as e:
-                    logger.debug(
+                    logger.warning(
                         "moderation_recheck_error",
                         asset_id=asset_id,
+                        attempt=attempt,
                         error=str(e),
                     )
 

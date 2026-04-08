@@ -111,7 +111,6 @@ class AssetSearchMixin:
         similar_to_embedding=None,
     ):
         from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
-        from sqlalchemy.dialects.postgresql import JSONB
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
@@ -237,35 +236,38 @@ class AssetSearchMixin:
         if sync_status:
             query = query.where(Asset.sync_status == sync_status)
         if provider_status:
-            provider_status_expr = case(
-                (Asset.remote_url.ilike("http%"), literal("ok")),
-                (
-                    and_(
-                        Asset.provider_asset_id.isnot(None),
-                        ~Asset.provider_asset_id.ilike("local_%"),
-                    ),
-                    literal("ok"),
-                ),
-                # Cross-uploaded to at least one provider
-                (
-                    and_(
-                        Asset.provider_uploads.isnot(None),
-                        cast(Asset.provider_uploads, String) != '{}',
-                    ),
-                    literal("ok"),
-                ),
-                (
-                    and_(
-                        Asset.provider_asset_id.isnot(None),
-                        Asset.provider_asset_id.ilike("local_%"),
-                    ),
-                    literal("local_only"),
-                ),
-                else_=literal("unknown"),
-            )
+            # "flagged" is stored in media_metadata, not derivable from URL heuristics
             if provider_status == "flagged":
-                query = query.where(literal(False))
+                query = query.where(
+                    Asset.media_metadata["provider_flagged"].as_string() == "true"
+                )
             else:
+                provider_status_expr = case(
+                    (Asset.remote_url.ilike("http%"), literal("ok")),
+                    (
+                        and_(
+                            Asset.provider_asset_id.isnot(None),
+                            ~Asset.provider_asset_id.ilike("local_%"),
+                        ),
+                        literal("ok"),
+                    ),
+                    # Cross-uploaded to at least one provider
+                    (
+                        and_(
+                            Asset.provider_uploads.isnot(None),
+                            cast(Asset.provider_uploads, String) != '{}',
+                        ),
+                        literal("ok"),
+                    ),
+                    (
+                        and_(
+                            Asset.provider_asset_id.isnot(None),
+                            Asset.provider_asset_id.ilike("local_%"),
+                        ),
+                        literal("local_only"),
+                    ),
+                    else_=literal("unknown"),
+                )
                 query = query.where(provider_status_expr == provider_status)
 
         # Date range filters
@@ -404,29 +406,34 @@ class AssetSearchMixin:
                     )
                 )
 
-        # Prompt analysis tags filter (supports multi + all/any)
-        analysis_tags = _normalize_list(filters.get("analysis_tags") if filters else None)
-        analysis_mode = None
-        if filters:
-            analysis_mode = filters.get("analysis_tags__mode") or filters.get("analysis_tags_mode")
-        if analysis_tags:
-            query = query.where(Asset.prompt_analysis.isnot(None))
-            prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
-            per_tag_contains = [
-                or_(
-                    prompt_jsonb.contains({"tags_flat": [tag]}),
-                    prompt_jsonb.contains({"tags": [{"tag": tag}]}),
-                    prompt_jsonb.contains({"tags": [tag]}),
+        # Namespace-based tag filters — all query asset_tag join table by slug.
+        for ns_key in ("content_elements", "style_tags", "provider_id", "effective_provider_id", "operation_type"):
+            ns_values = _normalize_list(filters.get(ns_key) if filters else None)
+            if not ns_values:
+                continue
+            ns_mode = None
+            if filters:
+                ns_mode = filters.get(f"{ns_key}__mode") or filters.get(f"{ns_key}_mode")
+            if ns_mode == "all" and len(ns_values) > 1:
+                ns_subquery = (
+                    select(AssetTag.asset_id)
+                    .join(Tag, Tag.id == AssetTag.tag_id)
+                    .where(Tag.slug.in_(ns_values))
+                    .group_by(AssetTag.asset_id)
+                    .having(func.count(distinct(Tag.slug)) == len(ns_values))
+                    .subquery()
                 )
-                for tag in analysis_tags
-            ]
-            # Use root-level JSONB containment so the existing GIN index on
-            # (prompt_analysis::jsonb) can satisfy analysis-tag filters.
-            if analysis_mode == "all" and len(analysis_tags) > 1:
-                query = query.where(and_(*per_tag_contains))
+                query = query.where(Asset.id.in_(select(ns_subquery.c.asset_id)))
             else:
                 query = query.where(
-                    or_(*per_tag_contains)
+                    exists(
+                        select(AssetTag.asset_id)
+                        .join(Tag, Tag.id == AssetTag.tag_id)
+                        .where(
+                            AssetTag.asset_id == Asset.id,
+                            Tag.slug.in_(ns_values),
+                        )
+                    )
                 )
 
         # Group filter (group_by + group_key or group_path)

@@ -89,7 +89,7 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       label: config.label,
       priority: effectivePriority,
       exposeToContextMenu: true,
-      isAvailable: () => true,
+      isAvailable: () => config.isOpen,
       getValue: () => generationWidgetValue,
     }),
     [generationWidgetValue, widgetProviderId, config.label, effectivePriority],

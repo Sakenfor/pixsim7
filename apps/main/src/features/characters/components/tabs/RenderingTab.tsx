@@ -2,6 +2,8 @@ import { Button, FormField, Input, Select } from '@pixsim7/shared.ui';
 
 import type { CharacterDetail } from '@lib/api/characters';
 
+import { TemplateResolver } from '@features/prompts/components/shared/TemplateResolver';
+
 const RENDER_STYLES = ['realistic', 'stylized', 'anime'];
 
 export interface RenderingTabProps {
@@ -11,6 +13,7 @@ export interface RenderingTabProps {
 
 export function RenderingTab({ character, onChange }: RenderingTabProps) {
   const images = character.reference_images ?? [];
+  const characterId = character.character_id;
 
   const handleAddImage = () => {
     onChange({ reference_images: [...images, ''] });
@@ -42,15 +45,27 @@ export function RenderingTab({ character, onChange }: RenderingTabProps) {
         </Select>
       </FormField>
 
-      <FormField label="Render Instructions">
-        <textarea
-          className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-blue-500 focus:outline-none"
-          rows={4}
-          value={character.render_instructions ?? ''}
-          onChange={(e) => onChange({ render_instructions: e.target.value })}
-          placeholder="Realistic fur rendering. Maintain consistent lighting..."
+      {/* Template resolver — live preview of species template expansion */}
+      {characterId && (
+        <TemplateResolver
+          context={{ character_id: characterId }}
+          initialProse={character.render_instructions ?? ''}
+          onSave={(prose) => onChange({ render_instructions: prose })}
         />
-      </FormField>
+      )}
+
+      {/* Fallback: plain textarea when no character_id yet (create mode) */}
+      {!characterId && (
+        <FormField label="Render Instructions">
+          <textarea
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-blue-500 focus:outline-none"
+            rows={4}
+            value={character.render_instructions ?? ''}
+            onChange={(e) => onChange({ render_instructions: e.target.value })}
+            placeholder="Realistic fur rendering. Maintain consistent lighting..."
+          />
+        </FormField>
+      )}
 
       <FormField label="Reference Images">
         <p className="mb-1.5 text-xs text-neutral-500">

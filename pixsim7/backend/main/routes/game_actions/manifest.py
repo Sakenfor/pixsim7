@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Game action type registry for dynamic UI generation",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/actions",
     tags=["game-actions"],
     dependencies=["auth"],

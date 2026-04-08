@@ -214,7 +214,7 @@ export function PromptAuthoringEditor() {
     ]),
   );
 
-  const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET, { includeUnavailable: true });
   const dedupedWidgets = useMemo(() => {
     const seen = new Set<string>();
     return widgets.filter(({ provider }) => {

@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Asset analysis jobs - face detection, scene tagging, content moderation, etc.",
     author="PixSim Team",
     kind="route",
+    service="analysis",
     prefix="/api/v1",
     tags=["analyses"],
     dependencies=["auth", "assets"],

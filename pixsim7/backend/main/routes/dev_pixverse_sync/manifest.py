@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dry-run Pixverse video sync for a provider account",
     author="PixSim Team",
     kind="route",
+    service="generation",
     prefix="/api/v1",  # Router already includes /dev/pixverse-sync
     tags=["dev", "pixverse", "sync"],
     dependencies=["auth"],

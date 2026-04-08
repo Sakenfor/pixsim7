@@ -574,6 +574,14 @@ class AgentPool:
                         f.write(post_session_id)
                 except OSError:
                     pass
+            # Update in-process dispatch session so late MCP tool calls
+            # (e.g. log_work after first turn) resolve to the correct session.
+            if post_session_id:
+                try:
+                    from pixsim7.client.mcp_server import set_dispatch_session
+                    set_dispatch_session(post_session_id)
+                except ImportError:
+                    pass
             return session.session_id, response
         except asyncio.CancelledError:
             # Cancel/resend races can interrupt a turn mid-flight. Force a restart

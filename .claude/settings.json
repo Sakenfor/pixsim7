@@ -4,9 +4,14 @@
       "Read",
       "Edit",
       "Write",
-      "Bash",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "WebFetch",
+      "NotebookEdit",
+      "Bash"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PreToolUse": []
   }
 }

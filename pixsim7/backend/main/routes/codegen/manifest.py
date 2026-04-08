@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Admin endpoints to list and run codegen tasks",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",
     tags=["admin", "codegen", "dev"],
     dependencies=["auth"],

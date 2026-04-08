@@ -198,30 +198,43 @@ class CharacterTemplateEngine:
         traits: Dict[str, Any],
         species: Optional[SpeciesDef],
     ) -> Any:
+        value, _ = self._resolve_visual_trait_value_sourced(key, traits, species)
+        return value
+
+    def _resolve_visual_trait_value_sourced(
+        self,
+        key: str,
+        traits: Dict[str, Any],
+        species: Optional[SpeciesDef],
+    ) -> tuple[Any, Optional[str]]:
+        """Resolve a visual trait value and return (value, source).
+
+        Source is one of: "visual_trait", "species_anatomy", "species_default", or None.
+        """
         if key in traits:
-            return traits.get(key)
+            return traits.get(key), "visual_trait"
 
         if not species:
-            return None
+            return None, None
 
         if key == "stance":
             if species.anatomy_map.get("stance"):
-                return species.anatomy_map.get("stance")
-            return species.default_stance
+                return species.anatomy_map.get("stance"), "species_anatomy"
+            return species.default_stance, "species_default"
 
         if key in species.anatomy_map:
-            return species.anatomy_map.get(key)
+            return species.anatomy_map.get(key), "species_anatomy"
 
         if key == "movement" and species.movement_verbs:
-            return species.movement_verbs[0]
+            return species.movement_verbs[0], "species_default"
 
         if key.startswith("pronoun."):
             pronoun_key = key.split(".", 1)[1]
-            return species.pronoun_set.get(pronoun_key)
+            return species.pronoun_set.get(pronoun_key), "species_default"
         if key == "pronoun":
-            return species.pronoun_set.get("subject")
+            return species.pronoun_set.get("subject"), "species_default"
 
-        return None
+        return None, None
 
     def _flatten_trait_value(self, value: Any) -> list[str]:
         if value is None:
@@ -293,6 +306,143 @@ class CharacterTemplateEngine:
         cleaned = re.sub(r"\s{2,}", " ", cleaned)
         cleaned = cleaned.strip(" ,;:-")
         return cleaned
+
+    async def resolve_character_template(
+        self,
+        character_id: str,
+        template_source: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Resolve a character's template into expanded prose with field source map.
+
+        Args:
+            character_id: Character to resolve
+            template_source: Optional template override. If not provided, uses
+                the character's species render_template.
+
+        Returns:
+            {
+                "expanded_text": "sleek octopod detective, waist-high mantle, ...",
+                "template_source": "{build}[, {height}]...",
+                "field_map": [
+                    {"key": "build", "value": "sleek octopod detective", "source": "visual_trait"},
+                    {"key": "height", "value": "waist-high mantle", "source": "visual_trait"},
+                    {"key": "stance", "value": "upright on two rear tentacles", "source": "species_anatomy"},
+                    ...
+                ],
+                "character": {"character_id": "...", "name": "...", "display_name": "..."},
+                "species": "cephalopod",
+                "full_expansion": "Neris the Octopod Detective—sleek octopod detective, ..."
+            }
+        """
+        character = await self.service.get_character_by_id(character_id)
+        if not character:
+            return {"error": f"Character '{character_id}' not found"}
+
+        traits = character.visual_traits if isinstance(character.visual_traits, dict) else {}
+        species = self._get_species_definition(character)
+
+        # Determine template source
+        effective_template = template_source
+        if not effective_template and species and species.render_template:
+            effective_template = species.render_template
+
+        # Build field map by resolving each placeholder
+        field_map: list[Dict[str, Any]] = []
+        if effective_template:
+            for match in self._RENDER_TEMPLATE_PLACEHOLDER.finditer(effective_template):
+                key = match.group(1)
+                # Skip duplicates (same key appears multiple times in template)
+                if any(f["key"] == key for f in field_map):
+                    continue
+                value, source = self._resolve_visual_trait_value_sourced(key, traits, species)
+                rendered = self._stringify_trait_value(value)
+                field_map.append({
+                    "key": key,
+                    "value": rendered if rendered else None,
+                    "source": source,
+                })
+        else:
+            # No template — use priority-based fallback, still track sources
+            priority_keys = (
+                list(species.visual_priority)
+                if species and species.visual_priority
+                else list(self._DEFAULT_VISUAL_PRIORITY)
+            )
+            seen = set()
+            for key in priority_keys:
+                seen.add(key)
+                value, source = self._resolve_visual_trait_value_sourced(key, traits, species)
+                rendered = self._stringify_trait_value(value)
+                if rendered:
+                    field_map.append({"key": key, "value": rendered, "source": source})
+            for key in traits:
+                if key not in seen:
+                    field_map.append({"key": key, "value": self._stringify_trait_value(traits[key]), "source": "visual_trait"})
+
+        # Expanded prose
+        expanded_text = self._build_visual_description(character)
+        full_expansion = self._expand_character(character)
+
+        # Build available_keys: all keys from species with defaults + origin
+        available_keys = self._build_available_keys(effective_template, species)
+
+        return {
+            "expanded_text": expanded_text,
+            "template_source": effective_template or None,
+            "field_map": field_map,
+            "available_keys": available_keys,
+            "character": {
+                "character_id": character.character_id,
+                "name": character.name,
+                "display_name": character.display_name,
+            },
+            "species": character.species,
+            "full_expansion": full_expansion,
+        }
+
+    def _build_available_keys(
+        self,
+        template: Optional[str],
+        species: Optional[SpeciesDef],
+    ) -> list[Dict[str, Any]]:
+        """Build list of available visual trait keys with defaults from species.
+
+        Each entry: {"key": str, "default": str|None, "origin": "template"|"anatomy"|"priority"|"common"}
+        """
+        keys: dict[str, Dict[str, Any]] = {}
+
+        # 1. Keys from render_template placeholders (highest priority)
+        if template:
+            for match in self._RENDER_TEMPLATE_PLACEHOLDER.finditer(template):
+                key = match.group(1)
+                if key not in keys:
+                    default = None
+                    if species and key in species.anatomy_map:
+                        default = species.anatomy_map[key]
+                    elif species and key == "stance":
+                        default = species.anatomy_map.get("stance") or species.default_stance
+                    keys[key] = {"key": key, "default": default, "origin": "template"}
+
+        # 2. Keys from anatomy_map (skip explicitly empty values like tail:"")
+        if species:
+            for key, default in species.anatomy_map.items():
+                if key not in keys and default:
+                    keys[key] = {"key": key, "default": default, "origin": "anatomy"}
+
+        # 3. Keys from visual_priority
+        if species and species.visual_priority:
+            for key in species.visual_priority:
+                if key not in keys:
+                    default = species.anatomy_map.get(key)
+                    keys[key] = {"key": key, "default": default, "origin": "priority"}
+
+        # 4. Common defaults if no species
+        if not species:
+            for key in self._DEFAULT_VISUAL_PRIORITY:
+                if key not in keys:
+                    keys[key] = {"key": key, "default": None, "origin": "common"}
+
+        return list(keys.values())
 
     async def find_character_references(
         self,

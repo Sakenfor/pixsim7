@@ -8,7 +8,7 @@ export default definePanel({
   component: RecentGenerationsPanel,
   category: 'generation',
   panelRole: 'sub-panel',
-  tags: ['generation', 'recent', 'output'],
+  tags: ['generation', 'recent', 'output', 'asset-gallery'],
   icon: 'history',
   description: 'Browse recently generated assets',
   consumesCapabilities: ['generation:scope'],

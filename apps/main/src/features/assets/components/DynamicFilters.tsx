@@ -25,9 +25,10 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   q: { icon: 'search', order: 0 },
   media_type: { icon: 'video', order: 1 },
   provider_id: { icon: 'globe', order: 2 },
-  effective_provider_id: { icon: 'plug', order: 2 },
+  operation_type: { icon: 'wand', order: 2 },
   tag: { icon: 'tag', order: 3 },
-  analysis_tags: { icon: 'sparkles', order: 4 },
+  content_elements: { icon: 'layers', order: 4 },
+  style_tags: { icon: 'sparkles', order: 5 },
   upload_method: { icon: 'upload', order: 5 },
   // Upload-context-derived filters (shown when relevant upload_method is active)
   mask_type: { icon: 'paintbrush', order: 6 },
@@ -53,8 +54,9 @@ const GROUPED_FILTER_CONFIG: Record<string, {
   ungroupedKey?: string;
   rootLabel?: string;
 }> = {
-  tag:             { separator: ':', ungroupedKey: 'other' },
-  analysis_tags:   { separator: ':', ungroupedKey: 'other' },
+  tag:              { separator: ':', ungroupedKey: 'other' },
+  content_elements: { separator: ':', ungroupedKey: 'other' },
+  style_tags:       { separator: ':', ungroupedKey: 'other' },
   source_path:     { separator: '/', rootLabel: '(root)' },
   source_filename: { separator: '/', rootLabel: '(root)', ungroupedKey: 'other' },
 };

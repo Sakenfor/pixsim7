@@ -25,7 +25,6 @@ import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/a
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
 import { useDeleteModalStore } from '@features/assets/stores/deleteModalStore';
 import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
-import { useRelatedAssetsStore } from '@features/assets/stores/relatedAssetsStore';
 import {
   CAP_ASSET,
   CAP_GENERATION_WIDGET,
@@ -824,112 +823,74 @@ const MORE_FROM_CONTEXT_KEYS = [
   { key: 'source_filename', label: 'Same source video', icon: 'video' },
 ] as const;
 
-function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
-  const items: MenuAction[] = [];
+/** Build the list of "More from..." variant presets for an asset. */
+function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; icon: string; filters: Record<string, unknown> }[] {
+  const variants: { id: string; label: string; icon: string; filters: Record<string, unknown> }[] = [];
   const uc = asset.uploadContext;
 
-  // Upload-context entries (folder path, site, source video)
   if (uc && typeof uc === 'object') {
-    // Unified folder path for local uploads
     const folder = uc.source_folder;
     if (folder) {
       const subfolder = uc.source_subfolder;
       const sourcePath = subfolder ? `${folder}/${subfolder}` : String(folder);
-      items.push({
-        id: 'asset:more-from:source_path',
-        label: `Same folder: ${sourcePath}`,
-        icon: 'folder',
-        execute: () => {
-          useRelatedAssetsStore.getState().open(
-            `Same folder: ${sourcePath}`,
-            { source_path: sourcePath },
-          );
-        },
-      });
+      variants.push({ id: 'source_path', label: `Same folder: ${sourcePath}`, icon: 'folder', filters: { source_path: sourcePath } });
     }
-
     for (const { key, label, icon } of MORE_FROM_CONTEXT_KEYS) {
       const value = uc[key];
       if (!value) continue;
       const display = String(value);
-      items.push({
-        id: `asset:more-from:${key}`,
-        label: `${label}: ${display}`,
-        icon,
-        execute: () => {
-          useRelatedAssetsStore.getState().open(
-            `${label}: ${display}`,
-            { [key]: display },
-          );
-        },
-      });
+      variants.push({ id: key, label: `${label}: ${display}`, icon, filters: { [key]: display } });
     }
-
-    // Source asset (lineage — frames extracted from this asset, etc.)
     const sourceAssetId = uc.source_asset_id;
     if (typeof sourceAssetId === 'number' && Number.isFinite(sourceAssetId)) {
-      items.push({
-        id: 'asset:more-from:source-asset',
-        label: `From asset #${sourceAssetId}`,
-        icon: 'image',
-        execute: () => {
-          useRelatedAssetsStore.getState().open(
-            `From asset #${sourceAssetId}`,
-            { source_asset_id: sourceAssetId },
-          );
-        },
-      });
+      variants.push({ id: 'source-asset', label: `From asset #${sourceAssetId}`, icon: 'image', filters: { source_asset_id: sourceAssetId } });
     }
   }
 
-  // Same generation/prompt (top-level field, not in uploadContext)
   if (asset.sourceGenerationId) {
-    items.push({
-      id: 'asset:more-from:generation',
-      label: 'Same generation',
-      icon: 'sparkles',
-      execute: () => {
-        useRelatedAssetsStore.getState().open(
-          `Generation #${asset.sourceGenerationId}`,
-          { source_generation_id: asset.sourceGenerationId! },
-        );
-      },
-    });
+    variants.push({ id: 'generation', label: 'Same generation', icon: 'sparkles', filters: { source_generation_id: asset.sourceGenerationId } });
+  }
+  if (asset.createdAt) {
+    variants.push({ id: 'neighborhood', label: 'Around this time', icon: 'clock', filters: { created_to: asset.createdAt, sort: 'new' } });
   }
 
-  // Visual similarity search (CLIP embeddings)
-  items.push({
-    id: 'asset:more-from:similar',
-    label: 'Similar content',
-    icon: 'search',
-    execute: () => {
-      const threshold = useMediaSettingsStore.getState().visualSimilarityThreshold;
-      useRelatedAssetsStore.getState().open(
-        `Similar to #${asset.id}`,
-        {
-          similar_to: asset.id,
-          similarity_threshold: Number.isFinite(threshold) ? threshold : 0.3,
-        },
-      );
+  const threshold = useMediaSettingsStore.getState().visualSimilarityThreshold;
+  variants.push({ id: 'similar', label: 'Similar content', icon: 'search', filters: { similar_to: asset.id, similarity_threshold: Number.isFinite(threshold) ? threshold : 0.3 } });
+
+  if (asset.sha256) {
+    variants.push({ id: 'sha256', label: `Same content (#${asset.sha256.slice(0, 8)})`, icon: 'copy', filters: { sha256: asset.sha256 } });
+  }
+
+  return variants;
+}
+
+/** Open a floating mini-gallery panel with variants for switching. */
+function openRelatedGallery(asset: AssetModel, variantId: string) {
+  const variants = buildMoreFromVariants(asset);
+  const active = variants.find((v) => v.id === variantId);
+  if (!active) return;
+
+  useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+    width: 620,
+    height: 520,
+    context: {
+      initialFilters: active.filters,
+      sourceLabel: active.label,
+      suppressHoverActions: true,
+      variants,
+      activeVariantId: variantId,
+      panelId: 'mini-gallery',
     },
   });
+}
 
-  // Same content hash (exact file duplicates / re-uploads)
-  if (asset.sha256) {
-    items.push({
-      id: 'asset:more-from:sha256',
-      label: `Same content (#${asset.sha256.slice(0, 8)})`,
-      icon: 'copy',
-      execute: () => {
-        useRelatedAssetsStore.getState().open(
-          `Same content (#${asset.sha256!.slice(0, 8)}...)`,
-          { sha256: asset.sha256! },
-        );
-      },
-    });
-  }
-
-  return items;
+function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
+  return buildMoreFromVariants(asset).map((v) => ({
+    id: `asset:more-from:${v.id}`,
+    label: v.label,
+    icon: v.icon,
+    execute: () => openRelatedGallery(asset, v.id),
+  }));
 }
 
 const moreFromSourceSubmenuAction: MenuAction = {
@@ -1189,15 +1150,23 @@ const archiveAssetAction: MenuAction = {
   requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => resolveAssets(ctx).length > 0,
   dynamicLabel: (ctx) => {
-    const count = resolveAssets(ctx).length;
-    return count > 1 ? `Archive (${count})` : 'Archive';
+    const assets = resolveAssets(ctx);
+    const count = assets.length;
+    const allArchived = assets.every((a) => a.isArchived);
+    const verb = allArchived ? 'Unarchive' : 'Archive';
+    return count > 1 ? `${verb} (${count})` : verb;
   },
   execute: async (ctx) => {
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
 
+    const allArchived = assets.every((a) => a.isArchived);
+    const archive = !allArchived;
+    const verb = archive ? 'Archived' : 'Unarchived';
+    const verbFail = archive ? 'archive' : 'unarchive';
+
     const results = await Promise.allSettled(
-      assets.map((asset) => archiveAsset(asset.id, true)),
+      assets.map((asset) => archiveAsset(asset.id, archive)),
     );
     const succeededAssetIds = results
       .map((result, index) => (result.status === 'fulfilled' ? assets[index]?.id : null))
@@ -1207,12 +1176,16 @@ const archiveAssetAction: MenuAction = {
 
     if (successCount > 0) {
       for (const assetId of succeededAssetIds) {
-        assetEvents.emitAssetDeleted(assetId);
+        if (archive) {
+          assetEvents.emitAssetDeleted(assetId);
+        } else {
+          assetEvents.emitAssetUpdated({ id: assetId, is_archived: false } as any);
+        }
       }
-      notify('success', `Archived ${successCount} asset${successCount === 1 ? '' : 's'}.`);
+      notify('success', `${verb} ${successCount} asset${successCount === 1 ? '' : 's'}.`);
     }
     if (errorCount > 0) {
-      notify('error', `Failed to archive ${errorCount} asset${errorCount === 1 ? '' : 's'}.`);
+      notify('error', `Failed to ${verbFail} ${errorCount} asset${errorCount === 1 ? '' : 's'}.`);
     }
   },
 };

@@ -123,55 +123,83 @@ class RedisEventBridge:
         await self._publisher.publish(self.CHANNEL, json.dumps(payload))
 
     async def _listen_loop(self):
-        try:
-            async for message in self._pubsub.listen():
+        backoff = 1
+        while not self._stopping.is_set():
+            try:
+                async for message in self._pubsub.listen():
+                    if self._stopping.is_set():
+                        return
+                    if message["type"] != "message":
+                        continue
+
+                    backoff = 1  # reset on successful message
+
+                    try:
+                        data = json.loads(message["data"])
+                    except json.JSONDecodeError:
+                        logger.warning("[EventBridge] Invalid message payload: %s", message["data"])
+                        continue
+
+                    if data.get("origin") == self._origin:
+                        continue
+
+                    try:
+                        timestamp = datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else None
+                    except ValueError:
+                        timestamp = None
+
+                    logger.info(
+                        "[EventBridge] Received event from Redis",
+                        extra={
+                            "role": self.role,
+                            "channel": self.CHANNEL,
+                            "event_type": data.get("event_type"),
+                            "event_id": data.get("event_id"),
+                            "origin": data.get("origin"),
+                            "event_data_summary": _summarize_event_data(
+                                data.get("event_type") or "",
+                                data.get("data") or {},
+                            ),
+                        },
+                    )
+                    await event_bus.publish(
+                        data.get("event_type"),
+                        data.get("data") or {},
+                        wait=False,
+                        strict=False,
+                        event_id=data.get("event_id"),
+                        timestamp=timestamp,
+                        propagate=False,
+                    )
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
                 if self._stopping.is_set():
-                    break
-                if message["type"] != "message":
-                    continue
-
-                try:
-                    data = json.loads(message["data"])
-                except json.JSONDecodeError:
-                    logger.warning("[EventBridge] Invalid message payload: %s", message["data"])
-                    continue
-
-                if data.get("origin") == self._origin:
-                    continue
-
-                try:
-                    timestamp = datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else None
-                except ValueError:
-                    timestamp = None
-
-                logger.info(
-                    "[EventBridge] Received event from Redis",
-                    extra={
-                        "role": self.role,
-                        "channel": self.CHANNEL,
-                        "event_type": data.get("event_type"),
-                        "event_id": data.get("event_id"),
-                        "origin": data.get("origin"),
-                        "event_data_summary": _summarize_event_data(
-                            data.get("event_type") or "",
-                            data.get("data") or {},
-                        ),
-                    },
+                    return
+                logger.error(
+                    "[EventBridge] Listener error, reconnecting in %ds: %s",
+                    backoff, exc, exc_info=True,
                 )
-                await event_bus.publish(
-                    data.get("event_type"),
-                    data.get("data") or {},
-                    wait=False,
-                    strict=False,
-                    event_id=data.get("event_id"),
-                    timestamp=timestamp,
-                    propagate=False,
-                )
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            if not self._stopping.is_set():
-                logger.error("[EventBridge] Listener error: %s", exc, exc_info=True)
+                try:
+                    await asyncio.sleep(backoff)
+                except asyncio.CancelledError:
+                    return
+                backoff = min(backoff * 2, 30)
+                # Re-subscribe after connection loss
+                try:
+                    self._subscriber = await redis.from_url(
+                        settings.redis_url,
+                        encoding="utf-8",
+                        decode_responses=True,
+                    )
+                    self._pubsub = self._subscriber.pubsub()
+                    await self._pubsub.subscribe(self.CHANNEL)
+                    logger.info(
+                        "[EventBridge] Listener reconnected",
+                        extra={"role": self.role, "channel": self.CHANNEL},
+                    )
+                except Exception as reconn_exc:
+                    logger.error("[EventBridge] Reconnect failed: %s", reconn_exc)
 
 
 _bridge: Optional[RedisEventBridge] = None

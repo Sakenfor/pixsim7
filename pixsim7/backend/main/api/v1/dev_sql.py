@@ -289,32 +289,32 @@ LIMIT 50;
     {
         "id": "gallery-filter-analysis-tags",
         "name": "Gallery Filter: analysis_tags",
-        "description": "Probe prompt_analysis tags_flat filter path using most common tag",
+        "description": "Probe analysis tag filter via asset_tag join table (source='analysis')",
         "category": "gallery",
         "sql": """
 WITH top_tag AS (
-    SELECT t.tag
-    FROM assets a
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE((a.prompt_analysis::jsonb)->'tags_flat', '[]'::jsonb)
-    ) AS t(tag)
-    WHERE a.user_id = {{current_user_id}}
+    SELECT t.slug, t.display_name, COUNT(DISTINCT at2.asset_id) AS cnt
+    FROM asset_tag at2
+    JOIN tag t ON t.id = at2.tag_id
+    JOIN assets a ON a.id = at2.asset_id
+    WHERE at2.source = 'analysis'
+      AND a.user_id = {{current_user_id}}
       AND a.is_archived = false
       AND a.searchable = true
       AND a.asset_kind = 'content'
-    GROUP BY t.tag
-    ORDER BY COUNT(*) DESC
+    GROUP BY t.slug, t.display_name
+    ORDER BY cnt DESC
     LIMIT 1
 )
 SELECT
     a.id,
     a.created_at,
-    tt.tag AS analysis_tag
+    tt.slug AS analysis_tag,
+    tt.cnt AS tag_count
 FROM assets a
-JOIN top_tag tt ON (a.prompt_analysis::jsonb) @> jsonb_build_object(
-    'tags_flat',
-    jsonb_build_array(tt.tag)
-)
+JOIN asset_tag at2 ON at2.asset_id = a.id AND at2.source = 'analysis'
+JOIN tag t ON t.id = at2.tag_id
+JOIN top_tag tt ON t.slug = tt.slug
 WHERE a.user_id = {{current_user_id}}
   AND a.is_archived = false
   AND a.searchable = true

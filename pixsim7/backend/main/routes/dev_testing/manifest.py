@@ -11,6 +11,7 @@ manifest = PluginManifest(
     description="Live test suite discovery and catalog validation",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",
     tags=["dev", "testing"],
     dependencies=[],

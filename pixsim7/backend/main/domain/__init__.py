@@ -24,7 +24,7 @@ from their respective submodules.
    - Generation, ProviderSubmission, ProviderAccount, ProviderCredit
    - Scene, SceneAsset, SceneConnection
    - LogEntry
-   - PromptFamily, PromptVersion, PromptBlock, PromptVersionBlock, PromptVariantFeedback
+   - PromptFamily, PromptVersion, BlockTemplate, PromptVersionBlock, PromptVariantFeedback
 
 🔒 Extended subsystems (import from submodules):
    - Providers domain: from pixsim7.backend.main.domain.providers import ...
@@ -97,7 +97,6 @@ from .account_event import AccountEvent, AccountEventType
 from .prompt import (
     PromptFamily,
     PromptVersion,
-    PromptBlock,
     BlockTemplate,
     PromptPackDraft,
     PromptPackPublication,
@@ -160,7 +159,6 @@ __all__ = [
     # Prompt domain
     "PromptFamily",
     "PromptVersion",
-    "PromptBlock",
     "BlockTemplate",
     "PromptPackDraft",
     "PromptPackPublication",

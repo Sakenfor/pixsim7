@@ -7,7 +7,7 @@ export default definePanel({
   title: 'Mini Gallery',
   component: MiniGallery,
   category: 'tools',
-  tags: ['gallery', 'assets', 'browse'],
+  tags: ['gallery', 'assets', 'browse', 'asset-gallery'],
   icon: 'image',
   description: 'Compact gallery panel for browsing and filtering assets',
   supportsCompactMode: true,

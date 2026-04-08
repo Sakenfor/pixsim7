@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Flow template graph and resolver endpoints for dev tools",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",  # Routes already include /dev/flows
     tags=["dev", "flows", "journeys"],
     dependencies=[],

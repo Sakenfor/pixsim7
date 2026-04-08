@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Structured hierarchical tag management",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["tags"],
     dependencies=["auth"],

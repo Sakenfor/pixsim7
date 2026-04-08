@@ -10,7 +10,7 @@ interface LogsStore {
   appendLine: (line: string) => void
 }
 
-const MAX_LINES = 500
+const MAX_LINES = 2000
 
 export const useLogsStore = create<LogsStore>((set) => ({
   lines: [],
@@ -20,7 +20,7 @@ export const useLogsStore = create<LogsStore>((set) => ({
   fetchLogs: async (key) => {
     set((s) => ({ loading: s.loadedKey !== key }))
     try {
-      const res = await api.getLogs(key, 300)
+      const res = await api.getLogs(key, 1000)
       set({ lines: res.lines, loading: false, loadedKey: key })
     } catch {
       set({ lines: [], loading: false, loadedKey: key })

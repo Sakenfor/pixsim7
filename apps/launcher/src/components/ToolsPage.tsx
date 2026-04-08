@@ -227,7 +227,7 @@ function MigrationsSection() {
                 ) : (
                   <div className="text-green-400">Up to date</div>
                 )}
-                {status.pending_error && <div className="text-red-400">{status.pending_error}</div>}
+                {status.pending_error && <div className="text-red-400 select-text whitespace-pre-wrap break-words">{status.pending_error}</div>}
               </div>
             ) : (
               <div className="text-[10px] text-gray-500 mb-2">Loading...</div>
@@ -474,10 +474,10 @@ function ResultBox({ result }: { result: { ok: boolean; result?: string; error?:
         {result.exit_code !== undefined && <span className="text-gray-500">exit={result.exit_code}</span>}
         {result.duration_ms !== undefined && <span className="text-gray-500">({result.duration_ms}ms)</span>}
       </div>
-      {result.result && <pre className="text-gray-300 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto">{result.result}</pre>}
-      {result.stdout && <pre className="text-gray-300 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto">{result.stdout}</pre>}
-      {result.stderr && <pre className="text-red-400 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto">{result.stderr}</pre>}
-      {result.error && <pre className="text-red-400 whitespace-pre-wrap text-[10px]">{result.error}</pre>}
+      {result.result && <pre className="text-gray-300 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto select-text">{result.result}</pre>}
+      {result.stdout && <pre className="text-gray-300 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto select-text">{result.stdout}</pre>}
+      {result.stderr && <pre className="text-red-400 whitespace-pre-wrap text-[10px] max-h-40 overflow-auto select-text">{result.stderr}</pre>}
+      {result.error && <pre className="text-red-400 whitespace-pre-wrap text-[10px] select-text break-words">{result.error}</pre>}
     </div>
   )
 }

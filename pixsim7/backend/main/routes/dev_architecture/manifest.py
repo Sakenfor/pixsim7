@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Live introspection of backend architecture for dev tools",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",  # Normalized to /api/v1 by plugin manager
     tags=["dev", "introspection", "architecture"],
     dependencies=[],

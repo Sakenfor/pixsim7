@@ -128,6 +128,17 @@ _request_token: contextvars.ContextVar[str | None] = contextvars.ContextVar("_re
 _request_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_session_id", default=None)
 _request_profile_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_request_profile_id", default=None)
 
+# In-process dispatch session — set by the bridge before each dispatch so
+# the MCP server can resolve the correct chat session without file I/O.
+_dispatch_session_id: str | None = None
+
+
+def set_dispatch_session(session_id: str | None) -> None:
+    """Set the active chat session for the current dispatch (bridge in-process)."""
+    global _dispatch_session_id
+    _dispatch_session_id = session_id
+
+
 # Cached contracts (fetched once, reused for filtering)
 _contracts_cache: list[dict] | None = None
 
@@ -845,23 +856,16 @@ def _read_session_sidecar() -> str | None:
 
     Resolution order:
     1. Per-request contextvar (HTTP mode — set from X-Chat-Session-Id header)
-    2. ``~/.pixsim/bridge_chat_session`` — shared HTTP MCP mode (bridge writes here)
-    3. ``{PIXSIM_TOKEN_FILE}.session`` — legacy STDIO mode (pool writes per-session)
+    2. In-process dispatch session (bridge sets before each dispatch — no file I/O)
+    3. ``{PIXSIM_TOKEN_FILE}.session`` — STDIO mode (pool writes per-session sidecar)
     """
     # HTTP mode: per-request header (cleanest path — no file I/O)
     ctx_session = _request_session_id.get()
     if ctx_session:
         return ctx_session
-    # HTTP mode fallback: fixed well-known path (sidecar file)
-    try:
-        from pathlib import Path
-        fixed = Path.home() / ".pixsim" / "bridge_chat_session"
-        if fixed.exists():
-            value = fixed.read_text().strip()
-            if value:
-                return value
-    except OSError:
-        pass
+    # Bridge in-process dispatch (same process, no I/O race)
+    if _dispatch_session_id:
+        return _dispatch_session_id
     # STDIO fallback: per-session sidecar
     token_file = os.environ.get("PIXSIM_TOKEN_FILE", "").strip()
     if not token_file:

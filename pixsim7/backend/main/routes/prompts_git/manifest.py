@@ -20,6 +20,7 @@ manifest = PluginManifest(
     description="Git-like version control for prompts - branches, merges, tags, rollback",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["prompts", "git", "versioning"],
     dependencies=["prompts"],  # Depends on base prompts route

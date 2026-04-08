@@ -985,14 +985,18 @@ export function ProviderStatusRuleEditor({
   );
 }
 
-export function AnalysisTagsRuleEditor({
+function NamespaceTagRuleEditor({
   filters,
   onChange,
+  filterKey,
+  placeholder,
 }: {
   filters: AssetFilters;
   onChange: (filters: AssetFilters) => void;
+  filterKey: keyof AssetFilters;
+  placeholder?: string;
 }) {
-  const raw = filters.analysis_tags;
+  const raw = filters[filterKey] as string | string[] | undefined;
   const selected = useMemo(() => {
     if (!raw) return [] as string[];
     return Array.isArray(raw) ? raw : [raw];
@@ -1003,19 +1007,19 @@ export function AnalysisTagsRuleEditor({
     (tag: string) => {
       const t = tag.trim().toLowerCase();
       if (t && !selected.includes(t)) {
-        onChange({ ...filters, analysis_tags: [...selected, t] });
+        onChange({ ...filters, [filterKey]: [...selected, t] });
       }
       setInput('');
     },
-    [selected, filters, onChange],
+    [selected, filters, onChange, filterKey],
   );
 
   const removeTag = useCallback(
     (tag: string) => {
       const next = selected.filter((t) => t !== tag);
-      onChange({ ...filters, analysis_tags: next.length > 0 ? next : undefined });
+      onChange({ ...filters, [filterKey]: next.length > 0 ? next : undefined });
     },
-    [selected, filters, onChange],
+    [selected, filters, onChange, filterKey],
   );
 
   return (
@@ -1052,11 +1056,19 @@ export function AnalysisTagsRuleEditor({
             removeTag(selected[selected.length - 1]);
           }
         }}
-        placeholder={selected.length > 0 ? 'Add more…' : 'Type prompt-derived tag…'}
+        placeholder={selected.length > 0 ? 'Add more…' : placeholder ?? 'Type tag…'}
         className={ruleInputClasses}
       />
     </div>
   );
+}
+
+export function ContentElementsRuleEditor(props: { filters: AssetFilters; onChange: (f: AssetFilters) => void }) {
+  return <NamespaceTagRuleEditor {...props} filterKey="content_elements" placeholder="e.g. has:character" />;
+}
+
+export function StyleTagsRuleEditor(props: { filters: AssetFilters; onChange: (f: AssetFilters) => void }) {
+  return <NamespaceTagRuleEditor {...props} filterKey="style_tags" placeholder="e.g. mood:tender" />;
 }
 
 export function MissingMetadataRuleEditor({

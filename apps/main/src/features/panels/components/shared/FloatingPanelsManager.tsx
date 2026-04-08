@@ -441,8 +441,9 @@ const FloatingPanel = memo(function FloatingPanel({
 
   const basePanelContext = stripFloatingOriginMeta(panel.context) ?? {};
 
+  // Inject floating panel instance ID so components can self-replace (close + reopen).
   // For dev-tool panels, extract toolId from definition ID and ensure it's in context
-  let panelContext = basePanelContext;
+  let panelContext = { ...basePanelContext, _floatingPanelId: panel.id };
 
   if (isDevToolPanel) {
     // Extract tool ID from definition ID

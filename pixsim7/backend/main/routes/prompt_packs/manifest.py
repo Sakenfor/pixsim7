@@ -10,6 +10,7 @@ manifest = PluginManifest(
     description="User-authored prompt pack draft authoring, compile, and version endpoints",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["prompt-packs"],
     dependencies=["auth"],

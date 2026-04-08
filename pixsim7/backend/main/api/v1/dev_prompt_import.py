@@ -29,6 +29,7 @@ from pixsim7.backend.main.services.prompt.import_ import (
 )
 from pixsim7.backend.main.api.v1.prompts.helpers import build_family_response
 from pixsim7.backend.main.api.v1.prompts.schemas import (
+    PromptFamilyResponse,
     PromptVersionResponse,
 )
 from pixsim_logging import get_logger

@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Unified generation pipeline for content generation from Generation Nodes",
     author="PixSim Team",
     kind="route",
+    service="generation",
     prefix="/api/v1",
     tags=["generations"],
     dependencies=["auth"],

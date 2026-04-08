@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Manage NPC memories, emotions, milestones, world events, and personality evolution",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1",
     tags=["npc", "state", "memories", "emotions"],
     dependencies=[],

@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Reusable prompt composition templates with slot-based random block selection",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["block-templates"],
     dependencies=["auth"],

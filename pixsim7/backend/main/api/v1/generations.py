@@ -14,10 +14,11 @@ from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
-    GenerationGatewaySvc,
+    GenerationSvc,
     GenerationTrackingSvc,
     DatabaseSession,
 )
+from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.shared.schemas.generation_schemas import (
     CreateGenerationRequest,
     GenerationResponse,
@@ -275,7 +276,7 @@ async def create_generation(
     request: CreateGenerationRequest,
     req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
 ):
     """
     Create a new generation from a Generation Node configuration
@@ -295,17 +296,7 @@ async def create_generation(
     identifier = await get_client_identifier(req)
     await job_create_limiter.check(identifier)
 
-    proxy = await generation_gateway.proxy(
-        req,
-        "POST",
-        "/api/v1/generations",
-        json=request.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return GenerationResponse.model_validate(proxy.data)
-
     try:
-        generation_service = generation_gateway.local
         # Build or enrich social context if world_id and session_id available
         social_context_dict = None
         if request.social_context:
@@ -643,7 +634,7 @@ async def create_simple_image_to_video(
     request: SimpleImageToVideoRequest,
     req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
 ):
   """Create a simple IMAGE_TO_VIDEO generation from raw prompt + image URL.
 
@@ -658,17 +649,7 @@ async def create_simple_image_to_video(
   identifier = await get_client_identifier(req)
   await job_create_limiter.check(identifier)
 
-  proxy = await generation_gateway.proxy(
-    req,
-    "POST",
-    "/api/v1/generations/simple-image-to-video",
-    json=request.model_dump(mode="json"),
-  )
-  if proxy.called:
-    return GenerationResponse.model_validate(proxy.data)
-
   try:
-    generation_service = generation_gateway.local
     # Convert flat request to structured generation_config format
     # This keeps the service layer structured-only
     params = {
@@ -730,9 +711,8 @@ async def create_simple_image_to_video(
 @router.get("/generations/{generation_id}", response_model=GenerationResponse)
 async def get_generation(
     generation_id: int,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
     db: DatabaseSession,
 ):
     """
@@ -748,15 +728,6 @@ async def get_generation(
     from pixsim7.backend.main.domain.providers import ProviderAccount
 
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/generations/{generation_id}",
-        )
-        if proxy.called:
-            return GenerationResponse.model_validate(proxy.data)
-
-        generation_service = generation_gateway.local
         generation = await generation_service.get_generation_for_user(generation_id, user)
         response = GenerationResponse.model_validate(generation)
         sub_meta = await _get_submission_metadata(db, [generation.id])
@@ -791,9 +762,8 @@ async def get_generation(
 
 @router.get("/generations", response_model=GenerationListResponse)
 async def list_generations(
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
     db: DatabaseSession,
     workspace_id: Optional[int] = Query(None),
     status: Optional[GenerationStatus] = Query(None),
@@ -816,26 +786,6 @@ async def list_generations(
     from pixsim7.backend.main.domain.providers import ProviderAccount
 
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            "/api/v1/generations",
-            params={
-                k: v
-                for k, v in {
-                    "workspace_id": workspace_id,
-                    "status": status.value if status else None,
-                    "operation_type": operation_type.value if operation_type else None,
-                    "limit": limit,
-                    "offset": offset,
-                }.items()
-                if v is not None
-            },
-        )
-        if proxy.called:
-            return GenerationListResponse.model_validate(proxy.data)
-
-        generation_service = generation_gateway.local
         generations = await generation_service.list_generations(
             user=user,
             workspace_id=workspace_id,
@@ -896,9 +846,7 @@ async def list_generations(
 
 @router.get("/generation-batches", response_model=GenerationBatchListResponse)
 async def list_generation_batches(
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
     db: DatabaseSession,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -913,18 +861,6 @@ async def list_generation_batches(
     from pixsim7.backend.main.domain import Asset, GenerationBatchItemManifest
 
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            "/api/v1/generation-batches",
-            params={
-                "limit": limit,
-                "offset": offset,
-            },
-        )
-        if proxy.called:
-            return GenerationBatchListResponse.model_validate(proxy.data)
-
         created_at_expr = func.max(GenerationBatchItemManifest.created_at)
         count_expr = func.count(GenerationBatchItemManifest.asset_id)
         first_item_expr = func.min(GenerationBatchItemManifest.item_index)
@@ -980,9 +916,7 @@ async def list_generation_batches(
 @router.get("/generation-batches/{batch_id}", response_model=GenerationBatchDetailResponse)
 async def get_generation_batch(
     batch_id: UUID,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
     db: DatabaseSession,
 ):
     """Get ordered manifest items for a single batch_id owned by current user."""
@@ -990,14 +924,6 @@ async def get_generation_batch(
     from pixsim7.backend.main.domain import Asset, GenerationBatchItemManifest
 
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/generation-batches/{batch_id}",
-        )
-        if proxy.called:
-            return GenerationBatchDetailResponse.model_validate(proxy.data)
-
         result = await db.execute(
             select(GenerationBatchItemManifest)
             .join(Asset, Asset.id == GenerationBatchItemManifest.asset_id)
@@ -1040,19 +966,12 @@ async def get_generation_batch(
 async def _generation_lifecycle_action(
     action: str,
     generation_id: int,
-    req: Request,
     user,
-    generation_gateway,
+    generation_service: GenerationService,
 ) -> GenerationResponse:
-    """Shared handler for cancel/pause/resume — proxy + service call + error mapping."""
+    """Shared handler for cancel/pause/resume — service call + error mapping."""
     try:
-        proxy = await generation_gateway.proxy(
-            req, "POST", f"/api/v1/generations/{generation_id}/{action}",
-        )
-        if proxy.called:
-            return GenerationResponse.model_validate(proxy.data)
-
-        service_method = getattr(generation_gateway.local, f"{action}_generation")
+        service_method = getattr(generation_service, f"{action}_generation")
         generation = await service_method(generation_id, user)
         return GenerationResponse.model_validate(generation)
     except ResourceNotFoundError as e:
@@ -1066,26 +985,26 @@ async def _generation_lifecycle_action(
 
 @router.post("/generations/{generation_id}/cancel", response_model=GenerationResponse)
 async def cancel_generation(
-    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+    generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
     """Cancel a pending or processing generation."""
-    return await _generation_lifecycle_action("cancel", generation_id, req, user, generation_gateway)
+    return await _generation_lifecycle_action("cancel", generation_id, user, generation_service)
 
 
 @router.post("/generations/{generation_id}/pause", response_model=GenerationResponse)
 async def pause_generation(
-    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+    generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
     """Pause a pending generation."""
-    return await _generation_lifecycle_action("pause", generation_id, req, user, generation_gateway)
+    return await _generation_lifecycle_action("pause", generation_id, user, generation_service)
 
 
 @router.post("/generations/{generation_id}/resume", response_model=GenerationResponse)
 async def resume_generation(
-    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+    generation_id: int, user: CurrentUser, generation_service: GenerationSvc,
 ):
     """Resume a paused generation."""
-    return await _generation_lifecycle_action("resume", generation_id, req, user, generation_gateway)
+    return await _generation_lifecycle_action("resume", generation_id, user, generation_service)
 
 
 # ===== RETRY GENERATION =====
@@ -1093,9 +1012,8 @@ async def resume_generation(
 @router.post("/generations/{generation_id}/retry", response_model=GenerationResponse)
 async def retry_generation(
     generation_id: int,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
     db: DatabaseSession,
 ):
     """
@@ -1115,15 +1033,6 @@ async def retry_generation(
     from pixsim7.backend.main.shared.config import settings
 
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/generations/{generation_id}/retry",
-        )
-        if proxy.called:
-            return GenerationResponse.model_validate(proxy.data)
-
-        generation_service = generation_gateway.local
         # Authorization + existence check
         generation = await generation_service.get_generation_for_user(generation_id, user)
 
@@ -1191,7 +1100,7 @@ async def patch_generation_prompt(
     generation_id: int,
     request: PatchGenerationPromptRequest,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
     db: DatabaseSession,
 ):
     """
@@ -1203,7 +1112,6 @@ async def patch_generation_prompt(
     from datetime import timezone
 
     try:
-        generation_service = generation_gateway.local
         generation = await generation_service.get_generation_for_user(generation_id, user)
 
         new_prompt = request.prompt.strip()
@@ -1244,9 +1152,8 @@ async def patch_generation_prompt(
 @router.delete("/generations/{generation_id}", status_code=204)
 async def delete_generation(
     generation_id: int,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
+    generation_service: GenerationSvc,
 ):
     """
     Delete a generation
@@ -1258,15 +1165,6 @@ async def delete_generation(
     Only the generation owner or admin can delete.
     """
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "DELETE",
-            f"/api/v1/generations/{generation_id}",
-        )
-        if proxy.called:
-            return None
-
-        generation_service = generation_gateway.local
         await generation_service.delete_generation(generation_id, user)
         return None
     except ResourceNotFoundError as e:
@@ -1751,9 +1649,7 @@ class GenerationTrackingDetailResponse(BaseModel):
 )
 async def get_asset_tracking(
     asset_id: int,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1766,14 +1662,6 @@ async def get_asset_tracking(
     Auth: scoped to current user via asset ownership.
     """
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/generation-tracking/assets/{asset_id}",
-        )
-        if proxy.called:
-            return AssetTrackingResponse.model_validate(proxy.data)
-
         result = await tracking_service.get_asset_tracking(asset_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")
@@ -1791,9 +1679,7 @@ async def get_asset_tracking(
 )
 async def get_run_tracking(
     run_id: UUID,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1806,14 +1692,6 @@ async def get_run_tracking(
     Auth: scoped to current user via asset ownership of batch items.
     """
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/generation-tracking/runs/{run_id}",
-        )
-        if proxy.called:
-            return RunTrackingResponse.model_validate(proxy.data)
-
         result = await tracking_service.get_run_tracking(run_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Generation run {run_id} not found")
@@ -1831,9 +1709,7 @@ async def get_run_tracking(
 )
 async def get_generation_tracking(
     generation_id: int,
-    req: Request,
     user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1846,14 +1722,6 @@ async def get_generation_tracking(
     Auth: scoped to generation owner or admin.
     """
     try:
-        proxy = await generation_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/generation-tracking/generations/{generation_id}",
-        )
-        if proxy.called:
-            return GenerationTrackingDetailResponse.model_validate(proxy.data)
-
         result = await tracking_service.get_generation_tracking(generation_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Generation {generation_id} not found")

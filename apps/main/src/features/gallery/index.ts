@@ -37,7 +37,7 @@ export { GalleryToolsPanel, CompactGalleryToolsPanel } from './components/panels
 // Components - Mini Gallery
 // ============================================================================
 
-export { MiniGallery, type MiniGalleryProps } from './components/MiniGallery';
+export { MiniGallery, type MiniGalleryProps, type GalleryVariant } from './components/MiniGallery';
 
 // ============================================================================
 // Hooks

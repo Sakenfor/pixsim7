@@ -27,12 +27,14 @@ const PANEL_IDS = [
   'prompt-authoring-navigator',
   'prompt-authoring-editor',
   'prompt-authoring-assets',
+  'prompt-authoring-template-resolver',
 ] as const;
 
 const LAYOUT_SPEC: LayoutSpecEntry[] = [
   { id: PANEL_IDS[0] },
   { id: PANEL_IDS[1], direction: 'right', ref: PANEL_IDS[0] },
   { id: PANEL_IDS[2], direction: 'right', ref: PANEL_IDS[1] },
+  { id: PANEL_IDS[3], direction: 'below', ref: PANEL_IDS[2] },
 ];
 
 // Embedded QuickGen panel host is always hidden — authoring toolbar opens

@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Android automation and action presets",
     author="PixSim Team",
     kind="route",
+    service="ai",
     prefix="/api/v1",
     tags=["automation"],
     dependencies=["auth"],

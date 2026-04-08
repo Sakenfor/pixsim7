@@ -170,6 +170,12 @@ class PluginManifest(BaseModel):
     # Plugin type (coarse shape)
     kind: PluginKind = "feature"
 
+    # Logical service this plugin belongs to (for selective mounting).
+    # When PIXSIM_SERVICES env var is set (comma-separated), only plugins
+    # whose service value is listed will be mounted.  Unset = mount all.
+    # "core" plugins are always mounted regardless of the filter.
+    service: str = "core"
+
     # Fine-grained capabilities this plugin provides
     # If not specified, defaults based on kind (see PLUGIN_KIND_CONFIG)
     provides: list[str] = []

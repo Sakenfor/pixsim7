@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="LLM-powered prompt editing and AI assistance endpoints",
     author="PixSim Team",
     kind="route",
+    service="ai",
     prefix="/api/v1/ai",
     tags=["ai", "llm", "prompts"],
     dependencies=["auth"],

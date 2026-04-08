@@ -52,8 +52,9 @@ export type AssetFilters = {
   // Asset ID whitelist (for set-based filtering)
   asset_ids?: number[];
 
-  // Prompt analysis filters (dynamic)
-  analysis_tags?: string | string[];
+  // Prompt analysis filters (namespace-based)
+  content_elements?: string | string[];
+  style_tags?: string | string[];
 
   // Visual similarity search
   similar_to?: number;

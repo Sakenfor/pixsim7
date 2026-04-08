@@ -19,7 +19,6 @@ import {
   assetEvents,
   extractUploadError,
 } from '@features/assets';
-import { RelatedAssetsModal } from '@features/assets/components/RelatedAssetsModal';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets/stores/assetViewerStore';
 import {
   CAP_ASSET_SELECTION,
@@ -379,9 +378,6 @@ export function AssetsRoute() {
 
       {/* Floating asset detail window - uses shared store */}
       <AssetDetailModal />
-
-      {/* Related assets modal - "More from..." context menu */}
-      <RelatedAssetsModal />
 
       {/* Delete confirmation modal */}
       {deleteModalAssets.length > 0 && (

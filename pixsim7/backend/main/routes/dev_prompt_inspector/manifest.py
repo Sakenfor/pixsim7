@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoint for inspecting prompt structure and components",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/prompt-inspector
     tags=["dev", "prompts", "analysis", "inspector"],
     dependencies=[],

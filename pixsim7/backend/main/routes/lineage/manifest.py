@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Asset lineage and dependency tracking",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["lineage"],
     dependencies=["auth", "assets"],

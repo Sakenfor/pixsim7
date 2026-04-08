@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Media serving, ingestion control, and settings",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["media"],
     dependencies=["auth"],

@@ -3,11 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 
-from pixsim7.backend.main.domain.prompt.models import BlockTemplate, PromptBlock
-from pixsim7.backend.main.services.prompt.block.block_query import normalize_tag_query
+from pixsim7.backend.main.domain.prompt.models import BlockTemplate
+from pixsim7.backend.main.services.prompt.block.tag_query import normalize_tag_query
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
 
 
@@ -44,7 +45,7 @@ def _matches_slot_tags(block_tags: Dict[str, Any], slot: Dict[str, Any]) -> bool
 
 
 class _InMemoryBlockTemplateService(BlockTemplateService):
-    def __init__(self, template: BlockTemplate, blocks: List[PromptBlock]):
+    def __init__(self, template: BlockTemplate, blocks: List[Any]):
         super().__init__(SimpleNamespace(commit=AsyncMock()))
         self._template = template
         self._blocks = blocks
@@ -59,7 +60,7 @@ class _InMemoryBlockTemplateService(BlockTemplateService):
         self.seen_slots.append(slot)
         excluded = {str(v) for v in (slot.get("exclude_block_ids") or [])}
 
-        matches: List[PromptBlock] = []
+        matches: List[Any] = []
         for block in self._blocks:
             if slot.get("role") and block.role != slot["role"]:
                 continue
@@ -134,8 +135,9 @@ class _UpdateTemplateService(BlockTemplateService):
         return None
 
 
-def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> PromptBlock:
-    return PromptBlock(
+def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid4(),
         block_id=block_id,
         text=text,
         role=role,
@@ -143,6 +145,7 @@ def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> Prom
         kind="single_state",
         package_name="shared",
         tags=tags,
+        block_metadata={},
         is_public=True,
         avg_rating=4.0,
     )
@@ -470,7 +473,7 @@ async def test_roll_template_layered_honors_explicit_assembly_layers(
         template_metadata={"slot_schema_version": 2},
     )
     blocks = [
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="mood_overlay",
             text="Warm cinematic haze",
             role="mood",
@@ -482,7 +485,7 @@ async def test_roll_template_layered_honors_explicit_assembly_layers(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="camera_core",
             text="Low angle tracking shot",
             role="camera",
@@ -494,7 +497,7 @@ async def test_roll_template_layered_honors_explicit_assembly_layers(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="character_anchor",
             text="Main character stands near doorway",
             role="character",
@@ -506,7 +509,7 @@ async def test_roll_template_layered_honors_explicit_assembly_layers(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="safety_guard",
             text="Avoid explicit nudity",
             role="other",
@@ -608,7 +611,7 @@ async def test_roll_template_layered_supports_template_defined_layer_registry(
         },
     )
     blocks = [
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="core_action",
             text="Core choreography baseline",
             role="action",
@@ -620,7 +623,7 @@ async def test_roll_template_layered_supports_template_defined_layer_registry(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="npc_policy",
             text="NPC mood policy guardrail",
             role="other",
@@ -632,7 +635,7 @@ async def test_roll_template_layered_supports_template_defined_layer_registry(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="mood_overlay",
             text="Warm emotional texture",
             role="mood",
@@ -682,7 +685,7 @@ async def test_roll_template_layered_budget_drops_low_priority_layers_first(
         },
     )
     blocks = [
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="style_overlay",
             text="romantic cinematic haze grain bloom color wash",
             role="mood",
@@ -694,7 +697,7 @@ async def test_roll_template_layered_budget_drops_low_priority_layers_first(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="core_camera",
             text="Camera dolly in slowly",
             role="camera",
@@ -706,7 +709,7 @@ async def test_roll_template_layered_budget_drops_low_priority_layers_first(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="anchor_character",
             text="Main character at the station",
             role="character",
@@ -718,7 +721,7 @@ async def test_roll_template_layered_budget_drops_low_priority_layers_first(
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="safety_guard",
             text="Avoid explicit nudity",
             role="other",
@@ -766,7 +769,7 @@ async def test_roll_template_layered_budget_preserves_hard_layers_when_over_limi
         },
     )
     blocks = [
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="anchor_character",
             text="Main character at the station",
             role="character",
@@ -778,7 +781,7 @@ async def test_roll_template_layered_budget_preserves_hard_layers_when_over_limi
             is_public=True,
             avg_rating=4.0,
         ),
-        PromptBlock(
+        SimpleNamespace(id=uuid4(),
             block_id="safety_guard",
             text="Avoid explicit nudity",
             role="other",
@@ -836,7 +839,7 @@ async def test_roll_template_propagates_bound_op_refs_into_selected_block_metada
             "ref_binding_mode": "required",
         },
     )
-    block = PromptBlock(
+    block = SimpleNamespace(id=uuid4(),
         block_id="cam_pan",
         text="Camera pan",
         role="camera",

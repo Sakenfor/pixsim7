@@ -181,8 +181,12 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
  * Useful when multiple providers may exist (e.g., multiple prompt boxes)
  * and the consumer wants to let the user pick one.
  */
-export function useCapabilityAll<T>(key: CapabilityKey): Array<{ provider: CapabilityProvider<T>; value: T }> {
+export function useCapabilityAll<T>(
+  key: CapabilityKey,
+  options?: { includeUnavailable?: boolean },
+): Array<{ provider: CapabilityProvider<T>; value: T }> {
   const hub = useContextHubState();
+  const includeUnavailable = options?.includeUnavailable ?? false;
   const registries = useMemo(() => getRegistryChain(hub), [hub]);
   const lastRef = useRef<Array<{ provider: CapabilityProvider<T>; value: T }>>([]);
 
@@ -198,7 +202,7 @@ export function useCapabilityAll<T>(key: CapabilityKey): Array<{ provider: Capab
       while (current) {
         const providers = current.registry.getAll<T>(key);
         for (const p of providers) {
-          if (p.isAvailable && !p.isAvailable()) continue;
+          if (!includeUnavailable && p.isAvailable && !p.isAvailable()) continue;
           // A provider may be registered in both local + root scope to support
           // nearest-scope resolution and global discovery. Keep one entry.
           if (seenProviders.has(p)) continue;

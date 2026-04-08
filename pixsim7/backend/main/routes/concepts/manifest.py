@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Runtime access to ontology concepts including composition roles",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["concepts"],
     dependencies=[],

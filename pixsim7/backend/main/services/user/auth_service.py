@@ -352,8 +352,15 @@ class AuthService:
             raise AuthenticationError("Token has been revoked or expired")
 
         if update_last_used and session:
-            session.last_used_at = datetime.now(timezone.utc)
-            await self.db.commit()
+            now = datetime.now(timezone.utc)
+            # Throttle writes: only update if last_used_at is stale (>5 min)
+            stale = (
+                session.last_used_at is None
+                or (now - session.last_used_at).total_seconds() > 300
+            )
+            if stale:
+                session.last_used_at = now
+                await self.db.commit()
 
         if use_cache and not update_last_used and cache_key is not None:
             effective_ttl = (

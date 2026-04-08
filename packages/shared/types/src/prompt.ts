@@ -75,14 +75,18 @@ export interface PromptTag {
 /**
  * Complete result of analyzing a prompt.
  * Returned by the `analyze_prompt` function in `dsl_adapter.py`.
+ *
+ * Tags are derived from candidates at asset creation time and stored
+ * in the asset_tag join table (source='analysis'). Legacy stored analyses
+ * may still contain `tags` / `tags_flat` fields.
  */
 export interface PromptAnalysisResult {
   /** Original prompt text */
   prompt: string;
   /** Parsed candidates with roles, positions, and metadata */
   candidates: PromptBlockCandidate[];
-  /** Structured tags with candidate linking */
-  tags: PromptTag[];
-  /** Flat list of tag strings for backward compatibility */
-  tags_flat: string[];
+  /** @deprecated Legacy — structured tags; no longer emitted by parsers */
+  tags?: PromptTag[];
+  /** @deprecated Legacy — flat tag slugs; no longer emitted by parsers */
+  tags_flat?: string[];
 }

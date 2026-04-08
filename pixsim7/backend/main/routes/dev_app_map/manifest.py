@@ -13,6 +13,7 @@ manifest = PluginManifest(
     description="Canonical App Map snapshot endpoint for dev tooling",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",  # Routes already include /dev/app-map
     tags=["dev", "app-map", "architecture", "metadata"],
     dependencies=[],

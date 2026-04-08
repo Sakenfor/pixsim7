@@ -22,16 +22,16 @@ const ENGINE_BRANDS: Record<string, EngineBrand> = {
   claude: {
     label: 'Claude',
     short: 'Cl',
-    textColor: 'text-blue-400',
-    badgeColor: 'blue',
-    hex: '#60A5FA',
+    textColor: 'text-orange-400',
+    badgeColor: 'orange',
+    hex: '#FB923C',
   },
   codex: {
     label: 'Codex',
     short: 'Cx',
-    textColor: 'text-violet-400',
-    badgeColor: 'purple',
-    hex: '#A78BFA',
+    textColor: 'text-blue-400',
+    badgeColor: 'blue',
+    hex: '#60A5FA',
   },
   api: {
     label: 'API',

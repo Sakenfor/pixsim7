@@ -31,6 +31,8 @@ class PluginListItem(BaseModel):
     id: str
     name: str
     version: str
+    kind: str = "feature"
+    service: str = "core"
     enabled: bool
 
 
@@ -191,6 +193,7 @@ class PluginDetailsResponse(BaseModel):
     description: str | None = None
     author: str | None = None
     kind: str
+    service: str = "core"
     enabled: bool
     permissions: List[str] = Field(default_factory=list)
     dependencies: List[str] = Field(default_factory=list)
@@ -234,6 +237,34 @@ def set_plugin_managers(plugin_manager: PluginManager, routes_manager: PluginMan
     global _plugin_manager, _routes_manager
     _plugin_manager = plugin_manager
     _routes_manager = routes_manager
+
+
+def _find_plugin(
+    managers: Tuple[PluginManager, Optional[PluginManager]],
+    plugin_id: str,
+) -> Dict[str, Any]:
+    """Look up a plugin across both managers, raise 404 if not found."""
+    plugin_manager, routes_manager = managers
+    info = plugin_manager.get_plugin(plugin_id)
+    if not info and routes_manager:
+        info = routes_manager.get_plugin(plugin_id)
+    if not info:
+        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
+    return info
+
+
+def _iter_enabled_plugins(
+    managers: Tuple[PluginManager, Optional[PluginManager]],
+):
+    """Yield (plugin_id, plugin_info) for all enabled plugins across both managers."""
+    plugin_manager, routes_manager = managers
+    for plugin_id, info in plugin_manager.plugins.items():
+        if info.get("enabled", False):
+            yield plugin_id, info
+    if routes_manager:
+        for plugin_id, info in routes_manager.plugins.items():
+            if info.get("enabled", False):
+                yield plugin_id, info
 
 
 # ===== ENDPOINTS =====
@@ -397,18 +428,7 @@ async def get_plugin_details(
     Returns:
         Plugin details including manifest, metrics, behavior extensions
     """
-    plugin_manager, routes_manager = managers
-
-    # Try feature plugins first
-    plugin_info = plugin_manager.get_plugin(plugin_id)
-
-    # Try route plugins if not found
-    if not plugin_info and routes_manager:
-        plugin_info = routes_manager.get_plugin(plugin_id)
-
-    if not plugin_info:
-        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
-
+    plugin_info = _find_plugin(managers, plugin_id)
     manifest = plugin_info["manifest"]
 
     # Get metrics
@@ -426,6 +446,7 @@ async def get_plugin_details(
         "description": manifest.description,
         "author": manifest.author,
         "kind": manifest.kind,
+        "service": manifest.service,
         "enabled": manifest.enabled,
         "permissions": manifest.permissions,
         "dependencies": manifest.dependencies,
@@ -481,18 +502,7 @@ async def get_plugin_frontend_manifest(
     Returns:
         Frontend manifest with interactions list, or 404 if not found/no manifest
     """
-    plugin_manager, routes_manager = managers
-
-    # Try feature plugins first
-    plugin_info = plugin_manager.get_plugin(plugin_id)
-
-    # Try route plugins if not found
-    if not plugin_info and routes_manager:
-        plugin_info = routes_manager.get_plugin(plugin_id)
-
-    if not plugin_info:
-        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
-
+    plugin_info = _find_plugin(managers, plugin_id)
     manifest = plugin_info["manifest"]
 
     # Check if plugin has a frontend manifest
@@ -567,30 +577,11 @@ async def list_all_frontend_manifests(
     Returns:
         AllFrontendManifestsResponse with typed manifest entries
     """
-    plugin_manager, routes_manager = managers
-
     entries: List[FrontendManifestEntry] = []
-
-    # Collect from feature plugins
-    for plugin_id, plugin_info in plugin_manager.plugins.items():
-        if not plugin_info.get("enabled", False):
-            continue
-
-        manifest = plugin_info["manifest"]
-        entry = _build_manifest_entry(plugin_id, plugin_info, manifest)
+    for plugin_id, plugin_info in _iter_enabled_plugins(managers):
+        entry = _build_manifest_entry(plugin_id, plugin_info, plugin_info["manifest"])
         if entry:
             entries.append(entry)
-
-    # Collect from route plugins if available
-    if routes_manager:
-        for plugin_id, plugin_info in routes_manager.plugins.items():
-            if not plugin_info.get("enabled", False):
-                continue
-
-            manifest = plugin_info["manifest"]
-            entry = _build_manifest_entry(plugin_id, plugin_info, manifest)
-            if entry:
-                entries.append(entry)
 
     return AllFrontendManifestsResponse(
         manifests=entries,

@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Iterable, Optional
 
 from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists, String
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB  # still used by provider_uploads cast
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.domain.assets.models import Asset
@@ -23,8 +23,6 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 ANALYSIS_TAG_OPTION_DEFAULT_LIMIT = 150
-ANALYSIS_TAG_OPTION_SCAN_WINDOW = 5000
-ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX = 20000
 
 EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD: dict[str, str] = {
     "pixverse_sync": "pixverse",
@@ -347,9 +345,12 @@ async def _load_tag_options(
     from pixsim7.backend.main.domain.assets.tag import Tag, AssetTag
 
     owner_user_id = resolve_effective_user_id(user) or 0
+    # Exclude namespaces covered by content_elements / style_tags filters
+    excluded_ns = CONTENT_ELEMENT_NAMESPACES | STYLE_TAG_NAMESPACES | AUTO_METADATA_NAMESPACES
     filters = [
         Asset.user_id == owner_user_id,
         Asset.is_archived == False,
+        Tag.namespace.notin_(excluded_ns),
     ]
     if context:
         filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="tag"))
@@ -393,142 +394,116 @@ async def _load_tag_options(
     ]
 
 
-async def _load_analysis_tag_options(
-    db: AsyncSession,
-    user: Any,
-    include_counts: bool,
-    context: dict[str, Any] | None,
-    limit: Optional[int],
-) -> list[tuple[str, Optional[str], Optional[int]]]:
-    owner_user_id = resolve_effective_user_id(user) or 0
-    base_filters = [
-        Asset.user_id == owner_user_id,
-        Asset.is_archived == False,
-        Asset.prompt_analysis.isnot(None),
-    ]
-    if context:
-        base_filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="analysis_tags"))
+def _label_from_slug(slug: str, display_name: str | None) -> str:
+    """Derive a display label: use display_name if set, otherwise strip namespace and title-case."""
+    if display_name:
+        return display_name
+    # "has:character" → "Character", "operation:image-to-image" → "Image To Image"
+    _, _, name = slug.partition(":")
+    return (name or slug).replace("_", " ").replace("-", " ").title()
 
-    option_limit = limit or ANALYSIS_TAG_OPTION_DEFAULT_LIMIT
-    option_limit = max(1, min(option_limit, 500))
-    prompt_jsonb = cast(Asset.prompt_analysis, JSONB)
 
-    # Primary path: tags_flat
-    filters_flat = [
-        *base_filters,
-        prompt_jsonb.op("?")("tags_flat"),
-        func.jsonb_typeof(prompt_jsonb["tags_flat"]) == "array",
-    ]
+def _make_namespace_tag_loader(
+    namespaces: set[str],
+    *,
+    exclude: bool = False,
+    filter_key: str = "analysis_tags",
+    min_count: int = 0,
+):
+    """Factory for namespace-filtered tag option loaders.
 
-    if include_counts:
-        tag_values = func.jsonb_array_elements_text(prompt_jsonb["tags_flat"]).table_valued("value").alias("analysis_tag")
-        stmt = (
-            select(tag_values.c.value, func.count(distinct(Asset.id)).label("count"))
-            .select_from(Asset)
-            .join(tag_values, true())
-            .where(*filters_flat, tag_values.c.value.isnot(None), tag_values.c.value != "")
-            .group_by(tag_values.c.value)
-            .order_by(func.count(distinct(Asset.id)).desc())
-            .limit(option_limit)
-        )
+    Args:
+        namespaces: Tag namespaces to include (or exclude if ``exclude=True``).
+        exclude: If True, load tags whose namespace is NOT in ``namespaces``.
+        filter_key: The filter registry key (used for exclude_key on context).
+        min_count: Minimum asset count for a tag to appear (filters noise).
+    """
+
+    async def _loader(
+        db: AsyncSession,
+        user: Any,
+        include_counts: bool,
+        context: dict[str, Any] | None,
+        limit: Optional[int],
+    ) -> list[tuple[str, Optional[str], Optional[int]]]:
+        from pixsim7.backend.main.domain.assets.tag import Tag, AssetTag
+
+        owner_user_id = resolve_effective_user_id(user) or 0
+        option_limit = limit or ANALYSIS_TAG_OPTION_DEFAULT_LIMIT
+        option_limit = max(1, min(option_limit, 500))
+
+        ns_filter = Tag.namespace.notin_(namespaces) if exclude else Tag.namespace.in_(namespaces)
+        filters = [
+            Asset.user_id == owner_user_id,
+            Asset.is_archived == False,
+            ns_filter,
+        ]
+        if context:
+            filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key=filter_key))
+
+        if include_counts:
+            count_expr = func.count(distinct(Asset.id))
+            stmt = (
+                select(Tag.slug, Tag.display_name, count_expr.label("count"))
+                .select_from(Asset)
+                .join(AssetTag, AssetTag.asset_id == Asset.id)
+                .join(Tag, Tag.id == AssetTag.tag_id)
+                .where(*filters)
+                .group_by(Tag.slug, Tag.display_name)
+                .order_by(count_expr.desc())
+                .limit(option_limit)
+            )
+            if min_count > 0:
+                stmt = stmt.having(count_expr >= min_count)
+            result = await db.execute(stmt)
+            return [
+                (row.slug, _label_from_slug(row.slug, row.display_name), row.count)
+                for row in result.all()
+                if row.slug
+            ]
+
+        if min_count > 0:
+            # Use a count subquery to enforce minimum threshold
+            count_expr = func.count(distinct(Asset.id))
+            stmt = (
+                select(Tag.slug, Tag.display_name)
+                .select_from(Asset)
+                .join(AssetTag, AssetTag.asset_id == Asset.id)
+                .join(Tag, Tag.id == AssetTag.tag_id)
+                .where(*filters)
+                .group_by(Tag.slug, Tag.display_name)
+                .having(count_expr >= min_count)
+                .order_by(Tag.slug.asc())
+                .limit(option_limit)
+            )
+        else:
+            stmt = (
+                select(distinct(Tag.slug), Tag.display_name)
+                .select_from(Asset)
+                .join(AssetTag, AssetTag.asset_id == Asset.id)
+                .join(Tag, Tag.id == AssetTag.tag_id)
+                .where(*filters)
+                .order_by(Tag.slug.asc())
+                .limit(option_limit)
+            )
         result = await db.execute(stmt)
-        rows = result.all()
-        options_flat = [
-            (_normalize_option_value(row.value), _normalize_option_value(row.value), row.count)
-            for row in rows
-        ]
-        options_flat = [item for item in options_flat if item[0]]
-        if options_flat:
-            return options_flat
-
-    # Lightweight option discovery mode for large libraries:
-    # sample recent matching assets first, then explode tags in-memory.
-    scan_window = max(ANALYSIS_TAG_OPTION_SCAN_WINDOW, option_limit * 50)
-    scan_window = min(scan_window, ANALYSIS_TAG_OPTION_SCAN_WINDOW_MAX)
-    recent_assets = (
-        select(
-            Asset.id.label("id"),
-            cast(Asset.prompt_analysis, JSONB).label("prompt_jsonb"),
-        )
-        .where(*filters_flat)
-        .order_by(Asset.created_at.desc(), Asset.id.desc())
-        .limit(scan_window)
-        .subquery("recent_assets")
-    )
-    recent_prompt_jsonb = recent_assets.c.prompt_jsonb
-    tag_values = func.jsonb_array_elements_text(
-        recent_prompt_jsonb["tags_flat"]
-    ).table_valued("value").lateral()
-
-    stmt = (
-        select(distinct(tag_values.c.value))
-        .select_from(recent_assets)
-        .join(tag_values, true())
-        .where(tag_values.c.value.isnot(None), tag_values.c.value != "")
-        .order_by(tag_values.c.value.asc())
-        .limit(option_limit)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
-    options_flat = [
-        (row[0], row[0], None)
-        for row in rows
-        if row[0]
-    ]
-    if options_flat:
-        return options_flat
-
-    # Fallback: legacy prompt_analysis.tags array.
-    filters_tags = [
-        *base_filters,
-        prompt_jsonb.op("?")("tags"),
-        func.jsonb_typeof(prompt_jsonb["tags"]) == "array",
-    ]
-    tag_struct_values = (
-        func.jsonb_array_elements(prompt_jsonb["tags"])
-        .table_valued("value")
-        .alias("analysis_tag_struct")
-    )
-    tag_item_json = cast(tag_struct_values.c.value, JSONB)
-    tag_item_text = case(
-        (func.jsonb_typeof(tag_item_json) == "string", cast(tag_item_json, String)),
-        else_=tag_item_json["tag"].astext,
-    )
-    tag_slug_expr = func.lower(
-        func.nullif(func.btrim(func.btrim(tag_item_text), '"'), "")
-    )
-
-    if include_counts:
-        fallback_stmt = (
-            select(tag_slug_expr.label("slug"), func.count(distinct(Asset.id)).label("count"))
-            .select_from(Asset)
-            .join(tag_struct_values, true())
-            .where(*filters_tags, tag_slug_expr.isnot(None))
-            .group_by(tag_slug_expr)
-            .order_by(func.count(distinct(Asset.id)).desc())
-            .limit(option_limit)
-        )
-        fallback_result = await db.execute(fallback_stmt)
         return [
-            (row.slug, row.slug, row.count)
-            for row in fallback_result.all()
-            if row.slug
+            (row[0], _label_from_slug(row[0], row[1]), None)
+            for row in result.all()
+            if row[0]
         ]
 
-    fallback_stmt = (
-        select(distinct(tag_slug_expr).label("slug"))
-        .select_from(Asset)
-        .join(tag_struct_values, true())
-        .where(*filters_tags, tag_slug_expr.isnot(None))
-        .order_by(tag_slug_expr.asc())
-        .limit(option_limit)
-    )
-    fallback_result = await db.execute(fallback_stmt)
-    return [
-        (slug, slug, None)
-        for slug in fallback_result.scalars().all()
-        if slug
-    ]
+    return _loader
+
+
+# Namespaces produced by prompt analysis (role presence tags)
+CONTENT_ELEMENT_NAMESPACES = {"has"}
+
+# Namespaces produced by ontology/style analysis
+STYLE_TAG_NAMESPACES = {"mood", "tone", "camera", "spatial", "pose", "rating", "location", "part", "sequence"}
+
+# Auto-assigned metadata namespaces (have their own dedicated filters)
+AUTO_METADATA_NAMESPACES = {"provider", "operation", "source"}
 
 
 async def _load_provider_options(
@@ -779,26 +754,36 @@ def register_default_asset_filters() -> None:
             multi=True,
         )
     )
+    _provider_tag_loader = _make_namespace_tag_loader({"provider"}, filter_key="provider_id")
     asset_filter_registry.register(
         FilterSpec(
             key="provider_id",
             type="enum",
             label="Provider",
             option_source="custom",
-            option_loader=_load_provider_options,
-            condition_builder=_effective_provider_condition,
+            option_loader=_provider_tag_loader,
+            multi=True,
+        )
+    )
+    # Alias: frontend SmartFilterEditor uses effective_provider_id extensively
+    asset_filter_registry.register(
+        FilterSpec(
+            key="effective_provider_id",
+            type="enum",
+            label="Provider",
+            option_source="custom",
+            option_loader=_provider_tag_loader,
             multi=True,
         )
     )
     asset_filter_registry.register(
         FilterSpec(
-            key="effective_provider_id",
+            key="operation_type",
             type="enum",
-            label="Upload Provider",
+            label="Operation",
             option_source="custom",
-            option_loader=_load_provider_options,
+            option_loader=_make_namespace_tag_loader({"operation"}, filter_key="operation_type"),
             multi=True,
-            condition_builder=_effective_provider_condition,
         )
     )
     asset_filter_registry.register(
@@ -882,12 +867,24 @@ def register_default_asset_filters() -> None:
     )
     asset_filter_registry.register(
         FilterSpec(
-            key="analysis_tags",
+            key="content_elements",
             type="enum",
-            label="Prompt Tags",
-            description="Tags derived from prompt analysis",
+            label="Content",
+            description="Content elements detected in prompts (character, setting, action, ...)",
             option_source="custom",
-            option_loader=_load_analysis_tag_options,
+            option_loader=_make_namespace_tag_loader(CONTENT_ELEMENT_NAMESPACES, filter_key="content_elements"),
+            multi=True,
+            match_modes={"any", "all"},
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="style_tags",
+            type="enum",
+            label="Style",
+            description="Mood, camera, pose, and other style tags from prompt analysis",
+            option_source="custom",
+            option_loader=_make_namespace_tag_loader(STYLE_TAG_NAMESPACES, filter_key="style_tags"),
             multi=True,
             match_modes={"any", "all"},
         )
@@ -933,6 +930,20 @@ def register_default_asset_filters() -> None:
     )
     asset_filter_registry.register(
         FilterSpec(key="q", type="search", label="Search")
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="provider_status",
+            type="enum",
+            label="Provider Status",
+            option_source="static",
+            label_map={
+                "ok": "OK",
+                "local_only": "Local Only",
+                "flagged": "Flagged",
+                "unknown": "Unknown",
+            },
+        )
     )
 
 

@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Game scene management (nodes, edges, graph)",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/scenes",
     tags=["game-scenes"],
     dependencies=["auth"],

@@ -25,6 +25,7 @@ from .helpers import build_family_response
 from .schemas import (
     BatchVersionRequest,
     CreatePromptVersionRequest,
+    PromptFamilyResponse,
     PromptVersionResponse,
 )
 

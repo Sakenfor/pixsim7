@@ -7,7 +7,7 @@ import type { InputMaskLayer } from '@features/generation';
 
 import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
 
-import { MiniGalleryPopover } from '../MiniGalleryPopover';
+import { MaskBrowserPopover } from '../MaskBrowserPopover';
 
 interface MaskPickerProps {
   maskLayers: InputMaskLayer[] | undefined;
@@ -42,7 +42,6 @@ export function MaskPicker({
   disabled,
 }: MaskPickerProps) {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const [showAll, setShowAll] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const forceFullAlpha = useMaskOverlayStore((s) => s.forceFullAlpha);
@@ -107,10 +106,6 @@ export function MaskPicker({
   if (!hasMaskParam) return null;
 
   const isOpen = anchorRect !== null;
-
-  const initialFilters = showAll || !sourceAssetId
-    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, asset_kind: 'mask' as const, sort: 'new' as const }
-    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, asset_kind: 'mask' as const, sort: 'new' as const };
 
   return (
     <div className="flex flex-col gap-1">
@@ -198,37 +193,12 @@ export function MaskPicker({
 
       {/* Toggle-mode gallery popover — stays open, click to toggle masks on/off */}
       {isOpen && (
-        <MiniGalleryPopover
+        <MaskBrowserPopover
           anchorRect={anchorRect}
-          title={showAll || !sourceAssetId ? 'All Masks' : 'Asset Masks'}
           onClose={handleClose}
-          width={340}
-          height={380}
-          galleryProps={{
-            initialFilters,
-            syncInitialFilters: true,
-            showSearch: true,
-            showMediaType: false,
-            showSort: true,
-            suppressHoverActions: true,
-            onItemSelect: handleToggleAsset,
-            renderItemOverlay,
-            emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
-            header: sourceAssetId ? (
-              <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                  {showAll ? 'Showing all masks' : 'Showing masks for this asset'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowAll((v) => !v)}
-                  className="text-[10px] text-accent hover:underline"
-                >
-                  {showAll ? 'Show linked' : 'Show all'}
-                </button>
-              </div>
-            ) : undefined,
-          }}
+          onItemSelect={handleToggleAsset}
+          sourceAssetId={sourceAssetId}
+          renderItemOverlay={renderItemOverlay}
         />
       )}
     </div>

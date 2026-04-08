@@ -1040,48 +1040,58 @@ export function useQuickGenerateController() {
 
       recordInputHistory(activeOperationType, effectiveInputs);
 
+      // Pre-build all requests (sequential only when random_each needs fresh picks)
+      const burstRequests: typeof baseRequest[] = [];
       for (let i = 0; i < burstCount; i++) {
-        try {
-          // When random_each refs exist, pre-pick from cached sets
-          // so each burst item gets a fresh pick without re-resolving the set
-          let request = baseRequest;
-          if (hasRandomEachRef) {
-            const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
-            const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
-            const freshRequest = await buildRequest(
-              activeOperationType,
-              dynamicParams,
-              pickedInputs,
-              pickedCurrent,
-              requestOverrides,
-            );
-            if (!('error' in freshRequest)) {
-              request = freshRequest;
-            }
+        let request = baseRequest;
+        if (hasRandomEachRef) {
+          const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
+          const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
+          const freshRequest = await buildRequest(
+            activeOperationType,
+            dynamicParams,
+            pickedInputs,
+            pickedCurrent,
+            requestOverrides,
+          );
+          if (!('error' in freshRequest)) {
+            request = freshRequest;
           }
+        }
+        burstRequests.push(request);
+      }
 
-          const genId = await submitOne(
+      // Fire all submissions concurrently
+      const inputAssetIds = extractInputAssetIds(effectiveInputs);
+      const results = await Promise.allSettled(
+        burstRequests.map((request, i) =>
+          submitOne(
             request,
             createGenerationRunItemContext(run, {
               itemIndex: i,
               itemTotal: burstCount,
-              inputAssetIds: extractInputAssetIds(effectiveInputs),
+              inputAssetIds,
             }),
-          );
-          generatedIds.push(genId);
-          callbacks?.onProgress?.({ queued: generatedIds.length, total: burstCount });
+          ),
+        ),
+      );
 
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === 'fulfilled') {
+          generatedIds.push(result.value);
+          callbacks?.onProgress?.({ queued: generatedIds.length, total: burstCount });
           logEvent('INFO', 'burst_generation_created', {
-            generationId: genId,
+            generationId: result.value,
             operationType: activeOperationType,
             providerId: providerId || 'pixverse',
             burstIndex: i + 1,
             burstTotal: burstCount,
           });
-        } catch (itemErr) {
+        } else {
           logEvent('ERROR', 'burst_item_failed', {
             burstIndex: i + 1,
-            error: extractErrorMessage(itemErr, 'Unknown error'),
+            error: extractErrorMessage(result.reason, 'Unknown error'),
           });
         }
       }

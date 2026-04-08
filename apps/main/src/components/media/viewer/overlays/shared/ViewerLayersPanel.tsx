@@ -13,7 +13,7 @@ import { Icon, type IconName } from '@lib/icons';
 import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { type AssetModel } from '@features/assets';
-import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
+import { MaskBrowserPopover } from '@features/generation/components/MaskBrowserPopover';
 import {
   useAssetRegionStore,
   useCaptureRegionStore,
@@ -79,7 +79,6 @@ function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? null;
   const [importAnchorRect, setImportAnchorRect] = useState<DOMRect | null>(null);
-  const [showAll, setShowAll] = useState(!sourceAssetId);
   const importButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleToggleImport = useCallback(() => {
@@ -123,10 +122,6 @@ function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
     );
   }, [importSavedMask]);
 
-  const importFilters = showAll || !sourceAssetId
-    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const }
-    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const };
-
   if (layers.length === 0) return null;
 
   return (
@@ -162,37 +157,14 @@ function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
         </button>
 
         {importAnchorRect && (
-          <MiniGalleryPopover
+          <MaskBrowserPopover
             anchorRect={importAnchorRect}
-            title={showAll || !sourceAssetId ? 'All Masks' : 'Linked Masks'}
             onClose={handleCloseImport}
+            onItemSelect={handleSelectMask}
+            sourceAssetId={sourceAssetId}
+            onItemHover={handleMaskHover}
             width={320}
             height={360}
-            galleryProps={{
-              initialFilters: importFilters,
-              syncInitialFilters: true,
-              showSearch: true,
-              showMediaType: false,
-              showSort: true,
-              suppressHoverActions: true,
-              onItemSelect: handleSelectMask,
-              onItemHover: handleMaskHover,
-              emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
-              header: sourceAssetId ? (
-                <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    {showAll ? 'All masks' : 'Linked to this asset'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowAll((v) => !v)}
-                    className="text-[10px] text-accent hover:underline"
-                  >
-                    {showAll ? 'Show linked' : 'Show all'}
-                  </button>
-                </div>
-              ) : undefined,
-            }}
           />
         )}
       </div>

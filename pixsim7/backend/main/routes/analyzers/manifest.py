@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Prompt analyzer discovery and configuration",
     author="PixSim Team",
     kind="route",
+    service="analysis",
     prefix="/api/v1",
     tags=["analyzers"],
     dependencies=[],

@@ -49,7 +49,6 @@ export { NotificationTicker } from './components/NotificationTicker';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';
-export { useGenerationStatus } from './hooks/useGenerationStatus';
 export { useGenerationWebSocket } from './hooks/useGenerationWebSocket';
 export { useGenerationWorkbench } from './hooks/useGenerationWorkbench';
 export { useMediaCardGenerationStatus } from './hooks/useMediaCardGenerationStatus';

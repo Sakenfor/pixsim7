@@ -14,6 +14,10 @@ export type {
   UpdateCharacterRequest,
   ListCharactersQuery,
   ReferenceAsset,
+  ResolveTemplateRequest,
+  ResolveTemplateResponse,
+  ResolvedFieldEntry,
+  AvailableKeyEntry,
 } from '@pixsim7/shared.api.client/domains';
 
 const charactersApi = createCharactersApi(pixsimClient);
@@ -26,3 +30,4 @@ export const updateCharacter = charactersApi.updateCharacter;
 export const deleteCharacter = charactersApi.deleteCharacter;
 export const getCharacterHistory = charactersApi.getCharacterHistory;
 export const evolveCharacter = charactersApi.evolveCharacter;
+export const resolveTemplate = charactersApi.resolveTemplate;

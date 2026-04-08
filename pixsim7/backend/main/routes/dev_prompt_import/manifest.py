@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoint for importing prompts from any source",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/prompt-import
     tags=["dev", "prompts", "import"],
     dependencies=["dev_prompt_inspector"],  # Uses same prompt analysis infrastructure

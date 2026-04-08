@@ -81,6 +81,14 @@ class UpdateCharacterRequest(BaseModel):
     version_message: Optional[str] = Field(None, description="Message about what changed in this version")
 
 
+class ResolveTemplateRequest(BaseModel):
+    character_id: str = Field(..., description="Character to resolve template for")
+    template_source: Optional[str] = Field(
+        None,
+        description="Template override. If not provided, uses species render_template."
+    )
+
+
 class ExpandTemplateRequest(BaseModel):
     prompt_text: str = Field(..., description="Prompt with {{character:id}} references")
     track_usage: bool = Field(default=True, description="Track character usage")
@@ -384,6 +392,44 @@ async def set_character_head(
 
 
 # ===== Template Expansion =====
+
+@router.post("/resolve-template", response_model=Dict[str, Any])
+async def resolve_template(
+    request: ResolveTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a character's template into expanded prose with field source map.
+
+    Returns the expanded visual description, the template source used,
+    and a field_map showing which source (visual_trait, species_anatomy,
+    species_default) produced each segment.
+
+    Example response:
+        ```json
+        {
+            "expanded_text": "sleek octopod detective, waist-high mantle, ...",
+            "template_source": "{build}[, {height}][, {stance}]...",
+            "field_map": [
+                {"key": "build", "value": "sleek octopod detective", "source": "visual_trait"},
+                {"key": "stance", "value": "upright on two rear tentacles", "source": "species_anatomy"}
+            ],
+            "character": {"character_id": "octopod_detective", "name": "Neris", ...},
+            "species": "cephalopod",
+            "full_expansion": "Neris the Octopod Detective—sleek octopod detective, ..."
+        }
+        ```
+    """
+    engine = CharacterTemplateEngine(db)
+    result = await engine.resolve_character_template(
+        character_id=request.character_id,
+        template_source=request.template_source,
+    )
+
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    return result
+
 
 @router.post("/expand-template", response_model=Dict[str, Any])
 async def expand_template(

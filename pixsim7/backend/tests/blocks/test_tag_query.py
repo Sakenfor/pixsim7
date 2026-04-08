@@ -1,4 +1,4 @@
-from pixsim7.backend.main.services.prompt.block.block_query import normalize_tag_query
+from pixsim7.backend.main.services.prompt.block.tag_query import normalize_tag_query
 
 
 def test_normalize_tag_query_accepts_legacy_flat_constraints() -> None:

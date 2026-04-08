@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Game session management and state",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/sessions",
     tags=["game-sessions"],
     dependencies=["auth"],

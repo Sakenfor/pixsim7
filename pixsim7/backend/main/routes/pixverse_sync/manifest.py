@@ -22,6 +22,7 @@ manifest = PluginManifest(
     description="Sync Pixverse videos and images to local Assets",
     author="PixSim Team",
     kind="route",
+    service="generation",
     prefix="/api/v1",  # Router already includes /providers/pixverse
     tags=["pixverse", "sync", "assets"],
     dependencies=["auth", "assets"],

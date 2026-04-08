@@ -26,8 +26,8 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
   const [level, setLevel] = useState('')
   const [service, setService] = useState('')
   const [search, setSearch] = useState('')
-  const [minutes, setMinutes] = useState(15)
-  const [limit, setLimit] = useState(250)
+  const [minutes, setMinutes] = useState(30)
+  const [limit, setLimit] = useState(500)
   const [autoRefresh, setAutoRefresh] = useState(0)
   const [activePreset, setActivePreset] = useState<string>('')
 
@@ -61,8 +61,8 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     setLevel('')
     setService('')
     setSearch('')
-    setMinutes(15)
-    setLimit(250)
+    setMinutes(30)
+    setLimit(500)
   }, [])
 
   // Fetch logs
@@ -159,7 +159,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         />
 
         <div className="flex items-center gap-0.5 text-[10px]">
-          {(filters?.time_range_options ?? [{ value: 15, label: '15m' }, { value: 60, label: '1h' }, { value: 0, label: 'All' }]).map((t) => (
+          {(filters?.time_range_options ?? [{ value: 15, label: '15m' }, { value: 30, label: '30m' }, { value: 60, label: '1h' }, { value: 0, label: 'All' }]).map((t) => (
             <button
               key={t.value} onClick={() => setMinutes(t.value)}
               className={`px-1.5 py-0.5 rounded ${minutes === t.value ? 'bg-blue-600 text-white' : 'bg-surface-tertiary text-gray-400 hover:bg-surface-hover'}`}
@@ -170,7 +170,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         </div>
 
         <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} className={sel}>
-          {(filters?.limit_options ?? [100, 250, 500]).map((l) => (
+          {(filters?.limit_options ?? [100, 250, 500, 1000]).map((l) => (
             <option key={l} value={l}>{l} rows</option>
           ))}
         </select>
@@ -187,7 +187,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
       </div>
 
       {error && (
-        <div className="px-3 py-1 bg-red-900/30 text-red-400 text-[11px] border-b border-red-800/30">{error}</div>
+        <div className="px-3 py-1 bg-red-900/30 text-red-400 text-[11px] border-b border-red-800/30 select-text whitespace-pre-wrap break-words">{error}</div>
       )}
 
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">

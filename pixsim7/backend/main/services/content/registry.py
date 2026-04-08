@@ -194,7 +194,7 @@ class ContentLoaderRegistry:
                         label=spec.label,
                         error=str(exc),
                         error_type=exc.__class__.__name__,
-                        msg=f"Continuing startup without {spec.label}",
+                        detail=f"Continuing startup without {spec.label}",
                     )
 
             self._results[spec.id] = result

@@ -38,7 +38,7 @@ async def test_prompt_analysis_routes_local_analyzer_to_local_provider(monkeypat
 
     async def _fake_analyze_prompt_with_llm(**kwargs):
         captured.update(kwargs)
-        return {"prompt": kwargs["text"], "candidates": [], "tags": [], "tags_flat": []}
+        return {"prompt": kwargs["text"], "candidates": []}
 
     monkeypatch.setattr(prompt_parser, "analyze_prompt_with_llm", _fake_analyze_prompt_with_llm)
 
@@ -68,4 +68,3 @@ async def test_local_provider_error_falls_back_to_simple_parser(monkeypatch):
 
     assert "candidates" in result
     assert isinstance(result["candidates"], list)
-    assert "tags" in result

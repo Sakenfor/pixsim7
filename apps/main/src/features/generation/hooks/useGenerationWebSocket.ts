@@ -636,16 +636,10 @@ class WebSocketManager {
             });
           }
 
-          // Background fetch for full data (timestamps, asset refs, etc.)
-          if (message.type === 'job:created') {
-            debugFlags.log('websocket', 'Job created, fetching full data...');
-            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
-              debugFlags.log('websocket', 'Generation data:', data);
-              addOrUpdateGeneration(fromGenerationResponse(data));
-            }).catch(err => {
-              console.error('[WebSocket] Failed to fetch generation:', generationId, err);
-            });
-          } else if (message.type === 'job:completed') {
+          // Terminal events need a full fetch (asset refs, error details, cleanup).
+          // Non-terminal events (created, started, paused, resumed) are fully
+          // handled by the optimistic status patch above — no API call needed.
+          if (message.type === 'job:completed') {
             debugFlags.log('websocket', 'Job completed! Fetching full data...');
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then(async (data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
@@ -690,13 +684,6 @@ class WebSocketManager {
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
-          } else if (message.type === 'job:started' || message.type === 'job:running') {
-            debugFlags.log('websocket', 'Job status update:', message.type);
-            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
-              addOrUpdateGeneration(fromGenerationResponse(data));
-            }).catch(err => {
-              console.error('[WebSocket] Failed to fetch generation:', generationId, err);
-            });
           } else if (message.type === 'job:failed') {
             debugFlags.log('websocket', 'Job failed');
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
@@ -717,13 +704,10 @@ class WebSocketManager {
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
-          } else if (message.type === 'job:paused' || message.type === 'job:resumed') {
-            debugFlags.log('websocket', `Job ${message.type === 'job:paused' ? 'paused' : 'resumed'}`);
-            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
-              addOrUpdateGeneration(fromGenerationResponse(data));
-            }).catch(err => {
-              console.error('[WebSocket] Failed to fetch generation:', generationId, err);
-            });
+          } else {
+            // job:created, job:started, job:running, job:paused, job:resumed
+            // — optimistic patch is sufficient, no fetch needed
+            debugFlags.log('websocket', 'Status-only event, optimistic patch applied:', message.type);
           }
         } else if (message.type === 'asset:created') {
           // Handle asset creation events (from any source: generation, upload, paused frame)

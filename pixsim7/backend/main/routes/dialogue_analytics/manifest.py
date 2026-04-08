@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Track dialogue generation costs, engagement, and performance metrics",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1",
     tags=["dialogue", "analytics"],
     dependencies=[],

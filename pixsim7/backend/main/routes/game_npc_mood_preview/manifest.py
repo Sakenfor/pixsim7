@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Preview NPC mood states using valence-arousal model and emotional states",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/npc",
     tags=["game-npc", "mood", "preview"],
     dependencies=["auth"],

@@ -138,6 +138,8 @@ export interface WorkspaceActions {
     },
   ) => void;
   closeFloatingPanel: (panelId: string) => void;
+  /** Swap a floating panel's definition in-place (keeps position, size, z-index). */
+  replaceFloatingPanel: (panelId: string, newDefinitionId: string, context?: Record<string, any>) => void;
   minimizeFloatingPanel: (panelId: string) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
   updateFloatingPanelPosition: (
@@ -536,6 +538,16 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
           lastFloatingPanelStates: saved,
           focusedFloatingPanelId: get().focusedFloatingPanelId === panelId ? null : get().focusedFloatingPanelId,
+        });
+      },
+
+      replaceFloatingPanel: (panelId, newDefinitionId, context) => {
+        set({
+          floatingPanels: get().floatingPanels.map((p) => {
+            if (p.id !== panelId) return p;
+            // Keep geometry, swap identity + context
+            return { ...p, id: newDefinitionId, context: context ?? {} };
+          }),
         });
       },
 

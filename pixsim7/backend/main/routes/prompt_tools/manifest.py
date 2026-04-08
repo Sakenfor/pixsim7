@@ -10,6 +10,7 @@ manifest = PluginManifest(
     description="Prompt tool catalog and execution endpoints",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["prompt-tools"],
     dependencies=["auth"],

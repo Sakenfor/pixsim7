@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Asset and variant management",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["assets"],
     dependencies=["auth"],

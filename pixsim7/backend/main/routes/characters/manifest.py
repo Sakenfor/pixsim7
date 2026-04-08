@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Persistent character registry with template expansion and game integration",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1/characters",
     tags=["characters"],
     dependencies=["auth", "prompts"],

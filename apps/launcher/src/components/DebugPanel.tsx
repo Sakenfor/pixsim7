@@ -89,7 +89,7 @@ export function DebugPanel() {
 
         {error && !state && (
           <div className="text-[11px] text-gray-500 bg-surface-secondary rounded border border-border p-3">
-            <div className="text-gray-400 mb-1">{error}</div>
+            <div className="text-gray-400 mb-1 select-text whitespace-pre-wrap break-words">{error}</div>
             <div className="text-[10px] text-gray-600">
               This service may not support runtime debug control.
               Try setting <code className="text-gray-400">PIXSIM_LOG_LEVEL=DEBUG</code> in its environment and restarting.

@@ -51,7 +51,8 @@ import {
   SourceFolderRuleEditor,
   ProviderStatusRuleEditor,
   ProviderRuleEditor,
-  AnalysisTagsRuleEditor,
+  ContentElementsRuleEditor,
+  StyleTagsRuleEditor,
   MissingMetadataRuleEditor,
   IncludeArchivedRuleEditor,
   MEDIA_TYPE_OPTIONS,
@@ -589,9 +590,16 @@ export function SmartFilterEditor({
               onChange={updateFilters}
             />
           );
-        case 'analysisTags':
+        case 'contentElements':
           return (
-            <AnalysisTagsRuleEditor
+            <ContentElementsRuleEditor
+              filters={filters}
+              onChange={updateFilters}
+            />
+          );
+        case 'styleTags':
+          return (
+            <StyleTagsRuleEditor
               filters={filters}
               onChange={updateFilters}
             />

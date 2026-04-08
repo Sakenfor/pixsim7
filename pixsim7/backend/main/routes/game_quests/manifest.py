@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Quest and objective tracking for game sessions",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/quests",
     tags=["game-quests"],
     dependencies=["auth", "game_sessions"],

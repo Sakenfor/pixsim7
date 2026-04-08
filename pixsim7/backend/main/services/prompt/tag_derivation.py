@@ -64,6 +64,27 @@ def _extract_ontology_ids(candidate: Dict[str, Any]) -> List[str]:
     return result
 
 
+def _get_valid_roles() -> set[str]:
+    """Return the set of valid role IDs from the prompt role registry."""
+    try:
+        from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
+        registry = PromptRoleRegistry.default()
+        return {r.normalized_id() for r in registry.values()} - {"other"}
+    except Exception:
+        return set()
+
+
+# Cached at module load — roles don't change at runtime.
+_VALID_ROLES: set[str] | None = None
+
+
+def _is_valid_role(role: str) -> bool:
+    global _VALID_ROLES
+    if _VALID_ROLES is None:
+        _VALID_ROLES = _get_valid_roles()
+    return role in _VALID_ROLES
+
+
 def derive_structured_and_flat_tags(
     candidates: Iterable[Dict[str, Any]],
     *,
@@ -85,7 +106,7 @@ def derive_structured_and_flat_tags(
         role = candidate.get("role")
         confidence = candidate.get("confidence", 0.0)
 
-        if role and role != "other" and len(role) <= 40:
+        if role and role != "other" and len(role) <= 40 and _is_valid_role(role):
             role_tag = f"has:{role}"
             if role_tag not in role_tag_segments:
                 role_tag_segments[role_tag] = []

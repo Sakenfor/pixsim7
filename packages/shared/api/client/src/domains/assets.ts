@@ -134,7 +134,7 @@ export function createAssetsApi(client: PixSimApiClient) {
       if (options?.limit) {
         payload.limit = options.limit;
       }
-      return client.post<FilterMetadataResponse>('/assets/filter-options', payload);
+      return client.post<FilterMetadataResponse>('/assets/filter-options', payload, { timeout: 120_000 });
     },
 
     /**

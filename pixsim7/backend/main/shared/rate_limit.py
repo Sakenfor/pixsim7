@@ -92,7 +92,7 @@ class RateLimiter:
 
 # Predefined rate limiters for common endpoints
 login_limiter = RateLimiter(key_prefix="login", max_requests=5, window_seconds=60)
-job_create_limiter = RateLimiter(key_prefix="job_create", max_requests=10, window_seconds=60)
+job_create_limiter = RateLimiter(key_prefix="job_create", max_requests=20, window_seconds=60)
 
 
 async def get_client_identifier(request: Request) -> str:

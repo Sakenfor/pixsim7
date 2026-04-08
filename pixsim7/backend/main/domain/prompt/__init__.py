@@ -1,12 +1,12 @@
 """
 Prompt Domain
 
-Consolidated prompt versioning and reusable blocks domain.
+Consolidated prompt versioning domain.
 
 Models:
 - PromptFamily: Groups related prompt versions (concept/scene grouping)
 - PromptVersion: Individual immutable prompt snapshot (Git commit analog)
-- PromptBlock: Reusable prompt component (extracted or curated)
+- BlockTemplate: Reusable template for composing prompts from block selections
 - PromptVersionBlock: Junction table for version→block composition
 - PromptVariantFeedback: User feedback on prompt variants
 
@@ -34,7 +34,6 @@ from .enums import (
 from .models import (
     PromptFamily,
     PromptVersion,
-    PromptBlock,
     BlockTemplate,
 )
 from .packs import PromptPackDraft, PromptPackPublication, PromptPackVersion
@@ -59,7 +58,6 @@ __all__ = [
     # Core models
     "PromptFamily",
     "PromptVersion",
-    "PromptBlock",
     "BlockTemplate",
     "PromptPackDraft",
     "PromptPackPublication",

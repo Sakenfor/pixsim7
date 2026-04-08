@@ -81,7 +81,7 @@ export function TracePanel({ fieldName, fieldValue, onClose }: TracePanelProps) 
           </div>
         )}
         {error && (
-          <div className="text-red-400 text-[11px] px-3 py-2">
+          <div className="text-red-400 text-[11px] px-3 py-2 select-text whitespace-pre-wrap break-words">
             {error.includes('Failed') ? 'Backend not reachable — is it running?' : error}
           </div>
         )}

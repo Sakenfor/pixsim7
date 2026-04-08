@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoints for block-to-asset fit scoring and rating",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/block-fit
     tags=["dev", "block-fit"],
     dependencies=[],  # Standalone, uses ontology + ActionBlocks

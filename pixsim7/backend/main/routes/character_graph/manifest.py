@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Graph query and analytics API for character, NPC, scene, and asset relationships",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1/character-graph",
     tags=["character-graph", "admin"],
     dependencies=["auth", "characters", "game_scenes", "assets", "generations"],

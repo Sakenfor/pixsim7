@@ -101,7 +101,7 @@ async def _watch_vocab_dirs() -> None:
     """Watch plugins/*/vocabularies/ for YAML changes and reload the vocab registry."""
     plugins_dir = get_path_registry().feature_plugins_dir
     if not plugins_dir.exists():
-        logger.info("vocab_watcher_no_dir", msg="plugins/ does not exist")
+        logger.info("vocab_watcher_no_dir", detail="plugins/ does not exist")
         return
 
     logger.info("vocab_watcher_started", path=str(plugins_dir))

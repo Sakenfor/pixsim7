@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoint for prompt family timeline and performance view",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/prompt-families
     tags=["dev", "prompts", "timeline", "performance"],
     dependencies=[],

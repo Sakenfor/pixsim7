@@ -887,6 +887,11 @@ class Bridge:
         meta = self._extract_task_meta(msg)
         get_logger().info("task_received", task=task_id[:8], type=task_type, engine=meta["engine"], model=meta["model"])
 
+        # Set in-process dispatch session so MCP tools (log_work) can
+        # resolve the correct chat session without file I/O races.
+        from pixsim7.client.mcp_server import set_dispatch_session
+        set_dispatch_session(meta["bridge_session_id"])
+
         # Per-request user token — passed to pool.send_message() which writes
         # it to the target session's isolated token file (no shared file race)
         user_token = msg.get("user_token")
@@ -939,17 +944,6 @@ class Bridge:
                 )
             if preamble_parts:
                 prompt = "\n\n".join(preamble_parts) + "\n\n" + prompt
-
-        # Write chat session ID to sidecar so the shared HTTP MCP server can
-        # attribute log_work and other tools to the correct session.
-        if meta["bridge_session_id"]:
-            try:
-                from pathlib import Path
-                sidecar_path = Path.home() / ".pixsim" / "bridge_chat_session"
-                sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-                sidecar_path.write_text(meta["bridge_session_id"])
-            except OSError:
-                pass
 
         # Report busy (use original user text, not persona-prefixed prompt)
         user_text = msg.get("instruction") or msg.get("prompt", "")
@@ -1056,6 +1050,11 @@ class Bridge:
                 # Get conversation session UUID for resume support
                 session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
                 bridge_session_id = session.cli_session_id if session else None
+
+                # Update dispatch session with resolved ID — new conversations
+                # get their session ID after the first turn.
+                if bridge_session_id:
+                    set_dispatch_session(bridge_session_id)
 
                 get_logger().info("task_complete", task=task_id[:8], session=session_id, chars=len(response))
 

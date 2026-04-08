@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Preview reputation bands using relationship data and world schemas",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/reputation",
     tags=["game-reputation", "preview"],
     dependencies=["auth"],

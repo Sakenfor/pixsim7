@@ -446,7 +446,7 @@ class AssetCreationMixin:
                     if tags_to_apply:
                         from pixsim7.backend.main.services.tag import TagAssignment
                         from pixsim7.backend.main.domain.assets.tag import AssetTag
-                        await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
+                        await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True, source="auto")
                     return
 
             # Get static tags for this source type
@@ -473,7 +473,7 @@ class AssetCreationMixin:
 
             from pixsim7.backend.main.services.tag import TagAssignment
             from pixsim7.backend.main.domain.assets.tag import AssetTag
-            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
+            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True, source="auto")
 
         except Exception as e:
             logger.warning(f"Failed to auto-tag asset {asset_id} (source={source_type}): {e}")
@@ -529,13 +529,14 @@ class AssetCreationMixin:
         Args:
             asset_id: The asset to tag
             user_id: The user who owns the asset
-            prompt_analysis: Analysis result with "tags_flat" or "tags" field
+            prompt_analysis: Analysis result with candidates (and legacy tags_flat/tags)
         """
         try:
-            # Get analysis tags - prefer tags_flat, then tags, then derive from candidates.
-            analysis_tags = self._extract_analysis_tags(prompt_analysis)
+            # Derive tags from candidates (primary path).
+            # Falls back to legacy tags_flat/tags for old stored analyses.
+            analysis_tags = self._derive_analysis_tags_from_candidates(prompt_analysis)
             if not analysis_tags:
-                analysis_tags = self._derive_analysis_tags_from_candidates(prompt_analysis)
+                analysis_tags = self._extract_legacy_tags(prompt_analysis)
             if not analysis_tags:
                 return
 
@@ -577,7 +578,7 @@ class AssetCreationMixin:
 
             from pixsim7.backend.main.services.tag import TagAssignment
             from pixsim7.backend.main.domain.assets.tag import AssetTag
-            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True)
+            await TagAssignment(self.db, AssetTag, "asset_id").assign(asset_id, tags_to_apply, auto_create=True, source="analysis")
 
             logger.debug(f"Applied {len(tags_to_apply)} analyzer tags to asset {asset_id}")
 
@@ -585,8 +586,11 @@ class AssetCreationMixin:
             logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
 
     @staticmethod
-    def _extract_analysis_tags(prompt_analysis: dict) -> list[str]:
-        """Extract tag strings from tags_flat / tags fields."""
+    def _extract_legacy_tags(prompt_analysis: dict) -> list[str]:
+        """Fallback: extract tags from legacy tags_flat / tags JSONB fields.
+
+        Only needed for assets created before tags were dropped from parser output.
+        """
         tags_flat = prompt_analysis.get("tags_flat")
         if isinstance(tags_flat, list) and tags_flat:
             return [tag for tag in tags_flat if isinstance(tag, str) and tag.strip()]
@@ -609,7 +613,7 @@ class AssetCreationMixin:
 
     @staticmethod
     def _derive_analysis_tags_from_candidates(prompt_analysis: dict) -> list[str]:
-        """Best-effort derivation when tags/tags_flat are missing."""
+        """Derive flat tag slugs from parsed candidates (primary path)."""
         candidates = prompt_analysis.get("candidates")
         if not isinstance(candidates, list) or not candidates:
             return []

@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Game location management",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/locations",
     tags=["game-locations"],
     dependencies=["auth"],

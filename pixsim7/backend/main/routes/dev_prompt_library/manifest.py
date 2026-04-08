@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoints for browsing and analyzing prompt families/versions",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/prompt-library
     tags=["dev", "prompts", "library"],
     dependencies=["dev_prompt_inspector"],  # Uses prompt analysis infrastructure

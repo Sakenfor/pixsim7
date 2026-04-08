@@ -623,7 +623,10 @@ def _derive_sequence_context(analysis: Dict[str, Any]) -> Dict[str, Any]:
     if best_match is not None:
         return best_match
 
+    # Try structured tags (legacy stored data) then derive from candidates
     tags_role = _extract_sequence_role_from_tags(analysis.get("tags"))
+    if tags_role == "unspecified":
+        tags_role = _extract_sequence_role_from_candidates(analysis.get("candidates"))
     if tags_role != "unspecified":
         return {
             "role_in_sequence": tags_role,
@@ -659,6 +662,7 @@ def _normalize_sequence_role(value: Any) -> str:
 
 
 def _extract_sequence_role_from_tags(raw_tags: Any) -> str:
+    """Extract sequence role from legacy structured tags list."""
     if not isinstance(raw_tags, list):
         return "unspecified"
     for item in raw_tags:
@@ -677,6 +681,22 @@ def _extract_sequence_role_from_tags(raw_tags: Any) -> str:
             return _normalize_sequence_role(normalized_tag.split(":", 1)[1])
         if normalized_tag.startswith("role_in_sequence:"):
             return _normalize_sequence_role(normalized_tag.split(":", 1)[1])
+    return "unspecified"
+
+
+def _extract_sequence_role_from_candidates(candidates: Any) -> str:
+    """Extract sequence role from candidate ontology_ids (new parser output)."""
+    if not isinstance(candidates, list):
+        return "unspecified"
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        for oid in candidate.get("ontology_ids") or []:
+            if not isinstance(oid, str):
+                continue
+            normalized = oid.strip().lower()
+            if normalized.startswith("sequence:"):
+                return _normalize_sequence_role(normalized.split(":", 1)[1])
     return "unspecified"
 
 

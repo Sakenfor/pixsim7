@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, TypeVar, Generic
+from typing import Any, Callable, Dict, Optional, TypeVar, Generic
 
 import httpx
 from fastapi import HTTPException, Request
@@ -10,6 +12,11 @@ from .client import ServiceClientError
 from .router import ServiceRouter
 
 TLocal = TypeVar("TLocal")
+
+logger = logging.getLogger(__name__)
+
+# After a connect failure, skip proxy attempts for this many seconds.
+_CIRCUIT_OPEN_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -40,6 +47,11 @@ class ServiceGateway(Generic[TLocal]):
         if not client:
             return ProxyResult(False, None)
 
+        # Circuit breaker: skip proxy if remote recently failed to connect
+        last_fail = _circuit_breaker_state.get(self._service_id)
+        if last_fail is not None and (time.monotonic() - last_fail) < _CIRCUIT_OPEN_SECONDS:
+            return ProxyResult(False, None)
+
         headers = _build_forward_headers(req)
         try:
             data = await client.request_json(
@@ -49,9 +61,20 @@ class ServiceGateway(Generic[TLocal]):
                 params=params,
                 headers=headers,
             )
+            # Success — clear any previous circuit breaker state
+            _circuit_breaker_state.pop(self._service_id, None)
             return ProxyResult(True, data)
         except ServiceClientError as exc:
             _raise_http_error(exc)
+        except httpx.ConnectError:
+            # Remote service is unreachable — fall back to local processing
+            _circuit_breaker_state[self._service_id] = time.monotonic()
+            logger.info(
+                "service_proxy_connect_failed",
+                service_id=self._service_id,
+                msg=f"Remote {self._service_id} unreachable, falling back to local (circuit open for {_CIRCUIT_OPEN_SECONDS}s)",
+            )
+            return ProxyResult(False, None)
         except httpx.RequestError as exc:
             raise HTTPException(
                 status_code=502,
@@ -59,6 +82,10 @@ class ServiceGateway(Generic[TLocal]):
             ) from exc
 
         return ProxyResult(True, None)
+
+
+# Module-level circuit breaker: service_id → monotonic timestamp of last failure
+_circuit_breaker_state: Dict[str, float] = {}
 
 
 def _build_forward_headers(req: Request) -> Dict[str, str]:

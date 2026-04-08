@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="NPC behavior system management (activities, routines, preferences)",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/worlds",
     tags=["game-behavior"],
     dependencies=["auth"],

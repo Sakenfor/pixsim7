@@ -6,7 +6,7 @@ Provides discovery of available analyzers (prompt and asset) for frontend config
 
 import re
 
-from fastapi import APIRouter, Query, HTTPException, Request
+from fastapi import APIRouter, Query, HTTPException
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
@@ -14,7 +14,6 @@ from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
     CurrentAdminUser,
     DatabaseSession,
-    AnalysisGatewaySvc,
 )
 from pixsim7.backend.main.domain import User
 from pixsim7.backend.main.services.prompt.parser import (
@@ -25,7 +24,6 @@ from pixsim7.backend.main.services.prompt.parser import (
     AnalyzerTaskFamily,
     get_effective_instance_options,
 )
-from pixsim7.backend.main.infrastructure.services.gateway import ProxyResult
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
     AnalyzerInstanceService,
     AnalyzerInstanceConfigError,
@@ -45,24 +43,6 @@ from pixsim7.backend.main.services.ownership.user_owned import (
 )
 
 router = APIRouter()
-
-
-async def _proxy_request(
-    analysis_gateway: AnalysisGatewaySvc,
-    req: Request,
-    method: str,
-    path: str,
-    *,
-    json: Optional[dict] = None,
-    params: Optional[dict] = None,
-) -> ProxyResult:
-    return await analysis_gateway.proxy(
-        req,
-        method,
-        path,
-        json=json,
-        params=params,
-    )
 
 
 class InstanceOptionResponse(BaseModel):
@@ -329,9 +309,7 @@ class AnalyzerPresetReject(BaseModel):
 
 @router.get("/analysis-points", response_model=AnalysisPointsListResponse)
 async def list_analysis_points(
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
     target: Optional[str] = Query(
         None,
         description="Filter by point group: prompt | asset | system",
@@ -340,16 +318,6 @@ async def list_analysis_points(
     """
     List analysis point definitions used by routing/settings UIs.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        "/api/v1/analysis-points",
-        params={"target": target},
-    )
-    if proxy.called:
-        return AnalysisPointsListResponse.model_validate(proxy.data)
-
     points = _list_analysis_points(user=user)
 
     if target:
@@ -370,22 +338,10 @@ async def list_analysis_points(
 @router.post("/analysis-points", response_model=AnalysisPointResponse, status_code=201)
 async def create_custom_analysis_point(
     data: CustomAnalysisPointCreate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """Create a user-defined custom analysis point."""
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        "/api/v1/analysis-points",
-        json=data.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return AnalysisPointResponse.model_validate(proxy.data)
-
     user_record = await db.get(User, user.id)
     if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
@@ -415,22 +371,10 @@ async def create_custom_analysis_point(
 async def update_custom_analysis_point(
     point_id: str,
     data: CustomAnalysisPointUpdate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """Update a user-defined custom analysis point."""
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "PATCH",
-        f"/api/v1/analysis-points/{point_id}",
-        json=data.model_dump(mode="json", exclude_unset=True),
-    )
-    if proxy.called:
-        return AnalysisPointResponse.model_validate(proxy.data)
-
     user_record = await db.get(User, user.id)
     if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
@@ -471,21 +415,10 @@ async def update_custom_analysis_point(
 @router.delete("/analysis-points/{point_id}", status_code=204)
 async def delete_custom_analysis_point(
     point_id: str,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """Delete a user-defined custom analysis point."""
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "DELETE",
-        f"/api/v1/analysis-points/{point_id}",
-    )
-    if proxy.called:
-        return None
-
     user_record = await db.get(User, user.id)
     if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
@@ -516,8 +449,6 @@ async def delete_custom_analysis_point(
 
 @router.get("/analyzers", response_model=AnalyzersListResponse)
 async def list_analyzers(
-    req: Request,
-    analysis_gateway: AnalysisGatewaySvc,
     target: Optional[str] = Query(
         None,
         description="Filter by target: 'prompt' or 'asset'. If not specified, returns all."
@@ -541,20 +472,6 @@ async def list_analyzers(
     - target: 'prompt' for text analysis, 'asset' for media analysis
     - include_legacy: include backward-compatible aliases
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        "/api/v1/analyzers",
-        params={
-            "target": target,
-            "include_legacy": include_legacy,
-            "include_disabled": include_disabled,
-        },
-    )
-    if proxy.called:
-        return AnalyzersListResponse.model_validate(proxy.data)
-
     try:
         target_enum = AnalyzerTarget(target) if target else None
     except ValueError:
@@ -588,21 +505,10 @@ async def list_analyzers(
 @router.get("/analyzers/{analyzer_id}", response_model=AnalyzerResponse)
 async def get_analyzer(
     analyzer_id: str,
-    req: Request,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Get info about a specific analyzer.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        f"/api/v1/analyzers/{analyzer_id}",
-    )
-    if proxy.called:
-        return AnalyzerResponse.model_validate(proxy.data)
-
     analyzer = analyzer_registry.get(analyzer_id)
     if not analyzer:
         raise HTTPException(status_code=404, detail=f"Analyzer '{analyzer_id}' not found")
@@ -613,24 +519,12 @@ async def get_analyzer(
 @router.post("/analyzers", response_model=AnalyzerResponse, status_code=201)
 async def create_analyzer(
     data: AnalyzerDefinitionCreate,
-    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a new analyzer definition (admin only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        "/api/v1/analyzers",
-        json=data.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return AnalyzerResponse.model_validate(proxy.data)
-
     service = AnalyzerDefinitionService(db)
 
     try:
@@ -667,24 +561,12 @@ async def create_analyzer(
 async def update_analyzer(
     analyzer_id: str,
     data: AnalyzerDefinitionUpdate,
-    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update an analyzer definition (admin only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "PATCH",
-        f"/api/v1/analyzers/{analyzer_id}",
-        json=data.model_dump(mode="json", exclude_unset=True),
-    )
-    if proxy.called:
-        return AnalyzerResponse.model_validate(proxy.data)
-
     service = AnalyzerDefinitionService(db)
     updates = data.model_dump(exclude_unset=True)
 
@@ -707,23 +589,12 @@ async def update_analyzer(
 @router.delete("/analyzers/{analyzer_id}", status_code=204)
 async def delete_analyzer(
     analyzer_id: str,
-    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete an analyzer definition (admin only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "DELETE",
-        f"/api/v1/analyzers/{analyzer_id}",
-    )
-    if proxy.called:
-        return None
-
     service = AnalyzerDefinitionService(db)
     deleted = await service.delete_definition(analyzer_id)
     if not deleted:
@@ -733,10 +604,8 @@ async def delete_analyzer(
 
 @router.get("/analyzer-presets", response_model=AnalyzerPresetListResponse)
 async def list_analyzer_presets(
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
     analyzer_id: Optional[str] = None,
     status: Optional[str] = None,
     include_public: bool = False,
@@ -755,27 +624,6 @@ async def list_analyzer_presets(
     """
     if include_all and not user.is_admin():
         raise HTTPException(status_code=403, detail="Admin access required")
-
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        "/api/v1/analyzer-presets",
-        params={
-            k: v
-            for k, v in {
-                "analyzer_id": analyzer_id,
-                "status": status,
-                "include_public": include_public,
-                "owner_user_id": owner_user_id,
-                "include_all": include_all,
-                "mine": mine,
-            }.items()
-            if v is not None
-        },
-    )
-    if proxy.called:
-        return AnalyzerPresetListResponse.model_validate(proxy.data)
 
     scope = resolve_user_owned_list_scope(
         current_user=user,
@@ -828,24 +676,12 @@ async def list_analyzer_presets(
 @router.post("/analyzer-presets", response_model=AnalyzerPresetResponse, status_code=201)
 async def create_analyzer_preset(
     data: AnalyzerPresetCreate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a personal analyzer preset.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        "/api/v1/analyzer-presets",
-        json=data.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return AnalyzerPresetResponse.model_validate(proxy.data)
-
     service = AnalyzerPresetService(db)
     try:
         preset = await service.create_preset(
@@ -867,24 +703,12 @@ async def create_analyzer_preset(
 async def update_analyzer_preset(
     preset_entry_id: int,
     data: AnalyzerPresetUpdate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update a personal analyzer preset (draft/rejected only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "PATCH",
-        f"/api/v1/analyzer-presets/{preset_entry_id}",
-        json=data.model_dump(mode="json", exclude_unset=True),
-    )
-    if proxy.called:
-        return AnalyzerPresetResponse.model_validate(proxy.data)
-
     service = AnalyzerPresetService(db)
     try:
         preset = await service.update_preset(
@@ -908,23 +732,12 @@ async def update_analyzer_preset(
 @router.delete("/analyzer-presets/{preset_entry_id}", status_code=204)
 async def delete_analyzer_preset(
     preset_entry_id: int,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete a personal analyzer preset.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "DELETE",
-        f"/api/v1/analyzer-presets/{preset_entry_id}",
-    )
-    if proxy.called:
-        return None
-
     service = AnalyzerPresetService(db)
     try:
         deleted = await service.delete_preset(
@@ -943,23 +756,12 @@ async def delete_analyzer_preset(
 @router.post("/analyzer-presets/{preset_entry_id}/submit", response_model=AnalyzerPresetResponse)
 async def submit_analyzer_preset(
     preset_entry_id: int,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Submit a preset for admin approval.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        f"/api/v1/analyzer-presets/{preset_entry_id}/submit",
-    )
-    if proxy.called:
-        return AnalyzerPresetResponse.model_validate(proxy.data)
-
     service = AnalyzerPresetService(db)
     try:
         preset = await service.submit_preset(
@@ -976,23 +778,12 @@ async def submit_analyzer_preset(
 @router.post("/analyzer-presets/{preset_entry_id}/approve", response_model=AnalyzerPresetResponse)
 async def approve_analyzer_preset(
     preset_entry_id: int,
-    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Approve a preset (admin only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        f"/api/v1/analyzer-presets/{preset_entry_id}/approve",
-    )
-    if proxy.called:
-        return AnalyzerPresetResponse.model_validate(proxy.data)
-
     service = AnalyzerPresetService(db)
     try:
         preset = await service.approve_preset(
@@ -1010,24 +801,12 @@ async def approve_analyzer_preset(
 async def reject_analyzer_preset(
     preset_entry_id: int,
     data: AnalyzerPresetReject,
-    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Reject a preset (admin only).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        f"/api/v1/analyzer-presets/{preset_entry_id}/reject",
-        json=data.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return AnalyzerPresetResponse.model_validate(proxy.data)
-
     service = AnalyzerPresetService(db)
     try:
         preset = await service.reject_preset(
@@ -1044,10 +823,8 @@ async def reject_analyzer_preset(
 
 @router.get("/analyzer-instances", response_model=AnalyzerInstanceListResponse)
 async def list_analyzer_instances(
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
     analyzer_id: Optional[str] = None,
     provider_id: Optional[str] = None,
     include_disabled: bool = False,
@@ -1055,24 +832,6 @@ async def list_analyzer_instances(
     """
     List analyzer instances for the current user.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        "/api/v1/analyzer-instances",
-        params={
-            k: v
-            for k, v in {
-                "analyzer_id": analyzer_id,
-                "provider_id": provider_id,
-                "include_disabled": include_disabled,
-            }.items()
-            if v is not None
-        },
-    )
-    if proxy.called:
-        return AnalyzerInstanceListResponse.model_validate(proxy.data)
-
     service = AnalyzerInstanceService(db)
     instances = await service.list_instances(
         owner_user_id=user.id,
@@ -1105,24 +864,12 @@ async def list_analyzer_instances(
 @router.post("/analyzer-instances", response_model=AnalyzerInstanceResponse, status_code=201)
 async def create_analyzer_instance(
     data: AnalyzerInstanceCreate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a new analyzer instance (per-user).
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "POST",
-        "/api/v1/analyzer-instances",
-        json=data.model_dump(mode="json"),
-    )
-    if proxy.called:
-        return AnalyzerInstanceResponse.model_validate(proxy.data)
-
     service = AnalyzerInstanceService(db)
     try:
         instance = await service.create_instance(
@@ -1160,23 +907,12 @@ async def create_analyzer_instance(
 @router.get("/analyzer-instances/{instance_id}", response_model=AnalyzerInstanceResponse)
 async def get_analyzer_instance(
     instance_id: int,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Get a specific analyzer instance.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "GET",
-        f"/api/v1/analyzer-instances/{instance_id}",
-    )
-    if proxy.called:
-        return AnalyzerInstanceResponse.model_validate(proxy.data)
-
     service = AnalyzerInstanceService(db)
     instance = await service.get_instance_for_user(
         instance_id=instance_id,
@@ -1204,24 +940,12 @@ async def get_analyzer_instance(
 async def update_analyzer_instance(
     instance_id: int,
     data: AnalyzerInstanceUpdate,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update an analyzer instance.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "PATCH",
-        f"/api/v1/analyzer-instances/{instance_id}",
-        json=data.model_dump(mode="json", exclude_unset=True),
-    )
-    if proxy.called:
-        return AnalyzerInstanceResponse.model_validate(proxy.data)
-
     service = AnalyzerInstanceService(db)
     updates = data.model_dump(exclude_unset=True)
 
@@ -1257,23 +981,12 @@ async def update_analyzer_instance(
 @router.delete("/analyzer-instances/{instance_id}", status_code=204)
 async def delete_analyzer_instance(
     instance_id: int,
-    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete an analyzer instance.
     """
-    proxy = await _proxy_request(
-        analysis_gateway,
-        req,
-        "DELETE",
-        f"/api/v1/analyzer-instances/{instance_id}",
-    )
-    if proxy.called:
-        return None
-
     service = AnalyzerInstanceService(db)
     deleted = await service.delete_instance(
         instance_id=instance_id,

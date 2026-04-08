@@ -779,6 +779,14 @@ class PluginManager:
             self.load_order = self.resolve_dependencies()
             logger.info(f"Plugin load order: {self.load_order}")
 
+            # Service filter: pixsim_services="generation,content" → only mount those + core
+            from pixsim7.backend.main.shared.config import settings as _settings
+            _svc_filter_raw = (_settings.pixsim_services or "").strip()
+            _svc_filter = {s.strip() for s in _svc_filter_raw.split(",") if s.strip()} if _svc_filter_raw else None
+            if _svc_filter:
+                _svc_filter.add("core")  # core always mounted
+                logger.info("service_filter_active", services=sorted(_svc_filter))
+
             # Register routers
             for plugin_id in self.load_order:
                 plugin = self.plugins[plugin_id]
@@ -786,6 +794,10 @@ class PluginManager:
 
                 if not manifest.enabled:
                     logger.info(f"Skipping disabled plugin: {plugin_id}")
+                    continue
+
+                if _svc_filter and manifest.service not in _svc_filter:
+                    logger.info(f"Skipping plugin (service={manifest.service!r} not in filter): {plugin_id}")
                     continue
 
                 # Normalize prefix: empty string → /api/v1 (unless prefix_raw=True)
@@ -934,6 +946,8 @@ class PluginManager:
                 'id': plugin_id,
                 'name': plugin['manifest'].name,
                 'version': plugin['manifest'].version,
+                'kind': plugin['manifest'].kind,
+                'service': plugin['manifest'].service,
                 'enabled': plugin['enabled'],
             }
             for plugin_id, plugin in self.plugins.items()

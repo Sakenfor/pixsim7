@@ -127,7 +127,8 @@ async def discover_prompt_categories(
     try:
         analysis = await analyze_prompt(prompt_text)
         candidates = analysis.get("candidates", [])
-        tags = analysis.get("tags", [])
+        from pixsim7.backend.main.services.prompt.tag_derivation import derive_flat_tags
+        tags = derive_flat_tags(candidates) if candidates else []
     except Exception as e:
         logger.error(
             "prompt_analysis_failed",

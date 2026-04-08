@@ -13,9 +13,9 @@ class ServiceClientError(RuntimeError):
 
 
 class ServiceClient:
-    def __init__(self, base_url: str, timeout_s: float = 30.0) -> None:
+    def __init__(self, base_url: str, timeout_s: float = 30.0, connect_timeout_s: float = 1.5) -> None:
         self._base_url = base_url.rstrip("/")
-        self._timeout = httpx.Timeout(timeout_s)
+        self._timeout = httpx.Timeout(timeout_s, connect=connect_timeout_s)
 
     def _build_url(self, path: str) -> str:
         if not path.startswith("/"):

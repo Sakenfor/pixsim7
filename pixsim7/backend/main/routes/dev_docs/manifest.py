@@ -11,6 +11,7 @@ manifest = PluginManifest(
     description="Indexed documentation with AST and link graph",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="",
     tags=["dev", "docs"],
     dependencies=[],

@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Sequential orchestration of generation steps with template rolling and asset piping",
     author="PixSim Team",
     kind="route",
+    service="generation",
     prefix="/api/v1",
     tags=["generation-chains"],
     dependencies=["auth", "block_templates"],

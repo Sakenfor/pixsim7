@@ -10,9 +10,6 @@ import re
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
-from pixsim7.backend.main.services.prompt.tag_derivation import (
-    derive_structured_and_flat_tags,
-)
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 
 if TYPE_CHECKING:
@@ -165,16 +162,11 @@ async def analyze_prompt_with_llm(
         raw_candidates = result.get("candidates") or result.get("blocks") or []
         candidates = _normalize_candidates(raw_candidates, role_registry)
 
-        # Derive structured + flat tags from candidates (same logic as parser path)
-        tags, tags_flat = derive_structured_and_flat_tags(candidates)
-
-        logger.info(f"LLM analysis complete: {len(candidates)} candidates, {len(tags)} tags")
+        logger.info(f"LLM analysis complete: {len(candidates)} candidates")
 
         return {
             "prompt": text,
             "candidates": candidates,
-            "tags": tags,
-            "tags_flat": tags_flat,
         }
 
     except json.JSONDecodeError as e:

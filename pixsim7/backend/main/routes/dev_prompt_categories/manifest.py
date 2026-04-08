@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Dev endpoint for AI-assisted prompt category and ontology discovery",
     author="PixSim Team",
     kind="route",
+    service="devtools",
     prefix="/api/v1",  # Router already includes /dev/prompt-categories
     tags=["dev", "prompts", "ontology", "ai", "categories"],
     dependencies=["ai"],  # Depends on AI Hub service

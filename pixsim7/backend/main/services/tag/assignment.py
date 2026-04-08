@@ -46,6 +46,7 @@ class TagAssignment:
         entity_id: Any,
         tag_slugs: List[str],
         auto_create: bool = True,
+        source: str | None = None,
     ) -> List[Tag]:
         """
         Assign tags to an entity.
@@ -54,11 +55,14 @@ class TagAssignment:
             entity_id:   ID of the entity being tagged.
             tag_slugs:   Slugs to assign (normalized + canonical-resolved).
             auto_create: Create tags that don't exist yet if True.
+            source:      Optional source label (e.g. 'manual', 'analysis', 'auto').
+                         Only written when the join model has a ``source`` column.
 
         Returns:
             Newly assigned tags (already-assigned ones are silently skipped).
         """
         assigned: List[Tag] = []
+        has_source = hasattr(self.join_model, "source")
 
         for slug in tag_slugs:
             if auto_create:
@@ -74,7 +78,10 @@ class TagAssignment:
             )
             result = await self.db.execute(stmt)
             if not result.scalars().first():
-                row = self.join_model(**{self._entity_col.key: entity_id, "tag_id": tag.id})
+                kwargs = {self._entity_col.key: entity_id, "tag_id": tag.id}
+                if source and has_source:
+                    kwargs["source"] = source
+                row = self.join_model(**kwargs)
                 self.db.add(row)
                 assigned.append(tag)
 

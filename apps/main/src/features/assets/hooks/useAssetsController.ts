@@ -173,7 +173,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       upload_method: undefined,
       include_archived: undefined,
     },
-    arrayKeys: ['media_type', 'provider_id', 'upload_method', 'tag', 'analysis_tags'],
+    arrayKeys: ['media_type', 'provider_id', 'operation_type', 'upload_method', 'tag', 'content_elements', 'style_tags'],
     allowUnknownKeys: true,
     excludeUrlKeys: ['page', 'source', 'surface', 'group_by', 'group_view', 'group_scope', 'group_key', 'group_path', 'group_page'],
     syncToSession: true,

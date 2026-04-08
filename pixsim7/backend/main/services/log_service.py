@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Set
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, delete, text
+from sqlalchemy import select, and_, or_, desc, func, delete, text, cast, String
 from sqlmodel import col
 
 from pixsim7.backend.main.domain import LogEntry
@@ -55,6 +55,7 @@ class LogService:
                 extra_data[key] = value
 
         entry_data["timestamp"] = timestamp
+        entry_data["created_at"] = datetime.now(timezone.utc)
         if extra_data:
             entry_data["extra"] = extra_data
 
@@ -180,8 +181,14 @@ class LogService:
             search_pattern = f"%{search}%"
             filters.append(
                 or_(
-                    col(LogEntry.msg).like(search_pattern),
-                    col(LogEntry.error).like(search_pattern)
+                    col(LogEntry.msg).ilike(search_pattern),
+                    col(LogEntry.error).ilike(search_pattern),
+                    col(LogEntry.stage).ilike(search_pattern),
+                    col(LogEntry.domain).ilike(search_pattern),
+                    col(LogEntry.channel).ilike(search_pattern),
+                    col(LogEntry.operation_type).ilike(search_pattern),
+                    col(LogEntry.provider_id).ilike(search_pattern),
+                    cast(LogEntry.extra, String).ilike(search_pattern),
                 )
             )
 

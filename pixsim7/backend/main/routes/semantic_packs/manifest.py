@@ -14,6 +14,7 @@ manifest = PluginManifest(
     description="Shareable bundles of prompt semantics, parser hints, and content",
     author="PixSim Team",
     kind="route",
+    service="content",
     prefix="/api/v1",
     tags=["semantic-packs"],
     dependencies=["auth"],

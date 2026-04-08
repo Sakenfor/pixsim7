@@ -19,9 +19,6 @@ from typing import Dict, Any, List, Optional
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.candidates import candidates_from_segments
-from pixsim7.backend.main.services.prompt.tag_derivation import (
-    derive_structured_and_flat_tags,
-)
 from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
     enrich_candidates_with_primitive_projection,
     normalize_primitive_projection_mode,
@@ -117,13 +114,11 @@ async def analyze_prompt(
               "matched_keywords": ["vampire"]
             },
             ...
-          ],
-          "tags": [
-            {"tag": "has:character", "candidates": [0], "source": "role", "confidence": 0.85},
-            ...
-          ],
-          "tags_flat": ["has:character", "has:setting", ...]
+          ]
         }
+
+    Tags are derived from candidates at asset creation time and stored
+    in the asset_tag join table (source='analysis').
     """
     result = await parse_prompt_to_candidates(
         text,
@@ -132,12 +127,7 @@ async def analyze_prompt(
     )
     candidates: List[Dict[str, Any]] = result.get("candidates", [])
 
-    # Derive structured tags with segment linking.
-    tags, tags_flat = derive_structured_and_flat_tags(candidates)
-
     return {
         "prompt": text,
         "candidates": candidates,
-        "tags": tags,
-        "tags_flat": tags_flat,
     }

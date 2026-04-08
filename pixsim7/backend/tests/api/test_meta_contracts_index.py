@@ -6,7 +6,10 @@ from datetime import datetime
 import pytest
 from fastapi import FastAPI
 
-from pixsim7.backend.main.api.v1.meta_contracts import list_contract_endpoints
+from pixsim7.backend.main.api.v1.meta_contracts import (
+    list_contract_endpoints,
+    list_policy_contracts,
+)
 from pixsim7.backend.main.shared.config import settings
 
 
@@ -179,3 +182,31 @@ async def test_contracts_index_auto_discovers_game_route_groups_from_request_app
     scenes = contracts_by_id.get("game.routes.scenes")
     assert scenes is not None
     assert scenes.endpoint == "/api/v1/game/scenes"
+
+
+@pytest.mark.asyncio
+async def test_policies_index_is_sorted_and_has_required_fields() -> None:
+    result = await list_policy_contracts()
+
+    assert result.version
+    datetime.fromisoformat(result.generated_at.replace("Z", "+00:00"))
+    assert result.policies
+
+    domains = [entry.domain for entry in result.policies]
+    assert domains == sorted(domains)
+
+    by_domain = {entry.domain: entry for entry in result.policies}
+    assert "plans" in by_domain
+    assert "prompts" in by_domain
+    assert "game" in by_domain
+
+    for entry in result.policies:
+        assert entry.domain
+        assert entry.version
+        assert entry.schema_version
+        assert entry.endpoint.startswith("/api/v1/")
+        assert entry.summary
+
+    assert by_domain["plans"].rules_count >= 1
+    assert by_domain["prompts"].rules_count >= 1
+    assert by_domain["game"].rules_count >= 1

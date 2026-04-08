@@ -3,12 +3,12 @@ Asset Analysis API endpoints
 
 Handles asset analysis creation, status checking, and result retrieval.
 """
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisGatewaySvc
+from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisSvc
 from pixsim7.backend.main.domain.assets.analysis import AnalysisStatus
 from pixsim7.backend.main.domain.assets.analysis_backfill import AnalysisBackfillStatus
 from pixsim7.backend.main.services.analysis import AnalysisBackfillService
@@ -237,9 +237,8 @@ def _build_backfill_response(run) -> AnalysisBackfillResponse:
 async def create_analysis(
     asset_id: int,
     request: CreateAnalysisRequest,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """
     Create a new analysis job for an asset.
@@ -248,16 +247,6 @@ async def create_analysis(
     Use GET /analyses/{id} to check status and retrieve results.
     """
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/assets/{asset_id}/analyze",
-            json=request.model_dump(mode="json"),
-        )
-        if proxy.called:
-            return AnalysisResponse.model_validate(proxy.data)
-
-        analysis_service = analysis_gateway.local
         analysis = await analysis_service.create_analysis(
             user=user,
             asset_id=asset_id,
@@ -280,9 +269,8 @@ async def create_analysis(
 @router.get("/assets/{asset_id}/analyses", response_model=AnalysisListResponse)
 async def list_asset_analyses(
     asset_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
     analyzer_id: Optional[str] = Query(None, description="Filter by analyzer ID"),
     status: Optional[AnalysisStatus] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results to return"),
@@ -293,24 +281,6 @@ async def list_asset_analyses(
     Returns analyses ordered by creation time (newest first).
     """
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/assets/{asset_id}/analyses",
-            params={
-                k: v
-                for k, v in {
-                    "analyzer_id": analyzer_id,
-                    "status": status.value if status else None,
-                    "limit": limit,
-                }.items()
-                if v is not None
-            },
-        )
-        if proxy.called:
-            return AnalysisListResponse.model_validate(proxy.data)
-
-        analysis_service = analysis_gateway.local
         analyses = await analysis_service.get_analyses_for_asset(
             asset_id=asset_id,
             user=user,
@@ -335,9 +305,8 @@ async def list_asset_analyses(
 @router.get("/analyses/{analysis_id}", response_model=AnalysisResponse)
 async def get_analysis(
     analysis_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """
     Get a single analysis by ID.
@@ -345,15 +314,6 @@ async def get_analysis(
     Returns the analysis including its current status and result (if completed).
     """
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/analyses/{analysis_id}",
-        )
-        if proxy.called:
-            return AnalysisResponse.model_validate(proxy.data)
-
-        analysis_service = analysis_gateway.local
         analysis = await analysis_service.get_analysis(analysis_id)
 
         # Check authorization
@@ -369,9 +329,8 @@ async def get_analysis(
 @router.post("/analyses/{analysis_id}/cancel", response_model=AnalysisResponse)
 async def cancel_analysis(
     analysis_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """
     Cancel a pending or processing analysis.
@@ -379,15 +338,6 @@ async def cancel_analysis(
     Only the owner of the analysis can cancel it.
     """
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/analyses/{analysis_id}/cancel",
-        )
-        if proxy.called:
-            return AnalysisResponse.model_validate(proxy.data)
-
-        analysis_service = analysis_gateway.local
         analysis = await analysis_service.cancel_analysis(analysis_id, user)
 
         return _build_analysis_response(analysis)
@@ -401,22 +351,12 @@ async def cancel_analysis(
 @router.post("/analyses/backfills", response_model=AnalysisBackfillResponse, status_code=201)
 async def create_analysis_backfill(
     request: CreateAnalysisBackfillRequest,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """Create a durable analysis backfill run and enqueue its first batch."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            "/api/v1/analyses/backfills",
-            json=request.model_dump(mode="json"),
-        )
-        if proxy.called:
-            return AnalysisBackfillResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         run = await service.create_run(
             user=user,
             media_type=request.media_type,
@@ -436,9 +376,8 @@ async def create_analysis_backfill(
 
 @router.get("/analyses/backfills", response_model=AnalysisBackfillListResponse)
 async def list_analysis_backfills(
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
     status: Optional[AnalysisBackfillStatus] = Query(
         None,
         description="Filter by status",
@@ -447,23 +386,7 @@ async def list_analysis_backfills(
 ):
     """List analysis backfill runs for the current user."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "GET",
-            "/api/v1/analyses/backfills",
-            params={
-                k: v
-                for k, v in {
-                    "status": status.value if status else None,
-                    "limit": limit,
-                }.items()
-                if v is not None
-            },
-        )
-        if proxy.called:
-            return AnalysisBackfillListResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         runs = await service.list_runs(
             user_id=user.id,
             status=status,
@@ -478,21 +401,12 @@ async def list_analysis_backfills(
 @router.get("/analyses/backfills/{run_id}", response_model=AnalysisBackfillResponse)
 async def get_analysis_backfill(
     run_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """Get a single analysis backfill run."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "GET",
-            f"/api/v1/analyses/backfills/{run_id}",
-        )
-        if proxy.called:
-            return AnalysisBackfillResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         run = await service.get_run_for_user(run_id=run_id, user_id=user.id)
         return _build_backfill_response(run)
     except ResourceNotFoundError as e:
@@ -504,21 +418,12 @@ async def get_analysis_backfill(
 @router.post("/analyses/backfills/{run_id}/pause", response_model=AnalysisBackfillResponse)
 async def pause_analysis_backfill(
     run_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """Pause an analysis backfill run."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/analyses/backfills/{run_id}/pause",
-        )
-        if proxy.called:
-            return AnalysisBackfillResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         run = await service.pause_run(run_id=run_id, user=user)
         return _build_backfill_response(run)
     except ResourceNotFoundError as e:
@@ -530,21 +435,12 @@ async def pause_analysis_backfill(
 @router.post("/analyses/backfills/{run_id}/resume", response_model=AnalysisBackfillResponse)
 async def resume_analysis_backfill(
     run_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """Resume a paused analysis backfill run."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/analyses/backfills/{run_id}/resume",
-        )
-        if proxy.called:
-            return AnalysisBackfillResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         run = await service.resume_run(run_id=run_id, user=user)
         return _build_backfill_response(run)
     except ResourceNotFoundError as e:
@@ -556,21 +452,12 @@ async def resume_analysis_backfill(
 @router.post("/analyses/backfills/{run_id}/cancel", response_model=AnalysisBackfillResponse)
 async def cancel_analysis_backfill(
     run_id: int,
-    req: Request,
     user: CurrentUser,
-    analysis_gateway: AnalysisGatewaySvc,
+    analysis_service: AnalysisSvc,
 ):
     """Cancel an analysis backfill run."""
     try:
-        proxy = await analysis_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/analyses/backfills/{run_id}/cancel",
-        )
-        if proxy.called:
-            return AnalysisBackfillResponse.model_validate(proxy.data)
-
-        service = AnalysisBackfillService(analysis_gateway.local.db)
+        service = AnalysisBackfillService(analysis_service.db)
         run = await service.cancel_run(run_id=run_id, user=user)
         return _build_backfill_response(run)
     except ResourceNotFoundError as e:

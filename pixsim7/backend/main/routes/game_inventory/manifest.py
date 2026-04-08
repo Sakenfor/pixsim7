@@ -12,6 +12,7 @@ manifest = PluginManifest(
     description="Player inventory and item management",
     author="PixSim Team",
     kind="route",
+    service="game",
     prefix="/api/v1/game/inventory",
     tags=["game-inventory"],
     dependencies=["auth", "game_sessions"],

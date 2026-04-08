@@ -8,7 +8,7 @@ export default definePanel({
   component: QuickGenHistoryPanel,
   category: 'generation',
   panelRole: 'sub-panel',
-  tags: ['generation', 'history', 'quickgen'],
+  tags: ['generation', 'history', 'quickgen', 'asset-gallery'],
   icon: 'history',
   description: 'Asset history panel for quick generation workflows',
   consumesCapabilities: ['generation:scope'],

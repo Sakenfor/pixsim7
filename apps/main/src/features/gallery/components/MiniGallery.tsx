@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import type { OverlayContextId } from '@lib/widgets';
 
@@ -20,6 +21,7 @@ import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrat
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { SlotPickerGrid, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import type { OperationType } from '@/types/operations';
@@ -28,6 +30,33 @@ import { OPERATION_METADATA, isMultiAssetOperation } from '@/types/operations';
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
+
+/** A switchable filter preset shown in the variant dropdown. */
+export interface GalleryVariant {
+  id: string;
+  label: string;
+  icon?: string;
+  filters: AssetFilters;
+  /** Optional group label for dropdown optgroup. */
+  group?: string;
+}
+
+/** Sentinel prefix for peer-panel entries in the variant dropdown. */
+const PEER_PANEL_PREFIX = '_panel:';
+
+/** Discover peer gallery panels from the registry via the 'asset-gallery' tag. */
+function discoverPeerPanels(excludeId?: string): GalleryVariant[] {
+  return panelSelectors
+    .getAll()
+    .filter((p) => p.tags?.includes('asset-gallery') && p.id !== excludeId)
+    .map((p) => ({
+      id: `${PEER_PANEL_PREFIX}${p.id}`,
+      label: p.title,
+      icon: typeof p.icon === 'string' ? p.icon : 'layout',
+      filters: {},
+      group: 'Panels',
+    }));
+}
 
 export interface MiniGalleryProps {
   /** Initial filter state (user can change via UI) */
@@ -56,6 +85,16 @@ export interface MiniGalleryProps {
     sourceLabel?: string;
     initialFilters?: AssetFilters;
   };
+
+  // --- Variant switching ---
+  /** Available filter presets the user can switch between (e.g. "More from" options). */
+  variants?: GalleryVariant[];
+  /** Which variant is initially active (by id). */
+  activeVariantId?: string;
+  /** Panel definition ID (used to exclude self from peer panel discovery). */
+  panelId?: string;
+  /** Floating panel instance ID (injected by FloatingPanelsManager for self-replace). */
+  _floatingPanelId?: string;
 
   // --- External data source ---
   /** When provided, these items are rendered instead of fetching via useAssets. */
@@ -303,6 +342,10 @@ function MiniGalleryContent({
   paginationMode = 'infinite',
   pageSize = 20,
   resolveAsset,
+  variants,
+  activeVariantId,
+  panelId,
+  _floatingPanelId,
 }: MiniGalleryProps) {
   const useExternalData = externalItems !== undefined;
   const showFilters = showFiltersProp ?? !useExternalData;
@@ -312,6 +355,17 @@ function MiniGalleryContent({
       ? Math.floor(maxItems)
       : undefined;
   const [cardSize, setCardSize] = useState(DEFAULT_CARD_SIZE);
+
+  // Variant switching — merge passed variants with dynamically discovered peer panels
+  const allVariants = useMemo(() => {
+    const contextVariants = (variants ?? []).map((v) => v.group ? v : { ...v, group: 'Context' });
+    const peerPanels = discoverPeerPanels(panelId ?? 'mini-gallery');
+    return [...contextVariants, ...peerPanels];
+  }, [variants, panelId]);
+
+  const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(activeVariantId);
+  const activeVariant = allVariants.find((v) => v.id === selectedVariantId);
+  const variantFilters = activeVariant?.filters;
 
   // Resolve operation type: controller > prop > context
   const controller = useQuickGenerateController();
@@ -325,8 +379,9 @@ function MiniGalleryContent({
       sort: 'new' as const,
       ...context?.initialFilters,
       ...propInitialFilters,
+      ...variantFilters,
     }),
-    [context?.initialFilters, propInitialFilters],
+    [context?.initialFilters, propInitialFilters, variantFilters],
   );
   const mergedInitialFiltersKey = useMemo(
     () => JSON.stringify(mergedInitialFilters ?? {}),
@@ -335,6 +390,14 @@ function MiniGalleryContent({
 
   // Internal filter state (only used when fetching via useAssets)
   const [filters, setFilters] = useState<AssetFilters>(mergedInitialFilters);
+
+  // Reset filters when variant changes
+  useEffect(() => {
+    if (variantFilters) {
+      setFilters((prev) => ({ ...prev, ...variantFilters }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariantId]);
 
   useEffect(() => {
     if (!syncInitialFilters || useExternalData) return;
@@ -537,20 +600,78 @@ function MiniGalleryContent({
 
   const displayError = error || resolveError;
 
+  // Group variants by their group label for optgroup rendering
+  const variantGroups = useMemo(() => {
+    const groups: { label: string; items: GalleryVariant[] }[] = [];
+    const seen = new Map<string, GalleryVariant[]>();
+    for (const v of allVariants) {
+      const g = v.group ?? '';
+      let arr = seen.get(g);
+      if (!arr) { arr = []; seen.set(g, arr); groups.push({ label: g, items: arr }); }
+      arr.push(v);
+    }
+    return groups;
+  }, [allVariants]);
+
+  const showVariantSwitcher = allVariants.length > 1;
+
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900">
-      {/* Filter bar */}
-      {showFilters && (
-        <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
-          <GalleryFilters
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            showSearch={showSearch}
-            showMediaType={showMediaType}
-            showSort={showSort}
-            layout="horizontal"
-            className="text-xs"
-          />
+      {/* Variant switcher + Filter bar */}
+      {(showFilters || showVariantSwitcher) && (
+        <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex flex-col gap-1.5">
+          {showVariantSwitcher && (
+            <div className="flex items-center gap-1.5">
+              <Icon name="layers" size={11} className="text-neutral-400 shrink-0" />
+              <select
+                value={selectedVariantId ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.startsWith(PEER_PANEL_PREFIX)) {
+                    const peerId = val.slice(PEER_PANEL_PREFIX.length);
+                    if (_floatingPanelId) {
+                      // Swap in-place — keeps position, size, z-index
+                      useWorkspaceStore.getState().replaceFloatingPanel(_floatingPanelId, peerId);
+                    } else {
+                      // Fallback: not in a floating panel, open new
+                      useWorkspaceStore.getState().openFloatingPanel(peerId, { width: 620, height: 520 });
+                    }
+                  } else {
+                    setSelectedVariantId(val || undefined);
+                  }
+                }}
+                className="flex-1 min-w-0 text-xs bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-0.5 text-neutral-700 dark:text-neutral-300 truncate"
+              >
+                {!selectedVariantId && (
+                  <option value="">{context?.sourceLabel ?? 'Select view...'}</option>
+                )}
+                {variantGroups.map((group) =>
+                  group.label ? (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.items.map((v) => (
+                        <option key={v.id} value={v.id}>{v.label}</option>
+                      ))}
+                    </optgroup>
+                  ) : (
+                    group.items.map((v) => (
+                      <option key={v.id} value={v.id}>{v.label}</option>
+                    ))
+                  ),
+                )}
+              </select>
+            </div>
+          )}
+          {showFilters && (
+            <GalleryFilters
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              showSearch={showSearch}
+              showMediaType={showMediaType}
+              showSort={showSort}
+              layout="horizontal"
+              className="text-xs"
+            />
+          )}
         </div>
       )}
 

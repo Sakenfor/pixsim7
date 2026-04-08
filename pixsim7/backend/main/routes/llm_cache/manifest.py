@@ -15,6 +15,7 @@ manifest = PluginManifest(
     description="Manage LLM response cache - stats, invalidation, and cleanup",
     author="PixSim Team",
     kind="route",
+    service="ai",
     prefix="/api/v1",
     tags=["llm", "cache"],
     dependencies=[],

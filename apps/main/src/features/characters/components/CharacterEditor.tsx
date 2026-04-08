@@ -1,11 +1,7 @@
-
-import { HierarchicalSidebarNav } from '@pixsim7/shared.ui';
+import { HierarchicalSidebarNav, SidebarPaneShell } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 
 import type { CharacterDetail } from '@lib/api/characters';
-
-import { GraphEditorSplitLayout } from '@/features/graph/components/graph/GraphEditorSplitLayout';
-import { GraphSidebarSection } from '@/features/graph/components/graph/GraphSidebarSection';
 
 import { BehaviorTab } from './tabs/BehaviorTab';
 import { GameLinkTab } from './tabs/GameLinkTab';
@@ -110,98 +106,88 @@ export function CharacterEditor({
   };
 
   return (
-    <GraphEditorSplitLayout
-      sidebarWidthPx={220}
-      sidebarClassName="bg-neutral-950/30"
-      mainClassName="p-0"
-      sidebar={(
-        <div className="space-y-2">
-          <GraphSidebarSection title="Character">
-            <div className="rounded border border-neutral-800 bg-neutral-900/40 px-2 py-2">
-              <div className="truncate text-xs font-medium text-neutral-200">
-                {character.display_name || character.name || character.character_id || (isCreateMode ? 'New Character' : 'Character')}
-              </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">
-                {isCreateMode ? 'Unsaved draft' : (character.character_id || 'No ID')}
-              </div>
+    <div className="flex h-full overflow-hidden">
+      <SidebarPaneShell
+        title="Sections"
+        variant="dark"
+        collapsible
+        resizable
+        expandedWidth={200}
+        persistKey="character-editor-nav"
+        bodyScrollable
+        autoHideTitle={false}
+      >
+        <div className="space-y-3 px-1">
+          <div className="rounded border border-neutral-800 bg-neutral-900/40 px-2 py-2">
+            <div className="truncate text-xs font-medium text-neutral-200">
+              {character.display_name || character.name || character.character_id || (isCreateMode ? 'New Character' : 'Character')}
             </div>
-          </GraphSidebarSection>
+            <div className="mt-0.5 text-[11px] text-neutral-500">
+              {isCreateMode ? 'Unsaved draft' : (character.character_id || 'No ID')}
+            </div>
+          </div>
 
-          <GraphSidebarSection title="Sections" className="mb-2" titleClassName="mb-1">
-            <HierarchicalSidebarNav
-              variant="dark"
-              className="space-y-1"
-              items={TAB_GROUPS.map((group) => ({
-                id: group.id,
-                label: group.title,
-                selectOnClick: false,
-                children: group.items.map((tab) => ({ id: tab.id, label: tab.label })),
-              }))}
-              expandedItemIds={expandedGroups}
-              onToggleExpand={toggleGroup}
-              onSelectChild={(_, childId) => setActiveTab(childId as TabId)}
-              getItemState={(item) => (activeGroupId === item.id ? 'active' : 'inactive')}
-              getChildState={(_, child) => (activeTab === child.id ? 'active' : 'inactive')}
+          <HierarchicalSidebarNav
+            variant="dark"
+            className="space-y-1"
+            items={TAB_GROUPS.map((group) => ({
+              id: group.id,
+              label: group.title,
+              selectOnClick: false,
+              children: group.items.map((tab) => ({ id: tab.id, label: tab.label })),
+            }))}
+            expandedItemIds={expandedGroups}
+            onToggleExpand={toggleGroup}
+            onSelectChild={(_, childId) => setActiveTab(childId as TabId)}
+            getItemState={(item) => (activeGroupId === item.id ? 'active' : 'inactive')}
+            getChildState={(_, child) => (activeTab === child.id ? 'active' : 'inactive')}
+          />
+        </div>
+      </SidebarPaneShell>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-neutral-800 px-4 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+            {activeTabLabel}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {activeTab === 'identity' && (
+            <IdentityTab character={character} onChange={onChange} isCreateMode={isCreateMode} />
+          )}
+          {activeTab === 'visual' && (
+            <VisualTab character={character} onChange={onChange} />
+          )}
+          {activeTab === 'personality' && (
+            <PersonalityTab character={character} onChange={onChange} />
+          )}
+          {activeTab === 'behavior' && (
+            <BehaviorTab character={character} onChange={onChange} />
+          )}
+          {activeTab === 'voice' && (
+            <VoiceTab character={character} onChange={onChange} />
+          )}
+          {activeTab === 'rendering' && (
+            <RenderingTab character={character} onChange={onChange} />
+          )}
+          {refSection != null && (
+            <ReferencePipelineTab character={character} onChange={onChange} section={refSection} />
+          )}
+          {activeTab === 'game-link' && (
+            <GameLinkTab character={character} onChange={onChange} />
+          )}
+        </div>
+
+        {!isCreateMode && character.character_id && (
+          <div className="shrink-0 border-t border-neutral-800 p-4">
+            <VersionHistory
+              characterId={character.character_id}
+              onEvolved={onEvolved}
             />
-          </GraphSidebarSection>
-
-          {!isCreateMode && character.character_id && (
-            <GraphSidebarSection title="Versioning" className="mb-0" titleClassName="mb-1">
-              <div className="rounded border border-neutral-800 bg-neutral-900/30 px-2 py-1.5 text-[11px] text-neutral-400">
-                Version history is shown below the editor.
-              </div>
-            </GraphSidebarSection>
-          )}
-        </div>
-      )}
-      main={(
-        <div className="flex h-full flex-col overflow-hidden">
-          <div className="border-b border-neutral-800 px-4 py-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              Editor Section
-            </div>
-            <div className="mt-0.5 text-sm font-medium text-neutral-200">
-              {activeTabLabel}
-            </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-4">
-            {activeTab === 'identity' && (
-              <IdentityTab character={character} onChange={onChange} isCreateMode={isCreateMode} />
-            )}
-            {activeTab === 'visual' && (
-              <VisualTab character={character} onChange={onChange} />
-            )}
-            {activeTab === 'personality' && (
-              <PersonalityTab character={character} onChange={onChange} />
-            )}
-            {activeTab === 'behavior' && (
-              <BehaviorTab character={character} onChange={onChange} />
-            )}
-            {activeTab === 'voice' && (
-              <VoiceTab character={character} onChange={onChange} />
-            )}
-            {activeTab === 'rendering' && (
-              <RenderingTab character={character} onChange={onChange} />
-            )}
-            {refSection != null && (
-              <ReferencePipelineTab character={character} onChange={onChange} section={refSection} />
-            )}
-            {activeTab === 'game-link' && (
-              <GameLinkTab character={character} onChange={onChange} />
-            )}
-          </div>
-
-          {!isCreateMode && character.character_id && (
-            <div className="border-t border-neutral-800 p-4">
-              <VersionHistory
-                characterId={character.character_id}
-                onEvolved={onEvolved}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    />
+        )}
+      </div>
+    </div>
   );
 }

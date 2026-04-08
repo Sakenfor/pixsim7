@@ -100,6 +100,37 @@ export interface ListCharactersQuery {
   offset?: number;
 }
 
+export interface ResolveTemplateRequest {
+  character_id: string;
+  template_source?: string;
+}
+
+export interface ResolvedFieldEntry {
+  key: string;
+  value: string | null;
+  source: 'visual_trait' | 'species_anatomy' | 'species_default' | null;
+}
+
+export interface AvailableKeyEntry {
+  key: string;
+  default: string | null;
+  origin: 'template' | 'anatomy' | 'priority' | 'common';
+}
+
+export interface ResolveTemplateResponse {
+  expanded_text: string;
+  template_source: string | null;
+  field_map: ResolvedFieldEntry[];
+  available_keys: AvailableKeyEntry[];
+  character: {
+    character_id: string;
+    name: string | null;
+    display_name: string | null;
+  };
+  species: string | null;
+  full_expansion: string;
+}
+
 // ===== API Factory =====
 
 export function createCharactersApi(client: PixSimApiClient) {
@@ -163,6 +194,15 @@ export function createCharactersApi(client: PixSimApiClient) {
     ): Promise<CharacterDetail> {
       return client.post<CharacterDetail>(
         `/characters/${encodeURIComponent(characterId)}/evolve`,
+        request,
+      );
+    },
+
+    async resolveTemplate(
+      request: ResolveTemplateRequest,
+    ): Promise<ResolveTemplateResponse> {
+      return client.post<ResolveTemplateResponse>(
+        '/characters/resolve-template',
         request,
       );
     },

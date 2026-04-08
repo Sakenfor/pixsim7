@@ -16,7 +16,6 @@ export { ReviewSurfaceContent } from './components/ReviewGallerySurface';
 export type { ReviewSurfaceContentProps } from './components/ReviewGallerySurface';
 export { AssetDetailModal } from './components/AssetDetailModal';
 export { DeleteAssetModal } from './components/DeleteAssetModal';
-export { RelatedAssetsModal } from './components/RelatedAssetsModal';
 
 // ============================================================================
 // Components - Asset Sources & Panels
@@ -98,7 +97,6 @@ export type { SelectedAsset } from './stores/assetSelectionStore';
 
 export { useAssetDetailStore } from './stores/assetDetailStore';
 
-export { useRelatedAssetsStore } from './stores/relatedAssetsStore';
 
 export { useAssetSettingsStore } from './stores/assetSettingsStore';
 
