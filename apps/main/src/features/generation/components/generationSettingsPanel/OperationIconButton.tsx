@@ -54,6 +54,15 @@ export function OperationIconButton({
         size="lg"
         icon={<Icon name={icon} size={14} />}
         onClick={() => setOpen(o => !o)}
+        onWheel={(e: React.WheelEvent) => {
+          if (disabled || pickerOps.length <= 1) return;
+          e.preventDefault();
+          const idx = pickerOps.findIndex(o => o.op === operationType);
+          const next = e.deltaY > 0
+            ? (idx + 1) % pickerOps.length
+            : (idx - 1 + pickerOps.length) % pickerOps.length;
+          onSelect(pickerOps[next].op);
+        }}
         disabled={disabled}
         title={textMode ? `${label} (text-only — no asset input)` : label}
         style={textMode ? { color, boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}

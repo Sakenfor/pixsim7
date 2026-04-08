@@ -50,6 +50,15 @@ export function ModelDropdown({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(!open)}
+        onWheel={(e) => {
+          if (disabled || options.length <= 1) return;
+          e.preventDefault();
+          const idx = options.indexOf(currentValue);
+          const next = e.deltaY > 0
+            ? (idx + 1) % options.length
+            : (idx - 1 + options.length) % options.length;
+          onChange(options[next]);
+        }}
         disabled={disabled}
         className={clsx(
           'flex items-center gap-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',

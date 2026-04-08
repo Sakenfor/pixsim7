@@ -270,23 +270,26 @@ export function AssetPanelHeader({
           </button>
 
           {/* Display mode cycle */}
-          {operationInputsLength > 0 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const modes = ['carousel', 'strip', 'grid'] as const;
-                const currentMode = assetInstanceOverrides?.displayMode ?? globalDisplayMode;
-                const currentIdx = modes.indexOf(currentMode as typeof modes[number]);
-                const nextMode = modes[(currentIdx + 1) % modes.length];
-                handleComponentSetting('displayMode', nextMode);
-              }}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors bg-neutral-800 hover:bg-neutral-700 text-neutral-400"
-              title={`Display: ${resolvedDisplayMode} (click to cycle)`}
-              type="button"
-            >
-              <Icon name={resolvedDisplayMode === 'grid' ? 'layoutGrid' : resolvedDisplayMode === 'strip' ? 'columns' : 'image'} size={10} />
-            </button>
-          )}
+          {operationInputsLength > 0 && (() => {
+            const modes = ['carousel', 'strip', 'grid'] as const;
+            const currentMode = assetInstanceOverrides?.displayMode ?? globalDisplayMode;
+            const cycleMode = (delta: number) => {
+              const idx = modes.indexOf(currentMode as typeof modes[number]);
+              const next = (idx + delta + modes.length) % modes.length;
+              handleComponentSetting('displayMode', modes[next]);
+            };
+            return (
+              <button
+                onClick={(e) => { e.stopPropagation(); cycleMode(1); }}
+                onWheel={(e) => { e.preventDefault(); cycleMode(e.deltaY > 0 ? 1 : -1); }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors bg-neutral-800 hover:bg-neutral-700 text-neutral-400"
+                title={`Display: ${resolvedDisplayMode} (click/scroll to cycle)`}
+                type="button"
+              >
+                <Icon name={resolvedDisplayMode === 'grid' ? 'layoutGrid' : resolvedDisplayMode === 'strip' ? 'columns' : 'image'} size={10} />
+              </button>
+            );
+          })()}
 
           {/* Settings */}
           <button

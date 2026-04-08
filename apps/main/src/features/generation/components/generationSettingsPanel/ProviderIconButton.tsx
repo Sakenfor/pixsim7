@@ -29,6 +29,15 @@ export function ProviderIconButton({
         size="lg"
         icon={<span className="text-[10px] font-bold">{brand.short}</span>}
         onClick={() => setOpen(o => !o)}
+        onWheel={(e: React.WheelEvent) => {
+          if (disabled || providers.length <= 1) return;
+          e.preventDefault();
+          const idx = providers.findIndex(p => p.id === providerId);
+          const next = e.deltaY > 0
+            ? (idx + 1) % providers.length
+            : (idx - 1 + providers.length) % providers.length;
+          onSelect(providers[next].id);
+        }}
         disabled={disabled}
         title={providerId}
       />
