@@ -1843,17 +1843,18 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         )
                         if result.status == ProviderStatus.FILTERED:
                             asset = await db.get(Asset, asset_id)
-                            if asset:
+                            if asset and asset.provider_status != "flagged":
+                                asset.provider_status = "flagged"
                                 existing_tags = asset.tags or []
                                 if "moderation-flagged" not in existing_tags:
                                     asset.tags = existing_tags + ["moderation-flagged"]
-                                    await db.commit()
-                                    logger.info(
-                                        "moderation_recheck_flagged",
-                                        asset_id=asset_id,
-                                        generation_id=gen_id,
-                                        provider_job_id=provider_job_id,
-                                    )
+                                await db.commit()
+                                logger.info(
+                                    "moderation_recheck_flagged",
+                                    asset_id=asset_id,
+                                    generation_id=gen_id,
+                                    provider_job_id=provider_job_id,
+                                )
                 except Exception as e:
                     logger.debug(
                         "moderation_recheck_error",
