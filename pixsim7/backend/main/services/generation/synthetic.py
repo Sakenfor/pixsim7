@@ -427,6 +427,14 @@ class SyntheticGenerationService:
             elif customer_paths.get(key):
                 params[key] = customer_paths[key]
 
+        logger.debug(
+            "synthetic_generation_model_hints",
+            model=meta.get("model"),
+            template_model=meta.get("template_model"),
+            quality=meta.get("quality"),
+            params_model=params.get("model"),
+        )
+
         # Negative prompt
         negative_prompt = (
             customer_paths.get("negative_prompt")
@@ -579,6 +587,13 @@ async def resolve_generation_context_from_metadata(
             params[key] = meta[key]
         elif customer_paths.get(key):
             params[key] = customer_paths[key]
+    logger.info(
+        "synthetic_generation_model_hints",
+        model=meta.get("model"),
+        template_model=meta.get("template_model"),
+        quality=meta.get("quality"),
+        params_model=params.get("model"),
+    )
     negative_prompt = customer_paths.get("negative_prompt") or meta.get("negative_prompt")
     if negative_prompt:
         params["negative_prompt"] = negative_prompt

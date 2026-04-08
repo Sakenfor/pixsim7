@@ -250,7 +250,7 @@ export function VideoScrubWidgetRenderer({
 
     retryTimeoutRef.current = setTimeout(() => {
       if (!videoRef.current) return;
-      const retryUrl = nextToken ? buildCacheBustedUrl(resolvedUrl, nextToken) : resolvedUrl;
+      const retryUrl = effectiveUrl || resolvedUrl;
       videoRef.current.src = retryUrl;
       videoRef.current.load();
     }, RETRY_DELAY_MS);

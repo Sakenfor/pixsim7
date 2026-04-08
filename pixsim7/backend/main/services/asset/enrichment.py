@@ -136,6 +136,13 @@ class AssetEnrichmentService:
                 source_generation_id=asset.source_generation_id,
             )
 
+        # Backfill asset.model from metadata if not already set
+        if not asset.model and isinstance(metadata, dict):
+            model_value = metadata.get("model")
+            if model_value and isinstance(model_value, str):
+                asset.model = model_value
+                await self.db.commit()
+
         return generation
 
     async def re_enrich_synced_asset(
