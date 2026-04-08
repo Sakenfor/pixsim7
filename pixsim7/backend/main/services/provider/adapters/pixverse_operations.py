@@ -923,6 +923,22 @@ class PixverseOperationsMixin:
                         video_id=provider_job_id,
                     )
                     status = self._map_pixverse_status(video)
+
+                    # get_video's WebAPI path returns "processing" if the
+                    # message notification was consumed.  Fall back to a
+                    # direct list search to catch completed videos whose
+                    # notification was already acked.
+                    if status == ProviderStatus.PROCESSING:
+                        list_result = await _check_video_status_from_list_with_client(
+                            client=client,
+                            video_id=provider_job_id,
+                            limit=200,
+                            offset=0,
+                            max_pages=5,
+                        )
+                        if (list_result.metadata or {}).get("matched"):
+                            return list_result
+
                     raw_video_url = _get_field(video, "url")
                     raw_thumb = _get_field(video, "first_frame", "thumbnail")
                     raw_status = _get_field(video, "video_status", "status")

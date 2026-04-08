@@ -1375,6 +1375,21 @@ async def _poll_single_generation(
                         asset_id=asset.id,
                     )
 
+                    # Tag videos that completed despite a prior filtered attempt
+                    if generation.attempt_id and generation.attempt_id > 1:
+                        had_filtered = (await db.execute(
+                            select(func.count()).select_from(ProviderSubmission).where(
+                                ProviderSubmission.generation_id == generation.id,
+                                ProviderSubmission.id != submission.id,
+                                ProviderSubmission.response["status"].as_string() == "filtered",
+                            )
+                        )).scalar_one()
+                        if had_filtered > 0:
+                            existing_tags = asset.tags or []
+                            if "moderation-retry" not in existing_tags:
+                                asset.tags = existing_tags + ["moderation-retry"]
+                                await db.commit()
+
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
 
