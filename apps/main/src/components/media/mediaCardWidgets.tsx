@@ -299,7 +299,7 @@ function ProviderStatusContent({ data, widgetProps }: {
 
   // Status ring overlay
   const effectiveStatus = data.status || 'unknown';
-  const hasModerationTag = data.tags?.includes('moderation-retry');
+  const hasModerationTag = data.tags?.includes('moderation-retry') || data.tags?.includes('moderation-flagged');
   const statusRing = effectiveStatus === 'local_only'
     ? 'ring-2 ring-amber-400 ring-offset-1'
     : (effectiveStatus === 'flagged' || hasModerationTag)

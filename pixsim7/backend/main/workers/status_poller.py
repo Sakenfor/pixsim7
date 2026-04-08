@@ -26,6 +26,7 @@ from pixsim7.backend.main.domain.enums import (
     OperationType,
     GenerationErrorCode,
 )
+from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService, GenerationBillingService
 from pixsim7.backend.main.services.analysis import AnalysisService
@@ -163,7 +164,13 @@ _cancel_first_seen: dict[int, float] = {}  # generation_id -> monotonic timestam
 
 # In-flight guard: prevents overlapping poll cycles from processing
 # the same generation concurrently (important at ≤2s poll intervals).
-_poll_in_flight: set[int] = {}  # generation IDs currently being polled
+_poll_in_flight: set[int] = set()  # generation IDs currently being polled
+
+# Delayed moderation re-check: after a video completes, re-check status
+# after a delay to see if Pixverse flagged it post-delivery.
+# Key: asset_id, Value: (provider_job_id, account_id, monotonic_deadline, generation_id)
+_moderation_recheck: dict[int, tuple[str, int, float, int]] = {}
+_MODERATION_RECHECK_DELAY_SEC = 90
 
 
 def _has_pending_cancel(generation_model: Any) -> bool:
@@ -1379,7 +1386,16 @@ async def _poll_single_generation(
                         asset_id=asset.id,
                     )
 
-                    # Tag videos that completed despite a prior filtered attempt
+                    # Schedule delayed moderation re-check for videos
+                    if asset.media_type and asset.media_type.value == "video" and submission.provider_job_id:
+                        _moderation_recheck[asset.id] = (
+                            submission.provider_job_id,
+                            account.id,
+                            time.monotonic() + _MODERATION_RECHECK_DELAY_SEC,
+                            generation.id,
+                        )
+
+                    # Tag assets that completed despite a prior filtered attempt
                     if generation.attempt_id and generation.attempt_id > 1:
                         had_filtered = (await db.execute(
                             select(func.count()).select_from(ProviderSubmission).where(
@@ -1806,6 +1822,44 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     still_processing_ids.append(_poll_result.generation_id)
                 if _poll_result.missing_provider_job:
                     missing_provider_job_generation_ids.append(_poll_result.generation_id)
+
+            # ===== MODERATION RE-CHECKS =====
+            # Re-check recently completed videos to detect post-delivery flagging.
+            now_mono = time.monotonic()
+            due_rechecks = [
+                (asset_id, info) for asset_id, info in _moderation_recheck.items()
+                if now_mono >= info[2]
+            ]
+            for asset_id, (provider_job_id, account_id, _, gen_id) in due_rechecks:
+                _moderation_recheck.pop(asset_id, None)
+                try:
+                    recheck_account = await db.get(ProviderAccount, account_id)
+                    if recheck_account:
+                        from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+                        result = await PixverseProvider().check_status(
+                            account=recheck_account,
+                            provider_job_id=provider_job_id,
+                            operation_type=OperationType.IMAGE_TO_VIDEO,
+                        )
+                        if result.status == ProviderStatus.FILTERED:
+                            asset = await db.get(Asset, asset_id)
+                            if asset:
+                                existing_tags = asset.tags or []
+                                if "moderation-flagged" not in existing_tags:
+                                    asset.tags = existing_tags + ["moderation-flagged"]
+                                    await db.commit()
+                                    logger.info(
+                                        "moderation_recheck_flagged",
+                                        asset_id=asset_id,
+                                        generation_id=gen_id,
+                                        provider_job_id=provider_job_id,
+                                    )
+                except Exception as e:
+                    logger.debug(
+                        "moderation_recheck_error",
+                        asset_id=asset_id,
+                        error=str(e),
+                    )
 
             # ===== POLL ANALYSES =====
             analysis_service = AnalysisService(db)
