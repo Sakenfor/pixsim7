@@ -2104,15 +2104,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
             await db.close()
 
 
-# Re-export maintenance functions so existing ``from status_poller import ...``
-# statements keep working until callers are updated.
-from pixsim7.backend.main.workers.status_poller_maintenance import (  # noqa: E402, F401
-    recover_stale_processing_generations,
-    reconcile_account_counters,
-    requeue_pending_generations,
-)
-
-
 _event_bridge = None
 
 
