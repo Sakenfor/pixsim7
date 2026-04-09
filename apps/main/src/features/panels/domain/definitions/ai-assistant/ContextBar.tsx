@@ -20,6 +20,7 @@ interface ContextBarProps {
   tab: ChatTab;
   profile: UnifiedProfile | null;
   poolSession: PoolSessionInfo | null;
+  sending?: boolean;
 }
 
 function formatTokens(n: number): string {
@@ -34,8 +35,9 @@ function contextColor(pct: number): string {
   return 'text-emerald-400';
 }
 
-export function ContextBar({ tab, poolSession }: ContextBarProps) {
+export function ContextBar({ tab, profile, poolSession, sending = false }: ContextBarProps) {
   const chips: React.ReactNode[] = [];
+  const resumeSessionId = poolSession?.cli_session_id?.trim() || null;
 
   // Plan scope
   if (tab.planId) {
@@ -47,8 +49,17 @@ export function ContextBar({ tab, poolSession }: ContextBarProps) {
     );
   }
 
+  if (!tab.sessionId && sending) {
+    chips.push(
+      <span key="context-pending" className="inline-flex items-center gap-0.5 text-blue-400" title="Waiting for first reply to establish session context">
+        <Icon name="layers" size={9} />
+        <span>context: pending</span>
+      </span>,
+    );
+  }
+
   // Context window usage (from pool session)
-  if (poolSession && poolSession.total_tokens > 0) {
+  if (poolSession) {
     const used = formatTokens(poolSession.total_tokens);
     if (poolSession.context_window > 0) {
       // Known window — show used/total + percentage
@@ -81,13 +92,36 @@ export function ContextBar({ tab, poolSession }: ContextBarProps) {
     );
   }
 
-  // Model (from pool session or override)
-  const model = poolSession?.cli_model || tab.modelOverride;
+  // Internal CLI resume session ID (used by Claude/Codex --resume)
+  if (resumeSessionId) {
+    chips.push(
+      <button
+        key="agent-session"
+        type="button"
+        onClick={() => { void navigator.clipboard.writeText(resumeSessionId); }}
+        className="inline-flex items-center gap-0.5 text-cyan-400 hover:text-cyan-300 transition-colors"
+        title={`Internal resume session: ${resumeSessionId}\nClick to copy`}
+      >
+        <Icon name="hash" size={9} />
+        <span>{resumeSessionId.slice(0, 8)}</span>
+      </button>,
+    );
+  }
+
+  // Model (manual override, live session model, or profile default)
+  const model = tab.modelOverride || poolSession?.cli_model || profile?.model_id;
   if (model) {
     chips.push(
       <span key="model" className="inline-flex items-center gap-0.5 text-neutral-400">
         <Icon name="cpu" size={9} />
         <span>{model}</span>
+      </span>,
+    );
+  } else {
+    chips.push(
+      <span key="engine" className="inline-flex items-center gap-0.5 text-neutral-400">
+        <Icon name="cpu" size={9} />
+        <span>{tab.engine}</span>
       </span>,
     );
   }

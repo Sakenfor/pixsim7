@@ -542,7 +542,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         <ReferencePicker ref={pickerRef} query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
 
         {/* Context bar — shows active scope/session info above the textarea */}
-        <ContextBar tab={tab} profile={activeProfile ?? null} poolSession={findPoolSession(bridge, tab.sessionId)} />
+        <ContextBar tab={tab} profile={activeProfile ?? null} poolSession={findPoolSession(bridge, tab.sessionId)} sending={sending} />
 
         {/* Textarea — above the toolbar for more space */}
         <div className="group/input mb-1.5">
@@ -735,18 +735,6 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
           {/* Work summaries */}
           <WorkSummaryBadge sessionId={tab.sessionId} messageCount={messages.length} sending={sending} />
-
-          {/* Session ID */}
-          {tab.sessionId && (
-            <button
-              onClick={() => { navigator.clipboard.writeText(tab.sessionId!); }}
-              className="shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-all ml-auto"
-              title={`Session: ${tab.sessionId}\nClick to copy`}
-            >
-              <Icon name="hash" size={10} />
-              <span>{tab.sessionId.slice(0, 6)}</span>
-            </button>
-          )}
         </div>
       </div>
     </div>
