@@ -25,7 +25,12 @@ from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
-from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters, recover_stale_processing_generations
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses
+from pixsim7.backend.main.workers.status_poller_maintenance import (
+    requeue_pending_generations,
+    reconcile_account_counters,
+    recover_stale_processing_generations,
+)
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads

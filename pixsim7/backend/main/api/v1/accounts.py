@@ -462,7 +462,7 @@ async def cleanup_account_states(
     try:
         stats = await account_service.cleanup_account_states(provider_id)
         # Also reconcile concurrency counters so stuck jobs don't block capacity.
-        from pixsim7.backend.main.workers.status_poller import reconcile_account_counters
+        from pixsim7.backend.main.workers.status_poller_maintenance import reconcile_account_counters
         reconcile_stats = await reconcile_account_counters({})
 
         return {

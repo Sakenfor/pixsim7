@@ -67,6 +67,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session import Pix
 from pixsim7.backend.main.services.provider.adapters.pixverse_auth import PixverseAuthMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_credits import PixverseCreditsMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_operations import PixverseOperationsMixin
+from pixsim7.backend.main.services.provider.adapters.pixverse_status import PixverseStatusMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_param_spec import (
     build_operation_parameter_spec,
 )
@@ -102,6 +103,7 @@ class PixverseProvider(
     PixverseSessionMixin,
     PixverseAuthMixin,
     PixverseCreditsMixin,
+    PixverseStatusMixin,
     PixverseOperationsMixin,
     PixverseMetadataMixin,
     Provider
