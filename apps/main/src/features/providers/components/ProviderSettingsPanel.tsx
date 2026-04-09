@@ -14,6 +14,7 @@ import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/ac
 import type { AccountUpdate } from '../lib/api/accounts';
 
 import { AccountRow } from './AccountRow';
+import { AccountRoutingManagerModal, type RoutingAccount } from './AccountRoutingManagerModal';
 import { AIProviderSettings } from './AIProviderSettings';
 import { CompactAccountCard } from './CompactAccountCard';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -334,6 +335,7 @@ export function ProviderSettingsPanel() {
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
+  const [routingAccount, setRoutingAccount] = useState<{ accountId: number; providerId: string; anchor: DOMRect } | null>(null);
 
   // Sorting & view mode
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
@@ -391,6 +393,22 @@ export function ProviderSettingsPanel() {
   const handleDeleteAccount = async (accountId: number) => {
     await deleteAccount(accountId);
     setRefreshKey(prev => prev + 1);
+  };
+
+  const handleRoutingSaved = (updated: RoutingAccount) => {
+    setRefreshKey((prev) => prev + 1);
+    setLiveAccountOverrides((prev) => {
+      if (!(updated.id in prev)) return prev;
+      const next = { ...prev };
+      delete next[updated.id];
+      return next;
+    });
+    setLiveAccountUpdatedAt((prev) => {
+      if (!(updated.id in prev)) return prev;
+      const next = { ...prev };
+      delete next[updated.id];
+      return next;
+    });
   };
 
   const handleUpdateAccountPlan = async (account: ProviderAccount) => {
@@ -1116,6 +1134,7 @@ export function ProviderSettingsPanel() {
                       account={account}
                       knownModelIds={knownPromotionModelIds}
                       onEdit={() => setEditingAccountId(account.id)}
+                      onManageRouting={(anchor) => setRoutingAccount({ accountId: account.id, providerId: account.provider_id, anchor })}
                       onToggle={() => handleToggleStatus(account)}
                       onUpdateAccountPlan={() => handleUpdateAccountPlan(account)}
                       onDelete={() => setDeletingAccount(account)}
@@ -1159,6 +1178,7 @@ export function ProviderSettingsPanel() {
                           account={account}
                           knownModelIds={knownPromotionModelIds}
                           onEdit={(a) => setEditingAccountId(a.id)}
+                          onManageRouting={(a, anchor) => setRoutingAccount({ accountId: a.id, providerId: a.provider_id, anchor })}
                           onToggleStatus={(a) => handleToggleStatus(a)}
                           onUpdateAccountPlan={(a) => handleUpdateAccountPlan(a)}
                           onDelete={(a) => setDeletingAccount(a)}
@@ -1289,6 +1309,14 @@ export function ProviderSettingsPanel() {
           onConfirm={handleDeleteAccount}
         />
       )}
+      <AccountRoutingManagerModal
+        isOpen={routingAccount != null}
+        anchor={routingAccount?.anchor ?? null}
+        accountId={routingAccount?.accountId ?? null}
+        providerId={routingAccount?.providerId}
+        onClose={() => setRoutingAccount(null)}
+        onSaved={handleRoutingSaved}
+      />
 
       <ConfirmModal
         isOpen={!!dedupeConfirm}

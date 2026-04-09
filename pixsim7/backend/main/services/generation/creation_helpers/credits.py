@@ -51,6 +51,8 @@ async def check_sufficient_credits(
     user_id: int,
     provider_id: str,
     required_credits: int,
+    operation_type: Optional[OperationType] = None,
+    model: Optional[str] = None,
 ) -> bool:
     """
     Check if user has access to an account with sufficient credits.
@@ -64,6 +66,8 @@ async def check_sufficient_credits(
         user_id: User ID
         provider_id: Provider identifier
         required_credits: Minimum credits required
+        operation_type: Optional operation type for routing-aware checks
+        model: Optional model for routing-aware checks
 
     Returns:
         True if an account with sufficient credits exists, or credits are
@@ -78,6 +82,8 @@ async def check_sufficient_credits(
             provider_id=provider_id,
             user_id=user_id,
             required_credits=required_credits,
+            operation_type=operation_type.value if hasattr(operation_type, "value") else operation_type,
+            model=model,
         )
         return True
     except NoAccountAvailableError:

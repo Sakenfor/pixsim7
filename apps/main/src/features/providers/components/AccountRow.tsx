@@ -31,6 +31,7 @@ interface AccountRowProps {
   account: ProviderAccount;
   knownModelIds?: string[];
   onEdit: (account: ProviderAccount) => void;
+  onManageRouting?: (account: ProviderAccount, anchor: DOMRect) => void;
   onToggleStatus: (account: ProviderAccount) => void;
   onUpdateAccountPlan?: (account: ProviderAccount) => void;
   onDelete: (account: ProviderAccount) => void;
@@ -42,6 +43,7 @@ export function AccountRow({
   account,
   knownModelIds,
   onEdit,
+  onManageRouting,
   onToggleStatus,
   onUpdateAccountPlan,
   onDelete,
@@ -204,6 +206,17 @@ export function AccountRow({
           >
             <Icon name="edit" size={14} />
           </button>
+          {onManageRouting && (
+            <button
+              type="button"
+              onClick={(e) => onManageRouting(account, (e.currentTarget as HTMLElement).getBoundingClientRect())}
+              className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded transition-colors"
+              title="Routing and priority rules"
+              aria-label="Routing and priority rules"
+            >
+              <Icon name="sliders" size={14} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onToggleStatus(account)}

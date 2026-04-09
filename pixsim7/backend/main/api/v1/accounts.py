@@ -62,6 +62,28 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
     if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
         is_google_account = True
 
+    routing_allow_patterns = [
+        str(item).strip()
+        for item in (getattr(account, "routing_allow_patterns", None) or [])
+        if str(item).strip()
+    ]
+    routing_deny_patterns = [
+        str(item).strip()
+        for item in (getattr(account, "routing_deny_patterns", None) or [])
+        if str(item).strip()
+    ]
+    raw_overrides = getattr(account, "routing_priority_overrides", None) or {}
+    routing_priority_overrides: Dict[str, int] = {}
+    if isinstance(raw_overrides, dict):
+        for key, value in raw_overrides.items():
+            normalized_key = str(key).strip()
+            if not normalized_key:
+                continue
+            try:
+                routing_priority_overrides[normalized_key] = int(value)
+            except (TypeError, ValueError):
+                continue
+
     # Sanitize api_keys for response (keep metadata)
     sanitized_api_keys = None
     if api_keys:
@@ -87,6 +109,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         nickname=account.nickname,
         is_private=account.is_private,
         status=account.status.value,
+        priority=int(getattr(account, "priority", 0) or 0),
         # Auth
         has_jwt=bool(account.jwt_token),
         jwt_expired=jwt_expired,
@@ -95,7 +118,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         has_cookies=bool(account.cookies),
         is_google_account=is_google_account,
         api_keys=sanitized_api_keys,
-        # Credits (normalized) — derive total from dict for guaranteed consistency
+        # Credits (normalized) - derive total from dict for guaranteed consistency
         credits=credits_dict,
         total_credits=sum(credits_dict.values()),
         # Usage
@@ -111,6 +134,9 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         unlimited_image_models=provider_metadata.get("plan_unlimited_image_models") or [],
         promotions=provider_metadata.get("promotions") or {},
         promotion_discounts=provider_metadata.get("promotion_discounts") or {},
+        routing_allow_patterns=routing_allow_patterns,
+        routing_deny_patterns=routing_deny_patterns,
+        routing_priority_overrides=routing_priority_overrides,
         # Timing
         last_used=account.last_used,
         last_error=account.last_error,
@@ -546,7 +572,11 @@ async def create_account(
             api_key=request.api_key,
             api_keys=request.api_keys,
             cookies=request.cookies,
-            is_private=request.is_private
+            is_private=request.is_private,
+            priority=request.priority,
+            routing_allow_patterns=request.routing_allow_patterns,
+            routing_deny_patterns=request.routing_deny_patterns,
+            routing_priority_overrides=request.routing_priority_overrides,
         )
         await db.commit()
         await db.refresh(account)
@@ -590,7 +620,11 @@ async def update_account(
             cookies=request.cookies,
             is_private=request.is_private,
             status=request.status,
-            is_google_account=request.is_google_account
+            is_google_account=request.is_google_account,
+            priority=request.priority,
+            routing_allow_patterns=request.routing_allow_patterns,
+            routing_deny_patterns=request.routing_deny_patterns,
+            routing_priority_overrides=request.routing_priority_overrides,
         )
         # Sync plan + promotions for Pixverse accounts on update (best-effort)
         if account.provider_id == "pixverse":

@@ -8,6 +8,11 @@ import type { ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 
 import { PromotionDetailsPopover } from '@features/providers/components/PromotionDetailsPopover';
+import {
+  AccountPromoBadge,
+  AccountTierBadge,
+  countActivePromotions,
+} from './AccountDisplayBadges';
 
 interface AccountOption {
   id: number;
@@ -16,32 +21,6 @@ interface AccountOption {
   promotions?: Record<string, unknown>;
   plan_tier?: number;
   status?: string;
-}
-
-const TIER_CONFIG: Record<number, { label: string; color: string }> = {
-  1: { label: '1', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/25' },
-  2: { label: '2', color: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/25' },
-  3: { label: '3', color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25' },
-};
-
-function AccountTierBadge({ tier }: { tier: number }) {
-  const cfg = TIER_CONFIG[tier];
-  if (!cfg) return null;
-  return (
-    <span className={clsx('inline-flex items-center justify-center w-[16px] h-[16px] rounded text-[8px] font-bold border', cfg.color)}>
-      {cfg.label}
-    </span>
-  );
-}
-
-function AccountPromoBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <span className="inline-flex items-center gap-0.5 px-1 py-px rounded text-[8px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-500/20">
-      <Icon name="sparkles" size={8} />
-      {count}
-    </span>
-  );
 }
 
 interface AdvancedSettingsPopoverProps {
@@ -241,8 +220,7 @@ export function AdvancedSettingsPopover({
               {accounts!.map(a => {
                 const isSelected = String(a.id) === String(selectedAccountId);
                 const tier = a.plan_tier ?? 0;
-                const promoCount = a.promotions && typeof a.promotions === 'object'
-                  ? Object.values(a.promotions).filter(Boolean).length : 0;
+                const promoCount = countActivePromotions(a.promotions);
                 return (
                   <button
                     type="button"

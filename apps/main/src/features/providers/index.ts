@@ -11,6 +11,8 @@
 
 export { ProviderSettingsPanel } from './components/ProviderSettingsPanel';
 export { AccountRow } from './components/AccountRow';
+export { AccountRoutingManagerModal } from './components/AccountRoutingManagerModal';
+export type { RoutingAccount } from './components/AccountRoutingManagerModal';
 export { CompactAccountCard } from './components/CompactAccountCard';
 export { EditAccountModal } from './components/EditAccountModal';
 export { DeleteConfirmModal } from './components/DeleteConfirmModal';

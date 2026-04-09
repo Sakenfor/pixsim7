@@ -52,6 +52,8 @@ export {
   type PromptComposerProps,
 } from './components/PromptComposer';
 
+export { FloatingToolPanel } from './components/FloatingToolPanel';
+
 export {
   PromptComposerSurface,
   type PromptComposerStateAdapter,

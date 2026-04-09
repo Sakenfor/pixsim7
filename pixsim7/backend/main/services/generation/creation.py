@@ -381,6 +381,8 @@ class GenerationCreationService:
                 user_id=user.id,
                 provider_id=provider_id,
                 required_credits=estimated_credits,
+                operation_type=operation_type,
+                model=canonical_params.get("model"),
             )
             if not has_credits:
                 logger.warning(
@@ -705,8 +707,15 @@ class GenerationCreationService:
         user_id: int,
         provider_id: str,
         required_credits: int,
+        operation_type: Optional[OperationType] = None,
+        model: Optional[str] = None,
     ) -> bool:
         """Check if user has access to an account with sufficient credits."""
         return await _check_sufficient_credits_impl(
-            self.db, user_id, provider_id, required_credits
+            self.db,
+            user_id,
+            provider_id,
+            required_credits,
+            operation_type=operation_type,
+            model=model,
         )

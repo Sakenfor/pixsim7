@@ -9,7 +9,7 @@ Credit system (normalized, queryable):
 """
 from datetime import datetime
 from typing import List, Optional, Dict
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from pixsim7.backend.main.domain.enums import AccountStatus
 
 
@@ -29,6 +29,10 @@ class AccountCreate(BaseModel):
     api_keys: Optional[list[dict]] = None  # Generic API keys (provider-specific structure)
     cookies: Optional[dict] = None
     is_private: bool = False  # False = shared with all users, True = only owner can use
+    priority: int = 0
+    routing_allow_patterns: Optional[List[str]] = None
+    routing_deny_patterns: Optional[List[str]] = None
+    routing_priority_overrides: Optional[Dict[str, int]] = None
 
 
 class AccountUpdate(BaseModel):
@@ -42,6 +46,10 @@ class AccountUpdate(BaseModel):
     is_private: Optional[bool] = None
     status: Optional[AccountStatus] = None
     is_google_account: Optional[bool] = None  # Mark account as Google-authenticated
+    priority: Optional[int] = None
+    routing_allow_patterns: Optional[List[str]] = None
+    routing_deny_patterns: Optional[List[str]] = None
+    routing_priority_overrides: Optional[Dict[str, int]] = None
 
 
 class AccountResponse(BaseModel):
@@ -53,6 +61,7 @@ class AccountResponse(BaseModel):
     nickname: Optional[str]
     is_private: bool
     status: str
+    priority: int
 
     # Auth info
     has_jwt: bool
@@ -83,11 +92,14 @@ class AccountResponse(BaseModel):
 
     # Plan capabilities
     plan_tier: int = 0  # 0=free, 1=standard, 2+=pro (from Pixverse plan_details)
-    unlimited_image_models: List[str] = []
+    unlimited_image_models: List[str] = Field(default_factory=list)
     # Active promotions (e.g. {"v6": true} for model discounts)
-    promotions: Dict[str, bool] = {}
-    # Resolved discount multipliers (e.g. {"v6": 0.7}) — backend-authoritative
-    promotion_discounts: Dict[str, float] = {}
+    promotions: Dict[str, bool] = Field(default_factory=dict)
+    # Resolved discount multipliers (e.g. {"v6": 0.7}) - backend-authoritative
+    promotion_discounts: Dict[str, float] = Field(default_factory=dict)
+    routing_allow_patterns: List[str] = Field(default_factory=list)
+    routing_deny_patterns: List[str] = Field(default_factory=list)
+    routing_priority_overrides: Dict[str, int] = Field(default_factory=dict)
 
     # Timing
     last_used: Optional[datetime]

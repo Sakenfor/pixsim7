@@ -17,6 +17,7 @@ interface CompactAccountCardProps {
   account: ProviderAccount;
   knownModelIds?: string[];
   onEdit: () => void;
+  onManageRouting?: (anchor: DOMRect) => void;
   onToggle: () => void;
   onUpdateAccountPlan?: () => void;
   onDelete: () => void;
@@ -27,6 +28,7 @@ export function CompactAccountCard({
   account,
   knownModelIds,
   onEdit,
+  onManageRouting,
   onToggle,
   onUpdateAccountPlan,
   onDelete,
@@ -175,6 +177,17 @@ export function CompactAccountCard({
           >
             <Icon name="edit" size={14} />
           </button>
+          {onManageRouting && (
+            <button
+              type="button"
+              onClick={(e) => onManageRouting((e.currentTarget as HTMLElement).getBoundingClientRect())}
+              className="p-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded transition-colors"
+              title="Routing and priority rules"
+              aria-label="Routing and priority rules"
+            >
+              <Icon name="sliders" size={14} />
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggle}

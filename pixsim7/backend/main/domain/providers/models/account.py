@@ -143,6 +143,32 @@ class ProviderAccount(SQLModel, table=True):
         default=0,
         description="Account priority (higher = preferred)"
     )
+    routing_allow_patterns: Optional[list[str]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description=(
+            "Optional allow-list for operation/model routing. "
+            "Patterns use 'operation:model' with '*' wildcards, "
+            "e.g. ['image_to_image:qwen-image', 'text_to_image:*']."
+        ),
+    )
+    routing_deny_patterns: Optional[list[str]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description=(
+            "Optional deny-list for operation/model routing. "
+            "Patterns use 'operation:model' with '*' wildcards."
+        ),
+    )
+    routing_priority_overrides: Optional[Dict[str, int]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description=(
+            "Optional per operation/model priority deltas keyed by "
+            "'operation:model' (supports '*' wildcards). "
+            "Values are added to base account priority."
+        ),
+    )
     max_daily_videos: Optional[int] = None
     videos_today: int = Field(default=0)
 

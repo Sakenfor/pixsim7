@@ -1,6 +1,6 @@
 import { Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Rnd } from 'react-rnd';
 
@@ -11,6 +11,7 @@ interface FloatingToolPanelProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  anchor?: HTMLElement | DOMRect | null;
   defaultWidth?: number;
   defaultHeight?: number;
   minWidth?: number;
@@ -24,6 +25,7 @@ export function FloatingToolPanel({
   onClose,
   title,
   children,
+  anchor,
   defaultWidth = 440,
   defaultHeight = 500,
   minWidth = 320,
@@ -32,6 +34,33 @@ export function FloatingToolPanel({
   const [pos, setPos] = useState({ x: 200, y: 120 });
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
   const initialised = useRef(false);
+
+  useEffect(() => {
+    if (!open || initialised.current) return;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+    let nextX = Math.max(40, (vw - defaultWidth) / 2);
+    let nextY = Math.max(40, (vh - defaultHeight) / 3);
+
+    if (anchor) {
+      const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
+      const spaceBelow = vh - rect.bottom;
+      const spaceAbove = rect.top;
+      const shouldPlaceAbove = spaceBelow < defaultHeight + 16 && spaceAbove > spaceBelow;
+
+      nextX = clamp(rect.left + (rect.width / 2) - (defaultWidth / 2), 12, vw - defaultWidth - 12);
+      nextY = shouldPlaceAbove
+        ? clamp(rect.top - defaultHeight - 8, 12, vh - defaultHeight - 12)
+        : clamp(rect.bottom + 8, 12, vh - defaultHeight - 12);
+    }
+
+    setPos({ x: nextX, y: nextY });
+    setSize({ width: defaultWidth, height: defaultHeight });
+    initialised.current = true;
+  }, [open, anchor, defaultWidth, defaultHeight]);
 
   const handleDragStop = useCallback((_e: unknown, d: { x: number; y: number }) => {
     setPos({ x: d.x, y: d.y });
@@ -46,14 +75,6 @@ export function FloatingToolPanel({
   );
 
   if (!open) return null;
-
-  // Position near center on first open
-  if (!initialised.current) {
-    initialised.current = true;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    setPos({ x: Math.max(40, (vw - defaultWidth) / 2), y: Math.max(40, (vh - defaultHeight) / 3) });
-  }
 
   return createPortal(
     <Rnd

@@ -36,6 +36,7 @@ import {
   filterQuickGenStyleParamSpecs,
   getQuickGenStyleAdvancedParamSpecs,
 } from './generationSettingsPanel/generationParamFilters';
+import { AccountIconButton } from './generationSettingsPanel/AccountIconButton';
 import { MaskPicker } from './generationSettingsPanel/MaskPicker';
 import { OperationIconButton } from './generationSettingsPanel/OperationIconButton';
 import { ProviderIconButton } from './generationSettingsPanel/ProviderIconButton';
@@ -274,7 +275,7 @@ export function GenerationSettingsPanel({
   );
   const inferredProviderId = providerId ?? modelProviderId;
 
-  // Account selector (rendered inside AdvancedSettingsPopover)
+  // Account selector data (used by row picker + AdvancedSettingsPopover)
   const { accounts: allAccounts } = useProviderAccounts(inferredProviderId);
   const activeAccounts = useMemo(
     () => allAccounts.filter(a => a.status === 'active'),
@@ -435,6 +436,16 @@ export function GenerationSettingsPanel({
               textMode={isOnEmptySlot && (operationType === 'image_to_video' || operationType === 'image_to_image')}
             />
           )}
+          {(activeAccounts.length > 0 || preferredAccountId != null) && (
+            <AccountIconButton
+              accounts={activeAccounts}
+              selectedAccountId={preferredAccountId}
+              onSelect={(id) => workbench.handleParamChange('preferred_account_id', id)}
+              disabled={generating}
+              operationType={operationType}
+              model={currentModel}
+            />
+          )}
           {showTargetButton && (
             <button
               type="button"
@@ -570,26 +581,26 @@ export function GenerationSettingsPanel({
           )}
 
           <div className="flex items-stretch gap-1.5 min-w-0">
-          {/* Advanced settings gear icon */}
-          <div className="flex-shrink-0">
-            <AdvancedSettingsPopover
-              params={advancedParams}
-              values={workbench.dynamicParams}
-              onChange={workbench.handleParamChange}
-              disabled={generating}
-              currentModel={workbench.dynamicParams?.model as string | undefined}
-              accounts={activeAccounts}
-              promoModels={Array.from(promotedModels)}
-              unknownPromoModels={unknownPromotionModels}
-              promoSourceAccountCount={promoSourceAccountIds.length}
-              knownPromoModelIds={knownModelIds}
-            />
-          </div>
-          {/* Primary Go button with inline burst stepper */}
-          <div
-            ref={burstWheelRef}
-            className="min-w-0 flex flex-1"
-          >
+            {/* Advanced settings gear icon */}
+            <div className="flex-shrink-0">
+              <AdvancedSettingsPopover
+                params={advancedParams}
+                values={workbench.dynamicParams}
+                onChange={workbench.handleParamChange}
+                disabled={generating}
+                currentModel={workbench.dynamicParams?.model as string | undefined}
+                accounts={activeAccounts}
+                promoModels={Array.from(promotedModels)}
+                unknownPromoModels={unknownPromotionModels}
+                promoSourceAccountCount={promoSourceAccountIds.length}
+                knownPromoModelIds={knownModelIds}
+              />
+            </div>
+            {/* Primary Go button with inline burst stepper */}
+            <div
+              ref={burstWheelRef}
+              className="min-w-0 flex flex-1"
+            >
             {hasUnknownPromotionPricing && (
               <div
                 className={clsx(

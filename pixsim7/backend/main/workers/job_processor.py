@@ -481,6 +481,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             include_exhausted=include_exhausted_candidates,
                             min_credits=required_credit_hint,
                             exclude_account_ids=exclude_ids or None,
+                            operation_type=_get_operation_value(generation),
+                            model=gen_model,
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
