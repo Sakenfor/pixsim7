@@ -663,7 +663,19 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     )
                     if defer_result:
                         return defer_result
-                    # Fall through if defer fails unexpectedly.
+                    # Defer failed but account already released — cannot
+                    # continue to submit without a reservation.
+                    gen_logger.warning(
+                        "adaptive_defer_failed_after_release",
+                        generation_id=generation.id,
+                        account_id=account.id,
+                    )
+                    get_health_tracker().increment_failed()
+                    return {
+                        "status": "failed",
+                        "reason": "adaptive_defer_failed",
+                        "generation_id": generation_id,
+                    }
                 elif adaptive_submit_gate.get("action") == "allow_probe":
                     gen_logger.info(
                         "adaptive_concurrency_probe_allowed",
@@ -800,9 +812,21 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         # Fall through to generic error handling below
                     else:
+                        # Refresh credits from provider before marking
+                        # exhausted — the quota error may be stale if a
+                        # refund landed between verify_credits and submit.
                         try:
-                            await account_service.mark_exhausted(account.id)
-                            # Note: account_service.mark_exhausted already logs account_marked_exhausted
+                            refreshed = await refresh_account_credits(account, account_service, gen_logger)
+                            await db.commit()
+                            if any(v > 0 for v in (refreshed or {}).values()):
+                                gen_logger.info(
+                                    "quota_error_but_credits_available",
+                                    account_id=account.id,
+                                    credits=refreshed,
+                                    msg="provider returned quota error but account has credits after refresh — skipping mark_exhausted",
+                                )
+                            else:
+                                await account_service.mark_exhausted(account.id)
                         except Exception as mark_err:
                             gen_logger.warning(
                                 "account_mark_exhausted_failed",
@@ -1048,6 +1072,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             account_released = True
                         except Exception as release_err:
                             gen_logger.warning("account_release_failed", error=str(release_err))
+                        # Refresh credits so DB reflects any provider refund
+                        try:
+                            await refresh_account_credits(account, account_service, gen_logger)
+                            await db.commit()
+                        except Exception as refresh_err:
+                            gen_logger.warning("content_filter_credit_refresh_failed", error=str(refresh_err))
                         # Return instead of raise to prevent ARQ retry
                         return {
                             "status": "failed",
@@ -1063,6 +1093,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_released = True
                     except Exception as release_err:
                         gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Refresh credits so the DB reflects any provider refund.
+                    # Without this, stale low-credit rows block the SQL
+                    # min_credits pre-filter and no account can be selected
+                    # until something else triggers a refresh.
+                    try:
+                        await refresh_account_credits(account, account_service, gen_logger)
+                        await db.commit()
+                    except Exception as refresh_err:
+                        gen_logger.warning("content_filter_credit_refresh_failed", error=str(refresh_err))
 
                     # Check retry count for content filter budget (not attempt_id —
                     # attempt_id includes non-error transitions like concurrent waits).
@@ -1138,7 +1178,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 # Fall through to immediate retry if rotation requeue fails
 
                             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                            from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
                             # Increment retry count and reset to pending on the same account
                             generation.retry_count = (generation.retry_count or 0) + 1

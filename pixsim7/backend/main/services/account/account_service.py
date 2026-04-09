@@ -413,15 +413,19 @@ class AccountService:
         if exclude_account_ids:
             query = query.where(ProviderAccount.id.notin_(exclude_account_ids))
 
-        # Pre-filter: skip accounts whose DB credits are already too low
+        # Pre-filter: skip accounts whose DB credits are already too low.
+        # This is an optimistic filter — DB credits may be stale (e.g. after
+        # a provider refund that hasn't been synced).  If it eliminates all
+        # candidates we retry without it and let the live verify_credits
+        # check handle correctness.
+        _applied_credit_filter = False
         if min_credits is not None and min_credits > 0:
-            query = query.where(
-                ProviderAccount.id.in_(
-                    select(ProviderCredit.account_id).where(
-                        ProviderCredit.amount >= min_credits
-                    )
+            _credit_filter = ProviderAccount.id.in_(
+                select(ProviderCredit.account_id).where(
+                    ProviderCredit.amount >= min_credits
                 )
             )
+            _applied_credit_filter = True
 
         # Sort by priority, then lowest credits first (drain cheap accounts
         # before touching high-credit ones), then least recently used.
@@ -432,17 +436,38 @@ class AccountService:
             .scalar_subquery()
             .label("total_credits")
         )
-        query = query.order_by(
-            ProviderAccount.priority.desc(),
-            _total_credits.asc(),
-            ProviderAccount.last_used.asc().nullsfirst(),
-        )
 
-        # Lock and skip already-locked rows (concurrent jobs will get different accounts)
-        query = query.with_for_update(skip_locked=True).limit(1)
+        def _finalize_query(q):
+            return (
+                q.order_by(
+                    ProviderAccount.priority.desc(),
+                    _total_credits.asc(),
+                    ProviderAccount.last_used.asc().nullsfirst(),
+                )
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
 
-        result = await self.db.execute(query)
-        account = result.scalar_one_or_none()
+        # First attempt: with credit pre-filter (if applicable)
+        if _applied_credit_filter:
+            result = await self.db.execute(_finalize_query(query.where(_credit_filter)))
+            account = result.scalar_one_or_none()
+            if not account:
+                # Credit pre-filter excluded everyone — DB credits may be
+                # stale.  Retry without the filter; live verify_credits
+                # will catch genuinely-empty accounts.
+                logger.info(
+                    "credit_prefilter_fallback",
+                    provider_id=provider_id,
+                    min_credits=min_credits,
+                    msg="credit pre-filter excluded all candidates, retrying without it",
+                )
+                result = await self.db.execute(_finalize_query(query))
+                account = result.scalar_one_or_none()
+        else:
+            # Lock and skip already-locked rows (concurrent jobs will get different accounts)
+            result = await self.db.execute(_finalize_query(query))
+            account = result.scalar_one_or_none()
 
         if not account:
             accountless_reserved = await self.reserve_or_create_accountless_account(provider_id)
