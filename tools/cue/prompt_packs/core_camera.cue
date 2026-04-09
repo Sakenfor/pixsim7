@@ -17,7 +17,7 @@ pack: #PromptBlockPackV1 & {
 				op: {
 					op_id_template: "camera.motion.{variant}"
 					signature_id:   "camera.motion.v1"
-					modalities: ["video"]
+					modalities: ["video", "both"]
 					refs: [
 						{
 							key:        "target"

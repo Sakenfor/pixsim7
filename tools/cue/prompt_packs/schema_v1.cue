@@ -43,6 +43,40 @@ package promptpacks
 #PlacementOrientationValues: ["front", "profile_left", "profile_right", "back"]
 #LookFocusValues: ["eyes", "head", "away", "body"]
 #GaitValues: ["step", "walk", "run", "drift", "turn"]
+#ActionVerbValues: ["reach", "grasp", "pull", "push", "lift", "lower", "strike", "embrace", "release", "gesture", "react", "turn_to"]
+#TargetInvolvementValues: ["none", "indirect", "direct"]
+#BodyRegionValues: ["arms", "upper_body", "full_body", "hands", "head"]
+
+#SubjectActionParams: [
+	{
+		key:     "action_verb"
+		type:    "enum"
+		enum:    #ActionVerbValues
+		default: "gesture"
+		tag_key: "action_verb"
+	},
+	{
+		key:     "target_involvement"
+		type:    "enum"
+		enum:    #TargetInvolvementValues
+		default: "none"
+		tag_key: "target_involvement"
+	},
+	{
+		key:     "intensity"
+		type:    "enum"
+		enum:    #LevelValues
+		default: "medium"
+		tag_key: "action_intensity"
+	},
+	{
+		key:     "body_region"
+		type:    "enum"
+		enum:    #BodyRegionValues
+		default: "upper_body"
+		tag_key: "body_region"
+	},
+]
 
 #RefSpec: {
 	key:          #SimpleId
