@@ -48,18 +48,21 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "continuation"
 							enum: ["initial", "continuation", "transition", "unspecified"]
+							tag_key: "role_in_sequence"
 						},
 						{
 							key:     "continuity_focus"
 							type:    "enum"
 							default: "subject"
 							enum: ["subject", "target", "setting", "props", "tone"]
+							tag_key: "continuity_focus"
 						},
 						{
 							key:     "continuity_priority"
 							type:    "enum"
 							default: "medium"
 							enum: ["low", "medium", "high"]
+							tag_key: "continuity_priority"
 						},
 						{
 							key:            "target_ref"

@@ -42,6 +42,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "eye"
 							enum:    #VerticalAngleValues
+							tag_key: "vertical_angle"
 						},
 						{
 							key:     "roll"

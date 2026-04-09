@@ -57,6 +57,7 @@ package promptpacks
 	key:          #SimpleId
 	required?:    *false | bool
 	description?: string
+	tag_key?:     #SimpleId
 	[string]:     _
 }
 

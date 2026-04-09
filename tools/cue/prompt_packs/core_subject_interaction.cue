@@ -42,24 +42,28 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "greet"
 							enum: ["greet", "brief_exchange", "pass_item", "hold", "brief_acknowledge"]
+							tag_key: "beat_type"
 						},
 						{
 							key:     "contact_stage"
 							type:    "enum"
 							default: "none"
 							enum: ["none", "offered_hand", "brief_contact"]
+							tag_key: "contact_stage"
 						},
 						{
 							key:     "response_mode"
 							type:    "enum"
 							default: "neutral"
 							enum: ["neutral", "receptive", "hesitant", "boundary"]
+							tag_key: "response_mode"
 						},
 						{
 							key:     "social_tone"
 							type:    "enum"
 							default: "neutral"
 							enum: ["neutral", "warm", "playful"]
+							tag_key: "social_tone"
 						},
 						{
 							key:            "target_ref"
