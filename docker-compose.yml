@@ -145,6 +145,37 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ARQ Automation Worker (Device Automation / ADB)
+  automation-worker:
+    build:
+      context: ./pixsim7/backend/main
+      dockerfile: Dockerfile
+    container_name: pixsim7-automation-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
+      ARQ_AUTOMATION_MAX_JOBS: ${ARQ_AUTOMATION_MAX_JOBS:-5}
+      ARQ_AUTOMATION_JOB_TIMEOUT: ${ARQ_AUTOMATION_JOB_TIMEOUT:-1800}
+    volumes:
+      - ./pixsim7:/app/pixsim7
+      - ./data/storage:/app/storage
+      - ./data/logs:/app/logs
+      - ./data/cache:/app/cache
+    command: arq pixsim7.backend.main.workers.arq_worker.AutomationWorkerSettings
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
   redis_data:

@@ -38,6 +38,7 @@ from pixsim7.backend.main.workers.health import (
     update_main_heartbeat,
     update_retry_heartbeat,
     update_simulation_heartbeat,
+    update_automation_heartbeat,
     get_health_tracker,
 )
 from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
@@ -47,6 +48,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
     SIMULATION_SCHEDULER_QUEUE_NAME,
+    AUTOMATION_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
@@ -150,9 +152,7 @@ async def startup(ctx: dict) -> None:
     # Initialize account event satellite handler
     AccountEventService.initialize()
     _normalize_arq_logger_handlers()
-
-    # Initialize health tracker
-    health = get_health_tracker()
+    get_health_tracker()
 
     global _event_bridge
 
@@ -181,21 +181,23 @@ async def startup(ctx: dict) -> None:
     register_default_providers()
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
     logger.info("worker_component_registered", component="process_generation")
-    logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="process_analysis")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
-    logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
-    logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
-    logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
+    logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
     logger.info("worker_component_registered", component="update_main_heartbeat", schedule="*/30s")
-    logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
     logger.info(
         "worker_component_externalized",
         component="tick_active_worlds",
         worker="SimulationWorkerSettings",
         queue=SIMULATION_SCHEDULER_QUEUE_NAME,
+    )
+    logger.info(
+        "worker_component_externalized",
+        component="process_automation",
+        worker="AutomationWorkerSettings",
+        queue=AUTOMATION_QUEUE_NAME,
     )
 
     logger.info(
@@ -310,6 +312,36 @@ async def simulation_shutdown(ctx: dict) -> None:
     await close_database()
 
 
+async def automation_startup(ctx: dict) -> None:
+    """Startup for dedicated automation worker."""
+    _normalize_arq_logger_handlers()
+    get_health_tracker()
+    logger.info("worker_start", msg="PixSim7 Automation Worker Starting")
+
+    debug_flags = load_global_debug_from_env()
+    if debug_flags:
+        enabled = [name for name, enabled in debug_flags.items() if enabled]
+        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
+
+    from pixsim7.backend.main.domain.providers.registry import register_default_providers
+    await _load_persisted_system_config_for_worker()
+    register_default_providers()
+
+    logger.info("worker_component_registered", component="process_automation", queue=AUTOMATION_QUEUE_NAME)
+    logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
+    logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
+    logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
+    logger.info("worker_component_registered", component="update_automation_heartbeat", schedule="*/30s")
+
+    await update_automation_heartbeat(ctx)
+
+
+async def automation_shutdown(ctx: dict) -> None:
+    """Shutdown for dedicated automation worker."""
+    logger.info("worker_shutdown", msg="PixSim7 Automation Worker Shutting Down")
+    await close_database()
+
+
 _sync_preload_system_config()
 
 
@@ -332,15 +364,11 @@ class WorkerSettings:
     # Task functions that can be queued
     functions = [
         process_generation,
-        process_automation,
         process_analysis,
         run_analysis_backfill_batch,
         poll_job_statuses,
-        run_automation_loops,
-        queue_pending_executions,
         requeue_pending_generations,
         requeue_pending_analyses,
-        poll_device_ads,
         cleanup_old_logs,
         reload_logging_config,
     ]
@@ -353,18 +381,6 @@ class WorkerSettings:
             poll_job_statuses,
             second={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58},  # Every 2 seconds
             run_at_startup=True,  # Run immediately on startup
-        ),
-        # Run automation loops every 30 seconds
-        cron(
-            run_automation_loops,
-            second={0, 30},
-            run_at_startup=True,
-        ),
-        # Queue pending executions every 15 seconds (picks up stuck/manual executions)
-        cron(
-            queue_pending_executions,
-            second={0, 15, 30, 45},  # Every 15 seconds
-            run_at_startup=True,  # Check immediately on startup
         ),
         # Requeue stuck pending generations every 30 seconds
         cron(
@@ -390,13 +406,6 @@ class WorkerSettings:
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             second={5},
             run_at_startup=False,
-        ),
-        # Poll device ad activity every 5 seconds
-        # Detects when ads are playing and marks device as BUSY
-        cron(
-            poll_device_ads,
-            second={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},  # Every 5 seconds (offset)
-            run_at_startup=True,
         ),
         # Purge old log entries daily at 03:00
         cron(
@@ -504,6 +513,58 @@ class SimulationWorkerSettings:
     health_check_interval = 60
 
 
+class AutomationWorkerSettings:
+    """ARQ worker dedicated to device automation execution.
+
+    Isolated from the main generation worker so automation jobs (ADB device
+    control, potentially long-running) cannot eat generation processing slots.
+    """
+
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    queue_name = AUTOMATION_QUEUE_NAME
+
+    functions = [
+        process_automation,
+        run_automation_loops,
+        queue_pending_executions,
+        poll_device_ads,
+        reload_logging_config,
+    ]
+
+    cron_jobs = [
+        # Run automation loops every 30 seconds
+        cron(run_automation_loops, second={0, 30}, run_at_startup=True),
+        # Queue pending executions every 15 seconds (picks up stuck/manual)
+        cron(queue_pending_executions, second={0, 15, 30, 45}, run_at_startup=True),
+        # Poll device ad activity every 5 seconds
+        cron(
+            poll_device_ads,
+            second={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
+            run_at_startup=True,
+        ),
+        # Heartbeat every 30 seconds
+        cron(update_automation_heartbeat, second={0, 30}, run_at_startup=False),
+        # Reload logging config from DB every 60s
+        cron(reload_logging_config, second={10}, run_at_startup=False),
+    ]
+
+    on_startup = automation_startup
+    on_shutdown = automation_shutdown
+
+    # Automation is device-bound — concurrency is limited by physical devices.
+    max_jobs = int(os.getenv("ARQ_AUTOMATION_MAX_JOBS", "5"))
+    # Allow up to 30 minutes for multi-step automation flows.
+    job_timeout = int(os.getenv("ARQ_AUTOMATION_JOB_TIMEOUT", "1800"))
+    # Don't auto-retry — device state is dirty after a mid-run failure.
+    # The loop service handles rescheduling via business logic.
+    max_tries = 1
+    retry_jobs = False
+
+    log_results = True
+    verbose = True
+    health_check_interval = 60
+
+
 # For testing/debugging
 if __name__ == "__main__":
     print("PixSim7 ARQ Worker Configuration")
@@ -519,3 +580,4 @@ if __name__ == "__main__":
     print("  arq pixsim7.backend.main.workers.arq_worker.WorkerSettings")
     print("  arq pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings")
     print("  arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings")
+    print("  arq pixsim7.backend.main.workers.arq_worker.AutomationWorkerSettings")

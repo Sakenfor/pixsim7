@@ -340,7 +340,7 @@ async def queue_pending_executions(ctx: dict) -> dict:
     queued = 0
     async for db in get_db():
         try:
-            from pixsim7.backend.main.infrastructure.queue import queue_task
+            from pixsim7.backend.main.infrastructure.queue import queue_task, AUTOMATION_QUEUE_NAME
 
             # Find PENDING executions that aren't already queued
             result = await db.execute(
@@ -359,8 +359,8 @@ async def queue_pending_executions(ctx: dict) -> dict:
 
             for execution in pending:
                 try:
-                    # Queue the execution
-                    task_id = await queue_task("process_automation", execution.id)
+                    # Queue to the dedicated automation queue
+                    task_id = await queue_task("process_automation", execution.id, queue_name=AUTOMATION_QUEUE_NAME)
                     queued += 1
                     logger.info("execution_queued", execution_id=execution.id, task_id=task_id)
                 except Exception as e:

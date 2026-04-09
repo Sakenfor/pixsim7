@@ -11,3 +11,6 @@ GENERATION_RETRY_QUEUE_NAME = "arq:queue:generation-retry"
 # Dedicated queue for world simulation scheduler jobs.
 SIMULATION_SCHEDULER_QUEUE_NAME = "arq:queue:simulation-scheduler"
 
+# Dedicated queue for device automation execution jobs.
+AUTOMATION_QUEUE_NAME = "arq:queue:automation"
+

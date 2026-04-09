@@ -14,6 +14,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
     SIMULATION_SCHEDULER_QUEUE_NAME,
+    AUTOMATION_QUEUE_NAME,
 )
 
 logger = configure_logging("worker.health").bind(channel="cron")
@@ -22,10 +23,12 @@ logger = configure_logging("worker.health").bind(channel="cron")
 WORKER_ROLE_MAIN = "main"
 WORKER_ROLE_RETRY = "retry"
 WORKER_ROLE_SIMULATION = "simulation"
+WORKER_ROLE_AUTOMATION = "automation"
 WORKER_ROLES = (
     WORKER_ROLE_MAIN,
     WORKER_ROLE_RETRY,
     WORKER_ROLE_SIMULATION,
+    WORKER_ROLE_AUTOMATION,
 )
 
 WORKER_HEARTBEAT_KEY_TEMPLATE = "arq:worker:{role}:heartbeat"
@@ -208,6 +211,10 @@ async def update_simulation_heartbeat(ctx: dict) -> None:
     await _update_worker_heartbeat(ctx, WORKER_ROLE_SIMULATION)
 
 
+async def update_automation_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_AUTOMATION)
+
+
 async def get_worker_health(
     worker_role: str = WORKER_ROLE_MAIN,
     allow_legacy_fallback: bool = True,
@@ -287,8 +294,9 @@ async def get_queue_stats() -> Dict[str, Any]:
         pending_fresh = await redis.llen(GENERATION_FRESH_QUEUE_NAME)
         pending_retry = await redis.llen(GENERATION_RETRY_QUEUE_NAME)
         pending_simulation = await redis.llen(SIMULATION_SCHEDULER_QUEUE_NAME)
+        pending_automation = await redis.llen(AUTOMATION_QUEUE_NAME)
         pending_legacy = await redis.llen("arq:queue:default")
-        pending = pending_fresh + pending_retry + pending_simulation + pending_legacy
+        pending = pending_fresh + pending_retry + pending_simulation + pending_automation + pending_legacy
 
         # ARQ in-progress keying differs by version/configuration.
         # Use the most complete available count to avoid under-reporting.
@@ -296,7 +304,11 @@ async def get_queue_stats() -> Dict[str, Any]:
         in_progress_fresh = await redis.zcard(f"arq:in-progress:{GENERATION_FRESH_QUEUE_NAME}")
         in_progress_retry = await redis.zcard(f"arq:in-progress:{GENERATION_RETRY_QUEUE_NAME}")
         in_progress_simulation = await redis.zcard(f"arq:in-progress:{SIMULATION_SCHEDULER_QUEUE_NAME}")
-        in_progress = max(in_progress_global, in_progress_fresh + in_progress_retry + in_progress_simulation)
+        in_progress_automation = await redis.zcard(f"arq:in-progress:{AUTOMATION_QUEUE_NAME}")
+        in_progress = max(
+            in_progress_global,
+            in_progress_fresh + in_progress_retry + in_progress_simulation + in_progress_automation,
+        )
 
         # Count completed jobs in last hour (from results)
         # ARQ stores results with keys like "arq:result:{job_id}"
@@ -314,6 +326,7 @@ async def get_queue_stats() -> Dict[str, Any]:
             "pending_fresh": pending_fresh,
             "pending_retry": pending_retry,
             "pending_simulation": pending_simulation,
+            "pending_automation": pending_automation,
             "pending_legacy": pending_legacy,
             "in_progress": in_progress,
             "completed_recent": completed_count,

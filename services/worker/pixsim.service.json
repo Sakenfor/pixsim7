@@ -3,7 +3,7 @@
   "category": "core",
   "type": "worker",
   "name": "Worker (ARQ)",
-  "description": "Background task worker (generation/automation/retries)",
+  "description": "Background task worker (generation/analysis/retries)",
   "module": "arq",
   "args": ["pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
   "depends_on": ["db"],

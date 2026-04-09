@@ -1,0 +1,24 @@
+{
+  "id": "automation-worker",
+  "category": "services",
+  "type": "worker",
+  "name": "Worker (Automation)",
+  "description": "Dedicated device automation worker (ADB execution, ad loops, device polling)",
+  "module": "arq",
+  "args": ["pixsim7.backend.main.workers.arq_worker.AutomationWorkerSettings"],
+  "depends_on": ["db"],
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "max_jobs",
+      "default": 5,
+      "description": "Max concurrent automation jobs — limited by available physical devices"
+    },
+    {
+      "key": "job_timeout",
+      "default": 1800,
+      "description": "Automation job timeout in seconds (default 30 min for multi-step flows)"
+    }
+  ]
+}
