@@ -49,10 +49,12 @@ from pixsim7.backend.main.shared.debug import (
 )
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim7.backend.main.workers.job_processor import refresh_account_credits
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     start_event_bus_bridge,
     stop_event_bus_bridge,
 )
+from pixsim7.backend.main.services.asset.events import ASSET_UPDATED
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
@@ -1871,6 +1873,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                         provider_job_id=provider_job_id,
                                         attempt=attempt,
                                     )
+                                    await event_bus.publish(ASSET_UPDATED, {
+                                        "asset_id": asset_id,
+                                        "user_id": asset.user_id,
+                                        "reason": "moderation_flagged",
+                                    })
                         else:
                             # Not flagged yet — schedule next attempt if we have retries left
                             next_attempt = attempt + 1

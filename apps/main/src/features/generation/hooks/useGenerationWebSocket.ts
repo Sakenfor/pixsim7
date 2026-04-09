@@ -760,6 +760,25 @@ class WebSocketManager {
           } else {
             console.warn('[WebSocket] No asset ID found in asset:created message');
           }
+        } else if (message.type === 'asset:updated') {
+          // Handle asset update events (e.g., moderation flagging)
+          const rawData = message as WebSocketRecord;
+          const dataRecord = asRecord(rawData.data);
+          const assetId =
+            getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
+
+          if (assetId) {
+            const numericAssetId = typeof assetId === 'string' ? Number(assetId) : assetId;
+            if (Number.isFinite(numericAssetId)) {
+              try {
+                const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${numericAssetId}`);
+                debugFlags.log('websocket', 'Asset updated, refreshing in gallery:', numericAssetId);
+                assetEvents.emitAssetUpdated(refreshed);
+              } catch (err) {
+                debugFlags.log('websocket', 'Failed to fetch updated asset:', numericAssetId, err);
+              }
+            }
+          }
         } else if (message.type === 'asset:deleted') {
           // Handle asset deletion events
           debugFlags.log('websocket', 'Asset deleted event received:', message);

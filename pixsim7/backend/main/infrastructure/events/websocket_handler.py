@@ -95,6 +95,7 @@ def register_websocket_handlers():
 
     # Asset events
     event_bus.subscribe("asset:created", broadcast_asset_event)
+    event_bus.subscribe("asset:updated", broadcast_asset_event)
     event_bus.subscribe("asset:deleted", broadcast_asset_event)
 
     logger.info("[WebSocket] Event handlers registered for: job:*, asset:*")
