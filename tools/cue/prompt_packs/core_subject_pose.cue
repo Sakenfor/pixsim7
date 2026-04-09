@@ -42,18 +42,21 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "standing"
 							enum:    #PoseValues
+							tag_key: "pose"
 						},
 						{
 							key:     "hands"
 							type:    "enum"
 							default: "neutral"
 							enum:    #PoseHandsValues
+							tag_key: "hands"
 						},
 						{
 							key:     "gaze"
 							type:    "enum"
 							default: "forward"
 							enum:    #GazeValues
+							tag_key: "gaze"
 						},
 						{
 							key:            "target_ref"
