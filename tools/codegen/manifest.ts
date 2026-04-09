@@ -80,19 +80,19 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     groups: ['types'],
   },
   {
-    id: 'prompt-pack-schemas',
+    id: 'cue',
     description:
       'Generate + lint prompt block-pack schema.yaml/manifest.yaml from CUE sources',
     script: 'tools/codegen/generate-prompt-pack-schemas.ts',
     supportsCheck: true,
-    groups: ['prompt'],
+    groups: ['prompt', 'cue'],
   },
   {
-    id: 'primitive-projection-corpus',
-    description: 'Generate primitive-projection eval corpus from CUE prompt-pack variants',
+    id: 'cue-projection-corpus',
+    description: 'Regenerate primitive-projection eval corpus from CUE variants',
     script: 'tools/codegen/generate-primitive-projection-corpus.ts',
     supportsCheck: true,
-    groups: ['prompt', 'tests'],
+    groups: ['prompt', 'cue', 'tests'],
   },
   {
     id: 'app-map',

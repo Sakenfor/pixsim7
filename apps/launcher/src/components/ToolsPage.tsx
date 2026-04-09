@@ -2,7 +2,7 @@
  * Tools page — Codegen, Migrations, Buildables, Settings.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
 import { Badge, Button, Input } from '@pixsim7/shared.ui'
 import {
   getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
@@ -55,11 +55,14 @@ export function ToolsPage() {
 
 // ── Codegen ──
 
+/** IDs that act as parent cards with expandable subcards (children use `{parentId}-*` naming). */
+const EXPANDABLE_PARENTS = ['openapi', 'cue'] as const
+
 function CodegenSection() {
   const [tasks, setTasks] = useState<CodegenTask[]>([])
   const [runResult, setRunResult] = useState<CodegenRunResult | null>(null)
   const [running, setRunning] = useState<string | null>(null)
-  const [openapiExpanded, setOpenapiExpanded] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getCodegenTasks().then(setTasks)
@@ -77,19 +80,35 @@ function CodegenSection() {
     }
   }, [])
 
-  const isScopedOpenApiTask = useCallback((task: CodegenTask) => task.id.startsWith('openapi-'), [])
-  const openapiParent = tasks.find((task) => task.id === 'openapi')
-  const openapiChildren = tasks.filter(isScopedOpenApiTask)
-  const regularTasks = tasks.filter((task) => task.id !== 'openapi' && !isScopedOpenApiTask(task))
+  const toggleExpanded = useCallback((parentId: string) => {
+    setExpanded((prev) => ({ ...prev, [parentId]: !prev[parentId] }))
+  }, [])
 
-  const renderTask = (task: CodegenTask, nested = false) => {
+  // Build parent → children map from naming convention
+  const parentChildMap = useMemo(() => {
+    const childIds = new Set<string>()
+    const map: Record<string, { parent: CodegenTask; children: CodegenTask[] }> = {}
+    for (const parentId of EXPANDABLE_PARENTS) {
+      const parent = tasks.find((t) => t.id === parentId)
+      const children = tasks.filter((t) => t.id.startsWith(`${parentId}-`))
+      if (parent || children.length) {
+        map[parentId] = { parent: parent!, children }
+        if (parent) childIds.add(parent.id)
+        children.forEach((c) => childIds.add(c.id))
+      }
+    }
+    const regular = tasks.filter((t) => !childIds.has(t.id))
+    return { map, regular }
+  }, [tasks])
+
+  const renderTask = (task: CodegenTask, parentId?: string) => {
+    const nested = !!parentId
     const dep = task.requires_service
     const depOk = task.service_running !== false
-    const showOpenapiToggle = task.id === 'openapi' && openapiChildren.length > 0
-    const titleText = nested ? task.id.replace(/^openapi-/, '') : task.id
-    const descriptionText = nested
-      ? task.description.replace(/^Scoped OpenAPI merge for\s*/i, '').replace(/\s*tags\s*$/i, '')
-      : task.description
+    const ownGroup = parentChildMap.map[task.id]
+    const hasChildren = !nested && ownGroup && ownGroup.children.length > 0
+    const titleText = nested ? task.id.replace(new RegExp(`^${parentId}-`), '') : task.id
+    const descriptionText = task.description
 
     return (
       <div
@@ -98,20 +117,20 @@ function CodegenSection() {
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            {showOpenapiToggle && (
+            {hasChildren && (
               <button
                 type="button"
-                onClick={() => setOpenapiExpanded((prev) => !prev)}
+                onClick={() => toggleExpanded(task.id)}
                 className="text-[10px] text-gray-400 hover:text-gray-200 w-3"
-                title={openapiExpanded ? 'Collapse OpenAPI scoped tasks' : 'Expand OpenAPI scoped tasks'}
+                title={expanded[task.id] ? `Collapse ${task.id} subtasks` : `Expand ${task.id} subtasks`}
               >
-                {openapiExpanded ? 'v' : '>'}
+                {expanded[task.id] ? 'v' : '>'}
               </button>
             )}
             {nested && <span className="text-[10px] text-gray-500">-&gt;</span>}
             <span className="text-xs font-medium text-gray-200">{titleText}</span>
             {!nested && task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)}
-            {showOpenapiToggle && <Badge color="gray" className="text-[9px]">{openapiChildren.length} scoped</Badge>}
+            {hasChildren && <Badge color="gray" className="text-[9px]">{ownGroup!.children.length} sub</Badge>}
           </div>
           <div className="text-[10px] text-gray-500 truncate">{descriptionText}</div>
           {dep && !nested && (
@@ -148,10 +167,18 @@ function CodegenSection() {
 
   return (
     <div className="p-3 space-y-2">
-      {openapiParent && renderTask(openapiParent)}
-      {openapiParent && openapiExpanded && openapiChildren.map((task) => renderTask(task, true))}
-      {!openapiParent && openapiChildren.map((task) => renderTask(task))}
-      {regularTasks.map((task) => renderTask(task))}
+      {EXPANDABLE_PARENTS.map((parentId) => {
+        const group = parentChildMap.map[parentId]
+        if (!group) return null
+        return (
+          <Fragment key={parentId}>
+            {group.parent && renderTask(group.parent)}
+            {!group.parent && group.children.map((task) => renderTask(task))}
+            {group.parent && expanded[parentId] && group.children.map((task) => renderTask(task, parentId))}
+          </Fragment>
+        )
+      })}
+      {parentChildMap.regular.map((task) => renderTask(task))}
       {runResult && <ResultBox result={runResult} />}
     </div>
   )
