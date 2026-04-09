@@ -5,14 +5,11 @@ import { createPortal } from 'react-dom';
 
 
 import type { ParamSpec } from '@lib/generation-ui';
-import { Icon } from '@lib/icons';
 
 import { PromotionDetailsPopover } from '@features/providers/components/PromotionDetailsPopover';
-import {
-  AccountPromoBadge,
-  AccountTierBadge,
-  countActivePromotions,
-} from './AccountDisplayBadges';
+
+import { AccountPromoBadge, AccountTierBadge } from './AccountDisplayBadges';
+import { countActivePromotions } from './accountDisplayUtils';
 
 interface AccountOption {
   id: number;

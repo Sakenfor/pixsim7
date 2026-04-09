@@ -4,12 +4,12 @@ import { useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
-import { AccountRoutingManagerModal, type RoutingAccount } from '@features/providers';
 import {
   AccountPromoBadge,
   AccountTierBadge,
-  countActivePromotions,
 } from '@features/generation/components/AccountDisplayBadges';
+import { countActivePromotions } from '@features/generation/components/accountDisplayUtils';
+import { AccountRoutingManagerModal, type RoutingAccount } from '@features/providers';
 
 import { AUTO_BRAND, DROPDOWN_ITEM_CLS } from './constants';
 
