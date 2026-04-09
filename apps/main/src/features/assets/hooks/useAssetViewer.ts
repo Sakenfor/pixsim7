@@ -5,11 +5,34 @@
  * Converts various asset formats to the unified ViewerAsset format.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
 import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
 import type { LocalAssetModel } from '../types/localFolderMeta';
+
+function areViewerScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+
+  for (let i = 0; i < prev.length; i += 1) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.url !== b.url ||
+      a.fullUrl !== b.fullUrl ||
+      a.name !== b.name ||
+      a.type !== b.type ||
+      a.source !== b.source ||
+      a.sourceGenerationId !== b.sourceGenerationId
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 /**
  * Registers a navigation scope with the asset viewer while the component is mounted.
@@ -23,20 +46,35 @@ export function useViewerScopeSync(
 ) {
   const registerScope = useAssetViewerStore((s) => s.registerScope);
   const unregisterScope = useAssetViewerStore((s) => s.unregisterScope);
+  const lastRegisteredRef = useRef<{ scopeId: string; label: string; assets: ViewerAsset[] } | null>(null);
 
   // Sync scope data when it changes (registerScope upserts)
   useEffect(() => {
-    if (enabled && assets.length > 0) {
-      registerScope(scopeId, label, assets);
+    if (!enabled || assets.length === 0) {
+      lastRegisteredRef.current = null;
+      return;
     }
+
+    const last = lastRegisteredRef.current;
+    if (
+      last &&
+      last.scopeId === scopeId &&
+      last.label === label &&
+      areViewerScopeAssetsEquivalent(last.assets, assets)
+    ) {
+      return;
+    }
+
+    registerScope(scopeId, label, assets);
+    lastRegisteredRef.current = { scopeId, label, assets };
   }, [enabled, scopeId, label, assets, registerScope]);
 
-  // Unregister only on unmount or when disabled/scopeId changes
+  // Unregister on unmount or when scopeId changes
   useEffect(() => {
     return () => {
+      lastRegisteredRef.current = null;
       unregisterScope(scopeId);
     };
-   
   }, [scopeId, unregisterScope]);
 }
 

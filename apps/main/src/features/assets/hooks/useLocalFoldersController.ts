@@ -82,6 +82,21 @@ const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 80;
 const globalBlobUrlCache = new Map<string, { url: string; original: boolean }>();
 const globalLoadingKeys = new Set<string>();
 
+function areStringRecordValuesEqual<T extends string | undefined>(
+  left: Record<string, T>,
+  right: Record<string, T>,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+
+  for (const key of leftKeys) {
+    if (left[key] !== right[key]) return false;
+  }
+
+  return true;
+}
+
 function isAssetDirectlyInFolderPath(asset: LocalAsset | LocalAssetModel, folderPath: string): boolean {
   // Root folder selected: path is just folderId
   if (folderPath === asset.folderId) {
@@ -191,6 +206,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendHashCheckedRef = useRef<Set<string>>(new Set());
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
+  const backendSyncInFlightRef = useRef(false);
 
   // Force re-check trigger (bumped by recheckBackend)
   const [backendCheckTrigger, setBackendCheckTrigger] = useState(0);
@@ -206,6 +222,10 @@ export function useLocalFoldersController(): LocalFoldersController {
   const [uploadStatus, setUploadStatus] = useState<Record<string, LocalUploadState>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
+  const uploadStateHydratedRef = useRef(false);
+  const loadPersistedRef = useRef(loadPersisted);
+  loadPersistedRef.current = loadPersisted;
+  const loadPersistedUserRef = useRef<string | null>(null);
   const setInMemoryUploadState = useCallback((
     assetKey: string,
     status: LocalUploadState,
@@ -228,29 +248,33 @@ export function useLocalFoldersController(): LocalFoldersController {
   useEffect(() => {
     // Don't load until we have a userId - prevents loading from wrong namespace
     // and then overwriting with empty state
-    console.info('[LocalFoldersController] Load effect:', { userId: userId ?? 'none' });
-    if (!userId) return;
-    loadPersisted();
-  }, [loadPersisted, userId]);
+    if (!userId) {
+      loadPersistedUserRef.current = null;
+      return;
+    }
+    const userKey = String(userId);
+    if (loadPersistedUserRef.current === userKey) return;
+
+    loadPersistedUserRef.current = userKey;
+    void loadPersistedRef.current();
+  }, [userId]);
 
   // Task 104: Initialize upload status from cached assets
   useEffect(() => {
-    const initialStatus: Record<string, LocalUploadState> = {};
+    if (uploadStateHydratedRef.current) return;
+
     const initialNotes: Record<string, string | undefined> = {};
 
     for (const asset of Object.values(assetsRecord)) {
-      if (asset.last_upload_status) {
-        initialStatus[asset.key] = asset.last_upload_status;
-        if (asset.last_upload_note) {
-          initialNotes[asset.key] = asset.last_upload_note;
-        }
+      if (asset.last_upload_note) {
+        initialNotes[asset.key] = asset.last_upload_note;
       }
     }
 
-    if (Object.keys(initialStatus).length > 0) {
-      setUploadStatus(initialStatus);
-      setUploadNotes(initialNotes);
-    }
+    uploadStateHydratedRef.current = true;
+    setUploadNotes((prev) => (
+      areStringRecordValuesEqual(prev, initialNotes) ? prev : initialNotes
+    ));
   }, [assetsRecord]);
 
   // Compute sorted asset list
@@ -586,6 +610,8 @@ export function useLocalFoldersController(): LocalFoldersController {
       alreadySuccess: withHash.filter((a) => a.last_upload_status === 'success').length,
     });
     if (candidates.length === 0) return;
+    if (backendSyncInFlightRef.current) return;
+    backendSyncInFlightRef.current = true;
 
     const hashToAssetKeys = new Map<string, string[]>();
     for (const asset of candidates) {
@@ -599,6 +625,14 @@ export function useLocalFoldersController(): LocalFoldersController {
       for (const [sha256, assetKeys] of hashToAssetKeys) {
         if (!backendExistingHashesRef.current.has(sha256)) continue;
         for (const assetKey of assetKeys) {
+          const current = assetsRecord[assetKey];
+          if (
+            current &&
+            current.last_upload_status === 'success' &&
+            current.last_upload_note === 'Already in library'
+          ) {
+            continue;
+          }
           await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
           setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
         }
@@ -663,8 +697,12 @@ export function useLocalFoldersController(): LocalFoldersController {
     };
 
     void (async () => {
-      await syncKnownExisting();
-      await checkRemaining();
+      try {
+        await syncKnownExisting();
+        await checkRemaining();
+      } finally {
+        backendSyncInFlightRef.current = false;
+      }
     })();
    
   }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress, setInMemoryUploadState, backendCheckTrigger]);

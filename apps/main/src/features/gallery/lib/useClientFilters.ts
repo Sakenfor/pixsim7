@@ -92,6 +92,9 @@ export function useClientFilters<T>(
 
   useEffect(() => {
     const visibleKeys = new Set(visibleDefs.map((def) => def.key));
+    const hasHiddenKeys = Object.keys(filterState).some((key) => !visibleKeys.has(key));
+    if (!hasHiddenKeys) return;
+
     setFilterState((prev) => {
       let changed = false;
       const next: ClientFilterState = { ...prev };
@@ -101,9 +104,12 @@ export function useClientFilters<T>(
           changed = true;
         }
       }
+      if (changed) {
+        onFilterStateChangeRef.current?.(next);
+      }
       return changed ? next : prev;
     });
-  }, [visibleDefs]);
+  }, [visibleDefs, filterState]);
 
   // Derive options from full unfiltered items so counts stay stable
   const derivedOptions = useMemo(() => {

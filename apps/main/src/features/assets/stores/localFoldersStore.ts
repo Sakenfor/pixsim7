@@ -1125,13 +1125,22 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const meta = get().localMeta[assetKey];
     if (!meta) return;
 
+    const nextProviderId = metadata?.providerId ?? meta.last_upload_provider_id;
+    const nextAssetId = metadata?.assetId ?? meta.last_upload_asset_id;
+    const unchanged =
+      meta.last_upload_status === status &&
+      meta.last_upload_note === note &&
+      meta.last_upload_provider_id === nextProviderId &&
+      meta.last_upload_asset_id === nextAssetId;
+    if (unchanged) return;
+
     const updatedMeta: LocalFolderMeta = {
       ...meta,
       last_upload_status: status,
       last_upload_note: note,
       last_upload_at: Date.now(),
-      last_upload_provider_id: metadata?.providerId ?? meta.last_upload_provider_id,
-      last_upload_asset_id: metadata?.assetId ?? meta.last_upload_asset_id,
+      last_upload_provider_id: nextProviderId,
+      last_upload_asset_id: nextAssetId,
     };
 
     set(s => ({

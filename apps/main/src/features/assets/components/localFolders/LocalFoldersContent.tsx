@@ -32,6 +32,7 @@ import {
   localAssetToPreviewShim,
   type LocalGroupBy,
 } from '../../lib/localGroupEngine';
+import { hasValidStoredHash } from '../../lib/localHashing';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import type { AssetModel } from '../../models/asset';
 import type { ViewerAsset } from '../../stores/assetViewerStore';
@@ -499,9 +500,19 @@ export function LocalFoldersContent({
   // When drilled into a group, scope counts to only the visible items
   const visibleItems = showDrilledView ? drilledItems : filteredItems;
 
+  const isHashableUnhashed = useCallback(
+    (asset: LocalAssetModel) => {
+      // Keep "Hash unhashed" aligned with backend hashing rules:
+      // uploaded-success assets are intentionally skipped by hasher.
+      if (asset.last_upload_status === 'success') return false;
+      return !hasValidStoredHash(asset);
+    },
+    [],
+  );
+
   const unhashedCount = useMemo(
-    () => visibleItems.filter((a) => !a.sha256).length,
-    [visibleItems],
+    () => visibleItems.filter(isHashableUnhashed).length,
+    [visibleItems, isHashableUnhashed],
   );
 
   const { pendingUploadCount, failedUploadCount } = useMemo(() => {
@@ -518,7 +529,7 @@ export function LocalFoldersContent({
   const handleHashUnhashed = useCallback(() => {
     if (showDrilledView) {
       // When drilled into a group, only hash the visible unhashed items
-      const unhashedKeys = drilledItems.filter((a) => !a.sha256).map((a) => a.key);
+      const unhashedKeys = drilledItems.filter(isHashableUnhashed).map((a) => a.key);
       controller.hashAssets(unhashedKeys);
     } else {
       const folders = filterState.folder;
@@ -528,7 +539,7 @@ export function LocalFoldersContent({
       }
     }
     setToolsOpen(false);
-  }, [controller, filterState.folder, showDrilledView, drilledItems]);
+  }, [controller, filterState.folder, showDrilledView, drilledItems, isHashableUnhashed]);
 
   const batchUploadingRef = useRef(false);
 

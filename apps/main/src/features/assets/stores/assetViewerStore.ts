@@ -135,6 +135,29 @@ const defaultSettings: ViewerSettings = {
   followLatest: true,
 };
 
+function areScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+
+  for (let i = 0; i < prev.length; i += 1) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.url !== b.url ||
+      a.fullUrl !== b.fullUrl ||
+      a.name !== b.name ||
+      a.type !== b.type ||
+      a.source !== b.source ||
+      a.sourceGenerationId !== b.sourceGenerationId
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export const useAssetViewerStore = create<AssetViewerState>()(
   persist(
     (set, get) => ({
@@ -258,6 +281,11 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       registerScope: (id, label, assets) => {
         const { scopes, activeScopeId, currentAsset, settings } = get();
         const isActiveScope = id === activeScopeId;
+        const previousScope = scopes[id];
+        const scopeChanged =
+          !previousScope ||
+          previousScope.label !== label ||
+          !areScopeAssetsEquivalent(previousScope.assets, assets);
 
         // Fast-path: when the active scope's list changes but the currently
         // viewed asset is still present, only update the scope registry.
@@ -269,7 +297,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           if (stillPresent) {
             // Auto-follow: when the head asset changes (new item prepended)
             // and followLatest is on, navigate to the new head.
-            const oldHead = scopes[id]?.assets[0]?.id;
+            const oldHead = previousScope?.assets[0]?.id;
             const newHead = assets[0]?.id;
             if (settings.followLatest && oldHead !== newHead && newHead !== undefined) {
               set({
@@ -281,13 +309,17 @@ export const useAssetViewerStore = create<AssetViewerState>()(
               return;
             }
 
+            if (!scopeChanged) return;
+
             set({ scopes: { ...scopes, [id]: { label, assets } } });
             return;
           }
         }
 
-        const nextScopes = { ...scopes, [id]: { label, assets } };
-        const updates: Partial<AssetViewerState> = { scopes: nextScopes };
+        const updates: Partial<AssetViewerState> = {};
+        if (scopeChanged) {
+          updates.scopes = { ...scopes, [id]: { label, assets } };
+        }
 
         // If this is the active scope, sync the asset list
         if (isActiveScope) {
@@ -307,6 +339,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
             updates.currentIndex = idx >= 0 ? idx : 0;
           }
         }
+
+        if (Object.keys(updates).length === 0) return;
 
         set(updates);
       },
