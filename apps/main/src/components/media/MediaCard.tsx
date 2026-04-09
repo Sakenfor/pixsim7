@@ -30,7 +30,6 @@ import {
   GestureOverlay,
   GestureCancelOverlay,
 } from '@lib/gestures';
-import { ThumbnailImage } from './ThumbnailImage';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -49,6 +48,7 @@ import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
+import { ThumbnailImage } from './ThumbnailImage';
 
 /** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
 function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
@@ -763,7 +763,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
                       setVideoRetryAttempt(0);
                       videoRetryCountRef.current = 0;
                     }}
-                    onError={(e) => {
+                    onError={() => {
                       if (videoLoadTimeoutRef.current) {
                         clearTimeout(videoLoadTimeoutRef.current);
                         videoLoadTimeoutRef.current = null;
