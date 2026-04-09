@@ -1,4 +1,5 @@
 blocks:
+  # --- Base hues ---
   - block_id: color.amber
     category: color
     text: "amber tones, warm golden color palette"
@@ -13,3 +14,34 @@ blocks:
     category: color
     text: "neutral white balance, clean uncolored tones"
     tags: { hue: neutral, warmth: neutral }
+
+  # --- Light-source color temperatures (reusable across light, grading, environment) ---
+  - block_id: color.tungsten
+    category: color
+    text: "tungsten incandescent warmth, deep amber-orange cast"
+    tags: { hue: tungsten, warmth: very_warm, color_temp_k: "3200" }
+
+  - block_id: color.candlelight
+    category: color
+    text: "candlelight glow, deep warm orange-red flicker tones"
+    tags: { hue: candlelight, warmth: very_warm, color_temp_k: "1800" }
+
+  - block_id: color.fluorescent
+    category: color
+    text: "fluorescent cool green-white cast, institutional tones"
+    tags: { hue: fluorescent, warmth: cool, color_temp_k: "4100" }
+
+  - block_id: color.daylight
+    category: color
+    text: "daylight balanced, clean natural white"
+    tags: { hue: daylight, warmth: neutral, color_temp_k: "5500" }
+
+  - block_id: color.overcast
+    category: color
+    text: "overcast diffused blue-grey, flat cool cast"
+    tags: { hue: overcast, warmth: cool, color_temp_k: "6500" }
+
+  - block_id: color.neon
+    category: color
+    text: "neon saturated color, vivid electric tones"
+    tags: { hue: neon, warmth: mixed, saturation: vibrant }

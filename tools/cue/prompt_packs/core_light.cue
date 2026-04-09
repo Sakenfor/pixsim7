@@ -30,6 +30,12 @@ pack: #PromptBlockPackV1 & {
 							capability: "subject"
 							required:   false
 						},
+						{
+							key:         "color"
+							capability:  "color.grade"
+							required:    false
+							description: "Color temperature — delegates to color primitives instead of duplicating warmth vocabulary"
+						},
 					]
 					params: [
 						{

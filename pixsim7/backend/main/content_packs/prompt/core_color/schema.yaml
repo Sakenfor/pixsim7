@@ -176,3 +176,63 @@ blocks:
             saturation: vibrant
             contrast: high
             exposure: high
+        - key: tungsten_warm
+          tags:
+            grade_synonyms:
+              - tungsten
+              - incandescent
+              - warm lamp
+              - deep amber orange
+          op_args:
+            temperature: very_warm
+            saturation: medium
+            contrast: medium
+            exposure: balanced
+        - key: candlelight_glow
+          tags:
+            grade_synonyms:
+              - candlelight
+              - candle glow
+              - flame warm
+              - firelight
+          op_args:
+            temperature: very_warm
+            saturation: high
+            contrast: high
+            exposure: dark
+        - key: fluorescent_cool
+          tags:
+            grade_synonyms:
+              - fluorescent
+              - institutional light
+              - office light
+              - green white cast
+          op_args:
+            temperature: cool
+            saturation: low
+            contrast: low
+            exposure: bright
+        - key: overcast_flat
+          tags:
+            grade_synonyms:
+              - overcast
+              - cloudy diffused
+              - flat grey light
+              - soft daylight
+          op_args:
+            temperature: cool
+            saturation: muted
+            contrast: soft
+            exposure: balanced
+        - key: neon_electric
+          tags:
+            grade_synonyms:
+              - neon
+              - electric color
+              - neon glow
+              - cyberpunk tones
+          op_args:
+            temperature: cool
+            saturation: vibrant
+            contrast: high
+            exposure: balanced
