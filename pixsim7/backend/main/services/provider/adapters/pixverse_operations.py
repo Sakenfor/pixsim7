@@ -854,29 +854,12 @@ class PixverseOperationsMixin:
                     result = await client.get_image(
                         image_id=provider_job_id,
                     )
-                    # Map image status
-                    # Pixverse returns image_status as int: 1=completed, 0=processing, -1=failed
-                    # Newer codes (e.g. 7, 8) represent flagged/rejected content.
                     raw_status = _get_field(result, "image_status", "status", default=0)
                     image_url_raw = _get_field(result, "image_url", "url")
                     image_url = (
                         _normalize_pixverse_url(image_url_raw) if image_url_raw else None
                     )
-                    # Map numeric status to enum
-                    # Status codes: 1=completed, 5,10=processing, 7=filtered, 8,9=failed
-                    # Note: testing if 10 is early processing state (seen immediately after submit)
-                    if raw_status == 1 or raw_status == "completed":
-                        status = ProviderStatus.COMPLETED
-                    elif raw_status == 7 or raw_status == "filtered":
-                        status = ProviderStatus.FILTERED
-                    elif (
-                        raw_status == -1
-                        or raw_status == "failed"
-                        or raw_status in (8, 9)
-                    ):
-                        status = ProviderStatus.FAILED
-                    else:
-                        status = ProviderStatus.PROCESSING
+                    status = self._map_pixverse_status(result)
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.debug(
@@ -1468,44 +1451,44 @@ class PixverseOperationsMixin:
 
     def _map_pixverse_status(self, pv_video) -> ProviderStatus:
         """
-        Map Pixverse video status to universal ProviderStatus
+        Map Pixverse status to universal ProviderStatus.
 
-        Args:
-            pv_video: Pixverse video object or dict from pixverse-py
-
-        Returns:
-            Universal ProviderStatus
+        Works for both video and image payloads (dicts or SDK objects).
         """
         # Get status from dict or object
         if isinstance(pv_video, dict):
-            status = pv_video.get('video_status') or pv_video.get('status')
+            status = (
+                pv_video.get('video_status')
+                or pv_video.get('image_status')
+                or pv_video.get('status')
+            )
         elif hasattr(pv_video, 'video_status'):
             status = pv_video.video_status
+        elif hasattr(pv_video, 'image_status'):
+            status = pv_video.image_status
         elif hasattr(pv_video, 'status'):
             status = pv_video.status
         else:
             return ProviderStatus.PROCESSING
 
-        # Handle integer status codes (Pixverse API uses integers)
-        # Canonical codes (aligned with pixverse-py SDK):
+        # Integer status codes (aligned with pixverse-py SDK):
         # 1, 10 = completed
-        # 0, 5 = processing (5 seen on extend and some video jobs)
-        # 7 = filtered (content moderation)
-        # 8, 9 = failed
-        # Legacy/rare: 2 = processing(?), 3 = filtered, 4 = failed
+        # 0, 2, 5 = processing (5 seen on extend and some video jobs)
+        # -1, 4, 8, 9 = failed
+        # 3, 7 = filtered (content moderation)
         if isinstance(status, int):
             if status in (1, 10):
                 return ProviderStatus.COMPLETED
             elif status in (0, 2, 5):
                 return ProviderStatus.PROCESSING
-            elif status in (4, 8, 9):
+            elif status in (-1, 4, 8, 9):
                 return ProviderStatus.FAILED
             elif status in (3, 7):
                 return ProviderStatus.FILTERED
             else:
                 return ProviderStatus.PROCESSING
 
-        # Handle string status codes
+        # String status codes
         if isinstance(status, str):
             status = status.lower()
             if status in ['completed', 'success']:

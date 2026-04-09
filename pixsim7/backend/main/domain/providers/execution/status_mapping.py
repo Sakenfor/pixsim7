@@ -4,7 +4,7 @@ Status Mapping
 Maps provider-specific status codes to canonical ProviderStatus enum.
 
 Each provider has its own status code conventions:
-- Pixverse: 1=completed, 2=processing, 4/7=failed, 5/6=filtered
+- Pixverse: 1/10=completed, 0/2/5=processing, -1/4/8/9=failed, 3/7=filtered
 - Sora: "completed", "in_progress", "failed", etc.
 - etc.
 
@@ -21,14 +21,21 @@ logger = logging.getLogger(__name__)
 # Known status mappings by provider
 # These are defaults; providers define canonical mappings in their manifest's
 # status_mapping_notes field.
+# NOTE: The authoritative Pixverse mapping lives in
+# PixverseOperationsMixin._map_pixverse_status — keep in sync.
 _STATUS_MAPPINGS: Dict[str, Dict[Any, ProviderStatus]] = {
     "pixverse": {
         1: ProviderStatus.COMPLETED,
+        10: ProviderStatus.COMPLETED,
+        0: ProviderStatus.PROCESSING,
         2: ProviderStatus.PROCESSING,
+        5: ProviderStatus.PROCESSING,
+        -1: ProviderStatus.FAILED,
         4: ProviderStatus.FAILED,
-        5: ProviderStatus.FILTERED,
-        6: ProviderStatus.FILTERED,
-        7: ProviderStatus.FAILED,
+        8: ProviderStatus.FAILED,
+        9: ProviderStatus.FAILED,
+        3: ProviderStatus.FILTERED,
+        7: ProviderStatus.FILTERED,
     },
     "sora": {
         "completed": ProviderStatus.COMPLETED,

@@ -1322,6 +1322,25 @@ async def _poll_single_generation(
                     provider_status=str(provider_status) if provider_status is not None else None,
                 )
 
+                # Pixverse sometimes reports "filtered" but still delivers
+                # the media via CDN.  Promote to COMPLETED so we keep the
+                # asset; the scheduled moderation re-check will tag it with
+                # provider_flagged for the badge.
+                if (
+                    status_result.status == ProviderStatus.FILTERED
+                    and status_result.video_url
+                ):
+                    logger.info(
+                        "filtered_promoted_to_completed",
+                        generation_id=generation.id,
+                        video_url_preview=str(status_result.video_url)[:120],
+                    )
+                    status_result.status = ProviderStatus.COMPLETED
+                    status_result.metadata = {
+                        **(status_result.metadata or {}),
+                        "promoted_from_filtered": True,
+                    }
+
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
                     _cancel_first_seen.pop(generation.id, None)
