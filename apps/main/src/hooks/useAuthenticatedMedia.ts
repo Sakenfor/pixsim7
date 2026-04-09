@@ -8,54 +8,14 @@
 import { useEffect, useState } from 'react';
 
 import { authService } from '@lib/auth';
+import { createBlobCache } from '@lib/media/blobCache';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
-import { hmrSingleton } from '@lib/utils';
 
 import { BACKEND_BASE } from '../lib/api/client';
 
 // ── Module-level blob URL cache ─────────────────────────────────────────
-// Keeps authenticated blob URLs alive across HMR unmount/remount cycles
-// so media renders instantly when components remount.
-// LRU eviction revokes the oldest URLs to cap memory.
-const AUTH_BLOB_CACHE_MAX = 100;
-const _authBlobCache = hmrSingleton('useAuthenticatedMedia:blobCache', () => new Map<string, string>());
+const _authBlobCache = createBlobCache('useAuthenticatedMedia:blobCache', 100);
 
-function clearAuthBlobCache(): void {
-  for (const blobUrl of _authBlobCache.values()) {
-    URL.revokeObjectURL(blobUrl);
-  }
-  _authBlobCache.clear();
-}
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    clearAuthBlobCache();
-  });
-}
-
-function getCachedAuthBlob(fetchUrl: string): string | undefined {
-  const blobUrl = _authBlobCache.get(fetchUrl);
-  if (blobUrl !== undefined) {
-    // Move to end (most recently used)
-    _authBlobCache.delete(fetchUrl);
-    _authBlobCache.set(fetchUrl, blobUrl);
-  }
-  return blobUrl;
-}
-
-function setCachedAuthBlob(fetchUrl: string, blobUrl: string): void {
-  const existing = _authBlobCache.get(fetchUrl);
-  if (existing && existing !== blobUrl) URL.revokeObjectURL(existing);
-  _authBlobCache.delete(fetchUrl);
-  _authBlobCache.set(fetchUrl, blobUrl);
-  while (_authBlobCache.size > AUTH_BLOB_CACHE_MAX) {
-    const first = _authBlobCache.keys().next().value;
-    if (first === undefined) break;
-    const old = _authBlobCache.get(first);
-    _authBlobCache.delete(first);
-    if (old) URL.revokeObjectURL(old);
-  }
-}
 
 export interface UseAuthenticatedMediaResult {
   /** The resolved media URL (blob URL for authenticated, original for external) */
@@ -134,7 +94,7 @@ export function useAuthenticatedMedia(
     }
 
     // Check module-level cache first
-    const cached = getCachedAuthBlob(fullUrl);
+    const cached = _authBlobCache.get(fullUrl);
     if (cached) {
       setSrc(cached);
       setLoading(false);
@@ -164,7 +124,7 @@ export function useAuthenticatedMedia(
 
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
-        setCachedAuthBlob(fullUrl, objectUrl);
+        _authBlobCache.set(fullUrl, objectUrl);
 
         if (!cancelled) {
           setSrc(objectUrl);

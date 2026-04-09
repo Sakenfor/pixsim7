@@ -30,7 +30,7 @@ import {
   GestureOverlay,
   GestureCancelOverlay,
 } from '@lib/gestures';
-import { Icon } from '@lib/icons';
+import { ThumbnailImage } from './ThumbnailImage';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -57,6 +57,7 @@ function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
 
 const VIDEO_RETRY_DELAYS_MS = [3000, 6000, 10000, 15000, 22000, 30000, 45000, 60000];
 const MAX_VIDEO_RETRIES = VIDEO_RETRY_DELAYS_MS.length;
+const VIDEO_LOAD_TIMEOUT_MS = 15_000; // Treat hung video loads as errors
 /** Delay in ms before each video retry attempt. */
 function getVideoRetryDelay(attempt: number): number {
   const index = Math.max(0, Math.min(attempt - 1, VIDEO_RETRY_DELAYS_MS.length - 1));
@@ -277,6 +278,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRetryCountRef = useRef(0);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
@@ -326,6 +328,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   }, [id, mediaType]);
 
   useEffect(() => {
+    const clearVideoTimers = () => {
+      if (videoRetryTimeoutRef.current) {
+        clearTimeout(videoRetryTimeoutRef.current);
+        videoRetryTimeoutRef.current = null;
+      }
+      if (videoLoadTimeoutRef.current) {
+        clearTimeout(videoLoadTimeoutRef.current);
+        videoLoadTimeoutRef.current = null;
+      }
+    };
     if (mediaType !== 'video') {
       setIntrinsicVideoAspectRatio(null);
       setVideoLoadFailed(false);
@@ -333,10 +345,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       setVideoRetrying(false);
       setVideoRetryAttempt(0);
       videoRetryCountRef.current = 0;
-      if (videoRetryTimeoutRef.current) {
-        clearTimeout(videoRetryTimeoutRef.current);
-        videoRetryTimeoutRef.current = null;
-      }
+      clearVideoTimers();
       return;
     }
     // Reset between assets/src changes so a prior video's metadata ratio does not
@@ -347,16 +356,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     setVideoRetrying(false);
     setVideoRetryAttempt(0);
     videoRetryCountRef.current = 0;
-    if (videoRetryTimeoutRef.current) {
-      clearTimeout(videoRetryTimeoutRef.current);
-      videoRetryTimeoutRef.current = null;
-    }
+    clearVideoTimers();
   }, [id, mediaType, videoSrc]);
 
   useEffect(() => {
     return () => {
       if (videoRetryTimeoutRef.current) {
         clearTimeout(videoRetryTimeoutRef.current);
+      }
+      if (videoLoadTimeoutRef.current) {
+        clearTimeout(videoLoadTimeoutRef.current);
       }
     };
   }, []);
@@ -454,6 +463,32 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       }
     }, delay);
   }, [mediaType, videoSrc]);
+
+  const retryAll = useCallback(() => { retryThumb(); retryVideo(); }, [retryThumb, retryVideo]);
+
+  // Detect hung video loads — if the video element neither loads nor errors
+  // within VIDEO_LOAD_TIMEOUT_MS, force it into the retry cycle.
+  useEffect(() => {
+    if (videoLoadTimeoutRef.current) {
+      clearTimeout(videoLoadTimeoutRef.current);
+      videoLoadTimeoutRef.current = null;
+    }
+    // Only start timeout when we're showing the video element (no thumb, has src, not already failed/retrying)
+    if (mediaType !== 'video' || thumbSrc || !resolvedVideoSrc || videoLoadFailed || videoRetrying) {
+      return;
+    }
+    videoLoadTimeoutRef.current = setTimeout(() => {
+      videoLoadTimeoutRef.current = null;
+      console.warn(`[MediaCard] Video load timed out for ${id}, triggering retry`);
+      handleVideoLoadError();
+    }, VIDEO_LOAD_TIMEOUT_MS);
+    return () => {
+      if (videoLoadTimeoutRef.current) {
+        clearTimeout(videoLoadTimeoutRef.current);
+        videoLoadTimeoutRef.current = null;
+      }
+    };
+  }, [mediaType, thumbSrc, resolvedVideoSrc, videoLoadFailed, videoRetrying, id, handleVideoLoadError]);
 
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
@@ -608,6 +643,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     mediaType === 'video' ? resolvedVideoSrc : undefined;
   const shouldShowVideoElement =
     mediaType === 'video' && !thumbSrc && !!resolvedVideoSrc && !videoLoadFailed;
+  // When the video is retrying and we have no thumbnail, the card is in an
+  // early loading state (e.g. CDN propagation). Show a spinner instead of the
+  // alarming "video retry N/M" badge — the <video> stays mounted (hidden) so
+  // the retry cycle keeps working via onError/onLoadedMetadata events.
+  const videoRetryingWithoutThumb = shouldShowVideoElement && videoRetrying && !thumbSrc;
 
   // Stable callback ref for upload-to-provider (avoids new arrow fn per render)
   const onUploadToProviderRef = useRef(resolved.onUploadToProvider);
@@ -696,30 +736,45 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
                   loading="lazy"
                 />
               ) : (
-                <video
-                  ref={videoRef}
-                  src={resolvedVideoSrc}
-                  poster={thumbSrc}
-                  className="h-full w-full object-cover"
-                  preload="metadata"
-                  muted
-                  playsInline
-                  crossOrigin={getCrossOrigin(resolvedVideoSrc)}
-                  onLoadedMetadata={(e) => {
-                    const el = e.currentTarget;
-                    const w = el.videoWidth;
-                    const h = el.videoHeight;
-                    if (w > 0 && h > 0) {
-                      const next = w / h;
-                      setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
-                    }
-                    setVideoLoadFailed(false);
-                    setVideoRetrying(false);
-                    setVideoRetryAttempt(0);
-                    videoRetryCountRef.current = 0;
-                  }}
-                  onError={handleVideoLoadError}
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    src={resolvedVideoSrc}
+                    poster={thumbSrc}
+                    className={`h-full w-full object-cover${videoRetryingWithoutThumb ? ' invisible' : ''}`}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    crossOrigin={getCrossOrigin(resolvedVideoSrc)}
+                    onLoadedMetadata={(e) => {
+                      if (videoLoadTimeoutRef.current) {
+                        clearTimeout(videoLoadTimeoutRef.current);
+                        videoLoadTimeoutRef.current = null;
+                      }
+                      const el = e.currentTarget;
+                      const w = el.videoWidth;
+                      const h = el.videoHeight;
+                      if (w > 0 && h > 0) {
+                        const next = w / h;
+                        setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
+                      }
+                      setVideoLoadFailed(false);
+                      setVideoRetrying(false);
+                      setVideoRetryAttempt(0);
+                      videoRetryCountRef.current = 0;
+                    }}
+                    onError={(e) => {
+                      if (videoLoadTimeoutRef.current) {
+                        clearTimeout(videoLoadTimeoutRef.current);
+                        videoLoadTimeoutRef.current = null;
+                      }
+                      handleVideoLoadError();
+                    }}
+                  />
+                  {videoRetryingWithoutThumb && (
+                    <ThumbnailImage src={undefined} alt="" loading />
+                  )}
+                </>
               )
             ) : (
               <img
@@ -729,26 +784,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
                 loading="lazy"
               />
             )
-          ) : (thumbFailed || videoLoadFailed) ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800">
-              <Icon name="alert-circle" className="w-6 h-6 text-neutral-400" />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  retryThumb();
-                  retryVideo();
-                }}
-                className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded transition-colors"
-              >
-                Retry
-              </button>
-            </div>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <ThumbnailImage
+              src={undefined}
+              alt={`Media ${id}`}
+              failed={thumbFailed || videoLoadFailed}
+              loading={!thumbFailed && !videoLoadFailed}
+              onRetry={retryAll}
+            />
           )}
-          {mediaType === 'video' && videoRetrying && !videoLoadFailed && (
+          {mediaType === 'video' && videoRetrying && !videoLoadFailed && thumbSrc && (
             <div className="pointer-events-none absolute left-2 top-2 rounded bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
               video retry {videoRetryAttempt}/{MAX_VIDEO_RETRIES}
             </div>

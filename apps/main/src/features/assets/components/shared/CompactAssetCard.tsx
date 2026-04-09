@@ -30,6 +30,7 @@ import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
 import { buildCompactAssetCardLocalWidgets } from '@/components/media/assetCardLocalWidgets';
 import { useOverlayWidgetsForAsset } from '@/components/media/hooks/useOverlayWidgetsForAsset';
+import { ThumbnailImage } from '@/components/media/ThumbnailImage';
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
@@ -141,7 +142,7 @@ export function CompactAssetCard({
   // Resolve URLs for the asset (shared helper handles video vs image thumbnail correctly)
   const { thumbnailUrl: resolvedThumbUrl, previewUrl: resolvedPreviewUrl, mainUrl: resolvedMainUrl } =
     getAssetDisplayUrls(asset);
-  const { thumbSrc, videoSrc: resolvedVideoSrc } = useMediaPreviewSource({
+  const { thumbSrc, thumbLoading, thumbFailed, thumbRetry, videoSrc: resolvedVideoSrc } = useMediaPreviewSource({
     mediaType: asset.mediaType,
     thumbUrl: resolvedThumbUrl,
     previewUrl: resolvedPreviewUrl,
@@ -325,14 +326,14 @@ export function CompactAssetCard({
         }`}
       >
         {/* Base thumbnail/poster image */}
-        {thumbSrc && (
-          <img
-            src={thumbSrc}
-            alt={asset.description || `Asset ${asset.id}`}
-            className="absolute inset-0 w-full h-full object-cover"
-            loading="lazy"
-          />
-        )}
+        <ThumbnailImage
+          src={thumbSrc}
+          alt={asset.description || `Asset ${asset.id}`}
+          loading={thumbLoading}
+          failed={thumbFailed}
+          onRetry={thumbRetry}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
 
         {/* Video scrub overlay - uses shared VideoScrubWidgetRenderer */}
         {isVideo && videoSrc && hoverPreviewEnabled && (

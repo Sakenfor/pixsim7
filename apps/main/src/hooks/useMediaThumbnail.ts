@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
+import { createBlobCache } from '@lib/media/blobCache';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
-import { hmrSingleton } from '@lib/utils';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -11,48 +11,7 @@ import { BACKEND_BASE } from '../lib/api/client';
 
 
 // ── Module-level blob URL cache ─────────────────────────────────────────
-// Keeps blob URLs alive across virtualization unmount/remount cycles so
-// thumbnails render instantly when cards scroll back into view.
-// LRU eviction revokes the oldest URLs to cap memory (~200 thumbnails).
-const BLOB_CACHE_MAX = 200;
-const _blobCache = hmrSingleton('useMediaThumbnail:blobCache', () => new Map<string, string>());
-
-function clearBlobCache(): void {
-  for (const blobUrl of _blobCache.values()) {
-    URL.revokeObjectURL(blobUrl);
-  }
-  _blobCache.clear();
-}
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    clearBlobCache();
-  });
-}
-
-function getCachedBlob(fetchUrl: string): string | undefined {
-  const blobUrl = _blobCache.get(fetchUrl);
-  if (blobUrl !== undefined) {
-    // Move to end (most recently used)
-    _blobCache.delete(fetchUrl);
-    _blobCache.set(fetchUrl, blobUrl);
-  }
-  return blobUrl;
-}
-
-function setCachedBlob(fetchUrl: string, blobUrl: string): void {
-  const existing = _blobCache.get(fetchUrl);
-  if (existing && existing !== blobUrl) URL.revokeObjectURL(existing);
-  _blobCache.delete(fetchUrl);
-  _blobCache.set(fetchUrl, blobUrl);
-  while (_blobCache.size > BLOB_CACHE_MAX) {
-    const first = _blobCache.keys().next().value;
-    if (first === undefined) break;
-    const old = _blobCache.get(first);
-    _blobCache.delete(first);
-    if (old) URL.revokeObjectURL(old);
-  }
-}
+const _blobCache = createBlobCache('useMediaThumbnail:blobCache', 200);
 
 
 export interface UseMediaThumbnailOptions {
@@ -80,6 +39,21 @@ export interface UseMediaThumbnailResult {
   retry: () => void;
 }
 
+// ── Constants ────────────────────────────────────────────────────────────
+const MAX_RETRIES = 6;
+const RETRY_DELAY_MS = 5000;
+const REGEN_RETRY_DELAY_MS = 2000;
+const FETCH_TIMEOUT_MS = 15_000;
+const EXHAUSTION_RETRY_MS = 30_000;
+
+const NON_IMAGE_RE = /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/;
+
+function isNonImageMediaUrl(url: string): boolean {
+  const lowered = url.toLowerCase();
+  if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
+  return NON_IMAGE_RE.test(lowered);
+}
+
 /**
  * Hook to load and manage media thumbnails/previews with authentication support.
  *
@@ -87,37 +61,9 @@ export interface UseMediaThumbnailResult {
  * - Handles blob URL creation for authenticated backend endpoints
  * - Smart fallback: preview → thumbnail → remote_url
  * - Optionally converts external URLs to blob URLs to prevent disk caching
- * - Properly cleans up blob URLs on unmount
- * - Auto-retries on 404 (CDN propagation delays)
+ * - Auto-retries on 404 (CDN propagation) and 202 (thumbnail regeneration)
+ * - Delayed auto-retry after exhaustion + network recovery listener
  * - Manual retry function for failed thumbnails
- *
- * @param thumbUrl - The thumbnail URL
- * @param previewUrl - Optional higher-quality preview URL
- * @param remoteUrl - Optional provider's remote URL as final fallback
- * @param options - Optional settings for cache behavior and quality
- * @returns Object with src, failed state, loading state, and retry function
- *
- * @example
- * // Basic usage (backwards compatible)
- * const src = useMediaThumbnail(thumbUrl, previewUrl, remoteUrl);
- *
- * @example
- * // Full usage with retry
- * const { src, failed, loading, retry } = useMediaThumbnailFull(thumbUrl, previewUrl, remoteUrl);
- * if (failed) return <button onClick={retry}>Retry</button>;
- */
-export function useMediaThumbnail(
-  thumbUrl?: string,
-  previewUrl?: string,
-  remoteUrl?: string,
-  options?: UseMediaThumbnailOptions
-): string | undefined {
-  const result = useMediaThumbnailFull(thumbUrl, previewUrl, remoteUrl, options);
-  return result.src;
-}
-
-/**
- * Full version of useMediaThumbnail that returns loading/failed state and retry function.
  */
 export function useMediaThumbnailFull(
   thumbUrl?: string,
@@ -148,20 +94,15 @@ export function useMediaThumbnailFull(
       ? previewUrl
       : (thumbUrl || previewUrl);
 
-  // Retry state for CDN propagation delays and thumbnail regeneration
   const retryCountRef = useRef(0);
-  const MAX_RETRIES = 6;
-  const RETRY_DELAY_MS = 5000; // 5 seconds between retries, total 30 seconds
-  const REGEN_RETRY_DELAY_MS = 2000; // Shorter delay for 202 (regeneration in progress)
-
-  const isNonImageMediaUrl = (url: string) => {
-    const lowered = url.toLowerCase();
-    if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
-    return /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/.test(lowered);
-  };
+  const exhaustionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Manual retry function
   const retry = useCallback(() => {
+    if (exhaustionTimerRef.current) {
+      clearTimeout(exhaustionTimerRef.current);
+      exhaustionTimerRef.current = null;
+    }
     setFailed(false);
     setRetryTrigger((t) => t + 1);
   }, []);
@@ -173,6 +114,14 @@ export function useMediaThumbnailFull(
         retry();
       }
     });
+  }, [failed, retry]);
+
+  // Auto-retry on network recovery
+  useEffect(() => {
+    if (!failed) return;
+    const handleOnline = () => retry();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
   }, [failed, retry]);
 
   useEffect(() => {
@@ -204,146 +153,112 @@ export function useMediaThumbnailFull(
     const { fullUrl, isBackend } = resolveBackendUrl(selectedUrl, BACKEND_BASE);
 
     // Instant hit from blob cache — avoids flash when virtualized cards remount
-    const cached = getCachedBlob(fullUrl);
+    const cached = _blobCache.get(fullUrl);
     if (cached) {
       setThumbSrc(cached);
       setLoading(false);
       return;
     }
 
-    // External http/https URL
-    if (!isBackend) {
-      if (preventDiskCache) {
-        // Fetch and convert to blob URL to prevent Chrome disk cache
-        const fetchWithRetry = async () => {
-          try {
-            const res = await fetch(fullUrl, { mode: 'cors', signal: abortController.signal });
-            if (!res.ok) {
-              // Retry on 404 (CDN propagation delay)
-              if (res.status === 404 && retryCountRef.current < MAX_RETRIES) {
-                retryCountRef.current++;
-                console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
-                setTimeout(() => {
-                  if (!cancelled) fetchWithRetry();
-                }, RETRY_DELAY_MS);
-                return;
-              }
-              // All retries exhausted or non-404 error
-              if (!cancelled) {
-                console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${retryCountRef.current} retries`);
-                setThumbSrc(undefined);
-                setFailed(true);
-                setLoading(false);
-              }
-              return;
-            }
-            const blob = await res.blob();
-            const objectUrl = URL.createObjectURL(blob);
-            setCachedBlob(fullUrl, objectUrl);
-            if (!cancelled) {
-              setThumbSrc(objectUrl);
-              setLoading(false);
-            }
-          } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
-            // CORS or network error
-            if (!cancelled) {
-              console.warn(`[useMediaThumbnail] Network error for ${fullUrl}`);
-              setThumbSrc(undefined);
-              setFailed(true);
-              setLoading(false);
-            }
-          }
-        };
-        fetchWithRetry();
-      } else {
-        // Use URL directly (Chrome will cache on disk)
-        setThumbSrc(fullUrl);
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Backend path - construct full URL
-
-    const token = authService.getStoredToken();
-
-    // If no token, fall back to using the URL directly
-    if (!token) {
+    // External URL without disk-cache prevention — use directly
+    if (!isBackend && !preventDiskCache) {
       setThumbSrc(fullUrl);
       setLoading(false);
       return;
     }
 
-    // Fetch with authorization and create blob URL
+    // Backend path without auth token — use URL directly
+    const token = isBackend ? authService.getStoredToken() : null;
+    if (isBackend && !token) {
+      setThumbSrc(fullUrl);
+      setLoading(false);
+      return;
+    }
+
+    // ── Helpers (close over effect-local state) ──────────────────────────
+    const scheduleExhaustionRetry = () => {
+      exhaustionTimerRef.current = setTimeout(() => {
+        if (!cancelled) { setFailed(false); setRetryTrigger((t) => t + 1); }
+      }, EXHAUSTION_RETRY_MS);
+    };
+
+    const markFailed = (fallbackSrc?: string) => {
+      if (cancelled) return;
+      setThumbSrc(fallbackSrc);
+      setFailed(true);
+      setLoading(false);
+      scheduleExhaustionRetry();
+    };
+
+    // ── Unified fetch with retry ─────────────────────────────────────────
+    const fetchOpts: RequestInit = isBackend
+      ? { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) }
+      : { mode: 'cors', signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) };
+
     const fetchWithRetry = async () => {
       try {
-        const res = await fetch(fullUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
+        const res = await fetch(fullUrl, fetchOpts);
 
-        // Handle 202 Accepted (thumbnail regeneration in progress)
-        if (res.status === 202) {
+        // 202 Accepted — thumbnail regeneration in progress (backend only)
+        if (isBackend && res.status === 202) {
           if (retryCountRef.current < MAX_RETRIES) {
             retryCountRef.current++;
-            console.log(`[useMediaThumbnail] 202 for ${fullUrl}, thumbnail regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
-            setTimeout(() => {
-              if (!cancelled) fetchWithRetry();
-            }, REGEN_RETRY_DELAY_MS);
+            console.log(`[useMediaThumbnail] 202 for ${fullUrl}, regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
+            setTimeout(() => { if (!cancelled) fetchWithRetry(); }, REGEN_RETRY_DELAY_MS);
             return;
           }
-          // All retries exhausted - mark as failed so retry UI can appear
-          if (!cancelled) {
-            console.warn(`[useMediaThumbnail] Thumbnail regeneration timed out for ${fullUrl} after ${MAX_RETRIES} retries`);
-            setThumbSrc(undefined);
-            setFailed(true);
-            setLoading(false);
-          }
+          console.warn(`[useMediaThumbnail] Regeneration timed out for ${fullUrl}`);
+          markFailed(undefined);
           return;
         }
 
-        // Handle 404 (retry for CDN propagation)
+        // 404 — retry for CDN propagation delays
         if (res.status === 404) {
           if (retryCountRef.current < MAX_RETRIES) {
             retryCountRef.current++;
             console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
-            setTimeout(() => {
-              if (!cancelled) fetchWithRetry();
-            }, RETRY_DELAY_MS);
+            setTimeout(() => { if (!cancelled) fetchWithRetry(); }, RETRY_DELAY_MS);
             return;
           }
-          // All retries exhausted
+          console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${MAX_RETRIES} retries`);
           if (!cancelled) {
-            console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${MAX_RETRIES} retries`);
             setThumbSrc(remoteUrl);
             setFailed(!remoteUrl);
             setLoading(false);
+            if (!remoteUrl) scheduleExhaustionRetry();
           }
           return;
         }
 
+        // Other non-OK — fall back to remote URL
         if (!res.ok) {
-          // Fall back to remote URL if backend thumbnail is unavailable
           if (!cancelled) {
             setThumbSrc(remoteUrl || fullUrl);
             setLoading(false);
           }
           return;
         }
+
+        // Success — create blob URL and cache it
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
-        setCachedBlob(fullUrl, objectUrl);
+        _blobCache.set(fullUrl, objectUrl);
         if (!cancelled) {
           setThumbSrc(objectUrl);
           setLoading(false);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        if (!cancelled) {
-          // Fall back to remote URL on error
-          setThumbSrc(remoteUrl || fullUrl);
-          setLoading(false);
+        // TimeoutError falls through to markFailed below
+        if (isBackend && remoteUrl) {
+          // Backend failure with remote fallback — use remote URL without marking failed
+          if (!cancelled) {
+            setThumbSrc(remoteUrl);
+            setLoading(false);
+          }
+        } else {
+          console.warn(`[useMediaThumbnail] Error fetching ${fullUrl}`);
+          markFailed(undefined);
         }
       }
     };
@@ -352,10 +267,27 @@ export function useMediaThumbnailFull(
     return () => {
       cancelled = true;
       abortController.abort();
+      if (exhaustionTimerRef.current) {
+        clearTimeout(exhaustionTimerRef.current);
+        exhaustionTimerRef.current = null;
+      }
       // Blob URLs are NOT revoked here — the module-level LRU cache
       // keeps them alive so remounted cards render instantly.
     };
   }, [selectedUrl, preventDiskCache, remoteUrl, retryTrigger]);
 
   return { src: thumbSrc, failed, loading, retry };
+}
+
+/**
+ * Simplified wrapper that returns only the resolved src URL.
+ * @deprecated Use useMediaThumbnailFull for access to failed/loading/retry state.
+ */
+export function useMediaThumbnail(
+  thumbUrl?: string,
+  previewUrl?: string,
+  remoteUrl?: string,
+  options?: UseMediaThumbnailOptions
+): string | undefined {
+  return useMediaThumbnailFull(thumbUrl, previewUrl, remoteUrl, options).src;
 }
