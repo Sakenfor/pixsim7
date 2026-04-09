@@ -7,16 +7,28 @@ pack: #PromptBlockPackV1 & {
 		is_public: true
 		source:    "system"
 	}
+	groups: [
+		{id: "react",   title: "React"},
+		{id: "gesture", title: "Gesture"},
+		{id: "reach",   title: "Reach"},
+		{id: "contact", title: "Contact"},
+		{id: "release", title: "Release"},
+	]
 	blocks: [
+
+		// ── react ─────────────────────────────────────────────────────────────
+		// Responsive body reactions — solo or in-response-to a target.
+		// Neither social signaling nor physical contact — purely reactive.
 		{
-			id: "action"
+			id:    "react"
+			group: "react"
 			block_schema: {
-				id_prefix: "core.subject.action"
-				category:  "character_pose"
-				capabilities: ["subject.action"]
-				text_template: "Subject action token: {variant}."
+				id_prefix:    "core.subject.action.react"
+				category:     "character_pose"
+				capabilities: ["subject.action", "subject.action.react"]
+				text_template: "React token: {variant}."
 				tags: {
-					modifier_family:  "subject_action"
+					modifier_family:  "subject_action_react"
 					modality_support: "both"
 					temporal:         "dynamic"
 				}
@@ -25,63 +37,24 @@ pack: #PromptBlockPackV1 & {
 					signature_id: "subject.action.v1"
 					modalities: ["both"]
 					refs: [
-						{
-							key:        "subject"
-							capability: "subject"
-							required:   false
-						},
-						{
-							key:        "target"
-							capability: "target"
-							required:   false
-						},
+						{key: "subject", capability: "subject", required: false},
+						{key: "target",  capability: "target",  required: false},
 					]
 					params: #SubjectActionParams + [
-						{
-							key:            "target_ref"
-							type:           "ref"
-							required:       false
-							ref_capability: "target"
-						},
+						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
 					]
 					default_args: {
-						action_verb:        "gesture"
+						action_verb:        "react"
 						target_involvement: "none"
 						intensity:          "medium"
 						body_region:        "upper_body"
 					}
 				}
 				variants: [
-					// --- single-subject, no target ---
-					{
-						key: "gesture_expressive"
-						tags: {
-							action_synonyms: [
-								"gestures",
-								"gesturing",
-								"expressive gesture",
-								"hand gesture",
-								"waves hand",
-							]
-						}
-						op_args: {
-							action_verb:        "gesture"
-							target_involvement: "none"
-							intensity:          "medium"
-							body_region:        "arms"
-						}
-					},
 					{
 						key: "react_strong"
 						tags: {
-							action_synonyms: [
-								"reacts",
-								"reacting",
-								"startled",
-								"flinches",
-								"steps back",
-								"sharp reaction",
-							]
+							action_synonyms: ["flinches", "startled", "recoils", "sharp reaction", "steps back"]
 						}
 						op_args: {
 							action_verb:        "react"
@@ -93,12 +66,7 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "react_subtle"
 						tags: {
-							action_synonyms: [
-								"subtle reaction",
-								"slight reaction",
-								"faint response",
-								"small flinch",
-							]
+							action_synonyms: ["subtle reaction", "slight flinch", "faint response", "small recoil"]
 						}
 						op_args: {
 							action_verb:        "react"
@@ -108,15 +76,72 @@ pack: #PromptBlockPackV1 & {
 						}
 					},
 					{
+						key: "react_to_target"
+						tags: {
+							action_synonyms: ["reacts to", "responds to", "recoils from", "startled by", "reacts toward"]
+						}
+						op_args: {
+							action_verb:        "react"
+							target_involvement: "indirect"
+							intensity:          "medium"
+							body_region:        "upper_body"
+						}
+					},
+				]
+			}
+		},
+
+		// ── gesture ───────────────────────────────────────────────────────────
+		// Social and expressive body signals — wave, beckon, orient toward.
+		// No physical contact goal. Natural home for social/romance signaling.
+		{
+			id:    "gesture"
+			group: "gesture"
+			block_schema: {
+				id_prefix:    "core.subject.action.gesture"
+				category:     "character_pose"
+				capabilities: ["subject.action", "subject.action.gesture"]
+				text_template: "Gesture token: {variant}."
+				tags: {
+					modifier_family:  "subject_action_gesture"
+					modality_support: "both"
+					temporal:         "dynamic"
+				}
+				op: {
+					op_id:        "subject.action.perform"
+					signature_id: "subject.action.v1"
+					modalities: ["both"]
+					refs: [
+						{key: "subject", capability: "subject", required: false},
+						{key: "target",  capability: "target",  required: false},
+					]
+					params: #SubjectActionParams + [
+						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
+					]
+					default_args: {
+						action_verb:        "gesture"
+						target_involvement: "none"
+						intensity:          "medium"
+						body_region:        "arms"
+					}
+				}
+				variants: [
+					{
+						key: "gesture_expressive"
+						tags: {
+							action_synonyms: ["gestures", "gesturing", "expressive gesture", "hand gesture", "waves hand"]
+						}
+						op_args: {
+							action_verb:        "gesture"
+							target_involvement: "none"
+							intensity:          "medium"
+							body_region:        "arms"
+						}
+					},
+					{
 						key: "turn_to_face"
 						tags: {
-							action_synonyms: [
-								"turns toward",
-								"turns to face",
-								"pivots to",
-								"rotates toward",
-								"faces toward",
-							]
+							action_synonyms: ["turns toward", "turns to face", "pivots to", "faces toward", "orients toward"]
 						}
 						op_args: {
 							action_verb:        "turn_to"
@@ -125,16 +150,74 @@ pack: #PromptBlockPackV1 & {
 							body_region:        "full_body"
 						}
 					},
-					// --- arms/hands toward target ---
+					{
+						key: "beckon"
+						tags: {
+							action_synonyms: ["beckons", "beckoning", "waves over", "motions toward", "invites closer"]
+						}
+						op_args: {
+							action_verb:        "gesture"
+							target_involvement: "indirect"
+							intensity:          "low"
+							body_region:        "arms"
+						}
+					},
+				]
+			}
+		},
+
+		// ── reach ─────────────────────────────────────────────────────────────
+		// Spatial extension of body toward an object or person.
+		// Contact not yet made — this is the bridge between gesture and contact.
+		// Natural entry point for object interaction and romance/explicit escalation.
+		{
+			id:    "reach"
+			group: "reach"
+			block_schema: {
+				id_prefix:    "core.subject.action.reach"
+				category:     "character_pose"
+				capabilities: ["subject.action", "subject.action.reach"]
+				text_template: "Reach token: {variant}."
+				tags: {
+					modifier_family:  "subject_action_reach"
+					modality_support: "both"
+					temporal:         "dynamic"
+				}
+				op: {
+					op_id:        "subject.action.perform"
+					signature_id: "subject.action.v1"
+					modalities: ["both"]
+					refs: [
+						{key: "subject", capability: "subject", required: false},
+						{key: "target",  capability: "target",  required: false},
+					]
+					params: #SubjectActionParams + [
+						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
+					]
+					default_args: {
+						action_verb:        "reach"
+						target_involvement: "indirect"
+						intensity:          "medium"
+						body_region:        "arms"
+					}
+				}
+				variants: [
+					{
+						key: "reach_extend"
+						tags: {
+							action_synonyms: ["reaches out", "extends arm", "stretches out", "outstretches arm"]
+						}
+						op_args: {
+							action_verb:        "reach"
+							target_involvement: "none"
+							intensity:          "medium"
+							body_region:        "arms"
+						}
+					},
 					{
 						key: "reach_toward"
 						tags: {
-							action_synonyms: [
-								"reaches toward",
-								"reaches out",
-								"extends arm toward",
-								"stretches toward",
-							]
+							action_synonyms: ["reaches toward", "extends toward", "stretches toward", "arm out toward"]
 						}
 						op_args: {
 							action_verb:        "reach"
@@ -144,15 +227,61 @@ pack: #PromptBlockPackV1 & {
 						}
 					},
 					{
-						key: "grasp_target"
+						key: "reach_full_body"
 						tags: {
-							action_synonyms: [
-								"grabs",
-								"grasps",
-								"takes hold of",
-								"grips",
-								"clutches",
-							]
+							action_synonyms: ["leans in toward", "full body reach", "leans toward", "stretches body toward"]
+						}
+						op_args: {
+							action_verb:        "reach"
+							target_involvement: "indirect"
+							intensity:          "medium"
+							body_region:        "full_body"
+						}
+					},
+				]
+			}
+		},
+
+		// ── contact ───────────────────────────────────────────────────────────
+		// Direct physical contact with a target — target ref is required.
+		// Domain packs (romance, explicit, combat) extend this block's variants;
+		// the signature stays the same, only the variant set grows.
+		{
+			id:    "contact"
+			group: "contact"
+			block_schema: {
+				id_prefix:    "core.subject.action.contact"
+				category:     "character_pose"
+				capabilities: ["subject.action", "subject.action.contact"]
+				text_template: "Contact token: {variant}."
+				tags: {
+					modifier_family:  "subject_action_contact"
+					modality_support: "both"
+					temporal:         "dynamic"
+				}
+				op: {
+					op_id:        "subject.action.perform"
+					signature_id: "subject.action.v1"
+					modalities: ["both"]
+					refs: [
+						{key: "subject", capability: "subject", required: false},
+						{key: "target",  capability: "target",  required: true},
+					]
+					params: #SubjectActionParams + [
+						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
+					]
+					default_args: {
+						action_verb:        "grasp"
+						target_involvement: "direct"
+						intensity:          "medium"
+						body_region:        "hands"
+					}
+				}
+				variants: [
+					{
+						key: "grasp"
+						tags: {
+							action_synonyms: ["grabs", "grasps", "grips", "takes hold of", "clutches"]
 						}
 						op_args: {
 							action_verb:        "grasp"
@@ -162,31 +291,21 @@ pack: #PromptBlockPackV1 & {
 						}
 					},
 					{
-						key: "lift_target"
+						key: "grasp_firm"
 						tags: {
-							action_synonyms: [
-								"lifts",
-								"raises",
-								"picks up",
-								"hoists",
-							]
+							action_synonyms: ["grips firmly", "tight grip", "firm grasp", "holds tight"]
 						}
 						op_args: {
-							action_verb:        "lift"
+							action_verb:        "grasp"
 							target_involvement: "direct"
-							intensity:          "medium"
-							body_region:        "arms"
+							intensity:          "high"
+							body_region:        "hands"
 						}
 					},
 					{
 						key: "pull_toward"
 						tags: {
-							action_synonyms: [
-								"pulls toward",
-								"draws in",
-								"drags closer",
-								"pulls closer",
-							]
+							action_synonyms: ["pulls toward", "draws in", "pulls closer", "draws closer"]
 						}
 						op_args: {
 							action_verb:        "pull"
@@ -198,12 +317,7 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "push_away"
 						tags: {
-							action_synonyms: [
-								"pushes away",
-								"shoves",
-								"pushes back",
-								"drives away",
-							]
+							action_synonyms: ["pushes away", "shoves", "pushes back", "drives away"]
 						}
 						op_args: {
 							action_verb:        "push"
@@ -213,33 +327,21 @@ pack: #PromptBlockPackV1 & {
 						}
 					},
 					{
-						key: "release_target"
+						key: "lift"
 						tags: {
-							action_synonyms: [
-								"releases",
-								"lets go",
-								"drops",
-								"sets down",
-								"relinquishes",
-							]
+							action_synonyms: ["lifts", "raises", "picks up", "hoists", "elevates"]
 						}
 						op_args: {
-							action_verb:        "release"
+							action_verb:        "lift"
 							target_involvement: "direct"
-							intensity:          "low"
-							body_region:        "hands"
+							intensity:          "medium"
+							body_region:        "arms"
 						}
 					},
-					// --- full-body toward target ---
 					{
-						key: "embrace_target"
+						key: "embrace"
 						tags: {
-							action_synonyms: [
-								"embraces",
-								"hugs",
-								"holds close",
-								"wraps arms around",
-							]
+							action_synonyms: ["embraces", "hugs", "holds close", "wraps arms around", "pulls into arms"]
 						}
 						op_args: {
 							action_verb:        "embrace"
@@ -248,21 +350,78 @@ pack: #PromptBlockPackV1 & {
 							body_region:        "full_body"
 						}
 					},
+				]
+			}
+		},
+
+		// ── release ───────────────────────────────────────────────────────────
+		// Ending or easing physical contact — letting go, setting down, guiding away.
+		{
+			id:    "release"
+			group: "release"
+			block_schema: {
+				id_prefix:    "core.subject.action.release"
+				category:     "character_pose"
+				capabilities: ["subject.action", "subject.action.release"]
+				text_template: "Release token: {variant}."
+				tags: {
+					modifier_family:  "subject_action_release"
+					modality_support: "both"
+					temporal:         "dynamic"
+				}
+				op: {
+					op_id:        "subject.action.perform"
+					signature_id: "subject.action.v1"
+					modalities: ["both"]
+					refs: [
+						{key: "subject", capability: "subject", required: false},
+						{key: "target",  capability: "target",  required: false},
+					]
+					params: #SubjectActionParams + [
+						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
+					]
+					default_args: {
+						action_verb:        "release"
+						target_involvement: "direct"
+						intensity:          "low"
+						body_region:        "hands"
+					}
+				}
+				variants: [
 					{
-						key: "lower_to_target"
+						key: "release"
 						tags: {
-							action_synonyms: [
-								"lowers toward",
-								"bends down to",
-								"leans down to",
-								"descends toward",
-							]
+							action_synonyms: ["releases", "lets go", "drops", "loosens grip", "relinquishes"]
+						}
+						op_args: {
+							action_verb:        "release"
+							target_involvement: "direct"
+							intensity:          "low"
+							body_region:        "hands"
+						}
+					},
+					{
+						key: "lower_gently"
+						tags: {
+							action_synonyms: ["lowers gently", "sets down", "places down", "eases down"]
 						}
 						op_args: {
 							action_verb:        "lower"
-							target_involvement: "indirect"
+							target_involvement: "direct"
 							intensity:          "low"
-							body_region:        "full_body"
+							body_region:        "arms"
+						}
+					},
+					{
+						key: "push_back_soft"
+						tags: {
+							action_synonyms: ["gently pushes back", "eases away", "soft push", "guides away"]
+						}
+						op_args: {
+							action_verb:        "push"
+							target_involvement: "direct"
+							intensity:          "low"
+							body_region:        "hands"
 						}
 					},
 				]
@@ -274,31 +433,32 @@ pack: #PromptBlockPackV1 & {
 manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-action"
 	title:       "Core Subject Action"
-	description: "Generic transitive action primitives for a subject acting on or toward a target. Domain packs (combat, sports, explicit content) define their own variant sets on top of the same subject.action.v1 signature."
+	description: "Transitive action primitives organized by verb family: react, gesture, reach, contact, release. Domain packs (combat, romance, explicit) extend specific blocks under the same subject.action.v1 signature."
 	matrix_presets: [
 		{
-			label: "Action Verb by Target Involvement"
+			label: "Action Family by Target Involvement"
 			query: {
-				row_key:       "tag:action_verb"
+				row_key:       "tag:modifier_family"
 				col_key:       "tag:target_involvement"
 				package_name:  "core_subject_action"
 				include_empty: true
 			}
 		},
 		{
-			label: "Action by Body Region"
+			label: "Contact Actions by Intensity"
 			query: {
 				row_key:       "tag:action_verb"
-				col_key:       "tag:body_region"
+				col_key:       "tag:action_intensity"
 				package_name:  "core_subject_action"
+				tags:          "modifier_family:subject_action_contact"
 				include_empty: true
 			}
 		},
 		{
-			label: "Action by Intensity"
+			label: "Action Family by Body Region"
 			query: {
-				row_key:       "tag:action_verb"
-				col_key:       "tag:action_intensity"
+				row_key:       "tag:modifier_family"
+				col_key:       "tag:body_region"
 				package_name:  "core_subject_action"
 				include_empty: true
 			}
