@@ -77,6 +77,9 @@ async def _seed_content_packs(_spec: ContentLoaderSpec) -> Dict[str, Any]:
 async def _reload_content_packs(affected_names: set) -> Dict[str, Any]:
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
     from pixsim7.backend.main.services.prompt.block.content_pack_loader import load_pack
+    from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
+        refresh_primitive_projection_cache,
+    )
 
     total_created = 0
     total_updated = 0
@@ -93,6 +96,10 @@ async def _reload_content_packs(affected_names: set) -> Dict[str, Any]:
                 + stats["templates_updated"]
                 + stats.get("characters_updated", 0)
             )
+
+    # Clear the projection index cache so new/changed blocks are picked up
+    refresh_primitive_projection_cache()
+
     return {"count": total_created + total_updated, "created": total_created, "updated": total_updated}
 
 

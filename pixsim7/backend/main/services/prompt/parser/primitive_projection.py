@@ -18,6 +18,7 @@ from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
     discover_content_packs,
     parse_blocks,
 )
+from pixsim7.backend.main.services.prompt.parser.stemmer import stem
 
 logger = logging.getLogger(__name__)
 
@@ -345,6 +346,16 @@ def _token_weight(token: str) -> float:
     if token in _DIRECTIONAL_TOKENS:
         return 0.5
     return 1.0
+
+
+def _stem_expand(tokens: set[str]) -> set[str]:
+    """Expand a token set with stemmed variants for broader matching."""
+    expanded = set(tokens)
+    for token in tokens:
+        stemmed = stem(token)
+        if stemmed != token and len(stemmed) >= 2:
+            expanded.add(stemmed)
+    return expanded
 
 
 def _iter_tag_tokens(tags: Mapping[str, Any]) -> Iterable[str]:
@@ -691,13 +702,41 @@ def _score_entry(
     if not entry_tokens:
         return None
 
-    overlap_text = sorted(text_tokens & entry_tokens)
-    overlap_keywords = sorted(keyword_tokens & entry_tokens)
-    overlap_all = sorted(set(overlap_text) | set(overlap_keywords))
+    # Exact token overlap
+    overlap_exact = (text_tokens & entry_tokens) | (keyword_tokens & entry_tokens)
+
+    # Stem-expanded overlap: "lighting" matches "light", "walking" matches "walk", etc.
+    expanded_text = _stem_expand(text_tokens)
+    expanded_keywords = _stem_expand(keyword_tokens)
+    expanded_entry = _stem_expand(entry_tokens)
+
+    overlap_text_set = expanded_text & expanded_entry
+    overlap_keywords_set = expanded_keywords & expanded_entry
+    overlap_all_set = overlap_text_set | overlap_keywords_set
+
+    # Deduplicate: if "eyes" is in the overlap, don't also count its stem "eye"
+    redundant_stems = set()
+    for token in list(overlap_all_set):
+        s = stem(token)
+        if s != token and s in overlap_all_set:
+            redundant_stems.add(s)
+    overlap_all_set -= redundant_stems
+    overlap_text_set -= redundant_stems
+    overlap_keywords_set -= redundant_stems
+
+    overlap_text = sorted(overlap_text_set)
+    overlap_keywords = sorted(overlap_keywords_set)
+    overlap_all = sorted(overlap_all_set)
+    stem_only_matches = sorted(overlap_all_set - overlap_exact)
+
     if not overlap_all:
         return None
 
-    overlap_weight = sum(_token_weight(token) for token in overlap_all)
+    stem_only_set = set(stem_only_matches)
+    overlap_weight = sum(
+        _token_weight(token) * (0.7 if token in stem_only_set else 1.0)
+        for token in overlap_all
+    )
     probe_weight = sum(_token_weight(token) for token in probe_tokens)
     normalized_probe_weight = max(min(probe_weight, 3.0), 1.0)
 
@@ -926,6 +965,7 @@ def _score_entry(
     return {
         "score": score,
         "overlap_tokens": overlap_all,
+        "stem_overlap_tokens": stem_only_matches,
         "overlap_text": overlap_text,
         "overlap_keywords": overlap_keywords,
         "block_id_overlap": block_id_overlap,
@@ -994,6 +1034,7 @@ def _build_hypothesis_payload(
         "role": entry.get("role"),
         "category": entry.get("category"),
         "overlap_tokens": list(scored.get("overlap_tokens") or []),
+        "stem_overlap_tokens": list(scored.get("stem_overlap_tokens") or []),
     }
     if isinstance(entry.get("role_in_sequence"), str):
         payload["role_in_sequence"] = entry["role_in_sequence"]
