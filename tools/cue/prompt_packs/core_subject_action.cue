@@ -46,7 +46,6 @@ pack: #PromptBlockPackV1 & {
 					default_args: {
 						action_verb:        "react"
 						target_involvement: "none"
-						intensity:          "medium"
 						body_region:        "upper_body"
 					}
 				}
@@ -59,7 +58,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "react"
 							target_involvement: "none"
-							intensity:          "high"
 							body_region:        "full_body"
 						}
 					},
@@ -71,7 +69,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "react"
 							target_involvement: "none"
-							intensity:          "low"
 							body_region:        "upper_body"
 						}
 					},
@@ -83,7 +80,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "react"
 							target_involvement: "indirect"
-							intensity:          "medium"
 							body_region:        "upper_body"
 						}
 					},
@@ -121,7 +117,6 @@ pack: #PromptBlockPackV1 & {
 					default_args: {
 						action_verb:        "gesture"
 						target_involvement: "none"
-						intensity:          "medium"
 						body_region:        "arms"
 					}
 				}
@@ -134,7 +129,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "gesture"
 							target_involvement: "none"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -146,7 +140,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "turn_to"
 							target_involvement: "indirect"
-							intensity:          "medium"
 							body_region:        "full_body"
 						}
 					},
@@ -158,7 +151,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "gesture"
 							target_involvement: "indirect"
-							intensity:          "low"
 							body_region:        "arms"
 						}
 					},
@@ -168,7 +160,7 @@ pack: #PromptBlockPackV1 & {
 
 		// ── reach ─────────────────────────────────────────────────────────────
 		// Spatial extension of body toward an object or person.
-		// Contact not yet made — this is the bridge between gesture and contact.
+		// Contact not yet made — bridge between gesture and contact.
 		// Natural entry point for object interaction and romance/explicit escalation.
 		{
 			id:    "reach"
@@ -197,7 +189,6 @@ pack: #PromptBlockPackV1 & {
 					default_args: {
 						action_verb:        "reach"
 						target_involvement: "indirect"
-						intensity:          "medium"
 						body_region:        "arms"
 					}
 				}
@@ -210,7 +201,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "reach"
 							target_involvement: "none"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -222,7 +212,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "reach"
 							target_involvement: "indirect"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -234,7 +223,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "reach"
 							target_involvement: "indirect"
-							intensity:          "medium"
 							body_region:        "full_body"
 						}
 					},
@@ -273,7 +261,6 @@ pack: #PromptBlockPackV1 & {
 					default_args: {
 						action_verb:        "grasp"
 						target_involvement: "direct"
-						intensity:          "medium"
 						body_region:        "hands"
 					}
 				}
@@ -286,19 +273,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "grasp"
 							target_involvement: "direct"
-							intensity:          "medium"
-							body_region:        "hands"
-						}
-					},
-					{
-						key: "grasp_firm"
-						tags: {
-							action_synonyms: ["grips firmly", "tight grip", "firm grasp", "holds tight"]
-						}
-						op_args: {
-							action_verb:        "grasp"
-							target_involvement: "direct"
-							intensity:          "high"
 							body_region:        "hands"
 						}
 					},
@@ -310,7 +284,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "pull"
 							target_involvement: "direct"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -322,7 +295,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "push"
 							target_involvement: "direct"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -334,7 +306,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "lift"
 							target_involvement: "direct"
-							intensity:          "medium"
 							body_region:        "arms"
 						}
 					},
@@ -346,7 +317,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "embrace"
 							target_involvement: "direct"
-							intensity:          "medium"
 							body_region:        "full_body"
 						}
 					},
@@ -383,7 +353,6 @@ pack: #PromptBlockPackV1 & {
 					default_args: {
 						action_verb:        "release"
 						target_involvement: "direct"
-						intensity:          "low"
 						body_region:        "hands"
 					}
 				}
@@ -396,7 +365,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "release"
 							target_involvement: "direct"
-							intensity:          "low"
 							body_region:        "hands"
 						}
 					},
@@ -408,7 +376,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "lower"
 							target_involvement: "direct"
-							intensity:          "low"
 							body_region:        "arms"
 						}
 					},
@@ -420,7 +387,6 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							action_verb:        "push"
 							target_involvement: "direct"
-							intensity:          "low"
 							body_region:        "hands"
 						}
 					},
@@ -433,7 +399,7 @@ pack: #PromptBlockPackV1 & {
 manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-action"
 	title:       "Core Subject Action"
-	description: "Transitive action primitives organized by verb family: react, gesture, reach, contact, release. Domain packs (combat, romance, explicit) extend specific blocks under the same subject.action.v1 signature."
+	description: "Transitive action primitives organized by verb family: react, gesture, reach, contact, release. Domain packs (combat, romance, explicit) extend specific blocks under the same subject.action.v1 signature. Compose with core_manner for quality/intensity."
 	matrix_presets: [
 		{
 			label: "Action Family by Target Involvement"
@@ -445,19 +411,18 @@ manifest: #PromptPackManifestV1 & {
 			}
 		},
 		{
-			label: "Contact Actions by Intensity"
+			label: "Action Family by Body Region"
 			query: {
-				row_key:       "tag:action_verb"
-				col_key:       "tag:action_intensity"
+				row_key:       "tag:modifier_family"
+				col_key:       "tag:body_region"
 				package_name:  "core_subject_action"
-				tags:          "modifier_family:subject_action_contact"
 				include_empty: true
 			}
 		},
 		{
-			label: "Action Family by Body Region"
+			label: "Action Verb by Body Region"
 			query: {
-				row_key:       "tag:modifier_family"
+				row_key:       "tag:action_verb"
 				col_key:       "tag:body_region"
 				package_name:  "core_subject_action"
 				include_empty: true

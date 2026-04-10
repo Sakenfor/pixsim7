@@ -45,7 +45,8 @@ package promptpacks
 #GaitValues: ["step", "walk", "run", "drift", "turn"]
 #ActionVerbValues: ["reach", "grasp", "pull", "push", "lift", "lower", "strike", "embrace", "release", "gesture", "react", "turn_to"]
 #TargetInvolvementValues: ["none", "indirect", "direct"]
-#BodyRegionValues: ["arms", "upper_body", "full_body", "hands", "head"]
+#BodyRegionValues:   ["arms", "upper_body", "full_body", "hands", "head"]
+#MannerQualityValues: ["gentle", "tender", "firm", "sharp", "fluid", "hesitant", "deliberate", "languid", "urgent", "playful", "cautious", "abrupt", "neutral"]
 
 #SubjectActionParams: [
 	{
@@ -61,13 +62,6 @@ package promptpacks
 		enum:    #TargetInvolvementValues
 		default: "none"
 		tag_key: "target_involvement"
-	},
-	{
-		key:     "intensity"
-		type:    "enum"
-		enum:    #LevelValues
-		default: "medium"
-		tag_key: "action_intensity"
 	},
 	{
 		key:     "body_region"
