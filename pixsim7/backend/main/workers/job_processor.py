@@ -87,7 +87,10 @@ from pixsim7.backend.main.workers.job_processor_errors import (  # noqa: F401
 )
 from pixsim7.backend.main.workers.job_processor_account import (  # noqa: F401
     refresh_account_credits,
+    refresh_account_credits_best_effort,
     has_sufficient_credits,
+    has_positive_credits,
+    resolve_required_credit_types,
     _required_generation_credit_hint,
     is_unlimited_model,
     _is_pinned_account,
@@ -271,6 +274,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             gen_params = generation.canonical_params or generation.raw_params or {}
             gen_model = gen_params.get("model")
             required_credit_hint = _required_generation_credit_hint(generation, gen_params)
+            required_credit_types_hint = resolve_required_credit_types(generation, gen_params)
 
             # Try to reuse previous account on retry.
             # Skip credit checks — the generation already had a slot on this
@@ -480,6 +484,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             user_id=generation.user_id,
                             include_exhausted=include_exhausted_candidates,
                             min_credits=required_credit_hint,
+                            required_credit_types=required_credit_types_hint,
                             exclude_account_ids=exclude_ids or None,
                             operation_type=_get_operation_value(generation),
                             model=gen_model,
@@ -506,6 +511,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         return True
                     if required_credit_hint == 0:
                         return True
+                    required_credit_types = resolve_required_credit_types(
+                        generation,
+                        gen_params,
+                        account=acct,
+                    )
                     credits_data = await refresh_account_credits(acct, account_service, gen_logger)
                     _last_refreshed_credits = credits_data or {}
                     if not credits_data:
@@ -518,7 +528,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         return False
                     min_credits = required_credit_hint if required_credit_hint and required_credit_hint > 0 else 1
-                    return has_sufficient_credits(credits_data, min_credits=min_credits)
+                    return has_sufficient_credits(
+                        credits_data,
+                        min_credits=min_credits,
+                        required_credit_types=required_credit_types,
+                    )
 
                 async def reject_account(acct: ProviderAccount) -> None:
                     """Release account and exclude from further attempts in this loop."""
@@ -529,7 +543,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     # Only mark exhausted if the account has zero credits across
                     # all types.  If it has *some* credits (just not enough for
                     # this job), leave it ACTIVE so cheaper operations can use it.
-                    if not any(v > 0 for v in _last_refreshed_credits.values()):
+                    if not has_positive_credits(_last_refreshed_credits):
                         await account_service.mark_exhausted(acct.id)
 
                 try:
@@ -820,12 +834,35 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         try:
                             refreshed = await refresh_account_credits(account, account_service, gen_logger)
                             await db.commit()
-                            if any(v > 0 for v in (refreshed or {}).values()):
+                            required_credit_types = resolve_required_credit_types(
+                                generation,
+                                gen_params,
+                                account=account,
+                            )
+                            if has_positive_credits(
+                                refreshed,
+                                required_credit_types=required_credit_types,
+                            ):
                                 gen_logger.info(
                                     "quota_error_but_credits_available",
                                     account_id=account.id,
+                                    required_credit_types=required_credit_types,
                                     credits=refreshed,
-                                    msg="provider returned quota error but account has credits after refresh — skipping mark_exhausted",
+                                    msg=(
+                                        "provider returned quota error but required credit pool has "
+                                        "balance after refresh - skipping mark_exhausted"
+                                    ),
+                                )
+                            elif has_positive_credits(refreshed):
+                                gen_logger.info(
+                                    "quota_error_required_pool_depleted",
+                                    account_id=account.id,
+                                    required_credit_types=required_credit_types,
+                                    credits=refreshed,
+                                    msg=(
+                                        "provider returned quota error and required credit pool is empty "
+                                        "while another pool still has balance"
+                                    ),
                                 )
                             else:
                                 await account_service.mark_exhausted(account.id)
@@ -1069,17 +1106,20 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         await generation_service.mark_failed(
                             generation_id, str(e), error_code=_extract_error_code(e),
                         )
-                        try:
-                            await account_service.release_account(account.id)
-                            account_released = True
-                        except Exception as release_err:
-                            gen_logger.warning("account_release_failed", error=str(release_err))
-                        # Refresh credits so DB reflects any provider refund
-                        try:
-                            await refresh_account_credits(account, account_service, gen_logger)
-                            await db.commit()
-                        except Exception as refresh_err:
-                            gen_logger.warning("content_filter_credit_refresh_failed", error=str(refresh_err))
+                        released = await _release_account_reservation(
+                            account_service=account_service,
+                            account_id=account.id,
+                            gen_logger=gen_logger,
+                        )
+                        account_released = account_released or released
+                        # Refresh credits so DB reflects any provider refund.
+                        await refresh_account_credits_best_effort(
+                            account,
+                            account_service,
+                            gen_logger,
+                            db=db,
+                            failure_log_event="content_filter_credit_refresh_failed",
+                        )
                         # Return instead of raise to prevent ARQ retry
                         return {
                             "status": "failed",
@@ -1090,21 +1130,24 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                     # Retryable content filter (output rejection)
                     # Release account reservation
-                    try:
-                        await account_service.release_account(account.id)
-                        account_released = True
-                    except Exception as release_err:
-                        gen_logger.warning("account_release_failed", error=str(release_err))
+                    released = await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                    account_released = account_released or released
 
                     # Refresh credits so the DB reflects any provider refund.
                     # Without this, stale low-credit rows block the SQL
                     # min_credits pre-filter and no account can be selected
                     # until something else triggers a refresh.
-                    try:
-                        await refresh_account_credits(account, account_service, gen_logger)
-                        await db.commit()
-                    except Exception as refresh_err:
-                        gen_logger.warning("content_filter_credit_refresh_failed", error=str(refresh_err))
+                    await refresh_account_credits_best_effort(
+                        account,
+                        account_service,
+                        gen_logger,
+                        db=db,
+                        failure_log_event="content_filter_credit_refresh_failed",
+                    )
 
                     # Check retry count for content filter budget (not attempt_id —
                     # attempt_id includes non-error transitions like concurrent waits).

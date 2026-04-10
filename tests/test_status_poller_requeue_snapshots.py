@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from pixsim7.backend.main.workers import status_poller as sp
+from pixsim7.backend.main.workers import status_poller_maintenance as sp
 
 
 class _FakeScalars:
@@ -123,7 +123,7 @@ async def test_requeue_pending_generations_uses_snapshots_and_survives_rollback(
     assert fake_db.rollback_calls == 1
     assert fake_db.update_calls == 1
     assert fake_db.close_calls == 1
-    assert get_pool_calls == 2
+    assert get_pool_calls == 1
     assert fresh_calls == [101, 102]
     assert clear_calls == [101]
     assert retry_calls == [201, 301]

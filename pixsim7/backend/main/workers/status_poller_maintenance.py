@@ -200,6 +200,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
             now = datetime.now(timezone.utc)
+            arq_pool = None
 
             # Pass 1: capacity-aware dispatch for pinned waiting generations.
             capacity_accounts_result = await db.execute(
@@ -349,16 +350,17 @@ async def requeue_pending_generations(ctx: dict) -> dict:
 
             logger.info("requeue_found_stuck", count=len(stuck_generations))
 
-            try:
-                arq_pool = await get_arq_pool()
-            except Exception as e:
-                logger.error("requeue_pool_error", error=str(e))
-                return {
-                    "requeued": requeued,
-                    "pinned_dispatched": pinned_dispatched,
-                    "skipped": skipped,
-                    "errors": errors + len(stuck_generations),
-                }
+            if arq_pool is None:
+                try:
+                    arq_pool = await get_arq_pool()
+                except Exception as e:
+                    logger.error("requeue_pool_error", error=str(e))
+                    return {
+                        "requeued": requeued,
+                        "pinned_dispatched": pinned_dispatched,
+                        "skipped": skipped,
+                        "errors": errors + len(stuck_generations),
+                    }
 
             for generation in stuck_generations:
                 generation_id = generation.generation_id

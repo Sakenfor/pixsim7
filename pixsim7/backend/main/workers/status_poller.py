@@ -48,13 +48,20 @@ from pixsim7.backend.main.shared.debug import (
     load_global_debug_from_env,
 )
 from pixsim7.backend.main.shared.errors import ProviderError
-from pixsim7.backend.main.workers.job_processor import refresh_account_credits
+from pixsim7.backend.main.workers.job_processor_account import (
+    refresh_account_credits_best_effort,
+)
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     start_event_bus_bridge,
     stop_event_bus_bridge,
 )
 from pixsim7.backend.main.services.asset.events import ASSET_UPDATED
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
+)
+from pixsim7.backend.main.domain.providers.registry import registry as _provider_registry
+from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
@@ -171,11 +178,14 @@ _poll_in_flight: set[int] = set()  # generation IDs currently being polled
 
 # Delayed moderation re-check: after a video completes, re-check status
 # at staggered intervals to detect post-delivery flagging by Pixverse.
-# Key: asset_id, Value: (provider_job_id, account_id, monotonic_deadline, generation_id, attempt, operation_type)
-_moderation_recheck: dict[int, tuple[str, int, float, int, int, OperationType]] = {}
+# Key: asset_id, Value: (provider_job_id, account_id, monotonic_deadline, generation_id, attempt, operation_type, provider_id)
+_moderation_recheck: dict[int, tuple[str, int, float, int, int, OperationType, str]] = {}
 # Staggered delays: 90s, 3min, 5min — catches flagging that happens up to ~5min post-delivery
 _MODERATION_RECHECK_DELAYS_SEC = (90, 180, 300)
 _MODERATION_RECHECK_MAX_ATTEMPTS = len(_MODERATION_RECHECK_DELAYS_SEC)
+# Shorter first-attempt delay for early-CDN-terminal completions: Pixverse
+# typically issues the refund within ~30 s of our early grab.
+_EARLY_CDN_RECHECK_DELAY_SEC = 30
 
 
 def _has_pending_cancel(generation_model: Any) -> bool:
@@ -186,6 +196,89 @@ def _has_pending_cancel(generation_model: Any) -> bool:
         generation_model.status == GenerationStatus.CANCELLED
         or generation_model.deferred_action == "cancel"
     )
+
+
+def _status_result_has_retrievable_cdn(status_result: Any) -> bool:
+    """Return True when provider status payload includes a retrievable media URL."""
+    if status_result is None:
+        return False
+    metadata = getattr(status_result, "metadata", None)
+    if isinstance(metadata, dict) and "has_retrievable_media_url" in metadata:
+        return bool(metadata.get("has_retrievable_media_url"))
+    video_url = getattr(status_result, "video_url", None)
+    return _has_retrievable_pixverse_media_url(video_url)
+
+
+def _schedule_moderation_recheck(
+    *,
+    asset_id: int,
+    provider_job_id: str,
+    account_id: int,
+    generation_id: int,
+    attempt: int,
+    operation_type: OperationType,
+    provider_id: str,
+    delay_sec: float,
+) -> None:
+    _moderation_recheck[asset_id] = (
+        provider_job_id,
+        account_id,
+        time.monotonic() + delay_sec,
+        generation_id,
+        attempt,
+        operation_type,
+        provider_id,
+    )
+
+
+async def _increment_failure_stats_and_release_account(
+    db: AsyncSession,
+    account_service: AccountService,
+    account_id: int,
+) -> ProviderAccount:
+    """Persist failure counters under row lock, then release the reservation slot."""
+    locked = await db.execute(
+        select(ProviderAccount).where(ProviderAccount.id == account_id).with_for_update()
+    )
+    account = locked.scalar_one()
+    account.total_videos_failed += 1
+    account.failure_streak += 1
+    account.success_rate = account.calculate_success_rate()
+    await db.commit()
+    released_account = await account_service.release_account(account.id)
+    await db.commit()
+    return released_account
+
+
+async def _finalize_generation_billing_best_effort(
+    db: AsyncSession,
+    *,
+    generation_id: int,
+    generation_model: Any | None,
+    final_submission: Any | None,
+    account: Any | None,
+    actual_duration: float | None = None,
+    refresh_generation: bool = False,
+) -> None:
+    """Best-effort billing finalization shared by generation terminal/failure paths."""
+    if generation_model is None:
+        return
+    try:
+        billing_service = GenerationBillingService(db)
+        if refresh_generation:
+            await db.refresh(generation_model)
+        await billing_service.finalize_billing(
+            generation=generation_model,
+            final_submission=final_submission,
+            account=account,
+            actual_duration=actual_duration,
+        )
+    except Exception as billing_err:
+        logger.warning(
+            "billing_finalization_error",
+            generation_id=generation_id,
+            error=str(billing_err),
+        )
 
 
 def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
@@ -1022,33 +1115,20 @@ async def _poll_single_generation(
                         error_code=error_code,
                     )
 
-                    try:
-                        billing_service = GenerationBillingService(db)
-                        generation_model = await db.get(Generation, generation.id)
-                        if generation_model is not None:
-                            await billing_service.finalize_billing(
-                                generation=generation_model,
-                                final_submission=submission,
-                                account=account,
-                            )
-                    except Exception as billing_err:
-                        logger.warning(
-                            "billing_finalization_error",
-                            generation_id=generation.id,
-                            error=str(billing_err),
-                        )
-
-                    locked = await db.execute(
-                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    generation_model = await db.get(Generation, generation.id)
+                    await _finalize_generation_billing_best_effort(
+                        db=db,
+                        generation_id=generation.id,
+                        generation_model=generation_model,
+                        final_submission=submission,
+                        account=account,
                     )
-                    account = locked.scalar_one()
-                    account.total_videos_failed += 1
-                    account.failure_streak += 1
-                    account.success_rate = account.calculate_success_rate()
-                    account_id_for_release = account.id
-                    await db.commit()
-                    account = await account_service.release_account(account_id_for_release)
-                    await db.commit()
+
+                    account = await _increment_failure_stats_and_release_account(
+                        db=db,
+                        account_service=account_service,
+                        account_id=account.id,
+                    )
 
                     return _PollGenerationResult(
                         generation_id=generation_id,
@@ -1124,33 +1204,20 @@ async def _poll_single_generation(
                     ),
                 )
 
-                try:
-                    billing_service = GenerationBillingService(db)
-                    generation_model = await db.get(Generation, generation.id)
-                    if generation_model is not None:
-                        await billing_service.finalize_billing(
-                            generation=generation_model,
-                            final_submission=latest_error_submission_without_job_id,
-                            account=account,
-                        )
-                except Exception as billing_err:
-                    logger.warning(
-                        "billing_finalization_error",
-                        generation_id=generation.id,
-                        error=str(billing_err),
-                    )
-
-                locked = await db.execute(
-                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                generation_model = await db.get(Generation, generation.id)
+                await _finalize_generation_billing_best_effort(
+                    db=db,
+                    generation_id=generation.id,
+                    generation_model=generation_model,
+                    final_submission=latest_error_submission_without_job_id,
+                    account=account,
                 )
-                account = locked.scalar_one()
-                account.total_videos_failed += 1
-                account.failure_streak += 1
-                account.success_rate = account.calculate_success_rate()
-                account_id_for_release = account.id
-                await db.commit()
-                account = await account_service.release_account(account_id_for_release)
-                await db.commit()
+
+                account = await _increment_failure_stats_and_release_account(
+                    db=db,
+                    account_service=account_service,
+                    account_id=account.id,
+                )
 
                 return _PollGenerationResult(
                     generation_id=generation_id,
@@ -1176,34 +1243,21 @@ async def _poll_single_generation(
                     f"Generation failed: never submitted to provider (timed out after {unsubmitted_timeout_minutes} minutes)",
                 )
 
-                try:
-                    billing_service = GenerationBillingService(db)
-                    generation_model = await db.get(Generation, generation.id)
-                    if generation_model is not None:
-                        await billing_service.finalize_billing(
-                            generation=generation_model,
-                            final_submission=submission,
-                            account=account,
-                        )
-                except Exception as billing_err:
-                    logger.warning(
-                        "billing_finalization_error",
-                        generation_id=generation.id,
-                        error=str(billing_err),
-                    )
+                generation_model = await db.get(Generation, generation.id)
+                await _finalize_generation_billing_best_effort(
+                    db=db,
+                    generation_id=generation.id,
+                    generation_model=generation_model,
+                    final_submission=submission,
+                    account=account,
+                )
 
                 # Track failure stats on account
-                locked = await db.execute(
-                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                account = await _increment_failure_stats_and_release_account(
+                    db=db,
+                    account_service=account_service,
+                    account_id=account.id,
                 )
-                account = locked.scalar_one()
-                account.total_videos_failed += 1
-                account.failure_streak += 1
-                account.success_rate = account.calculate_success_rate()
-                account_id_for_release = account.id
-                await db.commit()
-                account = await account_service.release_account(account_id_for_release)
-                await db.commit()
 
                 return _PollGenerationResult(
                     generation_id=generation_id,
@@ -1216,36 +1270,21 @@ async def _poll_single_generation(
                 await generation_service.mark_failed(generation.id, f"Generation timed out after {timeout_hours} hours")
 
                 # Finalize billing as skipped (no charge for timed-out generations)
-                try:
-                    billing_service = GenerationBillingService(db)
-                    generation_model = await db.get(Generation, generation.id)
-                    if generation_model is not None:
-                        await billing_service.finalize_billing(
-                            generation=generation_model,
-                            final_submission=submission,
-                            account=account,
-                        )
-                except Exception as billing_err:
-                    logger.warning(
-                        "billing_finalization_error",
-                        generation_id=generation.id,
-                        error=str(billing_err)
-                    )
-
-                # Track failure stats on account
-                locked = await db.execute(
-                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                generation_model = await db.get(Generation, generation.id)
+                await _finalize_generation_billing_best_effort(
+                    db=db,
+                    generation_id=generation.id,
+                    generation_model=generation_model,
+                    final_submission=submission,
+                    account=account,
                 )
-                account = locked.scalar_one()
-                account.total_videos_failed += 1
-                account.failure_streak += 1
-                account.success_rate = account.calculate_success_rate()
-                account_id_for_release = account.id
-                await db.commit()
 
-                # Decrement account's concurrent job count and wake pinned waiters
-                account = await account_service.release_account(account_id_for_release)
-                await db.commit()
+                # Track failure stats on account and release reservation.
+                account = await _increment_failure_stats_and_release_account(
+                    db=db,
+                    account_service=account_service,
+                    account_id=account.id,
+                )
 
                 return _PollGenerationResult(
                     generation_id=generation_id,
@@ -1322,25 +1361,6 @@ async def _poll_single_generation(
                     provider_status=str(provider_status) if provider_status is not None else None,
                 )
 
-                # Pixverse sometimes reports "filtered" but still delivers
-                # the media via CDN.  Promote to COMPLETED so we keep the
-                # asset; the scheduled moderation re-check will tag it with
-                # provider_flagged for the badge.
-                if (
-                    status_result.status == ProviderStatus.FILTERED
-                    and status_result.video_url
-                ):
-                    logger.info(
-                        "filtered_promoted_to_completed",
-                        generation_id=generation.id,
-                        video_url_preview=str(status_result.video_url)[:120],
-                    )
-                    status_result.status = ProviderStatus.COMPLETED
-                    status_result.metadata = {
-                        **(status_result.metadata or {}),
-                        "promoted_from_filtered": True,
-                    }
-
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
                     _cancel_first_seen.pop(generation.id, None)
@@ -1410,15 +1430,50 @@ async def _poll_single_generation(
                         asset_id=asset.id,
                     )
 
-                    # Schedule delayed moderation re-check for videos
+                    # Detect early-CDN-terminal now so both the recheck delay
+                    # and the credit-refresh branch below can use it.
+                    _is_early_cdn = bool(
+                        (status_result.metadata or {}).get("video_early_cdn_terminal")
+                    )
+                    _early_cdn_original_status = (
+                        (status_result.metadata or {}).get("video_original_status") or ""
+                    )
+
+                    # When early CDN original status was FILTERED we already know
+                    # the video is flagged — stamp it immediately so the red ring
+                    # badge appears without waiting for the 30 s moderation recheck.
+                    # (The recheck still runs to refresh credits once Pixverse refunds.)
+                    # Event is published AFTER the final db.commit() below.
+                    _publish_early_cdn_flagged = False
+                    if _is_early_cdn and _early_cdn_original_status == "filtered":
+                        meta = asset.media_metadata or {}
+                        if not meta.get("provider_flagged"):
+                            meta["provider_flagged"] = True
+                            meta["provider_flagged_reason"] = "early_cdn_filtered"
+                            asset.media_metadata = meta
+                            flag_modified(asset, "media_metadata")
+                            logger.info(
+                                "early_cdn_flagged_immediately",
+                                asset_id=asset.id,
+                                generation_id=generation.id,
+                            )
+                            _publish_early_cdn_flagged = True
+
+                    # Schedule delayed moderation re-check for videos.
+                    # For early-CDN-terminal completions use a shorter first delay
+                    # (30 s) — Pixverse typically issues the refund quickly, and we
+                    # want to capture it promptly rather than waiting 90 s.
                     if asset.media_type and asset.media_type.value == "video" and submission.provider_job_id:
-                        _moderation_recheck[asset.id] = (
-                            submission.provider_job_id,
-                            account.id,
-                            time.monotonic() + _MODERATION_RECHECK_DELAYS_SEC[0],
-                            generation.id,
-                            0,  # attempt index
-                            generation.operation_type,
+                        _first_recheck_delay = _EARLY_CDN_RECHECK_DELAY_SEC if _is_early_cdn else _MODERATION_RECHECK_DELAYS_SEC[0]
+                        _schedule_moderation_recheck(
+                            asset_id=asset.id,
+                            provider_job_id=submission.provider_job_id,
+                            account_id=account.id,
+                            generation_id=generation.id,
+                            attempt=0,  # attempt index
+                            operation_type=generation.operation_type,
+                            provider_id=submission.provider_id,
+                            delay_sec=_first_recheck_delay,
                         )
 
                     # Mark assets that completed despite a prior filtered attempt
@@ -1447,25 +1502,35 @@ async def _poll_single_generation(
                     await generation_service.mark_completed(generation.id, asset.id)
 
                     # Finalize billing — reuse generation_model (avoids double fetch)
-                    try:
-                        billing_service = GenerationBillingService(db)
-                        await db.refresh(generation_model)
-                        await billing_service.finalize_billing(
-                            generation=generation_model,
-                            final_submission=submission,
-                            account=account,
-                            actual_duration=status_result.duration_sec,
-                        )
-                    except Exception as billing_err:
-                        logger.warning(
-                            "billing_finalization_error",
-                            generation_id=generation.id,
-                            error=str(billing_err)
-                        )
+                    await _finalize_generation_billing_best_effort(
+                        db=db,
+                        generation_id=generation.id,
+                        generation_model=generation_model,
+                        final_submission=submission,
+                        account=account,
+                        actual_duration=status_result.duration_sec,
+                        refresh_generation=True,
+                    )
 
-                    # Refresh credits from provider to sync actual balance
-                    await refresh_account_credits(account, account_service, logger)
+                    # Refresh credits from provider to sync actual balance.
+                    # For early-CDN-terminal completions skip this — Pixverse
+                    # still shows "processing" and hasn't refunded yet.
+                    # The moderation recheck (scheduled above, first attempt at
+                    # 30 s) will refresh credits once Pixverse marks it filtered.
+                    if not _is_early_cdn:
+                        await refresh_account_credits_best_effort(
+                            account,
+                            account_service,
+                            logger,
+                        )
                     await db.commit()
+
+                    if _publish_early_cdn_flagged:
+                        await event_bus.publish(ASSET_UPDATED, {
+                            "asset_id": asset.id,
+                            "user_id": asset.user_id,
+                            "reason": "moderation_flagged",
+                        })
 
                     return _PollGenerationResult(
                         generation_id=generation_id,
@@ -1525,38 +1590,29 @@ async def _poll_single_generation(
                     )
 
                     # Finalize billing — reuse generation_model (avoids double fetch)
-                    try:
-                        billing_service = GenerationBillingService(db)
-                        await db.refresh(generation_model)
-                        await billing_service.finalize_billing(
-                            generation=generation_model,
-                            final_submission=submission,
-                            account=account,
-                        )
-                    except Exception as billing_err:
-                        logger.warning(
-                            "billing_finalization_error",
-                            generation_id=generation.id,
-                            error=str(billing_err)
-                        )
-
-                    # Track failure stats on account (locked to prevent lost updates)
-                    locked = await db.execute(
-                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    await _finalize_generation_billing_best_effort(
+                        db=db,
+                        generation_id=generation.id,
+                        generation_model=generation_model,
+                        final_submission=submission,
+                        account=account,
+                        refresh_generation=True,
                     )
-                    account = locked.scalar_one()
-                    account.total_videos_failed += 1
-                    account.failure_streak += 1
-                    account.success_rate = account.calculate_success_rate()
-                    account_id_for_release = account.id
-                    await db.commit()
 
-                    # Decrement account's concurrent job count and wake pinned waiters
-                    account = await account_service.release_account(account_id_for_release)
+                    # Track failure stats on account and release the slot.
+                    account = await _increment_failure_stats_and_release_account(
+                        db=db,
+                        account_service=account_service,
+                        account_id=account.id,
+                    )
 
                     # Refresh credits from provider to sync actual balance
                     # (Pixverse auto-refunds for failed/filtered generations)
-                    await refresh_account_credits(account, account_service, logger)
+                    await refresh_account_credits_best_effort(
+                        account,
+                        account_service,
+                        logger,
+                    )
                     await db.commit()
 
                     # Poll-time terminal retries are owned by the
@@ -1777,6 +1833,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
     async for db in get_db():
         try:
             provider_service = ProviderService(db)
+            account_service = AccountService(db)
 
             processing_generations = await _load_processing_generation_snapshots(db)
             logger.info("poll_loaded", count=len(processing_generations))
@@ -1864,20 +1921,81 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 (asset_id, info) for asset_id, info in _moderation_recheck.items()
                 if now_mono >= info[2]
             ]
-            for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type) in due_rechecks:
+            for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type, recheck_provider_id) in due_rechecks:
                 _moderation_recheck.pop(asset_id, None)
                 try:
+                    # Fetch asset upfront — needed for the CDN probe and for any
+                    # flagging logic later if the provider confirms FILTERED.
+                    asset = await db.get(Asset, asset_id)
+                    asset_remote_url = asset.remote_url if asset else None
+
+                    # Fast path: HEAD probe on the stored CDN URL.
+                    # True  → content confirmed up; skip the provider API call and
+                    #         schedule the next recheck attempt.
+                    # False → 4xx from CDN; content likely removed; fall through to
+                    #         provider API to confirm and get structured status.
+                    # None  → timeout or network error; inconclusive; fall through.
+                    if asset_remote_url:
+                        cdn_probe = await cdn_head_probe(asset_remote_url)
+                        if cdn_probe is True:
+                            next_attempt = attempt + 1
+                            if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
+                                delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
+                                _schedule_moderation_recheck(
+                                    asset_id=asset_id,
+                                    provider_job_id=provider_job_id,
+                                    account_id=account_id,
+                                    generation_id=gen_id,
+                                    attempt=next_attempt,
+                                    operation_type=op_type,
+                                    provider_id=recheck_provider_id,
+                                    delay_sec=delay,
+                                )
+                                logger.debug(
+                                    "moderation_recheck_cdn_ok",
+                                    asset_id=asset_id,
+                                    attempt=attempt,
+                                    next_delay_sec=delay,
+                                )
+                            continue  # skip provider API call entirely
+
+                        logger.debug(
+                            "moderation_recheck_cdn_miss",
+                            asset_id=asset_id,
+                            attempt=attempt,
+                            probe=cdn_probe,  # False=4xx, None=inconclusive
+                        )
+
+                    # CDN probe returned non-200, inconclusive, or asset has no URL —
+                    # confirm current status via provider API.
                     recheck_account = await db.get(ProviderAccount, account_id)
                     if recheck_account:
-                        from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
-                        result = await PixverseProvider().check_status(
+                        recheck_provider = _provider_registry.get(recheck_provider_id)
+                        result = await recheck_provider.check_status(
                             account=recheck_account,
                             provider_job_id=provider_job_id,
                             operation_type=op_type,
                         )
                         if result.status == ProviderStatus.FILTERED:
-                            asset = await db.get(Asset, asset_id)
                             if asset:
+                                asset_has_retrievable_cdn = _has_retrievable_pixverse_media_url(
+                                    asset_remote_url
+                                )
+                                recheck_has_retrievable_cdn = _status_result_has_retrievable_cdn(result)
+                                if not (asset_has_retrievable_cdn or recheck_has_retrievable_cdn):
+                                    logger.info(
+                                        "moderation_recheck_filtered_placeholder_only",
+                                        asset_id=asset_id,
+                                        generation_id=gen_id,
+                                        provider_job_id=provider_job_id,
+                                        attempt=attempt,
+                                        asset_remote_url_preview=(
+                                            str(asset_remote_url)[:120] if asset_remote_url else None
+                                        ),
+                                        recheck_video_url_preview=(
+                                            str(result.video_url)[:120] if result.video_url else None
+                                        ),
+                                    )
                                 meta = asset.media_metadata or {}
                                 if not meta.get("provider_flagged"):
                                     meta["provider_flagged"] = True
@@ -1897,18 +2015,35 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                         "user_id": asset.user_id,
                                         "reason": "moderation_flagged",
                                     })
+                                # Pixverse refunds credits on moderation rejection.
+                                # Refresh now so the account balance is current.
+                                await refresh_account_credits_best_effort(
+                                    recheck_account,
+                                    account_service,
+                                    logger,
+                                    db=db,
+                                    success_log_event="moderation_recheck_credits_refreshed",
+                                    success_log_fields={
+                                        "account_id": recheck_account.id,
+                                        "asset_id": asset_id,
+                                    },
+                                    failure_log_event="moderation_recheck_credit_refresh_failed",
+                                    failure_log_fields={"account_id": recheck_account.id},
+                                )
                         else:
-                            # Not flagged yet — schedule next attempt if we have retries left
+                            # Provider doesn't confirm flagging — schedule next attempt.
                             next_attempt = attempt + 1
                             if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
                                 delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
-                                _moderation_recheck[asset_id] = (
-                                    provider_job_id,
-                                    account_id,
-                                    time.monotonic() + delay,
-                                    gen_id,
-                                    next_attempt,
-                                    op_type,
+                                _schedule_moderation_recheck(
+                                    asset_id=asset_id,
+                                    provider_job_id=provider_job_id,
+                                    account_id=account_id,
+                                    generation_id=gen_id,
+                                    attempt=next_attempt,
+                                    operation_type=op_type,
+                                    provider_id=recheck_provider_id,
+                                    delay_sec=delay,
                                 )
                                 logger.debug(
                                     "moderation_recheck_retry_scheduled",
