@@ -180,6 +180,8 @@ export function buildAddToSetWidget(
     className:
       options?.className ??
       'border border-neutral-200 dark:border-neutral-700 !bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 hover:border-accent/40 shadow-sm text-[10px] font-medium',
-    priority: BADGE_PRIORITY.interactive,
+    // Keep the media-type icon as the top-left stack leader so Add appears as
+    // a secondary badge (same behavior as favorite under status on the right).
+    priority: BADGE_PRIORITY.info - 1,
   });
 }

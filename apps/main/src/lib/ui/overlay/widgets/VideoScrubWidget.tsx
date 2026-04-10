@@ -120,6 +120,9 @@ const STEP_COARSE = 0.5; // seconds per arrow key press
 const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
 const DOUBLE_CLICK_TIME = 300; // ms - max time between clicks for double-click
+const TIMESTAMP_FALLBACK_OFFSET = 4; // px from top/left when no stack group is present
+const TIMESTAMP_STACK_GAP = 4; // px gap between top-left badges stack and timestamp row
+const TOP_LEFT_STACK_SELECTOR = '[data-overlay-stack-group="badges-tl"][data-overlay-stack-anchor="top-left"]';
 
 export function VideoScrubWidgetRenderer({
   url,
@@ -155,6 +158,7 @@ export function VideoScrubWidgetRenderer({
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [cacheBustToken, setCacheBustToken] = useState<number | null>(null);
+  const [timestampPosition, setTimestampPosition] = useState<{ top: number; left: number } | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -777,6 +781,82 @@ export function VideoScrubWidgetRenderer({
       })()
     : null;
 
+  // Keep timestamp badges under the current top-left badge stack so they
+  // follow dynamic stack order/visibility changes (favorite/set/add/etc.).
+  useEffect(() => {
+    if (!isHovering || !showTimeline || !showTimestamp || videoDuration <= 0) {
+      setTimestampPosition(null);
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const overlayRoot = container.closest('[data-overlay-container="true"]') as HTMLElement | null;
+    if (!overlayRoot) {
+      setTimestampPosition(null);
+      return;
+    }
+
+    let stackEl = overlayRoot.querySelector(TOP_LEFT_STACK_SELECTOR) as HTMLElement | null;
+
+    const updateTimestampPosition = () => {
+      stackEl = overlayRoot.querySelector(TOP_LEFT_STACK_SELECTOR) as HTMLElement | null;
+
+      if (!stackEl) {
+        setTimestampPosition((prev) => (prev === null ? prev : null));
+        return;
+      }
+
+      const overlayRect = overlayRoot.getBoundingClientRect();
+      const stackRect = stackEl.getBoundingClientRect();
+
+      const next = {
+        left: Math.max(
+          TIMESTAMP_FALLBACK_OFFSET,
+          Math.round(stackRect.left - overlayRect.left),
+        ),
+        top: Math.max(
+          TIMESTAMP_FALLBACK_OFFSET,
+          Math.round(stackRect.bottom - overlayRect.top + TIMESTAMP_STACK_GAP),
+        ),
+      };
+
+      setTimestampPosition((prev) => {
+        if (prev && prev.left === next.left && prev.top === next.top) return prev;
+        return next;
+      });
+    };
+
+    updateTimestampPosition();
+
+    let rafId: number | null = null;
+    if (typeof window !== 'undefined') {
+      rafId = window.requestAnimationFrame(updateTimestampPosition);
+      window.addEventListener('resize', updateTimestampPosition);
+    }
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateTimestampPosition)
+      : null;
+    observer?.observe(overlayRoot);
+    if (stackEl) observer?.observe(stackEl);
+
+    return () => {
+      if (rafId !== null && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', updateTimestampPosition);
+      }
+      observer?.disconnect();
+    };
+  }, [isHovering, showTimeline, showTimestamp, videoDuration]);
+
+  const timestampStyle: React.CSSProperties = timestampPosition
+    ? { top: timestampPosition.top, left: timestampPosition.left }
+    : { top: TIMESTAMP_FALLBACK_OFFSET, left: TIMESTAMP_FALLBACK_OFFSET };
+
   return (
     <div
       ref={containerRef}
@@ -962,7 +1042,7 @@ export function VideoScrubWidgetRenderer({
 
       {/* Timestamp - top left */}
       {showTimeline && showTimestamp && isHovering && videoDuration > 0 && (
-        <div className="absolute top-1 left-1 flex items-center gap-1">
+        <div className="absolute flex items-center gap-1" style={timestampStyle}>
           <div className="px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded whitespace-nowrap">
             {formatTime(currentTime)}
           </div>

@@ -245,6 +245,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   return (
     <div
       ref={containerRef}
+      data-overlay-container="true"
       className={`relative ${overflowClass} ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -288,6 +289,8 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
         return (
           <div
             key={group.key}
+            data-overlay-stack-group={group.stackGroup}
+            data-overlay-stack-anchor={group.anchor}
             style={{
               ...containerStyle,
               display: 'flex',
