@@ -120,6 +120,7 @@ const STEP_COARSE = 0.5; // seconds per arrow key press
 const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
 const DOUBLE_CLICK_TIME = 300; // ms - max time between clicks for double-click
+const SCRUB_RELEASE_DISTANCE_PX = 14; // how close cursor must get to resume scrub after edge jump
 const TIMESTAMP_FALLBACK_OFFSET = 4; // px from top/left when no stack group is present
 const TIMESTAMP_STACK_GAP = 4; // px gap between top-left badges stack and timestamp row
 const TOP_LEFT_STACK_SELECTOR = '[data-overlay-stack-group="badges-tl"][data-overlay-stack-anchor="top-left"]';
@@ -175,6 +176,8 @@ export function VideoScrubWidgetRenderer({
   const dragStartXRef = useRef<number | null>(null);
   const isPotentialDragRef = useRef(false);
   const dotControlsRef = useRef<HTMLDivElement>(null);
+  const holdScrubUntilNearRef = useRef(false);
+  const heldHoverPercentRef = useRef<number | null>(null);
   const lastClickTimeRef = useRef<number>(0);
   const lastClickMarkRef = useRef<number | null>(null);
   const canExtract = showExtractButton && !!handleDotAction;
@@ -518,6 +521,17 @@ export function VideoScrubWidgetRenderer({
 
       // If in dot zone, don't update scrub position - keep dot stationary so user can click buttons
       if (!inDotZone) {
+        if (holdScrubUntilNearRef.current) {
+          const heldPercent = heldHoverPercentRef.current;
+          if (heldPercent !== null) {
+            const heldX = (heldPercent / 100) * rect.width;
+            if (Math.abs(x - heldX) > SCRUB_RELEASE_DISTANCE_PX) {
+              return;
+            }
+          }
+          holdScrubUntilNearRef.current = false;
+          heldHoverPercentRef.current = null;
+        }
         setHoverPercent(percentage * 100);
       }
 
@@ -637,7 +651,7 @@ export function VideoScrubWidgetRenderer({
   );
 
   // Jump to specific time helper
-  const seekTo = useCallback((time: number) => {
+  const seekTo = useCallback((time: number, options?: { holdUntilCursorNear?: boolean }) => {
     if (!videoRef.current || videoDuration === 0 || !isVideoLoaded) return;
 
     // Pause if playing
@@ -649,7 +663,16 @@ export function VideoScrubWidgetRenderer({
     const clampedTime = Math.max(0, Math.min(videoDuration, time));
     videoRef.current.currentTime = clampedTime;
     setCurrentTime(clampedTime);
-    setHoverPercent((clampedTime / videoDuration) * 100);
+    const nextHoverPercent = (clampedTime / videoDuration) * 100;
+    setHoverPercent(nextHoverPercent);
+
+    if (options?.holdUntilCursorNear) {
+      holdScrubUntilNearRef.current = true;
+      heldHoverPercentRef.current = nextHoverPercent;
+    } else {
+      holdScrubUntilNearRef.current = false;
+      heldHoverPercentRef.current = null;
+    }
 
     if (onScrub) {
       onScrub(clampedTime, data);
@@ -659,7 +682,7 @@ export function VideoScrubWidgetRenderer({
   // Go to previous mark, or first frame if no marks before current position
   const goToPrevious = useCallback(() => {
     if (marks.length === 0) {
-      seekTo(0);
+      seekTo(0, { holdUntilCursorNear: true });
       return;
     }
     // Find the previous mark (before current time, with small tolerance)
@@ -674,7 +697,7 @@ export function VideoScrubWidgetRenderer({
   // Go to next mark, or last frame if no marks after current position
   const goToNext = useCallback(() => {
     if (marks.length === 0) {
-      seekTo(videoDuration - STEP_FRAME);
+      seekTo(videoDuration - STEP_FRAME, { holdUntilCursorNear: true });
       return;
     }
     // Find the next mark (after current time, with small tolerance)
@@ -745,6 +768,8 @@ export function VideoScrubWidgetRenderer({
       setVideoError(false);
       // Keep marks across hover cycles - don't clear them
       dragStartTimeRef.current = null;
+      holdScrubUntilNearRef.current = false;
+      heldHoverPercentRef.current = null;
       lastClickTimeRef.current = 0;
       lastClickMarkRef.current = null;
     }
