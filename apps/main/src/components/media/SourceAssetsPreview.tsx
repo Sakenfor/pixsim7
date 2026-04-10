@@ -18,10 +18,11 @@ import type { OperationType } from '@/types/operations';
 
 import { parseGenerationContext } from './mediaCardGeneration.utils';
 
-export function SourceAssetsPreview({ assetId, operationType, addInput }: {
+export function SourceAssetsPreview({ assetId, operationType, addInput, onOpenAsset }: {
   assetId: number;
   operationType: OperationType;
   addInput: (opts: { asset: AssetModel; operationType: OperationType }) => void;
+  onOpenAsset?: (asset: AssetModel, assetList?: AssetModel[]) => void;
 }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
   const [assets, setAssets] = useState<AssetModel[] | null>(null);
@@ -89,7 +90,15 @@ export function SourceAssetsPreview({ assetId, operationType, addInput }: {
           ) : assets && assets.length > 0 ? (
             <div className="flex gap-1.5">
               {assets.map((asset) => (
-                <div key={asset.id} className="w-20 h-20 shrink-0">
+                <div
+                  key={asset.id}
+                  className="w-20 h-20 shrink-0"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    onOpenAsset?.(asset, assets);
+                  }}
+                  title="Double-click to open in viewer"
+                >
                   <CompactAssetCard
                     asset={asset}
                     hideFooter

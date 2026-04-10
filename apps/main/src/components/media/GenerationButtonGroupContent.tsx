@@ -13,7 +13,12 @@ import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { resolveButtonState, makeAsyncStates, UPLOAD_BUTTON_STATES } from '@lib/ui/buttonStates';
 
-import type { AssetModel } from '@features/assets';
+import {
+  toViewerAsset,
+  toViewerAssets,
+  useAssetViewerStore,
+  type AssetModel,
+} from '@features/assets';
 import { hydrateAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { getUploadCapableProviders, resolveUploadTarget } from '@features/assets/lib/resolveUploadTarget';
 import { extractUploadError } from '@features/assets/lib/uploadActions';
@@ -22,6 +27,7 @@ import {
   CAP_GENERATION_WIDGET,
   CAP_CHARACTER_INGEST_ACTION,
   useCapability,
+  usePanelContext,
   type CharacterIngestActionContext,
   type GenerationWidgetContext,
 } from '@features/contextHub';
@@ -50,6 +56,11 @@ type UploadTargetOption = {
 
 type ProviderMenuMode = 'set-default' | 'upload-now';
 
+type SourceAssetOpenPanelContext = {
+  onOpenAsset?: (asset: AssetModel, assetList?: AssetModel[]) => void;
+  openAssetInViewer?: (asset: AssetModel, assetList?: AssetModel[]) => void;
+};
+
 const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
   pixverse: '#7C3AED',
   sora: '#6B7280',
@@ -63,6 +74,9 @@ function getUploadProviderColor(providerId: string): string {
 export function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
   const { id, mediaType } = cardProps;
   const toast = useToast();
+  const openViewer = useAssetViewerStore((s) => s.openViewer);
+  const panelContext = usePanelContext<SourceAssetOpenPanelContext>();
+  const contextOpenAsset = panelContext?.onOpenAsset ?? panelContext?.openAssetInViewer;
 
   const [isProviderMenuOpen, setIsProviderMenuOpen] = useState(false);
   const [providerMenuPos, setProviderMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -230,6 +244,19 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       slotIndex,
     });
   }, [resolveInputAsset, addInput, operationType]);
+
+  const handleOpenSourceAsset = useCallback(
+    (asset: AssetModel, assetList?: AssetModel[]) => {
+      if (contextOpenAsset) {
+        contextOpenAsset(asset, assetList);
+        return;
+      }
+      const viewerAsset = toViewerAsset(asset);
+      const viewerList = assetList && assetList.length > 0 ? toViewerAssets(assetList) : [viewerAsset];
+      openViewer(viewerAsset, viewerList, 'source-assets');
+    },
+    [contextOpenAsset, openViewer],
+  );
 
   // Upload-to-provider logic
   // useProviderCapabilities ensures registry data is loaded (triggers re-render on load)
@@ -616,7 +643,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
             <span>Insert Prompt</span>
           </button>
           {assetAcceptsInput && (
-            <SourceAssetsPreview assetId={id} operationType={operationType} addInput={addInput} />
+            <SourceAssetsPreview
+              assetId={id}
+              operationType={operationType}
+              addInput={addInput}
+              onOpenAsset={handleOpenSourceAsset}
+            />
           )}
         </div>
       ),
