@@ -209,6 +209,7 @@ That's it! The provider will be auto-discovered on startup.
 | `requires_file_preparation()` | Return True if above is implemented | With prepare_execution_params |
 | `extract_account_data(raw_data, fallback_email)` | Parse browser-captured auth | Web API providers |
 | `get_operation_parameter_spec()` | Return UI form hints | For dynamic form generation |
+| `moderation_recheck(account, job_id, asset_url, op_type)` | Post-delivery flagging check | Providers with delayed content moderation (returns `ModerationRecheckResult`) |
 | `estimate_credits(operation_type, params)` | Pre-submission credit estimate | Credit-aware providers |
 | `compute_actual_credits(generation, duration)` | Post-completion credit calc | Credit-aware providers |
 | `upload_asset(account, file_path)` | Upload media to provider | Cross-provider operations |
@@ -344,7 +345,24 @@ Reference implementations:
 
 The provider system is designed so that:
 - `job_processor.py` - Uses generic provider interface, no provider-specific code
-- `status_poller.py` - Polls all providers uniformly via `check_status()`
-- `provider_service.py` - Orchestrates execution via generic hooks
+- `status_poller.py` - Polls all providers uniformly via `check_status()` and runs post-delivery moderation rechecks via `moderation_recheck()`
+- `provider_service.py` - Orchestrates execution via generic hooks, handles early CDN promotion (non-terminal status + retrievable URL + rendered dimensions → COMPLETED)
 
 Adding a provider requires **no changes** to these files.
+
+### Post-Delivery Moderation
+
+Providers that flag content after delivery (e.g. Pixverse filters videos after rendering) can override `moderation_recheck()` to encapsulate their CDN probing and API re-check logic. The poller calls this method at staggered intervals after completion and handles the result generically:
+
+```python
+from pixsim7.backend.main.services.provider.base import ModerationRecheckResult
+
+class MyProvider(Provider):
+    async def moderation_recheck(self, account, provider_job_id, asset_remote_url=None, operation_type=None):
+        # Check if CDN still serves content, query provider API, etc.
+        if content_was_removed:
+            return ModerationRecheckResult(outcome="flagged", should_refresh_credits=True)
+        return ModerationRecheckResult(outcome="ok")
+```
+
+The default implementation returns `"inconclusive"` (reschedule for the next check).
