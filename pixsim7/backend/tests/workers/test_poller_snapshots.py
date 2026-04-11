@@ -571,7 +571,7 @@ async def test_poll_job_statuses_stale_unsubmitted_error_submission_skips_failur
 
 
 @pytest.mark.asyncio
-async def test_poll_job_statuses_early_cdn_completion_skips_immediate_credit_refresh(
+async def test_poll_job_statuses_early_cdn_completion_refreshes_credits_and_schedules_recheck(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_fakes()
@@ -666,7 +666,7 @@ async def test_poll_job_statuses_early_cdn_completion_skips_immediate_credit_ref
 
     assert result["checked"] == 1
     assert result["completed"] == 1
-    assert refresh_calls == []
+    assert len(refresh_calls) == 1  # credits refreshed immediately (no longer skipped)
     assert 9101 in status_poller._moderation_recheck
     (
         provider_job_id,
@@ -769,7 +769,7 @@ async def test_poll_job_statuses_moderation_recheck_filtered_refreshes_credits(
 
 
 @pytest.mark.asyncio
-async def test_poll_job_statuses_early_cdn_filtered_marks_badge_and_publishes_without_immediate_refresh(
+async def test_poll_job_statuses_early_cdn_filtered_marks_badge_publishes_and_refreshes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_fakes()
@@ -873,7 +873,7 @@ async def test_poll_job_statuses_early_cdn_filtered_marks_badge_and_publishes_wi
 
     assert result["checked"] == 1
     assert result["completed"] == 1
-    assert refresh_calls == []
+    assert len(refresh_calls) == 1  # credits refreshed immediately
     assert len(created_assets) == 1
     assert created_assets[0].media_metadata.get("provider_flagged") is True
     assert created_assets[0].media_metadata.get("provider_flagged_reason") == "early_cdn_filtered"

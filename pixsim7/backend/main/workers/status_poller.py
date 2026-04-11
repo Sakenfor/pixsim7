@@ -373,6 +373,11 @@ def _clear_transient_poll_backoff(key: str | None) -> None:
         _non_transient_poll_backoff.pop(key, None)
 
 
+_BACKOFF_DICT_MAX_SIZE = 2000
+_CANCEL_DICT_MAX_SIZE = 5000
+_MODERATION_RECHECK_MAX_SIZE = 5000
+
+
 def _prune_transient_poll_backoff(*, now_mono: float) -> None:
     stale_before = now_mono - _TRANSIENT_POLL_PRUNE_STALE_SEC
     for backoff_dict in (_transient_poll_backoff, _non_transient_poll_backoff):
@@ -383,11 +388,30 @@ def _prune_transient_poll_backoff(*, now_mono: float) -> None:
         ]
         for key in stale_keys:
             backoff_dict.pop(key, None)
+        # Hard cap: if still over limit, evict oldest entries by last_failure_mono
+        if len(backoff_dict) > _BACKOFF_DICT_MAX_SIZE:
+            sorted_keys = sorted(
+                backoff_dict, key=lambda k: backoff_dict[k].last_failure_mono
+            )
+            for key in sorted_keys[: len(backoff_dict) - _BACKOFF_DICT_MAX_SIZE]:
+                backoff_dict.pop(key, None)
     # Prune stale cancel-grace entries (generation finished or was never polled again).
     cancel_stale = now_mono - _CANCEL_GRACE_PERIOD_SEC - _TRANSIENT_POLL_PRUNE_STALE_SEC
     stale_cancel = [gid for gid, ts in _cancel_first_seen.items() if ts <= cancel_stale]
     for gid in stale_cancel:
         _cancel_first_seen.pop(gid, None)
+    # Hard cap on cancel dict
+    if len(_cancel_first_seen) > _CANCEL_DICT_MAX_SIZE:
+        sorted_gids = sorted(_cancel_first_seen, key=_cancel_first_seen.get)  # type: ignore[arg-type]
+        for gid in sorted_gids[: len(_cancel_first_seen) - _CANCEL_DICT_MAX_SIZE]:
+            _cancel_first_seen.pop(gid, None)
+    # Hard cap on moderation recheck dict
+    if len(_moderation_recheck) > _MODERATION_RECHECK_MAX_SIZE:
+        sorted_aids = sorted(
+            _moderation_recheck, key=lambda k: _moderation_recheck[k][2]  # monotonic_deadline
+        )
+        for aid in sorted_aids[: len(_moderation_recheck) - _MODERATION_RECHECK_MAX_SIZE]:
+            _moderation_recheck.pop(aid, None)
 
 
 def _record_non_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
@@ -1499,16 +1523,11 @@ async def _poll_single_generation(
                     )
 
                     # Refresh credits from provider to sync actual balance.
-                    # For early-CDN-terminal completions skip this — Pixverse
-                    # still shows "processing" and hasn't refunded yet.
-                    # The moderation recheck (scheduled above, first attempt at
-                    # 30 s) will refresh credits once Pixverse marks it filtered.
-                    if not _is_early_cdn:
-                        await refresh_account_credits_best_effort(
-                            account,
-                            account_service,
-                            logger,
-                        )
+                    await refresh_account_credits_best_effort(
+                        account,
+                        account_service,
+                        logger,
+                    )
                     await db.commit()
 
                     if _publish_early_cdn_flagged:
