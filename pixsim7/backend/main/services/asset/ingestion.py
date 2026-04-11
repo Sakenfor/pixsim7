@@ -34,6 +34,8 @@ from pixsim7.backend.main.services.media.settings import MediaSettings, get_medi
 from pixsim7.backend.main.services.media.download import download_file
 from pixsim7.backend.main.services.media.metadata import extract_metadata
 from pixsim7.backend.main.services.media.derivatives import generate_thumbnail, generate_preview
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.asset.events import ASSET_UPDATED
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -226,6 +228,21 @@ class AssetIngestionService:
                 asset.sync_status = SyncStatus.DOWNLOADED
                 asset.downloaded_at = datetime.now(timezone.utc)
 
+            # Merge any concurrently-set metadata flags (e.g. provider_flagged
+            # stamped by the poller while ingestion was downloading).
+            # Re-read the current DB row to pick up changes from other sessions.
+            from sqlalchemy import select as _select
+            fresh_row = await self.db.execute(
+                _select(Asset.media_metadata).where(Asset.id == asset.id)
+            )
+            fresh_meta = fresh_row.scalar_one_or_none() or {}
+            if isinstance(fresh_meta, dict):
+                local_meta = asset.media_metadata or {}
+                for key in ("provider_flagged", "provider_flagged_reason"):
+                    if key in fresh_meta and key not in local_meta:
+                        local_meta[key] = fresh_meta[key]
+                asset.media_metadata = local_meta
+
             attributes.flag_modified(asset, 'media_metadata')
             await self.db.commit()
             await self.db.refresh(asset)
@@ -237,6 +254,20 @@ class AssetIngestionService:
                 thumbnail_key=asset.thumbnail_key,
                 metadata_extracted=asset.metadata_extracted_at is not None,
                 thumbnail_generated=asset.thumbnail_generated_at is not None,
+            )
+
+            # Push a real-time asset update so generation/gallery clients can
+            # refresh thumbnail/video URLs without requiring manual reload.
+            await event_bus.publish(
+                ASSET_UPDATED,
+                {
+                    "asset_id": asset.id,
+                    "user_id": asset.user_id,
+                    "source_generation_id": asset.source_generation_id,
+                    "reason": "ingestion_completed",
+                    "thumbnail_generated": asset.thumbnail_generated_at is not None,
+                    "preview_generated": asset.preview_generated_at is not None,
+                },
             )
 
             return asset
