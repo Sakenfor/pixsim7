@@ -67,10 +67,30 @@ class ProviderStatusResult:
     height: int | None = None
     duration_sec: float | None = None
     provider_video_id: str | None = None
+    # Provider decisions stamped at check_status time so generic services
+    # never need to branch on provider_id.
+    suppress_thumbnail: bool = False          # provider thumbnail is unreliable (e.g. Pixverse grey placeholder)
+    has_retrievable_media_url: bool = False   # provider returned a real, fetchable media URL
+    post_delivery_recheck_delay_sec: int | None = None  # schedule a moderation recheck after this many seconds
 
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
+
+
+@dataclass
+class ModerationRecheckResult:
+    """Result from a post-delivery moderation recheck."""
+    outcome: str  # "ok" | "flagged" | "inconclusive"
+    should_refresh_credits: bool = False
+
+    @property
+    def is_flagged(self) -> bool:
+        return self.outcome == "flagged"
+
+    @property
+    def is_ok(self) -> bool:
+        return self.outcome == "ok"
 
 
 class Provider(ABC):
@@ -190,6 +210,24 @@ class Provider(ABC):
             JobNotFoundError: Job ID not found
         """
         pass
+
+    # ===== MODERATION RECHECK =====
+
+    async def moderation_recheck(
+        self,
+        account: ProviderAccount,
+        provider_job_id: str,
+        asset_remote_url: str | None = None,
+        operation_type: OperationType | None = None,
+    ) -> "ModerationRecheckResult":
+        """
+        Post-delivery moderation recheck.
+
+        Providers that flag content after delivery (e.g. Pixverse) override
+        this to probe the CDN and/or re-query the provider API.  The default
+        implementation returns ``inconclusive`` so the caller reschedules.
+        """
+        return ModerationRecheckResult(outcome="inconclusive")
 
     # ===== MANIFEST-DRIVEN METADATA =====
 

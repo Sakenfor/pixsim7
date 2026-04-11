@@ -57,11 +57,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     stop_event_bus_bridge,
 )
 from pixsim7.backend.main.services.asset.events import ASSET_UPDATED
-from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
-    has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
-)
 from pixsim7.backend.main.domain.providers.registry import registry as _provider_registry
-from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
@@ -197,16 +193,6 @@ def _has_pending_cancel(generation_model: Any) -> bool:
         or generation_model.deferred_action == "cancel"
     )
 
-
-def _status_result_has_retrievable_cdn(status_result: Any) -> bool:
-    """Return True when provider status payload includes a retrievable media URL."""
-    if status_result is None:
-        return False
-    metadata = getattr(status_result, "metadata", None)
-    if isinstance(metadata, dict) and "has_retrievable_media_url" in metadata:
-        return bool(metadata.get("has_retrievable_media_url"))
-    video_url = getattr(status_result, "video_url", None)
-    return _has_retrievable_pixverse_media_url(video_url)
 
 
 def _schedule_moderation_recheck(
@@ -1924,129 +1910,72 @@ async def poll_job_statuses(ctx: dict) -> dict:
             for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type, recheck_provider_id) in due_rechecks:
                 _moderation_recheck.pop(asset_id, None)
                 try:
-                    # Fetch asset upfront — needed for the CDN probe and for any
-                    # flagging logic later if the provider confirms FILTERED.
                     asset = await db.get(Asset, asset_id)
                     asset_remote_url = asset.remote_url if asset else None
 
-                    # Fast path: HEAD probe on the stored CDN URL.
-                    # True  → content confirmed up; skip the provider API call and
-                    #         schedule the next recheck attempt.
-                    # False → 4xx from CDN; content likely removed; fall through to
-                    #         provider API to confirm and get structured status.
-                    # None  → timeout or network error; inconclusive; fall through.
-                    if asset_remote_url:
-                        cdn_probe = await cdn_head_probe(asset_remote_url)
-                        if cdn_probe is True:
-                            next_attempt = attempt + 1
-                            if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
-                                delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
-                                _schedule_moderation_recheck(
-                                    asset_id=asset_id,
-                                    provider_job_id=provider_job_id,
-                                    account_id=account_id,
-                                    generation_id=gen_id,
-                                    attempt=next_attempt,
-                                    operation_type=op_type,
-                                    provider_id=recheck_provider_id,
-                                    delay_sec=delay,
-                                )
-                                logger.debug(
-                                    "moderation_recheck_cdn_ok",
-                                    asset_id=asset_id,
-                                    attempt=attempt,
-                                    next_delay_sec=delay,
-                                )
-                            continue  # skip provider API call entirely
-
-                        logger.debug(
-                            "moderation_recheck_cdn_miss",
-                            asset_id=asset_id,
-                            attempt=attempt,
-                            probe=cdn_probe,  # False=4xx, None=inconclusive
-                        )
-
-                    # CDN probe returned non-200, inconclusive, or asset has no URL —
-                    # confirm current status via provider API.
                     recheck_account = await db.get(ProviderAccount, account_id)
-                    if recheck_account:
-                        recheck_provider = _provider_registry.get(recheck_provider_id)
-                        result = await recheck_provider.check_status(
-                            account=recheck_account,
-                            provider_job_id=provider_job_id,
-                            operation_type=op_type,
-                        )
-                        if result.status == ProviderStatus.FILTERED:
-                            if asset:
-                                asset_has_retrievable_cdn = _has_retrievable_pixverse_media_url(
-                                    asset_remote_url
-                                )
-                                recheck_has_retrievable_cdn = _status_result_has_retrievable_cdn(result)
-                                if not (asset_has_retrievable_cdn or recheck_has_retrievable_cdn):
-                                    logger.info(
-                                        "moderation_recheck_filtered_placeholder_only",
-                                        asset_id=asset_id,
-                                        generation_id=gen_id,
-                                        provider_job_id=provider_job_id,
-                                        attempt=attempt,
-                                        asset_remote_url_preview=(
-                                            str(asset_remote_url)[:120] if asset_remote_url else None
-                                        ),
-                                        recheck_video_url_preview=(
-                                            str(result.video_url)[:120] if result.video_url else None
-                                        ),
-                                    )
-                                meta = asset.media_metadata or {}
-                                if not meta.get("provider_flagged"):
-                                    meta["provider_flagged"] = True
-                                    meta["provider_flagged_reason"] = "post_delivery_moderation"
-                                    asset.media_metadata = meta
-                                    flag_modified(asset, "media_metadata")
-                                    await db.commit()
-                                    logger.info(
-                                        "moderation_recheck_flagged",
-                                        asset_id=asset_id,
-                                        generation_id=gen_id,
-                                        provider_job_id=provider_job_id,
-                                        attempt=attempt,
-                                    )
-                                    await event_bus.publish(ASSET_UPDATED, {
-                                        "asset_id": asset_id,
-                                        "user_id": asset.user_id,
-                                        "reason": "moderation_flagged",
-                                    })
-                                # Pixverse refunds credits on moderation rejection.
-                                # Refresh now so the account balance is current.
-                                await refresh_account_credits_best_effort(
-                                    recheck_account,
-                                    account_service,
-                                    logger,
-                                    db=db,
-                                    success_log_event="moderation_recheck_credits_refreshed",
-                                    success_log_fields={
-                                        "account_id": recheck_account.id,
-                                        "asset_id": asset_id,
-                                    },
-                                    failure_log_event="moderation_recheck_credit_refresh_failed",
-                                    failure_log_fields={"account_id": recheck_account.id},
-                                )
-                        else:
-                            # Provider doesn't confirm flagging — schedule next attempt.
-                            next_attempt = attempt + 1
-                            if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
-                                delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
-                                _schedule_moderation_recheck(
-                                    asset_id=asset_id,
-                                    provider_job_id=provider_job_id,
-                                    account_id=account_id,
-                                    generation_id=gen_id,
-                                    attempt=next_attempt,
-                                    operation_type=op_type,
-                                    provider_id=recheck_provider_id,
-                                    delay_sec=delay,
-                                )
-                                logger.debug(
-                                    "moderation_recheck_retry_scheduled",
+                    if not recheck_account:
+                        continue
+
+                    recheck_provider = _provider_registry.get(recheck_provider_id)
+                    recheck_result = await recheck_provider.moderation_recheck(
+                        account=recheck_account,
+                        provider_job_id=provider_job_id,
+                        asset_remote_url=asset_remote_url,
+                        operation_type=op_type,
+                    )
+
+                    if recheck_result.is_flagged and asset:
+                        meta = asset.media_metadata or {}
+                        if not meta.get("provider_flagged"):
+                            meta["provider_flagged"] = True
+                            meta["provider_flagged_reason"] = "post_delivery_moderation"
+                            asset.media_metadata = meta
+                            flag_modified(asset, "media_metadata")
+                            await db.commit()
+                            logger.info(
+                                "moderation_recheck_flagged",
+                                asset_id=asset_id,
+                                generation_id=gen_id,
+                                provider_job_id=provider_job_id,
+                                attempt=attempt,
+                            )
+                            await event_bus.publish(ASSET_UPDATED, {
+                                "asset_id": asset_id,
+                                "user_id": asset.user_id,
+                                "reason": "moderation_flagged",
+                            })
+                        if recheck_result.should_refresh_credits:
+                            await refresh_account_credits_best_effort(
+                                recheck_account,
+                                account_service,
+                                logger,
+                                db=db,
+                                success_log_event="moderation_recheck_credits_refreshed",
+                                success_log_fields={
+                                    "account_id": recheck_account.id,
+                                    "asset_id": asset_id,
+                                },
+                                failure_log_event="moderation_recheck_credit_refresh_failed",
+                                failure_log_fields={"account_id": recheck_account.id},
+                            )
+                    elif not recheck_result.is_flagged:
+                        # Not flagged (ok or inconclusive) — schedule next attempt.
+                        next_attempt = attempt + 1
+                        if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
+                            delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
+                            _schedule_moderation_recheck(
+                                asset_id=asset_id,
+                                provider_job_id=provider_job_id,
+                                account_id=account_id,
+                                generation_id=gen_id,
+                                attempt=next_attempt,
+                                operation_type=op_type,
+                                provider_id=recheck_provider_id,
+                                delay_sec=delay,
+                            )
+                            logger.debug(
+                                "moderation_recheck_retry_scheduled",
                                     asset_id=asset_id,
                                     attempt=next_attempt,
                                     delay_sec=delay,

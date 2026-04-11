@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from pixsim7.backend.main.domain.enums import GenerationStatus, OperationType, ProviderStatus
+from pixsim7.backend.main.services.provider.base import ModerationRecheckResult
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim7.backend.main.workers import status_poller
 from pixsim7.backend.main.workers.status_poller import (
@@ -716,26 +717,9 @@ async def test_poll_job_statuses_moderation_recheck_filtered_refreshes_credits(
     async def _fake_publish(*args, **kwargs):
         published.append((args, kwargs))
 
-    async def _fake_cdn_probe(_url: str):
-        return False
-
     class _FakeRecheckProvider:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
-
-        async def check_status(self, *, account, provider_job_id, operation_type):
-            self.calls.append(
-                {
-                    "account_id": getattr(account, "id", None),
-                    "provider_job_id": provider_job_id,
-                    "operation_type": operation_type,
-                }
-            )
-            return SimpleNamespace(
-                status=ProviderStatus.FILTERED,
-                video_url="https://media.pixverse.ai/pixverse/mp4/media/web/ori/recheck.mp4",
-                metadata={"has_retrievable_media_url": True},
-            )
+        async def moderation_recheck(self, **_kw):
+            return ModerationRecheckResult(outcome="flagged", should_refresh_credits=True)
 
     provider = _FakeRecheckProvider()
     published: list[tuple[tuple, dict]] = []
@@ -749,7 +733,6 @@ async def test_poll_job_statuses_moderation_recheck_filtered_refreshes_credits(
 
     monkeypatch.setattr(status_poller, "_load_processing_generation_snapshots", _fake_load_processing_generations)
     monkeypatch.setattr(status_poller.event_bus, "publish", _fake_publish)
-    monkeypatch.setattr(status_poller, "cdn_head_probe", _fake_cdn_probe)
     monkeypatch.setattr(status_poller, "flag_modified", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         status_poller,
@@ -775,8 +758,6 @@ async def test_poll_job_statuses_moderation_recheck_filtered_refreshes_credits(
     result = await status_poller.poll_job_statuses({})
 
     assert result["checked"] == 0
-    assert len(provider.calls) == 1
-    assert provider.calls[0]["provider_job_id"] == provider_job_id
     assert asset_model.media_metadata.get("provider_flagged") is True
     assert asset_model.media_metadata.get("provider_flagged_reason") == "post_delivery_moderation"
     assert len(published) == 1
@@ -1042,23 +1023,19 @@ async def test_poll_job_statuses_moderation_recheck_cdn_ok_skips_provider_and_cr
     async def _fake_load_processing_generations(_db):
         return []
 
-    async def _fake_cdn_probe(_url: str):
-        return True
-
-    class _ExplodeProvider:
-        async def check_status(self, **kwargs):
-            raise AssertionError("Provider should not be called when CDN probe returns True")
+    class _OkProvider:
+        async def moderation_recheck(self, **_kw):
+            return ModerationRecheckResult(outcome="ok")
 
     async def _spy_refresh_best_effort(*args, **kwargs):
         refresh_calls.append((args, kwargs))
         return {"web": 1}
 
     monkeypatch.setattr(status_poller, "_load_processing_generation_snapshots", _fake_load_processing_generations)
-    monkeypatch.setattr(status_poller, "cdn_head_probe", _fake_cdn_probe)
     monkeypatch.setattr(
         status_poller,
         "_provider_registry",
-        SimpleNamespace(get=lambda _provider_id: _ExplodeProvider()),
+        SimpleNamespace(get=lambda _provider_id: _OkProvider()),
     )
     monkeypatch.setattr(
         status_poller,
@@ -1124,26 +1101,9 @@ async def test_poll_job_statuses_moderation_recheck_filtered_placeholder_only_st
     async def _fake_publish(*args, **kwargs):
         published.append((args, kwargs))
 
-    async def _fake_cdn_probe(_url: str):
-        return False
-
     class _FakeRecheckProvider:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
-
-        async def check_status(self, *, account, provider_job_id, operation_type):
-            self.calls.append(
-                {
-                    "account_id": getattr(account, "id", None),
-                    "provider_job_id": provider_job_id,
-                    "operation_type": operation_type,
-                }
-            )
-            return SimpleNamespace(
-                status=ProviderStatus.FILTERED,
-                video_url="https://media.pixverse.ai/pixverse-preview/mp4/media/default.mp4",
-                metadata={"has_retrievable_media_url": False},
-            )
+        async def moderation_recheck(self, **_kw):
+            return ModerationRecheckResult(outcome="flagged", should_refresh_credits=True)
 
     provider = _FakeRecheckProvider()
 
@@ -1153,7 +1113,6 @@ async def test_poll_job_statuses_moderation_recheck_filtered_placeholder_only_st
 
     monkeypatch.setattr(status_poller, "_load_processing_generation_snapshots", _fake_load_processing_generations)
     monkeypatch.setattr(status_poller.event_bus, "publish", _fake_publish)
-    monkeypatch.setattr(status_poller, "cdn_head_probe", _fake_cdn_probe)
     monkeypatch.setattr(status_poller, "flag_modified", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         status_poller,
@@ -1179,8 +1138,6 @@ async def test_poll_job_statuses_moderation_recheck_filtered_placeholder_only_st
     result = await status_poller.poll_job_statuses({})
 
     assert result["checked"] == 0
-    assert len(provider.calls) == 1
-    assert provider.calls[0]["provider_job_id"] == provider_job_id
     assert asset_model.media_metadata.get("provider_flagged") is True
     assert asset_model.media_metadata.get("provider_flagged_reason") == "post_delivery_moderation"
     assert len(published) == 1
@@ -1225,16 +1182,9 @@ async def test_poll_job_statuses_moderation_recheck_already_flagged_still_refres
     async def _fake_publish(*args, **kwargs):
         published.append((args, kwargs))
 
-    async def _fake_cdn_probe(_url: str):
-        return False
-
     class _FakeRecheckProvider:
-        async def check_status(self, *, account, provider_job_id, operation_type):
-            return SimpleNamespace(
-                status=ProviderStatus.FILTERED,
-                video_url="https://media.pixverse.ai/pixverse/mp4/media/web/ori/recheck-flagged.mp4",
-                metadata={"has_retrievable_media_url": True},
-            )
+        async def moderation_recheck(self, **_kw):
+            return ModerationRecheckResult(outcome="flagged", should_refresh_credits=True)
 
     async def _spy_refresh_best_effort(*args, **kwargs):
         refresh_calls.append((args, kwargs))
@@ -1242,7 +1192,6 @@ async def test_poll_job_statuses_moderation_recheck_already_flagged_still_refres
 
     monkeypatch.setattr(status_poller, "_load_processing_generation_snapshots", _fake_load_processing_generations)
     monkeypatch.setattr(status_poller.event_bus, "publish", _fake_publish)
-    monkeypatch.setattr(status_poller, "cdn_head_probe", _fake_cdn_probe)
     monkeypatch.setattr(
         status_poller,
         "_provider_registry",
@@ -1276,9 +1225,10 @@ async def test_poll_job_statuses_moderation_recheck_already_flagged_still_refres
 
 
 @pytest.mark.asyncio
-async def test_poll_job_statuses_moderation_recheck_filtered_provider_url_retrievable_triggers_flag_and_refresh(
+async def test_poll_job_statuses_moderation_recheck_filtered_triggers_flag_and_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Flagged recheck on an unflagged asset stamps provider_flagged and refreshes credits."""
     _reset_fakes()
     asset_id = 9606
     account_id = 6606
@@ -1287,7 +1237,7 @@ async def test_poll_job_statuses_moderation_recheck_filtered_provider_url_retrie
 
     asset_model = SimpleNamespace(
         id=asset_id,
-        remote_url="https://media.pixverse.ai/pixverse-preview/mp4/media/default.mp4",
+        remote_url="https://media.pixverse.ai/pixverse/mp4/media/web/ori/video.mp4",
         media_metadata={},
         user_id=333,
     )
@@ -1308,16 +1258,9 @@ async def test_poll_job_statuses_moderation_recheck_filtered_provider_url_retrie
     async def _fake_publish(*args, **kwargs):
         published.append((args, kwargs))
 
-    async def _fake_cdn_probe(_url: str):
-        return False
-
     class _FakeRecheckProvider:
-        async def check_status(self, *, account, provider_job_id, operation_type):
-            return SimpleNamespace(
-                status=ProviderStatus.FILTERED,
-                video_url="https://media.pixverse.ai/pixverse/mp4/media/web/ori/retrievable-from-provider.mp4",
-                metadata={"has_retrievable_media_url": True},
-            )
+        async def moderation_recheck(self, **_kw):
+            return ModerationRecheckResult(outcome="flagged", should_refresh_credits=True)
 
     async def _spy_refresh_best_effort(*args, **kwargs):
         refresh_calls.append((args, kwargs))
@@ -1325,7 +1268,6 @@ async def test_poll_job_statuses_moderation_recheck_filtered_provider_url_retrie
 
     monkeypatch.setattr(status_poller, "_load_processing_generation_snapshots", _fake_load_processing_generations)
     monkeypatch.setattr(status_poller.event_bus, "publish", _fake_publish)
-    monkeypatch.setattr(status_poller, "cdn_head_probe", _fake_cdn_probe)
     monkeypatch.setattr(status_poller, "flag_modified", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         status_poller,

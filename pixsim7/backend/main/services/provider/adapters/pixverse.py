@@ -97,6 +97,9 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_composition import
 from pixsim7.backend.main.services.provider.adapters.pixverse_metadata import (
     PixverseMetadataMixin,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_moderation import (
+    PixverseModerationMixin,
+)
 
 
 class PixverseProvider(
@@ -106,6 +109,7 @@ class PixverseProvider(
     PixverseStatusMixin,
     PixverseOperationsMixin,
     PixverseMetadataMixin,
+    PixverseModerationMixin,
     Provider
 ):
     """

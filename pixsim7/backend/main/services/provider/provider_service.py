@@ -36,7 +36,6 @@ from pixsim7.backend.main.shared.composition_assets import coerce_composition_as
 from pixsim7.backend.main.services.provider.provider_logging import (
     summarize_provider_params_for_log,
 )
-
 logger = configure_logging("provider_service").bind(channel="pipeline")
 
 
@@ -1008,14 +1007,8 @@ class ProviderService:
         existing_provider_id = submission.response.get("provider_video_id") or submission.response.get("provider_asset_id")
 
         video_url = status_result.video_url or existing_video_url
-        is_pixverse_video_submission = (
-            submission.provider_id == "pixverse"
-            and operation_type in get_video_operations()
-        )
-        # PixVerse video first-frame thumbnails can be temporary grey placeholders
-        # with incorrect aspect ratios. Prefer no provider thumbnail over persisting
-        # a fragile placeholder into submission/asset state.
-        if is_pixverse_video_submission:
+        # Provider signals that its thumbnail is unreliable (e.g. Pixverse grey placeholder).
+        if status_result.suppress_thumbnail:
             thumbnail_url = None
         else:
             thumbnail_url = status_result.thumbnail_url or existing_thumbnail
@@ -1052,11 +1045,59 @@ class ProviderService:
         merged_metadata = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
         if status_result.metadata:
             merged_metadata.update(status_result.metadata)
+        # Provider stamps has_retrievable_media_url at check_status time.
+        # Also honour the flag from a PREVIOUS poll — the current response may
+        # have swapped the real CDN URL for a placeholder (e.g. Pixverse
+        # FILTERED), but the earlier-stored URL can still serve the rendered
+        # video.  Read the stored flag BEFORE merging current metadata
+        # (which would overwrite it with False).
+        _prev_had_retrievable = bool(
+            isinstance(existing_metadata, dict)
+            and existing_metadata.get("has_retrievable_media_url")
+        )
+        has_retrievable_media_url = status_result.has_retrievable_media_url or _prev_had_retrievable
+        if has_retrievable_media_url:
+            merged_metadata["has_retrievable_media_url"] = True
+
+        # Normalize the returned status object so downstream poll logic can use
+        # URL values that were preserved from earlier polls.
+        status_result.video_url = video_url
+        status_result.thumbnail_url = thumbnail_url
+        status_result.provider_video_id = provider_video_id
+        status_result.metadata = merged_metadata
+
+        # Provider has a real CDN URL while status is still non-terminal — treat
+        # as completed so poll loops stop once we have a fetchable asset.
+        # Require dimensions > 0: Pixverse pre-allocates a CDN path at
+        # creation (status 10, 0×0) before the video is rendered.  That URL
+        # 404s and must not trigger early-CDN promotion.
+        _has_rendered_dimensions = bool(status_result.width and status_result.height)
+        if (
+            has_retrievable_media_url
+            and _has_rendered_dimensions
+            and status_result.status in {ProviderStatus.PROCESSING, ProviderStatus.FILTERED}
+        ):
+            original_status = status_result.status
+            status_result.status = ProviderStatus.COMPLETED
+            status_result.metadata["video_early_cdn_terminal"] = True
+            status_result.metadata["video_original_status"] = original_status.value
+            logger.info(
+                "pixverse_video_early_cdn_promoted",
+                submission_id=submission.id,
+                provider_job_id=submission.provider_job_id,
+                operation_type=operation_type.value if operation_type else None,
+                original_status=original_status.value,
+                video_url_preview=str(video_url)[:120],
+            )
+
         if merged_metadata:
             updated_response["metadata"] = merged_metadata
             provider_status = merged_metadata.get("provider_status")
             if provider_status is not None:
                 updated_response["provider_status"] = provider_status
+
+        # Status may have been promoted above after deriving merged metadata.
+        updated_response["status"] = status_result.status.value
 
         # Assign new dict to trigger SQLAlchemy change detection for JSON column
         submission.response = updated_response

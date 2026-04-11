@@ -18,10 +18,119 @@ from pixsim7.backend.main.services.provider.provider_logging import (
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as _normalize_pixverse_url,
+    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
+    has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
 )
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
 logger = get_logger()
+
+
+def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus":
+    """
+    Canonical Pixverse status → ProviderStatus mapper.
+
+    The integer status-code spaces for images and videos OVERLAP but differ:
+
+        Code │ Video meaning             │ Image meaning
+        ─────┼───────────────────────────┼──────────────────────────────────
+          1  │ completed                 │ completed
+         10  │ completed (if dims > 0)   │ processing  ← "early queue"
+            │ processing (if dims == 0) │
+          5  │ processing     │ processing
+          0  │ processing     │ processing
+          2  │ processing     │ processing
+          3  │ filtered       │ (not documented — treat as processing)
+          7  │ filtered       │ filtered
+          4  │ failed         │ (not documented — treat as processing)
+         -1  │ failed         │ (not documented — treat as processing)
+          8  │ failed         │ failed
+          9  │ failed         │ failed
+
+    Image codes are sourced from pixverse-py ``api/image.py:_map_image_status``.
+    Always pass ``is_image=True`` for image payloads to avoid status-10 false
+    completions that create grey-card asset rows with empty CDN URLs.
+    """
+    # --- Extract raw status value ---
+    if isinstance(payload, dict):
+        if is_image:
+            # Prefer image_status; the SDK also sets 'status' as a normalized
+            # string — fall back to it so we stay correct even if future SDK
+            # versions stop exposing the raw int.
+            raw = (
+                payload.get("image_status")
+                if payload.get("image_status") is not None
+                else payload.get("status")
+            )
+        else:
+            raw = (
+                payload.get("video_status")
+                or payload.get("image_status")
+                or payload.get("status")
+            )
+    else:
+        attr = "image_status" if is_image else "video_status"
+        raw = getattr(payload, attr, None)
+        if raw is None:
+            raw = getattr(payload, "status", None)
+
+    if raw is None:
+        return ProviderStatus.PROCESSING
+
+    # --- String codes (SDK may have already normalized the raw int) ---
+    if isinstance(raw, str):
+        token = raw.lower()
+        if token in ("completed", "success"):
+            return ProviderStatus.COMPLETED
+        if token in ("processing", "pending", "queued"):
+            return ProviderStatus.PROCESSING
+        if token == "failed":
+            return ProviderStatus.FAILED
+        if token in ("filtered", "rejected"):
+            return ProviderStatus.FILTERED
+        if token == "cancelled":
+            return ProviderStatus.CANCELLED
+        return ProviderStatus.PROCESSING
+
+    # --- Integer codes ---
+    if isinstance(raw, int):
+        if is_image:
+            # Mirror pixverse-py api/image.py:_map_image_status exactly.
+            if raw == 1:
+                return ProviderStatus.COMPLETED
+            if raw in (5, 10, 0, 2):   # 10 = early-queue, NOT completed
+                return ProviderStatus.PROCESSING
+            if raw == 7:
+                return ProviderStatus.FILTERED
+            if raw in (8, 9):
+                return ProviderStatus.FAILED
+        else:
+            # Cross-reference: pixverse-py api/client.py get_video() inline mapping.
+            # SDK documents 1,10=completed; 5=processing; 7=filtered; 8,9=failed.
+            # We additionally handle -1,4→FAILED and 3→FILTERED (observed in prod,
+            # not in SDK docs) and 2→PROCESSING (same reason).
+            if raw == 1:
+                return ProviderStatus.COMPLETED
+            if raw == 10:
+                # Pixverse returns status=10 on the initial video entry right
+                # after creation, together with a pre-allocated CDN path that
+                # 404s.  This is NOT a real completion — the video hasn't been
+                # rendered yet.  Real completions populate output_width/height;
+                # the false-10 leaves them at 0.  Same behaviour the image path
+                # already handles (10 → PROCESSING for images).
+                w = _get_field(payload, "output_width", "width", default=0)
+                h = _get_field(payload, "output_height", "height", default=0)
+                if w and h:
+                    return ProviderStatus.COMPLETED
+                return ProviderStatus.PROCESSING
+            if raw in (0, 2, 5):
+                return ProviderStatus.PROCESSING
+            if raw in (-1, 4, 8, 9):
+                return ProviderStatus.FAILED
+            if raw in (3, 7):
+                return ProviderStatus.FILTERED
+
+    return ProviderStatus.PROCESSING
 
 
 def _get_field(obj, *keys, default=None):
@@ -47,6 +156,20 @@ def _is_invalid_media_error(error: Exception) -> bool:
     return "provided media is invalid" in message or "invalid media" in message
 
 
+def _build_video_media_url_signals(
+    video_url: Optional[str],
+    thumbnail_url: Optional[str],
+) -> Dict[str, bool]:
+    """Build canonical Pixverse media URL flags used across status paths."""
+    video_url_is_placeholder = _is_pixverse_placeholder_url(video_url)
+    thumbnail_url_is_placeholder = _is_pixverse_placeholder_url(thumbnail_url)
+    return {
+        "video_url_is_placeholder": video_url_is_placeholder,
+        "thumbnail_url_is_placeholder": thumbnail_url_is_placeholder,
+        "has_retrievable_media_url": _has_retrievable_pixverse_media_url(video_url),
+    }
+
+
 class PixverseStatusMixin:
     """Mixin for Pixverse video/image status checking and status mapping."""
 
@@ -55,60 +178,12 @@ class PixverseStatusMixin:
     # ---------------------------------------------------------------
 
     def _map_pixverse_status(self, pv_video) -> ProviderStatus:
-        """
-        Map Pixverse status to universal ProviderStatus.
+        """Video payload wrapper — see module-level ``_map_pixverse_status_for``."""
+        return _map_pixverse_status_for(pv_video, is_image=False)
 
-        Works for both video and image payloads (dicts or SDK objects).
-        """
-        # Get status from dict or object
-        if isinstance(pv_video, dict):
-            status = (
-                pv_video.get('video_status')
-                or pv_video.get('image_status')
-                or pv_video.get('status')
-            )
-        elif hasattr(pv_video, 'video_status'):
-            status = pv_video.video_status
-        elif hasattr(pv_video, 'image_status'):
-            status = pv_video.image_status
-        elif hasattr(pv_video, 'status'):
-            status = pv_video.status
-        else:
-            return ProviderStatus.PROCESSING
-
-        # Integer status codes (aligned with pixverse-py SDK):
-        # 1, 10 = completed
-        # 0, 2, 5 = processing (5 seen on extend and some video jobs)
-        # -1, 4, 8, 9 = failed
-        # 3, 7 = filtered (content moderation)
-        if isinstance(status, int):
-            if status in (1, 10):
-                return ProviderStatus.COMPLETED
-            elif status in (0, 2, 5):
-                return ProviderStatus.PROCESSING
-            elif status in (-1, 4, 8, 9):
-                return ProviderStatus.FAILED
-            elif status in (3, 7):
-                return ProviderStatus.FILTERED
-            else:
-                return ProviderStatus.PROCESSING
-
-        # String status codes
-        if isinstance(status, str):
-            status = status.lower()
-            if status in ['completed', 'success']:
-                return ProviderStatus.COMPLETED
-            elif status in ['processing', 'pending', 'queued']:
-                return ProviderStatus.PROCESSING
-            elif status == 'failed':
-                return ProviderStatus.FAILED
-            elif status in ['filtered', 'rejected']:
-                return ProviderStatus.FILTERED
-            elif status == 'cancelled':
-                return ProviderStatus.CANCELLED
-
-        # Default to processing until terminal state
-        return ProviderStatus.PROCESSING
+    def _map_pixverse_image_status(self, pv_image) -> ProviderStatus:
+        """Image payload wrapper — see module-level ``_map_pixverse_status_for``."""
+        return _map_pixverse_status_for(pv_image, is_image=True)
 
     # ---------------------------------------------------------------
     # Main status check
@@ -164,20 +239,33 @@ class PixverseStatusMixin:
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
                     thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
+                    video_url = _normalize_pixverse_url(video_url_raw) if video_url_raw else None
+                    thumb_url = _normalize_pixverse_url(thumb_raw) if thumb_raw else None
+                    # Null out placeholder URLs so the provider_service URL
+                    # merge falls through to a real URL stored from an earlier
+                    # poll (if any).
+                    if _is_pixverse_placeholder_url(video_url):
+                        video_url = None
+                    if _is_pixverse_placeholder_url(thumb_url):
+                        thumb_url = None
+                    media_url_signals = _build_video_media_url_signals(video_url, thumb_url)
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=_normalize_pixverse_url(video_url_raw) if video_url_raw else None,
-                        thumbnail_url=_normalize_pixverse_url(thumb_raw) if thumb_raw else None,
+                        video_url=video_url,
+                        thumbnail_url=thumb_url,
                         width=_get_field(video, "output_width", "width"),
                         height=_get_field(video, "output_height", "height"),
                         duration_sec=_get_field(video, "video_duration", "duration"),
                         provider_video_id=str(raw_video_id or video_id),
+                        suppress_thumbnail=True,
+                        has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
                         metadata={
                             "provider_status": raw_status,
                             "source": "list_fallback",
                             "matched": True,
                             "page": page,
+                            **media_url_signals,
                         },
                     )
 
@@ -204,7 +292,7 @@ class PixverseStatusMixin:
                     image_url = (
                         _normalize_pixverse_url(image_url_raw) if image_url_raw else None
                     )
-                    status = self._map_pixverse_status(result)
+                    status = self._map_pixverse_image_status(result)
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.debug(
@@ -250,7 +338,12 @@ class PixverseStatusMixin:
                     video = await client.get_video(
                         video_id=provider_job_id,
                     )
-                    status = self._map_pixverse_status(video)
+
+                    # The Video pydantic model normalizes video_status int → status string
+                    # and drops raw fields like output_width/output_height.  Use video.metadata
+                    # (the raw API dict) to read the original values.
+                    raw_data = getattr(video, "metadata", None) or {}
+                    status = _map_pixverse_status_for(raw_data, is_image=False)
 
                     # get_video's WebAPI path returns "processing" if the
                     # message notification was consumed.  Fall back to a
@@ -267,9 +360,16 @@ class PixverseStatusMixin:
                         if (list_result.metadata or {}).get("matched"):
                             return list_result
 
-                    raw_video_url = _get_field(video, "url")
-                    raw_thumb = _get_field(video, "first_frame", "thumbnail")
-                    raw_status = _get_field(video, "video_status", "status")
+                    raw_video_url = _get_field(raw_data, "url", "video_url")
+                    raw_thumb = _get_field(raw_data, "first_frame", "thumbnail")
+                    raw_status = _get_field(raw_data, "video_status", "status")
+                    video_url = _normalize_pixverse_url(raw_video_url)
+                    thumbnail_url = _normalize_pixverse_url(raw_thumb)
+                    if _is_pixverse_placeholder_url(video_url):
+                        video_url = None
+                    if _is_pixverse_placeholder_url(thumbnail_url):
+                        thumbnail_url = None
+                    media_url_signals = _build_video_media_url_signals(video_url, thumbnail_url)
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.debug(
@@ -277,21 +377,29 @@ class PixverseStatusMixin:
                             provider_job_id=provider_job_id,
                             status=str(status),
                             raw_status=raw_status,
-                            has_video_url=bool(raw_video_url),
+                            has_video_url=bool(video_url),
+                            has_retrievable_video_url=media_url_signals["has_retrievable_media_url"],
+                            video_url_is_placeholder=media_url_signals["video_url_is_placeholder"],
                             video_url_preview=str(raw_video_url)[:120] if raw_video_url else None,
-                            has_thumbnail=bool(raw_thumb),
+                            has_thumbnail=bool(thumbnail_url),
+                            thumbnail_is_placeholder=media_url_signals["thumbnail_url_is_placeholder"],
                             thumbnail_preview=str(raw_thumb)[:120] if raw_thumb else None,
                         )
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=_normalize_pixverse_url(raw_video_url),
-                        thumbnail_url=_normalize_pixverse_url(raw_thumb),
-                        width=_get_field(video, "output_width", "width"),
-                        height=_get_field(video, "output_height", "height"),
-                        duration_sec=_get_field(video, "video_duration", "duration"),
-                        provider_video_id=str(_get_field(video, "video_id", "id")),
-                        metadata={"provider_status": raw_status},
+                        video_url=video_url,
+                        thumbnail_url=thumbnail_url,
+                        width=_get_field(raw_data, "output_width", "width"),
+                        height=_get_field(raw_data, "output_height", "height"),
+                        duration_sec=_get_field(raw_data, "video_duration", "duration"),
+                        provider_video_id=str(_get_field(raw_data, "video_id", "id")),
+                        suppress_thumbnail=True,
+                        has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
+                        metadata={
+                            "provider_status": raw_status,
+                            **media_url_signals,
+                        },
                     )
 
             except Exception as exc:
@@ -380,21 +488,27 @@ class PixverseStatusMixin:
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
                     thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
+                    video_url = _normalize_pixverse_url(video_url_raw) if video_url_raw else None
+                    thumb_url = _normalize_pixverse_url(thumb_raw) if thumb_raw else None
+                    media_url_signals = _build_video_media_url_signals(video_url, thumb_url)
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=_normalize_pixverse_url(video_url_raw) if video_url_raw else None,
-                        thumbnail_url=_normalize_pixverse_url(thumb_raw) if thumb_raw else None,
+                        video_url=video_url,
+                        thumbnail_url=thumb_url,
                         width=_get_field(video, "output_width", "width"),
                         height=_get_field(video, "output_height", "height"),
                         duration_sec=_get_field(video, "video_duration", "duration"),
                         provider_video_id=str(raw_video_id or video_id),
+                        suppress_thumbnail=True,
+                        has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
                         metadata={
                             "provider_status": raw_status,
                             "is_image": False,
                             "source": "list_fallback",
                             "matched": True,
                             "page": page,
+                            **media_url_signals,
                         },
                     )
 
@@ -446,7 +560,7 @@ class PixverseStatusMixin:
                 for img in images:
                     if str(img.get("image_id")) == str(image_id):
                         image_url = img.get("image_url") or img.get("url")
-                        status = self._map_pixverse_status(img)
+                        status = self._map_pixverse_image_status(img)
                         raw_status = img.get("image_status") or img.get("status") or 0
 
                         return ProviderStatusResult(
@@ -512,7 +626,7 @@ class PixverseStatusMixin:
                     continue
                 image_id = str(raw_image_id)
                 image_url = img.get("image_url") or img.get("url")
-                status = self._map_pixverse_status(img)
+                status = self._map_pixverse_image_status(img)
                 raw_status = img.get("image_status") or img.get("status") or 0
 
                 results[image_id] = ProviderStatusResult(
