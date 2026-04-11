@@ -30,6 +30,7 @@ from pixsim7.backend.main.workers.status_poller_maintenance import (
     requeue_pending_generations,
     reconcile_account_counters,
     recover_stale_processing_generations,
+    refresh_stale_account_credits,
 )
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
@@ -369,6 +370,7 @@ class WorkerSettings:
         poll_job_statuses,
         requeue_pending_generations,
         requeue_pending_analyses,
+        refresh_stale_account_credits,
         cleanup_old_logs,
         reload_logging_config,
     ]
@@ -405,6 +407,14 @@ class WorkerSettings:
             reconcile_account_counters,
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             second={5},
+            run_at_startup=False,
+        ),
+        # Refresh stale account credits every 10 minutes
+        # Catches idle accounts with expired sessions that the poller misses
+        cron(
+            refresh_stale_account_credits,
+            minute={3, 13, 23, 33, 43, 53},
+            second={30},
             run_at_startup=False,
         ),
         # Purge old log entries daily at 03:00

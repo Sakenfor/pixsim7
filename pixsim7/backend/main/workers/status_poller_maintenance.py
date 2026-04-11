@@ -1,7 +1,8 @@
 """
 Status poller maintenance tasks
 
-Startup recovery, account counter reconciliation, and stuck-PENDING requeue.
+Startup recovery, account counter reconciliation, stuck-PENDING requeue,
+and periodic credit refresh sweep.
 These run on worker lifecycle events or periodic cron, not inside the poll loop.
 """
 from datetime import datetime, timedelta, timezone
@@ -404,6 +405,167 @@ async def requeue_pending_generations(ctx: dict) -> dict:
         except Exception as e:
             logger.error("requeue_error", error=str(e), exc_info=True)
             raise
+
+        finally:
+            await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Periodic credit refresh sweep
+# ---------------------------------------------------------------------------
+
+# Accounts whose credits haven't been synced within this window are eligible
+# for a maintenance refresh.  Matches the cron interval (10 min) so every
+# account gets refreshed at most once per cycle.
+_CREDIT_STALE_THRESHOLD_SECONDS = 10 * 60  # 10 minutes
+
+# Cap how many accounts we refresh per run to avoid long-running tasks and
+# to let the built-in per-account reauth cooldowns (5 min) provide backpressure.
+_MAX_CREDIT_REFRESH_PER_RUN = 15
+
+
+async def refresh_stale_account_credits(ctx: dict) -> dict:
+    """
+    Periodic sweep: refresh credits for accounts with stale sync timestamps.
+
+    Finds active Pixverse accounts whose ``credits_synced_at`` is older than
+    the stale threshold (or never set) and refreshes them via the provider's
+    ``get_credits()`` with ``retry_on_session_error=True``.  This triggers
+    auto-reauth for expired sessions (error 10005 / 10003).
+
+    The normal status poller only refreshes credits on generation state
+    transitions — this task catches idle accounts that have no recent
+    generations but whose sessions may have expired, leaving stale credit
+    values in the DB.
+    """
+    from pixsim7.backend.main.services.account import AccountService
+    from pixsim7.backend.main.domain.providers.registry import registry
+
+    refreshed = 0
+    skipped = 0
+    failed = 0
+    errors = 0
+
+    async for db in get_db():
+        try:
+            account_service = AccountService(db)
+
+            # Load all Pixverse accounts that are ACTIVE or EXHAUSTED.
+            result = await db.execute(
+                select(ProviderAccount).where(
+                    ProviderAccount.provider_id == "pixverse",
+                    ProviderAccount.status.in_([
+                        AccountStatus.ACTIVE,
+                        AccountStatus.EXHAUSTED,
+                    ]),
+                )
+            )
+            accounts = list(result.scalars().all())
+
+            if not accounts:
+                logger.debug("credit_sweep_idle", msg="No eligible Pixverse accounts")
+                return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
+
+            now = datetime.now(timezone.utc)
+            stale_threshold = now - timedelta(seconds=_CREDIT_STALE_THRESHOLD_SECONDS)
+            provider = registry.get("pixverse")
+
+            if not hasattr(provider, "get_credits"):
+                logger.warning("credit_sweep_no_get_credits", provider_id="pixverse")
+                return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 0}
+
+            processed = 0
+            for account in accounts:
+                if processed >= _MAX_CREDIT_REFRESH_PER_RUN:
+                    skipped += len(accounts) - processed
+                    break
+
+                # Check if recently synced
+                metadata = account.provider_metadata or {}
+                synced_at_raw = metadata.get("credits_synced_at")
+                if synced_at_raw:
+                    try:
+                        synced_at = datetime.fromisoformat(
+                            synced_at_raw.replace("Z", "+00:00")
+                        )
+                        if synced_at > stale_threshold:
+                            skipped += 1
+                            processed += 1
+                            continue
+                    except (ValueError, AttributeError):
+                        pass  # Invalid timestamp — treat as stale
+
+                processed += 1
+                try:
+                    credits_data = await provider.get_credits(
+                        account, retry_on_session_error=True, force_refresh=True,
+                    )
+
+                    if credits_data:
+                        valid_credit_types = set()
+                        if hasattr(provider, "get_credit_types"):
+                            valid_credit_types = set(provider.get_credit_types())
+                        else:
+                            valid_credit_types = {"web", "openapi"}
+
+                        for credit_type, amount in credits_data.items():
+                            if credit_type in valid_credit_types:
+                                try:
+                                    await account_service.set_credit(
+                                        account.id, credit_type, int(amount)
+                                    )
+                                except Exception:
+                                    pass  # set_credit logs internally
+
+                        # Stamp sync timestamp
+                        metadata = account.provider_metadata or {}
+                        metadata["credits_synced_at"] = now.isoformat()
+                        account.provider_metadata = {**metadata}
+                        await db.commit()
+
+                        refreshed += 1
+                        logger.info(
+                            "credit_sweep_refreshed",
+                            account_id=account.id,
+                            email=account.email,
+                            credits={
+                                k: v for k, v in credits_data.items()
+                                if k in valid_credit_types
+                            },
+                        )
+                    else:
+                        # get_credits returned empty (timeout, etc.) — don't stamp
+                        failed += 1
+                        logger.debug(
+                            "credit_sweep_empty",
+                            account_id=account.id,
+                            email=account.email,
+                        )
+
+                except Exception as exc:
+                    await db.rollback()
+                    failed += 1
+                    errors += 1
+                    logger.warning(
+                        "credit_sweep_error",
+                        account_id=account.id,
+                        email=account.email,
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                    )
+
+            stats = {
+                "refreshed": refreshed,
+                "skipped": skipped,
+                "failed": failed,
+                "errors": errors,
+            }
+            logger.info("credit_sweep_complete", total=len(accounts), **stats)
+            return stats
+
+        except Exception as e:
+            logger.error("credit_sweep_fatal", error=str(e), exc_info=True)
+            return {"refreshed": 0, "skipped": 0, "failed": 0, "errors": 1}
 
         finally:
             await db.close()

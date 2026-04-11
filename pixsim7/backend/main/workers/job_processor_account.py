@@ -162,6 +162,8 @@ async def refresh_account_credits(
     account: ProviderAccount,
     account_service: AccountService,
     gen_logger,
+    *,
+    force_refresh: bool = True,
 ) -> dict:
     """
     Refresh credits for an account from the provider.
@@ -169,6 +171,13 @@ async def refresh_account_credits(
     Returns dict with credit amounts, or empty dict on failure.
     Credit types are determined dynamically from the provider's manifest/adapter
     via get_credit_types() instead of being hardcoded.
+
+    Args:
+        force_refresh: Force provider to recalculate credits instead of returning
+            cached values.  Defaults to True because this function is called on
+            generation state transitions (completion, failure, content filter)
+            where Pixverse may have just issued a refund that isn't reflected in
+            its cache yet.
     """
     from pixsim7.backend.main.domain.providers.registry import registry
 
@@ -177,7 +186,9 @@ async def refresh_account_credits(
 
         # Use get_credits (fast, no ad-task lookup)
         if hasattr(provider, 'get_credits'):
-            credits_data = await provider.get_credits(account, retry_on_session_error=False)
+            credits_data = await provider.get_credits(
+                account, retry_on_session_error=True, force_refresh=force_refresh,
+            )
         else:
             # Provider has no remote credit-fetch method (e.g. web-API-replay
             # providers like Remaker).  Fall back to DB-stored credits so the
@@ -213,6 +224,12 @@ async def refresh_account_credits(
                 provider_id=account.provider_id,
                 extra={"credits": filtered_credits},
             )
+
+            # Stamp sync timestamp so maintenance sweeps skip recently-refreshed accounts
+            if filtered_credits:
+                metadata = account.provider_metadata or {}
+                metadata["credits_synced_at"] = datetime.now(timezone.utc).isoformat()
+                account.provider_metadata = {**metadata}  # reassign for SQLAlchemy change detection
 
         return filtered_credits
 
