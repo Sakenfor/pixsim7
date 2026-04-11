@@ -11,6 +11,7 @@ import type { DockPosition, RetractedMode } from '@features/docks/stores';
 
 import {
   REVEAL_STRIP_THRESHOLD,
+  REVEAL_DWELL_MS,
   TOOLBAR_HEIGHT,
   LEAVE_BUFFER_THRESHOLD,
   KEYBOARD_RESIZE_STEP,
@@ -144,17 +145,26 @@ export function useDockBehavior({
     return () => node.removeEventListener('mouseleave', onMouseLeave);
   }, [pinned, setOpen, dockPosition, retractedMode, dockRef]);
 
-  // Reveal strip hover to open (disabled for floating mode)
+  // Reveal strip hover to open (disabled for floating mode).
+  // Uses a dwell timer so quick mouse pass-bys don't trigger open.
   useEffect(() => {
     if (dockPosition === 'floating') return;
 
-    // Keep reveal activation on a thin edge strip even in peek mode so
-    // toolbar controls remain clickable while retracted.
     const threshold = REVEAL_STRIP_THRESHOLD;
+    let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function clearDwell() {
+      if (dwellTimer) {
+        clearTimeout(dwellTimer);
+        dwellTimer = null;
+      }
+    }
 
     const onMove = throttle((e: MouseEvent) => {
-      // Check ref to avoid re-creating listener
-      if (openRef.current) return;
+      if (openRef.current) {
+        clearDwell();
+        return;
+      }
 
       const node = dockRef.current;
       if (!node) return;
@@ -169,10 +179,12 @@ export function useDockBehavior({
       if (dockPosition === 'left' && e.clientX <= threshold) nearEdge = true;
       if (dockPosition === 'right' && e.clientX >= winW - threshold) nearEdge = true;
 
-      if (!nearEdge) return;
+      if (!nearEdge) {
+        clearDwell();
+        return;
+      }
 
       // Check if mouse is actually over the dock element's bounds
-      // (this accounts for width reduction when other panels are open)
       const rect = node.getBoundingClientRect();
       const isOverDock =
         e.clientX >= rect.left &&
@@ -180,11 +192,25 @@ export function useDockBehavior({
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom;
 
-      if (isOverDock) setOpen(true);
+      if (!isOverDock) {
+        clearDwell();
+        return;
+      }
+
+      // Start dwell timer if not already running
+      if (!dwellTimer) {
+        dwellTimer = setTimeout(() => {
+          dwellTimer = null;
+          if (!openRef.current) setOpen(true);
+        }, REVEAL_DWELL_MS);
+      }
     }, THROTTLE.mousemove);
 
     window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      clearDwell();
+    };
   }, [setOpen, dockPosition, retractedMode, dockRef]);
 
   // Keyboard resize support

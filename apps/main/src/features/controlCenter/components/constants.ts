@@ -51,6 +51,9 @@ export const ANIMATION = {
   hoverDelay: 200,
 } as const;
 
+/** How long the cursor must dwell on the reveal strip before the dock opens (ms) */
+export const REVEAL_DWELL_MS = 300;
+
 /** Throttle delays (ms) */
 export const THROTTLE = {
   mousemove: 16, // ~60fps

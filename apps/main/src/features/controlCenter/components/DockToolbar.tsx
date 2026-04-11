@@ -7,9 +7,9 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { ExpandableButtonGroup, useOrientation } from '@pixsim7/shared.ui';
+import { ExpandableButtonGroup, Popover, useOrientation } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -92,7 +92,7 @@ export function DockToolbar({
 
   // Dropdown state
   const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Store actions for inline settings
   const triggerDockLayoutReset = useDockUiStore((s) => s.triggerDockLayoutReset);
@@ -124,18 +124,11 @@ export function DockToolbar({
 
   const { isVertical } = useOrientation();
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-    if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showDropdown]);
+  // Popover placement based on dock position
+  const menuPlacement = useMemo(() => {
+    if (isVertical) return dockPosition === 'right' ? 'left' as const : 'right' as const;
+    return 'bottom' as const;
+  }, [isVertical, dockPosition]);
 
   return (
     <div className={clsx(
@@ -145,8 +138,9 @@ export function DockToolbar({
         : 'gap-2 border-b px-3 py-1.5 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90'
     )}>
       {/* Title with dropdown */}
-      <div className="relative" ref={dropdownRef}>
+      <div className="relative">
         <button
+          ref={triggerRef}
           onClick={() => setShowDropdown(!showDropdown)}
           className={clsx(
             'hover:opacity-80 transition-opacity flex items-center',
@@ -166,82 +160,84 @@ export function DockToolbar({
           )}
         </button>
 
-        {/* Dropdown menu */}
-        {showDropdown && (
-          <div className={clsx(
-            'absolute w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1 z-50',
-            isVertical
-              ? dockPosition === 'right' ? 'top-0 right-full mr-1' : 'top-0 left-full ml-1'
-              : 'top-full left-0 mt-1'
-          )}>
-            {/* Panel Management Section */}
-            <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-              Panels
-            </div>
-            <button
-              onClick={() => {
-                triggerPanelLayoutReset();
-                setShowDropdown(false);
-              }}
-              className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
-            >
-              <span>🔄</span>
-              <span>Reset Panel Layout</span>
-            </button>
-
-            <div className="border-t border-neutral-200 dark:border-neutral-700 my-1"></div>
-
-            {/* Settings Section */}
-            <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-              Settings
-            </div>
-
-            {/* Retracted Mode */}
-            <div className="px-3 py-1.5">
-              <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">When retracted</div>
-              <div className="flex gap-1">
-                <ToggleButton
-                  active={retractedMode === 'hidden'}
-                  onClick={() => setRetractedMode('hidden')}
-                  label="Hidden"
-                />
-                <ToggleButton
-                  active={retractedMode === 'peek'}
-                  onClick={() => setRetractedMode('peek')}
-                  label="Show toolbar"
-                />
-              </div>
-            </div>
-
-            {/* Layout Behavior */}
-            <div className="px-3 py-1.5">
-              <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">Layout</div>
-              <div className="flex gap-1">
-                <ToggleButton
-                  active={layoutBehavior === 'overlay'}
-                  onClick={() => setLayoutBehavior('overlay')}
-                  label="Overlay"
-                />
-                <ToggleButton
-                  active={layoutBehavior === 'push'}
-                  onClick={() => setLayoutBehavior('push')}
-                  label="Push"
-                />
-              </div>
-            </div>
-
-            {/* Conform to Panels */}
-            <label className="px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700">
-              <input
-                type="checkbox"
-                checked={conformToOtherPanels}
-                onChange={(e) => setConformToOtherPanels(e.target.checked)}
-                className="rounded border-neutral-300 dark:border-neutral-600 text-accent focus:ring-accent"
-              />
-              <span className="text-xs text-neutral-600 dark:text-neutral-300">Conform to panels</span>
-            </label>
+        {/* Dropdown menu — portaled to body so it escapes the CC stacking context */}
+        <Popover
+          anchor={triggerRef.current}
+          placement={menuPlacement}
+          align="start"
+          offset={4}
+          open={showDropdown}
+          onClose={() => setShowDropdown(false)}
+          triggerRef={triggerRef}
+          className="w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1"
+        >
+          {/* Panel Management Section */}
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+            Panels
           </div>
-        )}
+          <button
+            onClick={() => {
+              triggerPanelLayoutReset();
+              setShowDropdown(false);
+            }}
+            className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
+          >
+            <span>🔄</span>
+            <span>Reset Panel Layout</span>
+          </button>
+
+          <div className="border-t border-neutral-200 dark:border-neutral-700 my-1"></div>
+
+          {/* Settings Section */}
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+            Settings
+          </div>
+
+          {/* Retracted Mode */}
+          <div className="px-3 py-1.5">
+            <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">When retracted</div>
+            <div className="flex gap-1">
+              <ToggleButton
+                active={retractedMode === 'hidden'}
+                onClick={() => setRetractedMode('hidden')}
+                label="Hidden"
+              />
+              <ToggleButton
+                active={retractedMode === 'peek'}
+                onClick={() => setRetractedMode('peek')}
+                label="Show toolbar"
+              />
+            </div>
+          </div>
+
+          {/* Layout Behavior */}
+          <div className="px-3 py-1.5">
+            <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">Layout</div>
+            <div className="flex gap-1">
+              <ToggleButton
+                active={layoutBehavior === 'overlay'}
+                onClick={() => setLayoutBehavior('overlay')}
+                label="Overlay"
+              />
+              <ToggleButton
+                active={layoutBehavior === 'push'}
+                onClick={() => setLayoutBehavior('push')}
+                label="Push"
+              />
+            </div>
+          </div>
+
+          {/* Conform to Panels */}
+          <label className="px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700">
+            <input
+              type="checkbox"
+              checked={conformToOtherPanels}
+              onChange={(e) => setConformToOtherPanels(e.target.checked)}
+              className="rounded border-neutral-300 dark:border-neutral-600 text-accent focus:ring-accent"
+            />
+            <span className="text-xs text-neutral-600 dark:text-neutral-300">Conform to panels</span>
+          </label>
+        </Popover>
       </div>
 
       {/* Inline Quick Actions */}

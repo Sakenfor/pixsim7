@@ -177,7 +177,7 @@ export function ControlCenterDock() {
 
   // Position classes (for docked modes) — left/right set via inline style from edge insets
   const positionClasses = clsx(
-    'fixed z-40 select-none overflow-hidden transition-all duration-300 ease-out',
+    'fixed z-40 select-none overflow-hidden transition-[transform,width,height,opacity] duration-300 ease-out',
     {
       'bottom-0': dockPosition === 'bottom',
       'top-0 bottom-0': dockPosition === 'left' || dockPosition === 'right',
