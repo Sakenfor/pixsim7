@@ -490,7 +490,7 @@ export function useAssets(options?: {
       }
       return next;
     });
-  }, [maxItems, dbg]);
+  }, [maxItems]);
   insertAssetSortedRef.current = insertAssetSorted;
 
   const prependAsset = useCallback((response: AssetResponse) => {
