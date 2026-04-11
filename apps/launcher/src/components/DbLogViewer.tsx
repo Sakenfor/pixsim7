@@ -5,14 +5,13 @@
  * Reuses the shared LogLine component for consistent rendering.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Button, Input } from '@pixsim7/shared.ui'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { queryDbLogs, logEntryToLine, type LogEntry, type LogQueryParams } from '../api/dbLogs'
 import {
   getLogMeta, getCompiledFields,
   type LogMeta, type CompiledField, type FilterPreset,
 } from '../api/logMeta'
-import { LogLine } from './log'
+import { LogLine, matchesSearch } from './log'
 
 export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([])
@@ -73,7 +72,9 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
       const params: LogQueryParams = { limit }
       if (level) params.level = level
       if (service) params.service = service
-      if (search) params.search = search
+      // Only send plain search to backend; operator searches (| !) are applied client-side
+      const hasOperators = search.includes('|') || search.includes('!')
+      if (search && !hasOperators) params.search = search
       if (minutes > 0) params.minutes = minutes
       const res = await queryDbLogs(params)
 
@@ -112,7 +113,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     if (autoScroll.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [entries.length])
+  }, [entries.length, search])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -120,12 +121,23 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
     autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
   }, [])
 
+  // Client-side operator search (| !) on rendered lines
+  const displayEntries = useMemo(() => {
+    const hasOperators = search.includes('|') || search.includes('!')
+    if (!hasOperators || !search) return entries
+    return entries.filter((e) => matchesSearch(logEntryToLine(e), search))
+  }, [entries, search])
+
   const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-surface text-gray-100">
       {/* Filter toolbar */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 border-b border-border shrink-0">
+        <button onClick={fetchLogs} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover mr-0.5" title="Refresh">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
+        </button>
+
         {/* Presets dropdown */}
         {filters && filters.presets.length > 0 && (
           <select
@@ -153,9 +165,9 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
           ))}
         </select>
 
-        <Input
+        <input
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..." size="sm" className="w-36"
+          placeholder="Filter…  a | b  for OR" className={`${sel} w-40`}
         />
 
         <div className="flex items-center gap-0.5 text-[10px]">
@@ -182,8 +194,7 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
         </select>
 
         <div className="flex-1" />
-        <span className="text-[10px] text-gray-500">{entries.length}/{total} {loading && '...'}</span>
-        <Button size="xs" variant="secondary" onClick={fetchLogs}>Refresh</Button>
+        <span className="text-[10px] text-gray-500">{displayEntries.length}{displayEntries.length !== entries.length ? `/${entries.length}` : ''}/{total} {loading && '...'}</span>
       </div>
 
       {error && (
@@ -191,12 +202,12 @@ export function DbLogViewer({ onFieldClick }: { onFieldClick?: (name: string, va
       )}
 
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-auto bg-surface">
-        {entries.length === 0 && !loading && (
+        {displayEntries.length === 0 && !loading && (
           <div className="text-gray-500 text-sm text-center py-8">
             {error ? 'Failed to load — is the backend running?' : 'No logs match the current filters'}
           </div>
         )}
-        {entries.map((entry) => (
+        {displayEntries.map((entry) => (
           <LogLine key={entry.id} line={logEntryToLine(entry)} meta={meta} fields={fields}
             onFieldClick={(name, value) => {
               const traceableFields = new Set(['request_id', 'job_id', 'provider_id', 'generation_id', 'user_id', 'submission_id'])

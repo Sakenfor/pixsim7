@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { Button, Input } from '@pixsim7/shared.ui'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
-import { VirtualLogList } from './log'
+import { VirtualLogList, matchesSearch } from './log'
 
 const POLL_INTERVAL = 2000
 
@@ -56,7 +55,6 @@ function discoverFilters(lines: string[]) {
 
 export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const selectedKey = useServicesStore((s) => s.selectedKey)
-  const services = useServicesStore((s) => s.services)
   const { lines, loading, fetchLogs, clearLogs } = useLogsStore()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -93,7 +91,7 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     // Suppress known Docker/Redis noise
     if (NOISE_RE.test(line)) return false
     if (levelFilter && !line.toUpperCase().includes(levelFilter)) return false
-    if (searchFilter && !line.toLowerCase().includes(searchFilter.toLowerCase())) return false
+    if (searchFilter && !matchesSearch(line, searchFilter)) return false
     if (eventFilter) {
       const parsed = parseLine(line)
       const ev = extractEventName(parsed.message ?? '')
@@ -103,7 +101,6 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     return true
   }), [lines, levelFilter, searchFilter, eventFilter, domainFilter])
 
-  const title = services.find((s) => s.key === selectedKey)?.title ?? selectedKey
   const filters = meta?.filters
   const sel = "bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px] focus:border-blue-500 outline-none"
 
@@ -115,7 +112,19 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     <div className="h-full flex flex-col overflow-hidden">
       {/* Filter toolbar */}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border text-[11px] shrink-0 flex-wrap">
-        <span className="text-gray-400 font-medium mr-1">{title}</span>
+        <div className="flex items-center gap-0.5 mr-1">
+          <button onClick={() => setPaused(!paused)} className={`p-1 rounded ${paused ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-surface-hover'}`} title={paused ? 'Resume' : 'Pause'}>
+            {paused
+              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,4 20,12 6,20" /></svg>
+              : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="4" width="4" height="16" /><rect x="15" y="4" width="4" height="16" /></svg>}
+          </button>
+          <button onClick={() => selectedKey && fetchLogs(selectedKey)} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Refresh">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
+          </button>
+          <button onClick={() => selectedKey && clearLogs(selectedKey)} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Clear">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" /></svg>
+          </button>
+        </div>
 
         <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className={sel}>
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
@@ -137,19 +146,13 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
           </select>
         )}
 
-        <Input
+        <input
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Search..." size="sm" className="w-32"
+          placeholder="Filter…  a | b  for OR" className={`${sel} w-36`}
         />
-
-        <Button size="xs" variant={paused ? 'primary' : 'secondary'} className={paused ? 'bg-amber-600 hover:bg-amber-500 text-white' : ''} onClick={() => setPaused(!paused)}>
-          {paused ? 'Resume' : 'Pause'}
-        </Button>
 
         <div className="flex-1" />
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>
-        <Button size="xs" variant="secondary" onClick={() => selectedKey && fetchLogs(selectedKey)}>Refresh</Button>
-        <Button size="xs" variant="secondary" onClick={() => selectedKey && clearLogs(selectedKey)}>Clear</Button>
       </div>
 
       {/* Log lines (virtualized) */}

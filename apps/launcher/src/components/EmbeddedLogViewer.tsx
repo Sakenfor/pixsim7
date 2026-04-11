@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { getLogs, clearLogs } from '../api/client'
 import { getLogMeta, getCompiledFields, type LogMeta, type CompiledField } from '../api/logMeta'
-import { LogLine } from './log'
+import { LogLine, matchesSearch } from './log'
 
 const MAX_LINES = 2000
 const POLL_INTERVAL = 2000
@@ -84,7 +84,7 @@ export function EmbeddedLogViewer() {
       if (!upper.includes(levelFilter)) return false
     }
     if (searchFilter) {
-      if (!line.toLowerCase().includes(searchFilter.toLowerCase())) return false
+      if (!matchesSearch(line, searchFilter)) return false
     }
     return true
   })
@@ -100,7 +100,19 @@ export function EmbeddedLogViewer() {
     <div className="h-screen flex flex-col bg-surface text-gray-100">
       {/* Toolbar with filters */}
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border text-[11px] shrink-0">
-        <span className="text-gray-400 font-medium mr-1">{serviceKey}</span>
+        <div className="flex items-center gap-0.5 mr-1">
+          <button onClick={() => setPaused(!paused)} className={`p-1 rounded ${paused ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-surface-hover'}`} title={paused ? 'Resume' : 'Pause'}>
+            {paused
+              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,4 20,12 6,20" /></svg>
+              : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="4" width="4" height="16" /><rect x="15" y="4" width="4" height="16" /></svg>}
+          </button>
+          <button onClick={fetchLogs} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Refresh">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
+          </button>
+          <button onClick={() => { clearLogs(serviceKey); setLines([]) }} className="p-1 rounded text-gray-400 hover:text-gray-200 hover:bg-surface-hover" title="Clear">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" /></svg>
+          </button>
+        </div>
 
         <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className={sel}>
           {(filters?.level_options ?? ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG']).map((l) => (
@@ -110,20 +122,11 @@ export function EmbeddedLogViewer() {
 
         <input
           type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)}
-          placeholder="Search..." className={`${sel} w-32`}
+          placeholder="Filter…  a | b  for OR" className={`${sel} w-36`}
         />
-
-        <button
-          onClick={() => setPaused(!paused)}
-          className={`px-2 py-0.5 rounded text-[11px] ${paused ? 'bg-amber-600 text-white' : 'bg-surface-tertiary text-gray-300 hover:bg-surface-hover'}`}
-        >
-          {paused ? 'Resume' : 'Pause'}
-        </button>
 
         <div className="flex-1" />
         <span className="text-gray-600">{filteredLines.length}{filteredLines.length !== lines.length ? `/${lines.length}` : ''} lines</span>
-        <button onClick={fetchLogs} className="px-2 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Refresh</button>
-        <button onClick={() => { clearLogs(serviceKey); setLines([]) }} className="px-2 py-0.5 rounded bg-surface-tertiary hover:bg-surface-hover text-gray-300">Clear</button>
       </div>
 
       {/* Log lines */}
