@@ -7,6 +7,7 @@ import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import {
   type ClientFilterDef,
+  type ClientFilterValue,
 } from '@features/gallery/lib/useClientFilters';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
 import { usePagedItems } from '@features/gallery/lib/usePagedItems';
@@ -26,14 +27,18 @@ import { GROUP_PAGE_SIZE } from './groupHelpers';
 import { PaginationStrip } from './shared/PaginationStrip';
 
 // ---------------------------------------------------------------------------
-// Scan result cache
+// Scan result cache & pagination
 // ---------------------------------------------------------------------------
+
+const SCAN_PAGE_SIZE = 200;
 
 const scanCache = createIdbKvStore('ps7_provider_library');
 
 interface CachedScanResult {
   data: SyncDryRunResponse;
   cachedAt: number;
+  nextOffset: number;
+  hasMore: boolean;
 }
 
 function getScanCacheKey(accountId: number): string {
@@ -49,6 +54,28 @@ function formatTimeAgo(ts: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function computeHasMore(result: SyncDryRunResponse): boolean {
+  const videosHasMore = result.videos.total_remote >= SCAN_PAGE_SIZE;
+  const imagesHasMore = result.images ? result.images.total_remote >= SCAN_PAGE_SIZE : false;
+  return videosHasMore || imagesHasMore;
+}
+
+function mergeScanResults(existing: SyncDryRunResponse, next: SyncDryRunResponse): SyncDryRunResponse {
+  return {
+    ...next,
+    videos: {
+      total_remote: existing.videos.total_remote + next.videos.total_remote,
+      existing_count: existing.videos.existing_count + next.videos.existing_count,
+      items: [...existing.videos.items, ...next.videos.items],
+    },
+    images: existing.images || next.images ? {
+      total_remote: (existing.images?.total_remote ?? 0) + (next.images?.total_remote ?? 0),
+      existing_count: (existing.images?.existing_count ?? 0) + (next.images?.existing_count ?? 0),
+      items: [...(existing.images?.items ?? []), ...(next.images?.items ?? [])],
+    } : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -199,9 +226,12 @@ export function ProviderLibraryPanel({
   const [scanResult, setScanResult] = useState<SyncDryRunResponse | null>(null);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
+  const [nextOffset, setNextOffset] = useState(SCAN_PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
 
   // Load cached scan result on mount / account change
   const loadedCacheRef = useRef<number | null>(null);
@@ -213,6 +243,8 @@ export function ProviderLibraryPanel({
       if (cancelled || !cached) return;
       setScanResult(cached.data);
       setCachedAt(cached.cachedAt);
+      setNextOffset(cached.nextOffset ?? SCAN_PAGE_SIZE);
+      setHasMore(cached.hasMore ?? false);
     }).catch(() => { /* ignore cache read errors */ });
     return () => { cancelled = true; };
   }, [effectiveAccountId]);
@@ -237,6 +269,19 @@ export function ProviderLibraryPanel({
   const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
     usePagedItems(filteredItems, GROUP_PAGE_SIZE);
 
+  // Wrap filter callbacks to reset pagination on user-initiated filter changes
+  const handleFilterChange = useCallback(
+    (key: string, value: ClientFilterValue) => {
+      setFilter(key, value);
+      setCurrentPage(1);
+    },
+    [setFilter, setCurrentPage],
+  );
+  const handleFilterReset = useCallback(() => {
+    resetFilters();
+    setCurrentPage(1);
+  }, [resetFilters, setCurrentPage]);
+
   // Stats
   const stats = useMemo(() => {
     if (!libraryItems.length) return null;
@@ -246,47 +291,77 @@ export function ProviderLibraryPanel({
     return { videos, images, missing, total: libraryItems.length };
   }, [libraryItems]);
 
+  /** Save merged scan result + pagination state to cache. */
+  const persistScan = useCallback((data: SyncDryRunResponse, offset: number, more: boolean) => {
+    const now = Date.now();
+    setCachedAt(now);
+    setNextOffset(offset);
+    setHasMore(more);
+    scanCache.set(getScanCacheKey(effectiveAccountId!), {
+      data, cachedAt: now, nextOffset: offset, hasMore: more,
+    } satisfies CachedScanResult).catch(() => {});
+  }, [effectiveAccountId]);
+
   const handleScan = useCallback(async () => {
     if (!effectiveAccountId) return;
     setScanning(true);
     setError(null);
     try {
       const result = await getPixverseSyncDryRun(effectiveAccountId, {
-        limit: 200,
+        limit: SCAN_PAGE_SIZE,
         includeImages,
       });
       setScanResult(result);
-      const now = Date.now();
-      setCachedAt(now);
-      scanCache.set(getScanCacheKey(effectiveAccountId), { data: result, cachedAt: now } satisfies CachedScanResult).catch(() => {});
+      const more = computeHasMore(result);
+      persistScan(result, SCAN_PAGE_SIZE, more);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Scan failed');
     } finally {
       setScanning(false);
     }
-  }, [effectiveAccountId, includeImages]);
+  }, [effectiveAccountId, includeImages, persistScan]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!effectiveAccountId || !scanResult) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const result = await getPixverseSyncDryRun(effectiveAccountId, {
+        limit: SCAN_PAGE_SIZE,
+        offset: nextOffset,
+        includeImages,
+      });
+      const merged = mergeScanResults(scanResult, result);
+      setScanResult(merged);
+      const more = computeHasMore(result);
+      persistScan(merged, nextOffset + SCAN_PAGE_SIZE, more);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load more');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [effectiveAccountId, scanResult, nextOffset, includeImages, persistScan]);
 
   const handleImportMissing = useCallback(async () => {
     if (!effectiveAccountId) return;
     setImporting(true);
     setError(null);
     try {
-      await syncPixverseAssets(effectiveAccountId, { mode: 'both' });
-      // Re-scan to refresh statuses
+      await syncPixverseAssets(effectiveAccountId, { mode: 'both', limit: 500 });
+      // Re-scan first page to refresh statuses
       const result = await getPixverseSyncDryRun(effectiveAccountId, {
-        limit: 200,
+        limit: SCAN_PAGE_SIZE,
         includeImages,
       });
       setScanResult(result);
-      const now = Date.now();
-      setCachedAt(now);
-      scanCache.set(getScanCacheKey(effectiveAccountId), { data: result, cachedAt: now } satisfies CachedScanResult).catch(() => {});
+      const more = computeHasMore(result);
+      persistScan(result, SCAN_PAGE_SIZE, more);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
     } finally {
       setImporting(false);
     }
-  }, [effectiveAccountId, includeImages]);
+  }, [effectiveAccountId, includeImages, persistScan]);
 
   // Gallery accessors
   const getAssetKey = useCallback((item: LibraryItem) => item.id, []);
@@ -463,8 +538,8 @@ export function ProviderLibraryPanel({
                   defs={visibleDefs}
                   filterState={filterState}
                   derivedOptions={derivedOptions}
-                  onFilterChange={setFilter}
-                  onReset={resetFilters}
+                  onFilterChange={handleFilterChange}
+                  onReset={handleFilterReset}
                 />
                 {showPagination && (
                   <div className="mt-2 flex items-center justify-end">
@@ -497,6 +572,29 @@ export function ProviderLibraryPanel({
                 />
               }
             />
+            {/* Load more */}
+            {hasMore && (
+              <div className="flex justify-center py-4">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Icon name="loader" className="animate-spin w-4 h-4" />
+                      Loading more...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="chevronDown" size={14} className="w-3.5 h-3.5" />
+                      Load more
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

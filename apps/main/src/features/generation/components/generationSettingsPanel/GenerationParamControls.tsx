@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import {
   COMMON_ASPECT_RATIOS,
@@ -99,6 +99,35 @@ export function GenerationParamControls({
     }
   }, [durationOptions, values?.duration, onChange]);
 
+  // Wheel handler for duration stepper — registered with { passive: false }
+  // so preventDefault() works (React onWheel is passive by default).
+  // Handler lives in a ref so the listener is attached once and never re-registered.
+  const durationWheelHandlerRef = useRef<(e: WheelEvent) => void>();
+  durationWheelHandlerRef.current = (e: WheelEvent) => {
+    if (generating || !durationOptions) return;
+    e.preventDefault();
+    const currentDuration = Number(values?.duration) || durationOptions[0];
+    const currentIdx = durationOptions.indexOf(currentDuration);
+    const next = e.deltaY < 0
+      ? Math.min(currentIdx + 1, durationOptions.length - 1)
+      : Math.max(currentIdx - 1, 0);
+    if (next !== currentIdx) onChange('duration', durationOptions[next]);
+  };
+  const durationWheelElRef = useRef<HTMLDivElement | null>(null);
+  const durationWheelListenerRef = useRef<((e: WheelEvent) => void) | null>(null);
+  const durationWheelCallbackRef = (el: HTMLDivElement | null) => {
+    // Detach from previous element
+    if (durationWheelElRef.current && durationWheelListenerRef.current) {
+      durationWheelElRef.current.removeEventListener('wheel', durationWheelListenerRef.current);
+    }
+    durationWheelElRef.current = el;
+    if (el) {
+      const handler = (e: WheelEvent) => durationWheelHandlerRef.current?.(e);
+      durationWheelListenerRef.current = handler;
+      el.addEventListener('wheel', handler, { passive: false });
+    }
+  };
+
   return (
     <>
       {paramSpecs.map((param) => {
@@ -124,15 +153,8 @@ export function GenerationParamControls({
           return (
             <div key="duration" className="flex items-center gap-1">
               <div
+                ref={durationWheelCallbackRef}
                 className="flex items-center flex-1 min-w-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
-                onWheel={(e) => {
-                  if (generating) return;
-                  e.preventDefault();
-                  const next = e.deltaY < 0
-                    ? Math.min(currentIdx + 1, durationOptions.length - 1)
-                    : Math.max(currentIdx - 1, 0);
-                  if (next !== currentIdx) onChange('duration', durationOptions[next]);
-                }}
               >
                 <button
                   type="button"

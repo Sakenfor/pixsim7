@@ -27,7 +27,7 @@ export function GalleryModule() {
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
   // Get asset stats
-  const { items, loading } = useAssets({ filters: {} });
+  const { items, loading } = useAssets({ filters: {}, livePrepend: false });
 
   // Get current overlay preset ID, with best-effort migration from legacy badgeConfig
   const currentOverlayPresetId = useMemo(() => {

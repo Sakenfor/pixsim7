@@ -103,12 +103,15 @@ export function useAssets(options?: {
   initialPage?: number;
   preservePageOnFilterChange?: boolean;
   requestOverrides?: Partial<AssetSearchRequest>;
+  /** Set to false to skip subscribing to live asset-creation events (default: true). */
+  livePrepend?: boolean;
 }) {
   const limit = options?.limit ?? 20;
   const filters = options?.filters ?? {};
   const initialPage = options?.initialPage ?? 1;
   const preservePageOnFilterChange = options?.preservePageOnFilterChange ?? false;
   const requestOverrides = options?.requestOverrides;
+  const livePrepend = options?.livePrepend ?? true;
   // paginationMode reserved for future use
 
   const queryCacheKey = useMemo(
@@ -213,6 +216,13 @@ export function useAssets(options?: {
     () => JSON.stringify(requestOverrides || {}),
     [requestOverrides],
   );
+
+  // Track whether server-only overrides/filters are active so the prepend
+  // subscriber can skip when it can't validate the asset client-side.
+  const hasRequestOverridesRef = useRef(!!requestOverrides && Object.keys(requestOverrides).length > 0);
+  hasRequestOverridesRef.current = !!requestOverrides && Object.keys(requestOverrides).length > 0;
+  const hasExtraRegistryFiltersRef = useRef(Object.keys(extraRegistryFilters).length > 0);
+  hasExtraRegistryFiltersRef.current = Object.keys(extraRegistryFilters).length > 0;
 
   // Use ref to always access current raw filters in loadMore without stale closures
   const filtersRef = useRef(filters);
@@ -410,8 +420,12 @@ export function useAssets(options?: {
     initialLoadRequestedRef.current = false;
   }, []);
 
-  // Prepend a new asset (used when generation completes)
-  // Takes AssetResponse from event bus and converts to AssetModel
+  // Insert a new asset in sorted position (used when generation completes).
+  // Assets can arrive out of order because readiness polling
+  // (fetchCreatedAssetWhenReady / scheduleGeneratedVideoReadyPoll) introduces
+  // variable delays. Blindly prepending would place a delayed older asset on
+  // top of a newer one that was already inserted. Instead, we insert at the
+  // correct position to maintain the existing created_at DESC sort order.
   const prependAsset = useCallback((response: AssetResponse) => {
     const asset = fromAssetResponse(response);
     setItems((prev) => {
@@ -419,7 +433,23 @@ export function useAssets(options?: {
       if (prev.some((a) => a.id === asset.id)) {
         return prev;
       }
-      return [asset, ...prev];
+
+      // Fast path: asset is newer than everything in the list (common case)
+      const assetTime = new Date(asset.createdAt).getTime();
+      if (prev.length === 0 || assetTime >= new Date(prev[0].createdAt).getTime()) {
+        return [asset, ...prev];
+      }
+
+      // Slow path: find correct position to maintain created_at DESC order
+      const insertIdx = prev.findIndex(
+        (a) => new Date(a.createdAt).getTime() < assetTime,
+      );
+      if (insertIdx === -1) {
+        return [...prev, asset];
+      }
+      const next = [...prev];
+      next.splice(insertIdx, 0, asset);
+      return next;
     });
   }, []);
 
@@ -446,6 +476,8 @@ export function useAssets(options?: {
 
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
+    if (!livePrepend) return;
+
     const unsubscribe = assetEvents.subscribe((asset) => {
       // Skip live-prepend for server-scoped filters that can't be checked client-side.
       // These views need an explicit refresh to pick up new assets.
@@ -458,6 +490,11 @@ export function useAssets(options?: {
         || filterParams.sha256
       );
       if (hasScopedFilter) return;
+
+      // Skip when requestOverrides (group views, set filters) or extra registry
+      // filters (effective_provider_id, etc.) are active — the asset can't be
+      // validated against these server-side constraints from the client.
+      if (hasRequestOverridesRef.current || hasExtraRegistryFiltersRef.current) return;
 
       const tags = (asset.tags || []).map((tag) => (typeof tag === 'string' ? tag : tag.name));
       // Only prepend if it matches current filters (or no filters)
@@ -493,7 +530,7 @@ export function useAssets(options?: {
     });
 
     return unsubscribe;
-  }, [filterParams, prependAsset]);
+  }, [livePrepend, filterParams, prependAsset]);
 
   // Subscribe to asset update events (from sync completions)
   useEffect(() => {

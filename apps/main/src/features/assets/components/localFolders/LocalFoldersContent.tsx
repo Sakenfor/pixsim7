@@ -6,7 +6,7 @@ import { Icon, Icons } from '@lib/icons';
 
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
-import type { ClientFilterDef } from '@features/gallery/lib/useClientFilters';
+import type { ClientFilterDef, ClientFilterValue } from '@features/gallery/lib/useClientFilters';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
 import { usePagedItems } from '@features/gallery/lib/usePagedItems';
 import { useScrollToTopOnChange } from '@features/gallery/lib/useScrollToTopOnChange';
@@ -444,6 +444,19 @@ export function LocalFoldersContent({
   const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
     usePagedItems(itemsForPaging, GROUP_PAGE_SIZE, { initialPage: persistedPage });
 
+  // Wrap filter callbacks to reset pagination on user-initiated filter changes
+  const handleFilterChange = useCallback(
+    (key: string, value: ClientFilterValue) => {
+      setFilter(key, value);
+      setCurrentPage(1);
+    },
+    [setFilter, setCurrentPage],
+  );
+  const handleFilterReset = useCallback(() => {
+    resetFilters();
+    setCurrentPage(1);
+  }, [resetFilters, setCurrentPage]);
+
   useEffect(() => {
     try { localStorage.setItem(PAGE_KEY, String(currentPage)); } catch { /* quota */ }
   }, [currentPage]);
@@ -862,8 +875,8 @@ export function LocalFoldersContent({
               defs={visibleDefs}
               filterState={filterState}
               derivedOptions={derivedOptions}
-              onFilterChange={setFilter}
-              onReset={resetFilters}
+              onFilterChange={handleFilterChange}
+              onReset={handleFilterReset}
             />
           </div>
           {/* Flat/drilled pagination */}

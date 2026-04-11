@@ -11,8 +11,9 @@ export interface UsePagedItemsResult<T> {
 /**
  * Shared pagination hook for client-side item lists.
  *
- * Auto-resets to page 1 when the item count changes (e.g. after a filter)
- * and clamps `currentPage` to the valid range.
+ * Clamps `currentPage` to the valid range when the item count shrinks.
+ * Does NOT hard-reset to page 1 on every length change — callers that
+ * want a page-1 reset on filter changes should call `setCurrentPage(1)`.
  */
 export function usePagedItems<T>(
   items: T[],
@@ -22,13 +23,17 @@ export function usePagedItems<T>(
   const [rawPage, setRawPage] = useState(options?.initialPage ?? 1);
   const prevLenRef = useRef(items.length);
 
-  // Reset to page 1 when item count changes
+  // Clamp page to valid range when item count shrinks.
+  // We intentionally do NOT hard-reset to page 1 here — that would discard
+  // the user's position whenever background data updates (upload status,
+  // hash sync, etc.) cause a transient length change.
   useEffect(() => {
     if (items.length !== prevLenRef.current) {
       prevLenRef.current = items.length;
-      setRawPage(1);
+      const maxPage = Math.max(1, Math.ceil(items.length / pageSize));
+      setRawPage(prev => (prev > maxPage ? maxPage : prev));
     }
-  }, [items.length]);
+  }, [items.length, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const currentPage = Math.min(rawPage, totalPages);
