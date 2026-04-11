@@ -116,6 +116,10 @@ function getAuthBlobCache(): Map<string, string> {
   return hmrSingleton('useAuthenticatedMedia:blobCache', () => new Map<string, string>());
 }
 
+function getAuthVideoBlobCache(): Map<string, string> {
+  return hmrSingleton('useAuthenticatedMedia:videoBlobCache', () => new Map<string, string>());
+}
+
 /** Scan globalThis for Zustand stores exposed via exposeStoreForDebugging. */
 function getExposedStores(): StoreInfo[] {
   const stores: StoreInfo[] = [];
@@ -377,6 +381,7 @@ export function PerformancePanel() {
   const [domCount, setDomCount] = useState(0);
   const [thumbCacheSize, setThumbCacheSize] = useState(0);
   const [authCacheSize, setAuthCacheSize] = useState(0);
+  const [authVideoCacheSize, setAuthVideoCacheSize] = useState(0);
   const [genScopeCount, setGenScopeCount] = useState(0);
   const [exposedStores, setExposedStores] = useState<StoreInfo[]>([]);
   const [localStorageEntries, setLocalStorageEntries] = useState<LocalStorageEntry[]>([]);
@@ -396,6 +401,7 @@ export function PerformancePanel() {
 
     setThumbCacheSize(getThumbnailBlobCache().size);
     setAuthCacheSize(getAuthBlobCache().size);
+    setAuthVideoCacheSize(getAuthVideoBlobCache().size);
     setGenScopeCount(getRegisteredInputStores().length);
     setExposedStores(getExposedStores());
     setLocalStorageEntries(getLocalStorageEntries());
@@ -686,16 +692,21 @@ export function PerformancePanel() {
         Module-level LRU caches that keep blob URLs alive across virtualized
         component mount/unmount cycles. Revocation happens on eviction.
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <StatCard
           label="Thumbnail Cache"
-          value={`${thumbCacheSize} / 200`}
-          sublabel={thumbCacheSize >= 200 ? 'At capacity — LRU evicting' : `${((thumbCacheSize / 200) * 100).toFixed(0)}% full`}
+          value={`${thumbCacheSize} / 100`}
+          sublabel={thumbCacheSize >= 100 ? 'At capacity — LRU evicting' : `${((thumbCacheSize / 100) * 100).toFixed(0)}% full`}
         />
         <StatCard
-          label="Auth Media Cache"
-          value={`${authCacheSize} / 100`}
-          sublabel={authCacheSize >= 100 ? 'At capacity — LRU evicting' : `${((authCacheSize / 100) * 100).toFixed(0)}% full`}
+          label="Auth Image Cache"
+          value={`${authCacheSize} / 60`}
+          sublabel={authCacheSize >= 60 ? 'At capacity — LRU evicting' : `${((authCacheSize / 60) * 100).toFixed(0)}% full`}
+        />
+        <StatCard
+          label="Auth Video Cache"
+          value={`${authVideoCacheSize} / 8`}
+          sublabel={authVideoCacheSize >= 8 ? 'At capacity — LRU evicting' : `${((authVideoCacheSize / 8) * 100).toFixed(0)}% full`}
         />
       </div>
 

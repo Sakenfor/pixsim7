@@ -40,12 +40,15 @@ export function useMediaPreviewSource(
   const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
     mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,
     mediaActive: resolvedMediaActive,
+    mediaType: 'video',
   });
+  // Gate both backend and external video src on mediaActive so <video>
+  // elements unmount when the card scrolls out of viewport range.
   const videoSrc =
     mediaType === 'video'
       ? (isBackendVideoSrc
           ? (resolvedMediaActive ? resolvedVideoSrc : undefined)
-          : rawVideoSrc)
+          : (resolvedMediaActive ? rawVideoSrc : undefined))
       : undefined;
   const usePosterImage = mediaType === 'video' && !!thumbSrc && isBackendVideoSrc;
 

@@ -67,8 +67,8 @@ const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
 
 const PREVIEW_LOAD_CONCURRENCY = 4;
 const PREVIEW_STATE_FLUSH_DELAY_MS = 80;
-const GLOBAL_PREVIEW_CACHE_MAX_ENTRIES = 1200;
-const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 80;
+const GLOBAL_PREVIEW_CACHE_MAX_ENTRIES = 400;
+const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 30;
 
 /**
  * Module-level blob URL cache that survives panel mount/unmount cycles.

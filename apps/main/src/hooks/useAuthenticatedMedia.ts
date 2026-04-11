@@ -8,13 +8,16 @@
 import { useEffect, useState } from 'react';
 
 import { authService } from '@lib/auth';
-import { createBlobCache } from '@lib/media/blobCache';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
+import { createBlobCache } from '@lib/media/blobCache';
 
 import { BACKEND_BASE } from '../lib/api/client';
 
-// ── Module-level blob URL cache ─────────────────────────────────────────
-const _authBlobCache = createBlobCache('useAuthenticatedMedia:blobCache', 100);
+// ── Module-level blob URL caches ────────────────────────────────────────
+// Video blobs are 50-200MB+ each — keep a very small cache.
+// Image/mask blobs are 1-5MB — a larger cache is fine.
+const _authImageBlobCache = createBlobCache('useAuthenticatedMedia:blobCache', 60);
+const _authVideoBlobCache = createBlobCache('useAuthenticatedMedia:videoBlobCache', 8);
 
 
 export interface UseAuthenticatedMediaResult {
@@ -42,6 +45,11 @@ export interface UseAuthenticatedMediaOptions {
    * Default: true.
    */
   active?: boolean;
+  /**
+   * Hint for cache selection.  Video blobs are much larger (50-200MB+) than
+   * images, so they use a smaller dedicated LRU cache to cap memory.
+   */
+  mediaType?: 'video' | 'image';
 }
 
 export function useAuthenticatedMedia(
@@ -52,6 +60,7 @@ export function useAuthenticatedMedia(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const isActive = options.active ?? true;
+  const cache = options.mediaType === 'video' ? _authVideoBlobCache : _authImageBlobCache;
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +103,7 @@ export function useAuthenticatedMedia(
     }
 
     // Check module-level cache first
-    const cached = _authBlobCache.get(fullUrl);
+    const cached = cache.get(fullUrl);
     if (cached) {
       setSrc(cached);
       setLoading(false);
@@ -124,7 +133,7 @@ export function useAuthenticatedMedia(
 
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
-        _authBlobCache.set(fullUrl, objectUrl);
+        cache.set(fullUrl, objectUrl);
 
         if (!cancelled) {
           setSrc(objectUrl);
@@ -147,7 +156,7 @@ export function useAuthenticatedMedia(
       // Blob URLs are NOT revoked here — the module-level LRU cache
       // keeps them alive so remounted components render instantly.
     };
-  }, [url, isActive]);
+  }, [url, isActive, cache]);
 
   return { src, loading, error };
 }

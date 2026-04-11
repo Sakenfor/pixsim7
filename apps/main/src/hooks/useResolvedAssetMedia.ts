@@ -9,6 +9,8 @@ export interface UseResolvedAssetMediaOptions {
   previewUrl?: string;
   remoteUrl?: string;
   mediaActive?: boolean;
+  /** Hint for auth cache selection — 'video' uses a smaller cache. */
+  mediaType?: 'video' | 'image';
   thumbOptions?: UseMediaThumbnailOptions;
 }
 
@@ -31,10 +33,11 @@ export function useResolvedAssetMedia(
     previewUrl,
     remoteUrl,
     mediaActive = true,
+    mediaType,
     thumbOptions,
   } = options;
 
-  const media = useAuthenticatedMedia(mediaUrl, { active: mediaActive });
+  const media = useAuthenticatedMedia(mediaUrl, { active: mediaActive, mediaType });
   const thumb = useMediaThumbnailFull(thumbUrl, previewUrl, remoteUrl, thumbOptions);
 
   const resolvedMediaSrc = useMemo(

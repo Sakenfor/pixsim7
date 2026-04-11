@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
-import { createBlobCache } from '@lib/media/blobCache';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
+import { createBlobCache } from '@lib/media/blobCache';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -11,7 +11,7 @@ import { BACKEND_BASE } from '../lib/api/client';
 
 
 // ── Module-level blob URL cache ─────────────────────────────────────────
-const _blobCache = createBlobCache('useMediaThumbnail:blobCache', 200);
+const _blobCache = createBlobCache('useMediaThumbnail:blobCache', 100);
 
 
 export interface UseMediaThumbnailOptions {

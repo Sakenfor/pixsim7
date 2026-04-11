@@ -149,7 +149,7 @@ export function VideoScrubWidgetRenderer({
   gesturePhase = 'idle',
   gestureEdgeInset = 0.2,
 }: VideoScrubWidgetRendererProps) {
-  const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering });
+  const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering, mediaType: 'video' });
   const resolvedUrl = authenticatedSrc || url;
   // Support both onDotClick and legacy onExtractFrame
   const handleDotAction = onDotClick ?? onExtractFrame;
