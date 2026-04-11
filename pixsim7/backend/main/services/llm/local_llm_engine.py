@@ -13,6 +13,7 @@ import asyncio
 import gc
 import importlib
 import logging
+import time
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,6 +67,7 @@ class LocalLlmEngine:
         self._loaded = False
         self._load_lock = threading.Lock()
         self._inference_lock = threading.Lock()
+        self._last_used: float = time.monotonic()
 
     def is_loaded(self) -> bool:
         return self._loaded and self._llm is not None
@@ -176,6 +178,7 @@ class LocalLlmEngine:
         temperature: float = 0.3,
     ) -> str:
         self.ensure_loaded()
+        self._last_used = time.monotonic()
         if not self._llm:
             raise RuntimeError("Local LLM failed to initialize")
 
@@ -286,6 +289,33 @@ def _engine_key(
 _engine_pool: dict[LocalLlmEngineKey, LocalLlmEngine] = {}
 _engine_lock = threading.Lock()
 
+# Only keep one loaded engine at a time (each is ~1 GB RAM).
+_MAX_POOL_SIZE = 1
+# Unload engines idle for longer than this (seconds).
+_ENGINE_IDLE_TTL_SEC = 300.0
+
+
+def _evict_idle_engines(*, now_mono: float) -> None:
+    """Unload engines that haven't been used within the TTL.  Caller holds _engine_lock."""
+    stale = [
+        key for key, engine in _engine_pool.items()
+        if engine.is_loaded() and (now_mono - engine._last_used) > _ENGINE_IDLE_TTL_SEC
+    ]
+    for key in stale:
+        engine = _engine_pool.pop(key)
+        logger.info("Evicting idle local LLM engine (idle %.0fs)", now_mono - engine._last_used)
+        engine.unload()
+
+
+def _evict_lru_engine() -> None:
+    """Evict the least-recently-used engine to make room.  Caller holds _engine_lock."""
+    if not _engine_pool:
+        return
+    lru_key = min(_engine_pool, key=lambda k: _engine_pool[k]._last_used)
+    engine = _engine_pool.pop(lru_key)
+    logger.info("Evicting LRU local LLM engine to stay within pool limit")
+    engine.unload()
+
 
 def get_local_llm_engine(
     *,
@@ -306,15 +336,36 @@ def get_local_llm_engine(
 
     with _engine_lock:
         engine = _engine_pool.get(key)
-        if engine is None:
-            engine = LocalLlmEngine(
-                model_path=key.model_path,
-                n_ctx=key.n_ctx,
-                n_threads=key.n_threads,
-                auto_download=key.auto_download,
-            )
-            _engine_pool[key] = engine
+        if engine is not None:
+            return engine
+
+        now = time.monotonic()
+        _evict_idle_engines(now_mono=now)
+
+        # Enforce max pool size — evict LRU if at capacity
+        while len(_engine_pool) >= _MAX_POOL_SIZE:
+            _evict_lru_engine()
+
+        engine = LocalLlmEngine(
+            model_path=key.model_path,
+            n_ctx=key.n_ctx,
+            n_threads=key.n_threads,
+            auto_download=key.auto_download,
+        )
+        _engine_pool[key] = engine
         return engine
+
+
+def evict_idle_llm_engines() -> int:
+    """Evict idle engines from the pool.  Returns number evicted.
+
+    Call this periodically (e.g. from a health-check or arq cron) to reclaim
+    memory from engines that haven't been used recently.
+    """
+    with _engine_lock:
+        before = len(_engine_pool)
+        _evict_idle_engines(now_mono=time.monotonic())
+        return before - len(_engine_pool)
 
 
 def unload_local_llm_engines() -> None:

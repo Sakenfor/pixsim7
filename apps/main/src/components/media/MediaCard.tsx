@@ -536,6 +536,8 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent) => {
+      // Ctrl+right-click (or Cmd on Mac) bypasses custom menu → show native browser menu
+      if (event.ctrlKey || event.metaKey) return;
       if (!contextMenu || !enableMediaCardContextMenu || !contextMenuAsset) {
         return;
       }

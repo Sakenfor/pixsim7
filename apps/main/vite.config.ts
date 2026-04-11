@@ -15,6 +15,18 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  server: {
+    watch: {
+      ignored: [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/pixsim7/backend/**',
+        '**/.claude/worktrees/**',
+        '**/dist/**',
+        '**/__pycache__/**',
+      ],
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
