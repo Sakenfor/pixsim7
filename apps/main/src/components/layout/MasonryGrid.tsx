@@ -393,21 +393,34 @@ export function MasonryGrid({
       }}
     >
       {items.map((item, index) => {
+        // Use the child element's key when available so React tracks items by
+        // identity rather than index. Without this, prepending an item causes
+        // React to recycle the DOM node at index 0 (briefly showing the old
+        // asset's thumbnail before the new props propagate).
+        const childKey = React.isValidElement(item) ? item.key : null;
+        const stableKey = childKey != null ? childKey : index;
+
         const visible = visibleSet === null || visibleSet.has(index);
         const pos = positions[index];
+
+        // Items without a calculated position must not render at (0,0) —
+        // that would overlap the real top-left card. Hide until the
+        // useLayoutEffect computes their actual position.
+        const hasPosition = pos !== undefined && (pos.top !== 0 || pos.left !== 0 || index === 0);
 
         if (!visible) {
           // Off-screen with known height — lightweight placeholder
           const h = measuredHeightsRef.current.get(index) ?? pos?.height ?? 0;
           return (
             <div
-              key={index}
+              key={stableKey}
               className="absolute"
               style={{
                 width: columnWidth || '100%',
                 height: h,
                 top: pos?.top ?? 0,
                 left: pos?.left ?? 0,
+                visibility: hasPosition ? undefined : 'hidden',
               }}
             />
           );
@@ -415,7 +428,7 @@ export function MasonryGrid({
 
         return (
           <div
-            key={index}
+            key={stableKey}
             ref={el => {
               itemRefs.current[index] = el;
             }}
@@ -424,6 +437,7 @@ export function MasonryGrid({
               width: columnWidth || '100%',
               top: pos?.top ?? 0,
               left: pos?.left ?? 0,
+              visibility: hasPosition ? undefined : 'hidden',
             }}
           >
             {item}

@@ -112,9 +112,6 @@ export function useAssets(options?: {
   const preservePageOnFilterChange = options?.preservePageOnFilterChange ?? false;
   const requestOverrides = options?.requestOverrides;
   const livePrepend = options?.livePrepend ?? true;
-  // Debug instance ID to distinguish logs from multiple useAssets hooks
-  const instanceIdRef = useRef(Math.random().toString(36).slice(2, 6));
-  const dbg = `[gallery:${instanceIdRef.current}]`;
   // paginationMode reserved for future use
 
   const queryCacheKey = useMemo(
@@ -276,7 +273,6 @@ export function useAssets(options?: {
 
       // Convert to AssetModel and merge while avoiding duplicates by ID.
       const newModels = fromAssetResponses(data.assets);
-      console.log(dbg, 'loadMore fetched', newModels.length, 'assets, first:', newModels[0]?.id, newModels[0]?.createdAt);
       setItems(prev => {
         if (prev.length === 0) return newModels;
         const existingIds = new Set(prev.map(a => a.id));
@@ -317,7 +313,6 @@ export function useAssets(options?: {
     const thisRequestId = requestIdRef.current;
 
     const applyResult = (models: AssetModel[], resultPage: number, gotFullPage: boolean) => {
-      console.log(dbg, 'goToPage page', resultPage, '→', models.length, 'assets, first:', models[0]?.id, models[0]?.createdAt);
       setItems(models);
       setCurrentPage(resultPage);
       if (gotFullPage) {
@@ -412,7 +407,6 @@ export function useAssets(options?: {
 
   const reset = useCallback((pageOverride?: number) => {
     const nextPage = pageOverride && pageOverride > 0 ? pageOverride : 1;
-    console.log(dbg, 'RESET page=', nextPage, new Error().stack?.split('\n').slice(1, 5).join(' ← '));
     // Increment request ID to invalidate any in-flight requests
     requestIdRef.current += 1;
     setItems([]);
@@ -436,7 +430,35 @@ export function useAssets(options?: {
   // Keep enough for the current page + scroll buffer, trim the oldest tail.
   const maxItems = limit * 4;
 
-  const prependAsset = useCallback((response: AssetResponse) => {
+  // Defer prepends while a pointer is down to prevent the grid from shifting
+  // under the user's finger mid-gesture (which could archive the wrong asset).
+  const pendingPrependsRef = useRef<AssetResponse[]>([]);
+  const pointerDownRef = useRef(false);
+  const insertAssetSortedRef = useRef<(r: AssetResponse) => void>();
+
+  useEffect(() => {
+    const onDown = () => { pointerDownRef.current = true; };
+    const onUp = () => {
+      pointerDownRef.current = false;
+      const pending = pendingPrependsRef.current;
+      if (pending.length > 0) {
+        pendingPrependsRef.current = [];
+        for (const response of pending) {
+          insertAssetSortedRef.current?.(response);
+        }
+      }
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
+    };
+  }, []);
+
+  const insertAssetSorted = useCallback((response: AssetResponse) => {
     const asset = fromAssetResponse(response);
     setItems((prev) => {
       // Avoid duplicates
@@ -448,15 +470,12 @@ export function useAssets(options?: {
       const assetTime = new Date(asset.createdAt).getTime();
       let next: AssetModel[];
       if (prev.length === 0 || assetTime >= new Date(prev[0].createdAt).getTime()) {
-        console.log(dbg, 'prepend pos=0 asset', asset.id, asset.createdAt, '| was:', prev[0]?.id, prev[0]?.createdAt);
         next = [asset, ...prev];
       } else {
         // Slow path: find correct position to maintain created_at DESC order
         const insertIdx = prev.findIndex(
           (a) => new Date(a.createdAt).getTime() < assetTime,
         );
-        const pos = insertIdx === -1 ? prev.length : insertIdx;
-        console.log(dbg, 'prepend pos=' + pos, 'asset', asset.id, asset.createdAt, '| head stays:', prev[0]?.id, prev[0]?.createdAt);
         if (insertIdx === -1) {
           next = [...prev, asset];
         } else {
@@ -471,7 +490,16 @@ export function useAssets(options?: {
       }
       return next;
     });
-  }, [maxItems]);
+  }, [maxItems, dbg]);
+  insertAssetSortedRef.current = insertAssetSorted;
+
+  const prependAsset = useCallback((response: AssetResponse) => {
+    if (pointerDownRef.current) {
+      pendingPrependsRef.current.push(response);
+      return;
+    }
+    insertAssetSorted(response);
+  }, [insertAssetSorted]);
 
   // Update an existing asset in the list (used when asset is synced)
   const updateAsset = useCallback((response: AssetResponse) => {
@@ -491,9 +519,8 @@ export function useAssets(options?: {
 
   // Remove a single asset by ID (used when asset is deleted)
   const removeAsset = useCallback((assetId: number) => {
-    console.log(dbg, 'REMOVE asset', assetId, new Error().stack?.split('\n').slice(1, 4).join(' ← '));
     setItems((prev) => prev.filter((a) => a.id !== assetId));
-  }, [dbg]);
+  }, []);
 
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
@@ -611,23 +638,6 @@ export function useAssets(options?: {
       }
     }
   }, [queryCacheKey, items, cursor, hasMore, currentPage, totalPages]);
-
-  // --- DEBUG: track what changes items[0] ---
-  const prevHead = useRef<{ id: number; createdAt: string } | null>(null);
-  useEffect(() => {
-    const head = items[0] ?? null;
-    const prev = prevHead.current;
-    const headSig = head ? `${head.id} ${head.createdAt}` : '(empty)';
-    const prevSig = prev ? `${prev.id} ${prev.createdAt}` : '(empty)';
-    if (headSig !== prevSig) {
-      console.log(
-        `${dbg} head: items[0] changed: ${prevSig} → ${headSig}`,
-        `| items.length=${items.length}`,
-      );
-      prevHead.current = head ? { id: head.id, createdAt: head.createdAt } : null;
-    }
-  });
-  // --- END DEBUG ---
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {

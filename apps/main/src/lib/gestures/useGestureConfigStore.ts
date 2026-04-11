@@ -69,7 +69,7 @@ export const useGestureConfigStore = create<GestureConfigState>()(
       edgeInset: 0.2,
       cascadeStepPixels: 50,
       gestureUp: ['upload', 'upgradeModel', 'patchAsset'],
-      gestureDown: ['archive'],
+      gestureDown: ['none'],
       gestureLeft: ['none'],
       gestureRight: ['quickGenerate'],
       chainUp: 'none',
@@ -87,7 +87,7 @@ export const useGestureConfigStore = create<GestureConfigState>()(
     }),
     {
       name: 'gesture-config-v1',
-      version: 3,
+      version: 4,
       migrate: (persisted: any, version: number) => {
         const state = persisted as Record<string, any>;
         if (version < 2) {
@@ -107,6 +107,14 @@ export const useGestureConfigStore = create<GestureConfigState>()(
           const up = state.gestureUp;
           if (Array.isArray(up) && up.length === 1 && up[0] === 'upload') {
             state.gestureUp = ['upload', 'upgradeModel', 'patchAsset'];
+          }
+        }
+        if (version < 4) {
+          // v3→v4: change gestureDown default from archive to none — too easy to trigger
+          // accidentally during normal clicks, causing assets to disappear
+          const down = state.gestureDown;
+          if (Array.isArray(down) && down.length === 1 && down[0] === 'archive') {
+            state.gestureDown = ['none'];
           }
         }
         return persisted as GestureConfigState;
