@@ -11,6 +11,9 @@ import { create } from 'zustand';
 
 import type { GenerationModel, GenerationStatus } from '../models';
 
+/** Keep at most this many generations in memory; prune oldest terminal entries. */
+const MAX_GENERATIONS = 500;
+
 export interface GenerationsState {
   // Generations map (by ID)
   generations: Map<number, GenerationModel>;
@@ -42,6 +45,18 @@ export const useGenerationsStore = create<GenerationsState>((set) => ({
       }
       const newMap = new Map(state.generations);
       newMap.set(generation.id, generation);
+
+      // Prune oldest terminal generations when the map exceeds the cap
+      if (newMap.size > MAX_GENERATIONS) {
+        for (const [id, g] of newMap) {
+          if (newMap.size <= MAX_GENERATIONS) break;
+          const status = g.status as string;
+          if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+            newMap.delete(id);
+          }
+        }
+      }
+
       return { generations: newMap };
     }),
 
