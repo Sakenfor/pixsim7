@@ -112,3 +112,45 @@ def test_map_image_status_sdk_string_completed():
 
 def test_map_image_status_sdk_string_processing():
     assert _map_pixverse_status_for({"image_status": None, "status": "processing"}, is_image=True) == ProviderStatus.PROCESSING
+
+
+# ---------------------------------------------------------------------------
+# Adapter: Video model raw-dict fallback (video.metadata)
+# ---------------------------------------------------------------------------
+
+def test_map_video_status_string_completed_bypasses_dims_check():
+    """The Video pydantic model normalizes status to string. String 'completed'
+    always maps to COMPLETED — the dims check only applies to integer status 10."""
+    assert _map_pixverse_status_for({"status": "completed"}, is_image=False) == ProviderStatus.COMPLETED
+
+
+def test_map_video_empty_dict_returns_processing():
+    """After notification consumed, video.metadata is {}. Should map to PROCESSING."""
+    assert _map_pixverse_status_for({}, is_image=False) == ProviderStatus.PROCESSING
+
+
+# ---------------------------------------------------------------------------
+# Adapter: placeholder URL nulling
+# ---------------------------------------------------------------------------
+
+def test_placeholder_url_detected():
+    """Pixverse placeholder URLs should be detected so adapter can null them."""
+    assert is_pixverse_placeholder_url(
+        "https://media.pixverse.ai/pixverse-preview/mp4/media/default.mp4"
+    ) is True
+    assert is_pixverse_placeholder_url(
+        "https://media.pixverse.ai/pixverse/jpg/media/default.jpg"
+    ) is True
+
+
+def test_real_output_url_not_placeholder():
+    assert is_pixverse_placeholder_url(
+        "https://media.pixverse.ai/pixverse/mp4/media/web/ori/abc123_seed0.mp4"
+    ) is False
+
+
+def test_placeholder_url_not_retrievable():
+    """Placeholders should fail the retrievable check — they're not real output."""
+    assert has_retrievable_pixverse_media_url(
+        "https://media.pixverse.ai/pixverse-preview/mp4/media/default.mp4"
+    ) is False

@@ -306,3 +306,116 @@ async def test_non_i2v_pixverse_video_still_suppresses_provider_thumbnail(
     assert returned.thumbnail_url is None
     assert submission.response["status"] == "completed"
     assert submission.response["thumbnail_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_filtered_with_placeholder_promoted_via_previous_poll_retrievable_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A previous poll stored has_retrievable_media_url=True in metadata.
+    Current poll returns FILTERED with placeholder URL (has_retrievable=False).
+    The stored flag should carry forward and trigger early CDN promotion."""
+    stored_video_url = "https://media.pixverse.ai/openapi/output/video-prev-poll.mp4"
+    submission = _make_submission(
+        response={
+            "video_url": stored_video_url,
+            "metadata": {
+                "provider_status": 10,
+                "has_retrievable_media_url": True,  # stored from earlier poll
+            },
+        },
+    )
+    # Current check: FILTERED, placeholder URL, but real dimensions
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=None,  # placeholder was nulled by adapter
+        thumbnail_url=None,
+        width=432,
+        height=640,
+        has_retrievable_media_url=False,  # current response has no real URL
+        suppress_thumbnail=True,
+        metadata={"provider_status": 7, "has_retrievable_media_url": False},
+    )
+
+    provider = _FakeProvider(status_result)
+    db = _FakeDB()
+    service = ProviderService(db)
+
+    async def _fake_publish(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=14),
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+        poll_cache=None,
+    )
+
+    # Should promote: stored flag=True + dims>0 + FILTERED
+    assert returned.status == ProviderStatus.COMPLETED
+    assert returned.video_url == stored_video_url  # falls back to stored URL
+    assert submission.response["metadata"]["video_early_cdn_terminal"] is True
+    assert submission.response["metadata"]["video_original_status"] == "filtered"
+    assert submission.response["metadata"]["has_retrievable_media_url"] is True
+
+
+@pytest.mark.asyncio
+async def test_filtered_without_previous_retrievable_flag_is_not_promoted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No previous poll stored has_retrievable_media_url. Current is FILTERED
+    with placeholder. Should NOT promote — stays FILTERED."""
+    submission = _make_submission(
+        response={
+            "metadata": {"provider_status": 5},
+            # No has_retrievable_media_url in stored metadata
+        },
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=None,
+        thumbnail_url=None,
+        width=432,
+        height=640,
+        has_retrievable_media_url=False,
+        suppress_thumbnail=True,
+        metadata={"provider_status": 7},
+    )
+
+    provider = _FakeProvider(status_result)
+    db = _FakeDB()
+    service = ProviderService(db)
+    events: list[tuple[str, dict]] = []
+
+    async def _fake_publish(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=15),
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+        poll_cache=None,
+    )
+
+    # Should NOT promote — no retrievable URL ever seen
+    assert returned.status == ProviderStatus.FILTERED
+    assert submission.response["status"] == "filtered"
+    assert "video_early_cdn_terminal" not in submission.response.get("metadata", {})
