@@ -132,6 +132,17 @@ export function useAuthenticatedMedia(
         }
 
         const blob = await res.blob();
+        // Re-check cache: another concurrent fetch for the same URL may have
+        // already cached a blob URL.  Reuse it to avoid revoking the existing
+        // one (which could still be referenced by another component's <img>).
+        const raceCached = cache.get(fullUrl);
+        if (raceCached) {
+          if (!cancelled) {
+            setSrc(raceCached);
+            setLoading(false);
+          }
+          return;
+        }
         const objectUrl = URL.createObjectURL(blob);
         cache.set(fullUrl, objectUrl);
 

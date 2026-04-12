@@ -241,6 +241,18 @@ export function useMediaThumbnailFull(
 
         // Success — create blob URL and cache it
         const blob = await res.blob();
+        // Re-check cache: another concurrent fetch for the same URL may have
+        // already cached a blob URL.  Reuse it to avoid revoking the existing
+        // one (which could still be referenced by another component's <img>,
+        // causing ERR_FILE_NOT_FOUND for revoked blob URLs).
+        const raceCached = _blobCache.get(fullUrl);
+        if (raceCached) {
+          if (!cancelled) {
+            setThumbSrc(raceCached);
+            setLoading(false);
+          }
+          return;
+        }
         const objectUrl = URL.createObjectURL(blob);
         _blobCache.set(fullUrl, objectUrl);
         if (!cancelled) {
