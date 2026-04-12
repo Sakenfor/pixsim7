@@ -15,6 +15,7 @@ Redis configuration:
     (settings.redis_url). Override via REDIS_URL in .env when needed.
 """
 
+import asyncio
 import os
 
 # Load .env file BEFORE any other imports that need env vars
@@ -240,6 +241,29 @@ async def startup(ctx: dict) -> None:
     inhibit_sleep()
 
 
+async def _drain_arq_pool(ctx: dict) -> None:
+    """Force-close arq's Redis pool connections before arq's own pool.close() runs.
+
+    arq cancels its main_task (poll loop) and job tasks before calling on_shutdown.
+    If any were mid-pipeline (WATCH/MULTI/EXEC) when cancelled, their connections
+    return to the pool with dirty transaction state. arq's subsequent
+    pool.close(close_connection_pool=True) then reuses one of those connections and
+    raises ExecAbortError: "Transaction discarded because of previous errors".
+
+    Disconnecting all connections here (including in-use ones) severs any half-built
+    transactions cleanly, so arq's cleanup has nothing poisoned to trip over.
+    """
+    pool = ctx.get("redis")
+    if pool is None:
+        return
+    try:
+        # Yield once so any just-cancelled pipeline coroutines can unwind first.
+        await asyncio.sleep(0)
+        await pool.connection_pool.disconnect(inuse_connections=True)
+    except Exception as e:
+        logger.warning("worker_shutdown_arq_pool_drain_error", error=str(e))
+
+
 async def shutdown(ctx: dict) -> None:
     """
     Worker shutdown handler
@@ -249,12 +273,27 @@ async def shutdown(ctx: dict) -> None:
     """
     global _event_bridge
     logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
-    allow_sleep()
-    AccountEventService.shutdown()
+
     if _event_bridge:
-        await stop_event_bus_bridge()
+        try:
+            await stop_event_bus_bridge()
+        except Exception as e:
+            logger.warning("worker_shutdown_event_bridge_error", error=str(e))
         _event_bridge = None
-    await close_database()
+
+    try:
+        AccountEventService.shutdown()
+    except Exception as e:
+        logger.warning("worker_shutdown_account_event_error", error=str(e))
+
+    await _drain_arq_pool(ctx)
+
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
+
+    allow_sleep()
 
 
 async def retry_startup(ctx: dict) -> None:
@@ -284,11 +323,25 @@ async def retry_shutdown(ctx: dict) -> None:
     """Shutdown for generation retry worker."""
     global _retry_event_bridge
     logger.info("worker_shutdown", msg="PixSim7 Generation Retry Worker Shutting Down")
-    AccountEventService.shutdown()
+
     if _retry_event_bridge:
-        await stop_event_bus_bridge()
+        try:
+            await stop_event_bus_bridge()
+        except Exception as e:
+            logger.warning("worker_shutdown_event_bridge_error", error=str(e))
         _retry_event_bridge = None
-    await close_database()
+
+    try:
+        AccountEventService.shutdown()
+    except Exception as e:
+        logger.warning("worker_shutdown_account_event_error", error=str(e))
+
+    await _drain_arq_pool(ctx)
+
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
 
 
 async def simulation_startup(ctx: dict) -> None:
@@ -310,7 +363,11 @@ async def simulation_startup(ctx: dict) -> None:
 async def simulation_shutdown(ctx: dict) -> None:
     """Shutdown for dedicated simulation scheduler worker."""
     logger.info("worker_shutdown", msg="PixSim7 Simulation Scheduler Worker Shutting Down")
-    await close_database()
+    await _drain_arq_pool(ctx)
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
 
 
 async def automation_startup(ctx: dict) -> None:
@@ -340,7 +397,11 @@ async def automation_startup(ctx: dict) -> None:
 async def automation_shutdown(ctx: dict) -> None:
     """Shutdown for dedicated automation worker."""
     logger.info("worker_shutdown", msg="PixSim7 Automation Worker Shutting Down")
-    await close_database()
+    await _drain_arq_pool(ctx)
+    try:
+        await close_database()
+    except Exception as e:
+        logger.warning("worker_shutdown_database_close_error", error=str(e))
 
 
 _sync_preload_system_config()
