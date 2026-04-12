@@ -22,6 +22,7 @@ from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.enums import (
     AccountStatus,
+    BillingState,
     GenerationStatus,
     ProviderStatus,
     OperationType,
@@ -1511,23 +1512,42 @@ async def _poll_single_generation(
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
 
-                    # Finalize billing — reuse generation_model (avoids double fetch)
-                    await _finalize_generation_billing_best_effort(
-                        db=db,
-                        generation_id=generation.id,
-                        generation_model=generation_model,
-                        final_submission=submission,
-                        account=account,
-                        actual_duration=status_result.duration_sec,
-                        refresh_generation=True,
+                    _is_filtered_completion = (
+                        _is_early_cdn and _early_cdn_original_status == "filtered"
                     )
 
-                    # Refresh credits from provider to sync actual balance.
-                    await refresh_account_credits_best_effort(
-                        account,
-                        account_service,
-                        logger,
-                    )
+                    if _is_filtered_completion:
+                        # Early CDN says filtered → Pixverse will auto-refund.
+                        # Skip local billing deduction AND skip the credit refresh
+                        # API call (which would likely return cached pre-refund
+                        # values anyway).  The moderation recheck at 30 s will
+                        # reconcile the real balance once the refund lands.
+                        await db.refresh(generation_model)
+                        generation_model.billing_state = BillingState.SKIPPED
+                        generation_model.actual_credits = 0
+                        generation_model.account_id = account.id
+                        logger.info(
+                            "billing_skipped_early_cdn_filtered",
+                            generation_id=generation.id,
+                            account_id=account.id,
+                        )
+                    else:
+                        # Normal completion — charge credits and sync balance
+                        await _finalize_generation_billing_best_effort(
+                            db=db,
+                            generation_id=generation.id,
+                            generation_model=generation_model,
+                            final_submission=submission,
+                            account=account,
+                            actual_duration=status_result.duration_sec,
+                            refresh_generation=True,
+                        )
+                        await refresh_account_credits_best_effort(
+                            account,
+                            account_service,
+                            logger,
+                        )
+
                     await db.commit()
 
                     if _publish_early_cdn_flagged:
