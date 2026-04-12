@@ -181,8 +181,13 @@ _moderation_recheck: dict[int, tuple[str, int, float, int, int, OperationType, s
 _MODERATION_RECHECK_DELAYS_SEC = (90, 180, 300)
 _MODERATION_RECHECK_MAX_ATTEMPTS = len(_MODERATION_RECHECK_DELAYS_SEC)
 # Shorter first-attempt delay for early-CDN-terminal completions: Pixverse
-# typically issues the refund within ~30 s of our early grab.
-_EARLY_CDN_RECHECK_DELAY_SEC = 30
+# typically issues the refund within 15-30 s of our early grab.  The
+# known-flagged fast-path schedules a follow-up if the first refresh lands
+# before the refund is processed.
+_EARLY_CDN_RECHECK_DELAY_SEC = 15
+# Follow-up delay for the known-flagged fast-path — catches refunds that
+# hadn't landed by the first recheck.
+_KNOWN_FLAGGED_FOLLOWUP_DELAY_SEC = 60
 
 
 def _has_pending_cancel(generation_model: Any) -> bool:
@@ -1954,6 +1959,46 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                     recheck_account = await db.get(ProviderAccount, account_id)
                     if not recheck_account:
+                        continue
+
+                    # Fast path: asset was already flagged at completion time
+                    # (e.g. early-CDN terminal with original_status=filtered).
+                    # The CDN may still be serving briefly, so the probe would
+                    # return "ok" and skip the credit refresh.  Skip the
+                    # moderation verification and go straight to credit refresh
+                    # so the Pixverse refund lands in our DB.
+                    already_flagged = bool(
+                        asset and (asset.media_metadata or {}).get("provider_flagged")
+                    )
+                    if already_flagged:
+                        await refresh_account_credits_best_effort(
+                            recheck_account,
+                            account_service,
+                            logger,
+                            db=db,
+                            success_log_event="moderation_recheck_credits_refreshed_known_flagged",
+                            success_log_fields={
+                                "account_id": recheck_account.id,
+                                "asset_id": asset_id,
+                                "attempt": attempt,
+                            },
+                            failure_log_event="moderation_recheck_credit_refresh_failed",
+                            failure_log_fields={"account_id": recheck_account.id},
+                        )
+                        # Schedule one follow-up in case Pixverse's refund
+                        # hadn't landed by the first refresh.  Only after the
+                        # first attempt so we don't loop forever.
+                        if attempt == 0:
+                            _schedule_moderation_recheck(
+                                asset_id=asset_id,
+                                provider_job_id=provider_job_id,
+                                account_id=account_id,
+                                generation_id=gen_id,
+                                attempt=1,
+                                operation_type=op_type,
+                                provider_id=recheck_provider_id,
+                                delay_sec=_KNOWN_FLAGGED_FOLLOWUP_DELAY_SEC,
+                            )
                         continue
 
                     recheck_provider = _provider_registry.get(recheck_provider_id)

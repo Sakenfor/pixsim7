@@ -410,12 +410,13 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         # Refresh stale account credits every 10 minutes
-        # Catches idle accounts with expired sessions that the poller misses
+        # Catches idle accounts with expired sessions that the poller misses.
+        # run_at_startup=True so deploys/restarts immediately reconcile credits.
         cron(
             refresh_stale_account_credits,
             minute={3, 13, 23, 33, 43, 53},
             second={30},
-            run_at_startup=False,
+            run_at_startup=True,
         ),
         # Purge old log entries daily at 03:00
         cron(
