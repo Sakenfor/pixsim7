@@ -7,6 +7,8 @@
 
 import type { AssetResponse } from '@lib/api/assets';
 
+import { isBackendAssetId } from './backendAssetId';
+
 type AssetEventCallback = (asset: AssetResponse) => void;
 type AssetUpdateCallback = (asset: AssetResponse) => void;
 type AssetDeleteCallback = (assetId: number | string) => void;
@@ -130,10 +132,18 @@ class AssetEventEmitter {
    * Emit open-tools-panel event to select assets and show the tools panel
    */
   emitOpenToolsPanel(assetIds: number[]): void {
-    console.log('[AssetEvents] Open tools panel for assets:', assetIds);
+    const validIds = assetIds.filter(isBackendAssetId);
+    if (validIds.length !== assetIds.length) {
+      console.warn(
+        '[AssetEvents] Dropped non-backend asset ids from openToolsPanel:',
+        assetIds.filter((id) => !isBackendAssetId(id)),
+      );
+    }
+    if (validIds.length === 0) return;
+    console.log('[AssetEvents] Open tools panel for assets:', validIds);
     this.openToolsPanelListeners.forEach((callback) => {
       try {
-        callback(assetIds);
+        callback(validIds);
       } catch (err) {
         console.error('[AssetEvents] Open tools panel listener error:', err);
       }

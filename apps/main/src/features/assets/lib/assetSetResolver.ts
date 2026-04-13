@@ -13,6 +13,8 @@ import { fromAssetResponse, fromAssetResponses } from '../models/asset';
 import type { AssetModel } from '../models/asset';
 import type { AssetSet } from '../stores/assetSetStore';
 
+import { isBackendAssetId } from './backendAssetId';
+
 const DEFAULT_SMART_MAX_RESULTS = 100;
 
 /**
@@ -29,8 +31,9 @@ export async function resolveAssetSet(set: AssetSet): Promise<AssetModel[]> {
 }
 
 async function resolveManualSet(assetIds: number[]): Promise<AssetModel[]> {
+  const validIds = assetIds.filter(isBackendAssetId);
   const results = await Promise.allSettled(
-    assetIds.map((id) => getAsset(id)),
+    validIds.map((id) => getAsset(id)),
   );
 
   const assets: AssetModel[] = [];

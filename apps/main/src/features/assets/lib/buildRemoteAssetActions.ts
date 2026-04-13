@@ -5,6 +5,7 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { AssetModel } from '../models/asset';
 
 import { assetEvents } from './assetEvents';
+import { assertBackendAssetId } from './backendAssetId';
 import { extractUploadError, notifyGalleryOfUpdatedAsset } from './uploadActions';
 
 /** Refetch a single asset and patch it in the gallery via the event bus. */
@@ -29,6 +30,7 @@ export function buildRemoteAssetActions(
   asset: AssetModel,
   { baseActions, providers, filterProviderId, reuploadAsset, refresh }: BuildRemoteAssetActionsOptions,
 ): MediaCardActions {
+  assertBackendAssetId(asset.id, `buildRemoteAssetActions for ${asset.providerAssetId ?? '<no providerAssetId>'}`);
   return {
     ...baseActions,
     onReuploadDone: () => refreshSingleAsset(asset.id, refresh),

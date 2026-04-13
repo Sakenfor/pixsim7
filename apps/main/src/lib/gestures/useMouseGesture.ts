@@ -224,28 +224,27 @@ export function useMouseGesture({
         el.releasePointerCapture(ev.pointerId);
         cleanup();
 
-        if (stateRef.current.committed) {
-          const dx = ev.clientX - stateRef.current.startX;
-          const dy = ev.clientY - stateRef.current.startY;
-          const distance = Math.hypot(dx, dy);
+        const wasCommitted = stateRef.current.committed;
+        const dx = ev.clientX - stateRef.current.startX;
+        const dy = ev.clientY - stateRef.current.startY;
+        const distance = Math.hypot(dx, dy);
+        const direction = stateRef.current.lockedDirection ?? resolveDirection(dx, dy);
 
-          onGestureRef.current({
-            type: 'swipe',
-            direction: stateRef.current.lockedDirection ?? resolveDirection(dx, dy),
-            distance,
-            dx,
-            dy,
-          });
-
-          // Flag to suppress the synthetic click that fires after pointerup
-          gestureConsumed.current = true;
-          requestAnimationFrame(() => { gestureConsumed.current = false; });
-        }
-
+        // Reset visual/gesture state FIRST so the overlay always unmounts,
+        // even if the action handler below throws or has side effects that
+        // would otherwise prevent the state update from landing.
         stateRef.current.committed = false;
         stateRef.current.pointerId = -1;
         setActiveGesture(null);
         emitPhase('idle', null);
+
+        if (wasCommitted) {
+          // Flag to suppress the synthetic click that fires after pointerup
+          gestureConsumed.current = true;
+          requestAnimationFrame(() => { gestureConsumed.current = false; });
+
+          onGestureRef.current({ type: 'swipe', direction, distance, dx, dy });
+        }
       };
 
       const handleKeyDown = (ev: KeyboardEvent) => {

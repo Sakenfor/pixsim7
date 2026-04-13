@@ -18,12 +18,15 @@ function mergeLinkedWithLocal(
   linkedAsset: AssetModel,
   fallbackAsset: AssetModel,
 ): AssetModel {
+  // For local-folder cards we always prefer local preview/file sources over
+  // the linked library asset's URLs. The backend thumbnail may not exist yet
+  // immediately after a library save (still being generated) — using its URL
+  // here causes a flicker of 404 retries in useMediaThumbnail. Local previews
+  // are loaded lazily from the file system handle and are always faster.
   const merged: AssetModel = {
     ...linkedAsset,
-    // Prefer local previews/paths in local-folder views so rendering remains fast
-    // and continues to work even if remote preview generation lags behind.
-    previewUrl: fallbackAsset.previewUrl ?? linkedAsset.previewUrl,
-    thumbnailUrl: fallbackAsset.thumbnailUrl ?? linkedAsset.thumbnailUrl,
+    previewUrl: fallbackAsset.previewUrl,
+    thumbnailUrl: fallbackAsset.thumbnailUrl,
     fileUrl: fallbackAsset.fileUrl ?? linkedAsset.fileUrl,
     remoteUrl: fallbackAsset.remoteUrl ?? linkedAsset.remoteUrl,
     localPath: fallbackAsset.localPath ?? linkedAsset.localPath,

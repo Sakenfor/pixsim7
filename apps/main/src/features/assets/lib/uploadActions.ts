@@ -8,6 +8,7 @@
 
 import { getAsset } from './api';
 import { assetEvents } from './assetEvents';
+import { assertBackendAssetId } from './backendAssetId';
 import { getUploadCapableProviders } from './resolveUploadTarget';
 
 // ── Error extraction ────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ export async function notifyGalleryOfNewAsset(assetId: number): Promise<void> {
  * refresh the card without a full refresh.
  */
 export async function notifyGalleryOfUpdatedAsset(assetId: number): Promise<void> {
+  assertBackendAssetId(assetId, 'notifyGalleryOfUpdatedAsset');
   const asset = await getAsset(assetId);
   assetEvents.emitAssetUpdated(asset);
 }
