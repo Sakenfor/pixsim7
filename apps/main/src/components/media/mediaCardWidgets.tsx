@@ -581,6 +581,8 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
     throttle: settings.throttle,
     frameAccurate: settings.frameAccurate,
     muted: settings.muted,
+    pauseOnLeave: settings.pauseOnLeave,
+    hoverSound: settings.hoverSound,
     priority: 10,
     // Pass click through to open viewer
     onClick: onOpen ? () => onOpen(id) : undefined,
@@ -591,6 +593,10 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
     // Extract last frame (middle-click)
     onExtractLastFrame: actions?.onExtractLastFrame
       ? () => actions.onExtractLastFrame?.(id)
+      : undefined,
+    // Hold-press on scrub dot → extract+upload frame at that timestamp
+    onHoldUpload: actions?.onExtractFrame
+      ? (timestamp: number) => actions.onExtractFrame?.(id, timestamp)
       : undefined,
   });
 }

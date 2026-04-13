@@ -24,6 +24,8 @@ import { OverlayContainer, VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import type { OverlayPolicyStep } from '@lib/ui/overlay';
 import type { OverlayContextId } from '@lib/widgets';
+import { useOverlayWidgetSettingsStore } from '@lib/widgets';
+import type { VideoScrubWidgetSettings } from '@lib/widgets/register/overlayWidgets';
 
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
@@ -31,6 +33,7 @@ import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 import { buildCompactAssetCardLocalWidgets } from '@/components/media/assetCardLocalWidgets';
 import { useOverlayWidgetsForAsset } from '@/components/media/hooks/useOverlayWidgetsForAsset';
 import { ThumbnailImage } from '@/components/media/ThumbnailImage';
+import { useVideoMarks, useVideoMarksStore } from '@/components/media/videoMarksStore';
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
@@ -86,6 +89,8 @@ export interface CompactAssetCardProps {
   // Upload to provider shortcut (replaces generate button when asset isn't on target provider)
   onUploadToProvider?: () => void | Promise<void>;
   uploadingToProvider?: boolean;
+  // Hold-press on the scrub dot extracts + uploads the frame at that timestamp.
+  onHoldUploadFrame?: (timestamp: number) => void | Promise<void>;
   // Skip toggle — temporarily omit from generation
   skipped?: boolean;
   onToggleSkip?: () => void;
@@ -125,6 +130,7 @@ export function CompactAssetCard({
   generating = false,
   onUploadToProvider,
   uploadingToProvider = false,
+  onHoldUploadFrame,
   skipped,
   onToggleSkip,
   onClick,
@@ -153,8 +159,12 @@ export function CompactAssetCard({
   const hoverPreviewEnabled = enableHoverPreview && !clickToPlay;
   const isHovering = hoverPreviewEnabled && isHovered;
 
-  // For video scrubbing, use the properly resolved video source
-  const videoSrc = isVideo ? resolvedVideoSrc : undefined;
+  // For video scrubbing, pass the raw URL to VideoScrubWidgetRenderer — it
+  // handles authenticated fetching internally (useAuthenticatedMedia with
+  // active: isHovering).  The resolved videoSrc from useMediaPreviewSource
+  // is undefined for backend videos that have a thumbnail because mediaActive
+  // defaults to false when a thumb/preview URL exists.
+  const videoSrc = isVideo ? (resolvedVideoSrc ?? resolvedMainUrl) : undefined;
   const hasLockedFrame = lockedTimestamp !== undefined;
 
   // Toggle grid and calculate position with edge detection
@@ -191,6 +201,32 @@ export function CompactAssetCard({
       setShowQueueGrid(true);
     }
   }, [showQueueGrid, queueItems]);
+
+  const videoMarks = useVideoMarks(isVideo ? asset.id : undefined);
+  const addVideoMark = useVideoMarksStore((s) => s.addMark);
+  const removeVideoMark = useVideoMarksStore((s) => s.removeMark);
+
+  // User-configurable scrub behaviour (mute / pause-on-leave / hover-sound)
+  // shared with MediaCard's overlay scrubber. Select primitive fields
+  // individually — `getSettings` returns a fresh merged object every call,
+  // which would create a new snapshot each render and thrash useSyncExternalStore.
+  const scrubMuted = useOverlayWidgetSettingsStore(
+    (s) => s.getSettings<VideoScrubWidgetSettings>('video-scrub').muted,
+  );
+  const scrubPauseOnLeave = useOverlayWidgetSettingsStore(
+    (s) => s.getSettings<VideoScrubWidgetSettings>('video-scrub').pauseOnLeave,
+  );
+  const scrubHoverSound = useOverlayWidgetSettingsStore(
+    (s) => s.getSettings<VideoScrubWidgetSettings>('video-scrub').hoverSound,
+  );
+  const handleAddVideoMark = useCallback(
+    (time: number) => { if (isVideo) addVideoMark(asset.id, time); },
+    [isVideo, asset.id, addVideoMark],
+  );
+  const handleRemoveVideoMark = useCallback(
+    (time: number) => { if (isVideo) removeVideoMark(asset.id, time); },
+    [isVideo, asset.id, removeVideoMark],
+  );
 
   // Handle frame lock/unlock via dot click (or double-click on mark)
   const handleDotClick = useCallback((timestamp: number) => {
@@ -345,10 +381,19 @@ export function CompactAssetCard({
               showTimeline={true}
               showTimestamp={true}
               timelinePosition="bottom"
+              muted={scrubMuted}
+              pauseOnLeave={scrubPauseOnLeave}
+              hoverSound={scrubHoverSound}
               onDotClick={onLockTimestamp ? handleDotClick : undefined}
               dotTooltip={hasLockedFrame ? `Unlock frame (${lockedTimestamp?.toFixed(1)}s)` : 'Click to use this frame'}
               dotActive={hasLockedFrame}
               lockedTimestamp={lockedTimestamp}
+              marks={videoMarks}
+              onAddMark={handleAddVideoMark}
+              onRemoveMark={handleRemoveVideoMark}
+              onHoldUpload={onHoldUploadFrame
+                ? (timestamp) => onHoldUploadFrame(timestamp)
+                : undefined}
             />
           </div>
         )}

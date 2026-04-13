@@ -14,6 +14,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
 
+import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
+
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
@@ -58,6 +60,13 @@ export interface VideoScrubWidgetConfig {
   /** Mute video during scrubbing */
   muted?: boolean;
 
+  /** Keep currentTime when hover ends (default true). */
+  pauseOnLeave?: boolean;
+
+  /** Play with sound on hover. Claims the global audio slot to mute other
+   *  registered <video> elements while hovered. Default false. */
+  hoverSound?: boolean;
+
   /** Custom video element props */
   videoProps?: React.VideoHTMLAttributes<HTMLVideoElement>;
 
@@ -93,6 +102,12 @@ export interface VideoScrubWidgetRendererProps {
   timelinePosition?: 'bottom' | 'top';
   throttle?: number;
   muted?: boolean;
+  /** Keep currentTime when hover ends (default true). When false, rewinds to 0. */
+  pauseOnLeave?: boolean;
+  /** Play with sound on hover. Claims the global audio slot, muting other
+   *  registered <video> elements (e.g. the main viewer) for the duration of
+   *  the hover. Default false. */
+  hoverSound?: boolean;
   videoProps?: React.VideoHTMLAttributes<HTMLVideoElement>;
   className?: string;
   onScrub?: (timestamp: number, data?: any) => void;
@@ -135,6 +150,8 @@ export function VideoScrubWidgetRenderer({
   timelinePosition = 'bottom',
   throttle = 50,
   muted = true,
+  pauseOnLeave = true,
+  hoverSound = false,
   videoProps = {},
   className = '',
   onScrub,
@@ -167,6 +184,21 @@ export function VideoScrubWidgetRenderer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastUpdateRef = useRef(0);
   const stillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable per-instance key for audio claim + active-video registry. The
+  // asset id from `data` is preferred; fall back to a random suffix so two
+  // scrubbers without data still get distinct keys.
+  const claimKeyRef = useRef<string>(
+    `scrub-${(data as { id?: string | number } | undefined)?.id ?? Math.random().toString(36).slice(2, 8)}`,
+  );
+
+  // Register the scrubber's <video> so the global audio claim sees it and
+  // mutes/unmutes alongside other registered players.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const assetId = (data as { id?: string | number } | undefined)?.id ?? claimKeyRef.current;
+    return registerActiveVideo(`video-scrub:${claimKeyRef.current}`, el, assetId);
+  }, [data]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -752,19 +784,18 @@ export function VideoScrubWidgetRenderer({
         clearTimeout(stillTimerRef.current);
         stillTimerRef.current = null;
       }
-      // Pause and reset video
+      // Pause; only rewind when pauseOnLeave=false so the next hover resumes
+      // from the frame the user left.
       if (videoRef.current) {
         videoRef.current.pause();
-        // Use readyState instead of isVideoLoaded state to avoid dep cycle
-        if (videoRef.current.readyState >= 1) {
+        if (!pauseOnLeave && videoRef.current.readyState >= 1) {
           videoRef.current.currentTime = 0;
         }
       }
       setIsPlaying(false);
-      setCurrentTime(0);
+      if (!pauseOnLeave) setCurrentTime(0);
       setLoopRange(null);
       setIsDragging(false);
-      setIsVideoLoaded(false);
       setVideoError(false);
       // Keep marks across hover cycles - don't clear them
       dragStartTimeRef.current = null;
@@ -773,7 +804,15 @@ export function VideoScrubWidgetRenderer({
       lastClickTimeRef.current = 0;
       lastClickMarkRef.current = null;
     }
-  }, [isHovering]);
+  }, [isHovering, pauseOnLeave]);
+
+  // Audio coordination: claim the global audio slot while hovered with sound on.
+  // The actual mute state is driven by the JSX prop (see <video muted=...>);
+  // claimAudio handles muting *other* registered <video> elements.
+  useEffect(() => {
+    if (!isHovering || !hoverSound) return;
+    return claimAudio(`video-scrub:${claimKeyRef.current}`);
+  }, [isHovering, hoverSound]);
 
   // Calculate progress percentage
   // Use hoverPercent for immediate feedback when scrubbing, progressPercentage when playing
@@ -901,7 +940,7 @@ export function VideoScrubWidgetRenderer({
         ref={videoRef}
         src={isHovering || isVideoLoaded ? effectiveUrl : undefined}
         preload={isHovering || isVideoLoaded ? 'metadata' : 'none'}
-        muted={muted}
+        muted={hoverSound && isHovering ? false : muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
@@ -1108,6 +1147,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     timelinePosition = 'bottom',
     throttle = 50,
     muted = true,
+    pauseOnLeave = true,
+    hoverSound = false,
     videoProps = {},
     className = '',
     priority,
@@ -1154,6 +1195,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           timelinePosition={timelinePosition}
           throttle={throttle}
           muted={muted}
+          pauseOnLeave={pauseOnLeave}
+          hoverSound={hoverSound}
           videoProps={videoProps}
           className={className}
           onScrub={onScrub}

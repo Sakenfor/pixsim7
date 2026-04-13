@@ -23,10 +23,11 @@ import { isFavoriteAsset, toggleFavoriteTag } from '@features/assets/lib/favorit
 import type { MediaCardResolvedProps, MediaCardRuntimeProps } from '../MediaCard';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import {
+  createDefaultMediaCardWidgets,
   createFavoriteWidget,
-  createQuickTagWidget,
-  createInfoPopover,
   createGenerationButtonGroup,
+  createInfoPopover,
+  createQuickTagWidget,
   createVersionBadge,
 } from '../mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
@@ -120,13 +121,32 @@ export function useOverlayWidgetsForAsset({
       ...restRuntimeProps,
     };
 
-    const candidates = [
-      createFavoriteWidget(resolvedProps),
-      createQuickTagWidget(),
-      createGenerationButtonGroup(resolvedProps),
-      createInfoPopover(resolvedProps),
-      asset.versionNumber ? createVersionBadge() : null,
-    ].filter((widget): widget is OverlayWidget<MediaCardOverlayData> => widget !== null);
+    // Viewer surface gets the full MediaCard widget set (media type, status,
+    // model family, duration, provider, etc.). Compact surfaces (asset
+    // inputs, picker grids) keep a slim hand-picked set so always-on badges
+    // like selection-status / queue-status don't crowd the small card and
+    // push hover actions around.
+    //
+    // The video-scrubber widget is suppressed in the viewer because it
+    // renders its own absolutely-positioned <video object-cover> which
+    // ignores the viewer's zoom/pan transform — on hover it pops over the
+    // main player at a different fit and zoom. The viewer's native <video
+    // controls> already covers playback/scrubbing.
+    const candidates =
+      context === 'viewer'
+        ? createDefaultMediaCardWidgets(resolvedProps).filter(
+            (widget): widget is OverlayWidget<MediaCardOverlayData> =>
+              widget !== null && widget.id !== 'video-scrubber',
+          )
+        : ([
+            createFavoriteWidget(resolvedProps),
+            createQuickTagWidget(),
+            createGenerationButtonGroup(resolvedProps),
+            createInfoPopover(resolvedProps),
+            asset.versionNumber ? createVersionBadge() : null,
+          ].filter(
+            (widget): widget is OverlayWidget<MediaCardOverlayData> => widget !== null,
+          ));
 
     const widgets = applyMediaOverlayPolicyChain(candidates, {
       context,
@@ -153,12 +173,16 @@ export function useOverlayWidgetsForAsset({
       id: asset.id,
       mediaType: baseProps.mediaType,
       providerId: asset.providerId,
+      status: baseProps.providerStatus,
       tags: tagSlugs,
       description: asset.description ?? undefined,
       createdAt: asset.createdAt,
       uploadState: 'idle',
       uploadProgress: 0,
       remoteUrl: baseProps.remoteUrl ?? '',
+      videoSrc: baseProps.mediaType === 'video' ? baseProps.remoteUrl ?? undefined : undefined,
+      durationSec: baseProps.durationSec,
+      actions: restRuntimeProps.actions,
       isFavorite,
       onToggleFavorite: () => toggleFavoriteTag(asset),
       sourceGenerationId: asset.sourceGenerationId ?? undefined,

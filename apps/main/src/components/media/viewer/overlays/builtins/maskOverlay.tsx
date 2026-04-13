@@ -41,6 +41,7 @@ import { useViewerToolPresets, type ResolvedPreset } from '@/components/media/vi
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 
+import { useViewerViewportStore } from '../../panels/viewerViewportStore';
 import { useOverlayLayerStore } from '../shared/overlayLayerStore';
 import {
   OverlaySidePanel,
@@ -406,11 +407,16 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   // Prefer our own dimensions, fall back to prop
   const resolvedMediaDimensions = surfaceDimensions ?? mediaDimensions;
 
-  // Set up interaction layer
+  // Set up interaction layer — seed the initial view from the shared viewer
+  // viewport so entering mask mode preserves the user's zoom/pan/fit.
   const interaction = useInteractionLayer({
     initialMode: 'draw',
     initialTool: { size: 0.03, color: '#ffffff', opacity: 0.7 },
     polygonCloseOnFinalize: false,
+    initialViewState: (() => {
+      const vp = useViewerViewportStore.getState();
+      return { zoom: vp.zoom / 100, pan: vp.pan, fitMode: vp.fitMode };
+    })(),
   });
 
   const {
@@ -430,10 +436,43 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     canUndo,
     canRedo,
     resetView,
+    setView: setInteractionView,
+    setFitMode: setInteractionFitMode,
     viewCursorHint,
     hoveredVertex,
     setVertexWidth,
   } = interaction;
+
+  // Bidirectional sync between this overlay's interaction view and the
+  // shared viewer viewport store. Equality guards on both sides prevent
+  // feedback loops.
+  const interactionViewRef = useRef(state.view);
+  interactionViewRef.current = state.view;
+
+  useEffect(() => {
+    const cur = useViewerViewportStore.getState();
+    const nextZoom = state.view.zoom * 100;
+    const sameZoom = Math.abs(cur.zoom - nextZoom) < 0.001;
+    const samePan = cur.pan.x === state.view.pan.x && cur.pan.y === state.view.pan.y;
+    const sameFit = cur.fitMode === state.view.fitMode;
+    if (sameZoom && samePan && sameFit) return;
+    cur.setViewport({ zoom: nextZoom, pan: state.view.pan, fitMode: state.view.fitMode });
+  }, [state.view.zoom, state.view.pan, state.view.fitMode]);
+
+  useEffect(() => {
+    return useViewerViewportStore.subscribe((vp) => {
+      const v = interactionViewRef.current;
+      const internalZoom = v.zoom * 100;
+      if (Math.abs(internalZoom - vp.zoom) > 0.001 ||
+          v.pan.x !== vp.pan.x ||
+          v.pan.y !== vp.pan.y) {
+        setInteractionView({ zoom: vp.zoom / 100, pan: vp.pan });
+      }
+      if (v.fitMode !== vp.fitMode) {
+        setInteractionFitMode(vp.fitMode);
+      }
+    });
+  }, [setInteractionView, setInteractionFitMode]);
 
   const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
   const sourceAssetId = useMemo(() => getViewerBackendAssetId(asset), [asset]);

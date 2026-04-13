@@ -65,6 +65,10 @@ export interface VideoScrubWidgetSettings {
   throttle: number;
   frameAccurate: boolean;
   muted: boolean;
+  /** Keep currentTime when hover ends instead of rewinding. */
+  pauseOnLeave: boolean;
+  /** Play with audio on hover; mutes other registered players for the hover duration. */
+  hoverSound: boolean;
 }
 
 /** Progress widget settings */
@@ -376,6 +380,8 @@ export const videoScrubWidget: WidgetDefinition<VideoScrubWidgetSettings> = {
       throttle: config.props?.throttle as number | undefined,
       frameAccurate: config.props?.frameAccurate as boolean | undefined,
       muted: config.props?.muted !== false,
+      pauseOnLeave: config.props?.pauseOnLeave !== false,
+      hoverSound: config.props?.hoverSound === true,
       className: config.style?.className,
       priority: config.position.order,
       onScrub: (runtimeOptions as any)?.onScrub,
@@ -390,6 +396,8 @@ export const videoScrubWidget: WidgetDefinition<VideoScrubWidgetSettings> = {
     throttle: 50,
     frameAccurate: false,
     muted: true,
+    pauseOnLeave: true,
+    hoverSound: false,
     // Shared scrub behavior settings (used by both MediaCard and CompactAssetCard)
     controlZoneHeight: 50,
     autoPlayDelay: 500,
@@ -413,6 +421,8 @@ export const videoScrubWidget: WidgetDefinition<VideoScrubWidgetSettings> = {
         description: 'Control how the video scrubber behaves.',
         fields: [
           { key: 'muted', type: 'toggle', label: 'Mute During Scrub', description: 'Keep video muted while scrubbing.' },
+          { key: 'hoverSound', type: 'toggle', label: 'Sound On Hover', description: 'Play with audio while hovering. Mutes other registered players (including the main viewer) for the duration of the hover.' },
+          { key: 'pauseOnLeave', type: 'toggle', label: 'Pause On Leave', description: 'Keep the current frame when the cursor leaves. When off, rewinds to start.' },
           { key: 'frameAccurate', type: 'toggle', label: 'Frame Accurate Seeking', description: 'Enable precise frame seeking (slower but more accurate).' },
           { key: 'throttle', type: 'number', label: 'Update Throttle (ms)', description: 'Minimum time between scrub updates. Lower = smoother but more CPU.', min: 16, max: 200, step: 10 },
           { key: 'controlZoneHeight', type: 'number', label: 'Control Zone Height (px)', description: 'Height from bottom where auto-play is disabled for precise scrubbing.', min: 20, max: 100, step: 5 },
