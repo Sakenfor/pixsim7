@@ -11,6 +11,7 @@ import { useAutoContextMenu } from '@lib/dockview';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 
 import type { ViewerAsset } from '@features/assets';
+import { registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
@@ -75,6 +76,13 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
       setVideoLoadFailed(true);
     }
   }, [asset.type, videoCandidates.length]);
+
+  useEffect(() => {
+    if (asset.type !== 'video') return;
+    const el = resolvedVideoRef.current;
+    if (!el) return;
+    return registerActiveVideo('viewer:main', el, asset.id);
+  }, [asset.id, asset.type, resolvedVideoRef, videoReady]);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({

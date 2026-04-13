@@ -1,12 +1,9 @@
 /**
  * useViewerGestures
  *
- * Gesture hook for the media viewer (viewing mode only).
- * Supports viewer-specific actions (navigate, close, fit toggle)
- * plus shared card-style actions (favorite, upload, etc.).
- *
- * Reads from either the independent viewer gesture config or
- * mirrors the gallery card config based on user preference.
+ * Gesture hook for the media viewer (viewing mode only). Backed by the
+ * 'viewer' gesture surface; users can mirror another surface (e.g. gallery)
+ * via the surface's `source` setting without touching this hook.
  */
 
 import { useCallback, useMemo, useRef } from 'react';
@@ -20,25 +17,20 @@ import {
   type GestureResolverContext,
 } from './gestureActions';
 import {
-  useGestureConfigStore,
   getCascadeActionsForDirection,
   getChainActionForDirection,
-} from './useGestureConfigStore';
+} from './gestureSurfaces';
 import { useGestureSecondaryStore, resolveDurationFromDy } from './useGestureSecondaryStore';
+import { useSurfaceGestureConfig } from './useGestureSurfaceStore';
 import type { GestureDirection, GestureEvent } from './useMouseGesture';
 import { useMouseGesture } from './useMouseGesture';
-import { useViewerGestureConfigStore } from './useViewerGestureConfigStore';
-
-// ─── Context & Result ────────────────────────────────────────────────────────
 
 export interface ViewerGestureContext {
-  /** Viewer-specific handlers */
   navigatePrev?: () => void;
   navigateNext?: () => void;
   closeViewer?: () => void;
   toggleFitMode?: () => void;
   toggleFavorite?: () => void;
-  /** Optional card-style resolver for shared actions (upload, generate, etc.) */
   cardResolverContext?: GestureResolverContext;
 }
 
@@ -62,8 +54,6 @@ export interface UseViewerGesturesResult {
   returningActionLabel: string | null;
 }
 
-// ─── Viewer action resolver ──────────────────────────────────────────────────
-
 function resolveViewerGestureHandler(
   actionId: string,
   ctx: ViewerGestureContext,
@@ -77,11 +67,9 @@ function resolveViewerGestureHandler(
     case 'none': return undefined;
   }
 
-  // Fall through to card action resolver for shared actions
   if (ctx.cardResolverContext) {
     const cardHandler = resolveGestureHandler(actionId, ctx.cardResolverContext);
     if (cardHandler) {
-      // Wrap card handler (which takes id, count, overrides) into a no-arg fn
       return () => cardHandler(0);
     }
   }
@@ -89,16 +77,8 @@ function resolveViewerGestureHandler(
   return undefined;
 }
 
-// ─── Hook ────────────────────────────────────────────────────────────────────
-
 export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesResult {
-  // Read both config stores
-  const viewerConfig = useViewerGestureConfigStore();
-  const galleryConfig = useGestureConfigStore();
-
-  // Determine effective config based on source toggle
-  const useGallery = viewerConfig.source === 'gallery';
-  const cfg = useGallery ? galleryConfig : viewerConfig;
+  const cfg = useSurfaceGestureConfig('viewer');
 
   const gestureDirections = useMemo(
     () => ({
@@ -142,7 +122,6 @@ export function useViewerGestures(ctx: ViewerGestureContext): UseViewerGesturesR
     ),
   });
 
-  // Visual feedback derivations (same pattern as useCardGestures)
   const isCommitted = activeGesture?.phase === 'committed';
   const phase = activeGesture?.phase ?? 'idle';
 

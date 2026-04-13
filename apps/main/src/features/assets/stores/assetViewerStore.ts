@@ -8,6 +8,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { isAnyVideoPlaying } from '../lib/activeVideoRegistry';
+
 export type ViewerMode = 'side' | 'fullscreen' | 'closed';
 
 /**
@@ -94,6 +96,8 @@ interface AssetViewerState {
   scopes: Record<string, NavigationScope>;
   /** Currently active scope id */
   activeScopeId: string | null;
+  /** Head asset id that arrived while follow-latest was suppressed (e.g. video playing) */
+  pendingHeadId: string | number | null;
 
   // Actions
   /** Open viewer with an asset, optionally setting the initial scope */
@@ -122,6 +126,10 @@ interface AssetViewerState {
   unregisterScope: (id: string) => void;
   /** Switch to a different scope, swapping assetList and preserving position. */
   switchScope: (id: string) => void;
+  /** Jump to the pending head asset if any and clear the pending marker. */
+  consumePendingHead: () => void;
+  /** Clear the pending head marker without navigating. */
+  clearPendingHead: () => void;
 }
 
 const defaultSettings: ViewerSettings = {
@@ -169,6 +177,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       showMetadata: false,
       scopes: {},
       activeScopeId: null,
+      pendingHeadId: null,
 
       openViewer: (asset, assetList, scopeId) => {
         const { settings } = get();
@@ -201,6 +210,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           currentIndex: -1,
           scopes: {},
           activeScopeId: null,
+          pendingHeadId: null,
         });
       },
 
@@ -246,13 +256,40 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
 
       navigateTo: (index) => {
-        const { assetList } = get();
-        if (index >= 0 && index < assetList.length) {
+        const { scopes, activeScopeId, assetList, pendingHeadId } = get();
+        const list = (activeScopeId && scopes[activeScopeId]?.assets) || assetList;
+        if (index >= 0 && index < list.length) {
+          const next = list[index];
+          const clearsPending = pendingHeadId != null && next.id === pendingHeadId;
           set({
+            assetList: list,
             currentIndex: index,
-            currentAsset: assetList[index],
+            currentAsset: next,
+            ...(clearsPending ? { pendingHeadId: null } : null),
           });
         }
+      },
+
+      consumePendingHead: () => {
+        const { scopes, activeScopeId, pendingHeadId } = get();
+        if (pendingHeadId == null) return;
+        const list = (activeScopeId && scopes[activeScopeId]?.assets) || [];
+        const idx = list.findIndex((a) => a.id === pendingHeadId);
+        if (idx < 0) {
+          set({ pendingHeadId: null });
+          return;
+        }
+        set({
+          assetList: list,
+          currentIndex: idx,
+          currentAsset: list[idx],
+          pendingHeadId: null,
+        });
+      },
+
+      clearPendingHead: () => {
+        if (get().pendingHeadId == null) return;
+        set({ pendingHeadId: null });
       },
 
       toggleMetadata: () => {
@@ -300,18 +337,44 @@ export const useAssetViewerStore = create<AssetViewerState>()(
             const oldHead = previousScope?.assets[0]?.id;
             const newHead = assets[0]?.id;
             if (settings.followLatest && oldHead !== newHead && newHead !== undefined) {
+              // Suppress auto-follow if the user is mid-playback — stash the new
+              // head as "pending" so the recent strip can flag it instead of
+              // ripping the viewer off the current asset.
+              if (isAnyVideoPlaying()) {
+                set({
+                  scopes: { ...scopes, [id]: { label, assets } },
+                  pendingHeadId: newHead,
+                });
+                return;
+              }
               set({
                 scopes: { ...scopes, [id]: { label, assets } },
                 assetList: assets,
                 currentIndex: 0,
                 currentAsset: assets[0],
+                pendingHeadId: null,
               });
               return;
             }
 
-            if (!scopeChanged) return;
+            // Refresh currentAsset from the updated scope list so in-place
+            // mutations (favorite toggle, tag changes) propagate to the viewer.
+            // `areScopeAssetsEquivalent` ignores tags/`_assetModel` identity,
+            // so scopeChanged can be false even when the backing AssetModel
+            // changed — check the current asset's underlying model separately.
+            const refreshed = assets.find((a) => a.id === currentAsset.id);
+            const currentAssetChanged =
+              refreshed !== undefined &&
+              (refreshed === currentAsset
+                ? false
+                : refreshed._assetModel !== currentAsset._assetModel);
 
-            set({ scopes: { ...scopes, [id]: { label, assets } } });
+            if (!scopeChanged && !currentAssetChanged) return;
+
+            set({
+              ...(scopeChanged ? { scopes: { ...scopes, [id]: { label, assets } } } : {}),
+              ...(currentAssetChanged ? { currentAsset: refreshed } : {}),
+            });
             return;
           }
         }

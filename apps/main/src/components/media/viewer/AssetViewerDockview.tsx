@@ -69,6 +69,7 @@ export interface AssetViewerDockviewProps {
 // Default panels for the viewer layout (additional panels are discovered via registry)
 const DEFAULT_VIEWER_PANEL_IDS = [
   'media-preview',
+  'recent-strip',
   'quickGenerate',
   'info',
 ] as const;
@@ -95,7 +96,9 @@ function createDefaultLayout(
     !excludePanelIds?.has(panelId) && (!availablePanelIds || availablePanelIds.has(panelId));
   const hasMediaPreview = shouldInclude('media-preview');
   const hasQuickGenerate = shouldInclude('quickGenerate');
+  const hasRecentStrip = shouldInclude('recent-strip');
   const willAddQuickGenerate = hasQuickGenerate && hasMediaPreview;
+  const willAddRecentStrip = hasRecentStrip && hasMediaPreview;
 
   // Media panel takes the top area
   if (hasMediaPreview) {
@@ -106,12 +109,11 @@ function createDefaultLayout(
     });
   }
 
-  if (willAddQuickGenerate) {
-    // Quick generate panel below media
+  if (willAddRecentStrip) {
     api.addPanel({
-      id: 'quickGenerate',
-      component: 'quickGenerate',
-      title: 'Generate',
+      id: 'recent-strip',
+      component: 'recent-strip',
+      title: 'Recent',
       position: {
         direction: 'below',
         referencePanel: 'media-preview',
@@ -119,15 +121,32 @@ function createDefaultLayout(
     });
   }
 
+  if (willAddQuickGenerate) {
+    // Quick generate panel below the recent strip (or directly below media
+    // preview when the strip is excluded from the layout).
+    const quickGenReference = willAddRecentStrip ? 'recent-strip' : 'media-preview';
+    api.addPanel({
+      id: 'quickGenerate',
+      component: 'quickGenerate',
+      title: 'Generate',
+      position: {
+        direction: 'below',
+        referencePanel: quickGenReference,
+      },
+    });
+  }
+
   if (shouldInclude('info')) {
     const infoPosition = willAddQuickGenerate
       ? { referencePanel: 'quickGenerate' as const }
-      : hasMediaPreview
-        ? {
-            direction: 'below' as const,
-            referencePanel: 'media-preview',
-          }
-        : undefined;
+      : willAddRecentStrip
+        ? { direction: 'below' as const, referencePanel: 'recent-strip' }
+        : hasMediaPreview
+          ? {
+              direction: 'below' as const,
+              referencePanel: 'media-preview',
+            }
+          : undefined;
 
     // Info panel as tab with quickGenerate when present, otherwise below preview
     api.addPanel({
@@ -138,14 +157,18 @@ function createDefaultLayout(
     });
   }
 
-  // Set initial sizes - media gets 75% of height
+  // Set initial sizes - media gets ~70% of height, recent strip gets ~96px.
   try {
     const groups = getDockviewGroups(api);
     const groupCount = getDockviewGroupCount(api, groups);
     if (groupCount >= 2) {
       const viewportHeight = window.innerHeight;
-      const mediaHeight = Math.floor(viewportHeight * 0.75);
+      const mediaHeight = Math.floor(viewportHeight * 0.7);
       api.getGroup(groups[0].id)?.api.setSize({ height: mediaHeight });
+    }
+    if (willAddRecentStrip) {
+      const stripPanel = api.getPanel('recent-strip');
+      stripPanel?.group?.api.setSize({ height: 96 });
     }
   } catch (e) {
     console.warn('[AssetViewerDockview] Failed to set initial sizes:', e);
@@ -347,7 +370,7 @@ export function AssetViewerDockview({
       dockId={useDockId ? DOCK_IDS.assetViewer : undefined}
       allowedPanels={useDockId ? viewerPanelIds : undefined}
       excludePanels={useDockId ? floatingViewerPanelIds : undefined}
-      storageKey="dockview:asset-viewer:v5"
+      storageKey="dockview:asset-viewer:v6"
       excludeFromLayout={floatingViewerPanelIds}
       context={context}
       defaultLayout={viewerDefaultLayout}

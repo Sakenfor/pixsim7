@@ -26,6 +26,7 @@ import { useFrameCapture, useOverlayShortcuts, useRecentScope, useViewerContext 
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
+import { useViewerViewportStore } from './viewerViewportStore';
 import { ViewerToolStrip } from './ViewerToolStrip';
 
 interface MediaPanelProps {
@@ -37,9 +38,17 @@ interface MediaPanelProps {
 export function MediaPanel({ context }: MediaPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const [fitMode, setFitMode] = useState<FitMode>('contain');
-  const [zoom, setZoom] = useState(100);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  // Viewport state lives in a shared store so overlay modes (mask/annotate/
+  // capture) and the default viewer share the same zoom/pan/fit.
+  const zoom = useViewerViewportStore((s) => s.zoom);
+  const pan = useViewerViewportStore((s) => s.pan);
+  const fitMode = useViewerViewportStore((s) => s.fitMode);
+  const setZoom = useViewerViewportStore((s) => s.setZoom);
+  const setPan = useViewerViewportStore((s) => s.setPan);
+  const setViewport = useViewerViewportStore((s) => s.setViewport);
+  const resetPan = useViewerViewportStore((s) => s.resetPan);
+
   const [isDragging, setIsDragging] = useState(false);
   const [mediaDimensions, setMediaDimensions] = useState<{ width: number; height: number } | undefined>();
 
@@ -204,11 +213,12 @@ export function MediaPanel({ context }: MediaPanelProps) {
     updateSettings({ followLatest: !followLatest });
   }, [followLatest, updateSettings]);
 
-  // Reset zoom/pan on asset change
+  // Reset pan on asset change — image/video dimensions differ, so a pixel
+  // offset that made sense for the previous asset doesn't translate. Zoom and
+  // fitMode are user preferences and are preserved across navigation.
   useEffect(() => {
-    setZoom(100);
-    setPan({ x: 0, y: 0 });
-  }, [asset?.id]);
+    resetPan();
+  }, [asset?.id, resetPan]);
 
   // Overlay viewport sync — pass current zoom/pan to overlays, handle changes back
   const overlayViewState = useMemo(
@@ -228,32 +238,31 @@ export function MediaPanel({ context }: MediaPanelProps) {
     const cur = zoomRef.current;
     const next = Math.min(cur + 25, 400);
     if (next === cur) return;
-    setZoom(next);
     if (next <= 100) {
-      setPan({ x: 0, y: 0 });
+      setViewport({ zoom: next, pan: { x: 0, y: 0 } });
     } else {
       const ratio = next / cur;
-      setPan((p) => ({ x: p.x * ratio, y: p.y * ratio }));
+      const prev = panRef.current;
+      setViewport({ zoom: next, pan: { x: prev.x * ratio, y: prev.y * ratio } });
     }
-  }, []);
+  }, [setViewport]);
 
   const zoomOut = useCallback(() => {
     const cur = zoomRef.current;
     const next = Math.max(cur - 25, 25);
     if (next === cur) return;
-    setZoom(next);
     if (next <= 100) {
-      setPan({ x: 0, y: 0 });
+      setViewport({ zoom: next, pan: { x: 0, y: 0 } });
     } else {
       const ratio = next / cur;
-      setPan((p) => ({ x: p.x * ratio, y: p.y * ratio }));
+      const prev = panRef.current;
+      setViewport({ zoom: next, pan: { x: prev.x * ratio, y: prev.y * ratio } });
     }
-  }, []);
+  }, [setViewport]);
 
   const resetZoom = useCallback(() => {
-    setZoom(100);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    setViewport({ zoom: 100, pan: { x: 0, y: 0 } });
+  }, [setViewport]);
 
   // Cursor-centered scroll-to-zoom (viewing mode only)
   const mediaContainerRef = useRef<HTMLDivElement>(null);
@@ -279,20 +288,22 @@ export function MediaPanel({ context }: MediaPanelProps) {
       const ratio = newZoom / prevZoom;
       const prev = panRef.current;
 
-      setZoom(newZoom);
       if (newZoom <= 100) {
-        setPan({ x: 0, y: 0 });
+        setViewport({ zoom: newZoom, pan: { x: 0, y: 0 } });
       } else {
-        setPan({
-          x: dx + (prev.x - dx) * ratio,
-          y: dy + (prev.y - dy) * ratio,
+        setViewport({
+          zoom: newZoom,
+          pan: {
+            x: dx + (prev.x - dx) * ratio,
+            y: dy + (prev.y - dy) * ratio,
+          },
         });
       }
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [effectiveOverlayMode]);
+  }, [effectiveOverlayMode, setViewport]);
 
   // Drag-to-pan when zoomed in
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
@@ -329,9 +340,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
   // Fit mode change resets pan
   const handleFitModeChange = useCallback((mode: FitMode) => {
-    setFitMode(mode);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    setViewport({ fitMode: mode, pan: { x: 0, y: 0 } });
+  }, [setViewport]);
 
   const handleToggleOverlay = useCallback((id: string) => {
     const entering = overlayMode !== id;
@@ -381,9 +391,9 @@ export function MediaPanel({ context }: MediaPanelProps) {
   // ─── Viewer gestures (viewing mode only) ────────────────────────────────────
 
   const toggleFitModeCb = useCallback(() => {
-    setFitMode((prev) => (prev === 'contain' ? 'actual' : 'contain'));
-    setPan({ x: 0, y: 0 });
-  }, []);
+    const next: FitMode = useViewerViewportStore.getState().fitMode === 'contain' ? 'actual' : 'contain';
+    setViewport({ fitMode: next, pan: { x: 0, y: 0 } });
+  }, [setViewport]);
 
   const toggleFavoriteCb = useCallback(() => {
     const model = asset?._assetModel;
