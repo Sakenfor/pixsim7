@@ -9,9 +9,9 @@ Runs periodically to:
 """
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,53 @@ from pixsim7.backend.main.domain.enums import (
     ProviderStatus,
     OperationType,
     GenerationErrorCode,
+)
+from pixsim7.backend.main.workers._poller_backoff import (
+    _TransientPollBackoffState,
+    _TRANSIENT_POLL_BACKOFF_STEPS_SEC,
+    _TRANSIENT_POLL_FAILURE_RESET_SEC,
+    _TRANSIENT_POLL_PRUNE_STALE_SEC,
+    _POLL_CONCURRENCY_NORMAL,
+    _POLL_CONCURRENCY_DEGRADED,
+    _POLL_CONCURRENCY_DEGRADE_THRESHOLD,
+    _NON_TRANSIENT_POLL_MAX_FAILURES,
+    _NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC,
+    _BACKOFF_DICT_MAX_SIZE,
+    _transient_poll_backoff,
+    _non_transient_poll_backoff,
+    _iter_exception_chain,
+    _is_transient_network_error,
+    _is_transient_provider_poll_error,
+    _transient_poll_key,
+    _get_transient_poll_backoff_remaining,
+    _record_transient_poll_backoff,
+    _clear_transient_poll_backoff,
+    _prune_poll_backoff_dicts,
+    _record_non_transient_poll_backoff,
+    _get_non_transient_poll_backoff_remaining,
+    _active_transient_poll_backoffs,
+)
+from pixsim7.backend.main.workers._poller_snapshots import (
+    _AccountCapacitySnapshot,
+    _PendingGenerationSnapshot,
+    _ProcessingGenerationSnapshot,
+    _PollGenerationResult,
+    _GenerationSubmissionSnapshot,
+    _to_account_capacity_snapshots,
+    _to_pending_generation_snapshots,
+    _to_processing_generation_snapshots,
+    _submission_snapshot_query,
+    _snapshot_age_seconds,
+    _normalize_for_attempt_compare,
+    _parse_submission_attempt_started_at,
+    _submission_matches_generation_attempt,
+    _submission_matches_generation_attempt_id,
+    _submission_is_likely_current_attempt,
+    _select_current_attempt_submission,
+    _map_submit_error_to_generation_error_code,
+    _ensure_aware,
+    _is_stale_unsubmitted_error_submission,
+    _load_processing_generation_snapshots,
 )
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
@@ -63,106 +110,6 @@ from pixsim7.backend.main.domain.providers.registry import registry as _provider
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
 
-
-@dataclass(frozen=True, slots=True)
-class _AccountCapacitySnapshot:
-    account_id: int
-    max_concurrent_jobs: int
-    current_processing_jobs: int
-
-    @classmethod
-    def from_row(cls, row: tuple[Any, Any, Any]) -> "_AccountCapacitySnapshot | None":
-        account_id, max_concurrent_jobs, current_processing_jobs = row
-        if account_id is None:
-            return None
-        return cls(
-            account_id=int(account_id),
-            max_concurrent_jobs=int(max_concurrent_jobs or 0),
-            current_processing_jobs=int(current_processing_jobs or 0),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class _PendingGenerationSnapshot:
-    generation_id: int
-    updated_at: datetime | None
-
-    @classmethod
-    def from_row(cls, row: tuple[Any, Any]) -> "_PendingGenerationSnapshot | None":
-        generation_id, updated_at = row
-        if generation_id is None:
-            return None
-        ts: datetime | None = updated_at if isinstance(updated_at, datetime) else None
-        return cls(generation_id=int(generation_id), updated_at=ts)
-
-
-@dataclass(frozen=True, slots=True)
-class _ProcessingGenerationSnapshot:
-    id: int
-    account_id: int | None
-    operation_type: OperationType | str | None
-    started_at: datetime | None
-    attempt_id: int
-    deferred_action: str | None = None
-
-    @classmethod
-    def from_row(cls, row: tuple[Any, ...]) -> "_ProcessingGenerationSnapshot | None":
-        generation_id, account_id, operation_type, started_at, attempt_id = row[:5]
-        deferred_action = row[5] if len(row) > 5 else None
-        if generation_id is None:
-            return None
-        started_ts: datetime | None = started_at if isinstance(started_at, datetime) else None
-        if started_ts is not None and started_ts.tzinfo is None:
-            started_ts = started_ts.replace(tzinfo=timezone.utc)
-        parsed_attempt_id = 0
-        try:
-            parsed_attempt_id = int(attempt_id or 0)
-        except Exception:
-            parsed_attempt_id = 0
-        parsed_account_id: int | None = None
-        if account_id is not None:
-            try:
-                parsed_account_id = int(account_id)
-            except Exception:
-                parsed_account_id = None
-        return cls(
-            id=int(generation_id),
-            account_id=parsed_account_id,
-            operation_type=operation_type,
-            started_at=started_ts,
-            attempt_id=parsed_attempt_id,
-            deferred_action=str(deferred_action) if deferred_action else None,
-        )
-
-
-@dataclass
-class _PollGenerationResult:
-    generation_id: int
-    outcome: str  # 'completed', 'failed', 'still_processing', 'error'
-    missing_provider_job: bool = False
-
-
-@dataclass(slots=True)
-class _TransientPollBackoffState:
-    failures: int = 0
-    cooldown_until_mono: float = 0.0
-    last_failure_mono: float = 0.0
-
-
-_TRANSIENT_POLL_BACKOFF_STEPS_SEC: tuple[int, ...] = (10, 20, 30, 45, 60)
-_TRANSIENT_POLL_FAILURE_RESET_SEC = 120.0
-_TRANSIENT_POLL_PRUNE_STALE_SEC = 900.0
-_POLL_CONCURRENCY_NORMAL = 10
-_POLL_CONCURRENCY_DEGRADED = 4
-_POLL_CONCURRENCY_DEGRADE_THRESHOLD = 5
-_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
-
-# Non-transient poll errors (auth, session, API) get a few retries before
-# failing the generation.  This prevents a single auth hiccup from orphaning
-# a generation that is still running on the provider's side.
-_NON_TRANSIENT_POLL_MAX_FAILURES = 3
-_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC: tuple[int, ...] = (15, 30, 60)
-_non_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
 
 # Grace period before honouring a deferred cancel on a PROCESSING generation.
 # Gives the provider time to finish so we don't lose completed results.
@@ -273,134 +220,14 @@ async def _finalize_generation_billing_best_effort(
         )
 
 
-def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
-    current: BaseException | None = error
-    seen: set[int] = set()
-    depth = 0
-    while current is not None and id(current) not in seen and depth < max_depth:
-        yield current
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-        depth += 1
-
-
-def _is_transient_network_error(error: Exception) -> bool:
-    type_markers = (
-        "connecterror",
-        "connecttimeout",
-        "readtimeout",
-        "writeerror",
-        "pooltimeout",
-        "networkerror",
-        "transporterror",
-        "gaierror",
-        "timeouterror",
-        "remotedisconnected",
-    )
-    message_markers = (
-        "all connection attempts failed",
-        "connection refused",
-        "connection reset",
-        "connection aborted",
-        "network is unreachable",
-        "no route to host",
-        "temporary failure in name resolution",
-        "name or service not known",
-        "nodename nor servname provided",
-        "getaddrinfo failed",
-        "cannot assign requested address",
-        "remote host closed",
-        "forcibly closed by the remote host",
-        "server disconnected",
-        "tls handshake",
-        "winerror 10048",
-        "winerror 10049",
-        "winerror 10050",
-        "winerror 10051",
-        "winerror 10053",
-        "winerror 10054",
-        "winerror 11001",
-    )
-    for exc in _iter_exception_chain(error):
-        exc_type = exc.__class__.__name__.lower()
-        if any(marker in exc_type for marker in type_markers):
-            return True
-        exc_msg = str(exc).lower()
-        if any(marker in exc_msg for marker in message_markers):
-            return True
-    return False
-
-
-def _is_transient_provider_poll_error(error: ProviderError) -> bool:
-    error_code = str(getattr(error, "error_code", "") or "").lower()
-    if error_code in {
-        GenerationErrorCode.PROVIDER_TIMEOUT.value,
-        GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
-    }:
-        return True
-    return _is_transient_network_error(error)
-
-
-def _transient_poll_key(
-    *,
-    generation_id: int,
-    submission_id: int,
-    account_id: int | None,
-    provider_job_id: str | None,
-) -> str:
-    return f"{generation_id}:{submission_id}:{account_id or 0}:{provider_job_id or '-'}"
-
-
-def _get_transient_poll_backoff_remaining(key: str, *, now_mono: float) -> float:
-    state = _transient_poll_backoff.get(key)
-    if state is None:
-        return 0.0
-    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
-        state.failures = 0
-    remaining = state.cooldown_until_mono - now_mono
-    return remaining if remaining > 0 else 0.0
-
-
-def _record_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
-    state = _transient_poll_backoff.setdefault(key, _TransientPollBackoffState())
-    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
-        state.failures = 0
-    state.failures += 1
-    state.last_failure_mono = now_mono
-    backoff_index = min(state.failures - 1, len(_TRANSIENT_POLL_BACKOFF_STEPS_SEC) - 1)
-    delay_sec = int(_TRANSIENT_POLL_BACKOFF_STEPS_SEC[backoff_index])
-    state.cooldown_until_mono = now_mono + delay_sec
-    return state.failures, delay_sec
-
-
-def _clear_transient_poll_backoff(key: str | None) -> None:
-    if key:
-        _transient_poll_backoff.pop(key, None)
-        _non_transient_poll_backoff.pop(key, None)
-
-
-_BACKOFF_DICT_MAX_SIZE = 2000
 _CANCEL_DICT_MAX_SIZE = 5000
 _MODERATION_RECHECK_MAX_SIZE = 5000
 
 
 def _prune_transient_poll_backoff(*, now_mono: float) -> None:
-    stale_before = now_mono - _TRANSIENT_POLL_PRUNE_STALE_SEC
-    for backoff_dict in (_transient_poll_backoff, _non_transient_poll_backoff):
-        stale_keys = [
-            key
-            for key, state in backoff_dict.items()
-            if state.cooldown_until_mono <= now_mono and state.last_failure_mono <= stale_before
-        ]
-        for key in stale_keys:
-            backoff_dict.pop(key, None)
-        # Hard cap: if still over limit, evict oldest entries by last_failure_mono
-        if len(backoff_dict) > _BACKOFF_DICT_MAX_SIZE:
-            sorted_keys = sorted(
-                backoff_dict, key=lambda k: backoff_dict[k].last_failure_mono
-            )
-            for key in sorted_keys[: len(backoff_dict) - _BACKOFF_DICT_MAX_SIZE]:
-                backoff_dict.pop(key, None)
+    """Prune backoff dicts plus cancel-grace and moderation-recheck dicts."""
+    _prune_poll_backoff_dicts(now_mono=now_mono)
+
     # Prune stale cancel-grace entries (generation finished or was never polled again).
     cancel_stale = now_mono - _CANCEL_GRACE_PERIOD_SEC - _TRANSIENT_POLL_PRUNE_STALE_SEC
     stale_cancel = [gid for gid, ts in _cancel_first_seen.items() if ts <= cancel_stale]
@@ -418,384 +245,6 @@ def _prune_transient_poll_backoff(*, now_mono: float) -> None:
         )
         for aid in sorted_aids[: len(_moderation_recheck) - _MODERATION_RECHECK_MAX_SIZE]:
             _moderation_recheck.pop(aid, None)
-
-
-def _record_non_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
-    """Record a non-transient poll error and return (failure_count, backoff_seconds)."""
-    state = _non_transient_poll_backoff.setdefault(key, _TransientPollBackoffState())
-    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
-        state.failures = 0
-    state.failures += 1
-    state.last_failure_mono = now_mono
-    backoff_index = min(state.failures - 1, len(_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC) - 1)
-    delay_sec = int(_NON_TRANSIENT_POLL_BACKOFF_STEPS_SEC[backoff_index])
-    state.cooldown_until_mono = now_mono + delay_sec
-    return state.failures, delay_sec
-
-
-def _get_non_transient_poll_backoff_remaining(key: str, *, now_mono: float) -> float:
-    state = _non_transient_poll_backoff.get(key)
-    if state is None:
-        return 0.0
-    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
-        state.failures = 0
-    remaining = state.cooldown_until_mono - now_mono
-    return remaining if remaining > 0 else 0.0
-
-
-def _active_transient_poll_backoffs(*, now_mono: float) -> int:
-    return sum(
-        1
-        for state in _transient_poll_backoff.values()
-        if state.cooldown_until_mono > now_mono
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _GenerationSubmissionSnapshot:
-    id: int
-    generation_id: int | None
-    generation_attempt_id: int | None
-    account_id: int | None
-    provider_job_id: str | None
-    status: str | None
-    submitted_at: datetime | None
-    responded_at: datetime | None
-    response: Any
-
-    @classmethod
-    def from_row(
-        cls,
-        row: tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any],
-    ) -> "_GenerationSubmissionSnapshot | None":
-        (
-            submission_id,
-            generation_id,
-            generation_attempt_id,
-            account_id,
-            provider_job_id,
-            status,
-            submitted_at,
-            responded_at,
-            response,
-        ) = row
-        if submission_id is None:
-            return None
-
-        parsed_generation_id: int | None = None
-        if generation_id is not None:
-            try:
-                parsed_generation_id = int(generation_id)
-            except Exception:
-                parsed_generation_id = None
-
-        parsed_attempt_id: int | None = None
-        if generation_attempt_id is not None:
-            try:
-                parsed_attempt_id = int(generation_attempt_id)
-            except Exception:
-                parsed_attempt_id = None
-
-        parsed_account_id: int | None = None
-        if account_id is not None:
-            try:
-                parsed_account_id = int(account_id)
-            except Exception:
-                parsed_account_id = None
-
-        submitted_ts: datetime | None = submitted_at if isinstance(submitted_at, datetime) else None
-        responded_ts: datetime | None = responded_at if isinstance(responded_at, datetime) else None
-        provider_job = str(provider_job_id) if provider_job_id is not None else None
-        submission_status = str(status) if status is not None else None
-
-        return cls(
-            id=int(submission_id),
-            generation_id=parsed_generation_id,
-            generation_attempt_id=parsed_attempt_id,
-            account_id=parsed_account_id,
-            provider_job_id=provider_job,
-            status=submission_status,
-            submitted_at=submitted_ts,
-            responded_at=responded_ts,
-            response=response,
-        )
-
-
-def _to_account_capacity_snapshots(
-    rows: Iterable[tuple[Any, Any, Any]],
-) -> list[_AccountCapacitySnapshot]:
-    snapshots: list[_AccountCapacitySnapshot] = []
-    for row in rows:
-        snapshot = _AccountCapacitySnapshot.from_row(row)
-        if snapshot is not None:
-            snapshots.append(snapshot)
-    return snapshots
-
-
-def _to_pending_generation_snapshots(
-    rows: Iterable[tuple[Any, Any]],
-) -> list[_PendingGenerationSnapshot]:
-    snapshots: list[_PendingGenerationSnapshot] = []
-    for row in rows:
-        snapshot = _PendingGenerationSnapshot.from_row(row)
-        if snapshot is not None:
-            snapshots.append(snapshot)
-    return snapshots
-
-
-def _to_processing_generation_snapshots(
-    rows: Iterable[tuple[Any, Any, Any, Any, Any]],
-) -> list[_ProcessingGenerationSnapshot]:
-    snapshots: list[_ProcessingGenerationSnapshot] = []
-    for row in rows:
-        snapshot = _ProcessingGenerationSnapshot.from_row(row)
-        if snapshot is not None:
-            snapshots.append(snapshot)
-    return snapshots
-
-
-def _submission_snapshot_query():
-    return select(
-        ProviderSubmission.id,
-        ProviderSubmission.generation_id,
-        ProviderSubmission.generation_attempt_id,
-        ProviderSubmission.account_id,
-        ProviderSubmission.provider_job_id,
-        ProviderSubmission.status,
-        ProviderSubmission.submitted_at,
-        ProviderSubmission.responded_at,
-        ProviderSubmission.response,
-    )
-
-
-def _snapshot_age_seconds(updated_at: datetime | None, *, now: datetime) -> float | None:
-    if updated_at is None:
-        return None
-    normalized = updated_at if updated_at.tzinfo is not None else updated_at.replace(tzinfo=timezone.utc)
-    return (now - normalized).total_seconds()
-
-
-def _normalize_for_attempt_compare(value: datetime) -> datetime:
-    """Normalize timestamps to naive UTC for robust equality checks."""
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
-
-
-def _parse_submission_attempt_started_at(submission: ProviderSubmission) -> datetime | None:
-    """Parse internal attempt ownership marker from submission.response when present."""
-    if not isinstance(submission.response, dict):
-        return None
-    raw = submission.response.get("generation_attempt_started_at")
-    if not raw or not isinstance(raw, str):
-        return None
-    try:
-        return datetime.fromisoformat(raw)
-    except Exception:
-        return None
-
-
-def _submission_matches_generation_attempt(
-    generation: Generation,
-    submission: ProviderSubmission,
-) -> bool | None:
-    """
-    Check whether submission belongs to generation's current processing attempt.
-
-    Returns:
-      - True: marker exists and matches current attempt
-      - False: marker exists and does not match current attempt
-      - None: marker unavailable (fallback to timestamp heuristic)
-    """
-    generation_started_at = getattr(generation, "started_at", None)
-    if generation_started_at is None:
-        return None
-
-    submission_attempt_started_at = _parse_submission_attempt_started_at(submission)
-    if submission_attempt_started_at is None:
-        return None
-
-    return (
-        _normalize_for_attempt_compare(submission_attempt_started_at)
-        == _normalize_for_attempt_compare(generation_started_at)
-    )
-
-
-def _submission_matches_generation_attempt_id(
-    generation: Generation,
-    submission: ProviderSubmission,
-) -> bool | None:
-    """Compare numeric generation/submission attempt IDs when both are present."""
-    try:
-        generation_attempt_id = int(getattr(generation, "attempt_id", 0) or 0)
-    except Exception:
-        generation_attempt_id = 0
-
-    if generation_attempt_id <= 0:
-        return None
-
-    submission_attempt_id = getattr(submission, "generation_attempt_id", None)
-    if submission_attempt_id is None:
-        return None
-
-    try:
-        return int(submission_attempt_id) == generation_attempt_id
-    except Exception:
-        return None
-
-
-def _submission_is_likely_current_attempt(
-    generation: Generation,
-    submission: ProviderSubmission,
-) -> bool:
-    """
-    Best-effort attempt ownership match for mixed-schema deployments.
-
-    Priority:
-      1) generation_attempt_id exact match
-      2) internal started-at marker match
-      3) timestamp heuristic (submission created/responded after current attempt start)
-    """
-    by_attempt_id = _submission_matches_generation_attempt_id(generation, submission)
-    if by_attempt_id is not None:
-        return by_attempt_id
-
-    by_marker = _submission_matches_generation_attempt(generation, submission)
-    if by_marker is not None:
-        return by_marker
-
-    generation_started_at = getattr(generation, "started_at", None)
-    if generation_started_at is None:
-        return False
-    generation_started_norm = _normalize_for_attempt_compare(generation_started_at)
-
-    submission_submitted_at = getattr(submission, "submitted_at", None)
-    if submission_submitted_at is not None:
-        if _normalize_for_attempt_compare(submission_submitted_at) >= generation_started_norm:
-            return True
-
-    submission_responded_at = getattr(submission, "responded_at", None)
-    if submission_responded_at is not None:
-        if _normalize_for_attempt_compare(submission_responded_at) >= generation_started_norm:
-            return True
-
-    return False
-
-
-async def _select_current_attempt_submission(
-    db: AsyncSession,
-    generation: _ProcessingGenerationSnapshot,
-) -> tuple[_GenerationSubmissionSnapshot | None, _GenerationSubmissionSnapshot | None, int]:
-    """
-    Select submission owned by generation's active attempt.
-
-    Returns:
-      - selected_submission: submission for current attempt (or None)
-      - latest_submission_any_attempt: latest submission regardless of attempt (or None)
-      - current_attempt_id: generation.attempt_id normalized to int>=0
-    """
-    try:
-        current_attempt_id = int(getattr(generation, "attempt_id", 0) or 0)
-    except Exception:
-        current_attempt_id = 0
-
-    if current_attempt_id > 0:
-        attempt_result = await db.execute(
-            _submission_snapshot_query()
-            .where(ProviderSubmission.generation_id == generation.id)
-            .where(ProviderSubmission.generation_attempt_id == current_attempt_id)
-            .order_by(ProviderSubmission.submitted_at.desc())
-            .limit(1)
-        )
-        attempt_row = attempt_result.first()
-        attempt_submission = (
-            _GenerationSubmissionSnapshot.from_row(tuple(attempt_row))
-            if attempt_row is not None
-            else None
-        )
-        if attempt_submission is not None:
-            return attempt_submission, attempt_submission, current_attempt_id
-
-    latest_result = await db.execute(
-        _submission_snapshot_query()
-        .where(ProviderSubmission.generation_id == generation.id)
-        .order_by(ProviderSubmission.submitted_at.desc())
-        .limit(1)
-    )
-    latest_row = latest_result.first()
-    latest_submission = (
-        _GenerationSubmissionSnapshot.from_row(tuple(latest_row))
-        if latest_row is not None
-        else None
-    )
-    if latest_submission is None:
-        return None, None, current_attempt_id
-
-    if _submission_is_likely_current_attempt(generation, latest_submission):
-        return latest_submission, latest_submission, current_attempt_id
-
-    return None, latest_submission, current_attempt_id
-
-
-def _map_submit_error_to_generation_error_code(submission: ProviderSubmission) -> str | None:
-    """Best-effort mapping from submit-time ProviderError type to GenerationErrorCode."""
-    if not isinstance(submission.response, dict):
-        return None
-
-    error_type = str(submission.response.get("error_type") or "").strip()
-    error_text = str(
-        submission.response.get("error_message")
-        or submission.response.get("error")
-        or ""
-    ).lower()
-
-    by_type = {
-        "ProviderConcurrentLimitError": GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT.value,
-        "ProviderRateLimitError": GenerationErrorCode.PROVIDER_RATE_LIMIT.value,
-        "ProviderAuthenticationError": GenerationErrorCode.PROVIDER_AUTH.value,
-        "ProviderQuotaExceededError": GenerationErrorCode.PROVIDER_QUOTA.value,
-    }
-    if error_type in by_type:
-        return by_type[error_type]
-
-    # Fallback for legacy payloads without explicit error_type.
-    if "concurrent generation limit" in error_text or "concurrent limit" in error_text:
-        return GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT.value
-    if "rate limit" in error_text:
-        return GenerationErrorCode.PROVIDER_RATE_LIMIT.value
-    if "authentication failed" in error_text or "unauthorized" in error_text:
-        return GenerationErrorCode.PROVIDER_AUTH.value
-    if "insufficient balance" in error_text or "quota" in error_text:
-        return GenerationErrorCode.PROVIDER_QUOTA.value
-
-    return None
-
-
-def _ensure_aware(dt: datetime | None) -> datetime | None:
-    """Normalize a datetime to UTC-aware; return None if input is None."""
-    if dt is None:
-        return None
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
-
-
-def _is_stale_unsubmitted_error_submission(
-    generation: Generation,
-    submission: ProviderSubmission,
-) -> bool:
-    """Return True when this no-job-id error submission predates current processing attempt."""
-    generation_started_at = _ensure_aware(getattr(generation, "started_at", None))
-    if generation_started_at is None:
-        return False
-
-    submission_responded_at = _ensure_aware(getattr(submission, "responded_at", None))
-    if submission_responded_at is not None and generation_started_at > submission_responded_at:
-        return True
-
-    submission_submitted_at = _ensure_aware(getattr(submission, "submitted_at", None))
-    if submission_submitted_at is not None and generation_started_at > submission_submitted_at:
-        return True
-
-    return False
 
 
 def _processing_generations_snapshot(
@@ -843,22 +292,270 @@ def _init_poller_debug_flags() -> None:
     _poller_debug_initialized = True
 
 
-async def _load_processing_generation_snapshots(
+async def _handle_no_submission_case(
     db: AsyncSession,
-) -> list[_ProcessingGenerationSnapshot]:
-    result = await db.execute(
-        select(
-            Generation.id,
-            Generation.account_id,
-            Generation.operation_type,
-            Generation.started_at,
-            Generation.attempt_id,
-            Generation.deferred_action,
-        )
-        .where(Generation.status == GenerationStatus.PROCESSING)
-        .order_by(Generation.started_at)
+    *,
+    generation: _ProcessingGenerationSnapshot,
+    current_attempt_id: int,
+    latest_submission_any_attempt: _GenerationSubmissionSnapshot | None,
+    generation_service: GenerationService,
+    unsubmitted_timeout_threshold: datetime,
+    unsubmitted_timeout_minutes: int,
+) -> _PollGenerationResult:
+    """No submission found for current attempt — handle deferred cancel / unsubmitted timeout."""
+    logger.warning(
+        "no_current_attempt_submission",
+        generation_id=generation.id,
+        attempt_id=current_attempt_id,
+        has_latest_submission_any_attempt=latest_submission_any_attempt is not None,
+        latest_submission_id=(
+            latest_submission_any_attempt.id
+            if latest_submission_any_attempt
+            else None
+        ),
+        latest_submission_attempt_id=(
+            latest_submission_any_attempt.generation_attempt_id
+            if latest_submission_any_attempt
+            else None
+        ),
+        generation_started_at=(
+            str(generation.started_at) if generation.started_at else None
+        ),
     )
-    return _to_processing_generation_snapshots(result.all())
+
+    # Check for deferred cancel on unsubmitted generations
+    if generation.deferred_action == "cancel":
+        gen_model = await db.get(Generation, generation.id)
+    else:
+        gen_model = None
+    if gen_model and gen_model.deferred_action == "cancel":
+        logger.info(
+            "generation_cancel_before_submission",
+            generation_id=generation.id,
+        )
+        gen_model.deferred_action = None
+        await db.commit()
+        timeout_account_id = generation.account_id
+        if timeout_account_id:
+            orphan_account = await db.get(ProviderAccount, timeout_account_id)
+            if orphan_account and orphan_account.current_processing_jobs > 0:
+                orphan_account.current_processing_jobs -= 1
+                await db.commit()
+        # Use update_status to emit job:cancelled WebSocket event
+        await generation_service.update_status(
+            generation.id, GenerationStatus.CANCELLED,
+        )
+        return _PollGenerationResult(generation_id=generation.id, outcome='failed')
+
+    if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
+        await generation_service.mark_failed(
+            generation.id,
+            (
+                "Generation failed: no submission found for current attempt "
+                f"(timed out after {unsubmitted_timeout_minutes} minutes)"
+            ),
+            error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
+        )
+
+        timeout_account_id = generation.account_id
+        if (
+            timeout_account_id is None
+            and latest_submission_any_attempt is not None
+        ):
+            timeout_account_id = latest_submission_any_attempt.account_id
+        if timeout_account_id:
+            orphan_account = await db.get(ProviderAccount, timeout_account_id)
+            if orphan_account and orphan_account.current_processing_jobs > 0:
+                orphan_account.current_processing_jobs -= 1
+                logger.info(
+                    "counter_decremented_no_current_attempt_submission",
+                    account_id=timeout_account_id,
+                    generation_id=generation.id,
+                )
+
+        await db.commit()
+        return _PollGenerationResult(generation_id=generation.id, outcome='failed')
+
+    return _PollGenerationResult(generation_id=generation.id, outcome='still_processing')
+
+
+async def _fail_with_timeout(
+    db: AsyncSession,
+    *,
+    generation_id: int,
+    failure_reason: str,
+    final_submission: Any,
+    account: ProviderAccount,
+    generation_service: GenerationService,
+    account_service: AccountService,
+    missing_provider_job: bool,
+) -> _PollGenerationResult:
+    """Mark generation failed with a timeout reason, finalize billing, release account slot."""
+    await generation_service.mark_failed(generation_id, failure_reason)
+
+    generation_model = await db.get(Generation, generation_id)
+    await _finalize_generation_billing_best_effort(
+        db=db,
+        generation_id=generation_id,
+        generation_model=generation_model,
+        final_submission=final_submission,
+        account=account,
+    )
+
+    await _increment_failure_stats_and_release_account(
+        db=db,
+        account_service=account_service,
+        account_id=account.id,
+    )
+
+    return _PollGenerationResult(
+        generation_id=generation_id,
+        outcome='failed',
+        missing_provider_job=missing_provider_job,
+    )
+
+
+async def _handle_processing_status(
+    db: AsyncSession,
+    *,
+    generation: _ProcessingGenerationSnapshot,
+    account: ProviderAccount,
+    generation_service: GenerationService,
+    account_service: AccountService,
+    missing_provider_job: bool,
+) -> _PollGenerationResult:
+    """PROCESSING status — honour deferred cancel after grace period, else keep polling."""
+    if generation.deferred_action == "cancel" or generation.id in _cancel_first_seen:
+        generation_model = await db.get(Generation, generation.id)
+        if generation_model and generation_model.deferred_action == "cancel":
+            now_mono = time.monotonic()
+            first_seen = _cancel_first_seen.setdefault(generation.id, now_mono)
+            elapsed = now_mono - first_seen
+            if elapsed < _CANCEL_GRACE_PERIOD_SEC:
+                logger.info(
+                    "generation_cancel_grace_period",
+                    generation_id=generation.id,
+                    elapsed_sec=round(elapsed, 1),
+                    grace_remaining_sec=round(_CANCEL_GRACE_PERIOD_SEC - elapsed, 1),
+                )
+            else:
+                logger.info(
+                    "generation_cancel_while_provider_processing",
+                    generation_id=generation.id,
+                    grace_elapsed_sec=round(elapsed, 1),
+                )
+                _cancel_first_seen.pop(generation.id, None)
+                generation_model.deferred_action = None
+                await db.commit()
+                await account_service.release_account(account.id)
+                await generation_service.update_status(
+                    generation.id, GenerationStatus.CANCELLED,
+                )
+                return _PollGenerationResult(
+                    generation_id=generation.id,
+                    outcome='failed',
+                    missing_provider_job=missing_provider_job,
+                )
+    return _PollGenerationResult(
+        generation_id=generation.id,
+        outcome='still_processing',
+        missing_provider_job=missing_provider_job,
+    )
+
+
+async def _handle_provider_check_error(
+    db: AsyncSession,
+    error: ProviderError,
+    *,
+    generation: _ProcessingGenerationSnapshot,
+    submission: Any,
+    account: ProviderAccount,
+    generation_service: GenerationService,
+    account_service: AccountService,
+    transient_backoff_key: str | None,
+    missing_provider_job: bool,
+) -> _PollGenerationResult:
+    """ProviderError from check_status: classify as transient/non-transient and retry-or-fail."""
+    if _is_transient_provider_poll_error(error):
+        failure_count, delay_sec = _record_transient_poll_backoff(
+            transient_backoff_key or str(generation.id),
+            now_mono=time.monotonic(),
+        )
+        logger.warning(
+            "provider_check_error_transient",
+            generation_id=generation.id,
+            submission_id=submission.id,
+            provider_job_id=submission.provider_job_id,
+            error=str(error),
+            error_type=error.__class__.__name__,
+            error_code=getattr(error, "error_code", None),
+            retryable=getattr(error, "retryable", None),
+            transient_failures=failure_count,
+            backoff_s=delay_sec,
+        )
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='still_processing',
+            missing_provider_job=missing_provider_job,
+        )
+
+    # Provider error during status check (auth, session, API).
+    # Retry a few times with backoff before failing — a single
+    # auth hiccup shouldn't orphan a generation that the provider
+    # is still processing.
+    nt_key = transient_backoff_key or str(generation.id)
+    failure_count, delay_sec = _record_non_transient_poll_backoff(
+        nt_key, now_mono=time.monotonic(),
+    )
+
+    if failure_count < _NON_TRANSIENT_POLL_MAX_FAILURES:
+        logger.warning(
+            "provider_check_error_non_transient_retry",
+            generation_id=generation.id,
+            error=str(error),
+            error_type=error.__class__.__name__,
+            error_code=getattr(error, "error_code", None),
+            non_transient_failures=failure_count,
+            max_failures=_NON_TRANSIENT_POLL_MAX_FAILURES,
+            backoff_s=delay_sec,
+        )
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='still_processing',
+            missing_provider_job=missing_provider_job,
+        )
+
+    logger.warning(
+        "provider_check_error_failing",
+        generation_id=generation.id,
+        error=str(error),
+        error_type=error.__class__.__name__,
+        non_transient_failures=failure_count,
+    )
+    try:
+        await generation_service.mark_failed(
+            generation.id,
+            f"Status check failed: {error}",
+            error_code=getattr(error, 'error_code', None) or "poll_provider_error",
+        )
+        await account_service.release_account(account.id)
+        await db.commit()
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='failed',
+            missing_provider_job=missing_provider_job,
+        )
+    except Exception as mark_err:
+        logger.error(
+            "provider_check_error_mark_failed_error",
+            generation_id=generation.id,
+            error=str(mark_err),
+        )
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='still_processing',
+            missing_provider_job=missing_provider_job,
+        )
 
 
 async def _poll_single_generation(
@@ -895,80 +592,15 @@ async def _poll_single_generation(
             ) = await _select_current_attempt_submission(db, generation)
 
             if not submission:
-                logger.warning(
-                    "no_current_attempt_submission",
-                    generation_id=generation.id,
-                    attempt_id=current_attempt_id,
-                    has_latest_submission_any_attempt=latest_submission_any_attempt is not None,
-                    latest_submission_id=(
-                        latest_submission_any_attempt.id
-                        if latest_submission_any_attempt
-                        else None
-                    ),
-                    latest_submission_attempt_id=(
-                        latest_submission_any_attempt.generation_attempt_id
-                        if latest_submission_any_attempt
-                        else None
-                    ),
-                    generation_started_at=(
-                        str(generation.started_at) if generation.started_at else None
-                    ),
+                return await _handle_no_submission_case(
+                    db,
+                    generation=generation,
+                    current_attempt_id=current_attempt_id,
+                    latest_submission_any_attempt=latest_submission_any_attempt,
+                    generation_service=generation_service,
+                    unsubmitted_timeout_threshold=unsubmitted_timeout_threshold,
+                    unsubmitted_timeout_minutes=unsubmitted_timeout_minutes,
                 )
-
-                # Check for deferred cancel on unsubmitted generations
-                if generation.deferred_action == "cancel":
-                    gen_model = await db.get(Generation, generation.id)
-                else:
-                    gen_model = None
-                if gen_model and gen_model.deferred_action == "cancel":
-                    logger.info(
-                        "generation_cancel_before_submission",
-                        generation_id=generation.id,
-                    )
-                    gen_model.deferred_action = None
-                    await db.commit()
-                    timeout_account_id = generation.account_id
-                    if timeout_account_id:
-                        orphan_account = await db.get(ProviderAccount, timeout_account_id)
-                        if orphan_account and orphan_account.current_processing_jobs > 0:
-                            orphan_account.current_processing_jobs -= 1
-                            await db.commit()
-                    # Use update_status to emit job:cancelled WebSocket event
-                    await generation_service.update_status(
-                        generation.id, GenerationStatus.CANCELLED,
-                    )
-                    return _PollGenerationResult(generation_id=generation_id, outcome='failed')
-
-                if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
-                    await generation_service.mark_failed(
-                        generation.id,
-                        (
-                            "Generation failed: no submission found for current attempt "
-                            f"(timed out after {unsubmitted_timeout_minutes} minutes)"
-                        ),
-                        error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
-                    )
-
-                    timeout_account_id = generation.account_id
-                    if (
-                        timeout_account_id is None
-                        and latest_submission_any_attempt is not None
-                    ):
-                        timeout_account_id = latest_submission_any_attempt.account_id
-                    if timeout_account_id:
-                        orphan_account = await db.get(ProviderAccount, timeout_account_id)
-                        if orphan_account and orphan_account.current_processing_jobs > 0:
-                            orphan_account.current_processing_jobs -= 1
-                            logger.info(
-                                "counter_decremented_no_current_attempt_submission",
-                                account_id=timeout_account_id,
-                                generation_id=generation.id,
-                            )
-
-                    await db.commit()
-                    return _PollGenerationResult(generation_id=generation_id, outcome='failed')
-
-                return _PollGenerationResult(generation_id=generation_id, outcome='still_processing')
 
             account = await db.get(ProviderAccount, submission.account_id)
             if not account:
@@ -1212,32 +844,17 @@ async def _poll_single_generation(
                     polling_submission_id=submission.id,
                     polling_provider_job_id=submission.provider_job_id,
                 )
-                await generation_service.mark_failed(
-                    generation.id,
-                    (
+                return await _fail_with_timeout(
+                    db,
+                    generation_id=generation_id,
+                    failure_reason=(
                         "Generation stuck after mixed provider submissions "
                         f"(timed out after {mixed_submission_timeout_minutes} minutes)"
                     ),
-                )
-
-                generation_model = await db.get(Generation, generation.id)
-                await _finalize_generation_billing_best_effort(
-                    db=db,
-                    generation_id=generation.id,
-                    generation_model=generation_model,
                     final_submission=latest_error_submission_without_job_id,
                     account=account,
-                )
-
-                account = await _increment_failure_stats_and_release_account(
-                    db=db,
+                    generation_service=generation_service,
                     account_service=account_service,
-                    account_id=account.id,
-                )
-
-                return _PollGenerationResult(
-                    generation_id=generation_id,
-                    outcome='failed',
                     missing_provider_job=missing_provider_job,
                 )
 
@@ -1254,57 +871,29 @@ async def _poll_single_generation(
                     started_at=str(generation.started_at),
                     timeout_minutes=unsubmitted_timeout_minutes,
                 )
-                await generation_service.mark_failed(
-                    generation.id,
-                    f"Generation failed: never submitted to provider (timed out after {unsubmitted_timeout_minutes} minutes)",
-                )
-
-                generation_model = await db.get(Generation, generation.id)
-                await _finalize_generation_billing_best_effort(
-                    db=db,
-                    generation_id=generation.id,
-                    generation_model=generation_model,
+                return await _fail_with_timeout(
+                    db,
+                    generation_id=generation_id,
+                    failure_reason=(
+                        f"Generation failed: never submitted to provider (timed out after {unsubmitted_timeout_minutes} minutes)"
+                    ),
                     final_submission=submission,
                     account=account,
-                )
-
-                # Track failure stats on account
-                account = await _increment_failure_stats_and_release_account(
-                    db=db,
+                    generation_service=generation_service,
                     account_service=account_service,
-                    account_id=account.id,
-                )
-
-                return _PollGenerationResult(
-                    generation_id=generation_id,
-                    outcome='failed',
                     missing_provider_job=missing_provider_job,
                 )
 
             if generation.started_at and generation.started_at < timeout_threshold:
                 logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
-                await generation_service.mark_failed(generation.id, f"Generation timed out after {timeout_hours} hours")
-
-                # Finalize billing as skipped (no charge for timed-out generations)
-                generation_model = await db.get(Generation, generation.id)
-                await _finalize_generation_billing_best_effort(
-                    db=db,
-                    generation_id=generation.id,
-                    generation_model=generation_model,
+                return await _fail_with_timeout(
+                    db,
+                    generation_id=generation_id,
+                    failure_reason=f"Generation timed out after {timeout_hours} hours",
                     final_submission=submission,
                     account=account,
-                )
-
-                # Track failure stats on account and release reservation.
-                account = await _increment_failure_stats_and_release_account(
-                    db=db,
+                    generation_service=generation_service,
                     account_service=account_service,
-                    account_id=account.id,
-                )
-
-                return _PollGenerationResult(
-                    generation_id=generation_id,
-                    outcome='failed',
                     missing_provider_job=missing_provider_job,
                 )
 
@@ -1663,43 +1252,12 @@ async def _poll_single_generation(
                     )
 
                 elif status_result.status == ProviderStatus.PROCESSING:
-                    # Check for deferred cancel — wait a grace period first
-                    # so near-complete images aren't lost.  Use the snapshot's
-                    # deferred_action to skip the DB query in the common case.
-                    if generation.deferred_action == "cancel" or generation.id in _cancel_first_seen:
-                        generation_model = await db.get(Generation, generation.id)
-                        if generation_model and generation_model.deferred_action == "cancel":
-                            now_mono = time.monotonic()
-                            first_seen = _cancel_first_seen.setdefault(generation.id, now_mono)
-                            elapsed = now_mono - first_seen
-                            if elapsed < _CANCEL_GRACE_PERIOD_SEC:
-                                logger.info(
-                                    "generation_cancel_grace_period",
-                                    generation_id=generation.id,
-                                    elapsed_sec=round(elapsed, 1),
-                                    grace_remaining_sec=round(_CANCEL_GRACE_PERIOD_SEC - elapsed, 1),
-                                )
-                            else:
-                                logger.info(
-                                    "generation_cancel_while_provider_processing",
-                                    generation_id=generation.id,
-                                    grace_elapsed_sec=round(elapsed, 1),
-                                )
-                                _cancel_first_seen.pop(generation.id, None)
-                                generation_model.deferred_action = None
-                                await db.commit()
-                                account = await account_service.release_account(account.id)
-                                await generation_service.update_status(
-                                    generation.id, GenerationStatus.CANCELLED,
-                                )
-                                return _PollGenerationResult(
-                                    generation_id=generation_id,
-                                    outcome='failed',
-                                    missing_provider_job=missing_provider_job,
-                                )
-                    return _PollGenerationResult(
-                        generation_id=generation_id,
-                        outcome='still_processing',
+                    return await _handle_processing_status(
+                        db,
+                        generation=generation,
+                        account=account,
+                        generation_service=generation_service,
+                        account_service=account_service,
                         missing_provider_job=missing_provider_job,
                     )
 
@@ -1712,86 +1270,17 @@ async def _poll_single_generation(
                     )
 
             except ProviderError as e:
-                if _is_transient_provider_poll_error(e):
-                    failure_count, delay_sec = _record_transient_poll_backoff(
-                        transient_backoff_key or str(generation.id),
-                        now_mono=time.monotonic(),
-                    )
-                    logger.warning(
-                        "provider_check_error_transient",
-                        generation_id=generation.id,
-                        submission_id=submission.id,
-                        provider_job_id=submission.provider_job_id,
-                        error=str(e),
-                        error_type=e.__class__.__name__,
-                        error_code=getattr(e, "error_code", None),
-                        retryable=getattr(e, "retryable", None),
-                        transient_failures=failure_count,
-                        backoff_s=delay_sec,
-                    )
-                    return _PollGenerationResult(
-                        generation_id=generation_id,
-                        outcome='still_processing',
-                        missing_provider_job=missing_provider_job,
-                    )
-
-                # Provider error during status check (auth, session, API).
-                # Retry a few times with backoff before failing — a single
-                # auth hiccup shouldn't orphan a generation that the provider
-                # is still processing.
-                _nt_key = transient_backoff_key or str(generation.id)
-                failure_count, delay_sec = _record_non_transient_poll_backoff(
-                    _nt_key, now_mono=time.monotonic(),
+                return await _handle_provider_check_error(
+                    db,
+                    e,
+                    generation=generation,
+                    submission=submission,
+                    account=account,
+                    generation_service=generation_service,
+                    account_service=account_service,
+                    transient_backoff_key=transient_backoff_key,
+                    missing_provider_job=missing_provider_job,
                 )
-
-                if failure_count < _NON_TRANSIENT_POLL_MAX_FAILURES:
-                    logger.warning(
-                        "provider_check_error_non_transient_retry",
-                        generation_id=generation.id,
-                        error=str(e),
-                        error_type=e.__class__.__name__,
-                        error_code=getattr(e, "error_code", None),
-                        non_transient_failures=failure_count,
-                        max_failures=_NON_TRANSIENT_POLL_MAX_FAILURES,
-                        backoff_s=delay_sec,
-                    )
-                    return _PollGenerationResult(
-                        generation_id=generation_id,
-                        outcome='still_processing',
-                        missing_provider_job=missing_provider_job,
-                    )
-
-                logger.warning(
-                    "provider_check_error_failing",
-                    generation_id=generation.id,
-                    error=str(e),
-                    error_type=e.__class__.__name__,
-                    non_transient_failures=failure_count,
-                )
-                try:
-                    await generation_service.mark_failed(
-                        generation.id,
-                        f"Status check failed: {e}",
-                        error_code=getattr(e, 'error_code', None) or "poll_provider_error",
-                    )
-                    account = await account_service.release_account(account.id)
-                    await db.commit()
-                    return _PollGenerationResult(
-                        generation_id=generation_id,
-                        outcome='failed',
-                        missing_provider_job=missing_provider_job,
-                    )
-                except Exception as mark_err:
-                    logger.error(
-                        "provider_check_error_mark_failed_error",
-                        generation_id=generation.id,
-                        error=str(mark_err),
-                    )
-                    return _PollGenerationResult(
-                        generation_id=generation_id,
-                        outcome='still_processing',
-                        missing_provider_job=missing_provider_job,
-                    )
 
         except Exception as e:
             if _is_transient_network_error(e):
@@ -1827,37 +1316,406 @@ async def _poll_single_generation(
             return _PollGenerationResult(generation_id=generation_id, outcome='error')
 
 
+@dataclass
+class _GenerationPhaseStats:
+    checked: int = 0
+    completed: int = 0
+    failed: int = 0
+    still_processing: int = 0
+    still_processing_ids: list[int] = field(default_factory=list)
+    missing_provider_job_ids: list[int] = field(default_factory=list)
+
+
+@dataclass
+class _AnalysisPhaseStats:
+    checked: int = 0
+    completed: int = 0
+    failed: int = 0
+    still_processing: int = 0
+
+
+async def _poll_generations_phase(
+    db: AsyncSession,
+    *,
+    poll_status_cache: dict[str, object],
+    worker_debug: Any,
+) -> _GenerationPhaseStats:
+    """Load PROCESSING generations and fan out to ``_poll_single_generation``."""
+    stats = _GenerationPhaseStats()
+
+    processing_generations = await _load_processing_generation_snapshots(db)
+    logger.info("poll_loaded", count=len(processing_generations))
+
+    if not processing_generations:
+        return stats
+
+    logger.info("poll_found_generations", count=len(processing_generations))
+    worker_debug.worker("poll_found_generations", count=len(processing_generations))
+    snapshot = _processing_generations_snapshot(processing_generations)
+    if snapshot["count"] >= 5 or snapshot["oldest_started_age_seconds"] >= 60:
+        logger.warning("poll_processing_snapshot", **snapshot)
+    else:
+        logger.info("poll_processing_snapshot", **snapshot)
+
+    # Timeout threshold (processing > 2 hours = stuck)
+    TIMEOUT_HOURS = 2
+    timeout_threshold = datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)
+    # Shorter timeout for jobs that never got a provider_job_id
+    # (submission to provider failed, no point waiting 2 hours)
+    UNSUBMITTED_TIMEOUT_MINUTES = 15
+    unsubmitted_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=UNSUBMITTED_TIMEOUT_MINUTES)
+    # Mixed-submission recovery: latest submit failed without a job id
+    # while an older valid provider job exists. These can stay stuck in
+    # PROCESSING if provider status polling never resolves the older job.
+    MIXED_SUBMISSION_TIMEOUT_MINUTES = 20
+    mixed_submission_timeout_threshold = datetime.now(timezone.utc) - timedelta(
+        minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES
+    )
+
+    now_mono = time.monotonic()
+    active_backoffs = _active_transient_poll_backoffs(now_mono=now_mono)
+    max_concurrent_polls = _POLL_CONCURRENCY_NORMAL
+    if active_backoffs >= _POLL_CONCURRENCY_DEGRADE_THRESHOLD:
+        max_concurrent_polls = _POLL_CONCURRENCY_DEGRADED
+        logger.warning(
+            "poll_concurrency_reduced_due_to_transient_network",
+            active_transient_backoffs=active_backoffs,
+            max_concurrent_polls=max_concurrent_polls,
+        )
+    poll_semaphore = asyncio.Semaphore(max_concurrent_polls)
+
+    async def _bounded_poll(gen):
+        if gen.id in _poll_in_flight:
+            return None  # Already being polled by an overlapping cycle
+        _poll_in_flight.add(gen.id)
+        try:
+            async with poll_semaphore:
+                return await _poll_single_generation(
+                    gen, poll_status_cache,
+                    timeout_threshold, unsubmitted_timeout_threshold,
+                    mixed_submission_timeout_threshold,
+                    TIMEOUT_HOURS, UNSUBMITTED_TIMEOUT_MINUTES,
+                    MIXED_SUBMISSION_TIMEOUT_MINUTES,
+                )
+        finally:
+            _poll_in_flight.discard(gen.id)
+
+    poll_results = await asyncio.gather(
+        *[_bounded_poll(gen) for gen in processing_generations],
+        return_exceptions=True,
+    )
+
+    for poll_result in poll_results:
+        if poll_result is None:
+            continue  # Skipped (in-flight guard)
+        if isinstance(poll_result, Exception):
+            logger.error("poll_gather_error", error=str(poll_result), exc_info=True)
+            continue
+        stats.checked += 1
+        if poll_result.outcome == 'completed':
+            stats.completed += 1
+        elif poll_result.outcome == 'failed':
+            stats.failed += 1
+        elif poll_result.outcome == 'still_processing':
+            stats.still_processing += 1
+            stats.still_processing_ids.append(poll_result.generation_id)
+        if poll_result.missing_provider_job:
+            stats.missing_provider_job_ids.append(poll_result.generation_id)
+
+    return stats
+
+
+async def _run_moderation_rechecks_phase(
+    db: AsyncSession,
+    *,
+    account_service: AccountService,
+) -> None:
+    """Re-check recently completed videos at staggered intervals to detect post-delivery flagging."""
+    now_mono = time.monotonic()
+    due_rechecks = [
+        (asset_id, info) for asset_id, info in _moderation_recheck.items()
+        if now_mono >= info[2]
+    ]
+    for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type, recheck_provider_id) in due_rechecks:
+        _moderation_recheck.pop(asset_id, None)
+        try:
+            asset = await db.get(Asset, asset_id)
+            asset_remote_url = asset.remote_url if asset else None
+
+            recheck_account = await db.get(ProviderAccount, account_id)
+            if not recheck_account:
+                continue
+
+            # Fast path: asset was already flagged at completion time
+            # (e.g. early-CDN terminal with original_status=filtered).
+            # The CDN may still be serving briefly, so the probe would
+            # return "ok" and skip the credit refresh.  Skip the
+            # moderation verification and go straight to credit refresh
+            # so the Pixverse refund lands in our DB.
+            already_flagged = bool(
+                asset and (asset.media_metadata or {}).get("provider_flagged")
+            )
+            if already_flagged:
+                await refresh_account_credits_best_effort(
+                    recheck_account,
+                    account_service,
+                    logger,
+                    db=db,
+                    success_log_event="moderation_recheck_credits_refreshed_known_flagged",
+                    success_log_fields={
+                        "account_id": recheck_account.id,
+                        "asset_id": asset_id,
+                        "attempt": attempt,
+                    },
+                    failure_log_event="moderation_recheck_credit_refresh_failed",
+                    failure_log_fields={"account_id": recheck_account.id},
+                )
+                # Schedule one follow-up in case Pixverse's refund
+                # hadn't landed by the first refresh.  Only after the
+                # first attempt so we don't loop forever.
+                if attempt == 0:
+                    _schedule_moderation_recheck(
+                        asset_id=asset_id,
+                        provider_job_id=provider_job_id,
+                        account_id=account_id,
+                        generation_id=gen_id,
+                        attempt=1,
+                        operation_type=op_type,
+                        provider_id=recheck_provider_id,
+                        delay_sec=_KNOWN_FLAGGED_FOLLOWUP_DELAY_SEC,
+                    )
+                continue
+
+            recheck_provider = _provider_registry.get(recheck_provider_id)
+            recheck_result = await recheck_provider.moderation_recheck(
+                account=recheck_account,
+                provider_job_id=provider_job_id,
+                asset_remote_url=asset_remote_url,
+                operation_type=op_type,
+            )
+
+            if recheck_result.is_flagged and asset:
+                meta = asset.media_metadata or {}
+                if not meta.get("provider_flagged"):
+                    meta["provider_flagged"] = True
+                    meta["provider_flagged_reason"] = "post_delivery_moderation"
+                    asset.media_metadata = meta
+                    flag_modified(asset, "media_metadata")
+                    await db.commit()
+                    logger.info(
+                        "moderation_recheck_flagged",
+                        asset_id=asset_id,
+                        generation_id=gen_id,
+                        provider_job_id=provider_job_id,
+                        attempt=attempt,
+                    )
+                    await event_bus.publish(ASSET_UPDATED, {
+                        "asset_id": asset_id,
+                        "user_id": asset.user_id,
+                        "reason": "moderation_flagged",
+                    })
+                if recheck_result.should_refresh_credits:
+                    await refresh_account_credits_best_effort(
+                        recheck_account,
+                        account_service,
+                        logger,
+                        db=db,
+                        success_log_event="moderation_recheck_credits_refreshed",
+                        success_log_fields={
+                            "account_id": recheck_account.id,
+                            "asset_id": asset_id,
+                        },
+                        failure_log_event="moderation_recheck_credit_refresh_failed",
+                        failure_log_fields={"account_id": recheck_account.id},
+                    )
+            elif not recheck_result.is_flagged:
+                # Not flagged (ok or inconclusive) — schedule next attempt.
+                next_attempt = attempt + 1
+                if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
+                    delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
+                    _schedule_moderation_recheck(
+                        asset_id=asset_id,
+                        provider_job_id=provider_job_id,
+                        account_id=account_id,
+                        generation_id=gen_id,
+                        attempt=next_attempt,
+                        operation_type=op_type,
+                        provider_id=recheck_provider_id,
+                        delay_sec=delay,
+                    )
+                    logger.debug(
+                        "moderation_recheck_retry_scheduled",
+                            asset_id=asset_id,
+                            attempt=next_attempt,
+                            delay_sec=delay,
+                        )
+        except Exception as e:
+            logger.warning(
+                "moderation_recheck_error",
+                asset_id=asset_id,
+                attempt=attempt,
+                error=str(e),
+            )
+
+
+async def _poll_analyses_phase(
+    db: AsyncSession,
+    *,
+    provider_service: ProviderService,
+    worker_debug: Any,
+) -> _AnalysisPhaseStats:
+    """Poll PROCESSING analyses and apply terminal / timeout transitions."""
+    stats = _AnalysisPhaseStats()
+
+    analysis_service = AnalysisService(db)
+
+    result = await db.execute(
+        select(AssetAnalysis)
+        .where(AssetAnalysis.status == AnalysisStatus.PROCESSING)
+        .order_by(AssetAnalysis.started_at)
+    )
+    processing_analyses = list(result.scalars().all())
+
+    if processing_analyses:
+        logger.info("poll_found_analyses", count=len(processing_analyses))
+        worker_debug.worker("poll_found_analyses", count=len(processing_analyses))
+
+    for analysis in processing_analyses:
+        stats.checked += 1
+
+        try:
+            # Get latest submission for this analysis
+            submission_result = await db.execute(
+                select(ProviderSubmission)
+                .where(ProviderSubmission.analysis_id == analysis.id)
+                .order_by(ProviderSubmission.submitted_at.desc())
+                .limit(1)
+            )
+            submission = submission_result.scalars().first()
+
+            if not submission:
+                logger.warning("no_analysis_submission", analysis_id=analysis.id)
+                await analysis_service.mark_failed(
+                    analysis.id,
+                    "No provider submission found"
+                )
+                stats.failed += 1
+                continue
+
+            account = await db.get(ProviderAccount, submission.account_id)
+            if not account:
+                logger.error("analysis_account_not_found", account_id=submission.account_id)
+                await analysis_service.mark_failed(analysis.id, "Account not found")
+                stats.failed += 1
+                continue
+
+            # Check timeout (analyses > 30 min = stuck)
+            ANALYSIS_TIMEOUT_MINUTES = 30
+            analysis_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
+
+            if analysis.started_at and analysis.started_at < analysis_timeout_threshold:
+                logger.warning("analysis_timeout", analysis_id=analysis.id, started_at=str(analysis.started_at))
+                await analysis_service.mark_failed(
+                    analysis.id,
+                    f"Analysis timed out after {ANALYSIS_TIMEOUT_MINUTES} minutes"
+                )
+
+                # Decrement account's concurrent job count
+                if account.current_processing_jobs > 0:
+                    account.current_processing_jobs -= 1
+
+                stats.failed += 1
+                continue
+
+            try:
+                status_result = await provider_service.check_analysis_status(
+                    submission=submission,
+                    account=account,
+                )
+
+                logger.debug(
+                    "analysis_status",
+                    analysis_id=analysis.id,
+                    status=str(status_result.status),
+                    progress=status_result.progress
+                )
+
+                # Handle status
+                if status_result.status == ProviderStatus.COMPLETED:
+                    # Extract result from submission response
+                    await db.refresh(submission)
+                    result_data = submission.response.get("result", {})
+
+                    await analysis_service.mark_completed(analysis.id, result_data)
+                    logger.info("analysis_completed", analysis_id=analysis.id)
+
+                    # Decrement account's concurrent job count
+                    if account.current_processing_jobs > 0:
+                        account.current_processing_jobs -= 1
+
+                    stats.completed += 1
+
+                elif status_result.status in {
+                    ProviderStatus.FAILED,
+                    ProviderStatus.FILTERED,
+                    ProviderStatus.CANCELLED,
+                }:
+                    logger.warning(
+                        "analysis_failed_provider",
+                        analysis_id=analysis.id,
+                        status=str(status_result.status),
+                        error=status_result.error_message,
+                    )
+                    await analysis_service.mark_failed(
+                        analysis.id,
+                        status_result.error_message
+                        or f"Provider reported terminal status: {status_result.status.value}",
+                    )
+
+                    # Decrement account's concurrent job count
+                    if account.current_processing_jobs > 0:
+                        account.current_processing_jobs -= 1
+
+                    stats.failed += 1
+
+                elif status_result.status == ProviderStatus.PROCESSING:
+                    stats.still_processing += 1
+
+                else:
+                    logger.debug("analysis_pending", analysis_id=analysis.id)
+                    stats.still_processing += 1
+
+            except ProviderError as e:
+                _apoll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
+                _apoll_log("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
+                stats.still_processing += 1
+
+        except Exception as e:
+            logger.error("poll_analysis_error", analysis_id=analysis.id, error=str(e), exc_info=True)
+            worker_debug.worker(
+                "poll_analysis_error",
+                analysis_id=analysis.id,
+                error=str(e),
+            )
+
+    return stats
+
+
 async def poll_job_statuses(ctx: dict) -> dict:
     """
     Poll status of all processing generations.
 
-    This runs periodically (e.g., every 10 seconds) to check
-    generation status with providers and update accordingly.
-
-    Args:
-        ctx: ARQ worker context
-
-    Returns:
-        dict with poll statistics
+    Runs periodically (e.g. every 10 seconds). Three phases per cycle:
+      1. Poll PROCESSING generations.
+      2. Run due moderation re-checks (post-delivery flagging).
+      3. Poll PROCESSING analyses.
     """
     _init_poller_debug_flags()
     now_mono = time.monotonic()
     _prune_transient_poll_backoff(now_mono=now_mono)
     worker_debug = get_global_debug_logger()
     worker_debug.worker("poll_start")
-    # Generation stats
-    checked = 0
-    completed = 0
-    failed = 0
-    still_processing = 0
-    still_processing_ids: list[int] = []
-    missing_provider_job_generation_ids: list[int] = []
 
-    # Analysis stats
-    analyses_checked = 0
-    analyses_completed = 0
-    analyses_failed = 0
-    analyses_still_processing = 0
     poll_status_cache: dict[str, object] = {}
 
     async for db in get_db():
@@ -1865,377 +1723,55 @@ async def poll_job_statuses(ctx: dict) -> dict:
             provider_service = ProviderService(db)
             account_service = AccountService(db)
 
-            processing_generations = await _load_processing_generation_snapshots(db)
-            logger.info("poll_loaded", count=len(processing_generations))
-
-            if processing_generations:
-                logger.info("poll_found_generations", count=len(processing_generations))
-                worker_debug.worker("poll_found_generations", count=len(processing_generations))
-                snapshot = _processing_generations_snapshot(processing_generations)
-                if snapshot["count"] >= 5 or snapshot["oldest_started_age_seconds"] >= 60:
-                    logger.warning("poll_processing_snapshot", **snapshot)
-                else:
-                    logger.info("poll_processing_snapshot", **snapshot)
-
-            # Timeout threshold (processing > 2 hours = stuck)
-            TIMEOUT_HOURS = 2
-            timeout_threshold = datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)
-            # Shorter timeout for jobs that never got a provider_job_id
-            # (submission to provider failed, no point waiting 2 hours)
-            UNSUBMITTED_TIMEOUT_MINUTES = 15
-            unsubmitted_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=UNSUBMITTED_TIMEOUT_MINUTES)
-            # Mixed-submission recovery: latest submit failed without a job id
-            # while an older valid provider job exists. These can stay stuck in
-            # PROCESSING if provider status polling never resolves the older job.
-            MIXED_SUBMISSION_TIMEOUT_MINUTES = 20
-            mixed_submission_timeout_threshold = datetime.now(timezone.utc) - timedelta(
-                minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES
+            gen_stats = await _poll_generations_phase(
+                db,
+                poll_status_cache=poll_status_cache,
+                worker_debug=worker_debug,
             )
 
-            # --- Parallel generation polling ---
-            now_mono = time.monotonic()
-            active_backoffs = _active_transient_poll_backoffs(now_mono=now_mono)
-            max_concurrent_polls = _POLL_CONCURRENCY_NORMAL
-            if active_backoffs >= _POLL_CONCURRENCY_DEGRADE_THRESHOLD:
-                max_concurrent_polls = _POLL_CONCURRENCY_DEGRADED
-                logger.warning(
-                    "poll_concurrency_reduced_due_to_transient_network",
-                    active_transient_backoffs=active_backoffs,
-                    max_concurrent_polls=max_concurrent_polls,
-                )
-            _poll_semaphore = asyncio.Semaphore(max_concurrent_polls)
-
-            async def _bounded_poll(gen):
-                if gen.id in _poll_in_flight:
-                    return None  # Already being polled by an overlapping cycle
-                _poll_in_flight.add(gen.id)
-                try:
-                    async with _poll_semaphore:
-                        return await _poll_single_generation(
-                            gen, poll_status_cache,
-                            timeout_threshold, unsubmitted_timeout_threshold,
-                            mixed_submission_timeout_threshold,
-                            TIMEOUT_HOURS, UNSUBMITTED_TIMEOUT_MINUTES,
-                            MIXED_SUBMISSION_TIMEOUT_MINUTES,
-                        )
-                finally:
-                    _poll_in_flight.discard(gen.id)
-
-            _poll_results = await asyncio.gather(
-                *[_bounded_poll(gen) for gen in processing_generations],
-                return_exceptions=True,
+            await _run_moderation_rechecks_phase(
+                db,
+                account_service=account_service,
             )
 
-            for _poll_result in _poll_results:
-                if _poll_result is None:
-                    continue  # Skipped (in-flight guard)
-                if isinstance(_poll_result, Exception):
-                    logger.error("poll_gather_error", error=str(_poll_result), exc_info=True)
-                    continue
-                checked += 1
-                if _poll_result.outcome == 'completed':
-                    completed += 1
-                elif _poll_result.outcome == 'failed':
-                    failed += 1
-                elif _poll_result.outcome == 'still_processing':
-                    still_processing += 1
-                    still_processing_ids.append(_poll_result.generation_id)
-                if _poll_result.missing_provider_job:
-                    missing_provider_job_generation_ids.append(_poll_result.generation_id)
-
-            # ===== MODERATION RE-CHECKS =====
-            # Re-check recently completed videos at staggered intervals
-            # to detect post-delivery flagging (90s, 3min, 5min).
-            now_mono = time.monotonic()
-            due_rechecks = [
-                (asset_id, info) for asset_id, info in _moderation_recheck.items()
-                if now_mono >= info[2]
-            ]
-            for asset_id, (provider_job_id, account_id, _, gen_id, attempt, op_type, recheck_provider_id) in due_rechecks:
-                _moderation_recheck.pop(asset_id, None)
-                try:
-                    asset = await db.get(Asset, asset_id)
-                    asset_remote_url = asset.remote_url if asset else None
-
-                    recheck_account = await db.get(ProviderAccount, account_id)
-                    if not recheck_account:
-                        continue
-
-                    # Fast path: asset was already flagged at completion time
-                    # (e.g. early-CDN terminal with original_status=filtered).
-                    # The CDN may still be serving briefly, so the probe would
-                    # return "ok" and skip the credit refresh.  Skip the
-                    # moderation verification and go straight to credit refresh
-                    # so the Pixverse refund lands in our DB.
-                    already_flagged = bool(
-                        asset and (asset.media_metadata or {}).get("provider_flagged")
-                    )
-                    if already_flagged:
-                        await refresh_account_credits_best_effort(
-                            recheck_account,
-                            account_service,
-                            logger,
-                            db=db,
-                            success_log_event="moderation_recheck_credits_refreshed_known_flagged",
-                            success_log_fields={
-                                "account_id": recheck_account.id,
-                                "asset_id": asset_id,
-                                "attempt": attempt,
-                            },
-                            failure_log_event="moderation_recheck_credit_refresh_failed",
-                            failure_log_fields={"account_id": recheck_account.id},
-                        )
-                        # Schedule one follow-up in case Pixverse's refund
-                        # hadn't landed by the first refresh.  Only after the
-                        # first attempt so we don't loop forever.
-                        if attempt == 0:
-                            _schedule_moderation_recheck(
-                                asset_id=asset_id,
-                                provider_job_id=provider_job_id,
-                                account_id=account_id,
-                                generation_id=gen_id,
-                                attempt=1,
-                                operation_type=op_type,
-                                provider_id=recheck_provider_id,
-                                delay_sec=_KNOWN_FLAGGED_FOLLOWUP_DELAY_SEC,
-                            )
-                        continue
-
-                    recheck_provider = _provider_registry.get(recheck_provider_id)
-                    recheck_result = await recheck_provider.moderation_recheck(
-                        account=recheck_account,
-                        provider_job_id=provider_job_id,
-                        asset_remote_url=asset_remote_url,
-                        operation_type=op_type,
-                    )
-
-                    if recheck_result.is_flagged and asset:
-                        meta = asset.media_metadata or {}
-                        if not meta.get("provider_flagged"):
-                            meta["provider_flagged"] = True
-                            meta["provider_flagged_reason"] = "post_delivery_moderation"
-                            asset.media_metadata = meta
-                            flag_modified(asset, "media_metadata")
-                            await db.commit()
-                            logger.info(
-                                "moderation_recheck_flagged",
-                                asset_id=asset_id,
-                                generation_id=gen_id,
-                                provider_job_id=provider_job_id,
-                                attempt=attempt,
-                            )
-                            await event_bus.publish(ASSET_UPDATED, {
-                                "asset_id": asset_id,
-                                "user_id": asset.user_id,
-                                "reason": "moderation_flagged",
-                            })
-                        if recheck_result.should_refresh_credits:
-                            await refresh_account_credits_best_effort(
-                                recheck_account,
-                                account_service,
-                                logger,
-                                db=db,
-                                success_log_event="moderation_recheck_credits_refreshed",
-                                success_log_fields={
-                                    "account_id": recheck_account.id,
-                                    "asset_id": asset_id,
-                                },
-                                failure_log_event="moderation_recheck_credit_refresh_failed",
-                                failure_log_fields={"account_id": recheck_account.id},
-                            )
-                    elif not recheck_result.is_flagged:
-                        # Not flagged (ok or inconclusive) — schedule next attempt.
-                        next_attempt = attempt + 1
-                        if next_attempt < _MODERATION_RECHECK_MAX_ATTEMPTS:
-                            delay = _MODERATION_RECHECK_DELAYS_SEC[next_attempt]
-                            _schedule_moderation_recheck(
-                                asset_id=asset_id,
-                                provider_job_id=provider_job_id,
-                                account_id=account_id,
-                                generation_id=gen_id,
-                                attempt=next_attempt,
-                                operation_type=op_type,
-                                provider_id=recheck_provider_id,
-                                delay_sec=delay,
-                            )
-                            logger.debug(
-                                "moderation_recheck_retry_scheduled",
-                                    asset_id=asset_id,
-                                    attempt=next_attempt,
-                                    delay_sec=delay,
-                                )
-                except Exception as e:
-                    logger.warning(
-                        "moderation_recheck_error",
-                        asset_id=asset_id,
-                        attempt=attempt,
-                        error=str(e),
-                    )
-
-            # ===== POLL ANALYSES =====
-            analysis_service = AnalysisService(db)
-
-            result = await db.execute(
-                select(AssetAnalysis)
-                .where(AssetAnalysis.status == AnalysisStatus.PROCESSING)
-                .order_by(AssetAnalysis.started_at)
+            analysis_stats = await _poll_analyses_phase(
+                db,
+                provider_service=provider_service,
+                worker_debug=worker_debug,
             )
-            processing_analyses = list(result.scalars().all())
-
-            if processing_analyses:
-                logger.info("poll_found_analyses", count=len(processing_analyses))
-                worker_debug.worker("poll_found_analyses", count=len(processing_analyses))
-
-            for analysis in processing_analyses:
-                analyses_checked += 1
-
-                try:
-                    # Get latest submission for this analysis
-                    submission_result = await db.execute(
-                        select(ProviderSubmission)
-                        .where(ProviderSubmission.analysis_id == analysis.id)
-                        .order_by(ProviderSubmission.submitted_at.desc())
-                        .limit(1)
-                    )
-                    submission = submission_result.scalars().first()
-
-                    if not submission:
-                        logger.warning("no_analysis_submission", analysis_id=analysis.id)
-                        await analysis_service.mark_failed(
-                            analysis.id,
-                            "No provider submission found"
-                        )
-                        analyses_failed += 1
-                        continue
-
-                    account = await db.get(ProviderAccount, submission.account_id)
-                    if not account:
-                        logger.error("analysis_account_not_found", account_id=submission.account_id)
-                        await analysis_service.mark_failed(analysis.id, "Account not found")
-                        analyses_failed += 1
-                        continue
-
-                    # Check timeout (analyses > 30 min = stuck)
-                    ANALYSIS_TIMEOUT_MINUTES = 30
-                    analysis_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
-
-                    if analysis.started_at and analysis.started_at < analysis_timeout_threshold:
-                        logger.warning("analysis_timeout", analysis_id=analysis.id, started_at=str(analysis.started_at))
-                        await analysis_service.mark_failed(
-                            analysis.id,
-                            f"Analysis timed out after {ANALYSIS_TIMEOUT_MINUTES} minutes"
-                        )
-
-                        # Decrement account's concurrent job count
-                        if account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
-
-                        analyses_failed += 1
-                        continue
-
-                    try:
-                        status_result = await provider_service.check_analysis_status(
-                            submission=submission,
-                            account=account,
-                        )
-
-                        logger.debug(
-                            "analysis_status",
-                            analysis_id=analysis.id,
-                            status=str(status_result.status),
-                            progress=status_result.progress
-                        )
-
-                        # Handle status
-                        if status_result.status == ProviderStatus.COMPLETED:
-                            # Extract result from submission response
-                            await db.refresh(submission)
-                            result_data = submission.response.get("result", {})
-
-                            await analysis_service.mark_completed(analysis.id, result_data)
-                            logger.info("analysis_completed", analysis_id=analysis.id)
-
-                            # Decrement account's concurrent job count
-                            if account.current_processing_jobs > 0:
-                                account.current_processing_jobs -= 1
-
-                            analyses_completed += 1
-
-                        elif status_result.status in {
-                            ProviderStatus.FAILED,
-                            ProviderStatus.FILTERED,
-                            ProviderStatus.CANCELLED,
-                        }:
-                            logger.warning(
-                                "analysis_failed_provider",
-                                analysis_id=analysis.id,
-                                status=str(status_result.status),
-                                error=status_result.error_message,
-                            )
-                            await analysis_service.mark_failed(
-                                analysis.id,
-                                status_result.error_message
-                                or f"Provider reported terminal status: {status_result.status.value}",
-                            )
-
-                            # Decrement account's concurrent job count
-                            if account.current_processing_jobs > 0:
-                                account.current_processing_jobs -= 1
-
-                            analyses_failed += 1
-
-                        elif status_result.status == ProviderStatus.PROCESSING:
-                            analyses_still_processing += 1
-
-                        else:
-                            logger.debug("analysis_pending", analysis_id=analysis.id)
-                            analyses_still_processing += 1
-
-                    except ProviderError as e:
-                        _apoll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
-                        _apoll_log("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
-                        analyses_still_processing += 1
-
-                except Exception as e:
-                    logger.error("poll_analysis_error", analysis_id=analysis.id, error=str(e), exc_info=True)
-                    worker_debug.worker(
-                        "poll_analysis_error",
-                        analysis_id=analysis.id,
-                        error=str(e),
-                    )
 
             await db.commit()
 
             stats = {
-                "checked": checked,
-                "completed": completed,
-                "failed": failed,
-                "still_processing": still_processing,
-                "analyses_checked": analyses_checked,
-                "analyses_completed": analyses_completed,
-                "analyses_failed": analyses_failed,
-                "analyses_still_processing": analyses_still_processing,
+                "checked": gen_stats.checked,
+                "completed": gen_stats.completed,
+                "failed": gen_stats.failed,
+                "still_processing": gen_stats.still_processing,
+                "analyses_checked": analysis_stats.checked,
+                "analyses_completed": analysis_stats.completed,
+                "analyses_failed": analysis_stats.failed,
+                "analyses_still_processing": analysis_stats.still_processing,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
-            total_checked = checked + analyses_checked
+            total_checked = gen_stats.checked + analysis_stats.checked
             if total_checked > 0:
                 logger.info(
                     "poll_complete",
-                    generations_checked=checked,
-                    generations_completed=completed,
-                    generations_failed=failed,
-                    generations_still_processing=still_processing,
-                    still_processing_ids_sample=still_processing_ids[:10] if still_processing_ids else None,
+                    generations_checked=gen_stats.checked,
+                    generations_completed=gen_stats.completed,
+                    generations_failed=gen_stats.failed,
+                    generations_still_processing=gen_stats.still_processing,
+                    still_processing_ids_sample=gen_stats.still_processing_ids[:10] if gen_stats.still_processing_ids else None,
                     missing_provider_job_ids_sample=(
-                        missing_provider_job_generation_ids[:10]
-                        if missing_provider_job_generation_ids
+                        gen_stats.missing_provider_job_ids[:10]
+                        if gen_stats.missing_provider_job_ids
                         else None
                     ),
-                    analyses_checked=analyses_checked,
-                    analyses_completed=analyses_completed,
-                    analyses_failed=analyses_failed,
-                    analyses_still_processing=analyses_still_processing,
+                    analyses_checked=analysis_stats.checked,
+                    analyses_completed=analysis_stats.completed,
+                    analyses_failed=analysis_stats.failed,
+                    analyses_still_processing=analysis_stats.still_processing,
                 )
                 worker_debug.worker("poll_complete", **stats)
             else:
