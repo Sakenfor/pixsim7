@@ -15,7 +15,6 @@ import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
-
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
@@ -90,6 +89,21 @@ export interface VideoScrubWidgetConfig {
 
   /** Show frame extraction button on timeline */
   showExtractButton?: boolean;
+
+  /** Callback when the scrub dot is held down past holdDurationMs.
+   *  Used for "extract + upload frame at current time". Suppresses click. */
+  onHoldUpload?: (timestamp: number, data: any) => void | Promise<void>;
+
+  /** Hold duration in ms before onHoldUpload fires (default 450ms). */
+  holdDurationMs?: number;
+
+  /** Per-render accessors that read from `data` so values stay reactive
+   *  without rebuilding the widget when they change (e.g. lock toggle). */
+  dataAccessors?: {
+    lockedTimestamp?: (data: any) => number | undefined;
+    onDotClick?: (data: any) => ((timestamp: number) => void) | undefined;
+    onHoldUpload?: (data: any) => ((timestamp: number) => void | Promise<void>) | undefined;
+  };
 }
 
 export interface VideoScrubWidgetRendererProps {
@@ -128,14 +142,25 @@ export interface VideoScrubWidgetRendererProps {
   gesturePhase?: 'idle' | 'pending' | 'committed';
   /** Edge inset fraction (0–0.5) for the gesture center zone */
   gestureEdgeInset?: number;
+  /** Externally-controlled marks. When provided, widget reads from this and uses
+   *  onAddMark/onRemoveMark instead of its own local state. */
+  marks?: number[];
+  onAddMark?: (time: number) => void;
+  onRemoveMark?: (time: number) => void;
+  /** Hold-press on the scrub dot. Invoked after holdDurationMs; suppresses the
+   *  ensuing click. Useful for "extract + upload frame at current time". */
+  onHoldUpload?: (timestamp: number, data?: any) => void | Promise<void>;
+  /** Hold duration in ms before onHoldUpload fires (default 450ms). */
+  holdDurationMs?: number;
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
 const STEP_COARSE = 0.5; // seconds per arrow key press
 const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
-const DOUBLE_CLICK_TIME = 300; // ms - max time between clicks for double-click
 const SCRUB_RELEASE_DISTANCE_PX = 14; // how close cursor must get to resume scrub after edge jump
+const SNAP_ZONE_TOP_FRACTION = 1 / 3; // snap-to-mark active when y > this fraction of card height
+const SNAP_THRESHOLD_PX = 14; // how close cursor X must be to a mark to snap (Ctrl bypasses)
 const TIMESTAMP_FALLBACK_OFFSET = 4; // px from top/left when no stack group is present
 const TIMESTAMP_STACK_GAP = 4; // px gap between top-left badges stack and timestamp row
 const TOP_LEFT_STACK_SELECTOR = '[data-overlay-stack-group="badges-tl"][data-overlay-stack-anchor="top-left"]';
@@ -165,6 +190,11 @@ export function VideoScrubWidgetRenderer({
   data,
   gesturePhase = 'idle',
   gestureEdgeInset = 0.2,
+  marks: externalMarks,
+  onAddMark: externalOnAddMark,
+  onRemoveMark: externalOnRemoveMark,
+  onHoldUpload,
+  holdDurationMs = 450,
 }: VideoScrubWidgetRendererProps) {
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering, mediaType: 'video' });
   const resolvedUrl = authenticatedSrc || url;
@@ -203,15 +233,15 @@ export function VideoScrubWidgetRenderer({
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
-  const [marks, setMarks] = useState<number[]>([]); // User-placed marks on timeline
+  const [localMarks, setLocalMarks] = useState<number[]>([]);
+  const marksControlled = externalMarks !== undefined;
+  const marks = marksControlled ? externalMarks : localMarks;
   const dragStartTimeRef = useRef<number | null>(null);
   const dragStartXRef = useRef<number | null>(null);
   const isPotentialDragRef = useRef(false);
   const dotControlsRef = useRef<HTMLDivElement>(null);
   const holdScrubUntilNearRef = useRef(false);
   const heldHoverPercentRef = useRef<number | null>(null);
-  const lastClickTimeRef = useRef<number>(0);
-  const lastClickMarkRef = useRef<number | null>(null);
   const canExtract = showExtractButton && !!handleDotAction;
   const dotTitle = dotTooltip ?? (
     canExtract ? 'Extract frame at current time' : 'Click to add mark here'
@@ -339,19 +369,77 @@ export function VideoScrubWidgetRenderer({
   );
 
   // Add a mark at the given time
-  const addMark = useCallback((time: number) => {
-    setMarks((prev) => {
-      // Check if mark already exists nearby
-      const exists = prev.some((m) => Math.abs(m - time) < 0.1);
-      if (exists) return prev;
-      return [...prev, time].sort((a, b) => a - b);
-    });
-  }, []);
+  const addMark = useCallback(
+    (time: number) => {
+      if (externalOnAddMark) {
+        externalOnAddMark(time);
+        return;
+      }
+      setLocalMarks((prev) => {
+        const exists = prev.some((m) => Math.abs(m - time) < 0.1);
+        if (exists) return prev;
+        return [...prev, time].sort((a, b) => a - b);
+      });
+    },
+    [externalOnAddMark],
+  );
 
   // Remove a mark
-  const removeMark = useCallback((time: number) => {
-    setMarks((prev) => prev.filter((m) => m !== time));
+  const removeMark = useCallback(
+    (time: number) => {
+      if (externalOnRemoveMark) {
+        externalOnRemoveMark(time);
+        return;
+      }
+      setLocalMarks((prev) => prev.filter((m) => m !== time));
+    },
+    [externalOnRemoveMark],
+  );
+
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdFiredRef = useRef(false);
+  const [isHolding, setIsHolding] = useState(false);
+
+  const clearHoldTimer = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    setIsHolding(false);
   }, []);
+
+  useEffect(() => () => clearHoldTimer(), [clearHoldTimer]);
+
+  const handleDotPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      holdFiredRef.current = false;
+      if (!onHoldUpload || event.button !== 0) return;
+      // Capture the pointer so subsequent move/up events still target this
+      // button even if the finger/mouse drifts off the tiny 8px dot.
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* no-op */ }
+      setIsHolding(true);
+      const capturedTime = currentTime;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const MOVE_TOLERANCE_PX = 12;
+      const onWindowMove = (e: PointerEvent) => {
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) > MOVE_TOLERANCE_PX) {
+          clearHoldTimer();
+          window.removeEventListener('pointermove', onWindowMove);
+        }
+      };
+      window.addEventListener('pointermove', onWindowMove);
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        holdFiredRef.current = true;
+        setIsHolding(false);
+        window.removeEventListener('pointermove', onWindowMove);
+        void Promise.resolve(onHoldUpload(capturedTime, data));
+      }, holdDurationMs);
+    },
+    [onHoldUpload, currentTime, data, holdDurationMs, clearHoldTimer],
+  );
 
   const handleDotActionClick = useCallback(async () => {
     if (!handleDotAction || isExtracting) return;
@@ -435,7 +523,7 @@ export function VideoScrubWidgetRenderer({
     [gestureActive, videoDuration, getTimeFromX]
   );
 
-  // Handle mouse up - finalize loop range, add marks, or handle double-click
+  // Handle mouse up - finalize loop range, add marks, or seek to clicked mark
   const handleMouseUp = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const wasPotentialDrag = isPotentialDragRef.current;
@@ -457,46 +545,22 @@ export function VideoScrubWidgetRenderer({
             // Click near timeline - handle mark interactions
             const clickTime = getTimeFromX(event.clientX);
             const nearbyMark = findNearbyMark(clickTime);
-            const now = Date.now();
 
             if (nearbyMark !== null) {
-              // Clicked on a mark - check for double-click
-              if (
-                lastClickMarkRef.current === nearbyMark &&
-                now - lastClickTimeRef.current < DOUBLE_CLICK_TIME
-              ) {
-                // Double-click on same mark - extract frame
-                if (handleDotAction && !isExtracting) {
-                  setIsExtracting(true);
-                  Promise.resolve(handleDotAction(nearbyMark, data)).finally(() => {
-                    setIsExtracting(false);
-                  });
-                }
-                lastClickTimeRef.current = 0;
-                lastClickMarkRef.current = null;
-              } else {
-                // First click on a mark - record for potential double-click
-                lastClickTimeRef.current = now;
-                lastClickMarkRef.current = nearbyMark;
-                // Also seek to the mark
-                if (videoRef.current && isVideoLoaded) {
-                  videoRef.current.currentTime = nearbyMark;
-                  setCurrentTime(nearbyMark);
-                }
+              // Clicked on a mark - seek to it
+              if (videoRef.current && isVideoLoaded) {
+                videoRef.current.currentTime = nearbyMark;
+                setCurrentTime(nearbyMark);
               }
             } else {
               // Clicked on empty space near timeline - add a mark at current scrub position
               addMark(currentTime);
-              lastClickTimeRef.current = 0;
-              lastClickMarkRef.current = null;
             }
           } else {
             // Click away from timeline - trigger onClick callback (e.g., open viewer)
             if (onClick) {
               onClick(data);
             }
-            lastClickTimeRef.current = 0;
-            lastClickMarkRef.current = null;
           }
         }
         return;
@@ -540,8 +604,32 @@ export function VideoScrubWidgetRenderer({
       const rect = containerRef.current.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const percentage = Math.max(0, Math.min(1, x / rect.width));
-      const targetTime = percentage * videoDuration;
+      let percentage = Math.max(0, Math.min(1, x / rect.width));
+      let targetTime = percentage * videoDuration;
+
+      // Snap to nearest mark when cursor is in the lower portion of the card.
+      // Ctrl bypasses snapping for precise scrubbing.
+      if (
+        !event.ctrlKey &&
+        marks.length > 0 &&
+        videoDuration > 0 &&
+        y > rect.height * SNAP_ZONE_TOP_FRACTION
+      ) {
+        let bestDist = SNAP_THRESHOLD_PX;
+        let snappedTime: number | null = null;
+        for (const mark of marks) {
+          const markX = (mark / videoDuration) * rect.width;
+          const dist = Math.abs(x - markX);
+          if (dist <= bestDist) {
+            bestDist = dist;
+            snappedTime = mark;
+          }
+        }
+        if (snappedTime !== null) {
+          targetTime = snappedTime;
+          percentage = snappedTime / videoDuration;
+        }
+      }
 
       // Check if cursor is in the control zone (bottom area with timeline/controls)
       const isInControlZone = y > rect.height - CONTROL_ZONE_HEIGHT;
@@ -720,9 +808,9 @@ export function VideoScrubWidgetRenderer({
     // Find the previous mark (before current time, with small tolerance)
     const prevMarks = marks.filter((m) => m < currentTime - 0.05);
     if (prevMarks.length > 0) {
-      seekTo(prevMarks[prevMarks.length - 1]); // Last mark before current
+      seekTo(prevMarks[prevMarks.length - 1], { holdUntilCursorNear: true });
     } else {
-      seekTo(0); // No more marks, go to start
+      seekTo(0, { holdUntilCursorNear: true });
     }
   }, [seekTo, marks, currentTime]);
 
@@ -735,9 +823,9 @@ export function VideoScrubWidgetRenderer({
     // Find the next mark (after current time, with small tolerance)
     const nextMarks = marks.filter((m) => m > currentTime + 0.05);
     if (nextMarks.length > 0) {
-      seekTo(nextMarks[0]); // First mark after current
+      seekTo(nextMarks[0], { holdUntilCursorNear: true });
     } else {
-      seekTo(videoDuration - STEP_FRAME); // No more marks, go to end
+      seekTo(videoDuration - STEP_FRAME, { holdUntilCursorNear: true });
     }
   }, [seekTo, marks, currentTime, videoDuration]);
 
@@ -801,8 +889,6 @@ export function VideoScrubWidgetRenderer({
       dragStartTimeRef.current = null;
       holdScrubUntilNearRef.current = false;
       heldHoverPercentRef.current = null;
-      lastClickTimeRef.current = 0;
-      lastClickMarkRef.current = null;
     }
   }, [isHovering, pauseOnLeave]);
 
@@ -1029,19 +1115,19 @@ export function VideoScrubWidgetRenderer({
                   }}
                   title={
                     isSelected
-                      ? `Selected for generation at ${formatTime(mark)} (double-click to deselect, right-click to remove)`
-                      : `Mark at ${formatTime(mark)} (double-click to select, right-click to remove)`
+                      ? `Selected for generation at ${formatTime(mark)} (right-click to remove)`
+                      : `Mark at ${formatTime(mark)} (click to seek, right-click to remove)`
                   }
                 />
               );
             })}
 
-            {/* Interactive scrub dot - click adds mark */}
+            {/* Interactive scrub dot - click adds mark, hold to upload frame */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (canExtract) {
-                  void handleDotActionClick();
+                if (holdFiredRef.current) {
+                  holdFiredRef.current = false;
                   return;
                 }
                 addMark(currentTime);
@@ -1049,14 +1135,19 @@ export function VideoScrubWidgetRenderer({
               onMouseDown={(e) => {
                 e.stopPropagation();
               }}
+              onPointerDown={handleDotPointerDown}
+              onPointerUp={clearHoldTimer}
+              onPointerCancel={clearHoldTimer}
               disabled={canExtract && isExtracting}
               className={`
                 absolute top-1/2 p-0 m-0 border-0 outline-none cursor-pointer
-                ${dotActive
-                  ? 'bg-blue-500 hover:bg-blue-400 scale-110 hover:scale-150'
+                ${isHolding
+                  ? 'bg-emerald-400 scale-150 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
+                  : dotActive
+                  ? 'bg-blue-500 hover:bg-blue-400 scale-110 hover:animate-hover-pop'
                   : isExtracting
                     ? 'bg-blue-400 animate-pulse-subtle'
-                    : 'bg-white hover:bg-orange-400 hover:scale-150 hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
+                    : 'bg-white hover:bg-orange-400 hover:animate-hover-pop hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
                 }
               `}
               style={{
@@ -1084,7 +1175,7 @@ export function VideoScrubWidgetRenderer({
               <button
                 onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors"
+                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors hover:animate-hover-pop"
                 title={marks.length > 0 ? "Previous mark (Home)" : "Go to start (Home)"}
               >
                 ◀
@@ -1094,7 +1185,7 @@ export function VideoScrubWidgetRenderer({
               <button
                 onClick={(e) => { e.stopPropagation(); goToNext(); }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors"
+                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors hover:animate-hover-pop"
                 title={marks.length > 0 ? "Next mark (End)" : "Go to end (End)"}
               >
                 ▶
@@ -1156,6 +1247,9 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     onClick,
     onExtractFrame,
     onExtractLastFrame,
+    onHoldUpload,
+    holdDurationMs,
+    dataAccessors,
   } = config;
 
   return {
@@ -1184,6 +1278,15 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
       const gesturePhase = context?.customState?.gesturePhase ?? 'idle';
       const gestureEdgeInset = context?.customState?.edgeInset;
 
+      // Per-render reactive accessors override static config when present.
+      const resolvedLockedTimestamp = dataAccessors?.lockedTimestamp?.(data);
+      const resolvedOnDotClick = dataAccessors?.onDotClick?.(data);
+      const resolvedOnHoldUpload = dataAccessors?.onHoldUpload?.(data) ?? onHoldUpload;
+      const dotActive = resolvedLockedTimestamp !== undefined;
+      const dotTooltip = dotActive
+        ? `Unlock frame (${resolvedLockedTimestamp!.toFixed(1)}s)`
+        : undefined;
+
       return (
         <VideoScrubWidgetRenderer
           url={resolvedVideoUrl}
@@ -1201,8 +1304,14 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           className={className}
           onScrub={onScrub}
           onClick={onClick}
+          onDotClick={resolvedOnDotClick}
           onExtractFrame={onExtractFrame}
           onExtractLastFrame={onExtractLastFrame}
+          onHoldUpload={resolvedOnHoldUpload}
+          holdDurationMs={holdDurationMs}
+          lockedTimestamp={resolvedLockedTimestamp}
+          dotActive={dotActive}
+          dotTooltip={dotTooltip}
           gesturePhase={gesturePhase}
           gestureEdgeInset={gestureEdgeInset}
           data={data}
