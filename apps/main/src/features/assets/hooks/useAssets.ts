@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse, AssetSearchRequest } from '@lib/api/assets';
+import { stableSerialize } from '@lib/stableSerialize';
 import { hmrSingleton } from '@lib/utils/hmrSafe';
-
-import { stableSerialize } from '@/lib/stableSerialize';
 
 import { assetEvents } from '../lib/assetEvents';
 import { buildAssetSearchRequest, extractExtraRegistryFilters } from '../lib/searchParams';

@@ -66,11 +66,12 @@ export const useFilterPresetStore = create<FilterPresetState>()(
 
       deletePreset: (id) =>
         set((state) => {
-          const { [id]: _removed, ...restPages } = state.pagePerPreset;
+          const nextPages = { ...state.pagePerPreset };
+          delete nextPages[id];
           return {
             presets: state.presets.filter((p) => p.id !== id),
             activePresetId: state.activePresetId === id ? null : state.activePresetId,
-            pagePerPreset: restPages,
+            pagePerPreset: nextPages,
           };
         }),
 

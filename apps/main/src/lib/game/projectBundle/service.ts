@@ -3,8 +3,7 @@ import {
   importWorldProject as importWorldProjectCore,
   type GameProjectBundle,
 } from '@lib/api';
-
-import { stableSerialize } from '@/lib/stableSerialize';
+import { stableSerialize } from '@lib/stableSerialize';
 
 import { ProjectBundleRuntimeLifecycleTracker } from './lifecycle';
 import {
