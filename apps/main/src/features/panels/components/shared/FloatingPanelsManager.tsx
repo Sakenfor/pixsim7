@@ -640,12 +640,12 @@ const FloatingPanel = memo(function FloatingPanel({
               className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
               title="Minimize"
             />
-            {canReturnToOrigin && (
-              <IconButton
-                size="md"
-                rounded="md"
-                icon={<Icon name="log-in" size={12} />}
-                onClick={() => {
+            <IconButton
+              size="md"
+              rounded="md"
+              icon={<Icon name="x" size={12} />}
+              onClick={() => {
+                if (canReturnToOrigin) {
                   const dockId = floatingOriginMeta?.sourceDockviewId;
                   const target = dockId ? getDockviewPosition(dockId) : null;
                   if (target) {
@@ -655,20 +655,18 @@ const FloatingPanel = memo(function FloatingPanel({
                   } else {
                     panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
                   }
-                }}
-                className="text-neutral-500 dark:text-neutral-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-400"
-                title={originLabel ? `Return to ${originLabel}` : "Return to original dock"}
-              />
-            )}
-            <IconButton
-              size="md"
-              rounded="md"
-              icon={<Icon name="x" size={12} />}
-              onClick={() => {
-                panelPlacementCoordinator.closeFloatingPanel(panel.id);
+                } else {
+                  panelPlacementCoordinator.closeFloatingPanel(panel.id);
+                }
               }}
               className="text-neutral-500 dark:text-neutral-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
-              title="Close floating panel"
+              title={
+                canReturnToOrigin
+                  ? originLabel
+                    ? `Return to ${originLabel}`
+                    : "Return to original dock"
+                  : "Close floating panel"
+              }
             />
           </div>
         </div>
