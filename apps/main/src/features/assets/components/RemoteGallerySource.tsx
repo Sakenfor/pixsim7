@@ -43,6 +43,7 @@ import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses, toViewerAssets } from '../models/asset';
 import { useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
+import { useFilterPresetStore } from '../stores/filterPresetStore';
 import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
 
 import { ClusterCard } from './ClusterCard';
@@ -949,11 +950,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     }
   }, [groupData, groupPage, groupTotalPages, syncGroupPageInUrl]);
 
+  const activePresetId = useFilterPresetStore((s) => s.activePresetId);
+  const rememberPresetPage = useFilterPresetStore((s) => s.rememberPage);
+
   const goToPage = useCallback((page: number, replace = false) => {
     if (page < 1) return;
     syncPageInUrl(page, replace);
     controller.goToPage(page);
-  }, [controller.goToPage, syncPageInUrl]);
+    rememberPresetPage(activePresetId, page);
+  }, [controller.goToPage, syncPageInUrl, rememberPresetPage, activePresetId]);
 
   const goToGroupPage = useCallback(
     (page: number, replace = false) => {
@@ -973,7 +978,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
     // If the controller clamped the page (e.g. page 5 → 3 because only 3 pages exist),
     // sync the URL down to the clamped value instead of fighting the clamp.
-    if (controller.currentPage < pageFromUrl && controller.totalPages < pageFromUrl) {
+    // Only clamp when hasMore=false — totalPages is unreliable after a loadMore-based
+    // initial load (it stays 1 until goToPage is called), so clamping while hasMore=true
+    // would incorrectly revert forward navigation.
+    if (controller.currentPage < pageFromUrl && controller.totalPages < pageFromUrl && !controller.hasMore) {
       syncPageInUrl(controller.currentPage, true);
       return;
     }
@@ -1290,7 +1298,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           </div>
           <FilterPresetBar
             currentFilters={controller.filters}
-            onLoadPreset={(filters) => controller.replaceFilters(filters)}
+            onLoadPreset={(filters, page) => {
+              controller.replaceFilters(filters);
+              goToPage(page, true);
+            }}
           />
           <div>
             <DynamicFilters

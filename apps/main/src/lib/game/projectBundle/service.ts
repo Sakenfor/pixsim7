@@ -4,6 +4,8 @@ import {
   type GameProjectBundle,
 } from '@lib/api';
 
+import { stableSerialize } from '@/lib/stableSerialize';
+
 import { ProjectBundleRuntimeLifecycleTracker } from './lifecycle';
 import {
   PROJECT_BUNDLE_EXTENSION_KEY_PATTERN,
@@ -74,32 +76,6 @@ function isModuleEnabled(
   moduleEnabledMap: Map<string, { enabled: boolean }>,
 ): boolean {
   return moduleEnabledMap.get(extensionKey)?.enabled !== false;
-}
-
-function stableSerialize(value: unknown): string {
-  if (value === null || value === undefined) {
-    return 'null';
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return JSON.stringify(value);
-  }
-
-  if (typeof value === 'string') {
-    return JSON.stringify(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
-  }
-
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
-  }
-
-  return JSON.stringify(String(value));
 }
 
 function buildImportFingerprint(

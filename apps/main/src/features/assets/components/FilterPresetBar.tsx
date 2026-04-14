@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -6,11 +6,12 @@ import type { AssetFilters } from '../hooks/useAssets';
 import { filtersEqual } from '../lib/filterUtils';
 import { useFilterPresetStore } from '../stores/filterPresetStore';
 
+import { InlineTextInput } from './InlineTextInput';
 import { PresetContextMenu, type PresetContextMenuState } from './PresetContextMenu';
 
 interface FilterPresetBarProps {
   currentFilters: AssetFilters;
-  onLoadPreset: (filters: AssetFilters) => void;
+  onLoadPreset: (filters: AssetFilters, page: number) => void;
 }
 
 const tabBase =
@@ -30,58 +31,45 @@ export function FilterPresetBar({ currentFilters, onLoadPreset }: FilterPresetBa
   const renamePreset = useFilterPresetStore((s) => s.renamePreset);
   const deletePreset = useFilterPresetStore((s) => s.deletePreset);
   const setActivePreset = useFilterPresetStore((s) => s.setActivePreset);
+  const getRememberedPage = useFilterPresetStore((s) => s.getRememberedPage);
 
   const [isAdding, setIsAdding] = useState(false);
-  const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const addInputRef = useRef<HTMLInputElement>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<PresetContextMenuState | null>(null);
-
-  useEffect(() => {
-    if (isAdding) addInputRef.current?.focus();
-  }, [isAdding]);
-
-  useEffect(() => {
-    if (renamingId) renameInputRef.current?.focus();
-  }, [renamingId]);
 
   const activePreset = presets.find((p) => p.id === activePresetId);
   const isModified = activePreset ? !filtersEqual(currentFilters, activePreset.filters) : false;
 
   const handleClickAll = useCallback(() => {
+    const page = getRememberedPage(null);
     setActivePreset(null);
-    onLoadPreset({});
-  }, [setActivePreset, onLoadPreset]);
+    onLoadPreset({}, page);
+  }, [setActivePreset, onLoadPreset, getRememberedPage]);
 
   const handleClickPreset = useCallback(
     (id: string, filters: AssetFilters) => {
+      const page = getRememberedPage(id);
       setActivePreset(id);
-      onLoadPreset(filters);
+      onLoadPreset(filters, page);
     },
-    [setActivePreset, onLoadPreset],
+    [setActivePreset, onLoadPreset, getRememberedPage],
   );
 
-  const handleAddSubmit = useCallback(() => {
-    const trimmed = newName.trim();
-    if (!trimmed) {
+  const handleAddSubmit = useCallback(
+    (name: string) => {
+      savePreset(name, currentFilters);
       setIsAdding(false);
-      setNewName('');
-      return;
-    }
-    savePreset(trimmed, currentFilters);
-    setIsAdding(false);
-    setNewName('');
-  }, [newName, currentFilters, savePreset]);
+    },
+    [currentFilters, savePreset],
+  );
 
-  const handleRenameSubmit = useCallback(() => {
-    if (renamingId && renameValue.trim()) {
-      renamePreset(renamingId, renameValue.trim());
-    }
-    setRenamingId(null);
-    setRenameValue('');
-  }, [renamingId, renameValue, renamePreset]);
+  const handleRenameSubmit = useCallback(
+    (name: string) => {
+      if (renamingId) renamePreset(renamingId, name);
+      setRenamingId(null);
+    },
+    [renamingId, renamePreset],
+  );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, presetId: string) => {
@@ -109,21 +97,12 @@ export function FilterPresetBar({ currentFilters, onLoadPreset }: FilterPresetBa
 
         if (renamingId === preset.id) {
           return (
-            <input
+            <InlineTextInput
               key={preset.id}
-              ref={renameInputRef}
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={handleRenameSubmit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleRenameSubmit();
-                if (e.key === 'Escape') {
-                  setRenamingId(null);
-                  setRenameValue('');
-                }
-              }}
+              initialValue={preset.name}
               className={inputClass}
+              onSubmit={handleRenameSubmit}
+              onCancel={() => setRenamingId(null)}
             />
           );
         }
@@ -146,21 +125,11 @@ export function FilterPresetBar({ currentFilters, onLoadPreset }: FilterPresetBa
 
       {/* Add button / inline input */}
       {isAdding ? (
-        <input
-          ref={addInputRef}
-          type="text"
+        <InlineTextInput
           placeholder="Preset name..."
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onBlur={handleAddSubmit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleAddSubmit();
-            if (e.key === 'Escape') {
-              setIsAdding(false);
-              setNewName('');
-            }
-          }}
           className={inputClass}
+          onSubmit={handleAddSubmit}
+          onCancel={() => setIsAdding(false)}
         />
       ) : (
         <button
@@ -178,13 +147,7 @@ export function FilterPresetBar({ currentFilters, onLoadPreset }: FilterPresetBa
         <PresetContextMenu
           menu={contextMenu}
           onClose={() => setContextMenu(null)}
-          onRename={(id) => {
-            const preset = presets.find((p) => p.id === id);
-            if (preset) {
-              setRenamingId(preset.id);
-              setRenameValue(preset.name);
-            }
-          }}
+          onRename={(id) => setRenamingId(id)}
           onUpdate={(id) => updatePreset(id, currentFilters)}
           onDelete={deletePreset}
         />

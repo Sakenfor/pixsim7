@@ -4,6 +4,8 @@ import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse, AssetSearchRequest } from '@lib/api/assets';
 import { hmrSingleton } from '@lib/utils/hmrSafe';
 
+import { stableSerialize } from '@/lib/stableSerialize';
+
 import { assetEvents } from '../lib/assetEvents';
 import { buildAssetSearchRequest, extractExtraRegistryFilters } from '../lib/searchParams';
 import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
@@ -81,20 +83,6 @@ const useAssetsHmrCache = hmrSingleton(
   'useAssets:querySnapshots',
   () => new Map<string, UseAssetsHmrSnapshot>(),
 );
-
-function stableSerialize(value: unknown): string {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
-  }
-  if (typeof value === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    const keys = Object.keys(objectValue).sort();
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(objectValue[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
 
 export function useAssets(options?: {
   limit?: number;
