@@ -15,6 +15,7 @@ import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
+
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
@@ -193,7 +194,9 @@ export function VideoScrubWidgetRenderer({
   isHovering,
   showTimeline = true,
   showTimestamp = true,
-  showExtractButton = false,
+  // showExtractButton, onExtractFrame, onExtractLastFrame: accepted for
+  // back-compat with older configs but no longer consumed — click-to-extract
+  // was replaced by hold-on-dot which routes through onHoldUpload.
   timelinePosition = 'bottom',
   throttle = 50,
   muted = true,
@@ -204,8 +207,6 @@ export function VideoScrubWidgetRenderer({
   onScrub,
   onClick,
   onDotClick,
-  onExtractFrame,
-  onExtractLastFrame: _onExtractLastFrame, // eslint-disable-line @typescript-eslint/no-unused-vars
   lockedTimestamp,
   dotActive = false,
   dotTooltip,
@@ -1137,7 +1138,7 @@ export function VideoScrubWidgetRenderer({
               );
             })}
 
-            {/* Interactive scrub dot - click adds mark, hold to upload frame */}
+            {/* Interactive scrub dot - click locks (picker) or adds mark, hold to upload */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1145,7 +1146,11 @@ export function VideoScrubWidgetRenderer({
                   holdFiredRef.current = false;
                   return;
                 }
-                addMark(currentTime);
+                if (onDotClick) {
+                  onDotClick(currentTime);
+                } else {
+                  addMark(currentTime);
+                }
               }}
               onMouseDown={(e) => {
                 e.stopPropagation();
