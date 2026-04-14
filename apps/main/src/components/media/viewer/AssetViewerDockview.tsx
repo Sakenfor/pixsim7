@@ -272,6 +272,26 @@ export function AssetViewerDockview({
       }),
     [floatingViewerPanelIds, viewerPanelIdSet]
   );
+  const resolveViewerPanelPosition = useCallback(
+    (panelId: string, api: DockviewApi) => {
+      if (panelId === 'recent-strip' && api.getPanel('media-preview')) {
+        return { direction: 'below' as const, referencePanel: 'media-preview' };
+      }
+      if (panelId === 'quickGenerate') {
+        if (api.getPanel('recent-strip')) {
+          return { direction: 'below' as const, referencePanel: 'recent-strip' };
+        }
+        if (api.getPanel('media-preview')) {
+          return { direction: 'below' as const, referencePanel: 'media-preview' };
+        }
+      }
+      if (panelId === 'info' && api.getPanel('quickGenerate')) {
+        return { referencePanel: 'quickGenerate' as const };
+      }
+      return undefined;
+    },
+    []
+  );
 
   // Use ref for dockviewApi to avoid context recreation when API is set
   // Components can access it via context.dockviewApiRef.current
@@ -381,6 +401,7 @@ export function AssetViewerDockview({
       enableContextMenu
       capabilities={dockCapabilities}
       resolvePanelTitle={(panelId) => panelSelectors.get(panelId)?.title ?? panelId}
+      resolvePanelPosition={resolveViewerPanelPosition}
     />
   );
 }
