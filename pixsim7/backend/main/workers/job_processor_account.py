@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
-from pixsim7.backend.main.services.account import AccountService
+from pixsim7.backend.main.services.account import (
+    AccountService,
+    apply_provider_credit_snapshot,
+)
 from pixsim7.backend.main.services.account_event_service import AccountEventService
 
 _PIXVERSE_PROVIDER_ID = "pixverse"
@@ -99,6 +102,25 @@ def resolve_required_credit_types(
 ) -> list[str] | None:
     """Resolve credit pools required by this generation (provider-specific)."""
     provider_id = str(getattr(generation, "provider_id", "") or "").strip().lower()
+
+    # Preferred path: delegate to provider adapter when it exposes this policy.
+    try:
+        from pixsim7.backend.main.domain.providers.registry import registry
+
+        provider = registry.get(provider_id)
+        resolver = getattr(provider, "resolve_required_credit_types", None)
+        if callable(resolver):
+            resolved = resolver(generation, params, account=account)
+            if isinstance(resolved, str):
+                resolved = [resolved]
+            if isinstance(resolved, list):
+                normalized = _normalize_required_credit_types(resolved)
+                if normalized:
+                    return normalized
+    except Exception:
+        # Keep historical fallback behavior below.
+        pass
+
     if provider_id != _PIXVERSE_PROVIDER_ID:
         return None
 
@@ -198,24 +220,25 @@ async def refresh_account_credits(
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}
 
-        # Get valid credit types from provider (no longer hardcoded)
-        valid_credit_types = set()
-        if hasattr(provider, 'get_credit_types'):
-            valid_credit_types = set(provider.get_credit_types())
-        else:
-            # Fallback for providers without get_credit_types()
-            valid_credit_types = {'web', 'openapi', 'standard', 'usage'}
-
-        # Update credits in database and build filtered result
         filtered_credits = {}
         if credits_data:
-            for credit_type, amount in credits_data.items():
-                if credit_type in valid_credit_types:
-                    try:
-                        await account_service.set_credit(account.id, credit_type, int(amount))
-                        filtered_credits[credit_type] = int(amount)
-                    except Exception as e:
-                        gen_logger.warning("credit_update_failed", credit_type=credit_type, error=str(e))
+            def _on_set_credit_error(credit_type: str, amount: int, exc: Exception) -> None:
+                gen_logger.warning(
+                    "credit_update_failed",
+                    credit_type=credit_type,
+                    amount=amount,
+                    error=str(exc),
+                )
+
+            filtered_credits = await apply_provider_credit_snapshot(
+                account_service=account_service,
+                account=account,
+                provider=provider,
+                credits_data=credits_data,
+                fallback_credit_types={"web", "openapi", "standard", "usage"},
+                stamp_synced_at=True,
+                on_set_credit_error=_on_set_credit_error,
+            )
 
             gen_logger.info("credits_refreshed", account_id=account.id, credits=filtered_credits)
             AccountEventService.record(
@@ -224,12 +247,6 @@ async def refresh_account_credits(
                 provider_id=account.provider_id,
                 extra={"credits": filtered_credits},
             )
-
-            # Stamp sync timestamp so maintenance sweeps skip recently-refreshed accounts
-            if filtered_credits:
-                metadata = account.provider_metadata or {}
-                metadata["credits_synced_at"] = datetime.now(timezone.utc).isoformat()
-                account.provider_metadata = {**metadata}  # reassign for SQLAlchemy change detection
 
         return filtered_credits
 

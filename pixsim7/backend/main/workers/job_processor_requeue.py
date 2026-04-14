@@ -33,6 +33,7 @@ async def _requeue_generation_for_account_rotation(
     clear_preferred_on_account_match: bool = False,
     error_code: str | None = None,
     increment_retry: bool = False,
+    defer_seconds: int | None = None,
 ) -> dict | None:
     """
     Reset generation state and enqueue it to retry with a different account.
@@ -61,7 +62,11 @@ async def _requeue_generation_for_account_rotation(
         await db.refresh(generation)
 
         arq_pool = await get_arq_pool()
-        enqueue_result = await enqueue_generation_retry_job(arq_pool, generation.id)
+        enqueue_result = await enqueue_generation_retry_job(
+            arq_pool,
+            generation.id,
+            defer_seconds=defer_seconds,
+        )
 
         payload = {
             "generation_id": generation.id,
@@ -74,6 +79,8 @@ async def _requeue_generation_for_account_rotation(
             payload["error_code"] = error_code
         if increment_retry:
             payload["retry_attempt"] = generation.retry_count
+        if defer_seconds is not None and enqueue_result.get("actual_defer_seconds") is not None:
+            payload["defer_seconds"] = int(enqueue_result["actual_defer_seconds"])
         gen_logger.info(log_event, **payload)
 
         result = {
@@ -83,6 +90,8 @@ async def _requeue_generation_for_account_rotation(
         }
         if increment_retry:
             result["retry_attempt"] = generation.retry_count
+        if defer_seconds is not None and enqueue_result.get("actual_defer_seconds") is not None:
+            result["defer_seconds"] = int(enqueue_result["actual_defer_seconds"])
         return result
     except Exception as requeue_err:
         gen_logger.error(

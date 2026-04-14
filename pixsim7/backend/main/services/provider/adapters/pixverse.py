@@ -438,9 +438,14 @@ class PixverseProvider(
 
         return _sanitize_url_params(result_params, api_mode)
 
-    def _extract_api_mode_override(self, generation) -> Optional[PixverseApiMode]:
+    def _extract_api_mode_override(
+        self,
+        generation,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Optional[PixverseApiMode]:
         """Extract API mode override from generation params."""
         try:
+            provided_params = params if isinstance(params, dict) else {}
             raw_params = getattr(generation, "raw_params", None) or {}
             canonical_params = getattr(generation, "canonical_params", None) or {}
 
@@ -459,7 +464,10 @@ class PixverseProvider(
                         )
 
             api_override = (
-                raw_params.get("api_method")
+                provided_params.get("api_method")
+                or provided_params.get("pixverse_api_mode")
+                or provided_params.get("use_openapi")
+                or raw_params.get("api_method")
                 or raw_params.get("pixverse_api_mode")
                 or raw_params.get("use_openapi")
                 or style_override
@@ -484,6 +492,41 @@ class PixverseProvider(
             pass
 
         return None
+
+    def resolve_required_credit_types(
+        self,
+        generation: Generation,
+        params: Dict[str, Any] | None = None,
+        *,
+        account: Optional[ProviderAccount] = None,
+    ) -> list[str] | None:
+        """
+        Resolve Pixverse credit pools required by this generation.
+
+        All current generation submission routes use WebAPI pools. OpenAPI is
+        only considered when explicitly overridden in params/style metadata.
+        """
+        operation_raw = getattr(generation, "operation_type", None)
+        operation_value = getattr(operation_raw, "value", operation_raw)
+        operation_type = str(operation_value or "").strip().lower()
+
+        web_only_ops = {
+            OperationType.TEXT_TO_IMAGE.value,
+            OperationType.IMAGE_TO_IMAGE.value,
+            OperationType.VIDEO_TRANSITION.value,
+            OperationType.VIDEO_MODIFY.value,
+        }
+        if operation_type in web_only_ops:
+            return ["web"]
+
+        api_override = self._extract_api_mode_override(generation, params=params)
+
+        if api_override == PixverseApiMode.OPENAPI:
+            return ["openapi"]
+        if api_override == PixverseApiMode.WEBAPI:
+            return ["web"]
+
+        return ["web"]
 
     def get_operation_parameter_spec(self) -> dict:
         """

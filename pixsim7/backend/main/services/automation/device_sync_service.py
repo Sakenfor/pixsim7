@@ -381,7 +381,10 @@ class DeviceSyncService:
         try:
             from pixsim7.backend.main.domain.providers import ProviderAccount
             from pixsim7.backend.main.services.provider import registry
-            from pixsim7.backend.main.services.account import AccountService
+            from pixsim7.backend.main.services.account import (
+                AccountService,
+                apply_provider_credit_snapshot,
+            )
 
             account = await self.db.get(ProviderAccount, account_id)
             if not account or account.provider_id != "pixverse":
@@ -398,25 +401,26 @@ class DeviceSyncService:
                 return
 
             account_service = AccountService(self.db)
-            updated_types = []
-            for credit_type in ("web", "openapi"):
-                value = credits_data.get(credit_type)
-                if value is not None:
-                    await account_service.set_credit(account_id, credit_type, max(0, int(value)))
-                    updated_types.append(f"{credit_type}={value}")
+            updated_credits = await apply_provider_credit_snapshot(
+                account_service=account_service,
+                account=account,
+                provider=provider,
+                credits_data=credits_data,
+                fallback_credit_types={"web", "openapi"},
+                amount_transform=lambda _credit_type, amount: max(0, amount),
+                stamp_synced_at=True,
+            )
 
-            if updated_types:
-                # Update sync timestamp
-                metadata = account.provider_metadata or {}
-                metadata["credits_synced_at"] = datetime.now(timezone.utc).isoformat()
-                account.provider_metadata = metadata
-
+            if updated_credits:
                 logger.info(
                     "ad_session_credits_refreshed",
                     account_id=account_id,
                     email=account.email,
                     device=device_name,
-                    credits=", ".join(updated_types),
+                    credits=", ".join(
+                        f"{credit_type}={amount}"
+                        for credit_type, amount in sorted(updated_credits.items())
+                    ),
                 )
         except Exception as e:
             logger.warning(

@@ -279,6 +279,24 @@ class Provider(ABC):
             return manifest.name
         return self.provider_id
 
+    # ===== CREDIT POOL ROUTING =====
+
+    def resolve_required_credit_types(
+        self,
+        generation: Generation,
+        params: Dict[str, Any] | None = None,
+        *,
+        account: ProviderAccount | None = None,
+    ) -> list[str] | None:
+        """
+        Optional provider hook: return credit pools required for this run.
+
+        Used by worker account-selection logic to target provider-specific
+        pools (for example, Pixverse ``web`` vs ``openapi``) without embedding
+        provider branching in generic worker code.
+        """
+        return None
+
     # ===== FILE PREPARATION =====
 
     def requires_file_preparation(self) -> bool:

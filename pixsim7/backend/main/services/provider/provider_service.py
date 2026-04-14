@@ -125,6 +125,34 @@ def _build_submission_response(
     return out
 
 
+def _video_extend_silent_filter_threshold_seconds() -> int:
+    """
+    Grace window before status=5 video-extend runs are treated as silent filters.
+
+    This avoids immediate failure on the first stalled poll and gives Pixverse
+    enough time to surface early-CDN URLs/dimensions for filtered-complete jobs.
+    """
+    return 180
+
+
+def _is_video_extend_silent_filter_candidate(status_result: ProviderStatusResult) -> bool:
+    """True when Pixverse extend status indicates a likely silent filter stall."""
+    if status_result.status != ProviderStatus.PROCESSING:
+        return False
+    metadata = status_result.metadata or {}
+    try:
+        raw_status = int(metadata.get("provider_status"))
+    except Exception:
+        return False
+    if raw_status != 5:
+        return False
+    has_retrievable = bool(
+        status_result.has_retrievable_media_url
+        or metadata.get("has_retrievable_media_url"),
+    )
+    return not has_retrievable
+
+
 class ProviderService:
     """
     Provider orchestration service
@@ -997,6 +1025,45 @@ class ProviderService:
                         provider_job_id=submission.provider_job_id,
                         error=str(fallback_err),
                     )
+
+        # Pixverse video-extend silent-filter guard:
+        # keep status=processing initially, then promote to filtered only after
+        # a grace window if it remains stuck on provider_status=5 without a
+        # retrievable media URL.
+        if (
+            submission.provider_id == "pixverse"
+            and operation_type == OperationType.VIDEO_EXTEND
+            and submission.submitted_at
+            and _is_video_extend_silent_filter_candidate(status_result)
+        ):
+            elapsed_seconds = (
+                datetime.now(timezone.utc) - submission.submitted_at
+            ).total_seconds()
+            threshold_seconds = _video_extend_silent_filter_threshold_seconds()
+            base_metadata = dict(status_result.metadata or {})
+
+            if elapsed_seconds >= threshold_seconds:
+                status_result.status = ProviderStatus.FILTERED
+                status_result.metadata = {
+                    **base_metadata,
+                    "extend_silent_filter": True,
+                    "extend_silent_filter_elapsed_seconds": int(elapsed_seconds),
+                    "extend_silent_filter_threshold_seconds": threshold_seconds,
+                }
+                logger.info(
+                    "pixverse_video_extend_silent_filter_promoted",
+                    submission_id=submission.id,
+                    provider_job_id=submission.provider_job_id,
+                    elapsed_seconds=int(elapsed_seconds),
+                    threshold_seconds=threshold_seconds,
+                )
+            else:
+                status_result.metadata = {
+                    **base_metadata,
+                    "extend_silent_filter_candidate": True,
+                    "extend_silent_filter_elapsed_seconds": int(elapsed_seconds),
+                    "extend_silent_filter_threshold_seconds": threshold_seconds,
+                }
 
         # Update submission response with latest status
         if submission.response is None:

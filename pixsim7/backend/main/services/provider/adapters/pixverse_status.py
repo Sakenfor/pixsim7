@@ -325,20 +325,16 @@ class PixverseStatusMixin:
                             max_pages=5,
                         )
                         if (list_result.metadata or {}).get("matched"):
-                            # Pixverse reports status 5 as "processing" but for
-                            # video_extend it is a silent content filter — the job
-                            # never transitions to completed.  Remap to FILTERED
-                            # so the retry/rotation machinery can handle it.
-                            # Pixverse's website rejects these prompts at submit,
-                            # but their extend API accepts and stalls. Flag as
-                            # prompt-side so auto-retry doesn't burn the 20-attempt
-                            # budget re-submitting the same doomed prompt.
+                            # Keep status=PROCESSING here and only mark a candidate.
+                            # ProviderService applies extend silent-filter promotion
+                            # after a grace window so early-CDN completions are not
+                            # failed on the first status-5 poll.
+                            # This keeps video_extend behavior aligned with i2v.
                             raw_st = (list_result.metadata or {}).get("provider_status")
                             if raw_st == 5 and list_result.status == ProviderStatus.PROCESSING:
-                                list_result.status = ProviderStatus.FILTERED
                                 list_result.metadata = {
                                     **(list_result.metadata or {}),
-                                    "extend_silent_filter": True,
+                                    "extend_silent_filter_candidate": True,
                                 }
                             return list_result
 
@@ -660,3 +656,4 @@ class PixverseStatusMixin:
             operation=_operation,
             retry_on_session_error=True,
         )
+

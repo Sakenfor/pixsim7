@@ -438,7 +438,10 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
     generations but whose sessions may have expired, leaving stale credit
     values in the DB.
     """
-    from pixsim7.backend.main.services.account import AccountService
+    from pixsim7.backend.main.services.account import (
+        AccountService,
+        apply_provider_credit_snapshot,
+    )
     from pixsim7.backend.main.domain.providers.registry import registry
 
     refreshed = 0
@@ -502,25 +505,23 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
                     )
 
                     if credits_data:
-                        valid_credit_types = set()
-                        if hasattr(provider, "get_credit_types"):
-                            valid_credit_types = set(provider.get_credit_types())
-                        else:
-                            valid_credit_types = {"web", "openapi"}
+                        updated_credits = await apply_provider_credit_snapshot(
+                            account_service=account_service,
+                            account=account,
+                            provider=provider,
+                            credits_data=credits_data,
+                            fallback_credit_types={"web", "openapi"},
+                            stamp_synced_at=True,
+                            synced_at=now,
+                        )
 
-                        for credit_type, amount in credits_data.items():
-                            if credit_type in valid_credit_types:
-                                try:
-                                    await account_service.set_credit(
-                                        account.id, credit_type, int(amount)
-                                    )
-                                except Exception:
-                                    pass  # set_credit logs internally
-
-                        # Stamp sync timestamp
-                        metadata = account.provider_metadata or {}
-                        metadata["credits_synced_at"] = now.isoformat()
-                        account.provider_metadata = {**metadata}
+                        # Preserve historical behavior: a successful provider
+                        # snapshot still advances sync timestamp even if every
+                        # field was filtered out.
+                        if not updated_credits:
+                            metadata = account.provider_metadata or {}
+                            metadata["credits_synced_at"] = now.isoformat()
+                            account.provider_metadata = {**metadata}
                         await db.commit()
 
                         refreshed += 1
@@ -528,10 +529,7 @@ async def refresh_stale_account_credits(ctx: dict) -> dict:
                             "credit_sweep_refreshed",
                             account_id=account.id,
                             email=account.email,
-                            credits={
-                                k: v for k, v in credits_data.items()
-                                if k in valid_credit_types
-                            },
+                            credits=updated_credits,
                         )
                     else:
                         # get_credits returned empty (timeout, etc.) — don't stamp

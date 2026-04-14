@@ -109,6 +109,50 @@ AUTH_FAILURE_COOLDOWN_SECONDS = 300
 NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
 
 
+def _quota_error_account_cooldown_seconds() -> int:
+    return _settings_int("quota_error_account_cooldown_seconds", 8, minimum=1)
+
+
+def _quota_rotation_defer_after_attempts() -> int:
+    return _settings_int("quota_rotation_defer_after_attempts", 8, minimum=1)
+
+
+def _quota_rotation_defer_step_attempts() -> int:
+    return _settings_int("quota_rotation_defer_step_attempts", 4, minimum=1)
+
+
+def _quota_rotation_base_defer_seconds() -> int:
+    return _settings_int("quota_rotation_base_defer_seconds", 3, minimum=1)
+
+
+def _quota_rotation_max_defer_seconds() -> int:
+    base_seconds = _quota_rotation_base_defer_seconds()
+    return _settings_int("quota_rotation_max_defer_seconds", 30, minimum=base_seconds)
+
+
+def _quota_rotation_requeue_defer_seconds(generation: Generation) -> int | None:
+    """
+    Compute an escalating defer for repeated quota-rotation requeues.
+
+    Prevents hot-loop thrash when many accounts report quota errors in short
+    bursts (stale balances, delayed refunds, shared pool pressure).
+    """
+    attempt_id = _normalize_positive_int(getattr(generation, "attempt_id", 0), 0)
+    if attempt_id <= 0:
+        return None
+
+    threshold = _quota_rotation_defer_after_attempts()
+    if attempt_id < threshold:
+        return None
+
+    step_attempts = _quota_rotation_defer_step_attempts()
+    base_seconds = _quota_rotation_base_defer_seconds()
+    max_seconds = _quota_rotation_max_defer_seconds()
+    level = ((attempt_id - threshold) // step_attempts) + 1
+    defer_seconds = min(max_seconds, base_seconds * level)
+    return max(1, int(defer_seconds))
+
+
 def _dispatch_stagger_per_slot_seconds() -> float:
     return _settings_float("dispatch_stagger_per_slot_seconds", 0.3, minimum=0.0)
 
@@ -828,6 +872,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         # Fall through to generic error handling below
                     else:
+                        account_marked_exhausted = False
+                        quota_error_code = _extract_error_code(e)
                         # Refresh credits from provider before marking
                         # exhausted — the quota error may be stale if a
                         # refund landed between verify_credits and submit.
@@ -866,11 +912,22 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 )
                             else:
                                 await account_service.mark_exhausted(account.id)
+                                account_marked_exhausted = True
                         except Exception as mark_err:
                             gen_logger.warning(
                                 "account_mark_exhausted_failed",
                                 account_id=account.id,
                                 error=str(mark_err),
+                            )
+
+                        if not account_marked_exhausted:
+                            await _apply_account_cooldown(
+                                db=db,
+                                account=account,
+                                cooldown_seconds=_quota_error_account_cooldown_seconds(),
+                                gen_logger=gen_logger,
+                                event_name="account_cooldown_quota_error",
+                                error_code=quota_error_code,
                             )
 
                         await _release_account_reservation(
@@ -882,6 +939,14 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Quota exhaustion is a hard account-level failure for this
                         # attempt; rotate even for pinned generations by clearing the
                         # preferred account if it matches the exhausted account.
+                        quota_defer_seconds = _quota_rotation_requeue_defer_seconds(generation)
+                        if quota_defer_seconds is not None:
+                            gen_logger.info(
+                                "quota_rotation_defer_scheduled",
+                                generation_id=generation.id,
+                                attempt_id=getattr(generation, "attempt_id", None),
+                                defer_seconds=quota_defer_seconds,
+                            )
                         requeue_result = await _requeue_generation_for_account_rotation(
                             db=db,
                             generation=generation,
@@ -892,6 +957,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             account_log_field="exhausted_account_id",
                             gen_logger=gen_logger,
                             clear_preferred_on_account_match=True,
+                            defer_seconds=quota_defer_seconds,
                         )
                         if requeue_result:
                             return requeue_result

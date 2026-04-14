@@ -40,13 +40,13 @@ class _FakeProvider:
         )
 
 
-def _make_submission(*, response: dict) -> SimpleNamespace:
+def _make_submission(*, response: dict, submitted_at: datetime | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         id=77,
         provider_id="pixverse",
         provider_job_id="pv-job-77",
         generation_id=707,
-        submitted_at=datetime.now(timezone.utc) - timedelta(minutes=6),
+        submitted_at=submitted_at or (datetime.now(timezone.utc) - timedelta(minutes=6)),
         payload={},
         response=response,
         duration_ms=None,
@@ -419,3 +419,151 @@ async def test_filtered_without_previous_retrievable_flag_is_not_promoted(
     assert returned.status == ProviderStatus.FILTERED
     assert submission.response["status"] == "filtered"
     assert "video_early_cdn_terminal" not in submission.response.get("metadata", {})
+
+
+@pytest.mark.asyncio
+async def test_video_extend_status5_stays_processing_before_silent_filter_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(
+        response={},
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=45),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=None,
+        thumbnail_url=None,
+        width=None,
+        height=None,
+        has_retrievable_media_url=False,
+        suppress_thumbnail=True,
+        metadata={"provider_status": 5, "source": "list_fallback", "matched": True},
+    )
+
+    provider = _FakeProvider(status_result)
+    db = _FakeDB()
+    service = ProviderService(db)
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+
+    async def _fake_publish(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=16),
+        operation_type=OperationType.VIDEO_EXTEND,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.PROCESSING
+    assert submission.response["status"] == "processing"
+    assert submission.response["metadata"]["extend_silent_filter_candidate"] is True
+    assert "extend_silent_filter" not in submission.response["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_video_extend_processing_with_early_cdn_url_is_promoted_to_completed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(
+        response={},
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=45),
+    )
+    early_video_url = "https://media.pixverse.ai/openapi/output/video-extend-early.mp4"
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=early_video_url,
+        thumbnail_url=None,
+        width=720,
+        height=1280,
+        has_retrievable_media_url=True,
+        suppress_thumbnail=True,
+        metadata={"provider_status": 5, "source": "list_fallback", "matched": True},
+    )
+
+    provider = _FakeProvider(status_result)
+    db = _FakeDB()
+    service = ProviderService(db)
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+
+    async def _fake_publish(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=17),
+        operation_type=OperationType.VIDEO_EXTEND,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.COMPLETED
+    assert submission.response["status"] == "completed"
+    assert submission.response["metadata"]["video_early_cdn_terminal"] is True
+    assert submission.response["metadata"]["video_original_status"] == "processing"
+    assert "extend_silent_filter" not in submission.response["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_video_extend_status5_promotes_to_filtered_after_silent_filter_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(
+        response={},
+        submitted_at=datetime.now(timezone.utc) - timedelta(minutes=6),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=None,
+        thumbnail_url=None,
+        width=None,
+        height=None,
+        has_retrievable_media_url=False,
+        suppress_thumbnail=True,
+        metadata={"provider_status": 5, "source": "list_fallback", "matched": True},
+    )
+
+    provider = _FakeProvider(status_result)
+    db = _FakeDB()
+    service = ProviderService(db)
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+
+    async def _fake_publish(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=17),
+        operation_type=OperationType.VIDEO_EXTEND,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.FILTERED
+    assert submission.response["status"] == "filtered"
+    assert submission.response["metadata"]["extend_silent_filter"] is True
