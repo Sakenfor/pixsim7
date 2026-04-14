@@ -29,6 +29,11 @@ registerModules()
 registerContextMenuActions()
 configurePanelLookup(panelSelectors)
 
+// Register video scrubber keyboard actions as capabilities (configurable).
+import('./components/media/scrubberCapabilityActions').then(({ registerScrubberCapabilityActions }) => {
+  registerScrubberCapabilityActions()
+})
+
 try {
   if (typeof window !== 'undefined' && window.localStorage) {
     configureKVStorage(window.localStorage)

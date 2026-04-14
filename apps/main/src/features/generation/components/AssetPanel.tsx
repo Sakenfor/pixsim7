@@ -8,8 +8,9 @@
  *   AssetPanelGrid.tsx      – multi-asset strip/grid display
  */
 import { getAssetDisplayUrls } from '@features/assets';
-import { CompactAssetCard } from '@features/assets/components/shared';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
+
+import { MediaCard } from '@/components/media/MediaCard';
 
 import { AssetPanelGrid } from './AssetPanelGrid';
 import { AssetPanelHeader } from './AssetPanelHeader';
@@ -136,6 +137,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               uploadingAssetIds={state.uploadingAssetIds}
               handleUploadToProvider={state.handleUploadToProvider}
               handlePickAsset={state.handlePickAsset}
+              onOpenAsset={state.openAsset}
             />
           </div>
         </div>
@@ -231,63 +233,68 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 )}
               </div>
             ) : (
-              <CompactAssetCard
-                asset={currentAsset}
-                showRemoveButton={state.orderedInputs.length > 0}
-                onRemove={() => {
-                  if (state.currentInputId) {
-                    state.removeInput?.(state.operationType, state.currentInputId);
-                  }
-                }}
-                lockedTimestamp={state.currentInput?.lockedTimestamp}
-                onLockTimestamp={
-                  state.currentInputId
-                    ? (timestamp) =>
-                        state.updateLockedTimestamp?.(state.operationType, state.currentInputId!, timestamp)
-                    : undefined
-                }
-                skipped={state.currentInput?.skipped}
-                onToggleSkip={
-                  state.currentInputId
-                    ? () => state.toggleSkip(state.operationType, state.currentInputId!)
-                    : undefined
-                }
-                {...(singleNeedsUpload
-                  ? {
-                      onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
-                      uploadingToProvider: state.uploadingAssetIds.has(currentAsset.id),
-                    }
-                  : {
-                      onGenerate: () => state.controller.generate(
-                        state.currentInput?.asset
-                          ? { assetOverrides: [state.currentInput.asset] }
-                          : { assetOverrides: [], skipActiveAssetFallback: true }
-                      ),
-                      generating: state.controller.generating,
-                    }
-                )}
-                hideFooter
-                fillHeight
-                currentIndex={state.operationInputIndex}
-                totalCount={state.carouselTotalCount}
-                onNavigatePrev={handleCarouselPrev}
-                onNavigateNext={handleCarouselNext}
-                queueItems={queueItems}
-                onSelectIndex={(idx) => state.setOperationInputIndex(idx + 1)}
-                enableHoverPreview={state.enableHoverPreview}
-                showPlayOverlay={state.showPlayOverlay}
-                clickToPlay={state.clickToPlay}
-                overlay={
-                  <>
-                    {(state.currentInput?.maskLayers?.length || state.currentInput?.maskUrl) && (
-                      <MaskPreviewOverlay maskLayers={state.currentInput?.maskLayers} maskUrl={state.currentInput?.maskUrl} />
-                    )}
-                    {state.currentInput && state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
-                  </>
-                }
-                className={isCurrentClamped ? '!border-amber-500/70' : ''}
-                extraWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
-              />
+              <div className="h-full" onDoubleClick={() => state.openAsset(currentAsset)}>
+                <MediaCard
+                  asset={currentAsset}
+                  customWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
+                  layout={{
+                    density: 'compact',
+                    hideFooter: true,
+                    fillHeight: true,
+                    enableHoverPreview: state.enableHoverPreview,
+                    showPlayOverlay: state.showPlayOverlay,
+                    clickToPlay: state.clickToPlay,
+                    overlay: (
+                      <>
+                        {(state.currentInput?.maskLayers?.length || state.currentInput?.maskUrl) && (
+                          <MaskPreviewOverlay maskLayers={state.currentInput?.maskLayers} maskUrl={state.currentInput?.maskUrl} />
+                        )}
+                        {state.currentInput && state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
+                      </>
+                    ),
+                    className: isCurrentClamped ? '!border-amber-500/70' : '',
+                  }}
+                  picker={{
+                    showRemoveButton: state.orderedInputs.length > 0,
+                    onRemove: () => {
+                      if (state.currentInputId) {
+                        state.removeInput?.(state.operationType, state.currentInputId);
+                      }
+                    },
+                    lockedTimestamp: state.currentInput?.lockedTimestamp,
+                    onLockTimestamp: state.currentInputId
+                      ? (timestamp) =>
+                          state.updateLockedTimestamp?.(state.operationType, state.currentInputId!, timestamp)
+                      : undefined,
+                    skipped: state.currentInput?.skipped,
+                    onToggleSkip: state.currentInputId
+                      ? () => state.toggleSkip(state.operationType, state.currentInputId!)
+                      : undefined,
+                    queue: {
+                      currentIndex: state.operationInputIndex,
+                      totalCount: state.carouselTotalCount,
+                      items: queueItems,
+                      onPrev: handleCarouselPrev,
+                      onNext: handleCarouselNext,
+                      onSelect: (idx) => state.setOperationInputIndex(idx + 1),
+                    },
+                    ...(singleNeedsUpload
+                      ? {
+                          onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
+                          uploadingToProvider: state.uploadingAssetIds.has(currentAsset.id),
+                        }
+                      : {
+                          onGenerate: () => state.controller.generate(
+                            state.currentInput?.asset
+                              ? { assetOverrides: [state.currentInput.asset] }
+                              : { assetOverrides: [], skipActiveAssetFallback: true }
+                          ),
+                          generating: state.controller.generating,
+                        }
+                    ),
+                  }}
+                />
+              </div>
             )}
           </div>
         </div>

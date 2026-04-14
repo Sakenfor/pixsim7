@@ -11,7 +11,9 @@ import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGenerati
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
-import { CompactAssetCard, AssetGrid } from '@features/assets/components/shared';
+import { AssetGrid } from '@features/assets/components/shared';
+
+import { MediaCard } from '@/components/media/MediaCard';
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
@@ -621,12 +623,14 @@ function GenerationAssetGridCard({ assetId, onClick }: { assetId: number; onClic
   }
 
   return (
-    <CompactAssetCard
+    <MediaCard
       asset={asset}
-      hideFooter
-      aspectSquare
-      enableHoverPreview
-      onClick={onClick ? () => onClick(assetId) : undefined}
+      layout={{
+        density: 'compact',
+        hideFooter: true,
+        aspectSquare: true,
+        onClick: onClick ? () => onClick(assetId) : undefined,
+      }}
     />
   );
 }

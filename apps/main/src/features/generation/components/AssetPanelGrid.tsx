@@ -5,8 +5,10 @@
 import { Icon } from '@lib/icons';
 import type { WidgetConfig } from '@lib/ui/overlay';
 
-import { CompactAssetCard } from '@features/assets/components/shared';
+import type { AssetModel } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
+
+import { MediaCard } from '@/components/media/MediaCard';
 import type { InputItem } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
@@ -56,6 +58,7 @@ export interface AssetPanelGridProps {
 
   // Asset picker
   handlePickAsset?: (e: React.MouseEvent) => void;
+  onOpenAsset?: (asset: AssetModel) => void;
 }
 
 export function AssetPanelGrid({
@@ -87,6 +90,7 @@ export function AssetPanelGrid({
   uploadingAssetIds,
   handleUploadToProvider,
   handlePickAsset,
+  onOpenAsset,
 }: AssetPanelGridProps) {
   return (
     <div
@@ -171,6 +175,7 @@ export function AssetPanelGrid({
                 setOperationInputIndex?.(selectedIndex + 1);
               }
             }}
+            onDoubleClick={() => onOpenAsset?.(inputItem.asset)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
@@ -187,34 +192,40 @@ export function AssetPanelGrid({
             }}
             aria-disabled={isClamped}
           >
-            <CompactAssetCard
+            <MediaCard
               asset={inputItem.asset}
-              showRemoveButton
-              onRemove={() => removeInput(operationType, inputItem.id)}
-              skipped={inputItem.skipped}
-              onToggleSkip={() => toggleSkip(operationType, inputItem.id)}
-              lockedTimestamp={inputItem.lockedTimestamp}
-              onLockTimestamp={(timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp)}
-              hideFooter
-              fillHeight
-              enableHoverPreview={enableHoverPreview}
-              showPlayOverlay={showPlayOverlay}
-              clickToPlay={clickToPlay}
-              disableMotion={isSelected}
-              overlay={
-                <>
-                  {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
-                    <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
-                  )}
-                  {buildFusionRoleOverlay(inputItem, idx)}
-                </>
-              }
-              className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`}
-              extraWidgets={buildSlotExtraWidgets(inputItem, idx)}
-              {...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
-                onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
-                uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
-              } : {})}/>
+              customWidgets={buildSlotExtraWidgets(inputItem, idx)}
+              layout={{
+                density: 'compact',
+                hideFooter: true,
+                fillHeight: true,
+                enableHoverPreview,
+                showPlayOverlay,
+                clickToPlay,
+                disableMotion: isSelected,
+                overlay: (
+                  <>
+                    {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
+                      <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
+                    )}
+                    {buildFusionRoleOverlay(inputItem, idx)}
+                  </>
+                ),
+                className: `${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`,
+              }}
+              picker={{
+                showRemoveButton: true,
+                onRemove: () => removeInput(operationType, inputItem.id),
+                skipped: inputItem.skipped,
+                onToggleSkip: () => toggleSkip(operationType, inputItem.id),
+                lockedTimestamp: inputItem.lockedTimestamp,
+                onLockTimestamp: (timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp),
+                ...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
+                  onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
+                  uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
+                } : {}),
+              }}
+            />
           </div>
         );
       })}

@@ -5,7 +5,7 @@ import { Icon } from '@lib/icons';
 import { buildRemoveWidget } from '@lib/ui/overlay';
 
 import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
-import { CompactAssetCard } from '@features/assets/components/shared/CompactAssetCard';
+import { MediaCard } from '@/components/media/MediaCard';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import {
   useAssetSetStore,
@@ -44,7 +44,7 @@ function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
               className="rounded-lg overflow-hidden hover:ring-2 ring-accent transition-shadow"
               title={`Add asset #${asset.id}`}
             >
-              <CompactAssetCard asset={asset} hideFooter aspectSquare />
+              <MediaCard asset={asset} layout={{ density: 'compact', hideFooter: true, aspectSquare: true }} />
             </button>
           ))}
         </div>

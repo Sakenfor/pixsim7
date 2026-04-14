@@ -167,6 +167,11 @@ class AssetService:
                     "frame_time": timestamp,
                     "source": "scrubber",
                 },
+                # Hidden from gallery until provider upload succeeds (or fails to
+                # a target). Flipped to True by the extract-frame / reupload
+                # endpoints after a successful provider push. Prevents orphan
+                # frame assets from appearing in the library on failed uploads.
+                searchable=False,
             )
 
             # 6. Create lineage with timestamp metadata

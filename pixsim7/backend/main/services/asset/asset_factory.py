@@ -130,6 +130,7 @@ async def add_asset(
     prompt_version_id = None,  # Optional[UUID]
     upload_method: Optional[str] = None,
     upload_context: Optional[Dict[str, Any]] = None,
+    searchable: bool = True,
     commit: bool = True,
 ) -> Asset:
     """
@@ -371,6 +372,7 @@ async def add_asset(
         upload_method=upload_method,
         upload_context=upload_context,
         asset_kind=_infer_asset_kind(upload_method),
+        searchable=searchable,
         created_at=datetime.now(timezone.utc),
     )
     db.add(asset)

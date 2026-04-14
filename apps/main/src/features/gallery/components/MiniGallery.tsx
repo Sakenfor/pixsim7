@@ -12,8 +12,9 @@ import type { OverlayContextId } from '@lib/widgets';
 import type { AssetModel } from '@features/assets';
 import { useAssetViewerStore, selectIsViewerOpen, toViewerAsset, toViewerAssets } from '@features/assets';
 import { PaginationStrip } from '@features/assets/components/shared';
-import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
+
+import { MediaCard } from '@/components/media/MediaCard';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
 import { useAssets } from '@features/assets/hooks/useAssets';
 import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
@@ -273,18 +274,21 @@ function MiniGalleryItem({
   return (
     <>
       <div onMouseEnter={onHover ? handleMouseEnter : undefined} onMouseLeave={onHover ? handleMouseLeave : undefined}>
-        <CompactAssetCard
+        <MediaCard
           asset={asset}
-          hideFooter
-          aspectSquare
-          className={isResolving ? 'opacity-60 pointer-events-none' : ''}
-          onClick={onOpenViewer}
-          enableHoverPreview={asset.mediaType === 'video'}
-          showPlayOverlay={false}
-          overlay={overlay}
-          hoverActions={hoverActions}
-          extraWidgets={extraWidgets}
-          overlayContext={overlayContext ?? (hoverActions === null ? 'gallery' : undefined)}
+          customWidgets={extraWidgets}
+          layout={{
+            density: 'compact',
+            hideFooter: true,
+            aspectSquare: true,
+            className: isResolving ? 'opacity-60 pointer-events-none' : '',
+            onClick: onOpenViewer,
+            enableHoverPreview: asset.mediaType === 'video',
+            showPlayOverlay: false,
+            overlay,
+            hoverActions,
+            overlayContext: overlayContext ?? (hoverActions === null ? 'gallery' : undefined),
+          }}
         />
       </div>
 

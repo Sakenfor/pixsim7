@@ -39,6 +39,7 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardActionMode } from './mediaCardActionModeStore';
 import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
+import { useSelectedVideoTimestamp, useVideoMarksStore, SELECT_LAST_FRAME } from './videoMarksStore';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
 import { SourceAssetsPreview } from './SourceAssetsPreview';
@@ -86,6 +87,18 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const storedActionMode = useMediaCardActionModeStore((s) => s.byAssetId[id]);
   const setStoredActionMode = useMediaCardActionModeStore((s) => s.setMode);
   const clearStoredActionMode = useMediaCardActionModeStore((s) => s.clearMode);
+  const selectedTimestamp = useSelectedVideoTimestamp(id);
+  const clearSelectedTimestamp = useVideoMarksStore((s) => s.setSelected);
+  const isLastFrameSelected =
+    mediaType === 'video' &&
+    selectedTimestamp === SELECT_LAST_FRAME &&
+    !!cardProps.actions?.onExtractLastFrame;
+  const hasSelectedFrame =
+    mediaType === 'video' &&
+    selectedTimestamp !== null &&
+    selectedTimestamp !== SELECT_LAST_FRAME &&
+    !!cardProps.actions?.onExtractFrame;
+  const hasSelectedAny = hasSelectedFrame || isLastFrameSelected;
 
   // Use capability to get nearest generation widget, with global fallback
   const { value: widgetContext, provider: widgetProvider } =
@@ -307,6 +320,22 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const handleUploadToTarget = useCallback(async (targetId: string) => {
     setIsUploading(true);
     try {
+      // Frame-aware path: when the user has selected a frame via the scrub
+      // widget (mark click / arrow jump), upload that frame instead of the
+      // whole video. Reuses actions.onExtractFrame / onExtractLastFrame which
+      // handle their own toast + provider routing via uploadProviderStore.
+      if (targetId !== 'library') {
+        if (isLastFrameSelected && cardProps.actions?.onExtractLastFrame) {
+          await cardProps.actions.onExtractLastFrame(id);
+          clearSelectedTimestamp(id, null);
+          return;
+        }
+        if (hasSelectedFrame && cardProps.actions?.onExtractFrame) {
+          await cardProps.actions.onExtractFrame(id, selectedTimestamp!);
+          clearSelectedTimestamp(id, null);
+          return;
+        }
+      }
       if (targetId === 'library') {
         if (canRouteUploadTarget && cardProps.onUploadToProvider) {
           // Delegate handles its own toast - don't double-notify
@@ -335,7 +364,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     } finally {
       setIsUploading(false);
     }
-  }, [canRouteUploadTarget, cardProps, hasLocalUpload, id, toast, uploadTargetOptions]);
+  }, [canRouteUploadTarget, cardProps, hasLocalUpload, hasSelectedFrame, isLastFrameSelected, id, selectedTimestamp, clearSelectedTimestamp, toast, uploadTargetOptions]);
 
   const handleUploadClick = useCallback(() => {
     if (hasLocalUpload && !canRouteUploadTarget) {
@@ -476,7 +505,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           boxShadow: `inset 0 0 0 1px ${providerAccentColor}88`,
         } satisfies React.CSSProperties
       : undefined;
-    const uploadTitle = supportsLibraryTarget
+    const baseUploadTitle = supportsLibraryTarget
       ? defaultTarget
         ? `Upload to ${defaultTarget.label} (right-click to set default target)`
         : 'Upload (right-click to set default target)'
@@ -485,6 +514,11 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           if (target) return `Upload to ${target.name}`;
           return 'Upload to provider (right-click to set default)';
         })();
+    const uploadTitle = isLastFrameSelected
+      ? `Upload last frame${defaultTarget ? ` to ${defaultTarget.label}` : ''}`
+      : hasSelectedFrame
+        ? `Upload frame at ${selectedTimestamp!.toFixed(1)}s${defaultTarget ? ` to ${defaultTarget.label}` : ''}`
+        : baseUploadTitle;
     buttonItems.push({
       id: 'upload',
       ...resolved,
@@ -493,7 +527,9 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       title: uploadTitle,
       onClick: handleUploadClick,
       onContextMenu: handleUploadContextMenu,
-      badge: uploadTargetOptions.length > 1 ? (
+      badge: hasSelectedAny ? (
+        <ActionHintBadge icon={<Icon name="image" size={7} color="#fff" />} />
+      ) : uploadTargetOptions.length > 1 ? (
         <ActionHintBadge icon={<Icon name="chevronDown" size={7} color="#fff" />} />
       ) : undefined,
     });
@@ -646,7 +682,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
             <SourceAssetsPreview
               assetId={id}
               operationType={operationType}
-              addInput={addInput}
               onOpenAsset={handleOpenSourceAsset}
             />
           )}

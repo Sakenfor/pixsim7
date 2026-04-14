@@ -4,7 +4,7 @@
  * Uses a portal so the popup escapes parent stacking contexts.
  */
 
-import { IconButton, useHoverExpand } from '@pixsim7/shared.ui';
+import { useHoverExpand } from '@pixsim7/shared.ui';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -12,16 +12,15 @@ import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { Icon } from '@lib/icons';
 
 import { fromAssetResponse, type AssetModel } from '@features/assets';
-import { CompactAssetCard } from '@features/assets/components/shared';
+import { MediaCard } from '@/components/media/MediaCard';
 
 import type { OperationType } from '@/types/operations';
 
 import { parseGenerationContext } from './mediaCardGeneration.utils';
 
-export function SourceAssetsPreview({ assetId, operationType, addInput, onOpenAsset }: {
+export function SourceAssetsPreview({ assetId, operationType, onOpenAsset }: {
   assetId: number;
   operationType: OperationType;
-  addInput: (opts: { asset: AssetModel; operationType: OperationType }) => void;
   onOpenAsset?: (asset: AssetModel, assetList?: AssetModel[]) => void;
 }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
@@ -99,28 +98,16 @@ export function SourceAssetsPreview({ assetId, operationType, addInput, onOpenAs
                   }}
                   title="Double-click to open in viewer"
                 >
-                  <CompactAssetCard
+                  <MediaCard
                     asset={asset}
-                    hideFooter
-                    aspectSquare
-                    enableHoverPreview={asset.mediaType === 'video'}
-                    showPlayOverlay={false}
-                    hoverActions={
-                      <div className="flex items-center gap-1">
-                        <IconButton
-                          size="lg"
-                          rounded="full"
-                          icon={<Icon name="zap" size={12} />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addInput({ asset, operationType });
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700"
-                          style={{ color: '#fff' }}
-                          title="Add to input"
-                        />
-                      </div>
-                    }
+                    layout={{
+                      density: 'compact',
+                      hideFooter: true,
+                      aspectSquare: true,
+                      enableHoverPreview: asset.mediaType === 'video',
+                      showPlayOverlay: false,
+                      overlayContext: 'gallery',
+                    }}
                   />
                 </div>
               ))}

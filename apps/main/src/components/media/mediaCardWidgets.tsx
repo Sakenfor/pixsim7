@@ -28,6 +28,7 @@ import {
 
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
+
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
 import { PROVIDER_BRANDS } from '@features/generation/components/generationSettingsPanel/constants';
 import { providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
@@ -43,6 +44,7 @@ import {
   createGenerationActionModeBadge,
 } from './mediaCardGeneration';
 import { buildMediaCardRuntimeWidgets } from './mediaCardRuntimeWidgetBuilder';
+import { useVideoMarksStore } from './videoMarksStore';
 
 // Re-export from split files for backwards compatibility
 export {
@@ -105,6 +107,11 @@ export interface MediaCardOverlayData {
   // Versioning
   /** Version number within a version family (null = standalone) */
   versionNumber?: number | null;
+  // Picker (CompactAssetCard merger) — read by createVideoScrubber per render.
+  lockedTimestamp?: number;
+  onLockTimestamp?: (timestamp: number | undefined) => void;
+  /** Fallback for hold-on-dot when actions.onExtractFrame is absent. */
+  onHoldUploadFrame?: (timestamp: number) => void | Promise<void>;
 }
 
 /**
@@ -594,10 +601,53 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
     onExtractLastFrame: actions?.onExtractLastFrame
       ? () => actions.onExtractLastFrame?.(id)
       : undefined,
-    // Hold-press on scrub dot → extract+upload frame at that timestamp
+    // Hold-press on scrub dot → extract+upload frame at that timestamp.
+    // Static fallback; the data accessor below wins when it returns a value.
     onHoldUpload: actions?.onExtractFrame
       ? (timestamp: number) => actions.onExtractFrame?.(id, timestamp)
       : undefined,
+    // Per-render accessors so picker fields (lockedTimestamp, etc.) stay
+    // reactive without rebuilding the widget when they change.
+    dataAccessors: {
+      lockedTimestamp: (data: MediaCardOverlayData) => data.lockedTimestamp,
+      onDotClick: (data: MediaCardOverlayData) => {
+        const lock = data.onLockTimestamp;
+        if (!lock) return undefined;
+        const current = data.lockedTimestamp;
+        return (timestamp: number) => {
+          if (current !== undefined && Math.abs(current - timestamp) < 0.05) {
+            lock(undefined);
+          } else {
+            lock(timestamp);
+          }
+        };
+      },
+      onHoldUpload: (data: MediaCardOverlayData) => {
+        if (data.actions?.onExtractFrame) {
+          return (timestamp: number) => data.actions!.onExtractFrame!(data.id, timestamp);
+        }
+        return data.onHoldUploadFrame;
+      },
+      onSelectTimestamp: (data: MediaCardOverlayData) => (timestamp: number) => {
+        useVideoMarksStore.getState().setSelected(data.id, timestamp);
+      },
+      // Live scrubber state → store. Capability actions (Home/End/U etc.)
+      // read from the store, so no per-widget keyboard handlers are needed.
+      onActiveChange: (data: MediaCardOverlayData) => (active: boolean) => {
+        const store = useVideoMarksStore.getState();
+        if (active) store.setActive(data.id);
+        else if (store.activeAssetId === String(data.id)) store.setActive(null);
+      },
+      onCurrentTimeChange: (data: MediaCardOverlayData) => (time: number) => {
+        useVideoMarksStore.getState().setCurrentTime(data.id, time);
+      },
+      onDurationChange: (data: MediaCardOverlayData) => (duration: number) => {
+        useVideoMarksStore.getState().setDuration(data.id, duration);
+      },
+      onRegisterSeekFn: (data: MediaCardOverlayData) => (fn) => {
+        useVideoMarksStore.getState().setSeekFn(data.id, fn);
+      },
+    },
   });
 }
 

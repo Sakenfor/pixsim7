@@ -46,9 +46,14 @@ import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@fe
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 
+import { Icon } from '@lib/icons';
+
+import { buildMediaCardPickerWidgets } from './mediaCardPickerWidgets';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
+import { MediaCardQueueNav } from './MediaCardQueueNav';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 import { ThumbnailImage } from './ThumbnailImage';
+import { useVideoMarksStore } from './videoMarksStore';
 
 /** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
 function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
@@ -156,6 +161,94 @@ export interface MediaCardRuntimeProps {
 
   /** Upload to a specific provider (used by right-click menu in upload widget) */
   onUploadToProvider?: (id: number, providerId: string) => Promise<void> | void;
+
+  /**
+   * Picker bag — props for picker/queue contexts (transition selectors,
+   * image-to-video sources, etc.). When omitted, MediaCard renders as
+   * a plain gallery card. See MediaCardPickerBag for fields.
+   *
+   * Status: PR 1 wires layout/queue/upload-strip/side-buttons. Scrub-widget
+   * fields (lockedTimestamp, onHoldUploadFrame) deferred to PR 1.5.
+   */
+  picker?: MediaCardPickerBag;
+
+  /** Layout bag — density + sizing knobs for compact contexts. */
+  layout?: MediaCardLayoutProps;
+}
+
+// ─── Picker / layout bags (consolidating CompactAssetCard) ─────────────────
+
+export interface MediaCardQueueConfig {
+  /** 1-based index for display in nav pill. */
+  currentIndex: number;
+  totalCount: number;
+  /** Items for the grid popup — required if onSelect is provided. */
+  items?: Array<{ id: string | number; thumbnailUrl: string }>;
+  onPrev?: () => void;
+  onNext?: () => void;
+  /** Jump to a specific 0-based index via the grid popup. */
+  onSelect?: (index: number) => void;
+}
+
+export interface MediaCardPickerBag {
+  /** Locked frame timestamp (seconds) for video assets. PR 1.5 will wire scrub dot. */
+  lockedTimestamp?: number;
+  /** Lock/unlock the displayed frame. PR 1.5 will wire scrub dot. */
+  onLockTimestamp?: (timestamp: number | undefined) => void;
+
+  /** Queue navigation (nav pill at bottom + optional grid popup). */
+  queue?: MediaCardQueueConfig;
+
+  /** "Go" / generate shortcut button. */
+  onGenerate?: () => void;
+  generating?: boolean;
+
+  /** Below-image upload strip (provider upload outside the overlay). */
+  onUploadToProvider?: () => void | Promise<void>;
+  uploadingToProvider?: boolean;
+
+  /** Hold-press on scrub dot fallback when actions.onExtractFrame is absent.
+   *  PR 1.5 will wire this through the scrub widget factory. */
+  onHoldUploadFrame?: (timestamp: number) => void | Promise<void>;
+
+  /** Skip toggle — visually dims the card and exposes a toggle button. */
+  skipped?: boolean;
+  onToggleSkip?: () => void;
+
+  /** Remove button (top-right corner). */
+  onRemove?: () => void;
+  showRemoveButton?: boolean;
+}
+
+export interface MediaCardLayoutProps {
+  /** 'gallery' (default) = full MediaCard. 'compact' = picker styling. */
+  density?: 'gallery' | 'compact';
+  /** Fill parent height instead of using aspect ratio. */
+  fillHeight?: boolean;
+  /** Force square aspect ratio. */
+  aspectSquare?: boolean;
+  /** Hide the bottom info footer. */
+  hideFooter?: boolean;
+  /** Top label bar (e.g. "Source A"). */
+  label?: string;
+  /** Custom hover overlay replacing default hover behavior. */
+  hoverActions?: React.ReactNode;
+  /** Custom decoration overlay (pointer-events-none). */
+  overlay?: React.ReactNode;
+  /** Custom click handler on the card body. */
+  onClick?: () => void;
+  /** Extra className on the wrapper. */
+  className?: string;
+  /** When false (or clickToPlay=true), suppress the video scrub widget. Default true. */
+  enableHoverPreview?: boolean;
+  /** Alternate gate on hover preview — picker workflow uses this to require explicit click. */
+  clickToPlay?: boolean;
+  /** Show centered play icon when scrub is suppressed. Default true. */
+  showPlayOverlay?: boolean;
+  /** Accepted for parity with CompactAssetCard; currently a no-op. */
+  disableMotion?: boolean;
+  /** Override the overlay policy chain context (default: density==='compact' uses 'compact', else 'gallery'). */
+  overlayContext?: import('@lib/widgets').OverlayContextId;
 }
 
 // ─── Resolved flat shape (runtime + asset-derived) — widget factories use this ─
@@ -246,7 +339,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     height,
     contextMenuAsset,
     contextMenuSelection,
+    picker,
+    layout,
   } = resolved;
+  const density = layout?.density ?? 'gallery';
+  const isCompact = density === 'compact';
 
   const getVisibility = useOverlayWidgetSettingsStore((s) => s.getContextVisibility);
 
@@ -263,6 +360,30 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     exposeToContextMenu: true,
   }), [contextMenuAsset]);
   useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
+
+  // Register extract-frame / extract-last-frame callbacks in the shared video
+  // store so scrubber capability actions (U, Shift+U, etc.) can invoke them
+  // for the currently hovered card without prop-drilling.
+  const extractFrameAction = resolved.actions?.onExtractFrame;
+  const extractLastFrameAction = resolved.actions?.onExtractLastFrame;
+  useEffect(() => {
+    if (mediaType !== 'video') return;
+    const store = useVideoMarksStore.getState();
+    const extractFn = extractFrameAction
+      ? (timestamp: number) => extractFrameAction(id, timestamp)
+      : null;
+    const extractLastFn = extractLastFrameAction
+      ? () => extractLastFrameAction(id)
+      : null;
+    store.setExtractFrameFn(id, extractFn);
+    store.setExtractLastFrameFn(id, extractLastFn);
+    return () => {
+      const cleanup = useVideoMarksStore.getState();
+      cleanup.setExtractFrameFn(id, null);
+      cleanup.setExtractLastFrameFn(id, null);
+    };
+  }, [id, mediaType, extractFrameAction, extractLastFrameAction]);
+
   const mediaContainerRef = useRef<HTMLDivElement | null>(null);
   const [isNearViewport, setIsNearViewport] = useState(false);
   const shouldActivateVideoMedia =
@@ -567,16 +688,40 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       presetCapabilities,
     });
 
+    // Picker-surface widgets (compact mode: remove, skip toggle, locked frame,
+    // generate button) participate in collision detection alongside default
+    // widgets. Only emitted when density==='compact' and picker fields are set.
+    const pickerWidgets = isCompact
+      ? buildMediaCardPickerWidgets({
+          isVideo: mediaType === 'video',
+          isLocalOnly:
+            contextMenuAsset?.providerStatus === 'local_only' ||
+            (contextMenuAsset?.syncStatus === 'downloaded' && !contextMenuAsset?.remoteUrl),
+          showRemoveButton: picker?.showRemoveButton,
+          onRemove: picker?.onRemove,
+          skipped: picker?.skipped,
+          onToggleSkip: picker?.onToggleSkip,
+          lockedTimestamp: picker?.lockedTimestamp,
+          onGenerate: picker?.onGenerate,
+          generating: picker?.generating,
+          hasUploadStrip: !!picker?.onUploadToProvider,
+        })
+      : [];
+
     // Merge with custom widgets (custom widgets replace default by id)
     const widgetMap = new Map<string, OverlayWidget>();
 
     // Add defaults first
     defaultWidgets.forEach(widget => widgetMap.set(widget.id, widget));
 
+    // Picker widgets (overlay-system analogs of the old inline buttons)
+    pickerWidgets.forEach(widget => widgetMap.set(widget.id, widget));
+
     // Override/add custom widgets
     customWidgets.forEach(widget => widgetMap.set(widget.id, widget));
 
     const finalWidgets = Array.from(widgetMap.values());
+    const hasPickerWidgets = pickerWidgets.length > 0;
 
     // Build runtime configuration from widgets
     const baseConfig: OverlayConfiguration = {
@@ -597,7 +742,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       name: customOverlayConfig?.name || merged.name || 'Media Card',
       widgets: merged.widgets ?? [],
       spacing: customOverlayConfig?.spacing || merged.spacing || 'normal',
-      collisionDetection: merged.collisionDetection ?? false,
+      collisionDetection: merged.collisionDetection ?? hasPickerWidgets,
     };
 
     // Safety net: ensure preset-specific widgets are filtered based on capabilities.
@@ -620,10 +765,22 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       };
     }
 
+    // Suppress hover scrub when the picker workflow opts out (or uses click-to-play).
+    const scrubSuppressed = layout?.enableHoverPreview === false || layout?.clickToPlay === true;
+    if (scrubSuppressed) {
+      result = {
+        ...result,
+        widgets: result.widgets.filter((w) => w.id !== 'video-scrubber'),
+      };
+    }
+
+    const policyContext: import('@lib/widgets').OverlayContextId =
+      layout?.overlayContext ?? (isCompact ? 'compact' : 'gallery');
+
     result = {
       ...result,
       widgets: applyMediaOverlayPolicyChain(result.widgets, {
-        context: 'gallery',
+        context: policyContext,
         getVisibility,
         chain: resolved.overlayPolicyChain ?? selectedPreset?.policyChain,
       }),
@@ -632,6 +789,22 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     return result;
   }, [
     resolved,
+    mediaType,
+    contextMenuAsset?.providerStatus,
+    contextMenuAsset?.syncStatus,
+    contextMenuAsset?.remoteUrl,
+    layout?.enableHoverPreview,
+    layout?.clickToPlay,
+    layout?.overlayContext,
+    isCompact,
+    picker?.showRemoveButton,
+    picker?.onRemove,
+    picker?.skipped,
+    picker?.onToggleSkip,
+    picker?.lockedTimestamp,
+    picker?.onGenerate,
+    picker?.generating,
+    picker?.onUploadToProvider,
     customWidgets,
     customOverlayConfig,
     effectivePresetId,
@@ -691,6 +864,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     providerUploads: resolved.contextMenuAsset?.providerUploads,
     lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
     versionNumber: resolved.contextMenuAsset?.versionNumber,
+    lockedTimestamp: picker?.lockedTimestamp,
+    onLockTimestamp: picker?.onLockTimestamp,
+    onHoldUploadFrame: picker?.onHoldUploadFrame,
   }), [
     id, mediaType, providerId, providerStatus, tagSlugs, description, createdAt,
     resolved.uploadState, resolved.uploadProgress, resolved.remoteUrl,
@@ -700,17 +876,37 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     resolved.isFavorite, resolved.onToggleFavorite,
     resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
     resolved.width, resolved.height, stableOnUploadToProvider,
+    picker?.lockedTimestamp, picker?.onLockTimestamp, picker?.onHoldUploadFrame,
   ]);
+
+  // Wrapper styling: gallery default keeps existing border; compact picker
+  // mimics CompactAssetCard's status-coloured border + group/card hover hook.
+  const isLocalOnly =
+    contextMenuAsset?.providerStatus === 'local_only' ||
+    (contextMenuAsset?.syncStatus === 'downloaded' && !contextMenuAsset?.remoteUrl);
+  const compactBorder = isLocalOnly
+    ? 'border-amber-300 dark:border-amber-700'
+    : 'border-green-300 dark:border-green-700';
+  const wrapperClass = isCompact
+    ? `relative rounded-md border-2 ${compactBorder} bg-white dark:bg-neutral-900 overflow-hidden ${layout?.fillHeight ? 'h-full flex flex-col' : ''} ${layout?.onClick ? 'cursor-pointer' : ''} ${picker?.skipped ? 'opacity-40' : ''} group/card ${layout?.className ?? ''}`
+    : 'cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10';
 
   return (
     <div
-      className="cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10"
+      className={wrapperClass}
       data-pixsim7="media-card"
+      onClick={isCompact ? layout?.onClick : undefined}
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >
+      {layout?.label && (
+        <div className="absolute top-0 left-0 right-0 bg-black/70 text-white text-[10px] px-2 py-0.5 z-10 font-medium">
+          {layout.label}
+        </div>
+      )}
       <OverlayContainer
         configuration={overlayConfig}
         data={overlayData}
+        className={layout?.fillHeight ? 'flex-1 min-h-0' : undefined}
         customState={useMemo(() => ({
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,
@@ -720,13 +916,21 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         <div
           ref={mediaContainerRef}
           className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md touch-none ${
-            !resolvedVideoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
+            layout?.fillHeight
+              ? 'h-full'
+              : layout?.aspectSquare
+                ? 'aspect-square'
+                : !resolvedVideoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
           onDragStart={gesture.enabled ? (e) => e.preventDefault() : undefined}
           {...gesture.gestureHandlers}
-          style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
+          style={
+            !layout?.aspectSquare && !layout?.fillHeight && mediaType === 'video' && videoAspectRatio
+              ? { aspectRatio: `${videoAspectRatio}` }
+              : undefined
+          }
         >
           {(thumbSrc || shouldShowVideoElement) ? (
             mediaType === 'video' ? (
@@ -782,7 +986,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
               <img
                 src={thumbSrc}
                 alt={`Media ${id}`}
-                className="w-full h-auto object-cover"
+                className={`w-full object-cover ${
+                  layout?.fillHeight || layout?.aspectSquare ? 'h-full' : 'h-auto'
+                }`}
                 loading="lazy"
               />
             )
@@ -821,8 +1027,51 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
               actionLabel={gesture.returningActionLabel}
             />
           ) : null}
+          {mediaType === 'video' &&
+            (layout?.enableHoverPreview === false || layout?.clickToPlay) &&
+            (layout?.showPlayOverlay ?? true) && (
+              <div className="absolute inset-0 z-[2] flex items-center justify-center pointer-events-none">
+                <div className="cq-btn-lg rounded-full bg-black/50 flex items-center justify-center">
+                  <Icon name="play" size={12} variant="default" className="text-white" color="#fff" />
+                </div>
+              </div>
+            )}
+          {layout?.overlay && (
+            <div className="absolute inset-0 pointer-events-none z-10">
+              {layout.overlay}
+            </div>
+          )}
+          {layout?.hoverActions && (
+            <div className="cq-hover-actions absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity z-20 flex items-end justify-center pointer-events-none">
+              <div className="cq-scale-down pointer-events-auto">
+                {layout.hoverActions}
+              </div>
+            </div>
+          )}
+          {picker?.queue && <MediaCardQueueNav queue={picker.queue} />}
         </div>
       </OverlayContainer>
+      {picker?.onUploadToProvider && (
+        <button
+          onClick={(e) => { e.stopPropagation(); picker.onUploadToProvider?.(); }}
+          className="w-full flex items-center justify-center gap-1 py-0.5 bg-accent/90 hover:bg-accent text-accent-text text-[10px] font-medium transition-colors disabled:opacity-40"
+          title="Upload to provider"
+          disabled={picker.uploadingToProvider}
+        >
+          {picker.uploadingToProvider
+            ? <Icon name="loader" size={10} className="animate-spin" color="#fff" />
+            : <Icon name="upload" size={10} className="text-white" color="#fff" />}
+          <span>{picker.uploadingToProvider ? 'Uploading…' : 'Upload'}</span>
+        </button>
+      )}
+      {isCompact && !layout?.hideFooter && (
+        <div className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="truncate font-medium">{contextMenuAsset?.providerAssetId || `ID: ${id}`}</div>
+          {isLocalOnly && (
+            <div className="text-amber-600 dark:text-amber-400 text-[9px]">⚠ Not synced to provider</div>
+          )}
+        </div>
+      )}
     </div>
   );
 });

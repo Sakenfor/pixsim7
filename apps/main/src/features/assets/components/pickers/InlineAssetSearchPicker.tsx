@@ -16,7 +16,7 @@ import { listAssets } from '@lib/api/assets';
 
 import { fromAssetResponses, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 
-import { CompactAssetCard } from '../shared/CompactAssetCard';
+import { MediaCard } from '@/components/media/MediaCard';
 
 import type { PickedAsset } from './types';
 
@@ -168,11 +168,14 @@ export function InlineAssetSearchPicker({
           >
             {results.map((asset) => (
               <div key={asset.id} className="cursor-pointer">
-                <CompactAssetCard
+                <MediaCard
                   asset={asset}
-                  hideFooter
-                  fillHeight
-                  onClick={() => handleSelect(asset)}
+                  layout={{
+                    density: 'compact',
+                    hideFooter: true,
+                    fillHeight: true,
+                    onClick: () => handleSelect(asset),
+                  }}
                 />
               </div>
             ))}

@@ -1061,7 +1061,9 @@ async def extract_frame(
             target_provider=target_provider_id,
         )
 
-        # Upload to provider if determined
+        # Upload to provider if determined. Track success so we can flip
+        # searchable=True only on actually-uploaded frames (see below).
+        upload_succeeded = False
         if target_provider_id:
             try:
                 provider_asset_id = await asset_service.get_asset_for_provider(
@@ -1079,6 +1081,7 @@ async def extract_frame(
                     # Refresh again to get the updated remote_url
                     frame_asset = await asset_service.get_asset(frame_asset.id)
 
+                upload_succeeded = True
                 logger.info(
                     "extract_frame_uploaded_to_provider",
                     asset_id=frame_asset.id,
@@ -1099,6 +1102,18 @@ async def extract_frame(
                     frame_asset = await asset_service.get_asset(frame_asset.id)
                 except Exception:
                     pass
+
+        # Frames are created with searchable=False (hidden from gallery) so a
+        # failed provider upload never leaves an orphan in the user's library.
+        # Flip to True when the user's intent is resolved:
+        #   - No upload target configured → extract-only, make visible.
+        #   - Upload target present and upload succeeded → make visible.
+        # Failed upload leaves searchable=False so the orphan stays hidden.
+        should_make_searchable = (target_provider_id is None) or upload_succeeded
+        if should_make_searchable and not frame_asset.searchable:
+            frame_asset.searchable = True
+            await asset_service.db.commit()
+            frame_asset = await asset_service.get_asset(frame_asset.id)
 
         return AssetResponse.model_validate(frame_asset)
 
@@ -1149,6 +1164,15 @@ async def reupload_asset_to_provider(
             asset_id=asset_id,
             target_provider_id=request.provider_id
         )
+
+        # If this asset was hidden (e.g. a frame extracted earlier whose
+        # first upload failed), a successful re-upload resolves the pending
+        # visibility state. Flip to searchable=True so the library surfaces it.
+        if not asset.searchable:
+            refreshed = await asset_service.get_asset(asset_id)
+            if refreshed and not refreshed.searchable:
+                refreshed.searchable = True
+                await asset_service.db.commit()
 
         return ReuploadAssetResponse(
             asset_id=asset_id,

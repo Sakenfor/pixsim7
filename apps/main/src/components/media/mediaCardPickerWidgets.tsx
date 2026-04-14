@@ -1,40 +1,48 @@
-import { Icon } from '@lib/icons';
-import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY, buildRemoveWidget, type OverlayWidget } from '@lib/ui/overlay';
+/**
+ * Picker-surface widgets for MediaCard compact mode.
+ *
+ * Replaces the inline absolute-positioned buttons (remove / skip / generate /
+ * locked-frame badge) with overlay widgets that participate in the collision
+ * detection system. Rebuilt from the deleted assetCardLocalWidgets.tsx when
+ * CompactAssetCard was folded into MediaCard.
+ */
 
-export interface CompactAssetCardLocalWidgetsOptions {
-  showRemoveButton: boolean;
-  isLocalOnly: boolean;
+import { Icon } from '@lib/icons';
+import {
+  createBadgeWidget,
+  BADGE_SLOT,
+  BADGE_PRIORITY,
+  buildRemoveWidget,
+  type OverlayWidget,
+} from '@lib/ui/overlay';
+
+export interface MediaCardPickerWidgetsOptions {
   isVideo: boolean;
-  hasLockedFrame: boolean;
-  lockedTimestamp?: number;
+  isLocalOnly: boolean;
+  showRemoveButton?: boolean;
   onRemove?: () => void;
-  onGenerate?: () => void;
-  generating?: boolean;
-  onUploadToProvider?: () => void | Promise<void>;
   skipped?: boolean;
   onToggleSkip?: () => void;
+  lockedTimestamp?: number;
+  onGenerate?: () => void;
+  generating?: boolean;
+  /** When onUploadToProvider is wired, the below-image upload strip handles
+   *  upload — so we skip the generate widget to avoid duplicate action. */
+  hasUploadStrip?: boolean;
 }
 
-/**
- * Build compact-card-only local widgets (outside the shared configurable policy):
- * - remove button
- * - local-only status indicator
- * - locked-frame timestamp
- * - compact generate button
- */
-export function buildCompactAssetCardLocalWidgets({
-  showRemoveButton,
-  isLocalOnly,
+export function buildMediaCardPickerWidgets({
   isVideo,
-  hasLockedFrame,
-  lockedTimestamp,
+  isLocalOnly,
+  showRemoveButton,
   onRemove,
-  onGenerate,
-  generating = false,
-  onUploadToProvider,
   skipped,
   onToggleSkip,
-}: CompactAssetCardLocalWidgetsOptions): OverlayWidget[] {
+  lockedTimestamp,
+  onGenerate,
+  generating = false,
+  hasUploadStrip,
+}: MediaCardPickerWidgetsOptions): OverlayWidget[] {
   const widgets: OverlayWidget[] = [];
 
   if (showRemoveButton && onRemove) {
@@ -78,24 +86,27 @@ export function buildCompactAssetCardLocalWidgets({
     }));
   }
 
-  if (isVideo && hasLockedFrame) {
+  if (isVideo && lockedTimestamp !== undefined) {
     widgets.push({
       id: 'locked-frame',
       type: 'custom',
       ...BADGE_SLOT.topLeft,
       priority: BADGE_PRIORITY.status,
       render: () => (
-        <div className="cq-badge-xs bg-accent/90 text-accent-text rounded whitespace-nowrap flex items-center gap-1">
+        <div className="cq-badge-xs bg-accent/90 text-accent-text rounded whitespace-nowrap flex items-center gap-1 px-1.5 py-0.5">
           <span className="w-1.5 h-1.5 rounded-full bg-white" />
-          {lockedTimestamp?.toFixed(1)}s
+          {lockedTimestamp.toFixed(1)}s
         </div>
       ),
     });
   }
 
-  if (!onUploadToProvider && onGenerate) {
+  if (!hasUploadStrip && onGenerate) {
+    // Lift generate above the video scrubber's timeline strip; the render
+    // element adds an extra bottom margin via Tailwind when video so the
+    // lift scales with container-query sizing instead of fixed pixels.
     widgets.push({
-      id: 'generate-button',
+      id: 'picker-generate-button',
       type: 'custom',
       ...BADGE_SLOT.bottomLeft,
       visibility: { trigger: 'hover-container' },
@@ -105,7 +116,9 @@ export function buildCompactAssetCardLocalWidgets({
       render: () => (
         <button
           onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-          className="cq-btn-sm rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all disabled:opacity-30 hover:animate-hover-pop"
+          className={`cq-btn-sm rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all disabled:opacity-30 hover:animate-hover-pop ${
+            isVideo ? 'mb-4' : ''
+          }`}
           title="Generate"
           disabled={generating}
         >
@@ -117,4 +130,3 @@ export function buildCompactAssetCardLocalWidgets({
 
   return widgets;
 }
-

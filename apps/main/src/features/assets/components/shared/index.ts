@@ -39,12 +39,6 @@ export {
 } from './GallerySurfaceShell';
 
 export {
-  CompactAssetCard,
-  type CompactAssetCardProps,
-  type ThumbnailGridItem,
-} from './CompactAssetCard';
-
-export {
   ClientFilteredGallerySection,
 } from './ClientFilteredGallerySection';
 

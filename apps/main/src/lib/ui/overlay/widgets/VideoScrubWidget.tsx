@@ -97,12 +97,22 @@ export interface VideoScrubWidgetConfig {
   /** Hold duration in ms before onHoldUpload fires (default 450ms). */
   holdDurationMs?: number;
 
+  /** Called when the user explicitly seeks to a frame (mark click, prev/next
+   *  arrow). The "selected" timestamp can be consumed by external upload
+   *  buttons so they target the chosen frame instead of the whole video. */
+  onSelectTimestamp?: (timestamp: number) => void;
+
   /** Per-render accessors that read from `data` so values stay reactive
    *  without rebuilding the widget when they change (e.g. lock toggle). */
   dataAccessors?: {
     lockedTimestamp?: (data: any) => number | undefined;
     onDotClick?: (data: any) => ((timestamp: number) => void) | undefined;
     onHoldUpload?: (data: any) => ((timestamp: number) => void | Promise<void>) | undefined;
+    onSelectTimestamp?: (data: any) => ((timestamp: number) => void) | undefined;
+    onActiveChange?: (data: any) => ((active: boolean) => void) | undefined;
+    onCurrentTimeChange?: (data: any) => ((time: number) => void) | undefined;
+    onDurationChange?: (data: any) => ((duration: number) => void) | undefined;
+    onRegisterSeekFn?: (data: any) => ((fn: ((time: number, opts?: { holdUntilCursorNear?: boolean }) => void) | null) => void) | undefined;
   };
 }
 
@@ -152,11 +162,23 @@ export interface VideoScrubWidgetRendererProps {
   onHoldUpload?: (timestamp: number, data?: any) => void | Promise<void>;
   /** Hold duration in ms before onHoldUpload fires (default 450ms). */
   holdDurationMs?: number;
+  /** Called on explicit seek (mark click, prev/next arrow). Lets external
+   *  consumers (Upload button) know which frame the user picked. */
+  onSelectTimestamp?: (timestamp: number) => void;
+  /** Called when hover enters/leaves so external code can track which card is
+   *  "active" (drives capability-action key shortcuts like Home/End/U). */
+  onActiveChange?: (active: boolean) => void;
+  /** Reported live as the scrub position changes (throttled with scrub). */
+  onCurrentTimeChange?: (time: number) => void;
+  /** Reported once per video when metadata loads. */
+  onDurationChange?: (duration: number) => void;
+  /** Registers/unregisters the seek function so external actions can drive it. */
+  onRegisterSeekFn?: (fn: ((time: number, opts?: { holdUntilCursorNear?: boolean }) => void) | null) => void;
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
-const STEP_COARSE = 0.5; // seconds per arrow key press
-const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
+export const STEP_COARSE = 0.5; // seconds per arrow key press
+export const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
 const SCRUB_RELEASE_DISTANCE_PX = 14; // how close cursor must get to resume scrub after edge jump
 const SNAP_ZONE_TOP_FRACTION = 1 / 3; // snap-to-mark active when y > this fraction of card height
@@ -195,6 +217,11 @@ export function VideoScrubWidgetRenderer({
   onRemoveMark: externalOnRemoveMark,
   onHoldUpload,
   holdDurationMs = 450,
+  onSelectTimestamp,
+  onActiveChange,
+  onCurrentTimeChange,
+  onDurationChange,
+  onRegisterSeekFn,
 }: VideoScrubWidgetRendererProps) {
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering, mediaType: 'video' });
   const resolvedUrl = authenticatedSrc || url;
@@ -547,11 +574,12 @@ export function VideoScrubWidgetRenderer({
             const nearbyMark = findNearbyMark(clickTime);
 
             if (nearbyMark !== null) {
-              // Clicked on a mark - seek to it
+              // Clicked on a mark - seek to it and select it for upload
               if (videoRef.current && isVideoLoaded) {
                 videoRef.current.currentTime = nearbyMark;
                 setCurrentTime(nearbyMark);
               }
+              onSelectTimestamp?.(nearbyMark);
             } else {
               // Clicked on empty space near timeline - add a mark at current scrub position
               addMark(currentTime);
@@ -799,70 +827,72 @@ export function VideoScrubWidgetRenderer({
     }
   }, [videoDuration, isVideoLoaded, isPlaying, onScrub, data]);
 
-  // Go to previous mark, or first frame if no marks before current position
+  // Go to previous mark, or first frame if no marks before current position.
+  // Only select-for-upload when jumping to an actual mark; start/end fallbacks
+  // are navigation-only (end-of-video timestamps can fail ffmpeg fast-seek).
   const goToPrevious = useCallback(() => {
     if (marks.length === 0) {
       seekTo(0, { holdUntilCursorNear: true });
       return;
     }
-    // Find the previous mark (before current time, with small tolerance)
     const prevMarks = marks.filter((m) => m < currentTime - 0.05);
     if (prevMarks.length > 0) {
-      seekTo(prevMarks[prevMarks.length - 1], { holdUntilCursorNear: true });
+      const target = prevMarks[prevMarks.length - 1];
+      seekTo(target, { holdUntilCursorNear: true });
+      onSelectTimestamp?.(target);
     } else {
       seekTo(0, { holdUntilCursorNear: true });
     }
-  }, [seekTo, marks, currentTime]);
+  }, [seekTo, marks, currentTime, onSelectTimestamp]);
 
-  // Go to next mark, or last frame if no marks after current position
+  // Go to next mark, or last frame if no marks after current position.
+  // End-of-video navigation selects SELECT_LAST_FRAME sentinel so Upload uses
+  // the last_frame API path (ffmpeg fast-seek can produce empty output near end).
   const goToNext = useCallback(() => {
     if (marks.length === 0) {
       seekTo(videoDuration - STEP_FRAME, { holdUntilCursorNear: true });
+      onSelectTimestamp?.(-1);
       return;
     }
-    // Find the next mark (after current time, with small tolerance)
     const nextMarks = marks.filter((m) => m > currentTime + 0.05);
     if (nextMarks.length > 0) {
-      seekTo(nextMarks[0], { holdUntilCursorNear: true });
+      const target = nextMarks[0];
+      seekTo(target, { holdUntilCursorNear: true });
+      onSelectTimestamp?.(target);
     } else {
       seekTo(videoDuration - STEP_FRAME, { holdUntilCursorNear: true });
+      onSelectTimestamp?.(-1);
     }
-  }, [seekTo, marks, currentTime, videoDuration]);
+  }, [seekTo, marks, currentTime, videoDuration, onSelectTimestamp]);
 
-  // Keyboard shortcuts (Home/End for prev/next mark, arrows for stepping)
+  // Keyboard shortcuts are now registered as capability actions (see
+  // scrubberCapabilityActions.ts). Active-card detection is broadcast via
+  // onActiveChange; actions read live state from videoMarksStore.
+
+  // Broadcast hover state so external shortcut actions know which card is active.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isHovering || !isVideoLoaded) return;
+    if (!isHovering) return;
+    onActiveChange?.(true);
+    return () => { onActiveChange?.(false); };
+  }, [isHovering, onActiveChange]);
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      switch (event.key) {
-        case 'Home':
-          event.preventDefault();
-          goToPrevious();
-          break;
-        case 'End':
-          event.preventDefault();
-          goToNext();
-          break;
-        case 'ArrowLeft':
-          event.preventDefault();
-          // Ctrl = fine step (frame), normal = coarse step
-          seekTo(currentTime - (event.ctrlKey ? STEP_FRAME : STEP_COARSE));
-          break;
-        case 'ArrowRight':
-          event.preventDefault();
-          seekTo(currentTime + (event.ctrlKey ? STEP_FRAME : STEP_COARSE));
-          break;
-      }
-    };
+  // Report live scrub time so capability actions can drive extract/upload
+  // without needing direct access to the widget's internal state.
+  useEffect(() => {
+    onCurrentTimeChange?.(currentTime);
+  }, [currentTime, onCurrentTimeChange]);
 
-    // Make container focusable and focus it (preventScroll avoids
-    // the browser scrolling the gallery to center the hovered card)
-    container.tabIndex = -1;
-    container.focus({ preventScroll: true });
-    container.addEventListener('keydown', handleKeyDown);
-    return () => container.removeEventListener('keydown', handleKeyDown);
-  }, [isHovering, isVideoLoaded, goToPrevious, goToNext, seekTo, currentTime]);
+  // Report duration once it's known.
+  useEffect(() => {
+    if (videoDuration > 0) onDurationChange?.(videoDuration);
+  }, [videoDuration, onDurationChange]);
+
+  // Register / unregister the seek function so shortcut actions can invoke it.
+  useEffect(() => {
+    if (!onRegisterSeekFn) return;
+    onRegisterSeekFn(seekTo);
+    return () => { onRegisterSeekFn(null); };
+  }, [seekTo, onRegisterSeekFn]);
 
   // Reset video when hover ends
   useEffect(() => {
@@ -1152,12 +1182,16 @@ export function VideoScrubWidgetRenderer({
               `}
               style={{
                 left: `${displayPercentage}%`,
-                transform: 'translate(-50%, -50%)',
+                transform: isHolding
+                  ? 'translate(-50%, -50%) scale(2)'
+                  : 'translate(-50%, -50%)',
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                boxShadow: '0 0 3px rgba(0,0,0,0.5)',
-                transition: 'transform 100ms ease-out, background-color 100ms ease-out, box-shadow 100ms ease-out',
+                boxShadow: isHolding
+                  ? '0 0 14px 4px rgba(52,211,153,0.95)'
+                  : '0 0 3px rgba(0,0,0,0.5)',
+                transition: 'transform 120ms ease-out, background-color 120ms ease-out, box-shadow 120ms ease-out',
               }}
               title={dotTitle}
             />
@@ -1250,6 +1284,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     onHoldUpload,
     holdDurationMs,
     dataAccessors,
+    onSelectTimestamp,
   } = config;
 
   return {
@@ -1282,6 +1317,11 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
       const resolvedLockedTimestamp = dataAccessors?.lockedTimestamp?.(data);
       const resolvedOnDotClick = dataAccessors?.onDotClick?.(data);
       const resolvedOnHoldUpload = dataAccessors?.onHoldUpload?.(data) ?? onHoldUpload;
+      const resolvedOnSelectTimestamp = dataAccessors?.onSelectTimestamp?.(data) ?? onSelectTimestamp;
+      const resolvedOnActiveChange = dataAccessors?.onActiveChange?.(data);
+      const resolvedOnCurrentTimeChange = dataAccessors?.onCurrentTimeChange?.(data);
+      const resolvedOnDurationChange = dataAccessors?.onDurationChange?.(data);
+      const resolvedOnRegisterSeekFn = dataAccessors?.onRegisterSeekFn?.(data);
       const dotActive = resolvedLockedTimestamp !== undefined;
       const dotTooltip = dotActive
         ? `Unlock frame (${resolvedLockedTimestamp!.toFixed(1)}s)`
@@ -1309,6 +1349,11 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           onExtractLastFrame={onExtractLastFrame}
           onHoldUpload={resolvedOnHoldUpload}
           holdDurationMs={holdDurationMs}
+          onSelectTimestamp={resolvedOnSelectTimestamp}
+          onActiveChange={resolvedOnActiveChange}
+          onCurrentTimeChange={resolvedOnCurrentTimeChange}
+          onDurationChange={resolvedOnDurationChange}
+          onRegisterSeekFn={resolvedOnRegisterSeekFn}
           lockedTimestamp={resolvedLockedTimestamp}
           dotActive={dotActive}
           dotTooltip={dotTooltip}
