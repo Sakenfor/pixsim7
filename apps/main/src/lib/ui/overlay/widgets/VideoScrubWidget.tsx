@@ -226,7 +226,6 @@ export function VideoScrubWidgetRenderer({
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering, mediaType: 'video' });
   const resolvedUrl = authenticatedSrc || url;
   // Support both onDotClick and legacy onExtractFrame
-  const handleDotAction = onDotClick ?? onExtractFrame;
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
@@ -258,7 +257,6 @@ export function VideoScrubWidgetRenderer({
   }, [data]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
   const [localMarks, setLocalMarks] = useState<number[]>([]);
   const marksControlled = externalMarks !== undefined;
@@ -269,10 +267,7 @@ export function VideoScrubWidgetRenderer({
   const dotControlsRef = useRef<HTMLDivElement>(null);
   const holdScrubUntilNearRef = useRef(false);
   const heldHoverPercentRef = useRef<number | null>(null);
-  const canExtract = showExtractButton && !!handleDotAction;
-  const dotTitle = dotTooltip ?? (
-    canExtract ? 'Extract frame at current time' : 'Click to add mark here'
-  );
+  const dotTitle = dotTooltip ?? 'Click to add mark · hold to upload frame';
 
   const buildCacheBustedUrl = useCallback((value: string, token: number | null) => {
     if (!token) return value;
@@ -468,16 +463,6 @@ export function VideoScrubWidgetRenderer({
     [onHoldUpload, currentTime, data, holdDurationMs, clearHoldTimer],
   );
 
-  const handleDotActionClick = useCallback(async () => {
-    if (!handleDotAction || isExtracting) return;
-    setIsExtracting(true);
-    try {
-      await handleDotAction(currentTime, data);
-    } finally {
-      setIsExtracting(false);
-    }
-  }, [handleDotAction, currentTime, data, isExtracting]);
-
   // Helper to get time from mouse X position
   const getTimeFromX = useCallback(
     (clientX: number) => {
@@ -617,7 +602,7 @@ export function VideoScrubWidgetRenderer({
       setIsDragging(false);
       dragStartTimeRef.current = null;
     },
-    [isDragging, getTimeFromX, isVideoLoaded, findNearbyMark, addMark, currentTime, handleDotAction, data, isExtracting]
+    [isDragging, getTimeFromX, isVideoLoaded, findNearbyMark, addMark, currentTime]
   );
 
   // Height from bottom where auto-play is disabled (timeline + controls area)
@@ -1168,16 +1153,13 @@ export function VideoScrubWidgetRenderer({
               onPointerDown={handleDotPointerDown}
               onPointerUp={clearHoldTimer}
               onPointerCancel={clearHoldTimer}
-              disabled={canExtract && isExtracting}
               className={`
                 absolute top-1/2 p-0 m-0 border-0 outline-none cursor-pointer
                 ${isHolding
                   ? 'bg-emerald-400 scale-150 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
                   : dotActive
                   ? 'bg-blue-500 hover:bg-blue-400 scale-110 hover:animate-hover-pop'
-                  : isExtracting
-                    ? 'bg-blue-400 animate-pulse-subtle'
-                    : 'bg-white hover:bg-orange-400 hover:animate-hover-pop hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
+                  : 'bg-white hover:bg-orange-400 hover:animate-hover-pop hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
                 }
               `}
               style={{
