@@ -178,7 +178,7 @@ async def test_video_status_invalid_media_uses_list_fallback(monkeypatch):
             return [
                 {
                     "video_id": "386175391758037",
-                    "video_status": 2,
+                    "video_status": 8,  # 8 = failed (2 is processing, not failed)
                     "url": "https://media.pixverse.ai/pixverse/mp4/media/web/ori/example.mp4",
                     "first_frame": "https://media.pixverse.ai/pixverse/jpg/media/web/ori/example.jpg",
                 }
@@ -204,6 +204,165 @@ async def test_video_status_invalid_media_uses_list_fallback(monkeypatch):
     assert result.metadata.get("invalid_media_fallback") is True
     assert calls["get"] == 1
     assert calls["list"] == 1
+
+
+@pytest.mark.asyncio
+async def test_video_status_marks_placeholder_urls_in_metadata(monkeypatch):
+    provider = PixverseProvider()
+    account = _build_account()
+
+    class FakeClient:
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            return {
+                "video_id": "386175391758037",
+                "video_status": 7,
+                "url": "https://media.pixverse.ai/pixverse-preview%2Fmp4%2Fmedia%2Fdefault.mp4",
+                "first_frame": "https://media.pixverse.ai/pixverse%2Fjpg%2Fmedia%2Fdefault.jpg",
+            }
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(provider, "_create_client", lambda account_obj: fake_client)
+
+    async def _run_with_session(*, account, op_name, operation, retry_on_session_error=True):  # noqa: ARG001
+        return await operation({})
+
+    monkeypatch.setattr(provider.session_manager, "run_with_session", _run_with_session)
+
+    result = await provider.check_status(
+        account=account,
+        provider_job_id="386175391758037",
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+    )
+
+    assert result.status == ProviderStatus.FILTERED
+    assert result.metadata.get("video_url_is_placeholder") is True
+    assert result.metadata.get("thumbnail_url_is_placeholder") is True
+    assert result.metadata.get("has_retrievable_media_url") is False
+
+
+@pytest.mark.asyncio
+async def test_video_status_marks_real_filtered_url_as_retrievable(monkeypatch):
+    provider = PixverseProvider()
+    account = _build_account()
+
+    class FakeClient:
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            return {
+                "video_id": "386175391758037",
+                "video_status": 7,
+                "url": "https://media.pixverse.ai/pixverse%2Fmp4%2Fmedia%2Fweb%2Fori%2Fexample.mp4",
+                "first_frame": "https://media.pixverse.ai/pixverse%2Fvideo%2Fframe%2Fframe.jpg",
+            }
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(provider, "_create_client", lambda account_obj: fake_client)
+
+    async def _run_with_session(*, account, op_name, operation, retry_on_session_error=True):  # noqa: ARG001
+        return await operation({})
+
+    monkeypatch.setattr(provider.session_manager, "run_with_session", _run_with_session)
+
+    result = await provider.check_status(
+        account=account,
+        provider_job_id="386175391758037",
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+    )
+
+    assert result.status == ProviderStatus.FILTERED
+    assert result.metadata.get("video_url_is_placeholder") is False
+    assert result.metadata.get("has_retrievable_media_url") is True
+
+
+@pytest.mark.asyncio
+async def test_extend_status_5_stall_is_flagged_as_silent_filter(monkeypatch):
+    """
+    Pixverse's extend API accepts prompts their website rejects, then stalls
+    the job at video_status=5 indefinitely (no terminal transition). Poller
+    remaps status 5 → FILTERED with extend_silent_filter=True so the generation
+    error code is CONTENT_PROMPT_REJECTED (non-retryable), avoiding the 20-retry
+    cascade on prompts Pixverse will never accept.
+    """
+    provider = PixverseProvider()
+    account = _build_account()
+
+    class FakeClient:
+        async def list_videos(self, *, limit, offset):  # noqa: ARG002
+            return [
+                {
+                    "video_id": "397359864159559",
+                    "video_status": 5,
+                    "url": "https://media.pixverse.ai/pixverse-preview%2Fmp4%2Fmedia%2Fdefault.mp4",
+                    "first_frame": "https://media.pixverse.ai/pixverse%2Fjpg%2Fmedia%2Fdefault.jpg",
+                    "output_width": 0,
+                    "output_height": 0,
+                }
+            ]
+
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            raise AssertionError("get_video should not be called for extend status checks")
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(provider, "_create_client", lambda account_obj: fake_client)
+
+    async def _run_with_session(*, account, op_name, operation, retry_on_session_error=True):  # noqa: ARG001
+        return await operation({})
+
+    monkeypatch.setattr(provider.session_manager, "run_with_session", _run_with_session)
+
+    result = await provider.check_status(
+        account=account,
+        provider_job_id="397359864159559",
+        operation_type=OperationType.VIDEO_EXTEND,
+    )
+
+    assert result.status == ProviderStatus.FILTERED
+    assert result.metadata.get("extend_silent_filter") is True
+    assert result.metadata.get("provider_status") == 5
+    assert result.metadata.get("matched") is True
+
+
+@pytest.mark.asyncio
+async def test_extend_status_5_with_real_progress_is_not_silent_filter(monkeypatch):
+    """
+    Control: when extend status is PROCESSING from any source other than the
+    status-5 stall (e.g. status 2 or 0), no silent-filter flag is set and the
+    status is not remapped to FILTERED.
+    """
+    provider = PixverseProvider()
+    account = _build_account()
+
+    class FakeClient:
+        async def list_videos(self, *, limit, offset):  # noqa: ARG002
+            return [
+                {
+                    "video_id": "397359864159559",
+                    "video_status": 2,  # plain processing, not the silent-stall sentinel
+                    "url": "https://media.pixverse.ai/pixverse-preview%2Fmp4%2Fmedia%2Fdefault.mp4",
+                    "first_frame": "https://media.pixverse.ai/pixverse%2Fjpg%2Fmedia%2Fdefault.jpg",
+                    "output_width": 0,
+                    "output_height": 0,
+                }
+            ]
+
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            raise AssertionError("get_video should not be called for extend status checks")
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(provider, "_create_client", lambda account_obj: fake_client)
+
+    async def _run_with_session(*, account, op_name, operation, retry_on_session_error=True):  # noqa: ARG001
+        return await operation({})
+
+    monkeypatch.setattr(provider.session_manager, "run_with_session", _run_with_session)
+
+    result = await provider.check_status(
+        account=account,
+        provider_job_id="397359864159559",
+        operation_type=OperationType.VIDEO_EXTEND,
+    )
+
+    assert result.status == ProviderStatus.PROCESSING
+    assert result.metadata.get("extend_silent_filter") is not True
 
 
 @pytest.mark.asyncio

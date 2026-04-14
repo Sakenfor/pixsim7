@@ -1197,7 +1197,14 @@ async def _poll_single_generation(
                         or f"Provider reported terminal status: {status_result.status.value}"
                     )
                     if status_result.status == ProviderStatus.FILTERED:
-                        error_code = GenerationErrorCode.CONTENT_FILTERED.value
+                        # Extend silent-stall: Pixverse accepts prompts their
+                        # website rejects and stalls the job at status 5. Mark
+                        # as prompt rejection (non-retryable) so auto-retry
+                        # doesn't burn the budget re-submitting the same prompt.
+                        if (status_result.metadata or {}).get("extend_silent_filter"):
+                            error_code = GenerationErrorCode.CONTENT_PROMPT_REJECTED.value
+                        else:
+                            error_code = GenerationErrorCode.CONTENT_FILTERED.value
                     elif status_result.status == ProviderStatus.FAILED:
                         error_code = GenerationErrorCode.PROVIDER_GENERIC.value
                     else:

@@ -329,9 +329,17 @@ class PixverseStatusMixin:
                             # video_extend it is a silent content filter — the job
                             # never transitions to completed.  Remap to FILTERED
                             # so the retry/rotation machinery can handle it.
+                            # Pixverse's website rejects these prompts at submit,
+                            # but their extend API accepts and stalls. Flag as
+                            # prompt-side so auto-retry doesn't burn the 20-attempt
+                            # budget re-submitting the same doomed prompt.
                             raw_st = (list_result.metadata or {}).get("provider_status")
                             if raw_st == 5 and list_result.status == ProviderStatus.PROCESSING:
                                 list_result.status = ProviderStatus.FILTERED
+                                list_result.metadata = {
+                                    **(list_result.metadata or {}),
+                                    "extend_silent_filter": True,
+                                }
                             return list_result
 
                     # Use get_video for video operations (now async)
