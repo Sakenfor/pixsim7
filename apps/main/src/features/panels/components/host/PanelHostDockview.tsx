@@ -18,12 +18,17 @@ import {
 import type { DockviewHost } from "@lib/dockview";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
+import { useWorkspaceStore } from "../../../workspace/stores/workspaceStore";
 import { usePanelCatalogBootstrap } from "../../hooks/usePanelCatalogBootstrap";
 
 import { reconcileScopedDockviewPanels } from "./panelHostDockReconcile";
 import { resolveScopeDiscoveredPanelIds, resolveScopedOutOfLayoutPanelIds, resolveScopedPanelIds } from "./panelHostDockScope";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
+
+// Stable empty array so useWorkspaceStore selector returns a referentially
+// equal value when a dock has no dismissed panels (avoids render thrash).
+const EMPTY_DISMISSED: readonly string[] = [];
 
 /**
  * Declarative layout entry.
@@ -237,10 +242,24 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
         allowedCategories,
       });
     }, [dockId, panels, excludePanels, allowedPanels, allowedCategories]);
-    const excludedFromLayoutSet = useMemo(
-      () => new Set([...(excludeFromLayout ?? []), ...scopedOutOfLayoutPanelIds]),
-      [excludeFromLayout, scopedOutOfLayoutPanelIds]
+    // Identity used to key "dismissed" panels in the workspace store.
+    // Prefer explicit dockId, fall back to panelManagerId/storageKey.
+    const dismissKey = dockId ?? panelManagerId ?? storageKey;
+    const dismissedForDock = useWorkspaceStore(
+      (s) => s.dismissedPanels[dismissKey] ?? EMPTY_DISMISSED
     );
+    const excludedFromLayoutSet = useMemo(
+      () =>
+        new Set([
+          ...(excludeFromLayout ?? []),
+          ...scopedOutOfLayoutPanelIds,
+          ...dismissedForDock,
+        ]),
+      [excludeFromLayout, scopedOutOfLayoutPanelIds, dismissedForDock]
+    );
+    // Tracks programmatic removes (reconcile, layout swaps) so onDidRemovePanel
+    // doesn't mistake them for a user-initiated close.
+    const programmaticRemoveRef = useRef(false);
 
     const reconcileDockviewPanels = useCallback(
       (api: DockviewApi) => {
@@ -262,7 +281,13 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           resolvePanelDefinitionId,
         } as const;
 
-        const failedCount = reconcileScopedDockviewPanels(reconcileArgs, reconcileDeps);
+        programmaticRemoveRef.current = true;
+        let failedCount = 0;
+        try {
+          failedCount = reconcileScopedDockviewPanels(reconcileArgs, reconcileDeps);
+        } finally {
+          programmaticRemoveRef.current = false;
+        }
         if (failedCount === 0) {
           if (autoResetAttemptsRef.current > 0) {
             autoResetAttemptsRef.current = 0;
@@ -276,7 +301,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
         if (storageKey && autoResetAttemptsRef.current < 2) {
           autoResetAttemptsRef.current += 1;
           console.warn(
-            `[PanelHostDockview] ${failedCount} panel(s) failed to add — clearing corrupted layout "${storageKey}" and resetting.`,
+            `[PanelHostDockview] ${failedCount} panel(s) failed to add ï¿½ clearing corrupted layout "${storageKey}" and resetting.`,
           );
           localStorage.removeItem(storageKey);
           // Disconnect current references so follow-up effects do not reconcile
@@ -308,6 +333,33 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       if (!dockviewApi) return;
       requestAnimationFrame(() => reconcileDockviewPanels(dockviewApi));
     }, [dockviewApi, reconcileDockviewPanels]);
+
+    // Detect user-initiated panel close (tab X, context-menu close) and mark
+    // the panel dismissed so the reconciler doesn't immediately re-add it.
+    // Programmatic removes (reconcile prune, layout swap) set
+    // programmaticRemoveRef and are ignored here.
+    useEffect(() => {
+      if (!dockviewApi) return;
+      const removeDisposable = dockviewApi.onDidRemovePanel((panel: unknown) => {
+        if (programmaticRemoveRef.current) return;
+        const id = resolvePanelDefinitionId(panel) ?? (panel as { id?: unknown })?.id;
+        if (typeof id !== "string" || !id) return;
+        // Only dismiss panels that would otherwise be required in the layout.
+        if (!scopedPanelIds.includes(id)) return;
+        useWorkspaceStore.getState().dismissPanel(dismissKey, id);
+      });
+      // If a dismissed panel is added back (context menu, default layout,
+      // preset swap), clear its dismissed flag so it behaves normally again.
+      const addDisposable = dockviewApi.onDidAddPanel((panel: unknown) => {
+        const id = resolvePanelDefinitionId(panel) ?? (panel as { id?: unknown })?.id;
+        if (typeof id !== "string" || !id) return;
+        useWorkspaceStore.getState().undismissPanel(dismissKey, id);
+      });
+      return () => {
+        removeDisposable.dispose();
+        addDisposable.dispose();
+      };
+    }, [dockviewApi, dismissKey, scopedPanelIds]);
 
     useEffect(() => {
       if (!dockviewApi || excludedFromLayoutSet.size === 0) {

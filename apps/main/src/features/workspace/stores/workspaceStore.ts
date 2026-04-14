@@ -91,6 +91,13 @@ export interface WorkspaceState {
   lastFloatingPanelStates: Record<string, { x: number; y: number; width: number; height: number }>;
   /** Currently focused floating panel (others fade when set) */
   focusedFloatingPanelId: string | null;
+  /**
+   * Panels the user has explicitly dismissed from a dockview (tab X, context
+   * menu "Close panel"). Keyed by dockviewId → panelIds. The reconciler treats
+   * these as excluded so they don't immediately re-appear. Cleared when the
+   * user re-opens the panel via context menu / pane shortcut.
+   */
+  dismissedPanels: Record<string, string[]>;
 }
 
 export interface WorkspaceActions {
@@ -168,6 +175,12 @@ export interface WorkspaceActions {
       targetDockviewId?: string;
     }
   ) => void;
+  /** Mark a panel dismissed from a dockview (user closed it). */
+  dismissPanel: (dockviewId: string, panelId: string) => void;
+  /** Clear dismissed flag so the reconciler can add the panel back. */
+  undismissPanel: (dockviewId: string, panelId: string) => void;
+  /** Whether a panel is currently dismissed from a dockview. */
+  isPanelDismissed: (dockviewId: string, panelId: string) => boolean;
 }
 
 const STORAGE_KEY = "workspace_v9"; // v9: remove gallery from pinned (duplicate of page nav)
@@ -247,6 +260,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       pinnedQuickAddPanels: ['inspector'],
       lastFloatingPanelStates: {},
       focusedFloatingPanelId: null,
+      dismissedPanels: {},
       activePresetByScope: {
         workspace: "default",
       },
@@ -528,6 +542,37 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         });
       },
 
+      dismissPanel: (dockviewId, panelId) => {
+        if (!dockviewId || !panelId) return;
+        const current = get().dismissedPanels[dockviewId] ?? [];
+        if (current.includes(panelId)) return;
+        set({
+          dismissedPanels: {
+            ...get().dismissedPanels,
+            [dockviewId]: [...current, panelId],
+          },
+        });
+      },
+
+      undismissPanel: (dockviewId, panelId) => {
+        if (!dockviewId || !panelId) return;
+        const current = get().dismissedPanels[dockviewId];
+        if (!current || !current.includes(panelId)) return;
+        const next = current.filter((id) => id !== panelId);
+        const rest = { ...get().dismissedPanels };
+        if (next.length === 0) {
+          delete rest[dockviewId];
+        } else {
+          rest[dockviewId] = next;
+        }
+        set({ dismissedPanels: rest });
+      },
+
+      isPanelDismissed: (dockviewId, panelId) => {
+        const list = get().dismissedPanels[dockviewId];
+        return !!list && list.includes(panelId);
+      },
+
       closeFloatingPanel: (panelId) => {
         const panel = get().floatingPanels.find((p) => p.id === panelId);
         const defId = getFloatingDefinitionId(panelId);
@@ -774,6 +819,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         pinnedQuickAddPanels: state.pinnedQuickAddPanels,
         lastFloatingPanelStates: state.lastFloatingPanelStates,
         activePresetByScope: state.activePresetByScope,
+        dismissedPanels: state.dismissedPanels,
       }) as Partial<WorkspaceState & WorkspaceActions>,
       onRehydrateStorage: () => (state) => {
         if (state && !Array.isArray(state.floatingPanels)) {
@@ -781,6 +827,9 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         }
         if (state && (typeof state.lastFloatingPanelStates !== 'object' || state.lastFloatingPanelStates === null)) {
           state.lastFloatingPanelStates = {};
+        }
+        if (state && (typeof state.dismissedPanels !== 'object' || state.dismissedPanels === null)) {
+          state.dismissedPanels = {};
         }
         // Deduplicate floating panels — keep only the last entry per definition ID.
         if (state && Array.isArray(state.floatingPanels) && state.floatingPanels.length > 1) {
