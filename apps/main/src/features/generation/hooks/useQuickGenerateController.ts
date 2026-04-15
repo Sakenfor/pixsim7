@@ -63,9 +63,15 @@ function assertFrameUploadSucceeded(frame: AssetModel) {
   }
 }
 
-/** Record assets used for a generation in the history store */
-function recordInputHistory(operationType: string, inputs: any[]) {
-  const assetsToRecord = inputs
+interface HistoryAsset {
+  id: number;
+  thumbnailUrl: string;
+  mediaType: string | undefined;
+}
+
+/** Derive HistoryAsset[] from input items (used by buildRequest to stamp onto its result). */
+function buildHistoryAssets(inputs: any[]): HistoryAsset[] {
+  return inputs
     .filter((item: any) => item?.asset)
     .map((item: any) => {
       const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
@@ -75,15 +81,26 @@ function recordInputHistory(operationType: string, inputs: any[]) {
         mediaType: item.asset.mediaType,
       };
     });
-  if (assetsToRecord.length > 0) {
-    useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
+}
+
+/** Record pre-built history assets against an operation type. */
+function recordInputHistory(operationType: string, assets: HistoryAsset[]) {
+  if (assets.length > 0) {
+    useGenerationHistoryStore.getState().recordUsage(operationType, assets);
   }
 }
 
-function extractInputAssetIds(group: any[]): number[] {
-  return group
-    .map((item) => item?.asset?.id)
-    .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+/** Clamp inputs to the operation's max slot limit so request + tracking agree. */
+function clampInputsToMaxSlots<T extends any[]>(
+  inputs: T,
+  operationType: OperationType,
+  model: string | undefined,
+  providerId: string | undefined,
+): T {
+  const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
+  const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, operationType, model)
+    ?? resolveMaxSlotsForModel(operationType, model);
+  return (inputs.length > maxSlots ? inputs.slice(0, maxSlots) : inputs) as T;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -557,18 +574,22 @@ export function useQuickGenerateController() {
     operationInputs: any[],
     currentInput: any,
     overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null },
-  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: OperationType; pickStateUpdates?: PickStateUpdate[] }> {
+  ): Promise<{ error: string } | {
+    finalPrompt: string;
+    params: any;
+    effectiveOperationType: OperationType;
+    pickStateUpdates?: PickStateUpdate[];
+    inputAssetIds: number[];
+    historyAssets: HistoryAsset[];
+  }> {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', activeOperationType);
     const model = dynamicParams?.model as string | undefined;
     const maxChars = resolvePromptLimitForModel(providerId, model, opSpec?.parameters);
 
-    // Clamp inputs to the model's max slot limit so we never send more assets than allowed
-    const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, activeOperationType, model)
-      ?? resolveMaxSlotsForModel(activeOperationType, model);
-    const clampedInputs = operationInputs.length > maxSlots
-      ? operationInputs.slice(0, maxSlots)
-      : operationInputs;
+    // Clamp inputs to max slots. Callers should already clamp (so tracking agrees),
+    // but we defensively clamp here too since buildRequest has multiple call sites.
+    const clampedInputs = clampInputsToMaxSlots(operationInputs, activeOperationType, model, providerId);
 
     // activeAsset: null means explicitly skip gallery fallback (e.g. empty carousel slot).
     // undefined means "not provided" → use gallery fallback.
@@ -644,11 +665,20 @@ export function useQuickGenerateController() {
     // The effective type is only used for the API call; the UI stays on the
     // user's chosen operation so the prompt and param scoping aren't disrupted.
 
+    // Stamp tracking derived from the clamped inputs so downstream consumers
+    // (history, run-context inputAssetIds) can't drift from what was sent.
+    const inputAssetIds = clampedInputs
+      .map((item: any) => item?.asset?.id)
+      .filter((id: unknown): id is number => typeof id === 'number' && Number.isFinite(id));
+    const historyAssets = buildHistoryAssets(clampedInputs);
+
     return {
       finalPrompt: buildResult.finalPrompt,
       params: buildResult.params,
       effectiveOperationType,
       pickStateUpdates: buildResult.pickStateUpdates,
+      inputAssetIds,
+      historyAssets,
     };
   }
 
@@ -835,7 +865,7 @@ export function useQuickGenerateController() {
         const runContext = createGenerationRunItemContext(run, {
           itemIndex: i,
           itemTotal: total,
-          inputAssetIds: extractInputAssetIds(group),
+          inputAssetIds: request.inputAssetIds,
         });
         const prepared = prepareGenerateAssetSubmission({
           prompt: request.finalPrompt,
@@ -1038,7 +1068,7 @@ export function useQuickGenerateController() {
         throw new Error(baseRequest.error);
       }
 
-      recordInputHistory(activeOperationType, effectiveInputs);
+      recordInputHistory(activeOperationType, baseRequest.historyAssets);
 
       // Pre-build all requests (sequential only when random_each needs fresh picks)
       const burstRequests: typeof baseRequest[] = [];
@@ -1062,7 +1092,6 @@ export function useQuickGenerateController() {
       }
 
       // Fire all submissions concurrently
-      const inputAssetIds = extractInputAssetIds(effectiveInputs);
       const results = await Promise.allSettled(
         burstRequests.map((request, i) =>
           submitOne(
@@ -1070,7 +1099,7 @@ export function useQuickGenerateController() {
             createGenerationRunItemContext(run, {
               itemIndex: i,
               itemTotal: burstCount,
-              inputAssetIds,
+              inputAssetIds: request.inputAssetIds,
             }),
           ),
         ),
@@ -1133,12 +1162,12 @@ export function useQuickGenerateController() {
       createGenerationRunItemContext(run, {
         itemIndex: 0,
         itemTotal: 1,
-        inputAssetIds: extractInputAssetIds(effectiveInputs),
+        inputAssetIds: request.inputAssetIds,
       }),
     );
     setGenerationId(genId);
     setWatchingGeneration(genId);
-    recordInputHistory(activeOperationType, effectiveInputs);
+    recordInputHistory(activeOperationType, request.historyAssets);
 
     logEvent('INFO', 'generation_created', {
       generationId: genId,
@@ -1191,7 +1220,7 @@ export function useQuickGenerateController() {
     setQueueProgress({ queued: 0, total });
 
     try {
-      const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
+      const { currentInputs: rawCurrentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
       const baseDynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
@@ -1199,7 +1228,16 @@ export function useQuickGenerateController() {
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
-      recordInputHistory(activeOperationType, currentInputs);
+      // No per-step buildRequest to derive from (steps 2+ use previous output),
+      // so clamp+record manually here. This is the one entry point that can't
+      // rely on request.historyAssets.
+      const currentInputs = clampInputsToMaxSlots(
+        rawCurrentInputs,
+        activeOperationType,
+        baseDynamicParams?.model as string | undefined,
+        providerId,
+      );
+      recordInputHistory(activeOperationType, buildHistoryAssets(currentInputs));
 
       // Pre-resolve sets once for step 1 (step 2+ uses previous output, no set refs)
       const hasRandomEachRef = currentInputs.some(
