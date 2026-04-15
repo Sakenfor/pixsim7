@@ -22,6 +22,7 @@ interface PanelSettingsListItem {
   id: string;
   title: string;
   category?: string;
+  panelRole?: string;
   description?: string;
   tags?: string[];
   updatedAt?: string;
@@ -64,6 +65,7 @@ export function PanelCentricSettings() {
           id: panel.id,
           title: panel.title,
           category: panel.category,
+          panelRole: panel.panelRole,
           description: panel.description,
           tags: panel.tags,
           updatedAt: panel.updatedAt,
@@ -100,6 +102,7 @@ export function PanelCentricSettings() {
       p.id.toLowerCase().includes(query) ||
       p.description?.toLowerCase().includes(query) ||
       p.category?.toLowerCase().includes(query) ||
+      p.panelRole?.toLowerCase().includes(query) ||
       p.changeNote?.toLowerCase().includes(query) ||
       p.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
       p.featureHighlights?.some((item) => item.toLowerCase().includes(query))
@@ -146,6 +149,7 @@ export function PanelCentricSettings() {
                   <div className="font-medium text-sm">{panel.title}</div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                     {panel.category ?? 'custom'}
+                    {panel.panelRole ? ` · ${panel.panelRole}` : ''}
                     {formatUpdatedAt(panel.updatedAt) ? ` | Updated ${formatUpdatedAt(panel.updatedAt)}` : ''}
                   </div>
                 </button>
