@@ -295,16 +295,23 @@ export function VideoScrubWidgetRenderer({
     [resolvedUrl, cacheBustToken, buildCacheBustedUrl],
   );
 
-  // Force video to load when hovering starts
+  // Force video to load when hovering starts — but skip the reload if the
+  // video is already loaded (from a recent hover whose src was kept warm).
+  // Re-calling load() would wipe the decoded frame buffer, making re-hover
+  // flash blank/thumbnail.
   useEffect(() => {
-    if (isHovering && videoRef.current && effectiveUrl) {
-      setVideoError(false);
-      setIsVideoLoaded(false);
-      retryCountRef.current = 0;
-      setCacheBustToken(null);
-      videoRef.current.src = effectiveUrl;
-      videoRef.current.load();
+    if (!isHovering || !videoRef.current || !effectiveUrl) return;
+    const current = videoRef.current;
+    // If the element already has this URL loaded and ready, don't reload.
+    if (current.src === effectiveUrl && current.readyState >= 2) {
+      return;
     }
+    setVideoError(false);
+    setIsVideoLoaded(false);
+    retryCountRef.current = 0;
+    setCacheBustToken(null);
+    current.src = effectiveUrl;
+    current.load();
   }, [isHovering, effectiveUrl]);
 
   // Use provided duration or detected duration
@@ -1081,7 +1088,7 @@ export function VideoScrubWidgetRenderer({
         data-video-loaded={isVideoLoaded}
         data-keep-paused={keepSrcWhilePaused}
         src={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? effectiveUrl : undefined}
-        preload={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? 'metadata' : 'none'}
+        preload={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? 'auto' : 'none'}
         muted={hoverSound && isHovering ? false : muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
