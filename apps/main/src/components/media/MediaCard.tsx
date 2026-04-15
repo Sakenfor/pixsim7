@@ -30,6 +30,8 @@ import {
   GestureOverlay,
   GestureCancelOverlay,
 } from '@lib/gestures';
+import { Icon } from '@lib/icons';
+import { useCapturedFrame } from '@lib/media/capturedFrameStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 import {
   OverlayContainer,
@@ -48,11 +50,10 @@ import { useMediaCompareTargetStore } from '@features/prompts/stores/mediaCompar
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 
-import { Icon } from '@lib/icons';
 
 import { buildMediaCardPickerWidgets } from './mediaCardPickerWidgets';
-import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { MediaCardQueueNav } from './MediaCardQueueNav';
+import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 import { ThumbnailImage } from './ThumbnailImage';
 import { useVideoMarksStore } from './videoMarksStore';
@@ -842,6 +843,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
     mediaType === 'video' ? resolvedVideoSrc : undefined;
+  // VideoScrubWidget captures the last-played frame keyed by the same URL
+  // it receives (videoSrc || remoteUrl).  Mirror that key here so we can
+  // overlay the paused frame on the thumbnail after the hover overlay
+  // tears down.  Only relevant for video cards.
+  const capturedFrameKey = mediaType === 'video'
+    ? (overlayVideoSrc || remoteUrl || undefined)
+    : undefined;
+  const capturedFrame = useCapturedFrame(capturedFrameKey);
   // Globally cap concurrent active <video> decoders.  Each active decoder
   // holds large native/GPU buffers (~200-500MB) invisible to JS memory
   // APIs.  Without this gate, a gallery burst can pile 5+ active decoders
@@ -967,12 +976,22 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           {(thumbSrc || shouldShowVideoElement) ? (
             mediaType === 'video' ? (
               thumbSrc ? (
-                <img
-                  src={thumbSrc}
-                  alt={`Media ${id}`}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
+                <>
+                  <img
+                    src={thumbSrc}
+                    alt={`Media ${id}`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  {capturedFrame && (
+                    <img
+                      src={capturedFrame}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                    />
+                  )}
+                </>
               ) : (
                 <>
                   <video

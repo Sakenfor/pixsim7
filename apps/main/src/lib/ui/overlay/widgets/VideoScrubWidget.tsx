@@ -13,6 +13,11 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
+import {
+  captureVideoFrame,
+  clearCapturedFrame,
+  setCapturedFrame,
+} from '@lib/media/capturedFrameStore';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
 
@@ -303,9 +308,15 @@ export function VideoScrubWidgetRenderer({
     if (!isHovering || !videoRef.current || !effectiveUrl) return;
     const current = videoRef.current;
     // If the element already has this URL loaded and ready, don't reload.
-    if (current.src === effectiveUrl && current.readyState >= 2) {
-      return;
-    }
+    // current.src is browser-normalized (absolute), so compare against a
+    // normalized effectiveUrl.  currentSrc is the resolved URL actually
+    // used, which is what we want to match against.
+    try {
+      const want = new URL(effectiveUrl, window.location.origin).href;
+      if (current.currentSrc === want && current.readyState >= 2) {
+        return;
+      }
+    } catch { /* fall through to reload */ }
     setVideoError(false);
     setIsVideoLoaded(false);
     retryCountRef.current = 0;
@@ -919,6 +930,14 @@ export function VideoScrubWidgetRenderer({
     // Pause; only rewind when pauseOnLeave=false so the next hover resumes
     // from the frame the user left.
     if (videoRef.current) {
+      // Capture current frame BEFORE pausing — the overlay container is
+      // about to be torn down by visibility:'hover', so the <video>
+      // element itself won't be visible.  The captured frame is shown
+      // by MediaCard (outside the overlay) until the release timer fires.
+      if (url && pauseOnLeave) {
+        const dataUrl = captureVideoFrame(videoRef.current);
+        if (dataUrl) setCapturedFrame(url, dataUrl);
+      }
       videoRef.current.pause();
       if (!pauseOnLeave && videoRef.current.readyState >= 1) {
         videoRef.current.currentTime = 0;
@@ -939,18 +958,21 @@ export function VideoScrubWidgetRenderer({
     srcReleaseTimerRef.current = setTimeout(() => {
       srcReleaseTimerRef.current = null;
       setKeepSrcWhilePaused(false);
+      // Also drop the captured frame — card reverts to thumbnail.
+      if (url) clearCapturedFrame(url);
     }, SRC_RELEASE_IDLE_MS);
   }, [isHovering, pauseOnLeave]);
 
-  // Cleanup src-release timer on unmount.
+  // Cleanup src-release timer on unmount.  Also clear captured frame.
   useEffect(() => {
     return () => {
       if (srcReleaseTimerRef.current) {
         clearTimeout(srcReleaseTimerRef.current);
         srcReleaseTimerRef.current = null;
       }
+      if (url) clearCapturedFrame(url);
     };
-  }, []);
+  }, [url]);
 
   // Audio coordination: claim the global audio slot while hovered with sound on.
   // The actual mute state is driven by the JSX prop (see <video muted=...>);
@@ -1087,14 +1109,16 @@ export function VideoScrubWidgetRenderer({
         data-hovering={isHovering}
         data-video-loaded={isVideoLoaded}
         data-keep-paused={keepSrcWhilePaused}
-        src={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? effectiveUrl : undefined}
-        preload={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? 'auto' : 'none'}
+        data-duration={videoDuration}
+        data-show-timeline={showTimeline ? 'true' : 'false'}
+        src={isHovering || keepSrcWhilePaused ? effectiveUrl : undefined}
+        preload={isHovering || keepSrcWhilePaused ? 'auto' : 'none'}
         muted={hoverSound && isHovering ? false : muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onError={handleError}
-        className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 z-10 ${
+        className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
           isVideoLoaded && (isHovering || keepSrcWhilePaused) ? 'opacity-100' : 'opacity-0'
         }`}
         {...videoProps}
