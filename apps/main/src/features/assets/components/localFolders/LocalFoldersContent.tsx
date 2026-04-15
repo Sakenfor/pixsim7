@@ -150,7 +150,12 @@ export function LocalFoldersContent({
   const favoriteGroups = useLocalFolderSettingsStore((s) => s.favoriteGroups);
   const toggleFavoriteGroup = useLocalFolderSettingsStore((s) => s.toggleFavoriteGroup);
 
-  const hasActiveGrouping = hasFolderScope && localGroupBy !== 'none';
+  // When no folder scope is active, force group-by-folder so the user sees
+  // folder tiles instead of a flat render of every asset across all roots.
+  const effectiveGroupBy: LocalGroupBy = !hasFolderScope
+    ? 'folder'
+    : (localGroupBy as LocalGroupBy);
+  const hasActiveGrouping = effectiveGroupBy !== 'none';
 
   // --- Drill-down state for group navigation (persisted in sessionStorage) ---
   const [drilledGroupKey, setDrilledGroupKeyRaw] = useState<string | null>(() => {
@@ -198,14 +203,14 @@ export function LocalFoldersContent({
   // --- Group bucket cache: computed once per active scope and reused for drill-in ---
   const groupBuckets = useMemo(() => {
     if (!hasActiveGrouping) return new Map<string, LocalAssetModel[]>();
-    return bucketLocalAssetModels(filteredItems, localGroupBy as LocalGroupBy);
-  }, [hasActiveGrouping, filteredItems, localGroupBy]);
+    return bucketLocalAssetModels(filteredItems, effectiveGroupBy);
+  }, [hasActiveGrouping, filteredItems, effectiveGroupBy]);
 
   // --- Group summaries: stable metadata independent of preview URL churn ---
   const groupSummaries = useMemo<LocalGroupSummary[]>(() => {
     if (!hasActiveGrouping || groupBuckets.size === 0) return [];
 
-    const gb = localGroupBy as LocalGroupBy;
+    const gb = effectiveGroupBy;
     const summaries: LocalGroupSummary[] = [];
 
     for (const [key, bucket] of groupBuckets) {
@@ -226,7 +231,7 @@ export function LocalFoldersContent({
     }
 
     return summaries;
-  }, [hasActiveGrouping, groupBuckets, localGroupBy]);
+  }, [hasActiveGrouping, groupBuckets, effectiveGroupBy]);
 
   // --- Group overview: stable group shapes + incremental preview hydration ---
   // The heavy group structure (keys, labels, counts, seed assets) only recomputes
@@ -325,7 +330,7 @@ export function LocalFoldersContent({
   const stableFavoriteSortedKeys = useMemo(() => {
     if (sortedStableGroups.length === 0) return [];
     if (favoriteGroupSet.size === 0) return sortedStableGroups.map(g => g.key);
-    const gb = localGroupBy as LocalGroupBy;
+    const gb = effectiveGroupBy;
     const favKeys: string[] = [];
     const restKeys: string[] = [];
     for (const g of sortedStableGroups) {
@@ -336,7 +341,7 @@ export function LocalFoldersContent({
       }
     }
     return [...favKeys, ...restKeys];
-  }, [sortedStableGroups, favoriteGroupSet, localGroupBy]);
+  }, [sortedStableGroups, favoriteGroupSet, effectiveGroupBy]);
 
   // Hydrated groups in the same order for rendering
   const favoriteSortedGroups = useMemo(() => {
@@ -725,7 +730,7 @@ export function LocalFoldersContent({
               }}
             >
               {pagedGroups.map((group) => {
-                const compositeKey = buildFavoriteGroupKey(localGroupBy as LocalGroupBy, group.key);
+                const compositeKey = buildFavoriteGroupKey(effectiveGroupBy, group.key);
                 const isFav = favoriteGroupSet.has(compositeKey);
                 return (
                   <div key={group.key} className="relative group/gtile">
@@ -753,7 +758,7 @@ export function LocalFoldersContent({
           ) : (
             <div className="flex flex-col gap-3">
               {pagedGroups.map((group) => {
-                const compositeKey = buildFavoriteGroupKey(localGroupBy as LocalGroupBy, group.key);
+                const compositeKey = buildFavoriteGroupKey(effectiveGroupBy, group.key);
                 const isFav = favoriteGroupSet.has(compositeKey);
                 return (
                   <div key={group.key} className="relative group/grow">
@@ -903,7 +908,7 @@ export function LocalFoldersContent({
           {showDrilledView && (
             <div className="mt-2">
               <LocalGroupBreadcrumb
-                groupPath={[{ groupBy: localGroupBy as LocalGroupBy, groupKey: drilledGroupKey! }]}
+                groupPath={[{ groupBy: effectiveGroupBy, groupKey: drilledGroupKey! }]}
                 itemCount={drilledItems.length}
                 onBack={handleGroupBack}
               />
