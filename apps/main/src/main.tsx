@@ -4,6 +4,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
 import { panelSelectors } from '@lib/plugins/catalogSelectors'
+import { pruneOrphans as pruneStoreOrphans } from '@lib/stores'
+
+// Side-effect imports: feature-level store registry declarations (deprecated
+// patterns, managed prefixes). Imported eagerly so pruneStoreOrphans() at
+// bootstrap sees them. Keep these modules tiny — no React / heavy deps.
+import '@features/generation/stores.registrations'
 
 import { configureKVStorage } from '@pixsim7/game.engine'
 
@@ -55,6 +61,18 @@ async function initializeDevDiagnostics() {
 
 async function bootstrapApp() {
   await initializeDevDiagnostics()
+
+  // Purge deprecated + orphan localStorage entries declared via the store
+  // registry. Runs after top-level imports so module-level registrations
+  // have already fired, before React mounts so stores hydrate from a clean
+  // slate.
+  const pruneResult = pruneStoreOrphans()
+  if (pruneResult.removed.length > 0) {
+    logEvent('INFO', 'store_registry_pruned', {
+      deprecated: pruneResult.deprecatedRemoved,
+      orphans: pruneResult.orphansRemoved,
+    })
+  }
 
   // Initialize only critical infrastructure before first paint.
   await moduleRegistry.initializeByPriority(75)
