@@ -82,6 +82,20 @@ const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 30;
 const globalBlobUrlCache = new Map<string, { url: string; original: boolean }>();
 const globalLoadingKeys = new Set<string>();
 
+/** Exposed for diagnostics (e.g., PerformancePanel). Read-only. */
+export function getLocalFolderPreviewCacheStats(): { entries: number } {
+  return { entries: globalBlobUrlCache.size };
+}
+
+/** Purge the local-folder preview blob cache (revokes object URLs). */
+export function clearLocalFolderPreviewCache(): void {
+  for (const entry of globalBlobUrlCache.values()) {
+    URL.revokeObjectURL(entry.url);
+  }
+  globalBlobUrlCache.clear();
+  globalLoadingKeys.clear();
+}
+
 function areStringRecordValuesEqual<T extends string | undefined>(
   left: Record<string, T>,
   right: Record<string, T>,

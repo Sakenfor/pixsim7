@@ -1,0 +1,37 @@
+{
+  "id": "adb-keeper",
+  "category": "services",
+  "type": "worker",
+  "name": "ADB Keeper",
+  "description": "Keeps ADB server alive and reconnects known network-attached emulators (LDPlayer, MuMu, Nox)",
+  "module": "launcher.adb_keeper",
+  "args": [],
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "endpoints",
+      "type": "string",
+      "label": "Endpoints",
+      "description": "Comma-separated host:port list to keep connected (e.g. 127.0.0.1:16384,127.0.0.1:5555)",
+      "default": "",
+      "env_export": "ADB_KEEPER_ENDPOINTS"
+    },
+    {
+      "key": "interval_sec",
+      "type": "number",
+      "label": "Reconnect interval (s)",
+      "description": "How often to ensure each endpoint is connected",
+      "default": 30,
+      "env_export": "ADB_KEEPER_INTERVAL_SEC"
+    },
+    {
+      "key": "adb_path",
+      "type": "string",
+      "label": "ADB binary path",
+      "description": "Override ADB binary path (default: 'adb' on PATH)",
+      "default": "",
+      "env_export": "ADB_KEEPER_ADB_PATH"
+    }
+  ]
+}

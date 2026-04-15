@@ -14,10 +14,28 @@ import { createBlobCache } from '@lib/media/blobCache';
 import { BACKEND_BASE } from '../lib/api/client';
 
 // ── Module-level blob URL caches ────────────────────────────────────────
-// Video blobs are 50-200MB+ each — keep a very small cache.
-// Image/mask blobs are 1-5MB — a larger cache is fine.
-const _authImageBlobCache = createBlobCache('useAuthenticatedMedia:blobCache', 60);
-const _authVideoBlobCache = createBlobCache('useAuthenticatedMedia:videoBlobCache', 8);
+// Video blobs are 50-200MB+ each — keep a very small cache with a tight
+// byte budget.  Image/mask blobs are 1-5MB — a larger count cache is fine.
+const _authImageBlobCache = createBlobCache('useAuthenticatedMedia:blobCache', {
+  maxEntries: 60,
+  maxBytes: 300 * 1024 * 1024, // 300 MB
+});
+const _authVideoBlobCache = createBlobCache('useAuthenticatedMedia:videoBlobCache', {
+  maxEntries: 8,
+  maxBytes: 400 * 1024 * 1024, // 400 MB
+});
+
+/** Exposed for diagnostics (e.g., PerformancePanel). */
+export const authMediaCaches = {
+  image: _authImageBlobCache,
+  video: _authVideoBlobCache,
+};
+
+/** Purge all authenticated-media blob caches (revokes object URLs). */
+export function clearAuthMediaCaches(): void {
+  _authImageBlobCache.clear();
+  _authVideoBlobCache.clear();
+}
 
 
 export interface UseAuthenticatedMediaResult {
@@ -117,8 +135,11 @@ export function useAuthenticatedMedia(
 
     const fetchMedia = async () => {
       try {
+        // cache: 'no-store' prevents Chrome from holding a second copy of
+        // the response body in its HTTP cache on top of our blob cache.
         const res = await fetch(fullUrl, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         });
 
         if (!res.ok) {
@@ -144,7 +165,7 @@ export function useAuthenticatedMedia(
           return;
         }
         const objectUrl = URL.createObjectURL(blob);
-        cache.set(fullUrl, objectUrl);
+        cache.set(fullUrl, objectUrl, blob.size);
 
         if (!cancelled) {
           setSrc(objectUrl);

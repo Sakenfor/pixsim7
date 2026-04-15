@@ -60,6 +60,33 @@ export function registerQuickGenerateComponentSettings() {
             },
           ],
         },
+        {
+          id: "prompt-history",
+          title: "Draft History",
+          fields: [
+            {
+              id: "historyScope",
+              label: "History scope",
+              description: "Choose where draft history is shared and restored.",
+              type: "select",
+              options: [
+                { value: "provider-operation", label: "Provider + operation" },
+                { value: "operation", label: "Operation only" },
+                { value: "global", label: "Global" },
+              ],
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.historyScope,
+            },
+            {
+              id: "historyMaxEntries",
+              label: "Max history entries",
+              type: "number",
+              min: 20,
+              max: 300,
+              step: 10,
+              defaultValue: QUICKGEN_PROMPT_DEFAULTS.historyMaxEntries,
+            },
+          ],
+        },
       ],
     },
   });

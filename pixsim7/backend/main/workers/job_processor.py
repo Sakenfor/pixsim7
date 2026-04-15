@@ -30,6 +30,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     enqueue_generation_retry_job,
     GENERATION_RETRY_QUEUE_NAME,
     release_generation_enqueue_lease,
+    set_generation_wait_metadata,
 )
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -163,6 +164,71 @@ def _max_dispatch_stagger_seconds() -> float:
 
 def _min_pinned_cooldown_defer_seconds() -> int:
     return _settings_int("min_pinned_cooldown_defer_seconds", 2, minimum=1)
+
+
+def _account_wait_defer_after_attempts() -> int:
+    return _settings_int("account_wait_defer_after_attempts", 6, minimum=1)
+
+
+def _account_wait_defer_step_attempts() -> int:
+    return _settings_int("account_wait_defer_step_attempts", 4, minimum=1)
+
+
+def _account_wait_base_defer_seconds() -> int:
+    return _settings_int(
+        "account_wait_base_defer_seconds",
+        NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+        minimum=1,
+    )
+
+
+def _account_wait_max_defer_seconds() -> int:
+    base_seconds = _account_wait_base_defer_seconds()
+    return _settings_int("account_wait_max_defer_seconds", 180, minimum=base_seconds)
+
+
+def _account_exhausted_min_defer_seconds() -> int:
+    base_seconds = _account_wait_base_defer_seconds()
+    return _settings_int("account_exhausted_min_defer_seconds", 45, minimum=base_seconds)
+
+
+def _account_wait_reason(error: Exception) -> str:
+    if isinstance(error, AccountExhaustedError):
+        return "account_credit_exhausted_wait"
+    if isinstance(error, AccountCooldownError):
+        return "account_cooldown_wait"
+    if isinstance(error, NoAccountAvailableError):
+        return "account_capacity_wait"
+    return "account_unavailable_wait"
+
+
+def _account_unavailable_requeue_defer_seconds(
+    generation: Generation | None,
+    error: Exception,
+) -> int:
+    """
+    Compute defer for account-unavailable retries.
+
+    Escalates with attempt history to prevent hot-loop churn while keeping
+    quick recovery for transient capacity/cooldown waits.
+    """
+    base_seconds = _account_wait_base_defer_seconds()
+    max_seconds = _account_wait_max_defer_seconds()
+    defer_seconds = base_seconds
+
+    if generation is not None:
+        attempt_id = _normalize_positive_int(getattr(generation, "attempt_id", 0), 0)
+        if attempt_id > 0:
+            threshold = _account_wait_defer_after_attempts()
+            if attempt_id >= threshold:
+                step_attempts = _account_wait_defer_step_attempts()
+                level = ((attempt_id - threshold) // step_attempts) + 1
+                defer_seconds = min(max_seconds, base_seconds * level)
+
+    if isinstance(error, AccountExhaustedError):
+        defer_seconds = max(defer_seconds, _account_exhausted_min_defer_seconds())
+
+    return max(1, int(min(defer_seconds, max_seconds)))
 
 
 from pixsim7.backend.main.shared.debug import (
@@ -1379,11 +1445,19 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 raise
 
         except (NoAccountAvailableError, AccountCooldownError, AccountExhaustedError) as e:
+            generation_ref = generation if "generation" in locals() else None
+            computed_defer_seconds = _account_unavailable_requeue_defer_seconds(
+                generation_ref,
+                e,
+            )
+            wait_reason = _account_wait_reason(e)
             gen_logger.warning(
                 "generation_waiting_for_account_capacity",
                 error=str(e),
                 error_type=e.__class__.__name__,
-                defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                reason=wait_reason,
+                defer_seconds=computed_defer_seconds,
+                base_defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
                 target_queue=GENERATION_RETRY_QUEUE_NAME,
             )
             worker_debug.worker(
@@ -1391,7 +1465,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 error=str(e),
                 error_type=e.__class__.__name__,
                 generation_id=generation_id,
-                defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                reason=wait_reason,
+                defer_seconds=computed_defer_seconds,
             )
 
             # If we loaded the generation and it is still pending, explicitly
@@ -1408,24 +1483,44 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     enqueue_result = await enqueue_generation_retry_job(
                         arq_pool,
                         generation_id,
-                        defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                        defer_seconds=computed_defer_seconds,
                     )
                     actual_defer_seconds = enqueue_result.get("actual_defer_seconds")
                     logged_defer_seconds = (
-                        actual_defer_seconds or NO_ACCOUNT_AVAILABLE_DEFER_SECONDS
+                        actual_defer_seconds or computed_defer_seconds
                     )
+                    try:
+                        await set_generation_wait_metadata(
+                            arq_pool,
+                            generation_id,
+                            reason=wait_reason,
+                            account_id=getattr(e, "account_id", None),
+                            next_attempt_at=(
+                                datetime.now(timezone.utc)
+                                + timedelta(seconds=int(logged_defer_seconds))
+                            ),
+                            source="job_processor",
+                        )
+                    except Exception:
+                        gen_logger.debug(
+                            "generation_wait_meta_set_failed",
+                            generation_id=generation_id,
+                            reason=wait_reason,
+                            exc_info=True,
+                        )
                     gen_logger.info(
                         "generation_waiting_for_account_capacity_deferred",
                         generation_id=generation_id,
                         error_type=e.__class__.__name__,
+                        reason=wait_reason,
                         defer_seconds=logged_defer_seconds,
-                        base_defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                        base_defer_seconds=computed_defer_seconds,
                         target_queue=GENERATION_RETRY_QUEUE_NAME,
                         enqueue_deduped=bool(enqueue_result.get("deduped")),
                     )
                     return {
                         "status": "requeued",
-                        "reason": "account_unavailable_deferred",
+                        "reason": wait_reason,
                         "generation_id": generation_id,
                         "defer_seconds": logged_defer_seconds,
                         "target_queue": GENERATION_RETRY_QUEUE_NAME,

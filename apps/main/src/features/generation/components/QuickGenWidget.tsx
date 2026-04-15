@@ -118,6 +118,31 @@ export interface QuickGenWidgetProps {
 const DEFAULT_PANEL_IDS = QUICKGEN_PRESETS.full;
 
 // ---------------------------------------------------------------------------
+// One-shot cleanup of stale per-operation layout keys.
+// Old storageKey scheme bucketed layouts per operationType, leaving stale
+// arrangements (e.g., inputs dragged to the right months ago) that could
+// resurface after HMR. New scheme keys only by layout shape.
+// ---------------------------------------------------------------------------
+const STALE_LAYOUT_CLEANUP_SENTINEL = 'dockview:quickgen:per-op-cleanup:v1';
+const STALE_LAYOUT_KEY_PATTERN = /^dockview:[^:]+:(v2|v2t):(with-asset|no-asset):.+$/;
+function purgeStalePerOperationLayouts() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    if (localStorage.getItem(STALE_LAYOUT_CLEANUP_SENTINEL)) return;
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && STALE_LAYOUT_KEY_PATTERN.test(key)) toRemove.push(key);
+    }
+    for (const key of toRemove) localStorage.removeItem(key);
+    localStorage.setItem(STALE_LAYOUT_CLEANUP_SENTINEL, String(Date.now()));
+  } catch {
+    // localStorage unavailable / quota — safe to skip; future loads retry.
+  }
+}
+purgeStalePerOperationLayouts();
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -210,14 +235,18 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       return `dockview:${layoutShape}:${usesTransitionLayout ? 'transition' : 'standard'}`;
     }, [layout.panels, operationType]);
 
-    // Step 5: Storage key computation
+    // Step 5: Storage key computation.
+    // Bucket by layout shape only (assetMode + transition) — NOT by operationType.
+    // Layout shape doesn't depend on the specific operation, only whether the
+    // panel set includes asset and whether it uses transition placement.
+    // Per-op keys caused stale layouts from prior operations to resurface after
+    // HMR re-renders that briefly saw a default operationType.
     const storageKey = useMemo(() => {
       if (storageKeyOverride) return storageKeyOverride;
       const prefix = storageKeyPrefix ?? widgetId;
       const version = operationType === 'video_transition' ? 'v2t' : 'v2';
       const assetMode = layout.supportsInputs ? 'with-asset' : 'no-asset';
-      const base = `dockview:${prefix}:${version}:${assetMode}`;
-      return operationType ? `${base}:${operationType}` : base;
+      return `dockview:${prefix}:${version}:${assetMode}`;
     }, [storageKeyOverride, storageKeyPrefix, widgetId, operationType, layout.supportsInputs]);
 
     // Step 6: Provide CAP_GENERATION_CONTEXT (optional)

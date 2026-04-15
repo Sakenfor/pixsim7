@@ -143,6 +143,10 @@ export function createCapabilityRegistry(
     };
   };
 
+  const invalidate = (_key?: CapabilityKey): void => {
+    notify();
+  };
+
   // =========================================================================
   // Consumption tracking (for debugging/visualization)
   // =========================================================================
@@ -230,6 +234,7 @@ export function createCapabilityRegistry(
     getKeys,
     getExposedKeys,
     subscribe,
+    invalidate,
     // Consumption tracking
     recordConsumption,
     getConsumers,

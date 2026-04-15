@@ -11,7 +11,18 @@ import { BACKEND_BASE } from '../lib/api/client';
 
 
 // ── Module-level blob URL cache ─────────────────────────────────────────
-const _blobCache = createBlobCache('useMediaThumbnail:blobCache', 100);
+const _blobCache = createBlobCache('useMediaThumbnail:blobCache', {
+  maxEntries: 100,
+  maxBytes: 250 * 1024 * 1024, // 250 MB
+});
+
+/** Exposed for diagnostics (e.g., PerformancePanel). */
+export const thumbnailBlobCache = _blobCache;
+
+/** Purge the thumbnail blob cache (revokes object URLs). */
+export function clearThumbnailBlobCache(): void {
+  _blobCache.clear();
+}
 
 
 export interface UseMediaThumbnailOptions {
@@ -191,9 +202,13 @@ export function useMediaThumbnailFull(
     };
 
     // ── Unified fetch with retry ─────────────────────────────────────────
+    // cache: 'no-store' prevents Chrome from holding a second copy of the
+    // response body in its HTTP cache — we already keep blobs in our own
+    // LRU cache, so a duplicate cache wastes gigabytes on large galleries.
+    const signal = AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
     const fetchOpts: RequestInit = isBackend
-      ? { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) }
-      : { mode: 'cors', signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) };
+      ? { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal }
+      : { mode: 'cors', cache: 'no-store', signal };
 
     const fetchWithRetry = async () => {
       try {
@@ -254,7 +269,7 @@ export function useMediaThumbnailFull(
           return;
         }
         const objectUrl = URL.createObjectURL(blob);
-        _blobCache.set(fullUrl, objectUrl);
+        _blobCache.set(fullUrl, objectUrl, blob.size);
         if (!cancelled) {
           setThumbSrc(objectUrl);
           setLoading(false);

@@ -21,6 +21,12 @@ logger = logging.getLogger("launcher.core.health")
 # Stop counting after this many consecutive failures.
 MAX_FAILURE_COUNT = 50
 
+# Service ids that run as `python -m arq <WorkerSettings>`. They share the
+# Redis-backed health logic (PID liveness + Redis reachability), and need
+# unique command-line selectors in _detect_headless_service so the broad
+# `-m arq` fallback doesn't cross-match between them.
+ARQ_WORKER_KEYS = frozenset({'worker', 'simulation-worker', 'automation-worker'})
+
 
 class HealthManager:
     """
@@ -383,9 +389,13 @@ class HealthManager:
         Returns the PID if found, None otherwise. Uses the same pattern matching
         as ProcessManager._detect_worker_pids.
         """
+        # Each arq worker needs a selector that uniquely identifies it among
+        # peers — they all run `python -m arq ...`, so substrings like
+        # `-m arq` or bare `arq_worker` would cross-match across workers.
         patterns = {
-            'worker': ['arq_worker.WorkerSettings', 'arq_worker', '-m arq'],
-            'simulation-worker': ['SimulationWorkerSettings', 'simulation'],
+            'worker': ['arq_worker.WorkerSettings'],
+            'simulation-worker': ['SimulationWorkerSettings'],
+            'automation-worker': ['AutomationWorkerSettings'],
             'ai-client': ['pixsim7.client', '-m pixsim7.client'],
         }
         search_terms = patterns.get(key)
@@ -477,7 +487,7 @@ class HealthManager:
         has_known_pid = state.pid or state.detected_pid
         is_detached = definition.is_detached or definition.key == 'db'
         has_health_url = bool(getattr(definition, 'health_url', None))
-        is_worker = definition.key == 'worker'  # only main worker uses Redis probe
+        is_worker = definition.key in ARQ_WORKER_KEYS  # arq workers use Redis probe
 
         # For headless services without a health_url (workers, bridges),
         # try to detect externally-started processes by command line scan.
@@ -543,9 +553,11 @@ class HealthManager:
             return
 
         # ── Worker (Redis health check) ──
-        # Only the main 'worker' uses Redis as a health proxy.
-        # Other worker variants (simulation-worker) rely on process detection.
-        if definition.key == 'worker':
+        # All arq-based workers (main, simulation, automation) require both a
+        # live PID matching their specific WorkerSettings and a reachable Redis.
+        # The PID match is what disambiguates between worker variants — see
+        # _detect_headless_service patterns above.
+        if definition.key in ARQ_WORKER_KEYS:
             # If user explicitly stopped, don't re-adopt just because Redis is up
             if state.requested_running is False and state.status.value == 'stopped':
                 if state.health != HealthStatus.STOPPED:

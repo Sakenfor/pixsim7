@@ -10,7 +10,7 @@
  *   - Incremental "Show more" when results exceed pageSize
  *   - Arrow key / Enter navigation (from textarea via ref, or from search input)
  */
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -25,6 +25,35 @@ export interface ReferencePickerProps {
   visible: boolean;
   /** Number of items per page (default 25). "Show more" loads another page. */
   pageSize?: number;
+  /**
+   * Restrict the picker to these source types. Items of other types are
+   * filtered out, category chips show only these. Useful when a consumer
+   * wants to surface just one kind of reference (e.g. anatomy parts in
+   * the prompt box) without leaking unrelated sources like plans/worlds.
+   */
+  allowedTypes?: string[];
+  /**
+   * Inverse of `allowedTypes`: hide these source types. Useful when a
+   * consumer wants "everything except entity references (plans/worlds)"
+   * and doesn't want to enumerate the allowlist (especially when sources
+   * are registered dynamically at runtime).
+   * If both `allowedTypes` and `disallowedTypes` are provided, `allowedTypes`
+   * wins (explicit beats implicit).
+   */
+  disallowedTypes?: string[];
+  /**
+   * Override the container className. When omitted, uses the default
+   * full-width panel style (good for narrow inputs like the AI assistant).
+   * Pass a custom class to get a compact popup look near a wider input.
+   */
+  className?: string;
+  /**
+   * Inline style override for the container. Used to caret-anchor the
+   * picker (top/left coords computed by the consumer). When combined
+   * with a className that omits top/bottom positioning, enables a true
+   * caret-positioned popup rather than a fixed above-input panel.
+   */
+  style?: React.CSSProperties;
 }
 
 export interface ReferencePickerHandle {
@@ -32,8 +61,25 @@ export interface ReferencePickerHandle {
   handleKeyDown: (e: React.KeyboardEvent) => boolean;
 }
 
+const DEFAULT_PICKER_CLASS =
+  'absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20';
+
 export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePickerProps>(
-  function ReferencePicker({ query, items, onSelect, onClose, visible, pageSize = 25 }, fwdRef) {
+  function ReferencePicker(
+    {
+      query,
+      items,
+      onSelect,
+      onClose,
+      visible,
+      pageSize = 25,
+      allowedTypes,
+      disallowedTypes,
+      className,
+      style,
+    },
+    fwdRef,
+  ) {
     const [selectedIdx, setSelectedIdx] = useState(0);
     const [typeFilter, setTypeFilter] = useState<string | null>(null);
     const [displayLimit, setDisplayLimit] = useState(pageSize);
@@ -50,7 +96,30 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
       }
     }, [visible, pageSize]);
 
-    const sources = useMemo(() => referenceRegistry.getSources(), [visible]);
+    const allowedTypeSet = useMemo(
+      () => (allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null),
+      [allowedTypes],
+    );
+    const disallowedTypeSet = useMemo(
+      () => (disallowedTypes && disallowedTypes.length > 0 ? new Set(disallowedTypes) : null),
+      [disallowedTypes],
+    );
+
+    const isTypeVisible = useCallback(
+      (type: string) => {
+        if (allowedTypeSet) return allowedTypeSet.has(type);
+        if (disallowedTypeSet && disallowedTypeSet.has(type)) return false;
+        return true;
+      },
+      [allowedTypeSet, disallowedTypeSet],
+    );
+
+    const sources = useMemo(() => {
+      const all = referenceRegistry.getSources();
+      return all.filter((s) => isTypeVisible(s.type));
+      // `visible` intentionally in deps so chip list refreshes when reopened
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, isTypeVisible]);
 
     // Combine search input text with the parent @query
     const effectiveQuery = searchText || query;
@@ -58,6 +127,7 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
     const allFiltered = useMemo(() => {
       const q = effectiveQuery.toLowerCase();
       return items.filter((i) => {
+        if (!isTypeVisible(i.type)) return false;
         if (typeFilter && i.type !== typeFilter) return false;
         if (!q) return true;
         return (
@@ -66,7 +136,7 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
           (i.type ?? '').includes(q)
         );
       });
-    }, [effectiveQuery, items, typeFilter]);
+    }, [effectiveQuery, items, typeFilter, isTypeVisible]);
 
     const filtered = useMemo(
       () => allFiltered.slice(0, displayLimit),
@@ -138,7 +208,8 @@ export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePicker
     return (
       <div
         ref={containerRef}
-        className="absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20"
+        className={className ?? DEFAULT_PICKER_CLASS}
+        style={style}
       >
         {/* Sticky header — search + category chips stay pinned while scrolling */}
         <div className="sticky top-0 bg-white dark:bg-neutral-900 z-10">

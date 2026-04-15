@@ -717,6 +717,505 @@ function ThumbnailRow({
 }
 
 // ---------------------------------------------------------------------------
+// Storage Overview types
+// ---------------------------------------------------------------------------
+
+interface DirectorySize {
+  path: string;
+  label: string;
+  size_bytes: number;
+  size_human: string;
+  file_count: number | null;
+  note: string | null;
+}
+
+interface SubdirectorySize {
+  name: string;
+  size_bytes: number;
+  size_human: string;
+  file_count: number;
+}
+
+interface MediaTypeBreakdown {
+  mime_type: string;
+  media_type: string;
+  count: number;
+  size_bytes: number;
+  size_human: string;
+  pct_of_total: number;
+}
+
+interface TableSizeInfo {
+  table_name: string;
+  row_count: number;
+  total_bytes: number;
+  total_human: string;
+  data_bytes: number;
+  toast_bytes: number;
+  index_bytes: number;
+}
+
+interface UnusedIndexInfo {
+  index_name: string;
+  table_name: string;
+  size_bytes: number;
+  size_human: string;
+  index_scans: number;
+}
+
+interface CleanupOpportunityInfo {
+  id: string;
+  label: string;
+  description: string;
+  estimated_savings_bytes: number;
+  estimated_savings_human: string;
+  severity: string;
+  action_endpoint: string | null;
+}
+
+interface StorageOverviewData {
+  total_size_bytes: number;
+  total_size_human: string;
+  scan_duration_ms: number;
+  directories: DirectorySize[];
+  media_subdirectories: SubdirectorySize[];
+  media_types: MediaTypeBreakdown[];
+  db_tables: TableSizeInfo[];
+  unused_indexes: UnusedIndexInfo[];
+  cleanup_opportunities: CleanupOpportunityInfo[];
+  db_total_bytes: number;
+  db_total_human: string;
+}
+
+// ---------------------------------------------------------------------------
+// Storage Overview colors
+// ---------------------------------------------------------------------------
+
+const DIR_COLORS: Record<string, string> = {
+  media: 'bg-blue-500',
+  postgres: 'bg-amber-500',
+  timescaledb: 'bg-purple-500',
+  logs: 'bg-violet-500',
+  orphaned: 'bg-red-400',
+  redis: 'bg-emerald-500',
+  storage: 'bg-cyan-500',
+};
+
+const DIR_DOT_COLORS: Record<string, string> = {
+  media: 'bg-blue-500',
+  postgres: 'bg-amber-500',
+  timescaledb: 'bg-purple-500',
+  logs: 'bg-violet-500',
+  orphaned: 'bg-red-400',
+  redis: 'bg-emerald-500',
+  storage: 'bg-cyan-500',
+};
+
+function dirColor(path: string, type: 'bar' | 'dot' = 'bar'): string {
+  const map = type === 'dot' ? DIR_DOT_COLORS : DIR_COLORS;
+  return map[path] || 'bg-gray-400';
+}
+
+// ---------------------------------------------------------------------------
+// Collapsible section
+// ---------------------------------------------------------------------------
+
+function Section({
+  title,
+  defaultOpen = false,
+  count,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors select-none"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Chevron expanded={open} />
+        <span className="text-[11px] font-medium text-muted-foreground">{title}</span>
+        {count != null && (
+          <span className="text-[10px] text-muted-foreground/50">({count})</span>
+        )}
+      </div>
+      {open && children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stacked bar
+// ---------------------------------------------------------------------------
+
+function StackedBar({ segments }: { segments: { key: string; bytes: number; color: string; label: string }[] }) {
+  const total = segments.reduce((s, seg) => s + seg.bytes, 0) || 1;
+  return (
+    <div className="flex h-3 rounded-full overflow-hidden bg-muted">
+      {segments.map((seg) => {
+        const pct = (seg.bytes / total) * 100;
+        if (pct < 0.5) return null;
+        return (
+          <div
+            key={seg.key}
+            className={`${seg.color} transition-all`}
+            style={{ width: `${pct}%` }}
+            title={`${seg.label}: ${fmt(seg.bytes)} bytes`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mini bar (single value out of total)
+// ---------------------------------------------------------------------------
+
+function MiniBar({ value, total, color = 'bg-blue-500' }: { value: number; total: number; color?: string }) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div className="flex-1 min-w-[60px] h-1.5 bg-muted rounded-full overflow-hidden">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(pct, 0.5)}%` }} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Table size stacked bar (data / toast / index)
+// ---------------------------------------------------------------------------
+
+function TableSizeBar({ data, toast, index }: { data: number; toast: number; index: number }) {
+  const total = data + toast + index || 1;
+  return (
+    <div className="flex h-1.5 rounded-full overflow-hidden bg-muted min-w-[60px]">
+      <div className="bg-blue-500 h-full" style={{ width: `${(data / total) * 100}%` }} title={`Data: ${fmtSize(data)}`} />
+      <div className="bg-amber-400 h-full" style={{ width: `${(toast / total) * 100}%` }} title={`TOAST: ${fmtSize(toast)}`} />
+      <div className="bg-gray-400 h-full" style={{ width: `${(index / total) * 100}%` }} title={`Indexes: ${fmtSize(index)}`} />
+    </div>
+  );
+}
+
+function fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${(bytes / 1073741824).toFixed(1)} GB`;
+}
+
+function fmtCount(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
+
+// ---------------------------------------------------------------------------
+// Severity badge
+// ---------------------------------------------------------------------------
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const cls =
+    severity === 'critical'
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+      : severity === 'warning'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wider ${cls}`}>
+      {severity}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StorageOverview
+// ---------------------------------------------------------------------------
+
+function StorageOverview({
+  onRefresh,
+}: {
+  onRefresh: React.MutableRefObject<(() => Promise<void>)[]>;
+}) {
+  const [data, setData] = useState<StorageOverviewData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await apiFetch<StorageOverviewData>('/api/v1/assets/storage-overview');
+      setData(resp);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load storage overview');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const cbs = onRefresh.current;
+    cbs.push(fetchData);
+    return () => {
+      const idx = cbs.indexOf(fetchData);
+      if (idx >= 0) cbs.splice(idx, 1);
+    };
+  }, [fetchData, onRefresh]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const runCleanupAction = useCallback(async (endpoint: string, id: string) => {
+    setRunningAction(id);
+    setActionResult(null);
+    try {
+      const result = await apiFetch<any>(endpoint, 'POST');
+      const msg = result.dry_run
+        ? `Dry run: ${result.freed_human || result.deleted_count + ' items'} would be freed`
+        : `Done: ${result.freed_human || ''} freed`;
+      setActionResult({ message: msg });
+      // Refresh after non-dry-run
+      if (!result.dry_run) fetchData();
+    } catch (err: any) {
+      setActionResult({ message: err.message || 'Action failed', isError: true });
+    } finally {
+      setRunningAction(null);
+    }
+  }, [fetchData]);
+
+  if (!data && loading) {
+    return (
+      <div className="flex items-center gap-3 py-4 px-3">
+        <Spinner />
+        <span className="text-xs text-muted-foreground">Scanning storage…</span>
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="flex items-center gap-2 py-3 px-3 text-[11px] text-red-500">
+        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {error}
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const barSegments = data.directories.map((d) => ({
+    key: d.path,
+    bytes: d.size_bytes,
+    color: dirColor(d.path),
+    label: d.label,
+  }));
+
+  return (
+    <div className="space-y-0">
+      {/* Summary header */}
+      <div className="px-3 pt-2.5 pb-1.5">
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className="text-xs font-medium">Storage Overview</span>
+          <div className="flex items-center gap-2">
+            {loading && <Spinner className="w-3 h-3" />}
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {data.total_size_human} total
+            </span>
+            <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+              {data.scan_duration_ms}ms
+            </span>
+          </div>
+        </div>
+        <StackedBar segments={barSegments} />
+        {/* Legend */}
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+          {data.directories.slice(0, 6).map((d) => (
+            <div key={d.path} className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-sm ${dirColor(d.path, 'dot')}`} />
+              <span className="text-[10px] text-muted-foreground">{d.label}</span>
+              <span className="text-[10px] text-muted-foreground/60 tabular-nums">{d.size_human}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-px bg-border/50 mx-3" />
+
+      {/* Directories */}
+      <Section title="Directories" defaultOpen count={data.directories.length}>
+        <div className="px-3 pb-2 space-y-1">
+          {data.directories.map((d) => (
+            <div key={d.path} className="flex items-center gap-2 text-[11px]">
+              <span className={`w-2 h-2 rounded-sm shrink-0 ${dirColor(d.path, 'dot')}`} />
+              <span className="w-[120px] shrink-0 truncate text-muted-foreground">{d.label}</span>
+              <span className="w-[70px] shrink-0 text-right tabular-nums">{d.size_human}</span>
+              <MiniBar value={d.size_bytes} total={data.total_size_bytes} color={dirColor(d.path)} />
+              <span className="w-[55px] shrink-0 text-right text-muted-foreground/60 tabular-nums text-[10px]">
+                {d.file_count != null ? `${fmtCount(d.file_count)} files` : d.note || ''}
+              </span>
+            </div>
+          ))}
+          {/* Media subdirectory detail */}
+          {data.media_subdirectories.length > 0 && (
+            <div className="pt-1 pl-4 space-y-0.5">
+              <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Media breakdown</span>
+              {data.media_subdirectories.map((sd) => {
+                const mediaDirBytes = data.directories.find((d) => d.path === 'media')?.size_bytes || 1;
+                return (
+                  <div key={sd.name} className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
+                    <span className="w-[100px] shrink-0 truncate">{sd.name}/</span>
+                    <span className="w-[60px] shrink-0 text-right tabular-nums">{sd.size_human}</span>
+                    <MiniBar value={sd.size_bytes} total={mediaDirBytes} color="bg-blue-400" />
+                    <span className="w-[55px] shrink-0 text-right tabular-nums text-[10px]">{fmtCount(sd.file_count)} files</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <div className="h-px bg-border/50 mx-3" />
+
+      {/* Media by format */}
+      <Section title="Media by Format" count={data.media_types.length}>
+        <div className="px-3 pb-2 space-y-1">
+          {data.media_types.map((mt) => {
+            const isConvertible = mt.mime_type === 'image/png' || mt.mime_type === 'image/bmp';
+            return (
+              <div key={mt.mime_type} className="flex items-center gap-2 text-[11px]">
+                <span className={`w-2 h-2 rounded-sm shrink-0 ${mt.media_type === 'video' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                <span className="w-[100px] shrink-0 truncate text-muted-foreground">
+                  {mt.mime_type.replace('image/', '').replace('video/', '')}
+                </span>
+                <span className="w-[50px] shrink-0 text-right tabular-nums text-muted-foreground/60">
+                  {fmtCount(mt.count)}
+                </span>
+                <span className="w-[60px] shrink-0 text-right tabular-nums">{mt.size_human}</span>
+                <MiniBar
+                  value={mt.size_bytes}
+                  total={data.media_types[0]?.size_bytes || 1}
+                  color={mt.media_type === 'video' ? 'bg-emerald-500' : 'bg-blue-500'}
+                />
+                <span className="w-[36px] shrink-0 text-right tabular-nums text-muted-foreground/60 text-[10px]">
+                  {mt.pct_of_total.toFixed(0)}%
+                </span>
+                {isConvertible && (
+                  <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">convertible</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <div className="h-px bg-border/50 mx-3" />
+
+      {/* Database tables */}
+      <Section title="Database Tables" count={data.db_tables.length}>
+        <div className="px-3 pb-2 space-y-1">
+          {/* Legend for table bar colors */}
+          <div className="flex items-center gap-3 mb-1 text-[9px] text-muted-foreground/50">
+            <div className="flex items-center gap-1"><span className="w-2 h-1 bg-blue-500 rounded-sm" />Data</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-1 bg-amber-400 rounded-sm" />TOAST</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-1 bg-gray-400 rounded-sm" />Indexes</div>
+            <span className="ml-auto">DB total: {data.db_total_human}</span>
+          </div>
+          {data.db_tables.map((t) => (
+            <div key={t.table_name} className="flex items-center gap-2 text-[11px]">
+              <span className="w-[160px] shrink-0 truncate text-muted-foreground font-mono text-[10px]">{t.table_name}</span>
+              <span className="w-[45px] shrink-0 text-right tabular-nums text-muted-foreground/60 text-[10px]">
+                {fmtCount(t.row_count)}
+              </span>
+              <span className="w-[55px] shrink-0 text-right tabular-nums">{t.total_human}</span>
+              <div className="flex-1 min-w-[60px]">
+                <TableSizeBar data={t.data_bytes} toast={t.toast_bytes} index={t.index_bytes} />
+              </div>
+            </div>
+          ))}
+          {/* Unused indexes */}
+          {data.unused_indexes.length > 0 && (
+            <div className="pt-1.5 space-y-0.5">
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                {data.unused_indexes.length} unused indexes ({fmtSize(data.unused_indexes.reduce((s, i) => s + i.size_bytes, 0))})
+              </span>
+              <div className="pl-2 space-y-0.5 max-h-[100px] overflow-y-auto">
+                {data.unused_indexes.slice(0, 10).map((idx) => (
+                  <div key={idx.index_name} className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+                    <span className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />
+                    <span className="truncate font-mono">{idx.index_name}</span>
+                    <span className="shrink-0 tabular-nums">{idx.size_human}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Cleanup opportunities */}
+      {data.cleanup_opportunities.length > 0 && (
+        <>
+          <div className="h-px bg-border/50 mx-3" />
+          <div className="px-3 py-2 space-y-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">Cleanup opportunities</span>
+            {data.cleanup_opportunities.map((opp) => (
+              <div key={opp.id} className="flex items-center gap-2 text-[11px]">
+                <SeverityBadge severity={opp.severity} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-muted-foreground">{opp.description}</span>
+                </div>
+                <span className="shrink-0 tabular-nums font-medium text-[10px]">
+                  ~{opp.estimated_savings_human}
+                </span>
+                {opp.action_endpoint && (
+                  <Button
+                    onClick={() => runCleanupAction(opp.action_endpoint!, opp.id)}
+                    disabled={runningAction != null}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {runningAction === opp.id ? <Spinner className="w-3 h-3" /> : 'Run'}
+                  </Button>
+                )}
+              </div>
+            ))}
+            {actionResult && (
+              <div
+                className={`flex items-center gap-1.5 text-[11px] ${
+                  actionResult.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+                }`}
+              >
+                {actionResult.isError ? (
+                  <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {actionResult.message}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
@@ -734,6 +1233,10 @@ export function MaintenanceDashboard() {
     <div className="space-y-0">
       {/* System health */}
       <HealthHeader />
+      <div className="h-px bg-border mx-3" />
+
+      {/* Storage overview */}
+      <StorageOverview onRefresh={refreshCallbacks} />
       <div className="h-px bg-border mx-3" />
 
       {/* Column headers */}

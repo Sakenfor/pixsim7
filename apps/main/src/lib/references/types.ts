@@ -17,6 +17,13 @@ export interface ReferenceItem {
   detailColor?: string;
   /** Nesting depth for hierarchical display (0 = top-level, 1 = child, etc.). */
   indent?: number;
+  /**
+   * Optional plain-text to insert when this item is picked. When present,
+   * the picker inserts this literal string at the caret instead of the
+   * default `@{type}:{id}` token. Used by vocabulary sources (anatomy,
+   * phrases) where the text itself is the payload.
+   */
+  insertText?: string;
 }
 
 export interface ReferenceSource {

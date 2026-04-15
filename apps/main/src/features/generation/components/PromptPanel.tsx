@@ -9,6 +9,7 @@ import { getDurationOptions } from '@lib/generation-ui';
 
 import type { AssetModel } from '@features/assets';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
+import { useComponentSettingsStore } from '@features/componentSettings';
 import {
   CAP_PROMPT_BOX,
   useProvideCapability,
@@ -28,7 +29,14 @@ import {
   type PromptToolRunContextPatch,
 } from '@features/generation/lib/runContext';
 import { useAssetRegionStore, useCaptureRegionStore } from '@features/mediaViewer/stores/assetRegionStore';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
+import {
+  useResolveComponentSettings,
+  getInstanceId,
+  useScopeInstanceId,
+  GENERATION_SCOPE_ID,
+  getScopeMode,
+  usePanelInstanceSettingsStore,
+} from '@features/panels';
 import { PromptComposerSurface, useQuickGenerateController } from '@features/prompts';
 
 import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
@@ -43,6 +51,31 @@ function parseAssetReferenceId(value: unknown): number | null {
   if (!trimmed.startsWith('asset:')) return null;
   const rawId = Number(trimmed.slice('asset:'.length));
   return Number.isFinite(rawId) ? rawId : null;
+}
+
+function buildPromptDraftHistoryScopeKey(
+  scope: typeof QUICKGEN_PROMPT_DEFAULTS.historyScope,
+  providerId: string | undefined,
+  operationType: string,
+): string {
+  const cleanProviderId = providerId?.trim() || '_auto';
+  if (scope === 'global') return 'quickgen:draft-history:global';
+  if (scope === 'operation') return `quickgen:draft-history:operation:${operationType}`;
+  return `quickgen:draft-history:provider-operation:${cleanProviderId}:${operationType}`;
+}
+
+function clampPromptHistoryEntryCount(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return QUICKGEN_PROMPT_DEFAULTS.historyMaxEntries;
+  return Math.max(20, Math.min(300, Math.round(parsed)));
+}
+
+function promptDraftHistoryScopeLabel(
+  scope: typeof QUICKGEN_PROMPT_DEFAULTS.historyScope,
+): string {
+  if (scope === 'global') return 'Global';
+  if (scope === 'operation') return 'Operation only';
+  return 'Provider + operation';
 }
 
 export function PromptPanel(props: QuickGenPanelProps) {
@@ -63,6 +96,16 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const reactId = useId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? `quickgen-prompt-${reactId.replace(/:/g, '')}`;
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
+  const instanceScopes = usePanelInstanceSettingsStore((state) => state.instances[instanceId]?.scopes);
+  const setInstanceComponentSetting = usePanelInstanceSettingsStore((state) => state.setComponentSetting);
+  const clearInstanceComponentSettingField = usePanelInstanceSettingsStore(
+    (state) => state.clearComponentSettingField,
+  );
+  const setGlobalComponentSetting = useComponentSettingsStore((state) => state.setComponentSetting);
+  const generationScopeMode = useMemo(
+    () => getScopeMode(instanceScopes, { id: 'generation' }),
+    [instanceScopes],
+  );
 
   // Get workbench for fallback model and paramSpecs when no context provided
   const workbench = useGenerationWorkbench({ operationType: controller.operationType });
@@ -320,6 +363,51 @@ export function PromptPanel(props: QuickGenPanelProps) {
       || 'Enter prompt...';
   }, [hasAsset, isTransitionMode, operationType, transitionCount]);
 
+  const promptHistoryScopeKey = useMemo(
+    () =>
+      buildPromptDraftHistoryScopeKey(
+        resolvedPromptSettings.historyScope,
+        providerId,
+        operationType,
+      ),
+    [operationType, providerId, resolvedPromptSettings.historyScope],
+  );
+  const promptHistoryMaxEntries = useMemo(
+    () => clampPromptHistoryEntryCount(resolvedPromptSettings.historyMaxEntries),
+    [resolvedPromptSettings.historyMaxEntries],
+  );
+  const promptHistoryScopeLabel = useMemo(
+    () => promptDraftHistoryScopeLabel(resolvedPromptSettings.historyScope),
+    [resolvedPromptSettings.historyScope],
+  );
+  const handlePromptHistoryScopeChange = useCallback(
+    (nextScope: typeof QUICKGEN_PROMPT_DEFAULTS.historyScope) => {
+      if (nextScope === resolvedPromptSettings.historyScope) return;
+      if (generationScopeMode === 'local') {
+        setInstanceComponentSetting(
+          instanceId,
+          panelInstanceId,
+          QUICKGEN_PROMPT_COMPONENT_ID,
+          'historyScope',
+          nextScope,
+        );
+        return;
+      }
+
+      setGlobalComponentSetting(QUICKGEN_PROMPT_COMPONENT_ID, 'historyScope', nextScope);
+      clearInstanceComponentSettingField(instanceId, QUICKGEN_PROMPT_COMPONENT_ID, 'historyScope');
+    },
+    [
+      clearInstanceComponentSettingField,
+      generationScopeMode,
+      instanceId,
+      panelInstanceId,
+      resolvedPromptSettings.historyScope,
+      setGlobalComponentSetting,
+      setInstanceComponentSetting,
+    ],
+  );
+
   const promptAdapter = useMemo(
     () => ({
       value: promptValue,
@@ -394,6 +482,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
         showCounter: resolvedPromptSettings.showCounter,
         resizable: resolvedPromptSettings.resizable,
         minHeight: resolvedPromptSettings.minHeight,
+        historyScopeKey: promptHistoryScopeKey,
+        historyMaxEntries: promptHistoryMaxEntries,
+        historyScopeLabel: promptHistoryScopeLabel,
+        historyScopeValue: resolvedPromptSettings.historyScope,
+        onHistoryScopeChange: handlePromptHistoryScopeChange,
         error,
         transition: transitionDisplay,
       }}

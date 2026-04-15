@@ -202,7 +202,6 @@ export function AssetPanelGrid({
                 enableHoverPreview,
                 showPlayOverlay,
                 clickToPlay,
-                disableMotion: isSelected,
                 overlay: (
                   <>
                     {(inputItem.maskLayers?.length || inputItem.maskUrl) && (

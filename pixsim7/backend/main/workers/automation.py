@@ -115,8 +115,26 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             adb_devices = await adb.devices()
             adb_serials = {serial for serial, state in adb_devices if state == "device"}
 
+            # Network-attached emulators (host:port) drop out of `adb devices`
+            # whenever the ADB server restarts. Try a one-shot reconnect before
+            # giving up — covers the common LDPlayer/MuMu/Nox transient case.
+            if device.adb_id not in adb_serials and ":" in device.adb_id:
+                reconnected = await adb.connect(device.adb_id)
+                logger.info(
+                    "device_adb_reconnect_attempt",
+                    execution_id=execution_id,
+                    device_id=device.id,
+                    adb_id=device.adb_id,
+                    reconnected=reconnected,
+                )
+                if reconnected:
+                    adb_devices = await adb.devices()
+                    adb_serials = {serial for serial, state in adb_devices if state == "device"}
+
             if device.adb_id not in adb_serials:
-                # Device not reachable - update status and fail
+                # Device not reachable - update status, release the execution from
+                # this device so any retry (or new execution) can pick a different
+                # ONLINE device instead of looping on the same offline one.
                 logger.warning(
                     "device_not_reachable",
                     execution_id=execution_id,
@@ -125,6 +143,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                     available_devices=list(adb_serials)
                 )
                 device.status = DeviceStatus.OFFLINE
+                execution.device_id = None
                 await db.commit()
                 raise RuntimeError(f"Device {device.adb_id} not reachable via ADB. Available: {list(adb_serials)}")
 

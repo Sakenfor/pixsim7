@@ -30,6 +30,7 @@ import {
   GestureOverlay,
   GestureCancelOverlay,
 } from '@lib/gestures';
+import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -42,6 +43,7 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 import { type AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
+import { useMediaCompareTargetStore } from '@features/prompts/stores/mediaCompareTargetStore';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
@@ -245,8 +247,6 @@ export interface MediaCardLayoutProps {
   clickToPlay?: boolean;
   /** Show centered play icon when scrub is suppressed. Default true. */
   showPlayOverlay?: boolean;
-  /** Accepted for parity with CompactAssetCard; currently a no-op. */
-  disableMotion?: boolean;
   /** Override the overlay policy chain context (default: density==='compact' uses 'compact', else 'gallery'). */
   overlayContext?: import('@lib/widgets').OverlayContextId;
 }
@@ -351,6 +351,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const enableMediaCardContextMenu = useContextHubSettingsStore(
     (state) => state.enableMediaCardContextMenu,
   );
+  const pinCompareTarget = useMediaCompareTargetStore((state) => state.pinTarget);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({
@@ -647,9 +648,21 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     presetGestureOverrides: presetCapabilities.gestureOverrides,
   });
 
-  const handleOpen = () => {
+  const handleOpen = (event: ReactMouseEvent<HTMLDivElement>) => {
     // Suppress open when gesture just completed (click fires after pointerup)
     if (gesture.gestureConsumed.current) return;
+    const comparePrompt = contextMenuAsset?.prompt ?? resolved.prompt ?? null;
+    if (event.shiftKey && comparePrompt) {
+      // Shift+click pins this card as the compare target for PromptComposer.
+      // Keep propagation so parent wrappers can still handle selection semantics.
+      event.preventDefault();
+      pinCompareTarget({
+        assetId: contextMenuAsset?.id ?? id,
+        prompt: comparePrompt,
+        mediaType,
+      });
+      return;
+    }
     if (onOpen) {
       onOpen(id);
     }
@@ -682,11 +695,27 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const overlayConfig: OverlayConfiguration = useMemo(() => {
     // Get default widgets from factory
     // Pass capabilities so runtime widgets can adapt without hardcoded ID checks
-    const defaultWidgets = createDefaultMediaCardWidgets({
+    const allDefaultWidgets = createDefaultMediaCardWidgets({
       ...resolved,
       overlayPresetId: effectivePresetId,
       presetCapabilities,
     });
+
+    // In compact (picker) mode, restrict the default set to the slim hand-picked
+    // widgets that legacy CompactAssetCard rendered. The full runtime set
+    // (primary-icon, status-menu, queue-status, model-family, duration,
+    // provider, generation-action-mode-badge, …) crowds the small card and
+    // conflicts with picker widgets at the same anchors.
+    const COMPACT_ALLOWED_WIDGET_IDS = new Set([
+      'favorite-toggle',
+      'quick-tag',
+      'generation-button-group',
+      'info-popover',
+      'version-badge',
+    ]);
+    const defaultWidgets = isCompact
+      ? allDefaultWidgets.filter((w) => COMPACT_ALLOWED_WIDGET_IDS.has(w.id))
+      : allDefaultWidgets;
 
     // Picker-surface widgets (compact mode: remove, skip toggle, locked frame,
     // generate button) participate in collision detection alongside default
@@ -694,9 +723,6 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     const pickerWidgets = isCompact
       ? buildMediaCardPickerWidgets({
           isVideo: mediaType === 'video',
-          isLocalOnly:
-            contextMenuAsset?.providerStatus === 'local_only' ||
-            (contextMenuAsset?.syncStatus === 'downloaded' && !contextMenuAsset?.remoteUrl),
           showRemoveButton: picker?.showRemoveButton,
           onRemove: picker?.onRemove,
           skipped: picker?.skipped,
@@ -728,7 +754,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       id: 'media-card-default-runtime',
       name: 'Media Card',
       widgets: finalWidgets,
-      spacing: customOverlayConfig?.spacing || 'normal',
+      spacing: customOverlayConfig?.spacing || (isCompact ? 'compact' : 'normal'),
     };
 
     // Merge preset configuration with runtime widgets
@@ -741,7 +767,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       id: customOverlayConfig?.id || merged.id || 'media-card-default-runtime',
       name: customOverlayConfig?.name || merged.name || 'Media Card',
       widgets: merged.widgets ?? [],
-      spacing: customOverlayConfig?.spacing || merged.spacing || 'normal',
+      spacing: customOverlayConfig?.spacing || merged.spacing || (isCompact ? 'compact' : 'normal'),
       collisionDetection: merged.collisionDetection ?? hasPickerWidgets,
     };
 
@@ -816,8 +842,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
     mediaType === 'video' ? resolvedVideoSrc : undefined;
-  const shouldShowVideoElement =
+  // Globally cap concurrent active <video> decoders.  Each active decoder
+  // holds large native/GPU buffers (~200-500MB) invisible to JS memory
+  // APIs.  Without this gate, a gallery burst can pile 5+ active decoders
+  // and consume multiple GB of native memory.
+  const wantsVideoSlot =
     mediaType === 'video' && !thumbSrc && !!resolvedVideoSrc && !videoLoadFailed;
+  const hasVideoSlot = useVideoActivationSlot(wantsVideoSlot);
+  const shouldShowVideoElement = wantsVideoSlot && hasVideoSlot;
   // When the video is retrying and we have no thumbnail, the card is in an
   // early loading state (e.g. CDN propagation). Show a spinner instead of the
   // alarming "video retry N/M" badge — the <video> stays mounted (hidden) so
@@ -888,7 +920,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
   const wrapperClass = isCompact
-    ? `relative rounded-md border-2 ${compactBorder} bg-white dark:bg-neutral-900 overflow-hidden ${layout?.fillHeight ? 'h-full flex flex-col' : ''} ${layout?.onClick ? 'cursor-pointer' : ''} ${picker?.skipped ? 'opacity-40' : ''} group/card ${layout?.className ?? ''}`
+    ? `cq-scale relative rounded-md border-2 ${compactBorder} bg-white dark:bg-neutral-900 overflow-hidden ${layout?.fillHeight ? 'h-full flex flex-col' : ''} ${layout?.onClick ? 'cursor-pointer' : ''} ${picker?.skipped ? 'opacity-40' : ''} group/card ${layout?.className ?? ''}`
     : 'cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10';
 
   return (

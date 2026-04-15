@@ -262,6 +262,13 @@ def _summarize_event_data(event_type: str, data: dict) -> dict:
         if data.get("provider_job_id"):
             summary["provider_job_id"] = data.get("provider_job_id")
         return summary
+    if event_type in {"asset:created", "asset:updated", "asset:deleted"}:
+        return {
+            "asset_id": data.get("asset_id"),
+            "user_id": data.get("user_id"),
+            "reason": data.get("reason"),
+            "source_generation_id": data.get("source_generation_id"),
+        }
     return {}
 
 

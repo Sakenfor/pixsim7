@@ -43,9 +43,9 @@ blocks:
               - deep
             default: medium
           - key: rack
+            tag_key: rack_focus
             type: boolean
             default: false
-            tag_key: rack_focus
           - key: target_ref
             required: false
             type: ref

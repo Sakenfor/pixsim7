@@ -10,3 +10,8 @@ export type { ReferencePickerProps, ReferencePickerHandle } from './ReferencePic
 // Feature-specific sources (game entities, assets, etc.) register themselves
 // from their own modules via referenceRegistry.register().
 import './sources';
+// Dynamically register one source per vocabulary type (anatomy, poses,
+// moods, locations, camera, etc.) based on what the backend advertises.
+// Import last so static sources are in the registry before the async fetch
+// resolves (ordering within the picker's source list follows registration).
+import './vocabularySources';

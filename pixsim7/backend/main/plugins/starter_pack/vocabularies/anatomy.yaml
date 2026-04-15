@@ -1,11 +1,19 @@
 # Anatomy Vocabulary
-# Body parts and regions for labeling and composition
+# Body parts and regions for labeling and composition.
+#
+# The `intimate_*` categories group Latin-nomenclature parts for adult/erotic
+# prompt contexts. They share the file because the loader is one-YAML-per-vocab,
+# but the category prefix makes them cleanly separable if we ever migrate them
+# to their own pack/DB.
 version: "1.0.0"
 
 categories:
   general: "General body areas"
   specific: "Specific anatomical parts"
   appearance: "Appearance-related"
+  intimate_female: "Female intimate anatomy (Latin nomenclature)"
+  intimate_male: "Male intimate anatomy (Latin nomenclature)"
+  intimate_shared: "Shared intimate regions (Latin nomenclature)"
 
 # Unified parts (combines legacy anatomy_parts + anatomy_regions + common labels)
 parts:
@@ -103,3 +111,92 @@ parts:
     label: "Head/Tip"
     category: specific
     keywords: [head, tip, glans]
+
+  # === Intimate — female (Latin nomenclature) ===
+  part:mammae:
+    label: "Breasts"
+    latin: "mammae"
+    category: intimate_female
+    scope: region
+    keywords: [breasts, bust, mammae, bosom]
+
+  part:papilla_mammaria:
+    label: "Nipples"
+    latin: "papilla mammaria"
+    category: intimate_female
+    keywords: [nipple, nipples, papilla, areola]
+
+  part:vulva:
+    label: "Vulva"
+    latin: "vulva"
+    category: intimate_female
+    scope: region
+    keywords: [vulva, pudendum]
+
+  part:mons_pubis:
+    label: "Mons pubis"
+    latin: "mons pubis"
+    category: intimate_female
+    scope: region
+    keywords: [mons, pubis, mound]
+
+  part:labia:
+    label: "Labia"
+    latin: "labia"
+    category: intimate_female
+    keywords: [labia, lips]
+
+  part:clitoris:
+    label: "Clitoris"
+    latin: "clitoris"
+    category: intimate_female
+    keywords: [clitoris, clit]
+
+  # === Intimate — male (Latin nomenclature) ===
+  # Note: the legacy colloquial `part:shaft` and `part:head_tip` above are kept
+  # for backward compatibility. Prefer these Latin IDs for new content.
+  part:penis:
+    label: "Penis"
+    latin: "penis"
+    category: intimate_male
+    keywords: [penis, phallus, member]
+
+  part:glans:
+    label: "Glans"
+    latin: "glans penis"
+    category: intimate_male
+    keywords: [glans, head, tip]
+
+  part:scrotum:
+    label: "Scrotum"
+    latin: "scrotum"
+    category: intimate_male
+    keywords: [scrotum, sac]
+
+  part:testes:
+    label: "Testes"
+    latin: "testes"
+    category: intimate_male
+    keywords: [testes, testicles]
+
+  # === Intimate — shared regions ===
+  part:perineum:
+    label: "Perineum"
+    latin: "perineum"
+    category: intimate_shared
+    scope: region
+    keywords: [perineum]
+
+  part:inguen:
+    label: "Groin crease"
+    latin: "inguen"
+    category: intimate_shared
+    scope: region
+    keywords: [groin crease, inguinal, hip crease]
+
+  part:femur_medialis:
+    label: "Inner thigh"
+    latin: "femur medialis"
+    category: intimate_shared
+    scope: region
+    keywords: [inner thigh, medial thigh]

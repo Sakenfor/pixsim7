@@ -363,7 +363,7 @@ export function AssetPanelHeader({
               onClick={handleClearInstanceOverrides}
               className="w-full mt-1 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
             >
-              Reset instance overrides
+              Reset to global
             </button>
           )}
         </div>

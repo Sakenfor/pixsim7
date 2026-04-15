@@ -195,6 +195,15 @@ button {
   font-family: inherit;
 }
 
+/* Textareas default to a browser-specific monospace-ish font; inherit the
+   app font so prompt text matches the rest of the UI. Also required for the
+   shared TextareaBackdrop overlay to wrap lines at the same positions as
+   the textarea itself. */
+textarea,
+input {
+  font-family: inherit;
+}
+
 /* ===============================================
  * World Theme Motion System
  * ===============================================

@@ -33,6 +33,7 @@ blocks:
             required: false
         params:
           - key: role_in_sequence
+            tag_key: role_in_sequence
             type: enum
             enum:
               - initial
@@ -41,6 +42,7 @@ blocks:
               - unspecified
             default: continuation
           - key: continuity_focus
+            tag_key: continuity_focus
             type: enum
             enum:
               - subject
@@ -50,6 +52,7 @@ blocks:
               - tone
             default: subject
           - key: continuity_priority
+            tag_key: continuity_priority
             type: enum
             enum:
               - low

@@ -2,11 +2,15 @@ export const QUICKGEN_SETTINGS_COMPONENT_ID = 'quickgen-settings';
 export const QUICKGEN_ASSET_COMPONENT_ID = 'quickgen-asset';
 export const QUICKGEN_PROMPT_COMPONENT_ID = 'quickgen-prompt';
 
+export type QuickGenPromptHistoryScope = 'provider-operation' | 'operation' | 'global';
+
 export interface QuickGenPromptSettings {
   showCounter: boolean;
   resizable: boolean;
   minHeight: number;
   variant: 'compact' | 'default';
+  historyScope: QuickGenPromptHistoryScope;
+  historyMaxEntries: number;
 }
 
 export const QUICKGEN_PROMPT_DEFAULTS: QuickGenPromptSettings = {
@@ -14,6 +18,8 @@ export const QUICKGEN_PROMPT_DEFAULTS: QuickGenPromptSettings = {
   resizable: true,
   minHeight: 100,
   variant: 'compact',
+  historyScope: 'provider-operation',
+  historyMaxEntries: 80,
 };
 
 export interface QuickGenSettingsPanelSettings {

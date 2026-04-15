@@ -97,6 +97,14 @@ export interface CapabilityRegistry {
    */
   subscribe(listener: () => void): () => void;
 
+  /**
+   * Invalidate providers for a key (or all keys) and notify subscribers.
+   *
+   * Use when provider internals mutate in place (for example, availability,
+   * priority, or getValue dependencies) without re-registering.
+   */
+  invalidate(key?: CapabilityKey): void;
+
   // Consumption tracking (for debugging/visualization)
 
   /**

@@ -29,6 +29,7 @@ blocks:
             required: false
         params:
           - key: pose
+            tag_key: pose
             type: enum
             enum:
               - standing
@@ -39,6 +40,7 @@ blocks:
               - lying
             default: standing
           - key: hands
+            tag_key: hands
             type: enum
             enum:
               - neutral
@@ -49,6 +51,7 @@ blocks:
               - holding_object
             default: neutral
           - key: gaze
+            tag_key: gaze
             type: enum
             enum:
               - forward

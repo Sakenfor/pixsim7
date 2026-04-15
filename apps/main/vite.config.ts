@@ -16,6 +16,14 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   server: {
+    // COOP + COEP enable crossOriginIsolated, which unlocks
+    // performance.measureUserAgentSpecificMemory() for native-memory
+    // diagnostics.  credentialless lets authenticated media fetches
+    // succeed without requiring CORP headers on every backend response.
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     watch: {
       ignored: [
         '**/node_modules/**',

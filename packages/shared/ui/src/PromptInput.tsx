@@ -24,6 +24,14 @@ export interface PromptInputProps {
   minHeight?: number;
   /** If true, hard-truncate input at maxChars. If false, allow exceeding limit with visual warning. Defaults to false. */
   enforceLimit?: boolean;
+  /** Optional external ref to the underlying textarea element */
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  /** Make textarea background transparent (for backdrop overlays like ghost diff) */
+  transparent?: boolean;
+  /** Pass-through onInput handler (e.g. for @mention trigger detection). */
+  onInput?: (e: React.FormEvent<HTMLTextAreaElement>) => void;
+  /** Pass-through onKeyDown handler (e.g. for mention picker nav, Enter-to-submit). */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
 export const PromptInput: React.FC<PromptInputProps> = ({
@@ -39,11 +47,16 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   resizable = false,
   minHeight,
   enforceLimit = false,
+  textareaRef: externalTextareaRef,
+  transparent = false,
+  onInput,
+  onKeyDown,
 }) => {
   const remaining = maxChars - value.length;
   const isOverLimit = remaining < 0;
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = externalTextareaRef ?? internalRef;
   const cursorPosRef = useRef<number | null>(null);
   const scrollPosRef = useRef<number | null>(null);
   const isUserTypingRef = useRef(false);
@@ -116,12 +129,15 @@ export const PromptInput: React.FC<PromptInputProps> = ({
         ref={textareaRef}
         value={value}
         onChange={handleChange}
+        onInput={onInput}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}
         style={{ minHeight: `${effectiveMinHeight}px` }}
         className={clsx(
-          'w-full rounded border p-2 bg-white dark:bg-neutral-900 outline-none flex-1',
+          'w-full rounded border p-2 outline-none flex-1',
+          transparent ? 'bg-transparent' : 'bg-white dark:bg-neutral-900',
           disabled && 'opacity-60 cursor-not-allowed',
           variant === 'compact' ? 'text-sm' : 'text-base',
           resizable ? 'resize-y' : 'resize-none',

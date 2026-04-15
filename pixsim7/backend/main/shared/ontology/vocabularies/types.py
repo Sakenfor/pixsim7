@@ -131,6 +131,7 @@ class PartDef:
     category: str = ""
     scope: str = ""
     keywords: List[str] = field(default_factory=list)
+    latin: str = ""
     source: str = "core"
 
 

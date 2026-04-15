@@ -29,6 +29,7 @@ blocks:
             required: false
         params:
           - key: perspective
+            tag_key: pov_perspective
             type: enum
             enum:
               - first_person
@@ -37,8 +38,8 @@ blocks:
               - observer
               - top_down
             default: first_person
-            tag_key: pov_perspective
           - key: camera_height
+            tag_key: pov_height
             type: enum
             enum:
               - ground
@@ -47,7 +48,6 @@ blocks:
               - eye_level
               - overhead
             default: eye_level
-            tag_key: pov_height
           - key: target_ref
             required: false
             type: ref

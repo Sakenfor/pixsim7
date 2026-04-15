@@ -18,7 +18,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@lib/icons';
 import { hmrSingleton } from '@lib/utils';
 
-import type { ViewerAsset } from '@features/assets';
+import {
+  toViewerAsset,
+  toViewerAssets,
+  useAssetViewerStore,
+  type AssetModel,
+  type ViewerAsset,
+} from '@features/assets';
 import {
   useCapability,
   CAP_GENERATION_SOURCE,
@@ -171,6 +177,8 @@ function ViewerQuickGenerateChrome({
 
 export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
   const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
+  const openViewer = useAssetViewerStore((s) => s.openViewer);
+  const setViewerMode = useAssetViewerStore((s) => s.setMode);
   const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
   // Mode is managed at top level to determine scope before rendering the toggle
   const [mode, setMode] = useState<GenerationSourceMode>('user');
@@ -188,6 +196,18 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       if (!open) setIsExpanded(false);
     },
     [],
+  );
+  const handleOpenAssetInViewer = useCallback(
+    (inputAsset: AssetModel, assetList?: AssetModel[]) => {
+      const previousMode = useAssetViewerStore.getState().mode;
+      const viewerAsset = toViewerAsset(inputAsset);
+      const viewerList = assetList && assetList.length > 0 ? toViewerAssets(assetList) : [viewerAsset];
+      openViewer(viewerAsset, viewerList, `${DOCK_IDS.assetViewer}:quickgen`);
+      if (previousMode !== 'closed') {
+        setViewerMode(previousMode);
+      }
+    },
+    [openViewer, setViewerMode],
   );
 
   const shouldHide = controlCenterOpen && !alwaysExpanded;
@@ -228,6 +248,8 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
         sourceToggleMode: mode,
         sourceToggleGenerationId: asset.sourceGenerationId,
         onSourceToggleModeChange: setMode,
+        onOpenAsset: handleOpenAssetInViewer,
+        openAssetInViewer: handleOpenAssetInViewer,
       }}
       minPanelsForTabs={2}
     >

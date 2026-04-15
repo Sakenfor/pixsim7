@@ -199,7 +199,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
     <>
       <div className="h-full w-full flex flex-col">
         {header}
-        <div ref={state.containerRef} className="flex-1 p-2 pt-0">
+        <div ref={state.containerRef} className="flex-1 min-h-0 p-2 pt-0">
           <div className="relative h-full">
             {state.isOnVirtualSlot ? (
               // ── Virtual empty slot placeholder ──────────────────────

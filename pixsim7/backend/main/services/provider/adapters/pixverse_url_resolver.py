@@ -28,6 +28,21 @@ class PixverseApiMode(str, Enum):
 
 # Base URL for Pixverse media
 PIXVERSE_MEDIA_BASE = "https://media.pixverse.ai"
+_PIXVERSE_PLACEHOLDER_PATH_SUFFIXES = (
+    "/pixverse-preview/mp4/media/default.mp4",
+    "/pixverse/mp4/media/default.mp4",
+    "/pixverse/jpg/media/default.jpg",
+    "/pixverse/jpg/media/default.jpeg",
+)
+
+# Pixverse output media lives under one of these path segments. Anything else
+# (preview/default placeholders, or status URLs Pixverse exposes early before
+# the file is actually published to the CDN) should not be treated as a real
+# retrievable asset URL.
+_PIXVERSE_OUTPUT_PATH_MARKERS = (
+    "/openapi/output/",
+    "/web/ori/",
+)
 
 
 def normalize_url(url: Optional[str], *, strip_query: bool = False) -> Optional[str]:
@@ -109,6 +124,54 @@ def normalize_url(url: Optional[str], *, strip_query: bool = False) -> Optional[
         pass  # Keep original if parsing fails
 
     return url
+
+
+def is_pixverse_placeholder_url(url: Optional[str]) -> bool:
+    """
+    Return True when ``url`` points to a known Pixverse placeholder media path.
+
+    Pixverse may return placeholder URLs (for example ``.../default.mp4``)
+    for moderated/filtered content. These URLs should not be treated as valid
+    early CDN media.
+    """
+    normalized = normalize_url(url, strip_query=True)
+    if not normalized or not isinstance(normalized, str):
+        return False
+    try:
+        parsed = urlparse(normalized)
+        host = parsed.netloc.lower()
+        path = unquote(parsed.path).lower()
+    except Exception:
+        return False
+    if not host.endswith("pixverse.ai"):
+        return False
+    return any(path.endswith(suffix) for suffix in _PIXVERSE_PLACEHOLDER_PATH_SUFFIXES)
+
+
+def has_retrievable_pixverse_media_url(url: Optional[str]) -> bool:
+    """
+    Return True when ``url`` looks like a real, CDN-published Pixverse asset.
+
+    This excludes:
+    - Empty values
+    - Known Pixverse placeholder URLs (``…/default.mp4`` etc.)
+    - URLs that do not live under a known output path segment
+      (``/openapi/output/`` or ``/web/ori/``). Pixverse can expose status URLs
+      before the file is actually published to the CDN; only the output path
+      segments are guaranteed to be real published media.
+    """
+    normalized = normalize_url(url, strip_query=True)
+    if not normalized or not isinstance(normalized, str):
+        return False
+    if not normalized.startswith(("http://", "https://")):
+        return False
+    if is_pixverse_placeholder_url(normalized):
+        return False
+    try:
+        path = unquote(urlparse(normalized).path).lower()
+    except Exception:
+        return False
+    return any(marker in path for marker in _PIXVERSE_OUTPUT_PATH_MARKERS)
 
 
 def extract_media_url(payload: Any, media_type: str) -> Optional[str]:
@@ -371,24 +434,16 @@ def get_api_mode_for_account(account) -> PixverseApiMode:
     """
     Determine the API mode for a given account.
 
-    Prefers OpenAPI when an account has an OpenAPI key; otherwise WebAPI.
+    Always returns WebAPI. An OpenAPI key is available to any Pixverse account
+    (including free tiers) and is used for specific tasks like checking video
+    results — it does not indicate that generation submissions should route
+    through the OpenAPI endpoint. Routing to OpenAPI must be requested
+    explicitly via a generation-level api_mode override.
 
     Args:
         account: ProviderAccount instance
 
     Returns:
-        PixverseApiMode indicating which API mode to use
+        PixverseApiMode.WEBAPI
     """
-    if not account:
-        return PixverseApiMode.WEBAPI
-
-    has_openapi_key = any(
-        isinstance(entry, dict)
-        and entry.get("kind") == "openapi"
-        and entry.get("value")
-        for entry in (getattr(account, "api_keys", None) or [])
-    )
-    if has_openapi_key:
-        return PixverseApiMode.OPENAPI
-
     return PixverseApiMode.WEBAPI

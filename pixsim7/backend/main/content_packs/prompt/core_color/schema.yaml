@@ -36,6 +36,7 @@ blocks:
             required: false
         params:
           - key: temperature
+            tag_key: grade_temperature
             type: enum
             enum:
               - very_warm
@@ -44,8 +45,8 @@ blocks:
               - cool
               - very_cool
             default: neutral
-            tag_key: grade_temperature
           - key: saturation
+            tag_key: grade_saturation
             type: enum
             enum:
               - muted
@@ -54,8 +55,8 @@ blocks:
               - high
               - vibrant
             default: medium
-            tag_key: grade_saturation
           - key: contrast
+            tag_key: grade_contrast
             type: enum
             enum:
               - soft
@@ -64,8 +65,8 @@ blocks:
               - high
               - punchy
             default: medium
-            tag_key: grade_contrast
           - key: exposure
+            tag_key: grade_exposure
             type: enum
             enum:
               - dark
@@ -74,7 +75,6 @@ blocks:
               - bright
               - high
             default: balanced
-            tag_key: grade_exposure
         default_args:
           temperature: neutral
           saturation: medium

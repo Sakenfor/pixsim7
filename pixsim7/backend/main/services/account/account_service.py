@@ -35,6 +35,7 @@ logger = get_logger()
 _MAX_CONCURRENT_COOLDOWN_SECONDS = 30
 _ACCOUNTLESS_CREDIT_FLOOR = 1_000_000
 _ROUTING_CANDIDATE_SCAN_LIMIT = 200
+_HIGH_COST_MIN_CREDIT_HINT = 50
 
 
 def _normalize_route_token(value: Any) -> str:
@@ -545,6 +546,7 @@ class AccountService:
         user_id: Optional[int] = None,
         include_exhausted: bool = False,
         min_credits: Optional[int] = None,
+        required_credit_types: Optional[list[str]] = None,
         exclude_account_ids: Optional[list[int]] = None,
         operation_type: Optional[str] = None,
         model: Optional[str] = None,
@@ -563,6 +565,8 @@ class AccountService:
             min_credits: If set, only consider accounts that have at least one
                 credit row with amount >= this value (pre-filters in SQL to
                 avoid picking accounts that can't afford the operation)
+            required_credit_types: Optional credit pools to apply to `min_credits`
+                pre-filter (e.g. ["web"] vs ["openapi"]).
             exclude_account_ids: Account IDs to skip (e.g., accounts reserved
                 for pinned generations)
             operation_type: Optional operation identifier for routing filters.
@@ -608,13 +612,27 @@ class AccountService:
         # candidates we retry without it and let the live verify_credits
         # check handle correctness.
         _applied_credit_filter = False
+        normalized_credit_types: list[str] = []
         if min_credits is not None and min_credits > 0:
-            _credit_filter = ProviderAccount.id.in_(
-                select(ProviderCredit.account_id).where(
-                    ProviderCredit.amount >= min_credits
-                )
+            credit_filter_query = select(ProviderCredit.account_id).where(
+                ProviderCredit.amount >= min_credits
             )
+            normalized_credit_types = [
+                str(credit_type or "").strip().lower()
+                for credit_type in (required_credit_types or [])
+                if str(credit_type or "").strip()
+            ]
+            if normalized_credit_types:
+                credit_filter_query = credit_filter_query.where(
+                    ProviderCredit.credit_type.in_(normalized_credit_types)
+                )
+
+            _credit_filter = ProviderAccount.id.in_(credit_filter_query)
             _applied_credit_filter = True
+        prefer_high_credits = bool(
+            min_credits is not None
+            and min_credits >= _HIGH_COST_MIN_CREDIT_HINT
+        )
 
         # Sort by priority, then lowest credits first (drain cheap accounts
         # before touching high-credit ones), then least recently used.
@@ -626,21 +644,32 @@ class AccountService:
             .label("total_credits")
         )
 
-        def _finalize_query(q):
-            return (
-                q.add_columns(_total_credits).order_by(
+        def _finalize_query(q, *, prefer_high_credits: bool = False):
+            credits_sort_expr = _total_credits.desc() if prefer_high_credits else _total_credits.asc()
+            if prefer_high_credits:
+                order_by_expr = (
+                    credits_sort_expr,
                     ProviderAccount.priority.desc(),
-                    _total_credits.asc(),
                     ProviderAccount.last_used.asc().nullsfirst(),
                 )
+            else:
+                order_by_expr = (
+                    ProviderAccount.priority.desc(),
+                    credits_sort_expr,
+                    ProviderAccount.last_used.asc().nullsfirst(),
+                )
+            return (
+                q.add_columns(_total_credits).order_by(*order_by_expr)
                 .with_for_update(skip_locked=True)
                 .limit(_ROUTING_CANDIDATE_SCAN_LIMIT)
             )
 
         routing_enabled = operation_type is not None or model is not None
 
-        async def _pick_account(candidate_query):
-            result = await self.db.execute(_finalize_query(candidate_query))
+        async def _pick_account(candidate_query, *, prefer_high_credits: bool = False):
+            result = await self.db.execute(
+                _finalize_query(candidate_query, prefer_high_credits=prefer_high_credits)
+            )
             rows = list(result.all())
             if not rows:
                 return None, 0
@@ -672,14 +701,20 @@ class AccountService:
             if not scored:
                 return None, filtered_out
 
-            scored.sort(key=lambda item: (-item[0], item[1], item[2]))
+            if prefer_high_credits:
+                scored.sort(key=lambda item: (-item[1], -item[0], item[2]))
+            else:
+                scored.sort(key=lambda item: (-item[0], item[1], item[2]))
             return scored[0][3], filtered_out
 
         routing_filtered_count = 0
 
         # First attempt: with credit pre-filter (if applicable)
         if _applied_credit_filter:
-            account, routing_filtered_count = await _pick_account(query.where(_credit_filter))
+            account, routing_filtered_count = await _pick_account(
+                query.where(_credit_filter),
+                prefer_high_credits=prefer_high_credits,
+            )
             if not account:
                 # Credit pre-filter excluded everyone - DB credits may be
                 # stale.  Retry without the filter; live verify_credits
@@ -688,13 +723,24 @@ class AccountService:
                     "credit_prefilter_fallback",
                     provider_id=provider_id,
                     min_credits=min_credits,
+                    required_credit_types=normalized_credit_types or None,
+                    prefer_high_credits=True,
                     msg="credit pre-filter excluded all candidates, retrying without it",
                     routing_filtered_count=routing_filtered_count,
                 )
-                account, routing_filtered_count = await _pick_account(query)
+                # When the DB pre-filter returns no rows (possibly stale credit
+                # snapshots), probe high-credit accounts first to reduce
+                # low-credit churn for expensive generations.
+                account, routing_filtered_count = await _pick_account(
+                    query,
+                    prefer_high_credits=True,
+                )
         else:
             # Lock and skip already-locked rows (concurrent jobs will get different accounts)
-            account, routing_filtered_count = await _pick_account(query)
+            account, routing_filtered_count = await _pick_account(
+                query,
+                prefer_high_credits=prefer_high_credits,
+            )
 
         if not account:
             if routing_enabled:

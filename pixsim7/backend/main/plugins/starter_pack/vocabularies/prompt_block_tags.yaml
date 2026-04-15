@@ -226,6 +226,72 @@ tags:
         category: composition
     status: active
 
+  action_verb:
+    label: "Action Verb"
+    description: "Canonical verb family for subject action primitives."
+    data_type: string
+    allowed_values: [reach, grasp, pull, push, lift, lower, strike, embrace, release, gesture, react, turn_to]
+    aliases: [verb]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+    status: active
+
+  target_involvement:
+    label: "Target Involvement"
+    description: "Whether the action is targetless, indirect, or direct-contact."
+    data_type: string
+    allowed_values: [none, indirect, direct]
+    aliases: [involvement]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+      - role: action
+        category: interaction_beat
+    status: active
+
+  body_region:
+    label: "Body Region"
+    description: "Primary body region engaged by an action."
+    data_type: string
+    allowed_values: [arms, upper_body, full_body, hands, head]
+    aliases: [region]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+    status: active
+
+  manner_quality:
+    label: "Manner Quality"
+    description: "Qualitative style of execution for manner modifiers."
+    data_type: string
+    allowed_values: [gentle, tender, firm, sharp, fluid, hesitant, deliberate, languid, urgent, playful, cautious, abrupt, neutral]
+    aliases: [quality]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: action
+        category: motion_beat
+    status: active
+
+  manner_intensity:
+    label: "Manner Intensity"
+    description: "Intensity tier for manner modifiers."
+    data_type: string
+    allowed_values: [low, medium, high]
+    aliases: [intensity_tier]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: action
+        category: motion_beat
+    status: active
+
   placement_relation:
     label: "Placement Relation"
     description: "Relative placement relation between subject and anchor."
@@ -586,6 +652,53 @@ tags:
     applies_to:
       - role: style
         category: wardrobe
+    status: active
+
+  body_part:
+    label: "Body Part"
+    description: "Anatomical part ID emphasized or referenced by the block. Values are canonical part IDs from the anatomy vocabulary (without the `part:` prefix)."
+    data_type: string
+    allowed_values:
+      # from anatomy.yaml
+      - face
+      - hair
+      - expression
+      - body
+      - upper_body
+      - lower_body
+      - hands
+      - torso
+      - chest
+      - back
+      - groin
+      - between_legs
+      - buttocks
+      - shaft
+      - head_tip
+      # from anatomy_intimate.yaml (female)
+      - mammae
+      - papilla_mammaria
+      - vulva
+      - mons_pubis
+      - labia
+      - clitoris
+      # from anatomy_intimate.yaml (male)
+      - penis
+      - glans
+      - scrotum
+      - testes
+      # from anatomy_intimate.yaml (shared)
+      - perineum
+      - inguen
+      - femur_medialis
+    aliases: [part]
+    value_aliases: {}
+    applies_to:
+      - category: anatomy
+      - role: style
+        category: wardrobe
+      - role: action
+        category: motion_beat
     status: active
 
   silhouette:

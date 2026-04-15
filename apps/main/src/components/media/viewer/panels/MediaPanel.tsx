@@ -124,7 +124,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const assetModel = asset?._assetModel ?? null;
   const viewerOverlay = useOverlayWidgetsForAsset({
     asset: assetModel,
-    context: 'viewer',
   });
   const hasViewerOverlay = !!assetModel;
 

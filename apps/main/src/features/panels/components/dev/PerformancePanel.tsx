@@ -21,7 +21,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@lib/icons';
 import { hmrSingleton } from '@lib/utils';
 
+import {
+  clearLocalFolderPreviewCache,
+  getLocalFolderPreviewCacheStats,
+} from '@features/assets/hooks/useLocalFoldersController';
 import { getRegisteredInputStores } from '@features/generation/stores/generationScopeStores';
+
+import { getVideoActivationPoolStats } from '@lib/media/videoActivationPool';
+
+import { authMediaCaches, clearAuthMediaCaches } from '@/hooks/useAuthenticatedMedia';
+import { clearThumbnailBlobCache, thumbnailBlobCache } from '@/hooks/useMediaThumbnail';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -107,19 +116,6 @@ function countObjectKeys(obj: unknown): number {
   return 0;
 }
 
-/** Access the blob cache Maps via the same hmrSingleton keys used by the hooks. */
-function getThumbnailBlobCache(): Map<string, string> {
-  return hmrSingleton('useMediaThumbnail:blobCache', () => new Map<string, string>());
-}
-
-function getAuthBlobCache(): Map<string, string> {
-  return hmrSingleton('useAuthenticatedMedia:blobCache', () => new Map<string, string>());
-}
-
-function getAuthVideoBlobCache(): Map<string, string> {
-  return hmrSingleton('useAuthenticatedMedia:videoBlobCache', () => new Map<string, string>());
-}
-
 /** Scan globalThis for Zustand stores exposed via exposeStoreForDebugging. */
 function getExposedStores(): StoreInfo[] {
   const stores: StoreInfo[] = [];
@@ -160,12 +156,84 @@ interface TrackedTimer {
   type: 'interval' | 'timeout';
   createdAt: number;
   delay: number;
+  callSite: string;
+}
+
+interface CallSiteStats {
+  callSite: string;
+  created: number;
+  cleared: number;
+  fired: number;
+  active: number;
+  /** Sum of delays (ms) for active timers — surfaces long-lived pins. */
+  activeDelayTotal: number;
+  /** Types seen at this call site. */
+  types: Set<'interval' | 'timeout'>;
 }
 
 interface TimerTracker {
   active: Map<number, TrackedTimer>;
   totalCreated: number;
   totalCleared: number;
+  /** Per call-site lifetime stats (survives timer clear/fire). */
+  bySite: Map<string, CallSiteStats>;
+}
+
+/**
+ * Walk the stack and pick the first frame that looks like app code.
+ * Filters out vendor/node_modules/this-file frames so the surfaced site is
+ * the actual caller that scheduled the timer.
+ */
+function captureCallSite(): string {
+  const err = new Error();
+  const stack = err.stack ?? '';
+  const lines = stack.split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (line.includes('PerformancePanel')) continue;
+    if (line.includes('node_modules')) continue;
+    if (line.includes('/@vite/')) continue;
+    if (line.includes('/@react-refresh')) continue;
+    if (line.includes('captureCallSite')) continue;
+    // Shrink the frame: keep "at fn (path:line:col)" → "fn (path:line)".
+    const match = line.match(/at\s+(.+?)\s+\((.+?):(\d+):\d+\)$/)
+      ?? line.match(/at\s+(.+?):(\d+):\d+$/);
+    if (match) {
+      if (match.length === 4) return `${match[1]} (${shortenPath(match[2])}:${match[3]})`;
+      return `${shortenPath(match[1])}:${match[2]}`;
+    }
+    return line.slice(0, 200);
+  }
+  return '(unknown)';
+}
+
+function shortenPath(p: string): string {
+  // Strip scheme + host, keep the last 3 path segments for readability.
+  const pathPart = p.replace(/^https?:\/\/[^/]+/, '');
+  const segments = pathPart.split('/').filter(Boolean);
+  if (segments.length <= 3) return pathPart;
+  return '.../' + segments.slice(-3).join('/');
+}
+
+function getOrCreateSiteStats(
+  tracker: TimerTracker,
+  callSite: string,
+): CallSiteStats {
+  let stats = tracker.bySite.get(callSite);
+  if (!stats) {
+    stats = {
+      callSite,
+      created: 0,
+      cleared: 0,
+      fired: 0,
+      active: 0,
+      activeDelayTotal: 0,
+      types: new Set(),
+    };
+    tracker.bySite.set(callSite, stats);
+  }
+  return stats;
 }
 
 const timerTracker = hmrSingleton<TimerTracker>('perf-panel:timerTracker', () => {
@@ -173,6 +241,7 @@ const timerTracker = hmrSingleton<TimerTracker>('perf-panel:timerTracker', () =>
     active: new Map(),
     totalCreated: 0,
     totalCleared: 0,
+    bySite: new Map(),
   };
 
   const origSetInterval = window.setInterval.bind(window);
@@ -180,43 +249,72 @@ const timerTracker = hmrSingleton<TimerTracker>('perf-panel:timerTracker', () =>
   const origSetTimeout = window.setTimeout.bind(window);
   const origClearTimeout = window.clearTimeout.bind(window);
 
+  const onRemove = (numId: number, reason: 'cleared' | 'fired') => {
+    const t = tracker.active.get(numId);
+    if (!t) return;
+    tracker.active.delete(numId);
+    const stats = tracker.bySite.get(t.callSite);
+    if (stats) {
+      stats.active = Math.max(0, stats.active - 1);
+      stats.activeDelayTotal = Math.max(0, stats.activeDelayTotal - t.delay);
+      if (reason === 'cleared') stats.cleared++;
+      else stats.fired++;
+    }
+  };
+
   window.setInterval = ((...args: Parameters<typeof setInterval>) => {
+    const callSite = captureCallSite();
     const id = origSetInterval(...args);
+    const numId = id as unknown as number;
+    const delay = typeof args[1] === 'number' ? args[1] : 0;
     tracker.totalCreated++;
-    tracker.active.set(id as unknown as number, {
-      id: id as unknown as number,
-      type: 'interval',
-      createdAt: Date.now(),
-      delay: (typeof args[1] === 'number' ? args[1] : 0),
-    });
+    tracker.active.set(numId, { id: numId, type: 'interval', createdAt: Date.now(), delay, callSite });
+    const stats = getOrCreateSiteStats(tracker, callSite);
+    stats.created++;
+    stats.active++;
+    stats.activeDelayTotal += delay;
+    stats.types.add('interval');
     return id;
   }) as typeof setInterval;
 
   window.clearInterval = ((id?: number | ReturnType<typeof setInterval>) => {
     if (id != null) {
-      tracker.active.delete(id as number);
+      onRemove(id as number, 'cleared');
       tracker.totalCleared++;
     }
     origClearInterval(id);
   }) as typeof clearInterval;
 
-  window.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
-    const id = origSetTimeout(...args);
-    tracker.totalCreated++;
+  window.setTimeout = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) => {
+    const callSite = captureCallSite();
+    const delay = typeof timeout === 'number' ? timeout : 0;
+    // Wrap handler so we auto-remove from active when it fires.
+    const wrapped = (...callArgs: unknown[]) => {
+      try {
+        if (typeof handler === 'function') {
+          return (handler as (...a: unknown[]) => unknown)(...callArgs);
+        }
+        // String handlers (rare): eval-style — just invoke original.
+        return undefined;
+      } finally {
+        onRemove(numId, 'fired');
+      }
+    };
+    const id = origSetTimeout(wrapped as TimerHandler, timeout, ...(rest as []));
     const numId = id as unknown as number;
-    tracker.active.set(numId, {
-      id: numId,
-      type: 'timeout',
-      createdAt: Date.now(),
-      delay: (typeof args[1] === 'number' ? args[1] : 0),
-    });
-    // Timeouts that fire naturally stay in the map until next poll cleans stale ones.
+    tracker.totalCreated++;
+    tracker.active.set(numId, { id: numId, type: 'timeout', createdAt: Date.now(), delay, callSite });
+    const stats = getOrCreateSiteStats(tracker, callSite);
+    stats.created++;
+    stats.active++;
+    stats.activeDelayTotal += delay;
+    stats.types.add('timeout');
     return id;
   }) as typeof setTimeout;
 
   window.clearTimeout = ((id?: number | ReturnType<typeof setTimeout>) => {
     if (id != null) {
-      tracker.active.delete(id as number);
+      onRemove(id as number, 'cleared');
       tracker.totalCleared++;
     }
     origClearTimeout(id);
@@ -379,9 +477,10 @@ export function PerformancePanel() {
   // Current snapshots
   const [heap, setHeap] = useState<HeapSnapshot | null>(null);
   const [domCount, setDomCount] = useState(0);
-  const [thumbCacheSize, setThumbCacheSize] = useState(0);
-  const [authCacheSize, setAuthCacheSize] = useState(0);
-  const [authVideoCacheSize, setAuthVideoCacheSize] = useState(0);
+  const [thumbCache, setThumbCache] = useState({ entries: 0, bytes: 0 });
+  const [authImageCache, setAuthImageCache] = useState({ entries: 0, bytes: 0 });
+  const [authVideoCache, setAuthVideoCache] = useState({ entries: 0, bytes: 0 });
+  const [localFolderCacheEntries, setLocalFolderCacheEntries] = useState(0);
   const [genScopeCount, setGenScopeCount] = useState(0);
   const [exposedStores, setExposedStores] = useState<StoreInfo[]>([]);
   const [localStorageEntries, setLocalStorageEntries] = useState<LocalStorageEntry[]>([]);
@@ -399,9 +498,10 @@ export function PerformancePanel() {
     const dom = getDomNodeCount();
     setDomCount(dom);
 
-    setThumbCacheSize(getThumbnailBlobCache().size);
-    setAuthCacheSize(getAuthBlobCache().size);
-    setAuthVideoCacheSize(getAuthVideoBlobCache().size);
+    setThumbCache({ entries: thumbnailBlobCache.size, bytes: thumbnailBlobCache.totalBytes });
+    setAuthImageCache({ entries: authMediaCaches.image.size, bytes: authMediaCaches.image.totalBytes });
+    setAuthVideoCache({ entries: authMediaCaches.video.size, bytes: authMediaCaches.video.totalBytes });
+    setLocalFolderCacheEntries(getLocalFolderPreviewCacheStats().entries);
     setGenScopeCount(getRegisteredInputStores().length);
     setExposedStores(getExposedStores());
     setLocalStorageEntries(getLocalStorageEntries());
@@ -439,6 +539,133 @@ export function PerformancePanel() {
     const id = setInterval(pollMetrics, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pollMetrics]);
+
+  // ── Cache actions ──
+
+  const [memoryReportCopied, setMemoryReportCopied] = useState(false);
+
+  const handleClearAllCaches = useCallback(() => {
+    clearThumbnailBlobCache();
+    clearAuthMediaCaches();
+    clearLocalFolderPreviewCache();
+    pollMetrics();
+  }, [pollMetrics]);
+
+  const handleCopyMemoryReport = useCallback(async () => {
+    const h = getHeapSnapshot();
+    const lines: string[] = [];
+    lines.push(`Memory report — ${new Date().toISOString()}`);
+    lines.push('');
+    if (h) {
+      lines.push(`JS heap used:   ${formatBytes(h.usedJSHeapSize)}`);
+      lines.push(`JS heap total:  ${formatBytes(h.totalJSHeapSize)}`);
+      lines.push(`JS heap limit:  ${formatBytes(h.jsHeapSizeLimit)}`);
+    } else {
+      lines.push('JS heap:        (performance.memory not available)');
+    }
+    lines.push(`DOM nodes:      ${getDomNodeCount()}`);
+    // Media element counts — concurrent <video> decoders are a common
+    // source of native/GPU memory that JS can't see.
+    const videos = document.querySelectorAll('video');
+    const images = document.querySelectorAll('img');
+    const canvases = document.querySelectorAll('canvas');
+    let videosWithSrc = 0;
+    let videosPlaying = 0;
+    for (const v of Array.from(videos) as HTMLVideoElement[]) {
+      if (v.currentSrc || v.src) videosWithSrc++;
+      if (!v.paused && !v.ended && v.readyState > 2) videosPlaying++;
+    }
+    let imagesWithSrc = 0;
+    for (const i of Array.from(images) as HTMLImageElement[]) {
+      if (i.currentSrc || i.src) imagesWithSrc++;
+    }
+    const poolStats = getVideoActivationPoolStats();
+    lines.push(`<video>:        ${videos.length} total, ${videosWithSrc} with src, ${videosPlaying} playing`);
+    lines.push(`Video pool:     ${poolStats.active}/${poolStats.maxActive} active, ${poolStats.queued} queued`);
+    lines.push(`<img>:          ${images.length} total, ${imagesWithSrc} with src`);
+    lines.push(`<canvas>:       ${canvases.length}`);
+    lines.push('');
+
+    // Browser-level breakdown (Chrome: requires crossOriginIsolated).
+    const perf = performance as unknown as {
+      measureUserAgentSpecificMemory?: () => Promise<{
+        bytes: number;
+        breakdown: Array<{ bytes: number; attribution: unknown[]; types: string[] }>;
+      }>;
+    };
+    if (typeof perf.measureUserAgentSpecificMemory === 'function') {
+      try {
+        const m = await perf.measureUserAgentSpecificMemory();
+        lines.push(`UA memory total: ${formatBytes(m.bytes)}`);
+        const groups: Record<string, number> = {};
+        for (const b of m.breakdown) {
+          const key = (b.types && b.types.length > 0 ? b.types.join('+') : 'Unknown');
+          groups[key] = (groups[key] || 0) + b.bytes;
+        }
+        const sorted = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+        for (const [type, bytes] of sorted) {
+          lines.push(`  ${type.padEnd(20)} ${formatBytes(bytes)}`);
+        }
+        lines.push('');
+      } catch (e) {
+        lines.push(`UA memory: unavailable (${(e as Error).message})`);
+        lines.push('  (Requires crossOriginIsolated — needs COOP/COEP headers)');
+        lines.push('');
+      }
+    } else {
+      lines.push('UA memory: measureUserAgentSpecificMemory() not supported');
+      lines.push('');
+    }
+
+    // Total origin storage (HTTP cache not included here, but Cache Storage + IDB + OPFS are).
+    if (navigator.storage?.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        const usage = est.usage ?? 0;
+        const quota = est.quota ?? 0;
+        lines.push(`Origin storage:  ${formatBytes(usage)} used / ${formatBytes(quota)} quota`);
+        const details = (est as unknown as { usageDetails?: Record<string, number> }).usageDetails;
+        if (details) {
+          for (const [key, bytes] of Object.entries(details)) {
+            lines.push(`  ${key.padEnd(20)} ${formatBytes(bytes)}`);
+          }
+        }
+        lines.push('');
+      } catch { /* ignore */ }
+    }
+
+    lines.push('Blob caches:');
+    lines.push(`  Thumbnail:        ${thumbnailBlobCache.size}/${thumbnailBlobCache.maxEntries} entries, ${formatBytes(thumbnailBlobCache.totalBytes)}`);
+    lines.push(`  Auth image:       ${authMediaCaches.image.size}/${authMediaCaches.image.maxEntries} entries, ${formatBytes(authMediaCaches.image.totalBytes)}`);
+    lines.push(`  Auth video:       ${authMediaCaches.video.size}/${authMediaCaches.video.maxEntries} entries, ${formatBytes(authMediaCaches.video.totalBytes)}`);
+    lines.push(`  Local folder:     ${getLocalFolderPreviewCacheStats().entries} entries (bytes unknown)`);
+    const cachesBytes =
+      thumbnailBlobCache.totalBytes +
+      authMediaCaches.image.totalBytes +
+      authMediaCaches.video.totalBytes;
+    lines.push(`  Tracked total:    ${formatBytes(cachesBytes)}`);
+    lines.push('');
+    const stores = getExposedStores();
+    lines.push(`Zustand stores (top 15 by size):`);
+    for (const s of stores.slice(0, 15)) {
+      lines.push(`  ${s.name.padEnd(30)} ${formatBytes(s.stateSize).padStart(10)}  (${s.keyCount} keys)`);
+    }
+    lines.push('');
+    const ls = getLocalStorageEntries();
+    const lsTotal = ls.reduce((a, e) => a + e.size, 0);
+    lines.push(`localStorage:     ${ls.length} keys, ${formatBytes(lsTotal)} total`);
+    lines.push(`Active timers:    ${timerTracker.active.size} (${timerTracker.totalCreated} created, ${timerTracker.totalCleared} cleared)`);
+    lines.push(`Generation scopes: ${getRegisteredInputStores().length}`);
+
+    const report = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(report);
+      setMemoryReportCopied(true);
+      setTimeout(() => setMemoryReportCopied(false), 2000);
+    } catch {
+      console.log(report);
+    }
+  }, []);
 
   // ── Sidebar Navigation ──
 
@@ -692,22 +919,36 @@ export function PerformancePanel() {
         Module-level LRU caches that keep blob URLs alive across virtualized
         component mount/unmount cycles. Revocation happens on eviction.
       </p>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <StatCard
           label="Thumbnail Cache"
-          value={`${thumbCacheSize} / 100`}
-          sublabel={thumbCacheSize >= 100 ? 'At capacity — LRU evicting' : `${((thumbCacheSize / 100) * 100).toFixed(0)}% full`}
+          value={formatBytes(thumbCache.bytes)}
+          sublabel={`${thumbCache.entries} / ${thumbnailBlobCache.maxEntries} entries${thumbnailBlobCache.maxBytes ? ` • cap ${formatBytes(thumbnailBlobCache.maxBytes)}` : ''}`}
         />
         <StatCard
           label="Auth Image Cache"
-          value={`${authCacheSize} / 60`}
-          sublabel={authCacheSize >= 60 ? 'At capacity — LRU evicting' : `${((authCacheSize / 60) * 100).toFixed(0)}% full`}
+          value={formatBytes(authImageCache.bytes)}
+          sublabel={`${authImageCache.entries} / ${authMediaCaches.image.maxEntries} entries${authMediaCaches.image.maxBytes ? ` • cap ${formatBytes(authMediaCaches.image.maxBytes)}` : ''}`}
         />
         <StatCard
           label="Auth Video Cache"
-          value={`${authVideoCacheSize} / 8`}
-          sublabel={authVideoCacheSize >= 8 ? 'At capacity — LRU evicting' : `${((authVideoCacheSize / 8) * 100).toFixed(0)}% full`}
+          value={formatBytes(authVideoCache.bytes)}
+          sublabel={`${authVideoCache.entries} / ${authMediaCaches.video.maxEntries} entries${authMediaCaches.video.maxBytes ? ` • cap ${formatBytes(authMediaCaches.video.maxBytes)}` : ''}`}
         />
+        <StatCard
+          label="Local Folder Previews"
+          value={`${localFolderCacheEntries}`}
+          sublabel="entries (size unknown — from IndexedDB)"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" onClick={handleClearAllCaches}>
+          Clear all blob caches
+        </Button>
+        <Button size="sm" variant="secondary" onClick={handleCopyMemoryReport}>
+          {memoryReportCopied ? 'Copied!' : 'Copy memory report'}
+        </Button>
       </div>
 
       <SectionHeader>Generation Scopes</SectionHeader>
@@ -773,6 +1014,11 @@ export function PerformancePanel() {
       .filter((t) => t.type === 'interval')
       .sort((a, b) => a.createdAt - b.createdAt);
 
+    // Call-site breakdown — sorted by active count, then lifetime creates.
+    const sites = Array.from(timerTracker.bySite.values())
+      .sort((a, b) => (b.active - a.active) || (b.created - a.created))
+      .slice(0, 30);
+
     return (
       <div className="p-4 space-y-4">
         <SectionHeader>Active Timers</SectionHeader>
@@ -788,6 +1034,52 @@ export function PerformancePanel() {
             value={`${timerTracker.totalCreated} / ${timerTracker.totalCleared}`}
           />
         </div>
+
+        {sites.length > 0 && (
+          <>
+            <SectionHeader>Top call sites</SectionHeader>
+            <p className="text-xs text-neutral-500">
+              Call sites that scheduled timers, ranked by active count then
+              lifetime creates.  High <code>active</code> with low{' '}
+              <code>fired + cleared</code> = likely leak.
+            </p>
+            <div className="border rounded-md overflow-hidden dark:border-neutral-700">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-neutral-50 dark:bg-neutral-800 border-b dark:border-neutral-700">
+                    <th className="text-left py-1.5 px-3 font-medium text-neutral-500">Site</th>
+                    <th className="text-right py-1.5 px-3 font-medium text-neutral-500">Active</th>
+                    <th className="text-right py-1.5 px-3 font-medium text-neutral-500">Created</th>
+                    <th className="text-right py-1.5 px-3 font-medium text-neutral-500">Cleared</th>
+                    <th className="text-right py-1.5 px-3 font-medium text-neutral-500">Fired</th>
+                    <th className="text-right py-1.5 px-3 font-medium text-neutral-500">Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sites.map((s) => (
+                    <tr
+                      key={s.callSite}
+                      className="border-b dark:border-neutral-700 last:border-b-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+                    >
+                      <td className="py-1.5 px-3 font-mono text-[10px] break-all">{s.callSite}</td>
+                      <td className="py-1.5 px-3 text-right">
+                        <span className={s.active > 50 ? 'text-red-500 font-medium' : s.active > 10 ? 'text-amber-500' : ''}>
+                          {s.active}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-3 text-right text-neutral-500">{s.created}</td>
+                      <td className="py-1.5 px-3 text-right text-neutral-500">{s.cleared}</td>
+                      <td className="py-1.5 px-3 text-right text-neutral-500">{s.fired}</td>
+                      <td className="py-1.5 px-3 text-right text-neutral-500">
+                        {Array.from(s.types).join(',')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {intervals.length > 0 && (
           <>

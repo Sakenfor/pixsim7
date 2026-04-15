@@ -7,17 +7,27 @@ import {
   ensurePromptBlocks,
 } from '@pixsim7/core.prompt';
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
-import { DropdownItem, DropdownDivider, FoldGroup, GroupedFold, Popover, PromptInput } from '@pixsim7/shared.ui';
+import { DropdownItem, DropdownDivider, FoldGroup, GroupedFold, Popover, PromptInput, PromptEditor } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
+import {
+  ReferencePicker,
+  useReferenceInput,
+  useReferences,
+  type ReferenceItem,
+  type ReferencePickerHandle,
+} from '@lib/references';
 import { logEvent } from '@lib/utils/logging';
+import { getTextareaCaretCoords } from '@lib/utils/textareaCaret';
 
+import { CAP_ASSET, CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
 import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
+import type { AssetModel } from '@/features/assets/models/asset';
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import {
@@ -38,12 +48,14 @@ import {
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
+import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
 
 
 import { FloatingToolPanel } from './FloatingToolPanel';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
+import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { ShadowSidePanel } from './ShadowSidePanel';
@@ -94,6 +106,90 @@ interface CategoryDiscoveryResponse {
   suggested_candidates: PromptBlockCandidate[];
 }
 
+type PromptHistoryScope = 'provider-operation' | 'operation' | 'global';
+interface PromptFamilyRecord {
+  id: string;
+  slug?: string | null;
+  title?: string | null;
+}
+
+interface PromptVersionRecord {
+  id: string;
+  family_id: string;
+  version_number: number;
+}
+
+const QUICKGEN_HISTORY_FAMILY_CACHE_KEY = 'quickgen_history_prompt_family_id_v1';
+const QUICKGEN_HISTORY_FAMILY_TITLE = 'QuickGen History';
+const QUICKGEN_HISTORY_FAMILY_SLUG = 'quickgen-history';
+
+function readCachedQuickGenHistoryFamilyId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(QUICKGEN_HISTORY_FAMILY_CACHE_KEY);
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function writeCachedQuickGenHistoryFamilyId(familyId: string): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(QUICKGEN_HISTORY_FAMILY_CACHE_KEY, familyId);
+}
+
+async function findQuickGenHistoryFamilyId(api: ReturnType<typeof useApi>): Promise<string | null> {
+  const rows = await api.get<PromptFamilyRecord[]>('/prompts/families', {
+    params: { is_active: true, limit: 200, offset: 0 },
+  });
+  const existing = rows.find((row) => {
+    const slug = row.slug?.trim().toLowerCase();
+    const title = row.title?.trim().toLowerCase();
+    return slug === QUICKGEN_HISTORY_FAMILY_SLUG || title === QUICKGEN_HISTORY_FAMILY_TITLE.toLowerCase();
+  });
+  return existing?.id ?? null;
+}
+
+async function ensureQuickGenHistoryFamilyId(api: ReturnType<typeof useApi>): Promise<string> {
+  const cachedFamilyId = readCachedQuickGenHistoryFamilyId();
+  if (cachedFamilyId) {
+    try {
+      await api.get<PromptFamilyRecord>(`/prompts/families/${encodeURIComponent(cachedFamilyId)}`);
+      return cachedFamilyId;
+    } catch {
+      // Continue and resolve/create a valid family.
+    }
+  }
+
+  try {
+    const existingFamilyId = await findQuickGenHistoryFamilyId(api);
+    if (existingFamilyId) {
+      writeCachedQuickGenHistoryFamilyId(existingFamilyId);
+      return existingFamilyId;
+    }
+  } catch {
+    // Best effort lookup, fall through to create.
+  }
+
+  try {
+    const created = await api.post<PromptFamilyRecord>('/prompts/families', {
+      title: QUICKGEN_HISTORY_FAMILY_TITLE,
+      prompt_type: 'visual',
+      slug: QUICKGEN_HISTORY_FAMILY_SLUG,
+      category: 'quickgen',
+      tags: ['quickgen', 'history', 'drafts'],
+      description: 'Pinned prompt history promotions from QuickGen.',
+    });
+    writeCachedQuickGenHistoryFamilyId(created.id);
+    return created.id;
+  } catch (error) {
+    const fallbackFamilyId = await findQuickGenHistoryFamilyId(api);
+    if (fallbackFamilyId) {
+      writeCachedQuickGenHistoryFamilyId(fallbackFamilyId);
+      return fallbackFamilyId;
+    }
+    throw error;
+  }
+}
+
 export interface PromptComposerProps {
   value: string;
   onChange: (val: string) => void;
@@ -105,6 +201,11 @@ export interface PromptComposerProps {
   showCounter?: boolean;
   resizable?: boolean;
   minHeight?: number;
+  historyScopeKey?: string | null;
+  historyMaxEntries?: number;
+  historyScopeLabel?: string;
+  historyScopeValue?: PromptHistoryScope;
+  onHistoryScopeChange?: (nextScope: PromptHistoryScope) => void;
   runContextSeed?: Record<string, unknown>;
   onPromptToolRunContextPatch?: (patch: {
     guidance_patch?: Record<string, unknown>;
@@ -149,6 +250,11 @@ export function PromptComposer({
   showCounter = true,
   resizable = false,
   minHeight,
+  historyScopeKey,
+  historyMaxEntries,
+  historyScopeLabel,
+  historyScopeValue,
+  onHistoryScopeChange,
   runContextSeed,
   onPromptToolRunContextPatch,
 }: PromptComposerProps) {
@@ -161,6 +267,8 @@ export function PromptComposer({
   const defaultAnalyzer = usePromptSettingsStore((state) => state.defaultAnalyzer);
   const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
+  const editorEngine = usePromptSettingsStore((state) => state.editorEngine);
+  const useCodemirror = editorEngine === 'codemirror';
   const [mode, setMode] = useState<PromptComposerMode>('text');
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
@@ -178,8 +286,100 @@ export function PromptComposer({
   const [showBlockBuilder, setShowBlockBuilder] = useState(false);
   const [showBlockTools, setShowBlockTools] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [, forceHistoryRender] = useState(0);
+  const [promotingHistoryIndex, setPromotingHistoryIndex] = useState<number | null>(null);
+  const [historyPromotionNotice, setHistoryPromotionNotice] = useState<string | null>(null);
+  const [historyPromotionError, setHistoryPromotionError] = useState<string | null>(null);
   const [showPromptTools, setShowPromptTools] = useState(false);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // --- Ghost diff (inline comparison backdrop) ---
+  const [ghostSource, setGhostSource] = useState<GhostDiffSource | null>(null);
+  const [ghostSticky, setGhostSticky] = useState(false);
+  /** How many steps back from current we're comparing (1 = previous). Used in sticky mode. */
+  const [ghostCompareOffset, setGhostCompareOffset] = useState(1);
+  /** When true, ghost compares against the prompt of the currently-viewed asset (CAP_ASSET). */
+  const [compareAgainstMedia, setCompareAgainstMedia] = useState(false);
+  const [ghostSuppressed, setGhostSuppressed] = useState(false);
+  /** Removed tokens from the current diff — not rendered inline (breaks alignment), surfaced as badge. */
+  const [ghostRemoved, setGhostRemoved] = useState<string[]>([]);
+  /** Whether Shift is held — while held + in media-compare mode, hover overrides selection. */
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const ghostClearTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // @mention picker — vocabulary references (anatomy, etc.) + any other
+  // sources registered in `referenceRegistry`. Inserts plain text via
+  // per-item `insertText` from the anatomy source; other sources using the
+  // default `token` mode (plans/worlds) will insert `@type:id` if ever
+  // enabled here. For now only anatomy is surfaced in the prompt box, but
+  // the picker supports all registered sources transparently.
+  const references = useReferences();
+  const referencePickerRef = useRef<ReferencePickerHandle>(null);
+  const referenceInput = useReferenceInput(references, referencePickerRef, {
+    insertMode: 'text',
+  });
+  const handleReferenceSelect = useCallback(
+    (item: ReferenceItem) => {
+      referenceInput.select(item, (fn) => {
+        onChangeRef.current(fn(valueRef.current));
+      });
+    },
+    [referenceInput],
+  );
+
+  // Caret-anchored popup coords. Computed when the picker becomes active
+  // (i.e. when the user types `@` in a valid position) and anchored to the
+  // `@` index — not the live cursor — so the popup doesn't jitter as the
+  // user types the query. Recomputed if the trigger moves (e.g. user types
+  // over the query and @ ends up at a new position).
+  const [referenceAnchor, setReferenceAnchor] = useState<{ top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!referenceInput.active || referenceInput.triggerPos < 0) {
+      setReferenceAnchor(null);
+      return;
+    }
+    const el = promptTextareaRef.current;
+    if (!el) return;
+    const coords = getTextareaCaretCoords(el, referenceInput.triggerPos);
+    // Caret coords are relative to the textarea's content area; the picker
+    // is positioned absolute within the outer container. Offset by the
+    // textarea's position within its offsetParent so the two coord systems
+    // align. This relies on the container being the nearest positioned
+    // ancestor (it is — `relative h-full` above).
+    setReferenceAnchor({
+      top: el.offsetTop + coords.top + coords.height + 4,
+      left: el.offsetLeft + coords.left,
+    });
+  }, [referenceInput.active, referenceInput.triggerPos]);
+
+  // CAP_ASSET is local-scoped and comes from whatever you're hovering or focused on
+  // (MediaCard on hover, MediaDisplay when in a viewer panel). CAP_ASSET_SELECTION
+  // is root-scoped and stable — the viewer's currently selected asset.
+  // Prefer live hover (for nice "scrub gallery to peek diff" UX) with selection fallback.
+  const { value: hoverAsset } = useCapability<AssetModel>(CAP_ASSET);
+  const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
+  const pinnedCompareTarget = useMediaCompareTargetStore((state) => state.target);
+  const selectionAssetPrompt = selection?.asset?._assetModel?.prompt ?? null;
+  const hoverAssetPrompt = hoverAsset?.prompt ?? null;
+  const pinnedAssetPrompt = pinnedCompareTarget?.prompt ?? null;
+  const hasPinnedCompareTarget = !!pinnedAssetPrompt;
+  /** Selection (playing/viewed media) is the default anchor. Shift+hover peeks a different target. */
+  const peekingHover = shiftHeld && !!hoverAssetPrompt;
+  const activeAssetPrompt = peekingHover
+    ? hoverAssetPrompt
+    : pinnedAssetPrompt ?? selectionAssetPrompt;
+  const activeAssetType = peekingHover
+    ? hoverAsset?.type ?? 'image'
+    : pinnedCompareTarget?.mediaType ?? selection?.asset?.type ?? 'image';
+  /** Source label for the tooltip — tells the user what they're comparing against. */
+  const comparisonSourceLabel = peekingHover
+    ? 'hovered asset'
+    : hasPinnedCompareTarget
+      ? 'pinned media card'
+      : selectionAssetPrompt
+      ? 'viewer selection'
+      : null;
 
   const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
   const [fetchingVariants, setFetchingVariants] = useState(false);
@@ -205,9 +405,78 @@ export function PromptComposer({
   valueRef.current = value;
 
   // --- Undo/redo history ---
-  const history = usePromptHistory(value, 80);
+  const history = usePromptHistory(value, {
+    persistenceKey: historyScopeKey,
+    maxEntries: historyMaxEntries ?? 80,
+  });
   const undoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
   const undoingRef = useRef(false);
+
+  /** Show ghost diff after a history navigation. Auto-clears after delay unless sticky. */
+  const showGhostFor = useCallback(
+    (comparisonText: string, stepDistance: number) => {
+      clearTimeout(ghostClearTimerRef.current);
+      setGhostSource({ comparisonText, stepDistance });
+      if (!ghostSticky) {
+        ghostClearTimerRef.current = setTimeout(() => setGhostSource(null), 4000);
+      }
+    },
+    [ghostSticky],
+  );
+
+  /** Apply sticky ghost from timeline at a given offset (steps back from current). */
+  const applyStickyGhost = useCallback(
+    (offset: number) => {
+      const tl = history.getTimeline();
+      const targetIdx = tl.currentIndex - offset;
+      if (targetIdx < 0 || offset < 1) return;
+      setGhostCompareOffset(offset);
+      setGhostSource({
+        comparisonText: tl.entries[targetIdx],
+        stepDistance: offset,
+      });
+    },
+    [history],
+  );
+
+  // Cleanup ghost timer on unmount
+  useEffect(() => () => clearTimeout(ghostClearTimerRef.current), []);
+
+  // Keep ghost synced to active-media prompt when that mode is active.
+  useEffect(() => {
+    if (!compareAgainstMedia) return;
+    if (!activeAssetPrompt) {
+      setGhostSource(null);
+      return;
+    }
+    // stepDistance=1 keeps highlights vivid — the active media is the "reference"
+    setGhostSource({ comparisonText: activeAssetPrompt, stepDistance: 1 });
+  }, [compareAgainstMedia, activeAssetPrompt]);
+
+  // Shift tracking for peek-on-hover. Only active when compare mode is on
+  // AND the cursor is actually over a peekable card — otherwise Shift for
+  // uppercase input would cause useless re-renders and visual flicker.
+  useEffect(() => {
+    if (!compareAgainstMedia || !hoverAssetPrompt) {
+      setShiftHeld(false);
+      return;
+    }
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true);
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false);
+    };
+    const onBlur = () => setShiftHeld(false);
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [compareAgainstMedia, hoverAssetPrompt]);
 
   const flushSnapshot = useCallback(() => {
     clearTimeout(undoDebounceRef.current);
@@ -224,8 +493,16 @@ export function PromptComposer({
     undoDebounceRef.current = setTimeout(() => {
       history.snapshot(value);
     }, 600);
+
+    // User is typing new text — clear transient ghost
+    // (sticky-history and media-compare both survive: they're explicit modes)
+    if (ghostSource && !ghostSticky && !compareAgainstMedia) {
+      clearTimeout(ghostClearTimerRef.current);
+      ghostClearTimerRef.current = setTimeout(() => setGhostSource(null), 1200);
+    }
+
     return () => clearTimeout(undoDebounceRef.current);
-  }, [value, history]);
+  }, [value, history]); // ghostSource/ghostSticky intentionally excluded — read reactively
 
   // Capture-phase keyboard handler — intercepts before native textarea undo
   const handleUndoKeyDown = useCallback(
@@ -235,23 +512,27 @@ export function PromptComposer({
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
+        const beforeUndo = valueRef.current;
         flushSnapshot();
         const prev = history.undo();
         if (prev !== null) {
           undoingRef.current = true;
           onChangeRef.current(prev);
+          showGhostFor(beforeUndo, 1);
         }
       } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
         e.preventDefault();
         e.stopPropagation();
+        const beforeRedo = valueRef.current;
         const next = history.redo();
         if (next !== null) {
           undoingRef.current = true;
           onChangeRef.current(next);
+          showGhostFor(beforeRedo, 1);
         }
       }
     },
-    [flushSnapshot, history],
+    [flushSnapshot, history, showGhostFor],
   );
 
   // --- Context menu data for prompt-text right-click ---
@@ -260,45 +541,113 @@ export function PromptComposer({
     prompt: value,
     setPrompt: onChange,
     undo: () => {
+      const beforeUndo = valueRef.current;
       flushSnapshot();
       const prev = history.undo();
       if (prev !== null) {
         undoingRef.current = true;
         onChangeRef.current(prev);
+        showGhostFor(beforeUndo, 1);
       }
     },
     redo: () => {
+      const beforeRedo = valueRef.current;
       const next = history.redo();
       if (next !== null) {
         undoingRef.current = true;
         onChangeRef.current(next);
+        showGhostFor(beforeRedo, 1);
       }
     },
     canUndo: history.canUndo(),
     canRedo: history.canRedo(),
-  }, [value, onChange, flushSnapshot, history]);
+  }, [value, onChange, flushSnapshot, history, showGhostFor]);
 
   // --- History popover ---
-  const historyTimeline = useMemo(
-    () => (showHistory ? history.getTimeline() : { entries: [], currentIndex: 0 }),
-    // Re-compute only when popover opens (showHistory toggle)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showHistory],
-  );
+  const historyTimeline = showHistory
+    ? history.getTimeline()
+    : { entries: [], entryIds: [], pinnedByIndex: [], pinnedCount: 0, currentIndex: 0 };
   const handleOpenHistory = useCallback(() => {
     flushSnapshot();
+    forceHistoryRender((prev) => prev + 1);
     setShowHistory((prev) => !prev);
   }, [flushSnapshot]);
   const handleHistoryJump = useCallback(
     (index: number) => {
+      const beforeJump = valueRef.current;
+      const timeline = history.getTimeline();
+      const prevIndex = timeline.currentIndex;
       const restored = history.jumpTo(index);
       if (restored !== null) {
         undoingRef.current = true;
         onChangeRef.current(restored);
+        const distance = Math.abs(index - prevIndex);
+        showGhostFor(beforeJump, Math.max(1, distance));
       }
       setShowHistory(false);
     },
+    [history, showGhostFor],
+  );
+  const handleHistoryTogglePin = useCallback(
+    (index: number) => {
+      const changed = history.togglePin(index);
+      if (changed !== null) {
+        forceHistoryRender((prev) => prev + 1);
+      }
+    },
     [history],
+  );
+  const handleHistoryPromote = useCallback(
+    async (index: number) => {
+      const timeline = history.getTimeline();
+      if (!timeline.pinnedByIndex[index]) {
+        setHistoryPromotionError('Pin a step before promoting it to PromptVersion.');
+        setHistoryPromotionNotice(null);
+        return;
+      }
+
+      const promptText = timeline.entries[index] ?? '';
+      if (!promptText.trim()) {
+        setHistoryPromotionError('Cannot promote an empty prompt step.');
+        setHistoryPromotionNotice(null);
+        return;
+      }
+
+      try {
+        setPromotingHistoryIndex(index);
+        setHistoryPromotionError(null);
+        setHistoryPromotionNotice(null);
+
+        const familyId = await ensureQuickGenHistoryFamilyId(api);
+        const createdVersion = await api.post<PromptVersionRecord>(
+          `/prompts/families/${encodeURIComponent(familyId)}/versions`,
+          {
+            prompt_text: promptText,
+            commit_message: `Promoted from QuickGen history step ${index + 1}`,
+            tags: ['quickgen', 'history', 'pinned'],
+            provider_hints: {
+              source: 'quickgen_history',
+              history_scope: historyScopeValue ?? null,
+            },
+          },
+        );
+
+        setHistoryPromotionNotice(`Promoted as v${createdVersion.version_number}.`);
+        setHistoryPromotionError(null);
+        logEvent('INFO', 'prompt_history_promoted', {
+          step: index + 1,
+          family_id: familyId,
+          version_id: createdVersion.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to promote prompt step';
+        setHistoryPromotionError(message);
+        setHistoryPromotionNotice(null);
+      } finally {
+        setPromotingHistoryIndex(null);
+      }
+    },
+    [api, history, historyScopeValue],
   );
 
   const roleOptions = useMemo(() => {
@@ -807,6 +1156,119 @@ export function PromptComposer({
         <button
           type="button"
           disabled={disabled}
+          onClick={() => {
+            const next = !ghostSticky;
+            setGhostSticky(next);
+            if (next) {
+              // Turning on history-sticky disables media-compare (mutually exclusive)
+              setCompareAgainstMedia(false);
+              flushSnapshot();
+              setGhostCompareOffset(1);
+              applyStickyGhost(1);
+            } else {
+              clearTimeout(ghostClearTimerRef.current);
+              setGhostSource(null);
+            }
+          }}
+          onWheel={(e) => {
+            if (!ghostSticky) return;
+            e.preventDefault();
+            const tl = history.getTimeline();
+            const maxOffset = tl.currentIndex; // can't go further back than the start
+            const delta = e.deltaY > 0 ? 1 : -1; // scroll down = further back
+            const next = Math.max(1, Math.min(maxOffset, ghostCompareOffset + delta));
+            if (next !== ghostCompareOffset) {
+              applyStickyGhost(next);
+            }
+          }}
+          title={
+            ghostSticky
+              ? `Comparing vs ${ghostCompareOffset} step${ghostCompareOffset === 1 ? '' : 's'} back — scroll to change${
+                  ghostRemoved.length > 0 ? `\nRemoved: ${ghostRemoved.join(' · ')}` : ''
+                }`
+              : 'Show change highlights (scroll to browse history)'
+          }
+          className={clsx(
+            'p-1 rounded transition-colors relative',
+            ghostSticky
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name="layers" size={14} />
+          {ghostSticky && ghostCompareOffset > 1 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-green-600 dark:bg-green-500 text-white text-[8px] font-bold leading-none px-0.5">
+              {ghostCompareOffset}
+            </span>
+          )}
+          {ghostSticky && ghostRemoved.length > 0 && (
+            <span className="absolute -bottom-1.5 -left-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 text-white text-[8px] font-bold leading-none px-0.5">
+              −{ghostRemoved.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            const next = !compareAgainstMedia;
+            setCompareAgainstMedia(next);
+            if (next) {
+              // Turning on media-compare disables history-sticky
+              setGhostSticky(false);
+              clearTimeout(ghostClearTimerRef.current);
+              // source syncs via useEffect watching activeAssetPrompt
+            } else {
+              setGhostSource(null);
+            }
+          }}
+          title={
+            compareAgainstMedia
+              ? ghostSuppressed
+                ? `Diff too large - prompts too different (${comparisonSourceLabel ?? 'no target'})`
+                : peekingHover
+                  ? 'Peeking hovered asset (release Shift to return to pinned/selection target)'
+                  : activeAssetPrompt
+                    ? hasPinnedCompareTarget
+                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin'
+                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered`
+                    : 'Compare mode on - waiting for a target (hold Shift + hover, or Shift+click a media card)'
+              : 'Compare prompt vs viewer media (Shift+hover peeks, Shift+click pins a media card)'
+          }
+          className={clsx(
+            'p-1 rounded transition-colors relative',
+            compareAgainstMedia
+              ? ghostSuppressed
+                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                : peekingHover
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+                  : activeAssetPrompt
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name={activeAssetType === 'video' ? 'video' : 'image'} size={14} />
+          {compareAgainstMedia && ghostSuppressed && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
+          )}
+          {compareAgainstMedia && !ghostSuppressed && hoverAssetPrompt && !shiftHeld && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-violet-500/60" title="Hold Shift to peek" />
+          )}
+          {compareAgainstMedia && !ghostSuppressed && ghostRemoved.length > 0 && (
+            <span
+              className="absolute -bottom-1.5 -left-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 text-white text-[8px] font-bold leading-none px-0.5"
+              title={`Removed: ${ghostRemoved.join(' · ')}`}
+            >
+              −{ghostRemoved.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
           onClick={() => openWorkspacePanel('template-builder')}
           title={pinnedTemplateId ? 'Template pinned — click to manage' : 'Templates'}
           className={clsx(
@@ -976,7 +1438,23 @@ export function PromptComposer({
       )}
 
       {mode === 'text' ? (
-        showShadow && autoAnalyze ? (
+        useCodemirror ? (
+          <div className="relative flex flex-col flex-1 min-h-0">
+            <PromptEditor
+              value={value}
+              onChange={onChange}
+              maxChars={maxChars}
+              placeholder={placeholder}
+              disabled={disabled}
+              variant={variant}
+              showCounter={showCounter}
+              resizable={resizable}
+              minHeight={minHeight}
+              transparent={!!ghostSource}
+              className="flex-1 min-h-0"
+            />
+          </div>
+        ) : showShadow && autoAnalyze ? (
           <div className="flex-1 min-h-0 flex">
             <div className="flex-1 min-w-0">
               <ShadowTextarea
@@ -995,18 +1473,43 @@ export function PromptComposer({
             <ShadowSidePanel analysis={shadowAnalysis} />
           </div>
         ) : (
-          <PromptInput
-            value={value}
-            onChange={onChange}
-            maxChars={maxChars}
-            placeholder={placeholder}
-            disabled={disabled}
-            variant={variant}
-            showCounter={showCounter}
-            resizable={resizable}
-            minHeight={minHeight}
-            className="h-full"
-          />
+          <div className="relative flex flex-col flex-1 min-h-0">
+            <PromptInput
+              value={value}
+              onChange={onChange}
+              maxChars={maxChars}
+              placeholder={placeholder}
+              disabled={disabled}
+              variant={variant}
+              showCounter={showCounter}
+              resizable={resizable}
+              minHeight={minHeight}
+              textareaRef={promptTextareaRef}
+              transparent={!!ghostSource}
+              className="flex-1 min-h-0"
+              onInput={referenceInput.handleInput}
+              onKeyDown={referenceInput.handleKeyDown}
+            />
+            <PromptGhostDiff
+              value={value}
+              source={ghostSource}
+              textareaRef={promptTextareaRef}
+              variant={variant}
+              onSuppress={setGhostSuppressed}
+              onRemovedSegments={setGhostRemoved}
+            />
+            <ReferencePicker
+              ref={referencePickerRef}
+              visible={referenceInput.active && referenceAnchor !== null}
+              query={referenceInput.query}
+              items={references.items}
+              onSelect={handleReferenceSelect}
+              onClose={referenceInput.dismiss}
+              disallowedTypes={['plan', 'world', 'project']}
+              className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-30"
+              style={referenceAnchor ?? undefined}
+            />
+          </div>
         )
       ) : (
         <div className="flex flex-col gap-2 min-h-0 overflow-y-auto thin-scrollbar">
@@ -1256,6 +1759,15 @@ export function PromptComposer({
         anchor={historyTriggerRef.current}
         triggerRef={historyTriggerRef}
         timeline={historyTimeline}
+        scopeLabel={historyScopeLabel}
+        scopeValue={historyScopeValue}
+        onScopeChange={onHistoryScopeChange}
+        maxEntries={historyMaxEntries}
+        onTogglePin={handleHistoryTogglePin}
+        onPromote={handleHistoryPromote}
+        promotingIndex={promotingHistoryIndex}
+        promotionNotice={historyPromotionNotice}
+        promotionError={historyPromotionError}
         onJumpTo={handleHistoryJump}
       />
     </div>

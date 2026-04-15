@@ -186,55 +186,57 @@ export function AccountIconButton({
             </button>
           )}
 
-          {filteredAccounts.length === 0 && (
-            <div className="px-3 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-              No matching accounts
-            </div>
-          )}
-
-          {filteredAccounts.map((account) => (
-            <div key={account.id} className="group">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelect(account.id);
-                    setOpen(false);
-                  }}
-                  className={clsx(
-                    DROPDOWN_ITEM_CLS,
-                    'flex-1 text-left min-w-0',
-                    selectedAccountId === account.id && 'font-semibold',
-                  )}
-                  title={account.email}
-                >
-                  <span className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0 bg-neutral-500">
-                    {accountToken(account)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{accountDisplayName(account)}</span>
-                  <span className="inline-flex items-center gap-1 shrink-0">
-                    <AccountTierBadge tier={account.plan_tier} />
-                    <AccountPromoBadge count={countActivePromotions(account.promotions)} />
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    setRoutingTarget({
-                      accountId: account.id,
-                      providerId: account.provider_id,
-                      anchor: (e.currentTarget as HTMLElement).getBoundingClientRect(),
-                    });
-                    setOpen(false);
-                  }}
-                  className="mr-1 inline-flex w-5 h-5 items-center justify-center rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100"
-                  title="Adjust routing and priority rules"
-                >
-                  <Icon name="sliders" size={11} />
-                </button>
+          <div className="max-h-60 overflow-y-auto">
+            {filteredAccounts.length === 0 && (
+              <div className="px-3 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                No matching accounts
               </div>
-            </div>
-          ))}
+            )}
+
+            {filteredAccounts.map((account) => (
+              <div key={account.id} className="group">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelect(account.id);
+                      setOpen(false);
+                    }}
+                    className={clsx(
+                      DROPDOWN_ITEM_CLS,
+                      'flex-1 text-left min-w-0',
+                      selectedAccountId === account.id && 'font-semibold',
+                    )}
+                    title={account.email}
+                  >
+                    <span className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0 bg-neutral-500">
+                      {accountToken(account)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{accountDisplayName(account)}</span>
+                    <span className="inline-flex items-center gap-1 shrink-0">
+                      <AccountTierBadge tier={account.plan_tier} />
+                      <AccountPromoBadge count={countActivePromotions(account.promotions)} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      setRoutingTarget({
+                        accountId: account.id,
+                        providerId: account.provider_id,
+                        anchor: (e.currentTarget as HTMLElement).getBoundingClientRect(),
+                      });
+                      setOpen(false);
+                    }}
+                    className="mr-1 inline-flex w-5 h-5 items-center justify-center rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100"
+                    title="Adjust routing and priority rules"
+                  >
+                    <Icon name="sliders" size={11} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </Popover>
 

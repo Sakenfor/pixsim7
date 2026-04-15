@@ -115,3 +115,9 @@ referenceRegistry.register({
       )
       .catch(() => []),
 });
+
+// --- Vocabulary sources -----------------------------------------------------
+// Vocab types (parts, poses, moods, locations, camera, etc.) are registered
+// dynamically by `vocabularySources.ts` — it fetches /vocabulary/types at
+// startup and registers one source per type, so new vocab types added on
+// the backend appear automatically without touching this file.

@@ -132,6 +132,53 @@ function resolveProvider<T>(
   return null;
 }
 
+function resolveTargetHub(
+  hub: ContextHubState,
+  scope: CapabilityScope | undefined,
+): ContextHubState {
+  if (scope === "parent") {
+    return hub.parent ?? hub;
+  }
+  if (scope === "root") {
+    return getRootHub(hub) ?? hub;
+  }
+  return hub;
+}
+
+function dependencyListEqual(a: DependencyList | null, b: DependencyList): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+type ProviderMetadata = Pick<
+  CapabilityProvider,
+  "id" | "label" | "description" | "priority" | "exposeToContextMenu"
+>;
+
+function readProviderMetadata(provider: CapabilityProvider): ProviderMetadata {
+  return {
+    id: provider.id,
+    label: provider.label,
+    description: provider.description,
+    priority: provider.priority,
+    exposeToContextMenu: provider.exposeToContextMenu,
+  };
+}
+
+function providerMetadataEqual(a: ProviderMetadata | null, b: ProviderMetadata): boolean {
+  if (!a) return false;
+  return (
+    a.id === b.id &&
+    a.label === b.label &&
+    a.description === b.description &&
+    a.priority === b.priority &&
+    a.exposeToContextMenu === b.exposeToContextMenu
+  );
+}
+
 export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   const hub = useContextHubState();
   const hostId = useContextHubHostId();
@@ -235,6 +282,9 @@ export function useProvideCapability<T>(
 ) {
   const hub = useContextHubState();
   const providerRef = useRef(provider);
+  const lastProviderObjectRef = useRef<CapabilityProvider<T>>(provider);
+  const lastDepsRef = useRef<DependencyList | null>([...deps]);
+  const lastMetaRef = useRef<ProviderMetadata | null>(readProviderMetadata(provider));
 
   const stableProviderRef = useRef<CapabilityProvider<T>>({
     id: provider.id,
@@ -246,33 +296,43 @@ export function useProvideCapability<T>(
     getValue: () => providerRef.current.getValue(),
   });
   const stableProvider = stableProviderRef.current;
+  const enabled = options?.enabled ?? true;
+  const targetHub = useMemo(
+    () => (hub ? resolveTargetHub(hub, options?.scope) : null),
+    [hub, options?.scope],
+  );
 
   useEffect(() => {
-    if (!hub) {
+    if (!targetHub) {
       return;
     }
-    const enabled = options?.enabled ?? true;
     if (!enabled) {
       return;
     }
-    const scope = options?.scope ?? "local";
-    let target: ContextHubState = hub;
-    if (scope === "parent") {
-      target = hub.parent ?? hub;
-    } else if (scope === "root") {
-      target = getRootHub(hub) ?? hub;
-    }
-    return target.registry.register(key, stableProvider);
-  }, [hub, key, options?.scope, options?.enabled, stableProvider]);
+    return targetHub.registry.register(key, stableProvider);
+  }, [enabled, key, stableProvider, targetHub]);
 
   useEffect(() => {
     providerRef.current = provider;
-    stableProvider.id = provider.id;
-    stableProvider.label = provider.label;
-    stableProvider.description = provider.description;
-    stableProvider.priority = provider.priority;
-    stableProvider.exposeToContextMenu = provider.exposeToContextMenu;
-  }, [provider, deps, stableProvider]);
+    const nextMeta = readProviderMetadata(provider);
+    const providerChanged = lastProviderObjectRef.current !== provider;
+    const depsChanged = !dependencyListEqual(lastDepsRef.current, deps);
+    const metadataChanged = !providerMetadataEqual(lastMetaRef.current, nextMeta);
+
+    stableProvider.id = nextMeta.id;
+    stableProvider.label = nextMeta.label;
+    stableProvider.description = nextMeta.description;
+    stableProvider.priority = nextMeta.priority;
+    stableProvider.exposeToContextMenu = nextMeta.exposeToContextMenu;
+
+    if (targetHub && enabled && (providerChanged || depsChanged || metadataChanged)) {
+      targetHub.registry.invalidate(key);
+    }
+
+    lastProviderObjectRef.current = provider;
+    lastDepsRef.current = [...deps];
+    lastMetaRef.current = nextMeta;
+  }, [provider, deps, stableProvider, targetHub, enabled, key]);
 }
 
 /**

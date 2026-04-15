@@ -35,6 +35,7 @@ from pixsim7.backend.main.api.v1.assets_helpers import (
 
 # Sub-routers for modular organization
 from pixsim7.backend.main.api.v1 import assets_maintenance
+from pixsim7.backend.main.api.v1 import assets_storage_overview
 from pixsim7.backend.main.api.v1 import assets_bulk
 from pixsim7.backend.main.api.v1 import assets_tags
 from pixsim7.backend.main.api.v1 import assets_versions
@@ -47,6 +48,7 @@ logger = get_logger()
 
 # Include sub-routers
 router.include_router(assets_maintenance.router)
+router.include_router(assets_storage_overview.router)
 router.include_router(assets_bulk.router)
 router.include_router(assets_tags.router)
 router.include_router(assets_versions.router)

@@ -14,6 +14,8 @@ import { Icon } from '@lib/icons';
 import type { PromptTimeline } from '../hooks/usePromptHistory';
 import { diffHoverSummary, diffPrompt, diffSummary } from '../lib/promptDiff';
 
+type PromptHistoryScope = 'provider-operation' | 'operation' | 'global';
+
 function truncate(text: string, max: number) {
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 1))}\u2026`;
@@ -56,6 +58,15 @@ export interface PromptHistoryPopoverProps {
   anchor: HTMLElement | null;
   triggerRef: React.RefObject<HTMLElement | null>;
   timeline: PromptTimeline;
+  scopeLabel?: string;
+  scopeValue?: PromptHistoryScope;
+  onScopeChange?: (nextScope: PromptHistoryScope) => void;
+  maxEntries?: number;
+  onTogglePin?: (index: number) => void;
+  onPromote?: (index: number) => void;
+  promotingIndex?: number | null;
+  promotionNotice?: string | null;
+  promotionError?: string | null;
   onJumpTo: (index: number) => void;
 }
 
@@ -65,9 +76,18 @@ export function PromptHistoryPopover({
   anchor,
   triggerRef,
   timeline,
+  scopeLabel,
+  scopeValue,
+  onScopeChange,
+  maxEntries,
+  onTogglePin,
+  onPromote,
+  promotingIndex,
+  promotionNotice,
+  promotionError,
   onJumpTo,
 }: PromptHistoryPopoverProps) {
-  const { entries, currentIndex } = timeline;
+  const { entries, currentIndex, pinnedByIndex, pinnedCount } = timeline;
   const [expandedSet, setExpandedSet] = useState<Set<number>>(() => new Set());
 
   const toggleExpanded = useCallback((idx: number) => {
@@ -92,13 +112,54 @@ export function PromptHistoryPopover({
       triggerRef={triggerRef}
       className="w-[320px] max-h-[400px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
     >
-      <div className="px-3 py-2 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-        <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-          Prompt History
-        </span>
-        <span className="text-[10px] text-neutral-400 tabular-nums">
-          {entries.length} entries
-        </span>
+      <div className="px-3 py-2 border-b border-neutral-100 dark:border-neutral-800">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            Prompt History
+          </span>
+          <div className="text-[10px] text-neutral-400 tabular-nums flex items-center gap-2">
+            <span>{entries.length} entries</span>
+            {pinnedCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                {pinnedCount} pinned
+              </span>
+            )}
+          </div>
+        </div>
+        {(scopeLabel || typeof maxEntries === 'number') && (
+          <div className="mt-1 flex items-center gap-1.5 text-[9px] text-neutral-500 dark:text-neutral-400">
+            {scopeLabel && !onScopeChange && (
+              <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">
+                Scope: {scopeLabel}
+              </span>
+            )}
+            {onScopeChange && scopeValue && (
+              <label className="inline-flex items-center gap-1">
+                <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">Scope</span>
+                <select
+                  value={scopeValue}
+                  onChange={(event) => onScopeChange(event.target.value as PromptHistoryScope)}
+                  className="h-5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1 text-[9px] text-neutral-600 dark:text-neutral-300"
+                >
+                  <option value="provider-operation">Provider + operation</option>
+                  <option value="operation">Operation only</option>
+                  <option value="global">Global</option>
+                </select>
+              </label>
+            )}
+            {typeof maxEntries === 'number' && (
+              <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 tabular-nums">
+                Limit: {maxEntries}
+              </span>
+            )}
+          </div>
+        )}
+        {promotionNotice && (
+          <div className="mt-1 text-[10px] text-green-700 dark:text-green-400">{promotionNotice}</div>
+        )}
+        {promotionError && (
+          <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">{promotionError}</div>
+        )}
       </div>
 
       <div className="overflow-y-auto max-h-[340px] thin-scrollbar">
@@ -107,6 +168,7 @@ export function PromptHistoryPopover({
           const idx = entries.length - 1 - reverseIdx;
           const isCurrent = idx === currentIndex;
           const isFuture = idx > currentIndex;
+          const isPinned = pinnedByIndex[idx] === true;
           const prev = idx > 0 ? entries[idx - 1] : null;
           const summary = prev !== null ? diffSummary(prev, entry) : 'Initial';
           const isExpanded = expandedSet.has(idx);
@@ -160,6 +222,41 @@ export function PromptHistoryPopover({
                 >
                   {isCurrent ? 'Current' : isFuture ? 'Undone' : `Step ${idx + 1}`}
                 </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin?.(idx);
+                  }}
+                  title={isPinned ? 'Unpin step' : 'Pin step'}
+                  className={clsx(
+                    'p-0.5 rounded transition-colors',
+                    isPinned
+                      ? 'text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
+                      : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                  )}
+                >
+                  <Icon name="pin" size={10} />
+                </button>
+                {isPinned && onPromote && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPromote(idx);
+                    }}
+                    disabled={promotingIndex === idx}
+                    className={clsx(
+                      'text-[9px] px-1.5 py-0.5 rounded border transition-colors',
+                      'border-neutral-200 dark:border-neutral-700',
+                      promotingIndex === idx
+                        ? 'text-neutral-400 dark:text-neutral-500'
+                        : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20',
+                    )}
+                  >
+                    {promotingIndex === idx ? 'Promoting...' : 'Promote'}
+                  </button>
+                )}
 
                 {/* Collapsed inline preview */}
                 {!isExpanded && (

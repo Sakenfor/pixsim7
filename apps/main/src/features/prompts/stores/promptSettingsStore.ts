@@ -25,6 +25,9 @@ export interface PromptSettings {
   // Block layout mode
   blocksLayout: 'stacked' | 'inline';
 
+  // Editor engine: 'textarea' (default) or 'codemirror'
+  editorEngine: 'textarea' | 'codemirror';
+
   // Semantic action-block suggestions
   semanticEnabled: boolean;
   semanticThreshold: number;
@@ -34,6 +37,7 @@ export interface PromptSettings {
 
 interface PromptSettingsStore extends PromptSettings {
   // Actions
+  setEditorEngine: (value: PromptSettings['editorEngine']) => void;
   setAutoAnalyze: (value: boolean) => void;
   setDefaultAnalyzer: (value: string) => void;
   setAutoExtractBlocks: (value: boolean) => void;
@@ -56,6 +60,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
+  editorEngine: 'textarea',
   blocksLayout: 'stacked',
   semanticEnabled: false,
   semanticThreshold: 0.65,
@@ -68,6 +73,7 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
     (set) => ({
       ...DEFAULT_SETTINGS,
 
+      setEditorEngine: (value) => set({ editorEngine: value }),
       setAutoAnalyze: (value) => set({ autoAnalyze: value }),
       setDefaultAnalyzer: (value) => set({ defaultAnalyzer: value }),
       setAutoExtractBlocks: (value) => set({ autoExtractBlocks: value }),

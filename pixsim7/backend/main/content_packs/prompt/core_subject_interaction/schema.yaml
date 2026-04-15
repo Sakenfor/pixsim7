@@ -29,6 +29,7 @@ blocks:
             required: true
         params:
           - key: beat_type
+            tag_key: beat_type
             type: enum
             enum:
               - greet
@@ -38,6 +39,7 @@ blocks:
               - brief_acknowledge
             default: greet
           - key: contact_stage
+            tag_key: contact_stage
             type: enum
             enum:
               - none
@@ -45,6 +47,7 @@ blocks:
               - brief_contact
             default: none
           - key: response_mode
+            tag_key: response_mode
             type: enum
             enum:
               - neutral
@@ -53,6 +56,7 @@ blocks:
               - boundary
             default: neutral
           - key: social_tone
+            tag_key: social_tone
             type: enum
             enum:
               - neutral

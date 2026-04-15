@@ -62,6 +62,11 @@ export interface QuickGenPanelContext {
   sourceToggleMode?: GenerationSourceMode;
   sourceToggleGenerationId?: number | null;
   onSourceToggleModeChange?: (mode: GenerationSourceMode) => void;
+
+  // Optional host-level asset open action (viewer, lightbox, inspector, etc.)
+  onOpenAsset?: (asset: AssetModel, assetList?: AssetModel[]) => void;
+  // Backward-compatible alias for viewer-specific hosts.
+  openAssetInViewer?: (asset: AssetModel, assetList?: AssetModel[]) => void;
 }
 
 // Panel props with injected context from SmartDockview

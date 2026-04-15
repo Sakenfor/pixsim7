@@ -18,7 +18,11 @@ import httpx
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
-from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    has_retrievable_pixverse_media_url,
+    is_pixverse_placeholder_url,
+    normalize_url,
+)
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -56,6 +60,16 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
     max_size = settings.max_download_size_mb * 1024 * 1024
     storage = get_storage_service()
 
+    url_is_placeholder = is_pixverse_placeholder_url(url)
+    url_is_retrievable = has_retrievable_pixverse_media_url(url)
+
+    logger.info(
+        "download_url_classified",
+        asset_id=asset.id,
+        url=url[:100],
+        is_pixverse_placeholder=url_is_placeholder,
+        has_retrievable_pixverse_url=url_is_retrievable,
+    )
     logger.info(
         "download_starting",
         asset_id=asset.id,
@@ -170,6 +184,8 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
                     max_attempts=max_retries,
                     delay=propagation_delay,
                     detail="CDN propagation delay - retrying",
+                    is_pixverse_placeholder=url_is_placeholder,
+                    has_retrievable_pixverse_url=url_is_retrievable,
                 )
                 await asyncio.sleep(propagation_delay)
             else:

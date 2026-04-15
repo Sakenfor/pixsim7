@@ -59,6 +59,7 @@ services:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${BACKEND_INTERNAL_PORT:-8000}
       PYTHONPATH: /app
+      PIXSIM_HOME: /app/data
       ZEROTIER_NETWORK: ${ZEROTIER_NETWORK:-10.243.0.0/16}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
@@ -66,6 +67,8 @@ services:
     volumes:
       # Code for hot-reload
       - ./pixsim7:/app/pixsim7
+      # Unified PixSim runtime home (media, logs, cache, settings, exports, models)
+      - ./data:/app/data
       # All application data in ./data
       - ./data/storage:/app/storage  # User uploads, generated videos
       - ./data/logs:/app/logs        # Application logs
@@ -94,12 +97,15 @@ services:
       BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
+      PIXSIM_HOME: /app/data
       ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-10}
       ARQ_JOB_TIMEOUT: ${ARQ_JOB_TIMEOUT:-3600}
       ARQ_MAX_TRIES: ${ARQ_MAX_TRIES:-3}
     volumes:
       # Code for hot-reload
       - ./pixsim7:/app/pixsim7
+      # Unified PixSim runtime home (media, logs, cache, settings, exports, models)
+      - ./data:/app/data
       # All application data in ./data (shared with backend)
       - ./data/storage:/app/storage  # User uploads, generated videos
       - ./data/logs:/app/logs        # Application logs
@@ -128,12 +134,15 @@ services:
       BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
+      PIXSIM_HOME: /app/data
       SIMULATION_ENABLED: ${SIMULATION_ENABLED:-true}
       SIMULATION_TICK_INTERVAL: ${SIMULATION_TICK_INTERVAL:-5.0}
       ARQ_SIMULATION_MAX_JOBS: ${ARQ_SIMULATION_MAX_JOBS:-2}
       ARQ_SIMULATION_JOB_TIMEOUT: ${ARQ_SIMULATION_JOB_TIMEOUT:-120}
     volumes:
       - ./pixsim7:/app/pixsim7
+      # Unified PixSim runtime home (media, logs, cache, settings, exports, models)
+      - ./data:/app/data
       - ./data/storage:/app/storage
       - ./data/logs:/app/logs
       - ./data/cache:/app/cache
@@ -161,10 +170,13 @@ services:
       BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
+      PIXSIM_HOME: /app/data
       ARQ_AUTOMATION_MAX_JOBS: ${ARQ_AUTOMATION_MAX_JOBS:-5}
       ARQ_AUTOMATION_JOB_TIMEOUT: ${ARQ_AUTOMATION_JOB_TIMEOUT:-1800}
     volumes:
       - ./pixsim7:/app/pixsim7
+      # Unified PixSim runtime home (media, logs, cache, settings, exports, models)
+      - ./data:/app/data
       - ./data/storage:/app/storage
       - ./data/logs:/app/logs
       - ./data/cache:/app/cache

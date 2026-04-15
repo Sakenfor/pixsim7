@@ -178,6 +178,14 @@ export interface VideoScrubWidgetRendererProps {
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
+/**
+ * Keep the <video> element loaded for this long after mouse-leave so the
+ * user sees the paused-at-last-frame state for a moment.  After this the
+ * src is cleared so the GPU decoder can be released.  Tuning: too long =
+ * decoders pile up across many hovered cards; too short = re-hover feels
+ * laggy from re-load.
+ */
+const SRC_RELEASE_IDLE_MS = 30000;
 export const STEP_COARSE = 0.5; // seconds per arrow key press
 export const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
@@ -231,6 +239,11 @@ export function VideoScrubWidgetRenderer({
   const [duration, setDuration] = useState<number | null>(null);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  // Keep <video> mounted (and paused at last frame) for a window after
+  // mouse-leaves, then release src to free the GPU decoder.  Without this,
+  // every card the user ever hovered keeps its decoder pinned in VRAM.
+  const [keepSrcWhilePaused, setKeepSrcWhilePaused] = useState(false);
+  const srcReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [videoError, setVideoError] = useState(false);
   const [cacheBustToken, setCacheBustToken] = useState<number | null>(null);
   const [timestampPosition, setTimestampPosition] = useState<{ top: number; left: number } | null>(null);
@@ -882,31 +895,55 @@ export function VideoScrubWidgetRenderer({
 
   // Reset video when hover ends
   useEffect(() => {
-    if (!isHovering) {
-      // Clear still timer
-      if (stillTimerRef.current) {
-        clearTimeout(stillTimerRef.current);
-        stillTimerRef.current = null;
+    if (isHovering) {
+      // Re-entering: cancel any pending src release from previous leave.
+      if (srcReleaseTimerRef.current) {
+        clearTimeout(srcReleaseTimerRef.current);
+        srcReleaseTimerRef.current = null;
       }
-      // Pause; only rewind when pauseOnLeave=false so the next hover resumes
-      // from the frame the user left.
-      if (videoRef.current) {
-        videoRef.current.pause();
-        if (!pauseOnLeave && videoRef.current.readyState >= 1) {
-          videoRef.current.currentTime = 0;
-        }
-      }
-      setIsPlaying(false);
-      if (!pauseOnLeave) setCurrentTime(0);
-      setLoopRange(null);
-      setIsDragging(false);
-      setVideoError(false);
-      // Keep marks across hover cycles - don't clear them
-      dragStartTimeRef.current = null;
-      holdScrubUntilNearRef.current = false;
-      heldHoverPercentRef.current = null;
+      setKeepSrcWhilePaused(true);
+      return;
     }
+    // Leaving: clear still timer
+    if (stillTimerRef.current) {
+      clearTimeout(stillTimerRef.current);
+      stillTimerRef.current = null;
+    }
+    // Pause; only rewind when pauseOnLeave=false so the next hover resumes
+    // from the frame the user left.
+    if (videoRef.current) {
+      videoRef.current.pause();
+      if (!pauseOnLeave && videoRef.current.readyState >= 1) {
+        videoRef.current.currentTime = 0;
+      }
+    }
+    setIsPlaying(false);
+    if (!pauseOnLeave) setCurrentTime(0);
+    setLoopRange(null);
+    setIsDragging(false);
+    setVideoError(false);
+    // Keep marks across hover cycles - don't clear them
+    dragStartTimeRef.current = null;
+    holdScrubUntilNearRef.current = false;
+    heldHoverPercentRef.current = null;
+    // Schedule src release after an idle window.  Keeps the "paused at
+    // last frame" UX for a moment, then frees the GPU decoder.
+    if (srcReleaseTimerRef.current) clearTimeout(srcReleaseTimerRef.current);
+    srcReleaseTimerRef.current = setTimeout(() => {
+      srcReleaseTimerRef.current = null;
+      setKeepSrcWhilePaused(false);
+    }, SRC_RELEASE_IDLE_MS);
   }, [isHovering, pauseOnLeave]);
+
+  // Cleanup src-release timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (srcReleaseTimerRef.current) {
+        clearTimeout(srcReleaseTimerRef.current);
+        srcReleaseTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Audio coordination: claim the global audio slot while hovered with sound on.
   // The actual mute state is driven by the JSX prop (see <video muted=...>);
@@ -1040,15 +1077,18 @@ export function VideoScrubWidgetRenderer({
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
       <video
         ref={videoRef}
-        src={isHovering || isVideoLoaded ? effectiveUrl : undefined}
-        preload={isHovering || isVideoLoaded ? 'metadata' : 'none'}
+        data-hovering={isHovering}
+        data-video-loaded={isVideoLoaded}
+        data-keep-paused={keepSrcWhilePaused}
+        src={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? effectiveUrl : undefined}
+        preload={isHovering || (isVideoLoaded && keepSrcWhilePaused) ? 'metadata' : 'none'}
         muted={hoverSound && isHovering ? false : muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onError={handleError}
-        className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
-          isHovering && isVideoLoaded ? 'opacity-100' : 'opacity-0'
+        className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 z-10 ${
+          isVideoLoaded && (isHovering || keepSrcWhilePaused) ? 'opacity-100' : 'opacity-0'
         }`}
         {...videoProps}
       />

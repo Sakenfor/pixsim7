@@ -28,6 +28,72 @@ function buildRoutePattern(operation: string, model: string): string {
   return `${normalizeRouteToken(operation)}:${normalizeRouteToken(model)}`;
 }
 
+function splitPattern(pattern: string): [string, string] {
+  const idx = pattern.indexOf(':');
+  if (idx < 0) return [normalizeRouteToken(pattern), '*'];
+  return [normalizeRouteToken(pattern.slice(0, idx)), normalizeRouteToken(pattern.slice(idx + 1))];
+}
+
+function patternMatches(pattern: string, op: string, model: string): boolean {
+  const [pOp, pModel] = splitPattern(pattern);
+  const opMatch = pOp === '*' || pOp === op;
+  const modelMatch = pModel === '*' || pModel === model;
+  return opMatch && modelMatch;
+}
+
+type PatternState = 'allow' | 'deny' | 'neutral';
+
+interface EffectiveState {
+  state: PatternState;
+  matchedPattern?: string;
+  isExact: boolean;
+  viaAllowListRejection: boolean;
+}
+
+function resolveEffectiveState(
+  op: string,
+  model: string,
+  allow: string[],
+  deny: string[],
+): EffectiveState {
+  const exact = buildRoutePattern(op, model);
+
+  if (deny.includes(exact)) {
+    return { state: 'deny', matchedPattern: exact, isExact: true, viaAllowListRejection: false };
+  }
+  if (allow.includes(exact)) {
+    return { state: 'allow', matchedPattern: exact, isExact: true, viaAllowListRejection: false };
+  }
+
+  const denyMatch = deny.find((p) => patternMatches(p, op, model));
+  if (denyMatch) {
+    return { state: 'deny', matchedPattern: denyMatch, isExact: false, viaAllowListRejection: false };
+  }
+
+  const allowMatch = allow.find((p) => patternMatches(p, op, model));
+  if (allowMatch) {
+    return { state: 'allow', matchedPattern: allowMatch, isExact: false, viaAllowListRejection: false };
+  }
+
+  if (allow.length > 0) {
+    return { state: 'deny', isExact: false, viaAllowListRejection: true };
+  }
+
+  return { state: 'neutral', isExact: false, viaAllowListRejection: false };
+}
+
+function resolveEffectiveDelta(
+  op: string,
+  model: string,
+  overrides: Record<string, number>,
+): number {
+  let delta = 0;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (patternMatches(key, op, model)) delta += value;
+  }
+  return delta;
+}
+
 function normalizePatternList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
@@ -54,6 +120,33 @@ function normalizePriorityMap(raw: unknown): Record<string, number> {
 
 function accountLabel(account: { email: string; nickname?: string | null }): string {
   return account.nickname ? `${account.nickname} (${account.email})` : account.email;
+}
+
+function StateDot({ state }: { state: PatternState }) {
+  const cls =
+    state === 'allow'
+      ? 'bg-emerald-500'
+      : state === 'deny'
+        ? 'bg-red-500'
+        : 'bg-neutral-300 dark:bg-neutral-600';
+  return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${cls}`} />;
+}
+
+function StateBadge({ state, delta }: { state: EffectiveState; delta: number }) {
+  const label = state.state === 'neutral' ? 'Neutral' : state.state === 'allow' ? 'Allowed' : 'Denied';
+  const cls =
+    state.state === 'allow'
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+      : state.state === 'deny'
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300';
+  return (
+    <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium ${cls}`}>
+      {label}
+      {!state.isExact && state.state !== 'neutral' && <span className="italic opacity-70">(wildcard)</span>}
+      {delta !== 0 && <span className="font-mono">{delta > 0 ? `+${delta}` : delta}</span>}
+    </span>
+  );
 }
 
 interface AccountRoutingManagerModalProps {
@@ -95,6 +188,10 @@ export function AccountRoutingManagerModal({
   const [builderModel, setBuilderModel] = useState<string>(normalizeRouteToken(contextModel));
   const [builderDelta, setBuilderDelta] = useState<string>('10');
   const [modelSearch, setModelSearch] = useState('');
+  const [accountSearch, setAccountSearch] = useState('');
+  const [applyToAllModels, setApplyToAllModels] = useState<boolean>(
+    normalizeRouteToken(contextModel) === '*',
+  );
 
   const providerIdForAccountList = account?.provider_id || providerId;
   const { accounts: providerAccounts } = useProviderAccounts(providerIdForAccountList);
@@ -114,6 +211,19 @@ export function AccountRoutingManagerModal({
     }
     return mapped.sort((a, b) => accountLabel(a).localeCompare(accountLabel(b)));
   }, [providerAccounts, account]);
+
+  const filteredAccountOptions = useMemo(() => {
+    const query = accountSearch.trim().toLowerCase();
+    if (!query) return accountOptions;
+    return accountOptions.filter((option) => {
+      const label = accountLabel(option).toLowerCase();
+      return (
+        label.includes(query) ||
+        option.email.toLowerCase().includes(query) ||
+        String(option.id).includes(query)
+      );
+    });
+  }, [accountOptions, accountSearch]);
 
   const resolvedProviderId = account?.provider_id || providerId;
   const { capability } = useProviderCapability(resolvedProviderId);
@@ -165,7 +275,10 @@ export function AccountRoutingManagerModal({
     if (!isOpen) return;
     setSelectedAccountId(accountId);
     setBuilderOperation(normalizeRouteToken(contextOperation));
-    setBuilderModel(normalizeRouteToken(contextModel));
+    const nextModel = normalizeRouteToken(contextModel);
+    setBuilderModel(nextModel);
+    setApplyToAllModels(nextModel === '*');
+    setAccountSearch('');
   }, [isOpen, accountId, contextOperation, contextModel]);
 
   useEffect(() => {
@@ -216,19 +329,28 @@ export function AccountRoutingManagerModal({
     return () => { cancelled = true; };
   }, [isOpen, selectedAccountId, providerId, toast]);
 
-  const addPattern = (kind: 'allow' | 'deny') => {
+  const effectiveBuilderModel = applyToAllModels ? '*' : (builderModel || '*');
+
+  const setPatternState = (nextState: PatternState) => {
     markDirty();
-    const pattern = buildRoutePattern(builderOperation, builderModel || '*');
-    if (kind === 'allow') {
+    const pattern = buildRoutePattern(builderOperation, effectiveBuilderModel);
+    if (nextState === 'allow') {
+      setDenyPatterns((prev) => prev.filter((value) => value !== pattern));
       setAllowPatterns((prev) => (prev.includes(pattern) ? prev : [...prev, pattern]));
       return;
     }
-    setDenyPatterns((prev) => (prev.includes(pattern) ? prev : [...prev, pattern]));
+    if (nextState === 'deny') {
+      setAllowPatterns((prev) => prev.filter((value) => value !== pattern));
+      setDenyPatterns((prev) => (prev.includes(pattern) ? prev : [...prev, pattern]));
+      return;
+    }
+    setAllowPatterns((prev) => prev.filter((value) => value !== pattern));
+    setDenyPatterns((prev) => prev.filter((value) => value !== pattern));
   };
 
   const setOverrideFromBuilder = () => {
     markDirty();
-    const key = buildRoutePattern(builderOperation, builderModel || '*');
+    const key = buildRoutePattern(builderOperation, effectiveBuilderModel);
     const parsed = Number(builderDelta);
     const delta = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
     setPriorityOverrides((prev) => {
@@ -238,6 +360,16 @@ export function AccountRoutingManagerModal({
       return next;
     });
   };
+
+  const currentEffectiveState = useMemo(
+    () => resolveEffectiveState(builderOperation, effectiveBuilderModel, allowPatterns, denyPatterns),
+    [builderOperation, effectiveBuilderModel, allowPatterns, denyPatterns],
+  );
+
+  const currentEffectiveDelta = useMemo(
+    () => resolveEffectiveDelta(builderOperation, effectiveBuilderModel, priorityOverrides),
+    [builderOperation, effectiveBuilderModel, priorityOverrides],
+  );
 
   const removePattern = (kind: 'allow' | 'deny', pattern: string) => {
     markDirty();
@@ -326,32 +458,53 @@ export function AccountRoutingManagerModal({
     >
       <div className="h-full overflow-y-auto p-4">
         <div className="mb-4">
-          <label className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Account</label>
-          <select
-            value={selectedAccountId ?? ''}
-            onChange={(e) => {
-              const nextId = Number(e.target.value);
-              if (!Number.isFinite(nextId)) return;
-              setSelectedAccountId(nextId);
-            }}
-            disabled={accountOptions.length === 0}
-            className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-800"
-          >
-            {accountOptions.length === 0 && (
-              <option value="">No accounts available</option>
-            )}
-            {accountOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {accountLabel(option)}
-              </option>
-            ))}
-          </select>
+          <label className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            Account ({accountOptions.length})
+          </label>
+          <div className="mt-1 space-y-2">
+            <input
+              value={accountSearch}
+              onChange={(e) => setAccountSearch(e.target.value)}
+              placeholder="Search account name, email, or id"
+              className="w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-800"
+            />
+            <div className="max-h-44 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40">
+              {filteredAccountOptions.length === 0 && (
+                <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                  No matching accounts
+                </div>
+              )}
+              {filteredAccountOptions.map((option) => {
+                const isSelected = option.id === selectedAccountId;
+                return (
+                  <button
+                    type="button"
+                    key={option.id}
+                    onClick={() => setSelectedAccountId(option.id)}
+                    className={`w-full px-2 py-1.5 text-left text-sm transition-colors ${
+                      isSelected
+                        ? 'bg-accent-subtle text-accent font-medium'
+                        : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/70'
+                    }`}
+                  >
+                    <div className="truncate">{accountLabel(option)}</div>
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">#{option.id}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {loadingAccount || !account ? (
           <div className="py-8 text-sm text-neutral-500 dark:text-neutral-400">Loading account details...</div>
         ) : (
           <div className="space-y-4">
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-200">
+              Routing rules apply when the account selector is on <strong>Auto</strong>. Pinned accounts and retries on a
+              previously-used account bypass allow/deny filters — only the routing pass of <em>new</em> auto-selections honours them.
+            </div>
+
             <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-300">
               <div className="font-medium text-neutral-800 dark:text-neutral-100">
                 {account.nickname || account.email}
@@ -370,8 +523,12 @@ export function AccountRoutingManagerModal({
             </div>
 
             <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
-              <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Quick Rule Builder</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Quick Rule Builder</div>
+                <StateBadge state={currentEffectiveState} delta={currentEffectiveDelta} />
+              </div>
+
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                 <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
                   Operation
                   <select
@@ -390,34 +547,120 @@ export function AccountRoutingManagerModal({
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
                     placeholder="Filter models"
-                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+                    disabled={applyToAllModels}
+                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800 disabled:opacity-50"
                   />
                 </label>
-                <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Model
-                  <select
-                    value={builderModel}
-                    onChange={(e) => setBuilderModel(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
-                  >
-                    {visibleModelOptions.map((modelOption) => (
-                      <option key={modelOption} value={modelOption}>{modelOption}</option>
-                    ))}
-                  </select>
-                </label>
+              </div>
+
+              <label className="mt-2 flex items-center gap-2 text-[11px] text-neutral-600 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={applyToAllModels}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setApplyToAllModels(checked);
+                    if (checked) setBuilderModel('*');
+                  }}
+                />
+                Apply to all models for this operation (<code>*</code>)
+              </label>
+
+              <div className="mt-2">
+                <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Model {applyToAllModels && <span className="italic">— disabled (applying to all)</span>}
+                </div>
+                <div className={`max-h-40 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40 ${applyToAllModels ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {visibleModelOptions.length === 0 && (
+                    <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      No models for this operation
+                    </div>
+                  )}
+                  {visibleModelOptions.map((modelOption) => {
+                    const rowState = resolveEffectiveState(builderOperation, modelOption, allowPatterns, denyPatterns);
+                    const rowDelta = resolveEffectiveDelta(builderOperation, modelOption, priorityOverrides);
+                    const isSelected = modelOption === builderModel;
+                    return (
+                      <button
+                        type="button"
+                        key={modelOption}
+                        onClick={() => setBuilderModel(modelOption)}
+                        className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-accent-subtle text-accent font-medium'
+                            : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/70'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <StateDot state={rowState.state} />
+                          <span className="truncate">{modelOption}</span>
+                        </span>
+                        <span className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {rowState.state !== 'neutral' && !rowState.isExact && (
+                            <span className="italic">via {rowState.viaAllowListRejection ? 'allow-list' : rowState.matchedPattern}</span>
+                          )}
+                          {rowDelta !== 0 && (
+                            <span className={rowDelta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}>
+                              {rowDelta > 0 ? `+${rowDelta}` : rowDelta}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                  State for <code>{buildRoutePattern(builderOperation, effectiveBuilderModel)}</code>
+                </div>
+                <div className="inline-flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+                  {(['allow', 'neutral', 'deny'] as const).map((option) => {
+                    const isActive = currentEffectiveState.state === option && currentEffectiveState.isExact;
+                    const activeClasses =
+                      option === 'allow'
+                        ? 'bg-emerald-500 text-white'
+                        : option === 'deny'
+                          ? 'bg-red-500 text-white'
+                          : 'bg-neutral-500 text-white';
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setPatternState(option)}
+                        className={`px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                          isActive
+                            ? activeClasses
+                            : 'bg-white text-neutral-600 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!currentEffectiveState.isExact && currentEffectiveState.state !== 'neutral' && (
+                  <div className="mt-1 text-[10px] italic text-neutral-500 dark:text-neutral-400">
+                    Currently {currentEffectiveState.state} via{' '}
+                    {currentEffectiveState.viaAllowListRejection
+                      ? 'allow-list (pattern not in allow list)'
+                      : <code>{currentEffectiveState.matchedPattern}</code>}
+                    . Click a state to add an exact rule.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex items-end gap-2">
                 <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
                   Priority Delta
                   <input
                     type="number"
                     value={builderDelta}
                     onChange={(e) => setBuilderDelta(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+                    className="mt-1 w-24 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
                   />
                 </label>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => addPattern('allow')}>Add Allow</Button>
-                <Button size="sm" variant="secondary" onClick={() => addPattern('deny')}>Add Deny</Button>
                 <Button size="sm" variant="secondary" onClick={setOverrideFromBuilder}>Set Delta</Button>
               </div>
             </div>

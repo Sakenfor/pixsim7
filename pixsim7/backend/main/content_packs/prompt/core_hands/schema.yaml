@@ -29,13 +29,14 @@ blocks:
             required: false
         params:
           - key: visibility
+            tag_key: hands_visibility
             type: enum
             enum:
               - visible
               - hidden
             default: visible
-            tag_key: hands_visibility
           - key: gesture
+            tag_key: hands_gesture
             type: enum
             enum:
               - neutral
@@ -45,7 +46,6 @@ blocks:
               - reach
               - hold_object
             default: neutral
-            tag_key: hands_gesture
           - key: target_ref
             required: false
             type: ref

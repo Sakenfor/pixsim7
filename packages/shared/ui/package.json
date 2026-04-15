@@ -11,6 +11,10 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
     "@pixsim7/shared.types": "workspace:*",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.24",

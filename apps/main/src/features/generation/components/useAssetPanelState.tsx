@@ -15,7 +15,13 @@ import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY, type OverlayWidget } from '@lib/ui/overlay';
 
-import { uploadAssetToProvider, type AssetModel } from '@features/assets';
+import {
+  uploadAssetToProvider,
+  toViewerAsset,
+  toViewerAssets,
+  useAssetViewerStore,
+  type AssetModel,
+} from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
@@ -40,12 +46,13 @@ import {
   QUICKGEN_ASSET_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
 import type { AssetSetSlotRef } from '@features/generation/stores/generationInputStore';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore, GENERATION_SCOPE_ID } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
 import { useProviderIdForModel } from '@features/providers';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
+import { usePersistedScopeState } from '../hooks/usePersistedScopeState';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 import { MaskVersionBadge } from './MaskVersionBadge';
@@ -169,7 +176,12 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const {
     removeInput: ctxRemoveInput,
     updateLockedTimestamp: ctxUpdateLockedTimestamp,
+    onOpenAsset: ctxOnOpenAsset,
+    openAssetInViewer: ctxOpenAssetInViewer,
   } = ctx || {};
+  const viewerMode = useAssetViewerStore((s) => s.mode);
+  const viewerOpen = useAssetViewerStore((s) => s.openViewer);
+  const setViewerMode = useAssetViewerStore((s) => s.setMode);
 
   const operationType = ctx?.operationType ?? controller.operationType;
   const isFlexibleOperation = ctx?.isFlexibleOperation ?? (OPERATION_METADATA[operationType]?.flexibleInput === true);
@@ -259,52 +271,66 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     "generation",
   );
 
-  const setComponentSetting = usePanelInstanceSettingsStore((s) => s.setComponentSetting);
-  const clearComponentSettingField = usePanelInstanceSettingsStore((s) => s.clearComponentSettingField);
-  const clearComponentSettings = usePanelInstanceSettingsStore((s) => s.clearComponentSettings);
-
   const {
     settings: assetSettings,
     globalSettings: assetGlobalSettings,
-    instanceOverrides: assetInstanceOverrides,
-    hasInstanceOverrides: assetHasInstanceOverrides,
   } = resolvedAssetSettings;
 
   const {
     enableHoverPreview = QUICKGEN_ASSET_DEFAULTS.enableHoverPreview,
     showPlayOverlay = QUICKGEN_ASSET_DEFAULTS.showPlayOverlay,
     clickToPlay = QUICKGEN_ASSET_DEFAULTS.clickToPlay,
-    displayMode = QUICKGEN_ASSET_DEFAULTS.displayMode,
-    gridColumns = QUICKGEN_ASSET_DEFAULTS.gridColumns,
   } = assetSettings ?? {};
 
-  const resolvedDisplayMode = displayMode ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
-  const resolvedGridColumns = Math.max(2, Math.min(6, Number(gridColumns ?? QUICKGEN_ASSET_DEFAULTS.gridColumns)));
+  // Per-operation layout preferences (persisted across sessions, stable across scopes)
+  const [operationDisplayMode, setOperationDisplayMode] = usePersistedScopeState<string | undefined>(
+    `assetLayout_displayMode_${operationType}`,
+    undefined,
+    { stable: true },
+  );
+  const [operationGridColumns, setOperationGridColumns] = usePersistedScopeState<number | undefined>(
+    `assetLayout_gridColumns_${operationType}`,
+    undefined,
+    { stable: true },
+  );
+
+  // Resolution: per-operation → global component setting → default
+  const globalDisplayMode =
+    (assetGlobalSettings?.displayMode as string | undefined) ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
+  const globalGridColumns =
+    Number(assetGlobalSettings?.gridColumns ?? QUICKGEN_ASSET_DEFAULTS.gridColumns);
+
+  const resolvedDisplayMode = operationDisplayMode ?? globalDisplayMode;
+  const resolvedGridColumns = Math.max(2, Math.min(6, Number(operationGridColumns ?? globalGridColumns)));
 
   // Sync input mode: carousel replaces current item, other modes append
   useEffect(() => {
     setInputMode(operationType, resolvedDisplayMode === 'carousel' ? 'replace' : 'append');
   }, [resolvedDisplayMode, operationType, setInputMode]);
 
-  const globalDisplayMode =
-    (assetGlobalSettings?.displayMode as string | undefined) ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
-  const globalGridColumns =
-    Number(assetGlobalSettings?.gridColumns ?? QUICKGEN_ASSET_DEFAULTS.gridColumns);
+  const assetOperationOverrides = useMemo(() => {
+    const overrides: Record<string, unknown> = {};
+    if (operationDisplayMode !== undefined) overrides.displayMode = operationDisplayMode;
+    if (operationGridColumns !== undefined) overrides.gridColumns = operationGridColumns;
+    return Object.keys(overrides).length > 0 ? overrides : undefined;
+  }, [operationDisplayMode, operationGridColumns]);
+  const assetHasOperationOverrides = assetOperationOverrides !== undefined;
 
   const handleComponentSetting = useCallback(
     (fieldId: string, value: string | number | undefined) => {
-      if (value === '__global__' || value === undefined) {
-        clearComponentSettingField(instanceId, QUICKGEN_ASSET_COMPONENT_ID, fieldId);
-        return;
+      if (fieldId === 'displayMode') {
+        setOperationDisplayMode(value === '__global__' || value === undefined ? undefined : String(value));
+      } else if (fieldId === 'gridColumns') {
+        setOperationGridColumns(value === '__global__' || value === undefined ? undefined : Number(value));
       }
-      setComponentSetting(instanceId, props.panelId as any, QUICKGEN_ASSET_COMPONENT_ID, fieldId, value);
     },
-    [clearComponentSettingField, instanceId, props.panelId, setComponentSetting],
+    [setOperationDisplayMode, setOperationGridColumns],
   );
 
-  const handleClearInstanceOverrides = useCallback(() => {
-    clearComponentSettings(instanceId, QUICKGEN_ASSET_COMPONENT_ID);
-  }, [clearComponentSettings, instanceId]);
+  const handleClearOperationOverrides = useCallback(() => {
+    setOperationDisplayMode(undefined);
+    setOperationGridColumns(undefined);
+  }, [setOperationDisplayMode, setOperationGridColumns]);
 
   // Persisted source_asset_id survives refresh even when lastSelectedAsset doesn't.
   // Used as fallback so the asset card isn't empty after a page reload.
@@ -472,6 +498,48 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       return aSlot - bSlot;
     });
   }, [operationInputs]);
+
+  const orderedInputAssets = useMemo(() => {
+    if (orderedInputs.length === 0) return [] as AssetModel[];
+    const seen = new Set<number>();
+    const uniqueAssets: AssetModel[] = [];
+    for (const item of orderedInputs) {
+      const assetId = Number(item.asset?.id);
+      if (!Number.isFinite(assetId) || seen.has(assetId)) continue;
+      seen.add(assetId);
+      uniqueAssets.push(item.asset);
+    }
+    return uniqueAssets;
+  }, [orderedInputs]);
+
+  const openAsset = useCallback(
+    (asset: AssetModel) => {
+      const hostOpenAsset = ctxOnOpenAsset ?? ctxOpenAssetInViewer;
+      if (hostOpenAsset) {
+        hostOpenAsset(asset, orderedInputAssets);
+        return;
+      }
+
+      const viewerAsset = toViewerAsset(asset);
+      const viewerList = orderedInputAssets.length > 0
+        ? toViewerAssets(orderedInputAssets)
+        : [viewerAsset];
+
+      viewerOpen(viewerAsset, viewerList, `quickgen:${instanceId}`);
+      if (viewerMode !== 'closed') {
+        setViewerMode(viewerMode);
+      }
+    },
+    [
+      ctxOnOpenAsset,
+      ctxOpenAssetInViewer,
+      orderedInputAssets,
+      viewerOpen,
+      instanceId,
+      viewerMode,
+      setViewerMode,
+    ],
+  );
 
   const inputIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -951,12 +1019,12 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     enableHoverPreview,
     showPlayOverlay,
     clickToPlay,
-    assetInstanceOverrides,
-    assetHasInstanceOverrides,
+    assetInstanceOverrides: assetOperationOverrides,
+    assetHasInstanceOverrides: assetHasOperationOverrides,
     globalDisplayMode,
     globalGridColumns,
     handleComponentSetting,
-    handleClearInstanceOverrides,
+    handleClearInstanceOverrides: handleClearOperationOverrides,
 
     // Widget builders
     buildFusionRoleOverlay,
@@ -975,6 +1043,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     handlePickAsset,
     pickerAnchorRect,
     handleClosePickerPopover,
+    openAsset,
 
     // Source label
     sourceLabel: ctx?.sourceLabel,
@@ -982,4 +1051,3 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
 }
 
 export type AssetPanelState = ReturnType<typeof useAssetPanelState>;
-

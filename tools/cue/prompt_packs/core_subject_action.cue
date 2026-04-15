@@ -1,5 +1,7 @@
 package promptpacks
 
+import "list"
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "core_subject_action"
@@ -40,9 +42,10 @@ pack: #PromptBlockPackV1 & {
 						{key: "subject", capability: "subject", required: false},
 						{key: "target",  capability: "target",  required: false},
 					]
-					params: #SubjectActionParams + [
-						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
-					]
+					params: list.Concat([
+						#SubjectActionParams,
+						[{key: "target_ref", type: "ref", required: false, ref_capability: "target"}],
+					])
 					default_args: {
 						action_verb:        "react"
 						target_involvement: "none"
@@ -111,9 +114,10 @@ pack: #PromptBlockPackV1 & {
 						{key: "subject", capability: "subject", required: false},
 						{key: "target",  capability: "target",  required: false},
 					]
-					params: #SubjectActionParams + [
-						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
-					]
+					params: list.Concat([
+						#SubjectActionParams,
+						[{key: "target_ref", type: "ref", required: false, ref_capability: "target"}],
+					])
 					default_args: {
 						action_verb:        "gesture"
 						target_involvement: "none"
@@ -183,9 +187,10 @@ pack: #PromptBlockPackV1 & {
 						{key: "subject", capability: "subject", required: false},
 						{key: "target",  capability: "target",  required: false},
 					]
-					params: #SubjectActionParams + [
-						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
-					]
+					params: list.Concat([
+						#SubjectActionParams,
+						[{key: "target_ref", type: "ref", required: false, ref_capability: "target"}],
+					])
 					default_args: {
 						action_verb:        "reach"
 						target_involvement: "indirect"
@@ -255,9 +260,10 @@ pack: #PromptBlockPackV1 & {
 						{key: "subject", capability: "subject", required: false},
 						{key: "target",  capability: "target",  required: true},
 					]
-					params: #SubjectActionParams + [
-						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
-					]
+					params: list.Concat([
+						#SubjectActionParams,
+						[{key: "target_ref", type: "ref", required: false, ref_capability: "target"}],
+					])
 					default_args: {
 						action_verb:        "grasp"
 						target_involvement: "direct"
@@ -347,9 +353,10 @@ pack: #PromptBlockPackV1 & {
 						{key: "subject", capability: "subject", required: false},
 						{key: "target",  capability: "target",  required: false},
 					]
-					params: #SubjectActionParams + [
-						{key: "target_ref", type: "ref", required: false, ref_capability: "target"},
-					]
+					params: list.Concat([
+						#SubjectActionParams,
+						[{key: "target_ref", type: "ref", required: false, ref_capability: "target"}],
+					])
 					default_args: {
 						action_verb:        "release"
 						target_involvement: "direct"

@@ -41,6 +41,8 @@ import {
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
+import { TextareaBackdrop } from './TextareaBackdrop';
+
 export interface ShadowTextareaProps {
   value: string;
   onChange: (val: string) => void;
@@ -301,15 +303,11 @@ export function ShadowTextarea({
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const cursorPosRef = useRef<number | null>(null);
   const scrollPosRef = useRef<number | null>(null);
   const isUserTypingRef = useRef(false);
-  const rafRef = useRef(0);
   const hoverRafRef = useRef(0);
 
-  const [scrollY, setScrollY] = useState(0);
-  const [scrollbarWidth, setScrollbarWidth] = useState(0);
   const [hoveredSpanIdx, setHoveredSpanIdx] = useState<number | null>(null);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -335,37 +333,8 @@ export function ShadowTextarea({
     (c) => typeof c.start_pos === 'number' && typeof c.end_pos === 'number',
   );
 
-  // ── Scrollbar width measurement ──
-  // Textarea scrollbar reduces content width; compensate on backdrop.
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const measure = () => {
-      setScrollbarWidth(textarea.offsetWidth - textarea.clientWidth);
-    };
-
-    measure();
-
-    const ro = new ResizeObserver(measure);
-    ro.observe(textarea);
-    return () => ro.disconnect();
-  }, []);
-
-  // Re-measure when content changes (scrollbar may appear/disappear)
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    setScrollbarWidth(textarea.offsetWidth - textarea.clientWidth);
-  }, [value]);
-
-  // ── Scroll sync ──
-  const syncScroll = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      setScrollY(textareaRef.current?.scrollTop ?? 0);
-    });
-  }, []);
+  // Scroll sync, scrollbar width, and font metric copying all live in
+  // TextareaBackdrop now — see its render below.
 
   // ── Text input ──
   const handleChange = useCallback(
@@ -486,7 +455,6 @@ export function ShadowTextarea({
   // ── Cleanup rAFs on unmount ──
   useLayoutEffect(() => {
     return () => {
-      cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(hoverRafRef.current);
     };
   }, []);
@@ -494,82 +462,58 @@ export function ShadowTextarea({
   return (
     <div className={clsx('flex flex-col h-full')}>
       <div className="relative flex-1" style={{ minHeight: `${effectiveMinHeight}px` }}>
-        {/* Highlight backdrop — clips overflow, inner content shifts via transform */}
-        {hasHighlights && (
-          <div
-            aria-hidden
-            className={clsx(
-              'absolute inset-0 rounded border border-transparent p-2',
-              'overflow-hidden pointer-events-none',
-            )}
-          >
-            <div
-              ref={contentRef}
-              className={clsx(
-                'whitespace-pre-wrap break-words',
-                variant === 'compact' ? 'text-sm' : 'text-base',
-              )}
-              style={{
-                transform: `translateY(-${scrollY}px)`,
-                paddingRight: scrollbarWidth > 0 ? `${scrollbarWidth}px` : undefined,
-                fontFamily: 'inherit',
-                lineHeight: 'inherit',
-                letterSpacing: 'inherit',
-                wordSpacing: 'inherit',
-              }}
-            >
-              {spans.map((span, idx) => {
-                if (!span.candidate) {
-                  return (
-                    <span key={idx} className="text-transparent">
-                      {span.text}
-                    </span>
-                  );
-                }
+        {/* Highlight backdrop — scroll-sync, font metrics, and scrollbar
+            compensation are handled by TextareaBackdrop. */}
+        <TextareaBackdrop textareaRef={textareaRef} active={hasHighlights} variant={variant}>
+          {spans.map((span, idx) => {
+            if (!span.candidate) {
+              return (
+                <span key={idx} className="text-transparent">
+                  {span.text}
+                </span>
+              );
+            }
 
-                const { bg } = getPromptRoleInlineClasses(
-                  span.candidate.role,
-                  promptRoleColors,
-                );
-                const hex = getPromptRoleHex(
-                  span.candidate.role,
-                  promptRoleColors,
-                );
-                const isHovered = hoveredSpanIdx === idx;
+            const { bg } = getPromptRoleInlineClasses(
+              span.candidate.role,
+              promptRoleColors,
+            );
+            const hex = getPromptRoleHex(
+              span.candidate.role,
+              promptRoleColors,
+            );
+            const isHovered = hoveredSpanIdx === idx;
 
-                // Confidence-based opacity: 90% confidence → full, 50% → faded
-                const conf = span.candidate.confidence ?? 1;
-                const opacity = 0.4 + 0.6 * Math.min(1, Math.max(0, conf));
+            // Confidence-based opacity: 90% confidence → full, 50% → faded
+            const conf = span.candidate.confidence ?? 1;
+            const opacity = 0.4 + 0.6 * Math.min(1, Math.max(0, conf));
 
-                return (
-                  <span
-                    key={idx}
-                    data-span-idx={idx}
-                    className={clsx(
-                      'rounded-sm text-transparent cursor-pointer',
-                      bg,
-                      isHovered && 'ring-1 ring-current',
-                    )}
-                    style={{
-                      pointerEvents: 'auto',
-                      opacity: isHovered ? Math.max(opacity, 0.9) : opacity,
-                      borderBottom: `2px solid ${hex}`,
-                    }}
-                  >
-                    {span.text}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
+            return (
+              <span
+                key={idx}
+                data-span-idx={idx}
+                className={clsx(
+                  'rounded-sm text-transparent cursor-pointer',
+                  bg,
+                  isHovered && 'ring-1 ring-current',
+                )}
+                style={{
+                  pointerEvents: 'auto',
+                  opacity: isHovered ? Math.max(opacity, 0.9) : opacity,
+                  borderBottom: `2px solid ${hex}`,
+                }}
+              >
+                {span.text}
+              </span>
+            );
+          })}
+        </TextareaBackdrop>
 
         {/* Editable textarea on top */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
-          onScroll={syncScroll}
           onMouseMove={hasHighlights ? handleMouseMove : undefined}
           onMouseLeave={hasHighlights ? handleMouseLeave : undefined}
           onClick={hasHighlights ? handleClick : undefined}

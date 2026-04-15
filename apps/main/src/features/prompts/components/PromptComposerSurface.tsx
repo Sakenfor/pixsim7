@@ -24,6 +24,11 @@ export interface PromptComposerSurfaceDisplay {
   showCounter?: PromptComposerProps['showCounter'];
   resizable?: PromptComposerProps['resizable'];
   minHeight?: PromptComposerProps['minHeight'];
+  historyScopeKey?: PromptComposerProps['historyScopeKey'];
+  historyMaxEntries?: PromptComposerProps['historyMaxEntries'];
+  historyScopeLabel?: PromptComposerProps['historyScopeLabel'];
+  historyScopeValue?: PromptComposerProps['historyScopeValue'];
+  onHistoryScopeChange?: PromptComposerProps['onHistoryScopeChange'];
   composerClassName?: string;
   containerClassName?: string;
   contentClassName?: string;
@@ -83,6 +88,11 @@ export function PromptComposerSurface({ adapter, display }: PromptComposerSurfac
           showCounter={display?.showCounter}
           resizable={display?.resizable}
           minHeight={display?.minHeight}
+          historyScopeKey={display?.historyScopeKey}
+          historyMaxEntries={display?.historyMaxEntries}
+          historyScopeLabel={display?.historyScopeLabel}
+          historyScopeValue={display?.historyScopeValue}
+          onHistoryScopeChange={display?.onHistoryScopeChange}
           placeholder={adapter.placeholder}
           className={display?.composerClassName ?? 'h-full'}
         />

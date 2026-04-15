@@ -250,6 +250,12 @@ export function useSmartDockview(
   deprecatedPanelsRef.current = deprecatedPanels;
   const onLayoutChangeRef = useRef(onLayoutChange);
   onLayoutChangeRef.current = onLayoutChange;
+  // Track current storageKey via ref so save/load/reset always target the
+  // latest key. The onReady-installed onDidLayoutChange listener captures
+  // saveLayout once; without this ref it would write to whatever key was
+  // active at first ready forever.
+  const storageKeyRef = useRef(storageKey);
+  storageKeyRef.current = storageKey;
 
   /**
    * Update tab visibility for all groups
@@ -370,7 +376,8 @@ export function useSmartDockview(
    * Save current layout to localStorage
    */
   const saveLayout = useCallback(() => {
-    if (!storageKey || !apiRef.current) return;
+    const currentKey = storageKeyRef.current;
+    if (!currentKey || !apiRef.current) return;
 
     try {
       const layout = apiRef.current.toJSON();
@@ -382,21 +389,22 @@ export function useSmartDockview(
         return value;
       };
 
-      localStorage.setItem(storageKey, JSON.stringify(layout, replacer));
+      localStorage.setItem(currentKey, JSON.stringify(layout, replacer));
     } catch (error) {
       console.error("[SmartDockview] Failed to save layout:", error);
     }
-  }, [storageKey]);
+  }, []);
 
   /**
    * Load saved layout from localStorage
    * @returns true if layout was loaded successfully
    */
   const loadLayout = useCallback((): boolean => {
-    if (!storageKey || !apiRef.current) return false;
+    const currentKey = storageKeyRef.current;
+    if (!currentKey || !apiRef.current) return false;
 
     try {
-      const saved = localStorage.getItem(storageKey);
+      const saved = localStorage.getItem(currentKey);
       if (saved) {
         // Check for deprecated panels before loading (use ref to avoid dependency)
         const currentDeprecatedPanels = deprecatedPanelsRef.current;
@@ -409,7 +417,7 @@ export function useSmartDockview(
             console.log(
               `[SmartDockview] Layout contains deprecated panels [${currentDeprecatedPanels.join(", ")}]. Clearing layout.`,
             );
-            localStorage.removeItem(storageKey);
+            localStorage.removeItem(currentKey);
             return false;
           }
         }
@@ -426,7 +434,7 @@ export function useSmartDockview(
           console.warn(
             "[SmartDockview] Layout contains invalid or missing panel components. Clearing layout.",
           );
-          localStorage.removeItem(storageKey);
+          localStorage.removeItem(currentKey);
           return false;
         }
         if (getAvailableComponentIds) {
@@ -455,19 +463,20 @@ export function useSmartDockview(
       // Self-heal invalid/corrupted layouts (e.g. stale panel IDs or
       // unsupported component payloads). Keeping a broken snapshot causes
       // the same deserialize error to repeat on every mount.
-      removeStoredLayout(storageKey);
+      removeStoredLayout(currentKey);
     }
     return false;
-  }, [storageKey, getAvailableComponentIds]);
+  }, [getAvailableComponentIds]);
 
   /**
    * Reset layout by clearing saved state
    */
   const resetLayout = useCallback(() => {
-    if (storageKey) {
-      localStorage.removeItem(storageKey);
+    const currentKey = storageKeyRef.current;
+    if (currentKey) {
+      localStorage.removeItem(currentKey);
     }
-  }, [storageKey]);
+  }, []);
 
   /**
    * Initialize dockview with smart features

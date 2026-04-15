@@ -18,7 +18,6 @@ import {
 
 export interface MediaCardPickerWidgetsOptions {
   isVideo: boolean;
-  isLocalOnly: boolean;
   showRemoveButton?: boolean;
   onRemove?: () => void;
   skipped?: boolean;
@@ -33,7 +32,6 @@ export interface MediaCardPickerWidgetsOptions {
 
 export function buildMediaCardPickerWidgets({
   isVideo,
-  isLocalOnly,
   showRemoveButton,
   onRemove,
   skipped,
@@ -69,20 +67,6 @@ export function buildMediaCardPickerWidgets({
         ? '!bg-amber-500 hover:!bg-amber-600 !text-white'
         : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-amber-500 backdrop-blur-sm opacity-70 hover:opacity-100',
       priority: BADGE_PRIORITY.important,
-    }));
-  }
-
-  if (isLocalOnly) {
-    widgets.push(createBadgeWidget({
-      id: 'local-only-status',
-      ...BADGE_SLOT.topRight,
-      variant: 'icon',
-      icon: 'alertTriangle',
-      color: 'orange',
-      shape: 'circle',
-      tooltip: 'Local only - not synced to provider',
-      className: 'cq-btn-md !bg-amber-500/80',
-      priority: BADGE_PRIORITY.interactive,
     }));
   }
 

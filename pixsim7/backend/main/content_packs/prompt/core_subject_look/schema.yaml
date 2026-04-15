@@ -29,6 +29,7 @@ blocks:
             required: false
         params:
           - key: focus
+            tag_key: look_focus
             type: enum
             enum:
               - eyes
@@ -36,36 +37,57 @@ blocks:
               - away
               - body
             default: eyes
-            tag_key: look_focus
-          - key: intensity
-            type: enum
-            enum:
-              - low
-              - medium
-              - high
-            default: medium
-            tag_key: look_intensity
           - key: target_ref
             required: false
             type: ref
             ref_capability: target
         default_args:
           focus: eyes
-          intensity: medium
       variants:
         - key: glance_target
+          tags:
+            look_synonyms:
+              - glances at
+              - quick look
+              - brief glance
+              - steals a look
           op_args:
             focus: eyes
-            intensity: low
         - key: hold_eye_contact
+          tags:
+            look_synonyms:
+              - holds eye contact
+              - sustained gaze
+              - stares
+              - locks eyes
+              - fixes gaze
           op_args:
             focus: eyes
-            intensity: high
         - key: turn_head_target
+          tags:
+            look_synonyms:
+              - turns head toward
+              - looks toward
+              - faces toward
+              - head toward
           op_args:
             focus: head
-            intensity: medium
-        - key: look_away_soft
+        - key: look_away
+          tags:
+            look_synonyms:
+              - looks away
+              - averts gaze
+              - glances away
+              - turns away
+              - avoids eye contact
           op_args:
             focus: away
-            intensity: low
+        - key: look_at_body
+          tags:
+            look_synonyms:
+              - looks at body
+              - gaze drifts down
+              - eyes scan
+              - looks over
+          op_args:
+            focus: body

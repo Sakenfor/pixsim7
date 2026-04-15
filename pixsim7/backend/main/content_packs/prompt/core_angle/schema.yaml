@@ -29,6 +29,7 @@ blocks:
             required: false
         params:
           - key: vertical_angle
+            tag_key: vertical_angle
             type: enum
             enum:
               - high
@@ -38,13 +39,13 @@ blocks:
               - worm
             default: eye
           - key: roll
+            tag_key: camera_roll
             type: enum
             enum:
               - level
               - dutch_left
               - dutch_right
             default: level
-            tag_key: camera_roll
           - key: target_ref
             required: false
             type: ref

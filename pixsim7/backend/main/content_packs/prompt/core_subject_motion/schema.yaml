@@ -29,6 +29,7 @@ blocks:
             required: false
         params:
           - key: direction
+            tag_key: motion_direction
             type: enum
             enum:
               - in
@@ -41,16 +42,16 @@ blocks:
               - backward
               - around
             default: forward
-            tag_key: motion_direction
           - key: speed
+            tag_key: motion_speed
             type: enum
             enum:
               - slow
               - normal
               - fast
             default: normal
-            tag_key: motion_speed
           - key: gait
+            tag_key: motion_gait
             type: enum
             enum:
               - step
@@ -59,7 +60,6 @@ blocks:
               - drift
               - turn
             default: walk
-            tag_key: motion_gait
           - key: target_ref
             required: false
             type: ref

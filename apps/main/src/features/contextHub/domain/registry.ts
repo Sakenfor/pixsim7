@@ -57,6 +57,7 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     getKeys: core.getKeys,
     getExposedKeys: core.getExposedKeys,
     subscribe: core.subscribe,
+    invalidate: core.invalidate,
     setConsumptionThrottleMs: core.setConsumptionThrottleMs,
     getConsumptionThrottleMs: core.getConsumptionThrottleMs,
 
