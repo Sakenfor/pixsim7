@@ -25,7 +25,7 @@ import {
   type GalleryGroupBySelection,
 } from '@features/panels';
 import { useProviders } from '@features/providers';
-import { useWorkspaceStore } from '@features/workspace';
+import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
@@ -93,6 +93,8 @@ function AssetSetChip({
   selectedCount,
   onAddSelected,
   onCreateSet,
+  onRenameSet,
+  onDeleteSet,
 }: {
   chipKey: string;
   chipState: ReturnType<typeof useFilterChipState>;
@@ -104,9 +106,54 @@ function AssetSetChip({
   onBrowseSet: (set: ManualAssetSet) => void;
   selectedCount: number;
   onAddSelected: () => void;
-  onCreateSet: () => void;
+  onCreateSet: () => string | void;
+  onRenameSet: (id: string, name: string) => void;
+  onDeleteSet: (id: string) => void;
 }) {
   const [rowMenu, setRowMenu] = useState<{ set: ManualAssetSet; x: number; y: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const startEdit = useCallback((s: ManualAssetSet) => {
+    setEditingId(s.id);
+    setDraftName(s.name);
+  }, []);
+
+  const commitEdit = useCallback(() => {
+    if (editingId) {
+      const trimmed = draftName.trim();
+      if (trimmed.length > 0) onRenameSet(editingId, trimmed);
+    }
+    setEditingId(null);
+  }, [editingId, draftName, onRenameSet]);
+
+  const cancelEdit = useCallback(() => setEditingId(null), []);
+
+  useEffect(() => {
+    if (editingId && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingId]);
+
+  const handleCreate = useCallback(() => {
+    const newId = onCreateSet();
+    if (typeof newId === 'string') {
+      setEditingId(newId);
+      setDraftName('New Set');
+    }
+  }, [onCreateSet]);
+
+  const handleDelete = useCallback(
+    (s: ManualAssetSet) => {
+      const msg = s.assetIds.length > 0
+        ? `Delete set "${s.name}" (${s.assetIds.length} assets)? The assets themselves are not deleted.`
+        : `Delete set "${s.name}"?`;
+      if (window.confirm(msg)) onDeleteSet(s.id);
+    },
+    [onDeleteSet],
+  );
 
   if (manualSets.length === 0) return null;
   const activeCount = filterSetIds.length + (activeManualSet ? 1 : 0);
@@ -133,7 +180,7 @@ function AssetSetChip({
           <span className="flex-1">Set</span>
           <button
             type="button"
-            onClick={onCreateSet}
+            onClick={handleCreate}
             title="Create new set"
             className="flex items-center justify-center w-4 h-4 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
           >
@@ -143,6 +190,7 @@ function AssetSetChip({
         {manualSets.map((s) => {
           const isFiltered = filterSetIds.includes(s.id);
           const isTarget = activeManualSet?.id === s.id;
+          const isEditing = editingId === s.id;
           return (
             <div
               key={s.id}
@@ -150,7 +198,7 @@ function AssetSetChip({
                 e.preventDefault();
                 setRowMenu({ set: s, x: e.clientX, y: e.clientY });
               }}
-              className={`flex items-center gap-2 px-1.5 py-1 text-sm rounded transition-colors ${
+              className={`group/row flex items-center gap-2 px-1.5 py-1 text-sm rounded transition-colors ${
                 isTarget
                   ? 'bg-emerald-500/5'
                   : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
@@ -177,11 +225,53 @@ function AssetSetChip({
                     : 'bg-neutral-300 dark:bg-neutral-600 hover:bg-emerald-400/60'
                 }`} />
               </button>
-              {/* Set name & count */}
-              <span className={`flex-1 truncate ${
-                isTarget ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-neutral-700 dark:text-neutral-200'
-              }`}>{s.name}</span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
+              {/* Set name — inline editable */}
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                  }}
+                  className="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white dark:bg-neutral-900 border border-accent rounded outline-none text-neutral-800 dark:text-neutral-100"
+                />
+              ) : (
+                <span
+                  onDoubleClick={() => startEdit(s)}
+                  title="Double-click to rename"
+                  className={`flex-1 truncate cursor-text select-none ${
+                    isTarget ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-neutral-700 dark:text-neutral-200'
+                  }`}
+                >
+                  {s.name}
+                </span>
+              )}
+              {/* Hover actions */}
+              {!isEditing && (
+                <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(s)}
+                    title="Rename"
+                    className="flex items-center justify-center w-4 h-4 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                  >
+                    <Icon name="edit" size={10} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(s)}
+                    title="Delete set"
+                    className="flex items-center justify-center w-4 h-4 rounded text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10"
+                  >
+                    <Icon name="trash" size={10} />
+                  </button>
+                </div>
+              )}
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums w-6 text-right">
                 {s.assetIds.length}
               </span>
             </div>
@@ -201,6 +291,20 @@ function AssetSetChip({
             </button>
           </>
         )}
+        {/* Manage link */}
+        <div className="border-t border-neutral-200 dark:border-neutral-700 mt-1 pt-1">
+          <button
+            type="button"
+            onClick={() => {
+              openWorkspacePanel('asset-sets');
+              chipState.closeChip(chipKey);
+            }}
+            className="flex items-center gap-1.5 px-1.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors w-full"
+          >
+            <Icon name="settings" size={11} />
+            <span>Manage sets…</span>
+          </button>
+        </div>
       </div>
       {rowMenu && createPortal(
         <ChipContextMenu
@@ -284,6 +388,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
   const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
   const createSet = useAssetSetStore((s) => s.createSet);
+  const renameSet = useAssetSetStore((s) => s.renameSet);
+  const deleteSet = useAssetSetStore((s) => s.deleteSet);
   const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
   const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
   const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
@@ -1008,7 +1114,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   }, [activeManualSet, addAssetsToSet, selectedAssets]);
 
   const handleCreateSet = useCallback(() => {
-    createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
+    const created = createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
+    return created.id;
   }, [createSet]);
 
   // Gallery tool context
@@ -1323,6 +1430,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveManualSet}
                   onCreateSet={handleCreateSet}
+                  onRenameSet={renameSet}
+                  onDeleteSet={deleteSet}
                 />
               }
             />
