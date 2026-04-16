@@ -9,8 +9,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AssetModel } from '../../../assets/models/asset';
 import type { OperationType } from '@/types/operations';
+
+import type { AssetModel } from '../../../assets/models/asset';
 
 // Stub barrel side-effects so importing the store doesn't pull in dockview,
 // notification schema bootstrap, etc.  Matches the pattern already used by
@@ -32,7 +33,7 @@ vi.mock('@lib/utils', () => ({
   hmrSingleton: (_key: string, factory: () => unknown) => factory(),
   // settingsStore uses this to pick its persist backend — in tests we just
   // route it through localStorage so rehydration still works.
-  createBackendStorage: (_name: string) => ({
+  createBackendStorage: () => ({
     getItem: (k: string) => localStorage.getItem(k),
     setItem: (k: string, v: string) => localStorage.setItem(k, v),
     removeItem: (k: string) => localStorage.removeItem(k),
