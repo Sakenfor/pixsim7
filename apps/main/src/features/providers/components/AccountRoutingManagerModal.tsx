@@ -230,6 +230,8 @@ export function AccountRoutingManagerModal({
   const [builderModel, setBuilderModel] = useState<string>(normalizeRouteToken(contextModel));
   const [builderDelta, setBuilderDelta] = useState<string>('10');
   const [showAdvancedDelta, setShowAdvancedDelta] = useState<boolean>(false);
+  const [accountPickerOpen, setAccountPickerOpen] = useState<boolean>(false);
+  const [showModelBrowser, setShowModelBrowser] = useState<boolean>(false);
   const [modelSearch, setModelSearch] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
   const [applyToAllModels, setApplyToAllModels] = useState<boolean>(
@@ -519,76 +521,96 @@ export function AccountRoutingManagerModal({
     <FloatingToolPanel
       open={isOpen}
       onClose={requestClose}
-      title="Account Routing Manager"
+      title="Account Routing"
       anchor={anchor}
-      defaultWidth={780}
-      defaultHeight={620}
-      minWidth={520}
-      minHeight={360}
+      defaultWidth={560}
+      defaultHeight={500}
+      minWidth={440}
+      minHeight={320}
     >
-      <div className="h-full overflow-y-auto p-4">
-        <div className="mb-4">
-          <label className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            Account ({accountOptions.length})
-          </label>
-          <div className="mt-1 space-y-2">
-            <input
-              value={accountSearch}
-              onChange={(e) => setAccountSearch(e.target.value)}
-              placeholder="Search account name, email, or id"
-              className="w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-800"
-            />
-            <div className="max-h-44 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40">
-              {filteredAccountOptions.length === 0 && (
-                <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                  No matching accounts
-                </div>
-              )}
-              {filteredAccountOptions.map((option) => {
-                const isSelected = option.id === selectedAccountId;
-                return (
-                  <button
-                    type="button"
-                    key={option.id}
-                    onClick={() => setSelectedAccountId(option.id)}
-                    className={`w-full px-2 py-1.5 text-left text-sm transition-colors ${
-                      isSelected
-                        ? 'bg-accent-subtle text-accent font-medium'
-                        : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/70'
-                    }`}
-                  >
-                    <div className="truncate">{accountLabel(option)}</div>
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">#{option.id}</div>
-                  </button>
-                );
-              })}
+      <div className="h-full overflow-y-auto p-3">
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setAccountPickerOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-left text-sm dark:border-neutral-700 dark:bg-neutral-800"
+            title={account ? `${account.email} · ${account.provider_id}` : 'Select account'}
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {account
+                ? <>
+                    <span className="font-medium">{account.nickname || account.email}</span>
+                    <span className="ml-2 text-[10px] text-neutral-500 dark:text-neutral-400">{account.provider_id}</span>
+                  </>
+                : selectedAccountId != null
+                  ? <span className="text-neutral-500 dark:text-neutral-400">Loading #{selectedAccountId}…</span>
+                  : <span className="text-neutral-500 dark:text-neutral-400">Select account…</span>}
+            </span>
+            <span className="ml-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+              {accountPickerOpen ? '▴' : '▾'} {accountOptions.length}
+            </span>
+          </button>
+          {accountPickerOpen && (
+            <div className="mt-1 space-y-1.5">
+              <input
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                placeholder="Search name, email, or id"
+                className="w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                autoFocus
+              />
+              <div className="max-h-40 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40">
+                {filteredAccountOptions.length === 0 && (
+                  <div className="px-2 py-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    No matching accounts
+                  </div>
+                )}
+                {filteredAccountOptions.map((option) => {
+                  const isSelected = option.id === selectedAccountId;
+                  return (
+                    <button
+                      type="button"
+                      key={option.id}
+                      onClick={() => {
+                        setSelectedAccountId(option.id);
+                        setAccountPickerOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between px-2 py-1 text-left text-xs transition-colors ${
+                        isSelected
+                          ? 'bg-accent-subtle text-accent font-medium'
+                          : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/70'
+                      }`}
+                    >
+                      <span className="truncate">{accountLabel(option)}</span>
+                      <span className="ml-2 text-[10px] text-neutral-500 dark:text-neutral-400">#{option.id}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {loadingAccount || !account ? (
           <div className="py-8 text-sm text-neutral-500 dark:text-neutral-400">Loading account details...</div>
         ) : (
-          <div className="space-y-4">
-            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-200">
-              Rules apply only on <strong>Auto</strong> account picks. Pinned accounts and retries bypass them.
-            </div>
-
-            <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-300">
-              <div className="font-medium text-neutral-800 dark:text-neutral-100">
-                {account.nickname || account.email}
-              </div>
-              <div className="mt-0.5">{account.provider_id}</div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Base Priority</label>
-              <input
-                type="number"
-                value={basePriority}
-                onChange={(e) => setBasePriority(e.target.value)}
-                className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-800"
-              />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+                Base priority
+                <input
+                  type="number"
+                  value={basePriority}
+                  onChange={(e) => setBasePriority(e.target.value)}
+                  className="w-16 rounded-md border border-neutral-200 bg-white px-2 py-1 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                />
+              </label>
+              <span
+                className="ml-auto text-[10px] text-neutral-400 dark:text-neutral-500"
+                title="Rules apply only on Auto account picks. Pinned accounts and retries bypass them."
+              >
+                ⓘ Auto-mode only
+              </span>
             </div>
 
             <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
@@ -611,35 +633,60 @@ export function AccountRoutingManagerModal({
                   </select>
                 </label>
                 <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Model Search
-                  <input
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    placeholder="Filter models"
+                  Model
+                  <select
+                    value={builderModel}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setBuilderModel(value);
+                      setApplyToAllModels(value === '*');
+                    }}
                     disabled={applyToAllModels}
                     className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800 disabled:opacity-50"
-                  />
+                  >
+                    {visibleModelOptions.map((modelOption) => (
+                      <option key={modelOption} value={modelOption}>
+                        {modelOption === '*' ? '* (all models)' : modelOption}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
-              <label className="mt-2 flex items-center gap-2 text-[11px] text-neutral-600 dark:text-neutral-300">
+              <div className="mt-2 flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 dark:text-neutral-300">
+                  <input
+                    type="checkbox"
+                    checked={applyToAllModels}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setApplyToAllModels(checked);
+                      if (checked) setBuilderModel('*');
+                    }}
+                  />
+                  All models
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowModelBrowser((value) => !value)}
+                  disabled={applyToAllModels}
+                  className="text-[10px] text-neutral-500 hover:text-neutral-700 disabled:opacity-50 dark:text-neutral-400 dark:hover:text-neutral-200"
+                >
+                  {showModelBrowser ? 'Hide browser' : 'Browse with state hints'}
+                </button>
                 <input
-                  type="checkbox"
-                  checked={applyToAllModels}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setApplyToAllModels(checked);
-                    if (checked) setBuilderModel('*');
-                  }}
+                  value={modelSearch}
+                  onChange={(e) => setModelSearch(e.target.value)}
+                  placeholder="Filter"
+                  disabled={applyToAllModels || !showModelBrowser}
+                  className="ml-auto w-28 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] outline-none dark:border-neutral-700 dark:bg-neutral-800 disabled:opacity-50"
                 />
-                All models
-              </label>
+              </div>
 
-              <div className="mt-2">
-                <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">Model</div>
-                <div className={`max-h-40 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40 ${applyToAllModels ? 'opacity-50 pointer-events-none' : ''}`}>
+              {showModelBrowser && !applyToAllModels && (
+                <div className="mt-2 max-h-32 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40">
                   {visibleModelOptions.length === 0 && (
-                    <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    <div className="px-2 py-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
                       No models for this operation
                     </div>
                   )}
@@ -652,7 +699,7 @@ export function AccountRoutingManagerModal({
                         type="button"
                         key={modelOption}
                         onClick={() => setBuilderModel(modelOption)}
-                        className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-sm transition-colors ${
+                        className={`flex w-full items-center justify-between px-2 py-1 text-left text-xs transition-colors ${
                           isSelected
                             ? 'bg-accent-subtle text-accent font-medium'
                             : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/70'
@@ -676,7 +723,7 @@ export function AccountRoutingManagerModal({
                     );
                   })}
                 </div>
-              </div>
+              )}
 
               <div className="mt-3">
                 <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">
