@@ -58,6 +58,11 @@ interface MediaControlBarProps {
   // Follow latest
   followLatest?: boolean;
   onToggleFollowLatest?: () => void;
+
+  // Scope lock — when locked, opening assets from other sources won't
+  // change the active scope
+  scopeLocked?: boolean;
+  onToggleScopeLock?: () => void;
 }
 
 export function MediaControlBar({
@@ -84,6 +89,8 @@ export function MediaControlBar({
   onSwitchScope,
   followLatest,
   onToggleFollowLatest,
+  scopeLocked,
+  onToggleScopeLock,
 }: MediaControlBarProps) {
   const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
   const scopeTriggerRef = useRef<HTMLButtonElement>(null);
@@ -122,8 +129,9 @@ export function MediaControlBar({
                   ref={scopeTriggerRef}
                   onClick={() => setScopeDropdownOpen((prev) => !prev)}
                   className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
-                  title="Navigation scope"
+                  title={scopeLocked ? 'Navigation scope (locked)' : 'Navigation scope'}
                 >
+                  {scopeLocked && <Icon name="lock" size={10} />}
                   <span className="truncate max-w-[140px]">{scopeLabel}</span>
                   <Icon name="chevronDown" size={10} />
                 </button>
@@ -147,16 +155,22 @@ export function MediaControlBar({
                         {scope.label}
                       </DropdownItem>
                     ))}
+                    {(onToggleFollowLatest || onToggleScopeLock) && <DropdownDivider />}
                     {onToggleFollowLatest && (
-                      <>
-                        <DropdownDivider />
-                        <DropdownItem
-                          onClick={onToggleFollowLatest}
-                          icon={followLatest ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
-                        >
-                          Follow latest
-                        </DropdownItem>
-                      </>
+                      <DropdownItem
+                        onClick={onToggleFollowLatest}
+                        icon={followLatest ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+                      >
+                        Follow latest
+                      </DropdownItem>
+                    )}
+                    {onToggleScopeLock && (
+                      <DropdownItem
+                        onClick={onToggleScopeLock}
+                        icon={scopeLocked ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+                      >
+                        Lock scope
+                      </DropdownItem>
                     )}
                   </Dropdown>
                 )}

@@ -207,10 +207,14 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
   // Follow latest setting
   const followLatest = useAssetViewerStore((s) => s.settings.followLatest);
+  const scopeLocked = useAssetViewerStore((s) => s.settings.scopeLocked);
   const updateSettings = useAssetViewerStore((s) => s.updateSettings);
   const handleToggleFollowLatest = useCallback(() => {
     updateSettings({ followLatest: !followLatest });
   }, [followLatest, updateSettings]);
+  const handleToggleScopeLock = useCallback(() => {
+    updateSettings({ scopeLocked: !scopeLocked });
+  }, [scopeLocked, updateSettings]);
 
   // Reset pan on asset change — image/video dimensions differ, so a pixel
   // offset that made sense for the previous asset doesn't translate. Zoom and
@@ -562,6 +566,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
         onSwitchScope={switchScope}
         followLatest={followLatest}
         onToggleFollowLatest={handleToggleFollowLatest}
+        scopeLocked={scopeLocked}
+        onToggleScopeLock={handleToggleScopeLock}
       />
     </div>
   );

@@ -77,6 +77,12 @@ export interface ViewerSettings {
   preferOriginal: boolean;
   /** Auto-navigate to newest asset when scope head changes */
   followLatest: boolean;
+  /**
+   * When true, opening an asset from a different context (e.g. clicking a
+   * gallery thumbnail while viewing from Recent) preserves the current
+   * activeScopeId so the strip doesn't flip out from under the user.
+   */
+  scopeLocked: boolean;
 }
 
 interface AssetViewerState {
@@ -141,6 +147,7 @@ const defaultSettings: ViewerSettings = {
   qualityMode: 'auto',
   preferOriginal: false,
   followLatest: true,
+  scopeLocked: false,
 };
 
 function areScopeAssetsEquivalent(prev: ViewerAsset[], next: ViewerAsset[]): boolean {
@@ -180,9 +187,31 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       pendingHeadId: null,
 
       openViewer: (asset, assetList, scopeId) => {
-        const { settings } = get();
+        const { settings, scopes: prevScopes, activeScopeId: prevActiveId } = get();
         const list = assetList || [asset];
-        const index = list.findIndex((a) => a.id === asset.id);
+
+        // Lock-respecting branch: when scope is locked and we already have an
+        // active scope, don't swap scope out from under the user. Register the
+        // incoming scope so it's available in the picker, but keep navigation
+        // anchored to whatever the user locked to.
+        if (settings.scopeLocked && prevActiveId && prevScopes[prevActiveId]) {
+          const activeAssets = prevScopes[prevActiveId].assets;
+          const idxInActive = activeAssets.findIndex((a) => a.id === asset.id);
+          const nextScopes =
+            scopeId && !prevScopes[scopeId]
+              ? { ...prevScopes, [scopeId]: { label: scopeId, assets: list } }
+              : prevScopes;
+
+          set({
+            currentAsset: asset,
+            mode: settings.defaultMode,
+            assetList: activeAssets,
+            currentIndex: idxInActive,
+            showMetadata: settings.showMetadata,
+            scopes: nextScopes,
+          });
+          return;
+        }
 
         const initialScopes: Record<string, NavigationScope> = {};
         let initialScopeId: string | null = null;
@@ -191,6 +220,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           initialScopeId = scopeId;
         }
 
+        const index = list.findIndex((a) => a.id === asset.id);
         set({
           currentAsset: asset,
           mode: settings.defaultMode,

@@ -131,7 +131,6 @@ export function RecentStripPanel(_props: RecentStripPanelProps) {
   const currentAsset = useAssetViewerStore((s) => s.currentAsset);
   const pendingHeadId = useAssetViewerStore((s) => s.pendingHeadId);
   const navigateTo = useAssetViewerStore((s) => s.navigateTo);
-  const consumePendingHead = useAssetViewerStore((s) => s.consumePendingHead);
 
   const assets: ViewerAsset[] = useMemo(
     () => (activeScopeId ? scopes[activeScopeId]?.assets ?? [] : []),
@@ -190,38 +189,25 @@ export function RecentStripPanel(_props: RecentStripPanelProps) {
           No recent assets yet
         </div>
       ) : (
-        <>
-          {pendingHeadId != null && (
-            <button
-              type="button"
-              onClick={consumePendingHead}
-              className="flex items-center justify-center gap-1.5 px-2 py-1 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-500 transition-colors"
-              title="Jump to newest asset"
-            >
-              <Icon name="arrowDown" size={12} color="#fff" />
-              New asset ready
-            </button>
-          )}
-          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
-            <div className="flex items-center gap-1.5 h-full p-1.5">
-              {assets.map((asset, index) => {
-                const isActive = asset.id === currentId;
-                const isPending = asset.id === pendingHeadId;
-                return (
-                  <StripThumb
-                    key={asset.id}
-                    asset={asset}
-                    index={index}
-                    isActive={isActive}
-                    isPending={isPending}
-                    activeRef={isActive ? activeItemRef : undefined}
-                    onClick={navigateTo}
-                  />
-                );
-              })}
-            </div>
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+          <div className="flex items-center gap-1.5 h-full p-1.5">
+            {assets.map((asset, index) => {
+              const isActive = asset.id === currentId;
+              const isPending = asset.id === pendingHeadId;
+              return (
+                <StripThumb
+                  key={asset.id}
+                  asset={asset}
+                  index={index}
+                  isActive={isActive}
+                  isPending={isPending}
+                  activeRef={isActive ? activeItemRef : undefined}
+                  onClick={navigateTo}
+                />
+              );
+            })}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
