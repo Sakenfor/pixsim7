@@ -282,6 +282,7 @@ function BuildablesSection() {
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
   const [buildingPkg, setBuildingPkg] = useState<string | null>(null)
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null)
+  const [lastBuiltPkg, setLastBuiltPkg] = useState<string | null>(null)
   const [filterCategory, setFilterCategory] = useState('')
 
   useEffect(() => { getBuildables().then(setBuildables) }, [])
@@ -292,6 +293,7 @@ function BuildablesSection() {
   const handleBuild = useCallback(async (pkg: string) => {
     setBuildingPkg(pkg)
     setBuildResult(null)
+    setLastBuiltPkg(pkg)
     try {
       setBuildResult(await buildPackage(pkg))
       // Force-refresh to get updated build_status
@@ -300,6 +302,8 @@ function BuildablesSection() {
       setBuildingPkg(null)
     }
   }, [])
+
+  const justBuiltLauncher = buildResult?.ok && lastBuiltPkg === '@pixsim7/launcher'
 
   return (
     <div className="h-full flex flex-col">
@@ -322,6 +326,12 @@ function BuildablesSection() {
         </div>
 
         {buildResult && <ResultBox result={buildResult} />}
+        {justBuiltLauncher && (
+          <div className="flex items-center gap-2 p-2 rounded border border-blue-800/50 bg-blue-900/20 text-[11px] text-blue-200">
+            <span className="flex-1">Launcher UI rebuilt — reload to apply. (Tab state will reset.)</span>
+            <Button size="xs" variant="primary" onClick={() => window.location.reload()}>Reload now</Button>
+          </div>
+        )}
       </div>
 
       {/* Scrollable list */}
