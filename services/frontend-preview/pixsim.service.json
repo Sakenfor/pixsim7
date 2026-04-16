@@ -1,0 +1,42 @@
+{
+  "id": "frontend-preview",
+  "type": "frontend",
+  "name": "Main Frontend (Preview)",
+  "description": "Production build of the main React app served via `vite preview`. Optionally rebuilds the package before starting.",
+  "directory": "apps/main",
+  "command": "pnpm",
+  "args": [
+    "--filter",
+    "@pixsim7/main",
+    "preview",
+    "--port",
+    "--host"
+  ],
+  "port_env": "FRONTEND_PREVIEW_PORT",
+  "default_port": 4173,
+  "base_url_env": "FRONTEND_PREVIEW_BASE_URL",
+  "subdomain": "preview",
+  "build_before_start_package": "@pixsim7/main",
+  "auto_start": false,
+  "enabled": true,
+  "settings": [
+    {
+      "key": "port",
+      "default": 4173,
+      "env_export": "FRONTEND_PREVIEW_PORT",
+      "cors_origin_export": true
+    },
+    {
+      "key": "base_url",
+      "env_export": "FRONTEND_PREVIEW_BASE_URL"
+    },
+    {
+      "key": "build_before_start",
+      "type": "boolean",
+      "label": "Build Before Start",
+      "description": "Run `pnpm --filter @pixsim7/main build` before starting the preview server",
+      "default": true,
+      "section": "Build"
+    }
+  ]
+}

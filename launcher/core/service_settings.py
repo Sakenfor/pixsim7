@@ -186,6 +186,8 @@ def parse_schema(raw: Optional[List[Dict]]) -> List[Dict]:
             field["separator"] = entry["separator"]
         if entry.get("section"):
             field["section"] = entry["section"]
+        if entry.get("cors_origin_export"):
+            field["cors_origin_export"] = bool(entry["cors_origin_export"])
         fields.append(field)
     return fields
 
@@ -411,8 +413,14 @@ def collect_global_exports(
 
     *service_defs* is a list of objects with ``.key`` and ``.settings_schema``
     attributes (i.e. :class:`ServiceDef` or :class:`ServiceDefinition`).
+
+    Fields marked ``cors_origin_export: true`` contribute an ``http://localhost:<port>``
+    entry (or the raw value, if it already looks like an origin) to the ``CORS_ORIGINS``
+    export, so a service can declare its own origin as CORS-allowed without a
+    manual edit to the ``_platform`` settings.
     """
     exports: Dict[str, str] = {}
+    cors_additions: List[str] = []
     for sdef in sorted(service_defs, key=lambda s: s.key):
         raw_schema = getattr(sdef, "settings_schema", None)
         if not raw_schema:
@@ -425,6 +433,16 @@ def collect_global_exports(
         effective = get_effective(schema, persisted, profile_ov)
         exports.update(settings_to_exports(schema, effective))
 
+        for field in schema:
+            if not field.get("cors_origin_export"):
+                continue
+            value = effective.get(field["key"])
+            if value in (None, ""):
+                continue
+            origin = _origin_from_value(value)
+            if origin and origin not in cors_additions:
+                cors_additions.append(origin)
+
     # Auto-derive empty base URLs from port exports
     for key in list(exports):
         if key.endswith("_BASE_URL") and not exports[key]:
@@ -433,7 +451,37 @@ def collect_global_exports(
             port = exports.get(f"{prefix}_PORT") or exports.get(f"{prefix}_API_PORT")
             if port:
                 exports[key] = f"http://localhost:{port}"
+
+    # Fold service-declared CORS origins into the CORS_ORIGINS export
+    if cors_additions:
+        current = exports.get("CORS_ORIGINS", "")
+        existing = [o.strip() for o in current.split(",") if o.strip()]
+        for origin in cors_additions:
+            if origin not in existing:
+                existing.append(origin)
+        exports["CORS_ORIGINS"] = ",".join(existing)
     return exports
+
+
+def _origin_from_value(value: Any) -> Optional[str]:
+    """Coerce a setting value into an HTTP origin.
+
+    - Ports (int / digit-string) → ``http://localhost:<port>``
+    - Strings that already contain a scheme → returned as-is (stripped)
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return f"http://localhost:{value}"
+    if isinstance(value, str):
+        stripped = value.strip().rstrip("/")
+        if not stripped:
+            return None
+        if stripped.isdigit():
+            return f"http://localhost:{stripped}"
+        if "://" in stripped:
+            return stripped
+    return None
 
 
 def validate_update(schema: List[Dict], values: Dict[str, Any]) -> Dict[str, Any]:

@@ -229,6 +229,32 @@ class ProcessManager:
                 ))
                 return False
 
+        # Pre-start hook (e.g. frontend-preview build-before-start)
+        if definition.pre_start_hook:
+            try:
+                proceed = definition.pre_start_hook(state)
+            except Exception as e:
+                state.status = ServiceStatus.FAILED
+                state.health = HealthStatus.UNHEALTHY
+                state.last_error = f"Pre-start hook failed: {e}"
+                self._emit_event(ProcessEvent(
+                    service_key=service_key,
+                    event_type="failed",
+                    data={"error": state.last_error},
+                ))
+                return False
+            if not proceed:
+                state.status = ServiceStatus.FAILED
+                state.health = HealthStatus.UNHEALTHY
+                if not state.last_error:
+                    state.last_error = "Pre-start hook aborted"
+                self._emit_event(ProcessEvent(
+                    service_key=service_key,
+                    event_type="failed",
+                    data={"error": state.last_error},
+                ))
+                return False
+
         # Standard subprocess start
         try:
             # Prepare environment: os.environ + global exports + service overrides

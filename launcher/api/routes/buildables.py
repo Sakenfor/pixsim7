@@ -59,6 +59,9 @@ async def list_buildables(refresh: bool = Query(False)):
     return BuildablesListResponse(buildables=items, total=len(items))
 
 
+_BUILD_TIMEOUT_S = 600
+
+
 @router.post("/{package_name}/build")
 async def build_package(package_name: str):
     """Run pnpm build for a specific package."""
@@ -68,7 +71,7 @@ async def build_package(package_name: str):
     try:
         result = subprocess.run(
             [pnpm, "--filter", package_name, "build"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=_BUILD_TIMEOUT_S,
             cwd=str(DEFAULT_ROOT),
         )
         duration = int((time.time() - start) * 1000)
@@ -81,6 +84,12 @@ async def build_package(package_name: str):
             "stderr": result.stderr[-2000:] if result.stderr else "",
         }
     except subprocess.TimeoutExpired:
-        return {"ok": False, "exit_code": -1, "duration_ms": 120000, "stdout": "", "stderr": "Build timed out (120s)"}
+        return {
+            "ok": False,
+            "exit_code": -1,
+            "duration_ms": _BUILD_TIMEOUT_S * 1000,
+            "stdout": "",
+            "stderr": f"Build timed out ({_BUILD_TIMEOUT_S}s)",
+        }
     except Exception as e:
         return {"ok": False, "exit_code": -1, "duration_ms": 0, "stdout": "", "stderr": str(e)}

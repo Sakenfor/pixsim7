@@ -84,7 +84,10 @@ class Settings(BaseSettings):
             "http://localhost:8100",  # Launcher API / web UI
             "http://localhost:3100",  # Launcher Vite dev server
         ],
-        description="Allowed CORS origins"
+        description=(
+            "Allowed CORS origins. The launcher's frontend-preview card "
+            "auto-appends its configured origin via CORS_ORIGINS."
+        ),
     )
 
     @field_validator("cors_origins", mode="before")

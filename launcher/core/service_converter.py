@@ -5,10 +5,70 @@ Extracted from launcher.gui.launcher_facade so it can be used without PySide6.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+import time
+from typing import Callable, Optional
 
 from .environment import ROOT
 from .services import ServiceDef
 from .types import ServiceDefinition, ServiceStatus, HealthStatus
+
+
+def _make_pnpm_build_pre_start(service_key: str, package: str) -> Callable:
+    """Return a pre_start hook that runs `pnpm --filter <package> build`
+    iff the service's `build_before_start` setting is truthy.
+    """
+    def hook(state) -> bool:
+        from .service_settings import (
+            get_effective,
+            get_profile_overrides,
+            load_persisted,
+            parse_schema,
+        )
+
+        schema_raw = state.definition.settings_schema
+        if schema_raw:
+            schema = parse_schema(schema_raw)
+            persisted = load_persisted(service_key)
+            profile_ov = get_profile_overrides(service_key)
+            effective = get_effective(schema, persisted, profile_ov)
+        else:
+            effective = {}
+
+        if not effective.get("build_before_start", True):
+            return True
+
+        pnpm = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
+        start = time.time()
+        try:
+            result = subprocess.run(
+                [pnpm, "--filter", package, "build"],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                cwd=str(ROOT),
+            )
+        except subprocess.TimeoutExpired:
+            state.last_error = f"Build timed out after 600s for {package}"
+            return False
+        except Exception as e:
+            state.last_error = f"Build invocation failed: {e}"
+            return False
+
+        duration_ms = int((time.time() - start) * 1000)
+        if result.returncode != 0:
+            tail = (result.stderr or result.stdout or "").strip()
+            if len(tail) > 600:
+                tail = tail[-600:]
+            state.last_error = (
+                f"pnpm build for {package} exited {result.returncode} "
+                f"(took {duration_ms}ms):\n{tail}"
+            )
+            return False
+        return True
+
+    return hook
 
 
 def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
@@ -21,6 +81,12 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
     custom_stop = None
     custom_health = None
     is_detached = False
+    pre_start_hook: Optional[Callable] = None
+
+    if service_def.build_before_start_package:
+        pre_start_hook = _make_pnpm_build_pre_start(
+            service_def.key, service_def.build_before_start_package
+        )
 
     if service_def.key == "db":
         is_detached = True
@@ -98,4 +164,5 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         custom_start=custom_start,
         custom_stop=custom_stop,
         custom_health_check=custom_health,
+        pre_start_hook=pre_start_hook,
     )

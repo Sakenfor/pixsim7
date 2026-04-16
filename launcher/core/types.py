@@ -61,6 +61,9 @@ class ServiceDefinition:
     custom_start: Optional[Callable] = None  # Custom start function
     custom_stop: Optional[Callable] = None   # Custom stop function
     custom_health_check: Optional[Callable] = None  # Custom health check function
+    # Hook executed just before subprocess spawn in the standard start path.
+    # Receives the ServiceState; return True to proceed, False to abort (state.last_error must be set).
+    pre_start_hook: Optional[Callable] = None
 
 
 @dataclass

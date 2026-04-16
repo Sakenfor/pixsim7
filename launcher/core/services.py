@@ -61,6 +61,9 @@ class ServiceDef:
     dev_peer_of: Optional[str] = None
     # Per-service settings schema
     settings_schema: Optional[List] = None
+    # Optional pnpm workspace package to build before starting (e.g. "@pixsim7/main").
+    # Paired with a `build_before_start` boolean setting on the service.
+    build_before_start_package: Optional[str] = None
 
 
 def _iter_package_json_paths(root: Path) -> Iterable[Path]:
@@ -296,6 +299,7 @@ class ServiceConverter:
             auto_start=config.get("auto_start", False),
             dev_peer_of=config.get("dev_peer_of"),
             settings_schema=schema,
+            build_before_start_package=config.get("build_before_start_package"),
             **extra,
         )
 
@@ -370,7 +374,10 @@ class FrontendConverter(ServiceConverter):
         port = self._resolve_port(config)
         args = list(config.get("args", ["dev", "--port"]))
         if "--port" in args:
-            args.append(str(port))
+            idx = args.index("--port")
+            # Insert port value right after --port so trailing flags
+            # (e.g. --host for vite preview) stay in place.
+            args.insert(idx + 1, str(port))
         return args
 
     def _url(self, config):
