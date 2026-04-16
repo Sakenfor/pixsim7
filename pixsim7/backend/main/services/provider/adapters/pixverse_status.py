@@ -573,6 +573,74 @@ class PixverseStatusMixin:
             retry_on_session_error=True,
         )
 
+    async def check_video_statuses_from_list(
+        self,
+        account: ProviderAccount,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> Dict[str, ProviderStatusResult]:
+        """
+        Batch video status lookup using the personal video list.
+
+        Returns a mapping of ``video_id -> ProviderStatusResult`` for videos
+        present in the fetched page.  One ``list_videos`` call satisfies many
+        per-generation ``get_video`` checks on the same account, reducing
+        the poll load from O(N) to O(1) per account per tick.
+
+        Caller should treat an absent id as "batch miss" and fall back to a
+        per-id ``check_status`` (e.g. the job is older than ``limit`` items).
+        The batch result does NOT apply the extend-silent-filter candidate
+        logic; callers doing video-extend ops should bypass this batch and
+        go through the per-job path.
+        """
+
+        async def _operation(session: PixverseSessionData) -> Dict[str, ProviderStatusResult]:
+            client = self._create_client_from_session(session, account)
+            videos = await client.list_videos(limit=limit, offset=offset)
+
+            results: Dict[str, ProviderStatusResult] = {}
+            for video in videos or []:
+                raw_video_id = _get_field(video, "video_id", "VideoId", "id")
+                if raw_video_id is None:
+                    continue
+                video_id = str(raw_video_id)
+
+                raw_status = _get_field(video, "video_status", "status")
+                status = self._map_pixverse_status(video)
+                video_url_raw = _get_field(video, "url", "video_url")
+                thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
+                video_url, thumb_url, media_url_signals = (
+                    _extract_sanitized_video_urls(video_url_raw, thumb_raw)
+                )
+
+                results[video_id] = ProviderStatusResult(
+                    status=status,
+                    video_url=video_url,
+                    thumbnail_url=thumb_url,
+                    width=_get_field(video, "output_width", "width"),
+                    height=_get_field(video, "output_height", "height"),
+                    duration_sec=_get_field(video, "video_duration", "duration"),
+                    provider_video_id=video_id,
+                    suppress_thumbnail=True,
+                    has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
+                    metadata={
+                        "provider_status": raw_status,
+                        "is_image": False,
+                        "source": "list_batch",
+                        **media_url_signals,
+                    },
+                )
+
+            return results
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_video_statuses_from_list",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
     async def check_image_statuses_from_list(
         self,
         account: ProviderAccount,

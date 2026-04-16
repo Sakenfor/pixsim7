@@ -978,6 +978,48 @@ class ProviderService:
                 if cached_result is not None:
                     status_result = cached_result
 
+        # Pixverse video status batch fast-path (mirror of the image path
+        # above).  One ``list_videos`` call per account per tick satisfies
+        # every i2v / t2v / video_transition check, cutting per-account
+        # polling load from O(N) to O(1).
+        #
+        # Video-extend opts out: the main check_status has extend-specific
+        # silent-filter candidate logic that depends on per-job metadata
+        # stamping (not replicated in the batch helper).  Keeping extend
+        # on the per-job path preserves that behaviour without divergence.
+        if (
+            status_result is None
+            and poll_cache is not None
+            and submission.provider_id == "pixverse"
+            and operation_type in get_video_operations()
+            and operation_type != OperationType.VIDEO_EXTEND
+            and submission.provider_job_id
+            and hasattr(provider, "check_video_statuses_from_list")
+        ):
+            cache_key = f"pixverse:video_status_batch:{account.id}"
+            status_map = poll_cache.get(cache_key)
+            if status_map is None:
+                try:
+                    status_map = await provider.check_video_statuses_from_list(
+                        account=account,
+                        limit=200,
+                        offset=0,
+                    )
+                    poll_cache[cache_key] = status_map
+                except Exception as batch_err:
+                    logger.debug(
+                        "pixverse_video_status_batch_failed",
+                        submission_id=submission.id,
+                        account_id=account.id,
+                        error=str(batch_err),
+                    )
+                    poll_cache[cache_key] = _BATCH_FAILED_SENTINEL
+
+            if isinstance(status_map, dict):
+                cached_result = status_map.get(str(submission.provider_job_id))
+                if cached_result is not None:
+                    status_result = cached_result
+
         # Default provider status check (or batch-cache miss)
         if status_result is None:
             status_result = await provider.check_status(

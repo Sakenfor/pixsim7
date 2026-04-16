@@ -1,23 +1,42 @@
 """
-Manual test: observe Pixverse early-CDN behaviour for a known-filtered prompt.
+Manual test: measure Pixverse's early-CDN window for a known-filtered prompt.
 
 Usage:
     python tests/manual_test_early_cdn.py
 
-Submits an image-to-video generation that is expected to be content-filtered
-by Pixverse, then polls raw status + CDN URLs every few seconds.  Logs the
-full timeline so we can see:
-  - When the CDN URL first appears
-  - Whether it's a real output URL or placeholder
-  - When the status transitions to FILTERED
-  - Whether the CDN URL gets pulled, redirected, or stays up
-  - HTTP response codes on HEAD probes of the CDN URL
+Submits an image-to-video generation expected to trip Pixverse moderation,
+then polls ``get_video`` AND ``list_videos`` every 250 ms and HEAD-probes the
+real CDN URL every 500 ms on a parallel task.  Records a transition timeline
+and prints:
+
+  - t_submit     → submit response received
+  - t_first_real → first poll that saw a retrievable /openapi/output/ URL
+  - t_placeholder → first poll that saw the /default.mp4 template
+  - t_404        → first HEAD probe on the real URL that failed
+  - window       = t_placeholder − t_first_real  (how long we had to catch it)
+  - cdn_lifespan = t_404 − t_first_real          (how long the file stayed up)
+
+The two numbers are the ones that matter for the polling cadence decision.
+If the window is sub-2s, production polling (every 2s) can miss it; a faster
+poll or a parallel list_videos query widens the capture odds.
 """
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+# Allow running as a plain script from the repo root:
+#   python tests/manual_test_early_cdn.py
+# The repo isn't pip-installed, so add its root to sys.path so the
+# `pixsim7` package resolves.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import httpx
 from pixverse import PixverseClient
@@ -28,13 +47,14 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
     normalize_url,
 )
 
-# ── Test parameters ─────────────────────────────────��────────────────────
+# ── Test parameters ──────────────────────────────────────────────────────
 
 EMAIL = "holyfruit30"
 PASSWORD = "qwerty11633"
 
-# Toggle which test to run:
-TEST_MODE = "normal"  # "flagged" or "normal"
+# Toggle which test to run — user-confirmed both trip moderation, "flagged"
+# has the explicit prompt signal.
+TEST_MODE = "flagged"
 
 if TEST_MODE == "flagged":
     SOURCE_IMAGE_URL = (
@@ -53,56 +73,182 @@ else:
     MODEL = "v6"
     DURATION = 1
 
-POLL_INTERVAL_SEC = 2
+POLL_INTERVAL_SEC = 0.25          # fast polling to resolve sub-second window
+HEAD_PROBE_INTERVAL_SEC = 0.5     # parallel HEAD probe cadence
 MAX_POLL_MINUTES = 6
+POST_TERMINAL_PROBE_SEC = 60      # keep probing the real URL after swap
+
+
+# ── Data types ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class _Observation:
+    t_rel: float            # seconds since t0 (submit response)
+    source: str             # "get_video" | "list_videos" | "head_probe"
+    raw_status: Any = None
+    url: Optional[str] = None
+    url_is_placeholder: bool = False
+    url_is_retrievable: bool = False
+    width: Optional[int] = None
+    height: Optional[int] = None
+    http_status: Optional[int] = None
+    note: str = ""
+
+
+@dataclass
+class _Timeline:
+    t0: float
+    observations: list[_Observation] = field(default_factory=list)
+    # Key transition timestamps (relative to t0)
+    t_first_real_get: Optional[float] = None
+    t_first_real_list: Optional[float] = None
+    t_placeholder_get: Optional[float] = None
+    t_placeholder_list: Optional[float] = None
+    t_404: Optional[float] = None
+    last_real_url: Optional[str] = None
+
+    def record(self, ob: _Observation) -> None:
+        self.observations.append(ob)
+        if ob.url_is_retrievable:
+            if ob.source == "get_video" and self.t_first_real_get is None:
+                self.t_first_real_get = ob.t_rel
+            if ob.source == "list_videos" and self.t_first_real_list is None:
+                self.t_first_real_list = ob.t_rel
+            if ob.url:
+                self.last_real_url = ob.url
+        if ob.url_is_placeholder:
+            if ob.source == "get_video" and self.t_placeholder_get is None:
+                self.t_placeholder_get = ob.t_rel
+            if ob.source == "list_videos" and self.t_placeholder_list is None:
+                self.t_placeholder_list = ob.t_rel
+        if ob.source == "head_probe" and ob.http_status and ob.http_status >= 400:
+            if self.t_404 is None:
+                self.t_404 = ob.t_rel
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
+
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
 
 
-async def _head_probe(url: str) -> dict:
-    """HEAD probe with redirect tracking."""
-    if not url or not url.startswith(("http://", "https://")):
-        return {"status": None, "final_url": None, "error": "invalid_url"}
-    try:
-        async with httpx.AsyncClient(
-            timeout=6.0,
-            follow_redirects=True,
-            headers={"User-Agent": "PixSim7-Test/1.0"},
-        ) as client:
-            r = await client.head(url)
-            final_url = str(r.url)
-            return {
-                "status": r.status_code,
-                "final_url": final_url,
-                "redirected": final_url != url,
-                "final_is_placeholder": is_pixverse_placeholder_url(final_url),
-                "final_is_retrievable": has_retrievable_pixverse_media_url(final_url),
-            }
-    except Exception as e:
-        return {"status": None, "final_url": None, "error": str(e)[:120]}
-
-
-def _url_flags(url: str | None) -> dict:
+def _classify_url(url: Optional[str]) -> tuple[bool, bool, Optional[str]]:
     if not url:
-        return {"url": None}
+        return False, False, None
     normalized = normalize_url(url)
+    return (
+        is_pixverse_placeholder_url(url),
+        has_retrievable_pixverse_media_url(url),
+        normalized,
+    )
+
+
+async def _head_probe(url: str, http_client: httpx.AsyncClient) -> dict:
+    try:
+        r = await http_client.head(url)
+        return {"status": r.status_code, "final_url": str(r.url)}
+    except Exception as e:
+        return {"status": None, "error": str(e)[:120]}
+
+
+async def _try_get_video(client: PixverseClient, job_id: str) -> Optional[Any]:
+    try:
+        return await client.get_video(video_id=job_id)
+    except Exception as e:
+        print(f"[{_ts()}]   get_video error: {e}")
+        return None
+
+
+async def _try_list_videos(client: PixverseClient, job_id: str) -> Optional[dict]:
+    try:
+        videos = await client.list_videos(limit=50, offset=0)
+        for v in videos or []:
+            raw_id = v.get("video_id") if isinstance(v, dict) else None
+            if str(raw_id) == str(job_id):
+                return v
+        return None
+    except Exception as e:
+        print(f"[{_ts()}]   list_videos error: {e}")
+        return None
+
+
+def _extract_fields(v: Any) -> dict:
+    """Extract status/url/dims from either a pydantic-ish object or a dict."""
+    if v is None:
+        return {}
+    if isinstance(v, dict):
+        raw_status = v.get("video_status") or v.get("status")
+        url = v.get("url") or v.get("video_url")
+        thumb = v.get("first_frame") or v.get("thumbnail") or v.get("thumbnail_url")
+        width = v.get("output_width") or v.get("width")
+        height = v.get("output_height") or v.get("height")
+    else:
+        raw_status = getattr(v, "video_status", None) or getattr(v, "status", None)
+        url = getattr(v, "url", None) or getattr(v, "video_url", None)
+        thumb = getattr(v, "first_frame", None) or getattr(v, "thumbnail", None)
+        width = getattr(v, "output_width", None) or getattr(v, "width", None)
+        height = getattr(v, "output_height", None) or getattr(v, "height", None)
     return {
-        "url_preview": (normalized or url)[:120],
-        "is_placeholder": is_pixverse_placeholder_url(url),
-        "is_retrievable": has_retrievable_pixverse_media_url(url),
+        "raw_status": raw_status,
+        "url": url,
+        "thumb": thumb,
+        "width": width,
+        "height": height,
     }
+
+
+# ── Probe monitor (runs in parallel with polling loop) ──────────────────
+
+
+async def _head_probe_monitor(
+    timeline: _Timeline,
+    stop_event: asyncio.Event,
+    http_client: httpx.AsyncClient,
+) -> None:
+    """Continuously HEAD-probe the most recent real CDN URL.
+
+    We run this in parallel with polling so the 404-transition doesn't have
+    to wait for a poll tick. This resolves ``t_404`` to ~500 ms precision.
+    """
+    last_probed = None
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=HEAD_PROBE_INTERVAL_SEC)
+        except asyncio.TimeoutError:
+            pass
+        url = timeline.last_real_url
+        if not url:
+            continue
+        result = await _head_probe(url, http_client)
+        t_rel = time.monotonic() - timeline.t0
+        status = result.get("status")
+        url_preview = url[:80]
+        note = "same_url" if url == last_probed else "new_url"
+        last_probed = url
+        ob = _Observation(
+            t_rel=t_rel,
+            source="head_probe",
+            url=url,
+            http_status=status,
+            note=f"{note} {result.get('final_url', '')[:80]}",
+        )
+        timeline.record(ob)
+        marker = "✓" if status and status < 400 else "✗"
+        print(
+            f"[{_ts()}] +{t_rel:6.2f}s  HEAD {marker} status={status} "
+            f"url={url_preview}"
+        )
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-async def main():
+
+async def main() -> None:
     print(f"[{_ts()}] Creating client for {EMAIL}...")
     client = PixverseClient(email=EMAIL, password=PASSWORD)
-    print(f"[{_ts()}] Logged in. Submitting i2v job...")
+    print(f"[{_ts()}] Logged in. Submitting i2v job ({TEST_MODE} mode)...")
 
     video = await client.create(
         prompt=PROMPT,
@@ -113,82 +259,135 @@ async def main():
         audio=False,
     )
     job_id = str(video.id)
-    print(f"[{_ts()}] Submitted — job_id={job_id}")
+    t0 = time.monotonic()
+    print(f"[{_ts()}] Submitted — job_id={job_id}  t0 set.")
 
-    start = time.monotonic()
-    deadline = start + MAX_POLL_MINUTES * 60
-    last_video_url = None
-    seen_statuses: list[str] = []
-    terminal = False
+    timeline = _Timeline(t0=t0)
+    stop_event = asyncio.Event()
 
-    while time.monotonic() < deadline:
-        await asyncio.sleep(POLL_INTERVAL_SEC)
-        elapsed = time.monotonic() - start
-
-        try:
-            v = await client.get_video(video_id=job_id)
-        except Exception as e:
-            print(f"[{_ts()}] +{elapsed:5.1f}s  get_video ERROR: {e}")
-            continue
-
-        # Extract raw fields
-        raw_status = getattr(v, "video_status", None) or getattr(v, "status", None)
-        video_url = getattr(v, "url", None) or getattr(v, "video_url", None)
-        thumb_url = getattr(v, "first_frame", None) or getattr(v, "thumbnail", None)
-
-        status_str = str(raw_status)
-        if status_str not in seen_statuses:
-            seen_statuses.append(status_str)
-
-        # Classify URLs
-        vid_flags = _url_flags(video_url)
-        thumb_flags = _url_flags(thumb_url)
-
-        print(
-            f"[{_ts()}] +{elapsed:5.1f}s  "
-            f"raw_status={raw_status}  "
-            f"video_url={vid_flags}  "
-            f"thumb={thumb_flags}"
+    async with httpx.AsyncClient(
+        timeout=5.0,
+        follow_redirects=True,
+        headers={"User-Agent": "PixSim7-EarlyCDN-Probe/1.0"},
+    ) as http_client:
+        probe_task = asyncio.create_task(
+            _head_probe_monitor(timeline, stop_event, http_client)
         )
 
-        # CDN probe when we have a URL
-        if video_url and video_url != last_video_url:
-            last_video_url = video_url
-            probe = await _head_probe(video_url)
-            print(f"[{_ts()}]   CDN HEAD probe: {probe}")
+        deadline = t0 + MAX_POLL_MINUTES * 60
+        terminal = False
+        seen_get_statuses: list[str] = []
+        seen_list_statuses: list[str] = []
 
-        # Detect terminal status (using raw Pixverse codes)
-        if isinstance(raw_status, int):
-            if raw_status in (1, 10):  # completed
-                print(f"[{_ts()}] === COMPLETED (raw={raw_status}) ===")
-                terminal = True
-            elif raw_status in (3, 7):  # filtered
-                print(f"[{_ts()}] === FILTERED (raw={raw_status}) ===")
-                terminal = True
-            elif raw_status in (-1, 4, 8, 9):  # failed
-                print(f"[{_ts()}] === FAILED (raw={raw_status}) ===")
-                terminal = True
+        while time.monotonic() < deadline:
+            await asyncio.sleep(POLL_INTERVAL_SEC)
+            t_rel = time.monotonic() - t0
 
-        if terminal:
-            break
+            gv_result, lv_result = await asyncio.gather(
+                _try_get_video(client, job_id),
+                _try_list_videos(client, job_id),
+            )
 
-    # Post-terminal: probe CDN every 5s for 60s to see if/when it goes down
-    if last_video_url and terminal:
-        print(f"\n[{_ts()}] Post-terminal CDN monitoring ({last_video_url[:80]}...)")
-        for i in range(12):
-            await asyncio.sleep(5)
-            probe = await _head_probe(last_video_url)
-            elapsed = time.monotonic() - start
-            print(f"[{_ts()}] +{elapsed:5.1f}s  CDN probe: {probe}")
+            for source, payload, seen in (
+                ("get_video", gv_result, seen_get_statuses),
+                ("list_videos", lv_result, seen_list_statuses),
+            ):
+                fields = _extract_fields(payload)
+                if not fields:
+                    continue
+                status_str = str(fields["raw_status"])
+                if status_str not in seen:
+                    seen.append(status_str)
+                is_ph, is_ret, _ = _classify_url(fields["url"])
+                ob = _Observation(
+                    t_rel=t_rel,
+                    source=source,
+                    raw_status=fields["raw_status"],
+                    url=fields["url"],
+                    url_is_placeholder=is_ph,
+                    url_is_retrievable=is_ret,
+                    width=fields["width"],
+                    height=fields["height"],
+                )
+                timeline.record(ob)
 
-    # Summary
-    print(f"\n{'='*60}")
-    print(f"Job ID:          {job_id}")
-    print(f"Status timeline: {' → '.join(seen_statuses)}")
-    print(f"Final video URL: {last_video_url}")
-    if last_video_url:
-        print(f"  is_placeholder:  {is_pixverse_placeholder_url(last_video_url)}")
-        print(f"  is_retrievable:  {has_retrievable_pixverse_media_url(last_video_url)}")
+                url_tag = (
+                    "RETRIEVABLE" if is_ret else "PLACEHOLDER" if is_ph else
+                    "-" if not fields["url"] else "other"
+                )
+                dims_str = f"{fields['width'] or 0}x{fields['height'] or 0}"
+                print(
+                    f"[{_ts()}] +{t_rel:6.2f}s  {source:11s}  "
+                    f"status={str(fields['raw_status']):<4}  "
+                    f"dims={dims_str:<11}  "
+                    f"url={url_tag}"
+                )
+
+            # Terminal detection uses get_video (prod path)
+            gv_fields = _extract_fields(gv_result)
+            gv_status = gv_fields.get("raw_status")
+            if isinstance(gv_status, int):
+                if gv_status in (1,) or (
+                    gv_status == 10
+                    and gv_fields.get("width")
+                    and gv_fields.get("height")
+                ):
+                    print(f"[{_ts()}] === get_video COMPLETED (raw={gv_status}) ===")
+                    terminal = True
+                elif gv_status in (3, 7):
+                    print(f"[{_ts()}] === get_video FILTERED (raw={gv_status}) ===")
+                    terminal = True
+                elif gv_status in (-1, 4, 8, 9):
+                    print(f"[{_ts()}] === get_video FAILED (raw={gv_status}) ===")
+                    terminal = True
+
+            if terminal:
+                break
+
+        # Keep probing the real URL after the terminal transition.
+        if timeline.last_real_url:
+            print(
+                f"\n[{_ts()}] Post-terminal CDN monitoring on "
+                f"{timeline.last_real_url[:80]}..."
+            )
+            await asyncio.sleep(POST_TERMINAL_PROBE_SEC)
+
+        stop_event.set()
+        await probe_task
+
+    # ── Summary ──────────────────────────────────────────────────────────
+    def fmt(v: Optional[float]) -> str:
+        return f"{v:6.2f}s" if v is not None else "   n/a"
+
+    print("\n" + "=" * 72)
+    print(f"Job ID:                 {job_id}")
+    print(f"get_video statuses:     {' → '.join(seen_get_statuses)}")
+    print(f"list_videos statuses:   {' → '.join(seen_list_statuses)}")
+    print(f"t_first_real_get:       {fmt(timeline.t_first_real_get)}")
+    print(f"t_first_real_list:      {fmt(timeline.t_first_real_list)}")
+    print(f"t_placeholder_get:      {fmt(timeline.t_placeholder_get)}")
+    print(f"t_placeholder_list:     {fmt(timeline.t_placeholder_list)}")
+    print(f"t_404 (HEAD):           {fmt(timeline.t_404)}")
+
+    # The two numbers that matter:
+    if timeline.t_first_real_get is not None and timeline.t_placeholder_get is not None:
+        window = timeline.t_placeholder_get - timeline.t_first_real_get
+        print(f"get_video window:       {window:6.2f}s  "
+              f"(how long the real URL was advertised by get_video)")
+    if timeline.t_first_real_list is not None and timeline.t_placeholder_list is not None:
+        window = timeline.t_placeholder_list - timeline.t_first_real_list
+        print(f"list_videos window:     {window:6.2f}s  "
+              f"(how long the real URL was advertised by list_videos)")
+    if timeline.t_first_real_get is not None and timeline.t_404 is not None:
+        lifespan = timeline.t_404 - timeline.t_first_real_get
+        print(f"CDN lifespan (200→404): {lifespan:6.2f}s  "
+              f"(how long the file itself was fetchable)")
+    elif timeline.t_first_real_get is not None and timeline.t_404 is None:
+        print(
+            "CDN lifespan (200→404):  no 404 observed — file still fetchable "
+            f"after {POST_TERMINAL_PROBE_SEC}s post-terminal"
+        )
+    print("=" * 72)
 
 
 if __name__ == "__main__":

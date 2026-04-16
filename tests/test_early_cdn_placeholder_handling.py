@@ -22,6 +22,7 @@ Root causes addressed here:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -1014,6 +1015,231 @@ def test_status_poller_transient_error_path_reads_submission_from_dict():
     # Confirm generation_id (the plain-int snapshot value) is used in the
     # transient-backoff key rather than the ORM attribute `generation.id`.
     assert "transient_backoff_key or str(generation_id)" in source
+
+
+# ---------------------------------------------------------------------------
+# Fix #8: batched list_videos polling to reduce per-account API load
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_video_batch_list_returns_per_job_results(monkeypatch):
+    """
+    ``check_video_statuses_from_list`` must return one ProviderStatusResult per
+    video in the page, keyed by video_id, with the same URL-sanitization and
+    signal semantics as the per-job path.  A batched list call is the main
+    load-reduction mechanism — at N concurrent jobs on one account, this
+    collapses N ``get_video`` calls into one ``list_videos`` call per tick.
+    """
+    provider = PixverseProvider()
+
+    class FakeClient:
+        async def list_videos(self, *, limit, offset):  # noqa: ARG002
+            return [
+                {
+                    "video_id": "real-1",
+                    "video_status": 1,
+                    "url": REAL_VIDEO_URL,
+                    "first_frame": REAL_IMAGE_URL,
+                    "output_width": 1920,
+                    "output_height": 1080,
+                    "video_duration": 5,
+                },
+                {
+                    "video_id": "placeholder-1",
+                    "video_status": 7,
+                    "url": PLACEHOLDER_VIDEO_URL,
+                    "first_frame": PLACEHOLDER_THUMB_URL,
+                    "output_width": 1280,
+                    "output_height": 720,
+                },
+            ]
+
+    _install_fake_client(monkeypatch, provider, FakeClient())
+
+    results = await provider.check_video_statuses_from_list(account=_account())
+
+    assert set(results.keys()) == {"real-1", "placeholder-1"}
+
+    real = results["real-1"]
+    assert real.status == ProviderStatus.COMPLETED
+    assert real.video_url == REAL_VIDEO_URL
+    assert real.has_retrievable_media_url is True
+    assert real.metadata["source"] == "list_batch"
+    assert real.metadata["video_url_is_placeholder"] is False
+
+    placeholder = results["placeholder-1"]
+    assert placeholder.status == ProviderStatus.FILTERED
+    # Placeholder URL gets nulled out by the shared sanitizer.
+    assert placeholder.video_url is None
+    assert placeholder.thumbnail_url is None
+    assert placeholder.has_retrievable_media_url is False
+    # Flags reflect what this poll received (before the null-out).
+    assert placeholder.metadata["video_url_is_placeholder"] is True
+    assert placeholder.metadata["thumbnail_url_is_placeholder"] is True
+
+
+@pytest.mark.asyncio
+async def test_provider_service_uses_video_batch_cache(monkeypatch):
+    """
+    Integration: one ``list_videos`` call must satisfy multiple i2v status
+    checks on the same account within the same poll tick.
+    """
+    import pixsim7.backend.main.services.provider.provider_service as ps_module
+    from pixsim7.backend.main.services.provider.provider_service import ProviderService
+    from pixsim7.backend.main.services.provider.adapters.pixverse import (
+        PixverseProvider,
+    )
+
+    # Stub the registry so ProviderService.check_status resolves to our fake
+    # provider without touching the real plugin manager.
+    provider = PixverseProvider()
+
+    list_call_count = {"n": 0}
+    get_video_call_count = {"n": 0}
+
+    class FakeClient:
+        async def list_videos(self, *, limit, offset):  # noqa: ARG002
+            list_call_count["n"] += 1
+            return [
+                {
+                    "video_id": "job-A",
+                    "video_status": 1,
+                    "url": REAL_VIDEO_URL,
+                    "output_width": 1920,
+                    "output_height": 1080,
+                    "video_duration": 5,
+                },
+                {
+                    "video_id": "job-B",
+                    "video_status": 5,
+                    "url": None,
+                    "output_width": 0,
+                    "output_height": 0,
+                },
+            ]
+
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            get_video_call_count["n"] += 1
+            return {"video_id": video_id}
+
+    _install_fake_client(monkeypatch, provider, FakeClient())
+
+    class _FakeRegistry:
+        def get(self, provider_id):  # noqa: ARG002
+            return provider
+
+    monkeypatch.setattr(ps_module, "registry", _FakeRegistry())
+
+    from unittest.mock import AsyncMock, MagicMock
+
+    service = ProviderService(db=AsyncMock())
+
+    def _make_submission(job_id: str):
+        sub = MagicMock()
+        sub.id = hash(job_id) & 0xFFFF
+        sub.provider_id = "pixverse"
+        sub.provider_job_id = job_id
+        sub.submitted_at = datetime.now(timezone.utc)
+        sub.payload = {"model": "v6"}
+        return sub
+
+    poll_cache: dict = {}
+    sub_a = _make_submission("job-A")
+    sub_b = _make_submission("job-B")
+
+    result_a = await service.check_status(
+        submission=sub_a,
+        account=_account(),
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+        poll_cache=poll_cache,
+    )
+    result_b = await service.check_status(
+        submission=sub_b,
+        account=_account(),
+        operation_type=OperationType.IMAGE_TO_VIDEO,
+        poll_cache=poll_cache,
+    )
+
+    # One list call covered BOTH status checks.
+    assert list_call_count["n"] == 1, (
+        f"expected 1 list_videos call, got {list_call_count['n']}"
+    )
+    # And zero per-job get_video calls on the batch-hit path.
+    assert get_video_call_count["n"] == 0, (
+        f"expected 0 get_video fallbacks, got {get_video_call_count['n']}"
+    )
+
+    assert result_a.status == ProviderStatus.COMPLETED
+    assert result_a.video_url == REAL_VIDEO_URL
+    assert result_b.status == ProviderStatus.PROCESSING
+
+
+@pytest.mark.asyncio
+async def test_video_batch_skipped_for_video_extend(monkeypatch):
+    """
+    ``VIDEO_EXTEND`` has extend-silent-filter candidate logic that depends
+    on per-job metadata stamping in the main check_status path.  The batch
+    helper does not replicate that — so extend must bypass batch and go
+    through the per-job path, keeping the silent-filter behaviour intact.
+    """
+    import pixsim7.backend.main.services.provider.provider_service as ps_module
+    from pixsim7.backend.main.services.provider.provider_service import ProviderService
+    from pixsim7.backend.main.services.provider.adapters.pixverse import (
+        PixverseProvider,
+    )
+
+    provider = PixverseProvider()
+
+    list_calls = {"n": 0}
+    direct_calls = {"n": 0}
+
+    class FakeClient:
+        async def list_videos(self, *, limit, offset):  # noqa: ARG002
+            list_calls["n"] += 1
+            return [
+                {
+                    "video_id": "extend-1",
+                    "video_status": 1,
+                    "url": REAL_VIDEO_URL,
+                    "output_width": 1920,
+                    "output_height": 1080,
+                    "video_duration": 5,
+                }
+            ]
+
+        async def get_video(self, *, video_id):  # noqa: ARG002
+            direct_calls["n"] += 1
+            return {"video_id": video_id}
+
+    _install_fake_client(monkeypatch, provider, FakeClient())
+
+    class _FakeRegistry:
+        def get(self, provider_id):  # noqa: ARG002
+            return provider
+
+    monkeypatch.setattr(ps_module, "registry", _FakeRegistry())
+
+    from unittest.mock import AsyncMock, MagicMock
+
+    service = ProviderService(db=AsyncMock())
+    sub = MagicMock()
+    sub.id = 1
+    sub.provider_id = "pixverse"
+    sub.provider_job_id = "extend-1"
+    sub.submitted_at = datetime.now(timezone.utc)
+    sub.payload = {"model": "v6"}
+
+    poll_cache: dict = {}
+    await service.check_status(
+        submission=sub,
+        account=_account(),
+        operation_type=OperationType.VIDEO_EXTEND,
+        poll_cache=poll_cache,
+    )
+
+    # Batch must NOT have been used.
+    assert "pixverse:video_status_batch:1" not in poll_cache
 
 
 def test_status_poller_analysis_phase_captures_id_before_try():
