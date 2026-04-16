@@ -63,6 +63,13 @@ export interface GenerationInputsState {
   inputsByOperation: Partial<Record<OperationType, OperationInputs>>;
   /** Saved inputs per provider+operation for restore on provider switch */
   inputsByProviderOp: Record<string, OperationInputs>;
+  /**
+   * Provider id currently associated with the items in `inputsByOperation[op]`.
+   * The store owns this so `switchProviderInputs` can resolve the "old"
+   * bucket without trusting a caller-supplied value that may have drifted
+   * (e.g. from model-triggered `inferredProviderId` changes).
+   */
+  currentProviderByOp: Partial<Record<OperationType, string | undefined>>;
   armedSlotByOperation: Partial<Record<OperationType, number>>;
   inputModeByOperation: Partial<Record<OperationType, 'append' | 'replace'>>;
 
@@ -93,8 +100,20 @@ export interface GenerationInputsState {
   setMaskLayers: (operationType: OperationType, inputId: string, layers: InputMaskLayer[]) => void;
   toggleSkip: (operationType: OperationType, inputId: string) => void;
 
-  /** Save current inputs under oldProvider key, restore from newProvider key */
-  switchProviderInputs: (operationType: OperationType, oldProviderId: string | undefined, newProviderId: string | undefined) => void;
+  /**
+   * Seed the store's view of "which provider owns the current items for this
+   * op" without performing a swap.  Call this once when the panel mounts or
+   * when the per-provider-inputs feature is first enabled so that the first
+   * `switchProviderInputs` call saves to the correct bucket.
+   */
+  setCurrentProviderForOp: (operationType: OperationType, providerId: string | undefined) => void;
+
+  /**
+   * Save current inputs under the store-tracked provider, restore from the
+   * newProviderId bucket.  The "old" provider is read from `currentProviderByOp`
+   * so callers cannot corrupt it by passing a stale inferred value.
+   */
+  switchProviderInputs: (operationType: OperationType, newProviderId: string | undefined) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -180,6 +199,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
       (set, get) => ({
         inputsByOperation: {},
         inputsByProviderOp: {},
+        currentProviderByOp: {},
         armedSlotByOperation: {},
         inputModeByOperation: {},
 
@@ -751,15 +771,33 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
-        switchProviderInputs: (operationType, oldProviderId, newProviderId) => {
+        setCurrentProviderForOp: (operationType, providerId) => {
+          set((state) => {
+            if (state.currentProviderByOp[operationType] === providerId) return state;
+            return {
+              currentProviderByOp: {
+                ...state.currentProviderByOp,
+                [operationType]: providerId,
+              },
+            };
+          });
+        },
+
+        switchProviderInputs: (operationType, newProviderId) => {
           set((state) => {
             const opKey = (pid: string | undefined) => `${pid ?? '_auto'}::${operationType}`;
+            const oldProviderId = state.currentProviderByOp[operationType];
             const current = getOperationInputs(state.inputsByOperation, operationType);
 
-            // Save current inputs under old provider key
+            // Save current inputs under the tracked old-provider key.  Copy the
+            // items array so later mutations in inputsByOperation do not bleed
+            // into the saved snapshot.
             const updatedByProviderOp = {
               ...state.inputsByProviderOp,
-              [opKey(oldProviderId)]: { ...current },
+              [opKey(oldProviderId)]: {
+                items: [...current.items],
+                currentIndex: current.currentIndex,
+              },
             };
 
             // Restore inputs for new provider (or empty)
@@ -777,6 +815,10 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                   items: newItems,
                   currentIndex: newIndex,
                 },
+              },
+              currentProviderByOp: {
+                ...state.currentProviderByOp,
+                [operationType]: newProviderId,
               },
             };
           });
@@ -807,6 +849,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         partialize: (state) => ({
           inputsByOperation: state.inputsByOperation,
           inputsByProviderOp: state.inputsByProviderOp,
+          currentProviderByOp: state.currentProviderByOp,
         }),
         onRehydrateStorage: () => (state) => {
           if (!state) return;
