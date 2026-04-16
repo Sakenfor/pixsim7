@@ -35,6 +35,8 @@ export interface ServiceState {
   dev_peer_of: string | null
   category: string | null
   extras: Record<string, unknown> | null
+  /** pnpm workspace package this card builds (drives the manual Build button). */
+  build_before_start_package?: string | null
 }
 
 export interface ServicesListResponse {

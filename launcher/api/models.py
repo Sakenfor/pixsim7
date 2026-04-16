@@ -70,6 +70,8 @@ class ServiceStateResponse(BaseModel):
     dev_peer_of: Optional[str] = None
     category: Optional[str] = None
     extras: Optional[Dict[str, Any]] = None
+    # pnpm workspace package to build for this card (drives the manual Build button).
+    build_before_start_package: Optional[str] = None
 
 
 class SettingFieldResponse(BaseModel):

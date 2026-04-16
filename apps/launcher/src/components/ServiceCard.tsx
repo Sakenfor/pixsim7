@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ServiceState } from '../api/client'
 import { openWindow, getServiceSettings } from '../api/client'
+import { getBuildables, buildPackage, type BuildStatus } from '../api/tools'
 import { ServiceIcon } from './ServiceIcon'
 import { useServicesStore } from '../stores/services'
 
@@ -39,6 +40,74 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
   const focusServiceTab = useServicesStore((s) => s.focusServiceTab)
   const [sections, setSections] = useState<string[]>([])
   const [expanded, setExpanded] = useState(false)
+
+  // Manual build state (for cards declaring build_before_start_package)
+  const buildPkg = service.build_before_start_package ?? null
+  const [buildStatus, setBuildStatus] = useState<BuildStatus | null>(null)
+  const [building, setBuilding] = useState(false)
+  const [lastBuildResult, setLastBuildResult] = useState<{ ok: boolean; duration_ms: number } | null>(null)
+
+  useEffect(() => {
+    if (!buildPkg) return
+    let cancelled = false
+    const refresh = (force = false) => {
+      getBuildables(force)
+        .then((items) => {
+          if (cancelled) return
+          const match = items.find((b) => b.package === buildPkg)
+          setBuildStatus(match?.build_status ?? null)
+        })
+        .catch(() => {})
+    }
+    refresh()
+    return () => { cancelled = true }
+  }, [buildPkg, lastBuildResult])
+
+  const runBuild = async () => {
+    if (!buildPkg || building) return
+    setBuilding(true)
+    setLastBuildResult(null)
+    try {
+      const res = await buildPackage(buildPkg)
+      setLastBuildResult({ ok: res.ok, duration_ms: res.duration_ms })
+    } catch (err) {
+      setLastBuildResult({ ok: false, duration_ms: 0 })
+    } finally {
+      setBuilding(false)
+    }
+  }
+
+  // Auto-clear success indicator after 4s so the button reverts to freshness colour.
+  useEffect(() => {
+    if (!lastBuildResult || !lastBuildResult.ok) return
+    const t = setTimeout(() => setLastBuildResult(null), 4000)
+    return () => clearTimeout(t)
+  }, [lastBuildResult])
+
+  const buildButtonTone = (() => {
+    if (building) return 'text-blue-400 animate-pulse'
+    if (lastBuildResult?.ok === false) return 'text-red-400 hover:text-red-300'
+    if (lastBuildResult?.ok === true) return 'text-green-400'
+    const state = buildStatus?.state
+    if (state === 'fresh') return 'text-gray-400 hover:text-gray-200'
+    if (state === 'stale') return 'text-amber-400 hover:text-amber-300'
+    if (state === 'not_built') return 'text-amber-400 hover:text-amber-300'
+    return 'text-gray-500 hover:text-gray-300'
+  })()
+
+  const buildButtonTitle = (() => {
+    if (building) return `Building ${buildPkg}...`
+    if (lastBuildResult) {
+      const secs = (lastBuildResult.duration_ms / 1000).toFixed(1)
+      return lastBuildResult.ok
+        ? `Build succeeded in ${secs}s. Click to rebuild.`
+        : `Build failed after ${secs}s. Click to retry.`
+    }
+    const stateLabel = buildStatus?.state
+      ? ` (${buildStatus.state.replace('_', ' ')})`
+      : ''
+    return `Build ${buildPkg}${stateLabel}`
+  })()
 
   useEffect(() => {
     getServiceSettings(service.key)
@@ -109,6 +178,11 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
             <span className="text-blue-500/50" title="Trusts launcher signing key">
               <IconShield />
             </span>
+          )}
+          {buildPkg && (
+            <IconButton className={buildButtonTone} title={buildButtonTitle} onClick={runBuild}>
+              <IconHammer />
+            </IconButton>
           )}
           {!isRunning ? (
             <IconButton className="text-green-400 hover:text-green-300" title="Start service" onClick={onStart}>
@@ -296,6 +370,16 @@ function IconShield() {
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <polyline points="9 12 11 14 15 10" />
+    </svg>
+  )
+}
+
+function IconHammer() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 12l-8.5 8.5a1.5 1.5 0 1 1-2.12-2.12L12 10" />
+      <path d="M17.64 15L22 10.64" />
+      <path d="M20.91 11.7l-1.25 1.25a2.12 2.12 0 0 1-3-3L14.7 6.98a5.37 5.37 0 0 1 3.2-4.63 5.37 5.37 0 0 1 6.4 6.4 5.37 5.37 0 0 1-4.63 3.2z" />
     </svg>
   )
 }

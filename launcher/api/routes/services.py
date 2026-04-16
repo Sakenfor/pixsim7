@@ -180,6 +180,7 @@ async def list_services(
             dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
             category=getattr(state.definition, 'category', None) or _infer_category(key),
             extras=extras,
+            build_before_start_package=getattr(state.definition, 'build_before_start_package', None),
         ))
 
     return ServicesListResponse(
@@ -231,6 +232,7 @@ async def get_service_status(
         dev_peer_of=getattr(state.definition, 'dev_peer_of', None),
         category=getattr(state.definition, 'category', None) or _infer_category(service_key),
         extras=extras,
+        build_before_start_package=getattr(state.definition, 'build_before_start_package', None),
     )
 
 
