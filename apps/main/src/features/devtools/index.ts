@@ -7,7 +7,7 @@
  * @example
  * ```typescript
  * // Import plugin definitions
- * import { builtInDevTools, sessionStateViewerTool } from '@features/devtools';
+ * import { builtInDevTools, promptImporterTool } from '@features/devtools';
  *
  * // Import infrastructure from lib
  * import { devToolSelectors } from '@lib/plugins/catalogSelectors';

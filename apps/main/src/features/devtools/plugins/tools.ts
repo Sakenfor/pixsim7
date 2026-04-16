@@ -1,173 +1,25 @@
 /**
  * Dev Tool Plugin Definitions
  *
- * Defines all built-in developer tools that can be displayed
- * in the Dev Tools surface.
+ * `defineDevTool` is the lightweight lane for dev-only catalog entries —
+ * typically route-based utilities or hybrid route+panel pages that don't
+ * belong in the full workspace panel system.
  *
- * These tools are registered with the plugin catalog on app startup.
+ * Convention:
+ *   - Workspace surface users might dock/float → `definePanel({ category: 'dev' })`
+ *     (registers a real panel; automatically surfaces in DevToolsPanel catalog)
+ *   - Dev-only route or throwaway utility → `defineDevTool({ ... })` here
+ *
+ * DevToolsPanel reads panels with `category: 'dev'` AND entries defined
+ * here, merging them for display. Keep ids distinct across the two lanes
+ * (the plugin catalog is keyed by id).
  */
 
 import { defineDevTool } from '@pixsim7/shared.devtools.core';
 import { lazy } from 'react';
 
 // Lazy-loaded dev tool components — only fetched when a dev tool is actually opened
-const SessionStateViewer = lazy(() => import('@features/panels/components/dev/SessionStateViewer').then(m => ({ default: m.SessionStateViewer })));
-const GenerationHealthView = lazy(() => import('@features/panels/components/dev/GenerationHealthView').then(m => ({ default: m.GenerationHealthView })));
-const CapabilityTestingPanel = lazy(() => import('@features/panels/components/dev/CapabilityTestingPanel').then(m => ({ default: m.CapabilityTestingPanel })));
-const AppMapPanel = lazy(() => import('@features/panels/components/dev/AppMapPanel').then(m => ({ default: m.AppMapPanel })));
-const DocBrowserPanel = lazy(() => import('@features/panels/components/dev/DocBrowserPanel').then(m => ({ default: m.DocBrowserPanel })));
-const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/GizmoSurfacesPanel').then(m => ({ default: m.GizmoSurfacesPanel })));
-const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
-const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
-const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
-const TestOverviewPanel = lazy(() => import('@features/panels/components/dev/TestOverviewPanel').then(m => ({ default: m.TestOverviewPanel })));
 const CodegenDevPage = lazy(() => import('../routes/pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
-const ContentMapPanel = lazy(() => import('@features/panels/components/dev/ContentMapPanel').then(m => ({ default: m.ContentMapPanel })));
-const PlansPanel = lazy(() => import('@features/panels/components/dev/PlansPanel').then(m => ({ default: m.PlansPanel })));
-const AgentObservabilityPanel = lazy(() => import('@features/panels/components/dev/AgentObservabilityPanel').then(m => ({ default: m.AgentObservabilityPanel })));
-const PerformancePanel = lazy(() => import('@features/panels/components/dev/PerformancePanel').then(m => ({ default: m.PerformancePanel })));
-
-// ============================================================================
-// Session & World State Tools
-// ============================================================================
-
-export const sessionStateViewerTool = defineDevTool({
-  id: 'session-state-viewer',
-  label: 'Session State Viewer',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for session state inspection tool.',
-  featureHighlights: ['World/session flags and relationship inspection in one panel.'],
-  description: 'Inspect GameSession flags, relationships, and world time',
-  icon: 'globe',
-  category: 'session',
-  panelComponent: SessionStateViewer,
-  tags: ['session', 'debug', 'state', 'world', 'relationships'],
-});
-
-export const generationHealthTool = defineDevTool({
-  id: 'generation-health',
-  label: 'Generation Health',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for generation diagnostics tool.',
-  featureHighlights: ['Generation health and diagnostics visibility for content pipelines.'],
-  description: 'Monitor content generation health and diagnostics',
-  icon: 'heart',
-  category: 'generation',
-  panelComponent: GenerationHealthView,
-  tags: ['generation', 'health', 'diagnostics', 'content'],
-});
-
-export const capabilityTestingTool = defineDevTool({
-  id: 'capability-testing',
-  label: 'Capability Testing',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for capability validation tool.',
-  featureHighlights: ['Manual validation surface for capability registration and behavior.'],
-  description: 'Test and validate system capabilities',
-  icon: 'checkCircle',
-  category: 'debug',
-  panelComponent: CapabilityTestingPanel,
-  tags: ['capabilities', 'testing', 'validation'],
-});
-
-// ============================================================================
-// Architecture & Graph Tools
-// ============================================================================
-
-export const appMapTool = defineDevTool({
-  id: 'app-map',
-  label: 'App Map',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for architecture mapping tool.',
-  featureHighlights: ['Live architecture map for features, registries, and plugin surfaces.'],
-  description: 'Live map of features, plugins, registries, and architecture diagnostics',
-  icon: 'graph',
-  category: 'graph',
-  panelComponent: AppMapPanel,
-  tags: ['architecture', 'plugins', 'registries', 'capabilities', 'diagnostics'],
-});
-
-export const docBrowserTool = defineDevTool({
-  id: 'doc-browser',
-  label: 'Docs',
-  updatedAt: '2026-03-13T00:00:00Z',
-  changeNote: 'Standalone documentation browser extracted from App Map.',
-  featureHighlights: ['Browse, search, and read project documentation with linked navigation.'],
-  description: 'Browse and search project documentation',
-  icon: 'fileText',
-  category: 'graph',
-  panelComponent: DocBrowserPanel,
-  tags: ['docs', 'documentation', 'plans', 'architecture', 'search'],
-});
-
-export const plansTool = defineDevTool({
-  id: 'plans',
-  label: 'Plans',
-  updatedAt: '2026-03-16T00:00:00Z',
-  changeNote: 'New plan registry browser with metadata, markdown, sync, and event history.',
-  featureHighlights: ['Browse plans by status, view markdown, sync registry, activity feed.'],
-  description: 'Browse and manage plan registry — manifests, sync, events',
-  icon: 'clipboard',
-  category: 'graph',
-  panelComponent: PlansPanel,
-  tags: ['plans', 'registry', 'architecture', 'roadmap', 'sync'],
-  safeForNonDev: true,
-});
-
-export const agentObservabilityTool = defineDevTool({
-  id: 'agent-observability',
-  label: 'AI Agents',
-  updatedAt: '2026-03-16T00:00:00Z',
-  changeNote: 'Live contract graph with agent presence, session history, and utilization stats.',
-  featureHighlights: ['Contract graph overlay', 'Agent session tracking', 'Activity history', 'Utilization stats'],
-  description: 'AI agent observability — live activity, contract graph, session history',
-  icon: 'activity',
-  category: 'graph',
-  panelComponent: AgentObservabilityPanel,
-  tags: ['agents', 'ai', 'observability', 'contracts', 'meta', 'sessions'],
-  safeForNonDev: true,
-});
-
-// ============================================================================
-// Analytics & Metrics Tools
-// ============================================================================
-
-export const performanceTool = defineDevTool({
-  id: 'performance',
-  label: 'Performance',
-  updatedAt: '2026-03-21T00:00:00Z',
-  changeNote: 'Frontend performance dashboard — heap, FPS, DOM nodes, long tasks, blob caches, Zustand stores.',
-  featureHighlights: [
-    'JS heap sparkline and usage stats',
-    'FPS counter with jank detection',
-    'Long task observer (> 50ms)',
-    'Blob URL cache utilization',
-    'Zustand store size inventory',
-  ],
-  description: 'Monitor frontend performance — heap, FPS, long tasks, caches, store sizes',
-  icon: 'gauge',
-  category: 'debug',
-  panelComponent: PerformancePanel,
-  tags: ['performance', 'memory', 'fps', 'profiling', 'leaks', 'diagnostics', 'heap', 'dom'],
-  safeForNonDev: true,
-});
-
-// ============================================================================
-// Gizmo & Surface Management
-// ============================================================================
-
-export const gizmoSurfacesTool = defineDevTool({
-  id: 'gizmo-surfaces',
-  label: 'Gizmo Surfaces',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for gizmo surface management tool.',
-  featureHighlights: ['Centralized debugging surface for overlays and gizmo dashboards.'],
-  description: 'Manage gizmo overlays and debug dashboard surfaces',
-  icon: 'sliders',
-  category: 'debug',
-  panelComponent: GizmoSurfacesPanel,
-  tags: ['gizmos', 'surfaces', 'overlays', 'dashboards', 'debug'],
-});
 
 // ============================================================================
 // Prompt Tools
@@ -200,80 +52,6 @@ export const blockFitTool = defineDevTool({
 });
 
 // ============================================================================
-// Types & Schema Tools
-// ============================================================================
-
-export const typesExplorerTool = defineDevTool({
-  id: 'types-explorer',
-  label: 'Types Explorer',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for generated-type explorer.',
-  featureHighlights: ['One-stop browsing for generated OpenAPI and composition-role types.'],
-  description: 'Browse generated types: composition roles, region labels, OpenAPI',
-  icon: 'fileCode',
-  category: 'debug',
-  panelComponent: TypesExplorerPanel,
-  tags: ['types', 'openapi', 'schema', 'generated', 'composition', 'roles', 'labels'],
-  safeForNonDev: true,
-});
-
-// ============================================================================
-// Database & Diagnostics Tools
-// ============================================================================
-
-export const sqlQueryExplorerTool = defineDevTool({
-  id: 'sql-query-explorer',
-  label: 'SQL Query Explorer',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for SQL diagnostics panel.',
-  featureHighlights: ['Read-only SQL exploration for operational diagnostics.'],
-  description: 'Run read-only SQL queries for diagnostics and data exploration',
-  icon: 'database',
-  category: 'debug',
-  panelComponent: SqlQueryExplorerPanel,
-  tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
-  // Visible in dev-tools list for discoverability.
-  // Backend endpoint remains permission-gated (admin).
-  safeForNonDev: true,
-});
-
-// ============================================================================
-// Log Viewer
-// ============================================================================
-
-export const logViewerTool = defineDevTool({
-  id: 'log-viewer',
-  label: 'Log Viewer',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for structured log inspection tool.',
-  featureHighlights: ['Trace and request-level backend log exploration UI.'],
-  description: 'Query and inspect structured backend logs, trace jobs and requests',
-  icon: 'fileText',
-  category: 'debug',
-  panelComponent: LogViewerPanel,
-  tags: ['logs', 'trace', 'debug', 'worker', 'pipeline', 'jobs', 'requests', 'errors'],
-  safeForNonDev: true,
-});
-
-// ============================================================================
-// Testing Overview
-// ============================================================================
-
-export const testOverviewTool = defineDevTool({
-  id: 'test-overview',
-  label: 'Test Overview',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for local test overview tool.',
-  featureHighlights: ['Test profile and suite coverage snapshots in one place.'],
-  description: 'View test runner profiles, suite coverage, and local run snapshots.',
-  icon: 'flask',
-  category: 'debug',
-  panelComponent: TestOverviewPanel,
-  tags: ['tests', 'quality', 'profiles', 'pytest', 'vitest'],
-  safeForNonDev: true,
-});
-
-// ============================================================================
 // Codegen Tools
 // ============================================================================
 
@@ -299,22 +77,4 @@ export const codegenTool = defineDevTool({
       defaultValue: false,
     },
   ],
-});
-
-// ============================================================================
-// Content Map
-// ============================================================================
-
-export const contentMapTool = defineDevTool({
-  id: 'content-map',
-  label: 'Content Map',
-  updatedAt: '2026-03-15T00:00:00Z',
-  changeNote: 'Birds-eye view of all content sources with live summaries.',
-  featureHighlights: ['Browse packs, primitives, vocabularies, plugins in one place.'],
-  description: 'Map of all content sources: packs, primitives, vocabularies, plugins',
-  icon: 'map',
-  category: 'prompts',
-  panelComponent: ContentMapPanel,
-  tags: ['content', 'packs', 'primitives', 'vocabularies', 'map', 'inventory', 'plugins'],
-  safeForNonDev: true,
 });

@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { testOverviewTool } from './tools';
+import testOverviewPanel from '@features/panels/domain/definitions/test-overview';
 
-describe('testOverviewTool', () => {
-  it('registers the test overview devtool metadata', () => {
-    expect(testOverviewTool.id).toBe('test-overview');
-    expect(testOverviewTool.label).toBe('Test Overview');
-    expect(testOverviewTool.category).toBe('debug');
-    expect(testOverviewTool.safeForNonDev).toBe(true);
-    expect(testOverviewTool.tags).toContain('tests');
+describe('test-overview panel (dev-tool auto-registration)', () => {
+  it('registers the test overview panel metadata for dev-tool auto-register', () => {
+    expect(testOverviewPanel.id).toBe('test-overview');
+    expect(testOverviewPanel.title).toBe('Test Overview');
+    expect(testOverviewPanel.category).toBe('dev');
+    expect(testOverviewPanel.tags).toContain('tests');
+
+    const devTool = (testOverviewPanel as { metadata?: { devTool?: { category?: string; safeForNonDev?: boolean } } })
+      .metadata?.devTool;
+    expect(devTool?.category).toBe('debug');
+    expect(devTool?.safeForNonDev).toBe(true);
   });
 
   it('exposes a panel component for rendering in dev tool host', () => {
-    expect(typeof testOverviewTool.panelComponent).toBe('object');
+    expect(testOverviewPanel.component).toBeDefined();
   });
 });

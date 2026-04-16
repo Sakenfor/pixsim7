@@ -14,6 +14,7 @@ export {
   codegenPageModule,
   promptImporterPageModule,
   blockFitPageModule,
+  devToolsPanelModule,
 } from '@features/devtools/routes';
 export { npcBrainLabModule } from '@features/brainTools/routes';
 export { pluginManagerModule } from '@features/plugins/routes';

@@ -51,7 +51,10 @@ export class PanelManager {
    */
   registerPanel(metadata: PanelMetadata): void {
     if (this.metadata.has(metadata.id)) {
-      console.warn(`[PanelManager] Panel "${metadata.id}" already registered, overwriting`);
+      // Re-registration with refreshed metadata (e.g. settings overrides)
+      // is expected on workspace remounts — just update in-place.
+      this.metadata.set(metadata.id, metadata);
+      return;
     }
 
     this.metadata.set(metadata.id, metadata);

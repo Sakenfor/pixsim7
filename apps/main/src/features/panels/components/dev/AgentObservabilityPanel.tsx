@@ -205,7 +205,7 @@ function EngineProfileIcon({
 function navigateToPlan(planId: string) {
   // Write target nav ID so Plans panel auto-navigates on mount
   try { localStorage.setItem('plans-panel:nav', `plan:${planId}`); } catch { /* ignore */ }
-  openWorkspacePanel('dev-tool:plans');
+  openWorkspacePanel('plans');
 }
 
 /** Lightweight markdown renderer for work summaries. */

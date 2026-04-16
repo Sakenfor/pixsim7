@@ -70,7 +70,7 @@ export function AgentActivityBarWidget() {
   });
 
   const handleClick = useCallback(() => {
-    openFloatingPanel('dev-tool:agent-observability' as any, {
+    openFloatingPanel('agent-observability' as any, {
       width: 900,
       height: 600,
     });

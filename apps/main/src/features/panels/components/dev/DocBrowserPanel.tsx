@@ -120,7 +120,7 @@ function RelatedTests({ docEntry }: { docEntry: DocIndexEntry | undefined }) {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => openWorkspacePanel('dev-tool:test-overview')}
+            onClick={() => openWorkspacePanel('test-overview')}
           >
             Open Test Overview
           </Button>

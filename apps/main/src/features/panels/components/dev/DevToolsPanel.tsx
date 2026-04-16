@@ -11,9 +11,52 @@ import { useState, useMemo, useEffect } from "react";
 
 import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
 import { Icon, IconBadge, type IconName } from "@lib/icons";
-import { devToolSelectors } from "@lib/plugins/catalogSelectors";
+import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { useWorkspaceStore } from "@features/workspace";
+import type { PanelDefinition } from "@features/panels";
+import { openFloatingWorkspacePanel, useWorkspaceStore } from "@features/workspace";
+
+
+
+/** Marker on dev-tool entries that originated from a PanelDefinition. */
+type DevToolEntry = DevToolDefinition & { __panelId?: string };
+
+function panelToDevToolEntry(panel: PanelDefinition): DevToolEntry {
+  const metadata = (panel as { metadata?: { devTool?: { category?: DevToolCategory; safeForNonDev?: boolean } | false } }).metadata;
+  const devToolConfig = metadata?.devTool && metadata.devTool !== false ? metadata.devTool : {};
+  return {
+    id: panel.id as any,
+    label: panel.title,
+    description: panel.description,
+    icon: panel.icon,
+    category: devToolConfig.category ?? 'misc',
+    panelComponent: panel.component,
+    tags: panel.tags,
+    safeForNonDev: devToolConfig.safeForNonDev,
+    updatedAt: (panel as { updatedAt?: string }).updatedAt,
+    changeNote: (panel as { changeNote?: string }).changeNote,
+    featureHighlights: (panel as { featureHighlights?: string[] }).featureHighlights,
+    __panelId: panel.id,
+  } as DevToolEntry;
+}
+
+function collectDevToolEntries(): DevToolEntry[] {
+  const legacy = devToolSelectors.getAll();
+  const byId = new Map<string, DevToolEntry>();
+  for (const tool of legacy) {
+    byId.set(tool.id, tool as DevToolEntry);
+  }
+  for (const panel of panelSelectors.getAll()) {
+    if (panel.category !== 'dev') continue;
+    if (panel.isInternal) continue;
+    if (panel.id === 'dev-tools') continue;
+    const metadata = (panel as { metadata?: { devTool?: unknown } }).metadata;
+    if (metadata?.devTool === false) continue;
+    if (byId.has(panel.id)) continue;
+    byId.set(panel.id, panelToDevToolEntry(panel));
+  }
+  return Array.from(byId.values());
+}
 
 
 const CATEGORY_META: Record<DevToolCategory, { label: string; icon: IconName }> = {
@@ -69,7 +112,7 @@ function formatUpdatedAt(value?: string): string | null {
   });
 }
 
-function sortToolsByRecency(tools: DevToolDefinition[]): DevToolDefinition[] {
+function sortToolsByRecency(tools: DevToolEntry[]): DevToolEntry[] {
   return [...tools].sort((a, b) => {
     const tsDiff = parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
     if (tsDiff !== 0) return tsDiff;
@@ -86,12 +129,16 @@ export function DevToolsPanel() {
   const { addRecentTool, recentTools, clearRecentTools } = useDevToolContext();
   const { theme: variant } = useTheme();
 
-  const [allTools, setAllTools] = useState(() => sortToolsByRecency(devToolSelectors.getAll()));
+  const [allTools, setAllTools] = useState<DevToolEntry[]>(() => sortToolsByRecency(collectDevToolEntries()));
 
   useEffect(() => {
-    return devToolSelectors.subscribe(() => {
-      setAllTools(sortToolsByRecency(devToolSelectors.getAll()));
-    });
+    const refresh = () => setAllTools(sortToolsByRecency(collectDevToolEntries()));
+    const unsubDevTools = devToolSelectors.subscribe(refresh);
+    const unsubPanels = panelSelectors.subscribe(refresh);
+    return () => {
+      unsubDevTools();
+      unsubPanels();
+    };
   }, []);
 
   // Build visible tools (respecting experimental toggle)
@@ -154,9 +201,10 @@ export function DevToolsPanel() {
   // Get tools for the active category (or recent tools)
   const activeTools = useMemo(() => {
     if (nav.activeId === "recent") {
+      const byId = new Map(allTools.map((t) => [t.id, t] as const));
       return recentTools
-        .map((id) => devToolSelectors.get(id))
-        .filter((t): t is DevToolDefinition => !!t);
+        .map((id) => byId.get(id))
+        .filter((t): t is DevToolEntry => !!t);
     }
 
     const categoryTools = nav.activeId === "all"
@@ -176,8 +224,13 @@ export function DevToolsPanel() {
     );
   }, [nav.activeId, visibleTools, recentTools, searchQuery]);
 
-  const handleOpenTool = (tool: DevToolDefinition) => {
+  const handleOpenTool = (tool: DevToolEntry) => {
     addRecentTool(tool.id);
+
+    if (tool.__panelId) {
+      openFloatingWorkspacePanel(tool.__panelId);
+      return;
+    }
 
     if (tool.panelComponent) {
       const panelId = `dev-tool:${tool.id}` as any;
@@ -265,12 +318,12 @@ export function DevToolsPanel() {
 // ---------------------------------------------------------------------------
 
 interface DevToolCardProps {
-  tool: DevToolDefinition;
-  onOpen: (tool: DevToolDefinition) => void;
+  tool: DevToolEntry;
+  onOpen: (tool: DevToolEntry) => void;
 }
 
 function DevToolCard({ tool, onOpen }: DevToolCardProps) {
-  const hasAction = !!(tool.routePath || tool.panelComponent);
+  const hasAction = !!(tool.routePath || tool.panelComponent || tool.__panelId);
   const variant = CATEGORY_VARIANTS[tool.category ?? "misc"] ?? "primary";
   const updatedAtLabel = formatUpdatedAt(tool.updatedAt);
   const highlights = tool.featureHighlights ?? [];

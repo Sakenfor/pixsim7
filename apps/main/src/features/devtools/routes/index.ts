@@ -7,6 +7,7 @@ import { defineModule } from '@app/modules/types';
 const CodegenDevPage = lazy(() => import('./pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
 const DevPromptImporterPage = lazy(() => import('./pages/DevPromptImporterPage').then(m => ({ default: m.DevPromptImporterPage })));
 const BlockFitDevPage = lazy(() => import('./pages/BlockFitDevPage').then(m => ({ default: m.BlockFitDevPage })));
+const DevToolsPage = lazy(() => import('./pages/DevToolsPage').then(m => ({ default: m.DevToolsPage })));
 
 const openCodegenAction: ActionDefinition = {
   id: 'codegen.open',
@@ -69,6 +70,24 @@ export const promptImporterPageModule = defineModule({
     featureId: 'prompt-importer',
     hidden: true,
     component: DevPromptImporterPage,
+  },
+});
+
+export const devToolsPanelModule = defineModule({
+  id: 'dev-tools-panel',
+  name: 'Dev Tools',
+  updatedAt: '2026-04-16T00:00:00Z',
+  changeNote: 'DEV-group shortcut — renders DevToolsPanel inline as a full page, or via the SubNav float chip to overlay the current page.',
+  featureHighlights: ['Full-page view at /dev-tools plus float-on-current-page via the SubNav flyout.'],
+  page: {
+    route: '/dev-tools',
+    icon: 'flask',
+    iconColor: 'text-orange-500',
+    description: 'Browse developer tools and diagnostics',
+    category: 'development',
+    featureId: 'dev-tools',
+    featurePrimary: true,
+    component: DevToolsPage,
   },
 });
 

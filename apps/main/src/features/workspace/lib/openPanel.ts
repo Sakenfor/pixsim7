@@ -30,7 +30,7 @@ export function openFloatingWorkspacePanel(
 /** Open the Plans panel and navigate to a specific plan. */
 export function navigateToPlan(planId: string): void {
   try { localStorage.setItem('plans-panel:nav', `plan:${planId}`); } catch { /* */ }
-  useWorkspaceStore.getState().openFloatingPanel('dev-tool:plans', {
+  useWorkspaceStore.getState().openFloatingPanel('plans', {
     width: 900,
     height: 600,
     context: { targetPlanId: planId },
@@ -48,7 +48,7 @@ export function navigateToAssistantWithPlan(planId: string, planTitle?: string):
 /** Open the Agent Observability panel and expand a specific agent profile. */
 export function navigateToAgentProfile(agentId: string): void {
   try { localStorage.setItem('agent-observability:nav', 'agents'); } catch { /* */ }
-  useWorkspaceStore.getState().openFloatingPanel('dev-tool:agent-observability', {
+  useWorkspaceStore.getState().openFloatingPanel('agent-observability', {
     width: 900,
     height: 600,
     context: { focusAgentId: agentId },

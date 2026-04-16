@@ -201,11 +201,11 @@ function getNavigationTarget(n: NotificationItem): { panelId: string; width?: nu
 
   switch (n.refType) {
     case 'plan':
-      return { panelId: 'dev-tool:plans', width: 900, height: 600 };
+      return { panelId: 'plans', width: 900, height: 600 };
     case 'generation':
       return { panelId: 'generation-history', width: 800, height: 500 };
     case 'document':
-      return { panelId: 'dev-tool:plans', width: 900, height: 600 };
+      return { panelId: 'plans', width: 900, height: 600 };
     default:
       return null;
   }

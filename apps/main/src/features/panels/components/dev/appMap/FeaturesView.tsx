@@ -194,7 +194,7 @@ export function FeaturesView({
                         {docItems.map((item) => (
                           <button
                             key={item}
-                            onClick={() => openWorkspacePanel('dev-tool:doc-browser')}
+                            onClick={() => openWorkspacePanel('doc-browser')}
                             className="w-full text-left px-2 py-1 rounded transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                           >
                             <code className="text-xs font-mono text-neutral-600 dark:text-neutral-400">

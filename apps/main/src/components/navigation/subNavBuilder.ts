@@ -131,8 +131,19 @@ export function buildSubNavForPage(options: BuildSubNavOptions): SubNavItem[] | 
     maxItems: Math.max(0, maxItems - 1 - routeItems.length),
   });
 
-  const merged = dedupeItems([defaultItem, ...routeItems, ...panelItems]);
-  return merged.length > 1 ? merged : undefined;
+  // If any panel item already covers the default (same label + icon),
+  // drop the default — the panel item is strictly more informative
+  // (carries open-preference chip + modifier-click semantics).
+  const panelCoversDefault = panelItems.some(
+    (item) => item.label === defaultItem.label && item.icon === defaultItem.icon,
+  );
+  const base = panelCoversDefault ? [] : [defaultItem];
+
+  const merged = dedupeItems([...base, ...routeItems, ...panelItems]);
+  // Show the flyout when there's more than one entry, or when the only
+  // entry is an actionable panel/route item (not just the default stub).
+  const hasActionableItem = merged.some((item) => item.id !== defaultItem.id);
+  return merged.length > 1 || hasActionableItem ? merged : undefined;
 }
 
 function resolveManualSubNav(subNav: PageEntry['subNav']): SubNavItem[] {
