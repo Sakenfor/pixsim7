@@ -6,11 +6,11 @@ import { Icon } from '@lib/icons';
 import type { WidgetConfig } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
+import { toggleFavoriteTag } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
-
-import { MediaCard } from '@/components/media/MediaCard';
 import type { InputItem } from '@features/generation';
 
+import { MediaCard } from '@/components/media/MediaCard';
 import type { OperationType } from '@/types/operations';
 
 import { MaskPreviewOverlay } from './MaskPreviewOverlay';
@@ -194,6 +194,7 @@ export function AssetPanelGrid({
           >
             <MediaCard
               asset={inputItem.asset}
+              onToggleFavorite={() => toggleFavoriteTag(inputItem.asset)}
               customWidgets={buildSlotExtraWidgets(inputItem, idx)}
               layout={{
                 density: 'compact',

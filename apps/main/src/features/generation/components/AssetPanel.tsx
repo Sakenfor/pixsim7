@@ -7,7 +7,7 @@
  *   AssetPanelHeader.tsx    – header bar, floating panel toggles, settings popover
  *   AssetPanelGrid.tsx      – multi-asset strip/grid display
  */
-import { getAssetDisplayUrls } from '@features/assets';
+import { getAssetDisplayUrls, toggleFavoriteTag } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 
 import { MediaCard } from '@/components/media/MediaCard';
@@ -236,6 +236,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               <div className="h-full" onDoubleClick={() => state.openAsset(currentAsset)}>
                 <MediaCard
                   asset={currentAsset}
+                  onToggleFavorite={() => toggleFavoriteTag(currentAsset)}
                   customWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
                   layout={{
                     density: 'compact',
