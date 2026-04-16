@@ -131,6 +131,22 @@ def _quota_rotation_max_defer_seconds() -> int:
     return _settings_int("quota_rotation_max_defer_seconds", 30, minimum=base_seconds)
 
 
+def _safe_attempt_id(generation: Generation | None) -> int:
+    """Read ``generation.attempt_id`` without triggering a lazy reload.
+
+    Error handlers in this module may hold an ORM instance whose attributes
+    were expired by an intervening commit/rollback. A bare ``getattr`` then
+    triggers a sync re-fetch from async context → ``MissingGreenlet``.
+    Reading straight from ``__dict__`` returns ``None`` when the attribute
+    is not resident; the defer escalation collapses to the base case, which
+    is safe.
+    """
+    if generation is None:
+        return 0
+    raw = generation.__dict__.get("attempt_id", 0)
+    return _normalize_positive_int(raw, 0)
+
+
 def _quota_rotation_requeue_defer_seconds(generation: Generation) -> int | None:
     """
     Compute an escalating defer for repeated quota-rotation requeues.
@@ -138,7 +154,7 @@ def _quota_rotation_requeue_defer_seconds(generation: Generation) -> int | None:
     Prevents hot-loop thrash when many accounts report quota errors in short
     bursts (stale balances, delayed refunds, shared pool pressure).
     """
-    attempt_id = _normalize_positive_int(getattr(generation, "attempt_id", 0), 0)
+    attempt_id = _safe_attempt_id(generation)
     if attempt_id <= 0:
         return None
 
@@ -217,7 +233,7 @@ def _account_unavailable_requeue_defer_seconds(
     defer_seconds = base_seconds
 
     if generation is not None:
-        attempt_id = _normalize_positive_int(getattr(generation, "attempt_id", 0), 0)
+        attempt_id = _safe_attempt_id(generation)
         if attempt_id > 0:
             threshold = _account_wait_defer_after_attempts()
             if attempt_id >= threshold:
@@ -1010,7 +1026,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             gen_logger.info(
                                 "quota_rotation_defer_scheduled",
                                 generation_id=generation.id,
-                                attempt_id=getattr(generation, "attempt_id", None),
+                                attempt_id=generation.__dict__.get("attempt_id"),
                                 defer_seconds=quota_defer_seconds,
                             )
                         requeue_result = await _requeue_generation_for_account_rotation(
@@ -1471,11 +1487,19 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # If we loaded the generation and it is still pending, explicitly
             # defer to the retry queue so fresh jobs stay on the primary queue.
+            # Read ``status`` from ``__dict__`` rather than via attribute access
+            # so we do not trigger a lazy re-fetch on an expired ORM instance
+            # from within this exception handler (MissingGreenlet risk).
             try:
+                _gen_status_raw = (
+                    generation.__dict__.get("status", "")
+                    if 'generation' in locals() and generation is not None
+                    else ""
+                )
                 if (
                     'generation' in locals()
                     and generation
-                    and str(getattr(generation, "status", "")).lower() in {"pending", "generationstatus.pending"}
+                    and str(_gen_status_raw).lower() in {"pending", "generationstatus.pending"}
                 ):
                     from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 

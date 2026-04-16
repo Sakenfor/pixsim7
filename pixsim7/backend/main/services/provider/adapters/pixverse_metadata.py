@@ -17,6 +17,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_ids import (
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as _normalize_url,
     extract_media_url as _extract_media_url,
+    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
 )
 
 from pixsim_logging import get_logger
@@ -380,6 +381,17 @@ class PixverseMetadataMixin:
             return None
 
         result_url = _extract_media_url(metadata, media_type)
+        # Refuse to resolve a placeholder URL — callers interpret a returned
+        # URL as a fetchable asset, so yielding the Pixverse `/default.mp4`
+        # template would let the filtered video masquerade as real content.
+        if _is_pixverse_placeholder_url(result_url):
+            logger.info(
+                "pixverse_resolve_webapi_url_placeholder_skipped",
+                raw=raw[:60],
+                media_type=media_type,
+                placeholder_preview=str(result_url)[:120] if result_url else None,
+            )
+            return None
         logger.info(
             "pixverse_resolve_webapi_url_result",
             raw=raw[:60],

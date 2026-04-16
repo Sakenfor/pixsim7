@@ -1291,13 +1291,19 @@ async def _poll_single_generation(
 
         except Exception as e:
             if _is_transient_network_error(e):
+                # `generation_id` was captured from the frozen snapshot at
+                # function entry; prefer it over `generation.id` so we do not
+                # touch ORM attributes inside an error handler.
                 failure_count, delay_sec = _record_transient_poll_backoff(
-                    transient_backoff_key or str(generation.id),
+                    transient_backoff_key or str(generation_id),
                     now_mono=time.monotonic(),
                 )
-                submission_id = submission.id if "submission" in locals() and submission else None
+                # Read submission attributes from __dict__ to avoid triggering
+                # a lazy reload on an expired ORM instance (MissingGreenlet).
+                _sub = submission if "submission" in locals() and submission else None
+                submission_id = _sub.__dict__.get("id") if _sub is not None else None
                 provider_job_id = (
-                    submission.provider_job_id if "submission" in locals() and submission else None
+                    _sub.__dict__.get("provider_job_id") if _sub is not None else None
                 )
                 logger.warning(
                     "poll_generation_transient_error",
@@ -1589,6 +1595,9 @@ async def _poll_analyses_phase(
 
     for analysis in processing_analyses:
         stats.checked += 1
+        # Capture the id up-front so the error handler at the bottom of the
+        # loop can log it without touching a potentially-expired ORM instance.
+        _analysis_id = analysis.__dict__.get("id")
 
         try:
             # Get latest submission for this analysis
@@ -1694,14 +1703,14 @@ async def _poll_analyses_phase(
 
             except ProviderError as e:
                 _apoll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
-                _apoll_log("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
+                _apoll_log("provider_analysis_check_error", analysis_id=_analysis_id, error=str(e))
                 stats.still_processing += 1
 
         except Exception as e:
-            logger.error("poll_analysis_error", analysis_id=analysis.id, error=str(e), exc_info=True)
+            logger.error("poll_analysis_error", analysis_id=_analysis_id, error=str(e), exc_info=True)
             worker_debug.worker(
                 "poll_analysis_error",
-                analysis_id=analysis.id,
+                analysis_id=_analysis_id,
                 error=str(e),
             )
 

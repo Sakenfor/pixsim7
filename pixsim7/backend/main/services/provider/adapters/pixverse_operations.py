@@ -26,6 +26,7 @@ from pixsim7.backend.main.services.provider.provider_logging import (
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as _normalize_pixverse_url,
+    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_params import (
     normalize_video_duration,
@@ -343,6 +344,15 @@ class PixverseOperationsMixin:
             raw_thumbnail_url = getattr(video, 'thumbnail', None)
             video_url = _normalize_pixverse_url(raw_video_url) if raw_video_url else None
             thumbnail_url = _normalize_pixverse_url(raw_thumbnail_url) if raw_thumbnail_url else None
+            # Null out placeholder URLs (Pixverse `.../default.mp4`) even on
+            # the submit response.  Pixverse occasionally returns the filtered
+            # template immediately when a prompt trips moderation at submit
+            # time; without this, the placeholder would be written straight
+            # into submission.response and stick there.
+            if _is_pixverse_placeholder_url(video_url):
+                video_url = None
+            if _is_pixverse_placeholder_url(thumbnail_url):
+                thumbnail_url = None
 
             return GenerationResult(
                 provider_job_id=video.id,

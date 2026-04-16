@@ -23,6 +23,9 @@ from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_CREATED
 from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
+)
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -134,6 +137,23 @@ class AssetCreationMixin:
                 "Submission response missing required fields (provider_asset_id/provider_video_id, asset_url/video_url)"
             )
 
+        # Detect placeholder URLs that slipped past the provider adapter's
+        # null-out.  Pixverse serves `.../default.mp4` / `.../default.jpg` when
+        # its moderation filter blocks content *before* the real CDN URL was
+        # ever captured.  Asset 62302 is the anchor incident: we downloaded the
+        # placeholder, showed it in the gallery, and only discovered it via
+        # user thumbnail inspection.  Hide such assets from gallery listings
+        # (searchable=False) while keeping the row for direct-ID debugging.
+        _asset_url_is_placeholder = bool(_is_pixverse_placeholder_url(asset_url))
+        if _asset_url_is_placeholder:
+            logger.warning(
+                "asset_creation_placeholder_url_blocked",
+                submission_id=submission.id,
+                generation_id=getattr(generation, "id", None),
+                provider_id=submission.provider_id,
+                asset_url_preview=str(asset_url)[:120],
+            )
+
         # Detect media type from OPERATION_REGISTRY (authoritative).
         # Response keys are unreliable — the polling pipeline always writes
         # video_url/provider_video_id regardless of operation type.
@@ -204,6 +224,13 @@ class AssetCreationMixin:
             metadata = {}
         metadata["generation_context"] = gen_ctx
 
+        # Stamp placeholder-leak metadata so downstream consumers (moderation
+        # recheck, diagnostics, UI filters) can recognize these rows.
+        if _asset_url_is_placeholder:
+            metadata["provider_flagged"] = True
+            metadata["provider_flagged_reason"] = "placeholder_url_only"
+            metadata["asset_url_is_placeholder"] = True
+
         # Create asset — each generation always gets its own Asset record.
         # Content dedup is handled at the storage layer (content-addressed keys)
         # and tracked via ContentBlob.
@@ -227,6 +254,7 @@ class AssetCreationMixin:
             media_metadata=metadata,
             prompt=prompt_text,
             prompt_analysis=prompt_analysis_result,
+            searchable=not _asset_url_is_placeholder,
             created_at=datetime.now(timezone.utc),
         )
 

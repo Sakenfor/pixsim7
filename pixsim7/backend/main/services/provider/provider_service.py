@@ -36,6 +36,10 @@ from pixsim7.backend.main.shared.composition_assets import coerce_composition_as
 from pixsim7.backend.main.services.provider.provider_logging import (
     summarize_provider_params_for_log,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
+    has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
+)
 logger = configure_logging("provider_service").bind(channel="pipeline")
 
 
@@ -47,6 +51,30 @@ def _extract_provider_error_code(error: ProviderError) -> str | None:
         if value:
             return value
     return None
+
+
+def _merge_video_url_preferring_retrievable(
+    incoming: Optional[str],
+    stored: Optional[str],
+) -> Optional[str]:
+    """
+    Choose the video URL to persist, resisting placeholder-URL overwrites.
+
+    Default behavior is ``incoming or stored`` — new URL wins if present.
+    Belt-and-suspenders exception: if the adapter's placeholder null-out
+    regresses and ``incoming`` is a known Pixverse ``/default.mp4`` template
+    URL while ``stored`` is a real CDN output URL, keep ``stored``.  This
+    prevents the asset 62302 class of bug where a later list-fallback poll
+    overwrote the real CDN URL captured on an earlier poll.
+    """
+    if (
+        incoming
+        and stored
+        and _is_pixverse_placeholder_url(incoming)
+        and _has_retrievable_pixverse_media_url(stored)
+    ):
+        return stored
+    return incoming or stored
 
 
 def _analysis_support_snapshot(provider: Any) -> Dict[str, bool]:
@@ -1073,7 +1101,25 @@ class ProviderService:
         existing_thumbnail = submission.response.get("thumbnail_url")
         existing_provider_id = submission.response.get("provider_video_id") or submission.response.get("provider_asset_id")
 
-        video_url = status_result.video_url or existing_video_url
+        # See _merge_video_url_preferring_retrievable for rationale — belt-
+        # and-suspenders against a regressed adapter letting a Pixverse
+        # placeholder URL overwrite a known-retrievable stored one.
+        video_url = _merge_video_url_preferring_retrievable(
+            status_result.video_url,
+            existing_video_url,
+        )
+        if (
+            status_result.video_url
+            and video_url is not status_result.video_url
+            and _is_pixverse_placeholder_url(status_result.video_url)
+        ):
+            logger.warning(
+                "pixverse_placeholder_url_merge_guarded",
+                submission_id=submission.id,
+                provider_job_id=submission.provider_job_id,
+                incoming_url_preview=str(status_result.video_url)[:120],
+                stored_url_preview=str(existing_video_url)[:120],
+            )
         # Provider signals that its thumbnail is unreliable (e.g. Pixverse grey placeholder).
         if status_result.suppress_thumbnail:
             thumbnail_url = None
