@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
+
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import type { ExpansionComponentProps } from '@features/cubes';
 
@@ -33,6 +35,8 @@ function GalleryCubeThumbnail({
   onSelect: (asset: LocalAssetModel, previewUrl: string) => void;
 }) {
   const resolvedPreview = useLocalAssetPreview(asset, previews);
+  const isVideo = asset.kind === 'video' && !!resolvedPreview;
+  const hasVideoSlot = useVideoActivationSlot(isVideo);
 
   return (
     <button
@@ -49,12 +53,18 @@ function GalleryCubeThumbnail({
     >
       {resolvedPreview ? (
         <>
-          {asset.kind === 'video' ? (
-            <video
-              src={resolvedPreview}
-              className="w-full h-full object-cover"
-              muted
-            />
+          {isVideo ? (
+            hasVideoSlot ? (
+              <video
+                src={resolvedPreview}
+                className="w-full h-full object-cover"
+                muted
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-2xl text-white/30">
+                {'\u{1F3A5}'}
+              </div>
+            )
           ) : (
             <img
               src={resolvedPreview}

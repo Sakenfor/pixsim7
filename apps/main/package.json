@@ -22,6 +22,8 @@
     ]
   },
   "dependencies": {
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
     "@dagrejs/dagre": "^2.0.4",
     "@mediapipe/tasks-vision": "^0.10.18",
     "@phosphor-icons/react": "^2.1.7",
@@ -138,8 +140,14 @@
       "auto_start": false,
       "enabled": true,
       "settings": [
-        { "key": "port", "env_export": "FRONTEND_PORT" },
-        { "key": "base_url", "env_export": "FRONTEND_BASE_URL" }
+        {
+          "key": "port",
+          "env_export": "FRONTEND_PORT"
+        },
+        {
+          "key": "base_url",
+          "env_export": "FRONTEND_BASE_URL"
+        }
       ]
     }
   }

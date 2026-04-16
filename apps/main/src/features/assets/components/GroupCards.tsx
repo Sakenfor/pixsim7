@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import type { AssetGroupMeta } from '@lib/api/assets';
 import { Icon } from '@lib/icons';
+import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
@@ -206,6 +207,11 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
   const showPoster = isVideo && usePosterImage && !!thumbSrc && !thumbFailed;
   const showImage = !isVideo && !!thumbSrc && !thumbFailed;
   const showVideo = isVideo && !!videoSrc && !showPoster;
+  // Globally cap concurrent <video> decoders.  When no slot is granted
+  // we either show the thumb (if we have one) or a placeholder rather
+  // than mounting a <video> element that would hold native decoder
+  // memory off-pool.
+  const hasVideoSlot = useVideoActivationSlot(showVideo);
 
   return (
     <div
@@ -226,7 +232,7 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
           className="w-full h-full object-cover"
           loading="lazy"
         />
-      ) : showVideo ? (
+      ) : showVideo && hasVideoSlot ? (
         <video
           src={videoSrc}
           poster={thumbSrc}
@@ -234,6 +240,13 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
           preload="metadata"
           muted
           playsInline
+        />
+      ) : showVideo && thumbSrc ? (
+        <img
+          src={thumbSrc}
+          alt=""
+          className="w-full h-full object-cover"
+          loading="lazy"
         />
       ) : thumbLoading ? (
         <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">

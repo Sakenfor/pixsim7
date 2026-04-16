@@ -935,8 +935,12 @@ export function VideoScrubWidgetRenderer({
       // element itself won't be visible.  The captured frame is shown
       // by MediaCard (outside the overlay) until the release timer fires.
       if (url && pauseOnLeave) {
-        const dataUrl = captureVideoFrame(videoRef.current);
-        if (dataUrl) setCapturedFrame(url, dataUrl);
+        // Fire-and-forget: toBlob is async; we don't gate the pause on it.
+        // The capture still completes on a frame the video had decoded
+        // before pause(), since drawImage runs synchronously above.
+        void captureVideoFrame(videoRef.current).then((res) => {
+          if (res) setCapturedFrame(url, res.url, res.bytes);
+        });
       }
       videoRef.current.pause();
       if (!pauseOnLeave && videoRef.current.readyState >= 1) {

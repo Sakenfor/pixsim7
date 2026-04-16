@@ -19,15 +19,20 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
+import { getCapturedFrameStoreStats } from '@lib/media/capturedFrameStore';
+import { getVideoActivationPoolStats } from '@lib/media/videoActivationPool';
 import { hmrSingleton } from '@lib/utils';
 
 import {
   clearLocalFolderPreviewCache,
   getLocalFolderPreviewCacheStats,
 } from '@features/assets/hooks/useLocalFoldersController';
-import { getRegisteredInputStores } from '@features/generation/stores/generationScopeStores';
+import {
+  getRegisteredInputStoreEntries,
+  getRegisteredInputStores,
+  getRegisteredSettingsStoreEntries,
+} from '@features/generation/stores/generationScopeStores';
 
-import { getVideoActivationPoolStats } from '@lib/media/videoActivationPool';
 
 import { authMediaCaches, clearAuthMediaCaches } from '@/hooks/useAuthenticatedMedia';
 import { clearThumbnailBlobCache, thumbnailBlobCache } from '@/hooks/useMediaThumbnail';
@@ -566,17 +571,17 @@ export function PerformancePanel() {
     lines.push(`DOM nodes:      ${getDomNodeCount()}`);
     // Media element counts — concurrent <video> decoders are a common
     // source of native/GPU memory that JS can't see.
-    const videos = document.querySelectorAll('video');
-    const images = document.querySelectorAll('img');
-    const canvases = document.querySelectorAll('canvas');
+    const videos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+    const images = Array.from(document.querySelectorAll('img')) as HTMLImageElement[];
+    const canvases = Array.from(document.querySelectorAll('canvas')) as HTMLCanvasElement[];
     let videosWithSrc = 0;
     let videosPlaying = 0;
-    for (const v of Array.from(videos) as HTMLVideoElement[]) {
+    for (const v of videos) {
       if (v.currentSrc || v.src) videosWithSrc++;
       if (!v.paused && !v.ended && v.readyState > 2) videosPlaying++;
     }
     let imagesWithSrc = 0;
-    for (const i of Array.from(images) as HTMLImageElement[]) {
+    for (const i of images) {
       if (i.currentSrc || i.src) imagesWithSrc++;
     }
     const poolStats = getVideoActivationPoolStats();
@@ -585,6 +590,59 @@ export function PerformancePanel() {
     lines.push(`<img>:          ${images.length} total, ${imagesWithSrc} with src`);
     lines.push(`<canvas>:       ${canvases.length}`);
     lines.push('');
+
+    // Per-<video> breakdown — decoded video frames live in GPU/native
+    // memory, invisible to the JS heap. Each 4K decoder ≈ 200–800 MB.
+    const videoRows = videos
+      .map((v) => {
+        const pixels = v.videoWidth * v.videoHeight;
+        const src = v.currentSrc || v.src || '';
+        const trimmedSrc = src.length > 60 ? '…' + src.slice(-58) : src;
+        return {
+          w: v.videoWidth,
+          h: v.videoHeight,
+          pixels,
+          // Rough native budget: w×h×4 bytes × ~3 (decode pipeline + GPU upload)
+          estBytes: pixels * 4 * 3,
+          ready: v.readyState,
+          paused: v.paused,
+          src: trimmedSrc,
+        };
+      })
+      .filter((r) => r.pixels > 0)
+      .sort((a, b) => b.pixels - a.pixels);
+    if (videoRows.length > 0) {
+      const totalEst = videoRows.reduce((a, r) => a + r.estBytes, 0);
+      lines.push(`Video decoders (est native): ${formatBytes(totalEst)} across ${videoRows.length}`);
+      for (const r of videoRows.slice(0, 12)) {
+        const tag = `${r.w}×${r.h}`.padEnd(10);
+        const state = `rs${r.ready}${r.paused ? ' paused' : ' play  '}`;
+        lines.push(`  ${tag} ${formatBytes(r.estBytes).padStart(10)}  ${state}  ${r.src}`);
+      }
+      lines.push('');
+    }
+
+    // Decoded <img> budget — browsers keep decoded RGBA bitmaps
+    // separate from blob bytes (which is what the auth cache tracks).
+    const imgRows = images
+      .map((i) => ({
+        w: i.naturalWidth,
+        h: i.naturalHeight,
+        pixels: i.naturalWidth * i.naturalHeight,
+        estBytes: i.naturalWidth * i.naturalHeight * 4,
+        src: (i.currentSrc || i.src || '').slice(0, 60),
+      }))
+      .filter((r) => r.pixels > 0)
+      .sort((a, b) => b.pixels - a.pixels);
+    if (imgRows.length > 0) {
+      const totalDecoded = imgRows.reduce((a, r) => a + r.estBytes, 0);
+      lines.push(`Image decode (est RGBA):     ${formatBytes(totalDecoded)} across ${imgRows.length}`);
+      for (const r of imgRows.slice(0, 10)) {
+        const tag = `${r.w}×${r.h}`.padEnd(12);
+        lines.push(`  ${tag} ${formatBytes(r.estBytes).padStart(10)}  ${r.src}`);
+      }
+      lines.push('');
+    }
 
     // Browser-level breakdown (Chrome: requires crossOriginIsolated).
     const perf = performance as unknown as {
@@ -598,13 +656,35 @@ export function PerformancePanel() {
         const m = await perf.measureUserAgentSpecificMemory();
         lines.push(`UA memory total: ${formatBytes(m.bytes)}`);
         const groups: Record<string, number> = {};
+        // type → attribution-key (url/scope) → bytes
+        const byAttribution: Record<string, Record<string, number>> = {};
         for (const b of m.breakdown) {
           const key = (b.types && b.types.length > 0 ? b.types.join('+') : 'Unknown');
           groups[key] = (groups[key] || 0) + b.bytes;
+          if (b.bytes <= 0) continue;
+          const attrs = (b.attribution ?? []) as Array<{
+            url?: string;
+            scope?: string;
+            container?: { id?: string; src?: string };
+          }>;
+          const attrKey = attrs.length === 0
+            ? '(no attribution — likely shared)'
+            : attrs
+                .map((a) => a.url || a.scope || a.container?.src || a.container?.id || 'unknown')
+                .join(' | ');
+          if (!byAttribution[key]) byAttribution[key] = {};
+          byAttribution[key][attrKey] = (byAttribution[key][attrKey] || 0) + b.bytes;
         }
         const sorted = Object.entries(groups).sort((a, b) => b[1] - a[1]);
         for (const [type, bytes] of sorted) {
           lines.push(`  ${type.padEnd(20)} ${formatBytes(bytes)}`);
+          // Top 5 attribution sources for each type
+          const attrs = byAttribution[type] ?? {};
+          const topAttrs = Object.entries(attrs).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          for (const [aKey, aBytes] of topAttrs) {
+            const trimmed = aKey.length > 70 ? '…' + aKey.slice(-68) : aKey;
+            lines.push(`    ${formatBytes(aBytes).padStart(10)}  ${trimmed}`);
+          }
         }
         lines.push('');
       } catch (e) {
@@ -639,10 +719,13 @@ export function PerformancePanel() {
     lines.push(`  Auth image:       ${authMediaCaches.image.size}/${authMediaCaches.image.maxEntries} entries, ${formatBytes(authMediaCaches.image.totalBytes)}`);
     lines.push(`  Auth video:       ${authMediaCaches.video.size}/${authMediaCaches.video.maxEntries} entries, ${formatBytes(authMediaCaches.video.totalBytes)}`);
     lines.push(`  Local folder:     ${getLocalFolderPreviewCacheStats().entries} entries (bytes unknown)`);
+    const capturedFrames = getCapturedFrameStoreStats();
+    lines.push(`  Captured frames:  ${capturedFrames.entries} entries, ${formatBytes(capturedFrames.bytes)} (dataURL chars)`);
     const cachesBytes =
       thumbnailBlobCache.totalBytes +
       authMediaCaches.image.totalBytes +
-      authMediaCaches.video.totalBytes;
+      authMediaCaches.video.totalBytes +
+      capturedFrames.bytes;
     lines.push(`  Tracked total:    ${formatBytes(cachesBytes)}`);
     lines.push('');
     const stores = getExposedStores();
@@ -655,7 +738,30 @@ export function PerformancePanel() {
     const lsTotal = ls.reduce((a, e) => a + e.size, 0);
     lines.push(`localStorage:     ${ls.length} keys, ${formatBytes(lsTotal)} total`);
     lines.push(`Active timers:    ${timerTracker.active.size} (${timerTracker.totalCreated} created, ${timerTracker.totalCleared} cleared)`);
-    lines.push(`Generation scopes: ${getRegisteredInputStores().length}`);
+
+    // Per-scope generation store sizes — surfaces leaked scopes that
+    // accumulate prompt/asset/settings state across long sessions.
+    const inputEntries = getRegisteredInputStoreEntries();
+    const settingsEntries = getRegisteredSettingsStoreEntries();
+    lines.push(`Generation scopes: ${inputEntries.length} input / ${settingsEntries.length} settings`);
+    const settingsByScope = new Map(settingsEntries.map((e) => [e.scopeId, e.store]));
+    const readState = (hook: unknown): unknown => {
+      const fn = (hook as { getState?: () => unknown })?.getState;
+      return typeof fn === 'function' ? fn() : undefined;
+    };
+    const scopeRows = inputEntries.map((e) => {
+      const inputSize = estimateObjectSize(readState(e.store));
+      const settingsSize = estimateObjectSize(readState(settingsByScope.get(e.scopeId)));
+      return {
+        scopeId: e.scopeId,
+        total: Math.max(0, inputSize) + Math.max(0, settingsSize),
+        inputSize,
+        settingsSize,
+      };
+    }).sort((a, b) => b.total - a.total);
+    for (const r of scopeRows.slice(0, 10)) {
+      lines.push(`  ${r.scopeId.padEnd(30)} ${formatBytes(r.total).padStart(10)}  (in:${formatBytes(r.inputSize)} set:${formatBytes(r.settingsSize)})`);
+    }
 
     const report = lines.join('\n');
     try {

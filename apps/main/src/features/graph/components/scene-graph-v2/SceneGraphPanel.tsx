@@ -18,8 +18,8 @@ import { previewBridge } from '@lib/preview-bridge';
 import { nodeTypeRegistry } from '@lib/registries';
 import { logEvent } from '@lib/utils/logging';
 
+import { useAuthoringContext } from '@features/contextHub';
 import {
-  useAuthoringContext,
   useGraphStore,
   type GraphState,
   NodePalette,
@@ -30,8 +30,8 @@ import { useSelectionStore } from '@features/graph';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
-import { EdgeEffectsPanel } from '@features/panels/domain/definitions/edge-effects/EdgeEffectsPanel';
 import { ValidationPanel } from '@features/panels/components/tools/ValidationPanel';
+import { EdgeEffectsPanel } from '@features/panels/domain/definitions/edge-effects/EdgeEffectsPanel';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 import { Breadcrumbs } from '@/components/navigation/Breadcrumbs';

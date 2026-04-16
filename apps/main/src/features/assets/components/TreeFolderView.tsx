@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 
 import { Icons } from '@lib/icons';
+import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 
 import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
 import type { LocalAssetModel } from '../types/localFolderMeta';
@@ -165,6 +166,11 @@ function TreeNodeView({
   );
   const [expanded, setExpanded] = useState(shouldAutoExpandForSelection);
   const resolvedPreview = useLocalAssetPreview(node.asset, previews);
+  // Tree rows are tiny (40×40) but get rendered for every video asset
+  // expanded into the tree.  Without slot gating, browsing a folder
+  // with N video assets mounts N <video> decoders simultaneously.
+  const isVideoRow = node.type === 'file' && node.asset?.kind === 'video' && !!resolvedPreview;
+  const hasVideoSlot = useVideoActivationSlot(isVideoRow);
 
   useEffect(() => {
     if (shouldAutoExpandForSelection) {
@@ -298,7 +304,11 @@ function TreeNodeView({
           asset.kind === 'image' ? (
             <img src={resolvedPreview} className="w-full h-full object-cover" alt={asset.name} />
           ) : asset.kind === 'video' ? (
-            <video src={resolvedPreview} className="w-full h-full object-cover" muted />
+            hasVideoSlot ? (
+              <video src={resolvedPreview} className="w-full h-full object-cover" muted />
+            ) : (
+              <div className="text-xs">{'\u{1F3AC}'}</div>
+            )
           ) : null
         ) : (
           <div className="text-xs">
