@@ -266,6 +266,27 @@ class TestGetChatSession:
 
         assert r.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_get_session_falls_back_to_cli_session_id(self):
+        """Resume-by-paste: when the primary-key lookup misses, the
+        endpoint must try matching ``cli_session_id`` so a pasted
+        Claude/Codex `--resume` hash resolves to its pixsim7 session.
+        """
+        db = _FakeDB()
+        # db.get() returns None (no PK match), then fallback SELECT finds it.
+        session_obj = _make_session_obj("sess-pk-id", label="Resume via CLI hash")
+        session_obj.cli_session_id = "claude-cli-uuid-abc"
+        session_obj.messages = None
+        db.execute_results = [_ExecuteResult(scalars=[session_obj])]
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents/chat-sessions/claude-cli-uuid-abc")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["id"] == "sess-pk-id"
+
 
 class TestSaveChatSessionMessages:
     """PATCH /agents/chat-sessions/{session_id}/messages — persist messages."""

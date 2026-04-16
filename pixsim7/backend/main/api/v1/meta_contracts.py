@@ -1937,6 +1937,9 @@ async def get_chat_session(
 ) -> Dict[str, Any]:
     """Get a single chat session by ID.
 
+    Looks up first by primary key, then falls back to ``cli_session_id``
+    so the frontend can resolve pasted Claude/Codex CLI resume hashes.
+
     For MCP/CLI sessions (no stored chat messages), also returns recent
     work_summary activity so the frontend can render them as context
     when resuming.
@@ -1944,6 +1947,12 @@ async def get_chat_session(
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
     session = await db.get(ChatSession, session_id)
+    if not session:
+        # Fall back to matching the agent-CLI-internal session ID.
+        alt_rows = (await db.execute(
+            select(ChatSession).where(ChatSession.cli_session_id == session_id).limit(1)
+        )).scalars().all()
+        session = alt_rows[0] if alt_rows else None
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

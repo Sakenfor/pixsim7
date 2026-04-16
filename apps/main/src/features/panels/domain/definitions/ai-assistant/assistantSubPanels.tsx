@@ -177,6 +177,8 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
   const [filter, setFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
   const [profileOnly, setProfileOnly] = useState(false);
+  const [pasteId, setPasteId] = useState('');
+  const [pasteBusy, setPasteBusy] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const handleClose = useCallback(() => setOpen(false), []);
   // Bump to trigger re-fetch after archive/restore
@@ -229,6 +231,35 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
       setActionId(null);
     }
   }, [actionId]);
+
+  const resumeById = useCallback(async () => {
+    const raw = pasteId.trim();
+    if (!raw || pasteBusy) return;
+    setPasteBusy(true);
+    setActionError(null);
+    try {
+      const data = await pixsimClient.get<{
+        id: string;
+        engine: string;
+        label: string;
+        profile_id: string | null;
+        last_plan_id?: string | null;
+      }>(`/meta/agents/chat-sessions/${encodeURIComponent(raw)}`);
+      onResume(
+        data.id,
+        data.engine,
+        data.label,
+        data.profile_id ?? null,
+        data.last_plan_id ?? null,
+      );
+      setPasteId('');
+      setOpen(false);
+    } catch {
+      setActionError(`Session "${raw.slice(0, 16)}${raw.length > 16 ? '…' : ''}" not found.`);
+    } finally {
+      setPasteBusy(false);
+    }
+  }, [pasteId, pasteBusy, onResume]);
 
   const restoreSession = useCallback(async (session: ChatSessionEntry) => {
     if (actionId) return;
@@ -291,6 +322,27 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                 <Icon name="archive" size={9} />
               </button>
             </div>
+          </div>
+
+          {/* Paste session id to resume (pixsim7 id or agent CLI resume hash) */}
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
+            <input
+              type="text"
+              value={pasteId}
+              onChange={(e) => setPasteId(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void resumeById(); } }}
+              placeholder="Paste session id to resume…"
+              disabled={pasteBusy}
+              className="flex-1 min-w-0 px-2 py-1 text-[10px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-200 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={() => void resumeById()}
+              disabled={!pasteId.trim() || pasteBusy}
+              className="shrink-0 px-2 py-1 text-[10px] rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {pasteBusy ? '…' : 'Resume'}
+            </button>
           </div>
 
           {loading && sessions.length === 0 && (

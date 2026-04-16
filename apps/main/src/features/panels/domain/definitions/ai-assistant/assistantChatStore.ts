@@ -578,7 +578,7 @@ export async function fetchServerMessages(
       source?: string | null;
       activity?: SessionActivityEntry[] | null;
     }>(`/meta/agents/chat-sessions/${sessionId}`);
-    const raw = res.data?.messages;
+    const raw = res?.messages;
     if (Array.isArray(raw) && raw.length > 0) {
       return raw.map((m) => ({
         role: m.role as ChatMessage['role'],
@@ -588,7 +588,7 @@ export async function fetchServerMessages(
       }));
     }
 
-    const activity = res.data?.activity;
+    const activity = res?.activity;
     if (Array.isArray(activity) && activity.length > 0) {
       const synthesized: ChatMessage[] = [{
         role: 'system',
