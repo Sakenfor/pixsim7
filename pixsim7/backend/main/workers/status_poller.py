@@ -28,6 +28,7 @@ from pixsim7.backend.main.domain.enums import (
     OperationType,
     GenerationErrorCode,
 )
+from pixsim7.backend.main.shared.operation_mapping import get_video_operations
 from pixsim7.backend.main.workers._poller_backoff import (
     _TransientPollBackoffState,
     _TRANSIENT_POLL_BACKOFF_STEPS_SEC,
@@ -51,6 +52,9 @@ from pixsim7.backend.main.workers._poller_backoff import (
     _prune_poll_backoff_dicts,
     _record_non_transient_poll_backoff,
     _get_non_transient_poll_backoff_remaining,
+    _record_adaptive_poll_defer,
+    _get_adaptive_poll_defer_remaining,
+    _clear_adaptive_poll_defer,
     _active_transient_poll_backoffs,
 )
 from pixsim7.backend.main.workers._poller_snapshots import (
@@ -145,6 +149,52 @@ def _has_pending_cancel(generation_model: Any) -> bool:
         generation_model.status == GenerationStatus.CANCELLED
         or generation_model.deferred_action == "cancel"
     )
+
+
+# Adaptive poll cadence for Pixverse video ops.  Tiered by elapsed-since-
+# submit: tight at the edges (catch early-CDN + catch completion), relaxed
+# in the middle of a long render when nothing is happening.  Tuple entries
+# are ``(elapsed_cap_seconds, defer_seconds)``; a ``None`` cap applies to
+# everything beyond the last tier.
+_ADAPTIVE_POLL_TIERS_PIXVERSE_VIDEO: tuple[tuple[float | None, int], ...] = (
+    (20.0, 2),     # first 20 s: every tick — catch early-CDN window
+    (75.0, 4),     # 20 s - 1:15: half cadence
+    (180.0, 6),    # 1:15 - 3:00: a third cadence (mid-render lull)
+    (None, 4),     # 3:00+: back to half cadence — likely close to completion
+)
+
+
+def _compute_adaptive_poll_defer_seconds(
+    *,
+    provider_id: str | None,
+    operation_type: Any,
+    generation_started_at: Any,
+    now: datetime,
+) -> int:
+    """Return seconds to defer before the next poll; 0 = no throttling.
+
+    Only Pixverse video ops get adaptive cadence.  Image ops are usually
+    fast enough that every-tick polling is fine, and non-Pixverse providers
+    haven't been characterised yet.  Video_extend IS included here — its
+    opt-out from the batched list path is about silent-filter metadata
+    stamping, not cadence.
+    """
+    if provider_id != "pixverse":
+        return 0
+    if operation_type not in get_video_operations():
+        return 0
+    if generation_started_at is None:
+        return 0
+    try:
+        elapsed = (now - generation_started_at).total_seconds()
+    except Exception:
+        return 0
+    if elapsed < 0:
+        return 0
+    for cap, defer in _ADAPTIVE_POLL_TIERS_PIXVERSE_VIDEO:
+        if cap is None or elapsed < cap:
+            return defer
+    return 0
 
 
 
@@ -918,9 +968,13 @@ async def _poll_single_generation(
                     provider_job_id=submission.provider_job_id,
                 )
                 _now_mono = time.monotonic()
+                _adaptive_remaining = _get_adaptive_poll_defer_remaining(
+                    transient_backoff_key, now_mono=_now_mono,
+                )
                 cooldown_remaining = max(
                     _get_transient_poll_backoff_remaining(transient_backoff_key, now_mono=_now_mono),
                     _get_non_transient_poll_backoff_remaining(transient_backoff_key, now_mono=_now_mono),
+                    _adaptive_remaining,
                 )
                 if cooldown_remaining > 0:
                     logger.debug(
@@ -929,6 +983,7 @@ async def _poll_single_generation(
                         submission_id=submission.id,
                         provider_job_id=submission.provider_job_id,
                         cooldown_remaining_s=round(cooldown_remaining, 2),
+                        adaptive=round(_adaptive_remaining, 2),
                     )
                     return _PollGenerationResult(
                         generation_id=generation_id,
@@ -944,6 +999,29 @@ async def _poll_single_generation(
                 )
                 _clear_transient_poll_backoff(transient_backoff_key)
                 submission = submission_model
+
+                # Schedule the next adaptive defer.  Terminal statuses skip
+                # this — the generation exits the processing snapshot on the
+                # next tick and the key is pruned by
+                # ``_prune_poll_backoff_dicts``.
+                if status_result.status in (
+                    ProviderStatus.PROCESSING,
+                    ProviderStatus.FILTERED,
+                ):
+                    _adaptive_defer = _compute_adaptive_poll_defer_seconds(
+                        provider_id=submission.provider_id,
+                        operation_type=generation_operation_type,
+                        generation_started_at=generation_started_at,
+                        now=datetime.now(timezone.utc),
+                    )
+                    if _adaptive_defer > 0:
+                        _record_adaptive_poll_defer(
+                            transient_backoff_key,
+                            _adaptive_defer,
+                            now_mono=time.monotonic(),
+                        )
+                else:
+                    _clear_adaptive_poll_defer(transient_backoff_key)
 
                 # Include provider's raw status/metadata for debugging
                 provider_status = None

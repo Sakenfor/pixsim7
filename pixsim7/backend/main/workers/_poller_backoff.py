@@ -50,6 +50,14 @@ _non_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
 
 _BACKOFF_DICT_MAX_SIZE = 2000
 
+# Adaptive poll cadence: non-error throttle that stretches the poll interval
+# per-generation based on observed lifecycle.  Mid-render nothing changes on
+# the provider side, so polling every tick wastes calls.  Stored as
+# ``{key: next_poll_at_mono}`` — cleared implicitly when the entry goes stale
+# (terminal generations drop out of the processing snapshot, so their keys
+# are pruned by ``_prune_poll_backoff_dicts``).
+_adaptive_poll_schedule: dict[str, float] = {}
+
 
 def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
     current: BaseException | None = error
@@ -175,6 +183,19 @@ def _prune_poll_backoff_dicts(*, now_mono: float) -> None:
             for key in sorted_keys[: len(backoff_dict) - _BACKOFF_DICT_MAX_SIZE]:
                 backoff_dict.pop(key, None)
 
+    # Adaptive schedule prune: keep only future targets + cap size.  A key
+    # whose target is in the past and was never refreshed belongs to a
+    # generation that's no longer processing (terminal or evicted).
+    adaptive_stale = [
+        key for key, target in _adaptive_poll_schedule.items() if target <= now_mono
+    ]
+    for key in adaptive_stale:
+        _adaptive_poll_schedule.pop(key, None)
+    if len(_adaptive_poll_schedule) > _BACKOFF_DICT_MAX_SIZE:
+        sorted_keys = sorted(_adaptive_poll_schedule, key=_adaptive_poll_schedule.get)
+        for key in sorted_keys[: len(_adaptive_poll_schedule) - _BACKOFF_DICT_MAX_SIZE]:
+            _adaptive_poll_schedule.pop(key, None)
+
 
 def _record_non_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
     """Record a non-transient poll error and return (failure_count, backoff_seconds)."""
@@ -197,6 +218,39 @@ def _get_non_transient_poll_backoff_remaining(key: str, *, now_mono: float) -> f
         state.failures = 0
     remaining = state.cooldown_until_mono - now_mono
     return remaining if remaining > 0 else 0.0
+
+
+def _record_adaptive_poll_defer(
+    key: str,
+    defer_seconds: float,
+    *,
+    now_mono: float,
+) -> None:
+    """Schedule the next poll for ``key`` at ``now_mono + defer_seconds``.
+
+    Unlike the error-driven backoff dicts this is NOT keyed by a failure
+    count — each successful poll overwrites the schedule with the current
+    tier's cadence.  A zero or negative ``defer_seconds`` clears any
+    existing schedule (back to default every-tick cadence).
+    """
+    if defer_seconds <= 0:
+        _adaptive_poll_schedule.pop(key, None)
+        return
+    _adaptive_poll_schedule[key] = now_mono + defer_seconds
+
+
+def _get_adaptive_poll_defer_remaining(key: str, *, now_mono: float) -> float:
+    """Seconds remaining before the next adaptive poll is allowed; 0 if due."""
+    target = _adaptive_poll_schedule.get(key)
+    if target is None:
+        return 0.0
+    remaining = target - now_mono
+    return remaining if remaining > 0 else 0.0
+
+
+def _clear_adaptive_poll_defer(key: str | None) -> None:
+    if key:
+        _adaptive_poll_schedule.pop(key, None)
 
 
 def _active_transient_poll_backoffs(*, now_mono: float) -> int:

@@ -1242,6 +1242,148 @@ async def test_video_batch_skipped_for_video_extend(monkeypatch):
     assert "pixverse:video_status_batch:1" not in poll_cache
 
 
+# ---------------------------------------------------------------------------
+# Fix #9: adaptive poll cadence for Pixverse video ops
+# ---------------------------------------------------------------------------
+
+
+def test_adaptive_poll_defer_tiers():
+    """
+    The Pixverse-video adaptive cadence schedule:
+
+    - 0-20 s after submit:  2 s defer  (catch early-CDN window)
+    - 20-75 s:              4 s defer  (half cadence)
+    - 75-180 s:             6 s defer  (a third — mid-render lull)
+    - 180 s+:               4 s defer  (back toward completion)
+
+    Non-pixverse providers and image ops must return 0 (no throttling).
+    """
+    from pixsim7.backend.main.workers.status_poller import (
+        _compute_adaptive_poll_defer_seconds,
+    )
+    from datetime import timedelta
+
+    now = datetime(2026, 4, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+    def tier_for(elapsed_seconds: float) -> int:
+        return _compute_adaptive_poll_defer_seconds(
+            provider_id="pixverse",
+            operation_type=OperationType.IMAGE_TO_VIDEO,
+            generation_started_at=now - timedelta(seconds=elapsed_seconds),
+            now=now,
+        )
+
+    assert tier_for(0) == 2
+    assert tier_for(19.9) == 2
+    assert tier_for(20) == 4
+    assert tier_for(74.9) == 4
+    assert tier_for(75) == 6
+    assert tier_for(179.9) == 6
+    assert tier_for(180) == 4
+    assert tier_for(600) == 4
+
+    # Non-pixverse: no adaptive throttle.
+    assert (
+        _compute_adaptive_poll_defer_seconds(
+            provider_id="kling",
+            operation_type=OperationType.IMAGE_TO_VIDEO,
+            generation_started_at=now - timedelta(seconds=60),
+            now=now,
+        )
+        == 0
+    )
+
+    # Image op on pixverse: no adaptive throttle (images are fast).
+    assert (
+        _compute_adaptive_poll_defer_seconds(
+            provider_id="pixverse",
+            operation_type=OperationType.TEXT_TO_IMAGE,
+            generation_started_at=now - timedelta(seconds=60),
+            now=now,
+        )
+        == 0
+    )
+
+    # Video_extend IS included (cadence applies equally to all video ops;
+    # extend opts out of BATCH for a different reason).
+    assert (
+        _compute_adaptive_poll_defer_seconds(
+            provider_id="pixverse",
+            operation_type=OperationType.VIDEO_EXTEND,
+            generation_started_at=now - timedelta(seconds=60),
+            now=now,
+        )
+        == 4
+    )
+
+    # Defensive: no started_at → no throttle.
+    assert (
+        _compute_adaptive_poll_defer_seconds(
+            provider_id="pixverse",
+            operation_type=OperationType.IMAGE_TO_VIDEO,
+            generation_started_at=None,
+            now=now,
+        )
+        == 0
+    )
+
+
+def test_adaptive_poll_defer_storage_roundtrip():
+    """
+    The ``_record_adaptive_poll_defer`` → ``_get_adaptive_poll_defer_remaining``
+    → ``_clear_adaptive_poll_defer`` cycle must behave like a cooldown with
+    monotonic-clock-based ``now``.
+    """
+    from pixsim7.backend.main.workers._poller_backoff import (
+        _clear_adaptive_poll_defer,
+        _get_adaptive_poll_defer_remaining,
+        _record_adaptive_poll_defer,
+    )
+
+    key = "test-gen-adaptive-1"
+    _clear_adaptive_poll_defer(key)
+
+    # No prior record → 0.
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=1000.0) == 0.0
+
+    _record_adaptive_poll_defer(key, 6, now_mono=1000.0)
+    # Immediately after: ~6 s remaining.
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=1000.0) == pytest.approx(6.0)
+    # 3 s later: ~3 s remaining.
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=1003.0) == pytest.approx(3.0)
+    # Past target: 0.
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=1010.0) == 0.0
+
+    # Recording with defer<=0 clears the entry.
+    _record_adaptive_poll_defer(key, 10, now_mono=2000.0)
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=2000.0) > 0
+    _record_adaptive_poll_defer(key, 0, now_mono=2001.0)
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=2001.0) == 0.0
+
+    # Explicit clear.
+    _record_adaptive_poll_defer(key, 10, now_mono=3000.0)
+    _clear_adaptive_poll_defer(key)
+    assert _get_adaptive_poll_defer_remaining(key, now_mono=3000.0) == 0.0
+
+
+def test_adaptive_poll_defer_prune():
+    """Prune drops entries whose target is in the past."""
+    from pixsim7.backend.main.workers._poller_backoff import (
+        _adaptive_poll_schedule,
+        _prune_poll_backoff_dicts,
+        _record_adaptive_poll_defer,
+    )
+
+    _adaptive_poll_schedule.clear()
+    _record_adaptive_poll_defer("past", 1, now_mono=0.0)
+    _record_adaptive_poll_defer("future", 1, now_mono=1000.0)
+
+    _prune_poll_backoff_dicts(now_mono=500.0)
+
+    assert "past" not in _adaptive_poll_schedule
+    assert "future" in _adaptive_poll_schedule
+
+
 def test_status_poller_analysis_phase_captures_id_before_try():
     """
     Regression anchor: the per-analysis for-loop must capture ``analysis.id``
