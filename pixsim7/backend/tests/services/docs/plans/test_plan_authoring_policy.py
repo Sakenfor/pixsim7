@@ -24,11 +24,12 @@ def test_constraint_registry_exposes_known_validators() -> None:
     assert "array_min_items" in policy.CONSTRAINT_VALIDATORS
     assert "array_items_required_keys" in policy.CONSTRAINT_VALIDATORS
     assert "evidence_test_suite_refs_exist" in policy.CONSTRAINT_VALIDATORS
+    assert "string_required_non_empty" in policy.CONSTRAINT_VALIDATORS
     assert "advisory" in policy.CONSTRAINT_VALIDATORS
 
 
 def test_validate_policy_create_enforces_required_rule_for_agent() -> None:
-    payload = SimpleNamespace(checkpoints=[])
+    payload = SimpleNamespace(id="valid-plan", checkpoints=[])
     principal = SimpleNamespace(principal_type="agent", source="agent:test")
 
     violations, warnings = policy.validate_policy("plans.create", payload, principal)
@@ -102,8 +103,47 @@ def test_rules_include_severity_and_lifecycle_metadata() -> None:
         assert "deprecated_at" in rule
 
 
+def test_contract_includes_id_required_rule() -> None:
+    rules = policy.get_plan_authoring_rules()
+    id_rules = [r for r in rules if r["id"] == "plans.create.id.required"]
+    assert len(id_rules) == 1
+    rule = id_rules[0]
+    assert rule["field"] == "id"
+    assert rule["level"] == "required"
+    assert "agent" in rule["applies_to_principal_types"]
+    assert "user" in rule["applies_to_principal_types"]
+
+
+def test_validate_policy_create_rejects_missing_id_for_agent() -> None:
+    payload = SimpleNamespace(
+        id="",
+        checkpoints=[{"id": "cp-1", "label": "Step 1"}],
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert any("id is required" in v for v in violations)
+
+
+def test_validate_policy_create_accepts_valid_id() -> None:
+    payload = SimpleNamespace(
+        id="my-plan",
+        checkpoints=[{"id": "cp-1", "label": "Step 1"}],
+        summary="A good plan",
+        companions=[],
+        code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert not any("id is required" in v for v in violations)
+
+
 def test_validate_policy_surfaces_suggested_warnings() -> None:
     payload = SimpleNamespace(
+        id="valid-plan",
         checkpoints=[{"id": "cp-1", "label": "Checkpoint 1"}],
         summary="",
         companions=[],

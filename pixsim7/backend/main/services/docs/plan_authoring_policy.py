@@ -12,11 +12,27 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-03-24.1"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-04-16.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 logger = get_logger()
 
 PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
+    {
+        "id": "plans.create.id.required",
+        "endpoint_id": "plans.create",
+        "field": "id",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            "A stable kebab-case identifier (1-120 chars) must be supplied by the "
+            "caller. The server does not auto-generate plan IDs."
+        ),
+        "constraint": {"type": "string_required_non_empty"},
+        "message": (
+            "id is required — supply a stable kebab-case identifier "
+            "(e.g., 'my-feature-plan')."
+        ),
+    },
     {
         "id": "plans.create.checkpoints.non_empty_for_automation",
         "endpoint_id": "plans.create",
@@ -266,6 +282,20 @@ def _constraint_evidence_test_suite_refs_exist(
     return []
 
 
+def _constraint_string_required_non_empty(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del constraint, payload, context
+    if not isinstance(value, str) or not value.strip():
+        return [_normalize_rule_message(rule, field_name)]
+    return []
+
+
 def _constraint_advisory(
     value: Any,
     field_name: str,
@@ -288,6 +318,7 @@ CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
     "array_min_items": _constraint_array_min_items,
     "array_items_required_keys": _constraint_array_items_required_keys,
     "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
+    "string_required_non_empty": _constraint_string_required_non_empty,
     "advisory": _constraint_advisory,
 }
 
