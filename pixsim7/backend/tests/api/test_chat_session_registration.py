@@ -398,6 +398,42 @@ async def test_list_chat_sessions_applies_message_count_filter_by_default():
 
 
 @pytest.mark.asyncio
+async def test_list_chat_sessions_keeps_mcp_sessions_despite_zero_message_count():
+    """CLI/MCP sessions don't bump message_count — but they must still be
+    visible in the resume picker so the frontend can offer to continue
+    them. Verify the filter is `count>0 OR source in (mcp, mcp-auto)`.
+    """
+    captured = []
+
+    class _RecordingDB:
+        async def execute(self, stmt):
+            captured.append(stmt)
+            if stmt.__visit_name__ == "update":
+                return SimpleNamespace(rowcount=0)
+            return _ScalarResult([])
+
+        async def commit(self):
+            return None
+
+    await list_chat_sessions(
+        engine="claude",
+        status="active",
+        limit=20,
+        include_empty=False,
+        user=None,
+        db=_RecordingDB(),
+    )
+
+    select_stmts = [s for s in captured if s.__visit_name__ == "select"]
+    assert len(select_stmts) == 1
+    select_sql = _compiled_sql(select_stmts[0])
+    assert "message_count > 0" in select_sql
+    # The OR branch lets MCP sessions through even when count is 0.
+    assert "source" in select_sql
+    assert "'mcp'" in select_sql or "mcp-auto" in select_sql
+
+
+@pytest.mark.asyncio
 async def test_list_chat_sessions_include_empty_omits_message_count_filter():
     """Counterpart: include_empty=True must return zero-count sessions so
     MCP-auto-registered sessions are retrievable when explicitly requested.

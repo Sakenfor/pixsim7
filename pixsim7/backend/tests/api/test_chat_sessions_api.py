@@ -142,7 +142,8 @@ class TestListChatSessions:
             last_plan_id="identity-refactor",
             last_contract_id="plans.management",
         )
-        db.execute_results = [_ExecuteResult(scalars=[s])]
+        # First execute is the placeholder prune UPDATE, second is the SELECT.
+        db.execute_results = [_ExecuteResult(scalars=[]), _ExecuteResult(scalars=[s])]
 
         app = _app(db)
         async with _client(app) as c:

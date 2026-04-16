@@ -62,6 +62,7 @@ export interface ChatSessionEntry {
   last_contract_id?: string | null;
   label: string;
   message_count: number;
+  source?: string | null;  // 'chat' | 'mcp' | 'mcp-auto' | 'bridge'
   last_used_at: string;
 }
 

@@ -333,7 +333,17 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] truncate ${engineColor}`}>{s.label}</div>
+                    <div className={`text-[11px] truncate flex items-center gap-1 ${engineColor}`}>
+                      {(s.source === 'mcp' || s.source === 'mcp-auto') && (
+                        <span
+                          className="shrink-0 px-1 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[8px] font-semibold tracking-wide"
+                          title="Started from CLI/MCP — chat will show work summaries as context"
+                        >
+                          CLI
+                        </span>
+                      )}
+                      <span className="truncate">{s.label}</span>
+                    </div>
                     <div className="text-[9px] text-neutral-400">
                       {sessionProfileLabel ? `${sessionProfileLabel} · ` : ''}
                       {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

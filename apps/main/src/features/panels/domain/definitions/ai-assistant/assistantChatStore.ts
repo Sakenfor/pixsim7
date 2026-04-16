@@ -556,14 +556,27 @@ export const useAssistantChatStore = hmrSingleton(
 // Standalone async helpers (not store actions)
 // =============================================================================
 
-/** Fetch messages from server for a resumed session, with localStorage fallback. */
+/** Fetch messages from server for a resumed session, with localStorage fallback.
+ *
+ * For MCP/CLI sessions the server returns no chat messages but includes
+ * recent work_summary entries under `activity` — we synthesize those
+ * into system-role messages so the resumed tab shows usable context.
+ */
 export async function fetchServerMessages(
   sessionId: string,
 ): Promise<ChatMessage[]> {
+  interface SessionActivityEntry {
+    action: string;
+    detail?: string | null;
+    plan_id?: string | null;
+    timestamp?: string | null;
+  }
   // Try server first
   try {
     const res = await pixsimClient.get<{
       messages?: Array<Record<string, unknown>> | null;
+      source?: string | null;
+      activity?: SessionActivityEntry[] | null;
     }>(`/meta/agents/chat-sessions/${sessionId}`);
     const raw = res.data?.messages;
     if (Array.isArray(raw) && raw.length > 0) {
@@ -574,6 +587,25 @@ export async function fetchServerMessages(
         timestamp: new Date(m.timestamp as string),
       }));
     }
+
+    const activity = res.data?.activity;
+    if (Array.isArray(activity) && activity.length > 0) {
+      const synthesized: ChatMessage[] = [{
+        role: 'system',
+        text: `Resumed CLI session — ${activity.length} prior work summ${activity.length === 1 ? 'ary' : 'aries'}`,
+        timestamp: activity[0].timestamp ? new Date(activity[0].timestamp) : new Date(),
+      }];
+      for (const entry of activity) {
+        const header = entry.plan_id ? `[plan:${entry.plan_id}] ` : '';
+        synthesized.push({
+          role: 'system',
+          text: `${header}${entry.detail || '(no detail)'}`,
+          timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date(),
+        });
+      }
+      return synthesized;
+    }
+
     console.warn(`[ai-assistant] Session ${sessionId}: server returned ${raw === null ? 'null' : 'empty'} messages`);
   } catch (err) {
     console.warn(`[ai-assistant] Session ${sessionId}: failed to fetch from server`, err);

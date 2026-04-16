@@ -1898,7 +1898,15 @@ async def list_chat_sessions(
     if engine:
         stmt = stmt.where(ChatSession.engine == engine)
     if not include_empty:
-        stmt = stmt.where(ChatSession.message_count > 0)
+        # MCP/CLI sessions never bump message_count (activity lives in
+        # AgentActivityLog instead), so widen the filter to keep them
+        # visible in the resume picker.
+        stmt = stmt.where(
+            or_(
+                ChatSession.message_count > 0,
+                ChatSession.source.in_(["mcp", "mcp-auto"]),
+            )
+        )
     stmt = stmt.order_by(ChatSession.last_used_at.desc()).limit(limit)
 
     sessions = (await db.execute(stmt)).scalars().all()
@@ -1913,6 +1921,7 @@ async def list_chat_sessions(
                 "last_contract_id": s.last_contract_id,
                 "label": s.label,
                 "message_count": s.message_count,
+                "source": getattr(s, "source", None),
                 "last_used_at": s.last_used_at.isoformat(),
                 "created_at": s.created_at.isoformat(),
             }
@@ -1926,12 +1935,40 @@ async def get_chat_session(
     session_id: str,
     db: AsyncSession = Depends(get_database),
 ) -> Dict[str, Any]:
-    """Get a single chat session by ID."""
+    """Get a single chat session by ID.
+
+    For MCP/CLI sessions (no stored chat messages), also returns recent
+    work_summary activity so the frontend can render them as context
+    when resuming.
+    """
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
     session = await db.get(ChatSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    activity: List[Dict[str, Any]] = []
+    session_source = getattr(session, "source", None)
+    if session_source in ("mcp", "mcp-auto"):
+        rows = (await db.execute(
+            select(AgentActivityLog)
+            .where(AgentActivityLog.session_id == session_id)
+            .where(AgentActivityLog.action == "work_summary")
+            .order_by(AgentActivityLog.timestamp.asc())
+            .limit(20)
+        )).scalars().all()
+        activity = [
+            {
+                "action": r.action,
+                "detail": r.detail,
+                "plan_id": r.plan_id,
+                "contract_id": r.contract_id,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "metadata": r.extra if isinstance(r.extra, dict) else None,
+            }
+            for r in rows
+        ]
+
     return {
         "id": session.id,
         "cli_session_id": session.cli_session_id,
@@ -1941,6 +1978,8 @@ async def get_chat_session(
         "label": session.label,
         "message_count": session.message_count,
         "messages": session.messages,
+        "source": session_source,
+        "activity": activity,
         "last_used_at": session.last_used_at.isoformat(),
     }
 
