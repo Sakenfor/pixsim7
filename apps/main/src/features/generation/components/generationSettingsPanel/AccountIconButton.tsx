@@ -36,6 +36,15 @@ function accountToken(account?: AccountOption, fallback?: number): string {
   return (match?.[0] || '?').toUpperCase();
 }
 
+function hasRoutingRules(account: AccountOption): boolean {
+  return (
+    (account.routing_allow_patterns?.length ?? 0) > 0 ||
+    (account.routing_deny_patterns?.length ?? 0) > 0 ||
+    Object.keys(account.routing_priority_overrides ?? {}).length > 0 ||
+    (account.priority ?? 0) !== 0
+  );
+}
+
 export function AccountIconButton({
   accounts,
   selectedAccountId,
@@ -193,7 +202,9 @@ export function AccountIconButton({
               </div>
             )}
 
-            {filteredAccounts.map((account) => (
+            {filteredAccounts.map((account) => {
+              const accountHasRules = hasRoutingRules(account);
+              return (
               <div key={account.id} className="group">
                 <div className="flex items-center gap-1">
                   <button
@@ -228,14 +239,24 @@ export function AccountIconButton({
                       });
                       setOpen(false);
                     }}
-                    className="mr-1 inline-flex w-5 h-5 items-center justify-center rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 opacity-0 group-hover:opacity-100"
-                    title="Adjust routing and priority rules"
+                    className={clsx(
+                      'mr-1 inline-flex w-5 h-5 items-center justify-center rounded hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                      accountHasRules
+                        ? 'text-accent opacity-100'
+                        : 'text-neutral-500 dark:text-neutral-400 opacity-0 group-hover:opacity-100',
+                    )}
+                    title={
+                      accountHasRules
+                        ? 'Routing rules configured — click to edit'
+                        : 'Adjust routing and priority rules'
+                    }
                   >
                     <Icon name="sliders" size={11} />
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </Popover>

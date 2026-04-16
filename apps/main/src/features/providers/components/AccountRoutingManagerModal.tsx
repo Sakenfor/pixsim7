@@ -2,6 +2,7 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+
 import { FloatingToolPanel } from '@features/prompts/components/FloatingToolPanel';
 
 import { useProviderAccounts } from '../hooks/useProviderAccounts';
@@ -92,6 +93,47 @@ function resolveEffectiveDelta(
     if (patternMatches(key, op, model)) delta += value;
   }
   return delta;
+}
+
+interface Rule {
+  pattern: string;
+  op: string;
+  model: string;
+  mode: PatternState;
+  delta: number;
+}
+
+const STRENGTH_TIERS: ReadonlyArray<{ label: string; value: number; tone: 'red' | 'neutral' | 'emerald' }> = [
+  { label: 'Strongly avoid', value: -50, tone: 'red' },
+  { label: 'Avoid', value: -25, tone: 'red' },
+  { label: 'Slight avoid', value: -10, tone: 'red' },
+  { label: 'None', value: 0, tone: 'neutral' },
+  { label: 'Slight prefer', value: 10, tone: 'emerald' },
+  { label: 'Prefer', value: 25, tone: 'emerald' },
+  { label: 'Strongly prefer', value: 50, tone: 'emerald' },
+];
+
+function extractRules(
+  allow: string[],
+  deny: string[],
+  overrides: Record<string, number>,
+): Rule[] {
+  const patterns = new Set<string>();
+  allow.forEach((pattern) => patterns.add(pattern));
+  deny.forEach((pattern) => patterns.add(pattern));
+  Object.keys(overrides).forEach((pattern) => patterns.add(pattern));
+
+  return Array.from(patterns)
+    .map((pattern): Rule => {
+      const [op, model] = splitPattern(pattern);
+      const mode: PatternState = deny.includes(pattern)
+        ? 'deny'
+        : allow.includes(pattern)
+          ? 'allow'
+          : 'neutral';
+      return { pattern, op, model, mode, delta: overrides[pattern] ?? 0 };
+    })
+    .sort((a, b) => a.pattern.localeCompare(b.pattern));
 }
 
 function normalizePatternList(raw: unknown): string[] {
@@ -187,6 +229,7 @@ export function AccountRoutingManagerModal({
   const [builderOperation, setBuilderOperation] = useState<string>(normalizeRouteToken(contextOperation));
   const [builderModel, setBuilderModel] = useState<string>(normalizeRouteToken(contextModel));
   const [builderDelta, setBuilderDelta] = useState<string>('10');
+  const [showAdvancedDelta, setShowAdvancedDelta] = useState<boolean>(false);
   const [modelSearch, setModelSearch] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
   const [applyToAllModels, setApplyToAllModels] = useState<boolean>(
@@ -361,6 +404,18 @@ export function AccountRoutingManagerModal({
     });
   };
 
+  const applyDeltaTier = (value: number) => {
+    markDirty();
+    const key = buildRoutePattern(builderOperation, effectiveBuilderModel);
+    setBuilderDelta(String(value));
+    setPriorityOverrides((prev) => {
+      const next = { ...prev };
+      if (value === 0) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  };
+
   const currentEffectiveState = useMemo(
     () => resolveEffectiveState(builderOperation, effectiveBuilderModel, allowPatterns, denyPatterns),
     [builderOperation, effectiveBuilderModel, allowPatterns, denyPatterns],
@@ -371,20 +426,26 @@ export function AccountRoutingManagerModal({
     [builderOperation, effectiveBuilderModel, priorityOverrides],
   );
 
-  const removePattern = (kind: 'allow' | 'deny', pattern: string) => {
-    markDirty();
-    if (kind === 'allow') {
-      setAllowPatterns((prev) => prev.filter((value) => value !== pattern));
-      return;
-    }
-    setDenyPatterns((prev) => prev.filter((value) => value !== pattern));
+  const rules = useMemo(
+    () => extractRules(allowPatterns, denyPatterns, priorityOverrides),
+    [allowPatterns, denyPatterns, priorityOverrides],
+  );
+
+  const loadRuleIntoBuilder = (rule: Rule) => {
+    setBuilderOperation(rule.op);
+    setBuilderModel(rule.model);
+    setApplyToAllModels(rule.model === '*');
+    setBuilderDelta(String(rule.delta));
   };
 
-  const removeOverride = (key: string) => {
+  const removeRule = (rule: Rule) => {
     markDirty();
+    setAllowPatterns((prev) => prev.filter((value) => value !== rule.pattern));
+    setDenyPatterns((prev) => prev.filter((value) => value !== rule.pattern));
     setPriorityOverrides((prev) => {
+      if (!(rule.pattern in prev)) return prev;
       const next = { ...prev };
-      delete next[key];
+      delete next[rule.pattern];
       return next;
     });
   };
@@ -445,10 +506,19 @@ export function AccountRoutingManagerModal({
     }
   };
 
+  const requestClose = () => {
+    if (formDirtyRef.current) {
+      const confirmed = window.confirm('Discard unsaved routing changes?');
+      if (!confirmed) return;
+    }
+    formDirtyRef.current = false;
+    onClose();
+  };
+
   return (
     <FloatingToolPanel
       open={isOpen}
-      onClose={onClose}
+      onClose={requestClose}
       title="Account Routing Manager"
       anchor={anchor}
       defaultWidth={780}
@@ -501,8 +571,7 @@ export function AccountRoutingManagerModal({
         ) : (
           <div className="space-y-4">
             <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-200">
-              Routing rules apply when the account selector is on <strong>Auto</strong>. Pinned accounts and retries on a
-              previously-used account bypass allow/deny filters — only the routing pass of <em>new</em> auto-selections honours them.
+              Rules apply only on <strong>Auto</strong> account picks. Pinned accounts and retries bypass them.
             </div>
 
             <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-300">
@@ -563,13 +632,11 @@ export function AccountRoutingManagerModal({
                     if (checked) setBuilderModel('*');
                   }}
                 />
-                Apply to all models for this operation (<code>*</code>)
+                All models
               </label>
 
               <div className="mt-2">
-                <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Model {applyToAllModels && <span className="italic">— disabled (applying to all)</span>}
-                </div>
+                <div className="mb-1 text-[11px] text-neutral-500 dark:text-neutral-400">Model</div>
                 <div className={`max-h-40 overflow-y-auto rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900/40 ${applyToAllModels ? 'opacity-50 pointer-events-none' : ''}`}>
                   {visibleModelOptions.length === 0 && (
                     <div className="px-2 py-2 text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -642,90 +709,153 @@ export function AccountRoutingManagerModal({
                 </div>
                 {!currentEffectiveState.isExact && currentEffectiveState.state !== 'neutral' && (
                   <div className="mt-1 text-[10px] italic text-neutral-500 dark:text-neutral-400">
-                    Currently {currentEffectiveState.state} via{' '}
+                    Inherited from{' '}
                     {currentEffectiveState.viaAllowListRejection
-                      ? 'allow-list (pattern not in allow list)'
+                      ? 'allow-list'
                       : <code>{currentEffectiveState.matchedPattern}</code>}
-                    . Click a state to add an exact rule.
+                    . Click to add an exact rule.
                   </div>
                 )}
               </div>
 
-              <div className="mt-3 flex items-end gap-2">
-                <label className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Priority Delta
-                  <input
-                    type="number"
-                    value={builderDelta}
-                    onChange={(e) => setBuilderDelta(e.target.value)}
-                    className="mt-1 w-24 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
-                  />
-                </label>
-                <Button size="sm" variant="secondary" onClick={setOverrideFromBuilder}>Set Delta</Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
-                <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Allow Patterns</div>
-                <div className="mt-2 max-h-36 overflow-auto space-y-1">
-                  {allowPatterns.length === 0 && (
-                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">No allow rules</div>
-                  )}
-                  {allowPatterns.map((pattern) => (
-                    <div key={pattern} className="flex items-center justify-between rounded bg-neutral-100 px-2 py-1 text-[11px] dark:bg-neutral-800">
-                      <span className="truncate">{pattern}</span>
-                      <button type="button" onClick={() => removePattern('allow', pattern)} className="ml-2 text-red-500">x</button>
-                    </div>
-                  ))}
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">Strength</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedDelta((value) => !value)}
+                    className="text-[10px] text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+                  >
+                    {showAdvancedDelta ? 'Hide raw value' : 'Advanced'}
+                  </button>
                 </div>
-              </div>
-
-              <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
-                <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Deny Patterns</div>
-                <div className="mt-2 max-h-36 overflow-auto space-y-1">
-                  {denyPatterns.length === 0 && (
-                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">No deny rules</div>
-                  )}
-                  {denyPatterns.map((pattern) => (
-                    <div key={pattern} className="flex items-center justify-between rounded bg-neutral-100 px-2 py-1 text-[11px] dark:bg-neutral-800">
-                      <span className="truncate">{pattern}</span>
-                      <button type="button" onClick={() => removePattern('deny', pattern)} className="ml-2 text-red-500">x</button>
-                    </div>
-                  ))}
+                <div className="flex flex-wrap gap-1">
+                  {STRENGTH_TIERS.map((tier) => {
+                    const isActive = currentEffectiveDelta === tier.value;
+                    const activeClasses =
+                      tier.tone === 'red'
+                        ? 'bg-red-500 text-white border-red-500'
+                        : tier.tone === 'emerald'
+                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          : 'bg-neutral-500 text-white border-neutral-500';
+                    return (
+                      <button
+                        key={tier.value}
+                        type="button"
+                        onClick={() => applyDeltaTier(tier.value)}
+                        className={`rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+                          isActive
+                            ? activeClasses
+                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'
+                        }`}
+                        title={tier.value === 0 ? 'No priority change' : `${tier.value > 0 ? '+' : ''}${tier.value}`}
+                      >
+                        {tier.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
-            </div>
-
-              <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
-                <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-                  Priority Overrides ({Object.keys(priorityOverrides).length})
-                </div>
-                <div className="mt-2 max-h-40 overflow-auto space-y-1">
-                  {Object.keys(priorityOverrides).length === 0 && (
-                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">No override rules</div>
+                {showAdvancedDelta && (
+                  <div className="mt-2 flex items-end gap-2">
+                    <label className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      Raw delta
+                      <input
+                        type="number"
+                        value={builderDelta}
+                        onChange={(e) => setBuilderDelta(e.target.value)}
+                        className="mt-1 w-24 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+                      />
+                    </label>
+                    <Button size="sm" variant="secondary" onClick={setOverrideFromBuilder}>Apply</Button>
+                  </div>
                 )}
-                {Object.entries(priorityOverrides)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([key, delta]) => (
-                      <div key={key} className="flex items-center justify-between rounded bg-neutral-100 px-2 py-1 text-[11px] dark:bg-neutral-800">
-                        <span className="truncate">{key}</span>
-                        <div className="ml-2 flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={delta}
-                            onChange={(e) => updateOverrideDelta(key, e.target.value)}
-                            className="w-16 rounded border border-neutral-200 bg-white px-1 py-0.5 text-[11px] font-mono outline-none dark:border-neutral-700 dark:bg-neutral-900"
-                          />
-                          <button type="button" onClick={() => removeOverride(key)} className="text-red-500">x</button>
-                        </div>
-                      </div>
-                  ))}
               </div>
+            </div>
+
+            <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+                  Rules ({rules.length})
+                </div>
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Click a row to edit it in the builder above.
+                </div>
+              </div>
+              {rules.length === 0 ? (
+                <div className="mt-3 text-[11px] italic text-neutral-500 dark:text-neutral-400">
+                  No rules configured. Use the builder above to add one.
+                </div>
+              ) : (
+                <div className="mt-2 max-h-56 overflow-auto">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                      <tr className="border-b border-neutral-200 dark:border-neutral-700">
+                        <th className="py-1 pr-2 font-medium">Operation</th>
+                        <th className="py-1 pr-2 font-medium">Model</th>
+                        <th className="py-1 pr-2 font-medium">Mode</th>
+                        <th className="py-1 pr-2 font-medium">Delta</th>
+                        <th className="py-1 w-6" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rules.map((rule) => {
+                        const isActive =
+                          rule.op === builderOperation && rule.model === effectiveBuilderModel;
+                        return (
+                          <tr
+                            key={rule.pattern}
+                            onClick={() => loadRuleIntoBuilder(rule)}
+                            className={`cursor-pointer border-b border-neutral-100 transition-colors last:border-b-0 dark:border-neutral-800 ${
+                              isActive
+                                ? 'bg-accent-subtle/40'
+                                : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60'
+                            }`}
+                          >
+                            <td className="py-1.5 pr-2 font-mono">{rule.op}</td>
+                            <td className="py-1.5 pr-2 font-mono">{rule.model}</td>
+                            <td className="py-1.5 pr-2">
+                              {rule.mode === 'neutral' ? (
+                                <span className="text-neutral-400">—</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1">
+                                  <StateDot state={rule.mode} />
+                                  <span className="capitalize">{rule.mode}</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <input
+                                type="number"
+                                value={rule.delta}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => updateOverrideDelta(rule.pattern, e.target.value)}
+                                className="w-16 rounded border border-neutral-200 bg-white px-1 py-0.5 text-[11px] font-mono outline-none dark:border-neutral-700 dark:bg-neutral-900"
+                              />
+                            </td>
+                            <td className="py-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeRule(rule);
+                                }}
+                                className="text-neutral-400 hover:text-red-500"
+                                title="Remove rule"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-1 pb-1">
-              <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+              <Button variant="ghost" onClick={requestClose} disabled={saving}>Cancel</Button>
               <Button variant="primary" onClick={save} disabled={saving}>
                 {saving ? 'Saving...' : 'Save Rules'}
               </Button>
