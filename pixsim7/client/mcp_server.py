@@ -14,9 +14,14 @@ import asyncio
 import contextvars
 import json
 import os
+import pathlib
 import re
 import sys
 from typing import Any
+
+_repo_root = str(pathlib.Path(__file__).resolve().parents[2])
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 try:
     import httpx

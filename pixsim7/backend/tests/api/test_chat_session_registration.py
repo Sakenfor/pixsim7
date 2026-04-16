@@ -327,6 +327,7 @@ async def test_list_chat_sessions_prunes_empty_placeholders_by_default():
 
     result = await list_chat_sessions(
         engine="claude",
+        status="active",
         limit=20,
         include_empty=False,
         user=None,
@@ -345,6 +346,7 @@ async def test_list_chat_sessions_include_empty_skips_prune():
 
     result = await list_chat_sessions(
         engine="claude",
+        status="active",
         limit=20,
         include_empty=True,
         user=None,
@@ -354,3 +356,185 @@ async def test_list_chat_sessions_include_empty_skips_prune():
     assert result == {"sessions": []}
     db.commit.assert_not_awaited()
     db.execute.assert_awaited_once()
+
+
+def _compiled_sql(stmt) -> str:
+    """Render a SQLAlchemy statement to a SQL string for assertion."""
+    return str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions_applies_message_count_filter_by_default():
+    """Regression: MCP-registered sessions have message_count=0 until a real
+    chat turn bumps them. The default list filter must exclude them so the
+    frontend list matches the 'real conversations only' semantic.
+    """
+    captured = []
+
+    class _RecordingDB:
+        async def execute(self, stmt):
+            captured.append(stmt)
+            # Prune path emits an UPDATE first; SELECT comes last.
+            if stmt.__visit_name__ == "update":
+                return SimpleNamespace(rowcount=0)
+            return _ScalarResult([])
+
+        async def commit(self):
+            return None
+
+    await list_chat_sessions(
+        engine="claude",
+        status="active",
+        limit=20,
+        include_empty=False,
+        user=None,
+        db=_RecordingDB(),
+    )
+
+    select_stmts = [s for s in captured if s.__visit_name__ == "select"]
+    assert len(select_stmts) == 1
+    select_sql = _compiled_sql(select_stmts[0])
+    assert "message_count > 0" in select_sql, select_sql
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions_include_empty_omits_message_count_filter():
+    """Counterpart: include_empty=True must return zero-count sessions so
+    MCP-auto-registered sessions are retrievable when explicitly requested.
+    """
+    captured = []
+
+    class _RecordingDB:
+        async def execute(self, stmt):
+            captured.append(stmt)
+            return _ScalarResult([])
+
+        async def commit(self):
+            return None
+
+    await list_chat_sessions(
+        engine="claude",
+        status="active",
+        limit=20,
+        include_empty=True,
+        user=None,
+        db=_RecordingDB(),
+    )
+
+    select_stmts = [s for s in captured if s.__visit_name__ == "select"]
+    assert len(select_stmts) == 1
+    select_sql = _compiled_sql(select_stmts[0])
+    assert "message_count > 0" not in select_sql, select_sql
+
+
+@pytest.mark.asyncio
+async def test_register_chat_session_falls_back_to_user_id_when_only_id_present(monkeypatch):
+    """Regression: older principal shapes only expose `id`, not `user_id`.
+    The attribution path must fall back or the session is silently filed under
+    user_id=0 (shared) and vanishes from the owning user's list.
+    """
+    payload = RegisterSessionRequest(
+        session_id="id-only-sess",
+        engine="claude",
+        label="x",
+        profile_id="assistant:claude",
+        source="mcp",
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=None)
+
+    upsert_kwargs = {}
+
+    async def mock_upsert(**kwargs):
+        upsert_kwargs.update(kwargs)
+
+    async def mock_resolve_agent_profile(*_args, **_kwargs):
+        return SimpleNamespace(id="assistant:claude")
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        mock_upsert,
+    )
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile",
+        mock_resolve_agent_profile,
+    )
+
+    # Principal with `id` only — no `user_id` attribute at all.
+    user = SimpleNamespace(id=7, agent_type="claude")
+    await register_chat_session(payload, _user=user, db=db)
+
+    assert upsert_kwargs["user_id"] == 7, (
+        "principal.id must be used when principal.user_id is absent — "
+        "otherwise sessions get filed under shared user_id=0"
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_chat_session_anon_user_attributed_to_zero(monkeypatch):
+    """No auth header → shared session under user_id=0. Documents the anon path
+    so a future change that raises on anon doesn't go unnoticed.
+    """
+    payload = RegisterSessionRequest(
+        session_id="anon-sess",
+        engine="claude",
+        label="x",
+        profile_id="assistant:claude",
+        source="mcp",
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=None)
+
+    upsert_kwargs = {}
+
+    async def mock_upsert(**kwargs):
+        upsert_kwargs.update(kwargs)
+
+    async def mock_resolve_agent_profile(*_args, **_kwargs):
+        return SimpleNamespace(id="assistant:claude")
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        mock_upsert,
+    )
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile",
+        mock_resolve_agent_profile,
+    )
+
+    await register_chat_session(payload, _user=None, db=db)
+
+    assert upsert_kwargs["user_id"] == 0
+
+
+@pytest.mark.asyncio
+async def test_register_chat_session_does_not_increment_message_count(monkeypatch):
+    """Regression: log_work re-registers the session on every summary. The
+    upsert must NOT bump message_count — that counter is reserved for real
+    user↔agent message turns (see _upsert_chat_session docstring).
+    """
+    payload = RegisterSessionRequest(
+        session_id="existing-sess",
+        engine="claude",
+        label="updated via log_work",
+        profile_id="assistant:claude",
+        source="mcp",
+    )
+    existing = SimpleNamespace(id="existing-sess", profile_id="assistant:claude", last_used_at=None)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=existing)
+
+    upsert_kwargs = {}
+
+    async def mock_upsert(**kwargs):
+        upsert_kwargs.update(kwargs)
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+        mock_upsert,
+    )
+
+    await register_chat_session(payload, _user=None, db=db)
+
+    # Default for increment_messages is False; the endpoint must never pass True.
+    assert upsert_kwargs.get("increment_messages") is not True

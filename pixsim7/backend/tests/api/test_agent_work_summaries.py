@@ -160,15 +160,53 @@ class TestHeartbeatPersistence:
         assert r.status_code == 200
         assert len(db.added) == 0  # Not persisted
 
+    @pytest.mark.asyncio
+    async def test_unknown_action_is_persisted(self):
+        """Pin current behavior: the allowlist is a keepalive *deny* list,
+        so any action outside it (typos, new action names) IS persisted.
+        If this ever flips to an allowlist, log_work-equivalents silently
+        stop writing to history — exactly the kind of elusive bug we keep
+        hitting.
+        """
+        db = _FakeDB()
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.post("/api/v1/meta/agents/heartbeat", json={
+                "session_id": "sess-1",
+                "agent_type": "claude",
+                "status": "active",
+                "action": "frobnicate",  # not in _KEEPALIVE_ACTIONS
+                "detail": "whatever",
+            })
+        assert r.status_code == 200
+        assert len(db.added) == 1
+        assert db.added[0].action == "frobnicate"
+
 
 # ── Session registration ─────────────────────────────────────────
 
 class TestSessionRegistration:
-    """POST /agents/register-chat-session — create and update."""
+    """POST /agents/register-chat-session — create and update.
+
+    The endpoint delegates to ``_upsert_chat_session`` which opens its own
+    ``AsyncSessionLocal`` — so the dep-injected _FakeDB never receives
+    ``db.add()`` calls.  We monkeypatch the upsert to capture its kwargs
+    and verify the endpoint passes the right values.
+    """
 
     @pytest.mark.asyncio
-    async def test_creates_new_session(self):
+    async def test_creates_new_session(self, monkeypatch):
         db = _FakeDB()
+        upsert_kwargs = {}
+
+        async def mock_upsert(**kwargs):
+            upsert_kwargs.update(kwargs)
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+            mock_upsert,
+        )
+
         app = _app(db, principal=_principal(user_id=1, agent=True))
         async with _client(app) as c:
             r = await c.post("/api/v1/meta/agents/register-chat-session", json={
@@ -181,14 +219,12 @@ class TestSessionRegistration:
         data = r.json()
         assert data["ok"] is True
         assert data["created"] is True
-        assert len(db.added) == 1
-        added = db.added[0]
-        assert added.id == "new-sess"
-        assert added.profile_id == "profile-abc"
-        assert added.user_id == 1  # from on_behalf_of
+        assert upsert_kwargs["session_id"] == "new-sess"
+        assert upsert_kwargs["profile_id"] == "profile-abc"
+        assert upsert_kwargs["user_id"] == 1  # from on_behalf_of
 
     @pytest.mark.asyncio
-    async def test_updates_existing_label(self):
+    async def test_updates_existing_label(self, monkeypatch):
         db = _FakeDB()
         existing = SimpleNamespace(
             id="existing-sess",
@@ -203,6 +239,23 @@ class TestSessionRegistration:
         )
         db.get_values["existing-sess"] = existing
 
+        upsert_kwargs = {}
+
+        async def mock_upsert(**kwargs):
+            upsert_kwargs.update(kwargs)
+
+        async def mock_resolve_agent_profile(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session",
+            mock_upsert,
+        )
+        monkeypatch.setattr(
+            "pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile",
+            mock_resolve_agent_profile,
+        )
+
         app = _app(db)
         async with _client(app) as c:
             r = await c.post("/api/v1/meta/agents/register-chat-session", json={
@@ -212,11 +265,91 @@ class TestSessionRegistration:
             })
         assert r.status_code == 200
         assert r.json()["created"] is False
-        assert existing.label == "New summary label"
-        assert db.commit_count == 1
+        assert upsert_kwargs["label"] == "New summary label"
+        assert upsert_kwargs["session_id"] == "existing-sess"
 
 
 # ── History action filter ────────────────────────────────────────
+
+class TestListAgentSessionsBridgeExclusion:
+    """Cover the bridge-client-id exclusion in GET /api/v1/meta/agents.
+
+    Bridge clients emit heartbeats that mirror the underlying CLI session,
+    and are filtered out to avoid inflating the active count. Two elusive
+    failure modes live here:
+
+      1. bridge exception → we must not blank the list.
+      2. an honest session id colliding with a bridge_client_id → that
+         session silently disappears. We pin the current behavior so a
+         future change (e.g. namespacing bridge ids) is visible.
+    """
+
+    def setup_method(self):
+        from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
+        agent_session_registry._sessions.clear()
+        agent_session_registry._last_persisted.clear()
+
+    def teardown_method(self):
+        self.setup_method()
+
+    def _seed(self, session_id: str):
+        from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
+        agent_session_registry.heartbeat(
+            session_id=session_id,
+            agent_type="claude",
+            status="active",
+        )
+
+    @pytest.mark.asyncio
+    async def test_bridge_client_id_excluded_from_active(self, monkeypatch):
+        self._seed("sess-real")
+        self._seed("sess-bridge-123")
+
+        class _FakeAgent:
+            bridge_client_id = "sess-bridge-123"
+
+        class _FakeBridge:
+            def get_agents(self):
+                return [_FakeAgent()]
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.services.llm.remote_cmd_bridge.remote_cmd_bridge",
+            _FakeBridge(),
+        )
+
+        db = _FakeDB()
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents")
+        assert r.status_code == 200
+        ids = {entry["session_id"] for entry in r.json()["active"]}
+        assert "sess-real" in ids
+        assert "sess-bridge-123" not in ids
+
+    @pytest.mark.asyncio
+    async def test_list_tolerates_bridge_import_failure(self, monkeypatch):
+        """If the bridge service is unavailable, the endpoint must still
+        return the active list — not swallow everything into an empty
+        response and not 500."""
+        self._seed("sess-visible")
+
+        class _BoomBridge:
+            def get_agents(self):
+                raise RuntimeError("bridge down")
+
+        monkeypatch.setattr(
+            "pixsim7.backend.main.services.llm.remote_cmd_bridge.remote_cmd_bridge",
+            _BoomBridge(),
+        )
+
+        db = _FakeDB()
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.get("/api/v1/meta/agents")
+        assert r.status_code == 200
+        ids = {entry["session_id"] for entry in r.json()["active"]}
+        assert "sess-visible" in ids
+
 
 class TestHistoryActionFilter:
     """GET /agents/history — action filter param."""
