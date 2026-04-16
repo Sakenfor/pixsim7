@@ -388,6 +388,114 @@ async def test_image_batch_list_nulls_placeholder(monkeypatch):
     assert placeholder.thumbnail_url is None
 
 
+def test_sanitize_pixverse_url_contract():
+    """
+    Shared ``sanitize_pixverse_url`` helper — the single source of truth for
+    Pixverse URL normalize + placeholder null-out.  Six call sites across
+    ``pixverse_status.py`` and ``pixverse_operations.py`` route through it;
+    a regression here is a regression everywhere.
+    """
+    from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+        sanitize_pixverse_url,
+    )
+
+    assert sanitize_pixverse_url(None) is None
+    assert sanitize_pixverse_url("") is None
+    assert sanitize_pixverse_url(PLACEHOLDER_VIDEO_URL) is None
+    assert sanitize_pixverse_url(PLACEHOLDER_THUMB_URL) is None
+    assert sanitize_pixverse_url(PLACEHOLDER_IMAGE_URL) is None
+    assert sanitize_pixverse_url(REAL_VIDEO_URL) == REAL_VIDEO_URL
+    assert sanitize_pixverse_url(REAL_IMAGE_URL) == REAL_IMAGE_URL
+
+
+def test_extract_sanitized_video_urls_signals_computed_before_null_out():
+    """
+    Shared ``extract_sanitized_video_urls`` helper — returns
+    ``(video_url, thumb_url, signals)`` where ``signals`` reflects what the
+    provider returned this poll, not the post-null value.
+
+    The ordering bug (signals computed after the null-out) was the
+    second-order cause of asset 62302's misleading metadata: the placeholder
+    flag ended up False because the URL had already been nulled before the
+    flag dict was built.
+    """
+    from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+        extract_sanitized_video_urls,
+    )
+
+    # Placeholder video + placeholder thumb → URLs null, signals truthful.
+    video_url, thumb_url, signals = extract_sanitized_video_urls(
+        PLACEHOLDER_VIDEO_URL, PLACEHOLDER_THUMB_URL
+    )
+    assert video_url is None
+    assert thumb_url is None
+    assert signals == {
+        "video_url_is_placeholder": True,
+        "thumbnail_url_is_placeholder": True,
+        "has_retrievable_media_url": False,
+    }
+
+    # Real URLs pass through, signals clear.
+    video_url, thumb_url, signals = extract_sanitized_video_urls(
+        REAL_VIDEO_URL, REAL_IMAGE_URL
+    )
+    assert video_url == REAL_VIDEO_URL
+    assert thumb_url == REAL_IMAGE_URL
+    assert signals == {
+        "video_url_is_placeholder": False,
+        "thumbnail_url_is_placeholder": False,
+        "has_retrievable_media_url": True,
+    }
+
+    # Mixed: real video, placeholder thumb → only thumb nulled.
+    video_url, thumb_url, signals = extract_sanitized_video_urls(
+        REAL_VIDEO_URL, PLACEHOLDER_THUMB_URL
+    )
+    assert video_url == REAL_VIDEO_URL
+    assert thumb_url is None
+    assert signals["video_url_is_placeholder"] is False
+    assert signals["thumbnail_url_is_placeholder"] is True
+    assert signals["has_retrievable_media_url"] is True
+
+    # Nones all around.
+    assert extract_sanitized_video_urls(None, None) == (
+        None,
+        None,
+        {
+            "video_url_is_placeholder": False,
+            "thumbnail_url_is_placeholder": False,
+            "has_retrievable_media_url": False,
+        },
+    )
+
+
+def test_pixverse_status_has_no_inline_placeholder_null_outs():
+    """
+    Drift guard: all placeholder null-out logic in pixverse_status.py must
+    route through the shared ``extract_sanitized_video_urls`` /
+    ``sanitize_pixverse_url`` helpers.  If a future edit re-introduces an
+    inline ``if _is_pixverse_placeholder_url(...): x = None`` pattern, this
+    test fires — the exact drift that caused asset 62302.
+    """
+    import inspect
+
+    from pixsim7.backend.main.services.provider.adapters import pixverse_status
+
+    source = inspect.getsource(pixverse_status)
+    # Module should import the shared helpers but NOT the raw placeholder
+    # detector (callers should use the sanitizer, not reinvent it).
+    assert "sanitize_pixverse_url" in source
+    assert "extract_sanitized_video_urls" in source
+    # The inline null-out idiom must not appear anywhere in the module body.
+    # (The import line alias itself contains "is_pixverse_placeholder_url"
+    # only if someone re-adds the direct import — which would be a regression.)
+    assert "is_pixverse_placeholder_url" not in source, (
+        "pixverse_status.py must not import is_pixverse_placeholder_url "
+        "directly — route through sanitize_pixverse_url / "
+        "extract_sanitized_video_urls to prevent drift"
+    )
+
+
 def test_placeholder_detector_contract():
     """
     Pixverse URL classifier contract used by all null-out sites.
@@ -823,15 +931,15 @@ def test_submit_response_code_has_placeholder_null_out():
     )
 
     source = inspect.getsource(pixverse_operations.PixverseOperationsMixin.execute)
-    # Both video_url and thumbnail_url must be nulled when they point at a
-    # known Pixverse placeholder path.
-    assert "if _is_pixverse_placeholder_url(video_url):" in source
-    assert "if _is_pixverse_placeholder_url(thumbnail_url):" in source
+    # Both video_url and thumbnail_url must flow through the shared sanitizer
+    # that null-outs placeholder Pixverse URLs.
+    assert "_sanitize_pixverse_url(getattr(video, 'url', None))" in source
+    assert "_sanitize_pixverse_url(getattr(video, 'thumbnail', None))" in source
 
-    # Sanity: detector classifies the exact URL Pixverse returns at moderation
-    # time as a placeholder, so the guard above actually trips in production.
-    assert pixverse_operations._is_pixverse_placeholder_url(PLACEHOLDER_VIDEO_URL) is True
-    assert pixverse_operations._is_pixverse_placeholder_url(PLACEHOLDER_THUMB_URL) is True
+    # Sanity: sanitizer emits None for the exact URLs Pixverse returns when
+    # moderation trips at submit time, so the guard above actually clears them.
+    assert pixverse_operations._sanitize_pixverse_url(PLACEHOLDER_VIDEO_URL) is None
+    assert pixverse_operations._sanitize_pixverse_url(PLACEHOLDER_THUMB_URL) is None
 
 
 # ---------------------------------------------------------------------------

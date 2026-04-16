@@ -174,6 +174,75 @@ def has_retrievable_pixverse_media_url(url: Optional[str]) -> bool:
     return any(marker in path for marker in _PIXVERSE_OUTPUT_PATH_MARKERS)
 
 
+def sanitize_pixverse_url(raw: Any) -> Optional[str]:
+    """
+    Normalize a Pixverse URL and drop placeholder templates.
+
+    Returns ``None`` when the raw value is falsy or points at a known
+    placeholder path (e.g. ``.../default.mp4``).  Otherwise returns the
+    normalized URL.
+
+    Single source of truth for every Pixverse URL-ingestion site.  Drift
+    between the main poll path, list-fallback paths, and submit-response
+    path is what let the asset-62302 filtered-template leak happen — a
+    later `list_videos` poll served a placeholder URL verbatim and
+    overwrote the real CDN URL captured by an earlier poll.  Route all
+    URL extraction through this helper to prevent future drift.
+    """
+    if not raw:
+        return None
+    url = normalize_url(raw)
+    if is_pixverse_placeholder_url(url):
+        return None
+    return url
+
+
+def build_video_media_url_signals(
+    video_url: Optional[str],
+    thumbnail_url: Optional[str],
+) -> dict:
+    """Canonical Pixverse media-URL flag dict.
+
+    Must be called on the *raw-normalized* URLs (before any placeholder
+    null-out), so ``video_url_is_placeholder`` reflects what the provider
+    returned this poll rather than the post-null value.
+    """
+    return {
+        "video_url_is_placeholder": is_pixverse_placeholder_url(video_url),
+        "thumbnail_url_is_placeholder": is_pixverse_placeholder_url(thumbnail_url),
+        "has_retrievable_media_url": has_retrievable_pixverse_media_url(video_url),
+    }
+
+
+def extract_sanitized_video_urls(
+    raw_video_url: Any,
+    raw_thumbnail_url: Any,
+) -> tuple[Optional[str], Optional[str], dict]:
+    """
+    Normalize + classify + null-out Pixverse video/thumbnail URLs in one shot.
+
+    Returns ``(video_url, thumbnail_url, signals)``:
+    - ``video_url`` / ``thumbnail_url`` — normalized and ``None`` if placeholder.
+    - ``signals`` — flag dict computed BEFORE the null-out so downstream code
+      can still see ``video_url_is_placeholder=True`` after the URL is
+      cleared.
+
+    Consolidates a pattern that previously lived in 3 near-identical copies
+    across ``pixverse_status.py`` (main video check_status, the inner
+    list-fallback helper, and the public ``check_video_status_from_list``).
+    Those copies drifted — the public one was missing the null-out when
+    the asset-62302 incident fired.
+    """
+    video_url = normalize_url(raw_video_url) if raw_video_url else None
+    thumb_url = normalize_url(raw_thumbnail_url) if raw_thumbnail_url else None
+    signals = build_video_media_url_signals(video_url, thumb_url)
+    if is_pixverse_placeholder_url(video_url):
+        video_url = None
+    if is_pixverse_placeholder_url(thumb_url):
+        thumb_url = None
+    return video_url, thumb_url, signals
+
+
 def extract_media_url(payload: Any, media_type: str) -> Optional[str]:
     """
     Extract and normalize the best Pixverse media URL from metadata payloads.

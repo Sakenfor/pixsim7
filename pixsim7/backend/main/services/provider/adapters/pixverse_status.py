@@ -17,9 +17,8 @@ from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
-    normalize_url as _normalize_pixverse_url,
-    is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
-    has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
+    sanitize_pixverse_url as _sanitize_pixverse_url,
+    extract_sanitized_video_urls as _extract_sanitized_video_urls,
 )
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
@@ -156,20 +155,6 @@ def _is_invalid_media_error(error: Exception) -> bool:
     return "provided media is invalid" in message or "invalid media" in message
 
 
-def _build_video_media_url_signals(
-    video_url: Optional[str],
-    thumbnail_url: Optional[str],
-) -> Dict[str, bool]:
-    """Build canonical Pixverse media URL flags used across status paths."""
-    video_url_is_placeholder = _is_pixverse_placeholder_url(video_url)
-    thumbnail_url_is_placeholder = _is_pixverse_placeholder_url(thumbnail_url)
-    return {
-        "video_url_is_placeholder": video_url_is_placeholder,
-        "thumbnail_url_is_placeholder": thumbnail_url_is_placeholder,
-        "has_retrievable_media_url": _has_retrievable_pixverse_media_url(video_url),
-    }
-
-
 class PixverseStatusMixin:
     """Mixin for Pixverse video/image status checking and status mapping."""
 
@@ -239,19 +224,9 @@ class PixverseStatusMixin:
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
                     thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
-                    video_url = _normalize_pixverse_url(video_url_raw) if video_url_raw else None
-                    thumb_url = _normalize_pixverse_url(thumb_raw) if thumb_raw else None
-                    # Compute signals BEFORE nulling so `video_url_is_placeholder`
-                    # reflects what the provider returned this poll, not the
-                    # post-null value.
-                    media_url_signals = _build_video_media_url_signals(video_url, thumb_url)
-                    # Null out placeholder URLs so the provider_service URL
-                    # merge falls through to a real URL stored from an earlier
-                    # poll (if any).
-                    if _is_pixverse_placeholder_url(video_url):
-                        video_url = None
-                    if _is_pixverse_placeholder_url(thumb_url):
-                        thumb_url = None
+                    video_url, thumb_url, media_url_signals = (
+                        _extract_sanitized_video_urls(video_url_raw, thumb_raw)
+                    )
 
                     return ProviderStatusResult(
                         status=status,
@@ -292,14 +267,7 @@ class PixverseStatusMixin:
                     )
                     raw_status = _get_field(result, "image_status", "status", default=0)
                     image_url_raw = _get_field(result, "image_url", "url")
-                    image_url = (
-                        _normalize_pixverse_url(image_url_raw) if image_url_raw else None
-                    )
-                    # Null out placeholder URLs so the provider_service URL
-                    # merge can fall through to a real URL from an earlier
-                    # poll — mirrors the video path below.
-                    if _is_pixverse_placeholder_url(image_url):
-                        image_url = None
+                    image_url = _sanitize_pixverse_url(image_url_raw)
                     status = self._map_pixverse_image_status(result)
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
@@ -375,15 +343,9 @@ class PixverseStatusMixin:
                     raw_video_url = _get_field(raw_data, "url", "video_url")
                     raw_thumb = _get_field(raw_data, "first_frame", "thumbnail")
                     raw_status = _get_field(raw_data, "video_status", "status")
-                    video_url = _normalize_pixverse_url(raw_video_url)
-                    thumbnail_url = _normalize_pixverse_url(raw_thumb)
-                    # Compute signals BEFORE nulling so placeholder flags
-                    # reflect what this poll actually received.
-                    media_url_signals = _build_video_media_url_signals(video_url, thumbnail_url)
-                    if _is_pixverse_placeholder_url(video_url):
-                        video_url = None
-                    if _is_pixverse_placeholder_url(thumbnail_url):
-                        thumbnail_url = None
+                    video_url, thumbnail_url, media_url_signals = (
+                        _extract_sanitized_video_urls(raw_video_url, raw_thumb)
+                    )
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.debug(
@@ -502,20 +464,9 @@ class PixverseStatusMixin:
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
                     thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
-                    video_url = _normalize_pixverse_url(video_url_raw) if video_url_raw else None
-                    thumb_url = _normalize_pixverse_url(thumb_raw) if thumb_raw else None
-                    # Compute signals BEFORE nulling so `video_url_is_placeholder`
-                    # accurately reflects what this poll received from Pixverse.
-                    media_url_signals = _build_video_media_url_signals(video_url, thumb_url)
-                    # Null out placeholder URLs so the provider_service URL
-                    # merge falls through to a real URL stored from an earlier
-                    # poll (if any). Without this, a later list poll returning
-                    # the Pixverse `.../default.mp4` template overwrites the
-                    # real CDN URL captured earlier.
-                    if _is_pixverse_placeholder_url(video_url):
-                        video_url = None
-                    if _is_pixverse_placeholder_url(thumb_url):
-                        thumb_url = None
+                    video_url, thumb_url, media_url_signals = (
+                        _extract_sanitized_video_urls(video_url_raw, thumb_raw)
+                    )
 
                     return ProviderStatusResult(
                         status=status,
@@ -585,11 +536,7 @@ class PixverseStatusMixin:
                 for img in images:
                     if str(img.get("image_id")) == str(image_id):
                         image_url_raw = img.get("image_url") or img.get("url")
-                        image_url = (
-                            _normalize_pixverse_url(image_url_raw) if image_url_raw else None
-                        )
-                        if _is_pixverse_placeholder_url(image_url):
-                            image_url = None
+                        image_url = _sanitize_pixverse_url(image_url_raw)
                         status = self._map_pixverse_image_status(img)
                         raw_status = img.get("image_status") or img.get("status") or 0
 
@@ -656,11 +603,7 @@ class PixverseStatusMixin:
                     continue
                 image_id = str(raw_image_id)
                 image_url_raw = img.get("image_url") or img.get("url")
-                image_url = (
-                    _normalize_pixverse_url(image_url_raw) if image_url_raw else None
-                )
-                if _is_pixverse_placeholder_url(image_url):
-                    image_url = None
+                image_url = _sanitize_pixverse_url(image_url_raw)
                 status = self._map_pixverse_image_status(img)
                 raw_status = img.get("image_status") or img.get("status") or 0
 
