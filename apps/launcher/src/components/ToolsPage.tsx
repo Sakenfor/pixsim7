@@ -3,7 +3,10 @@
  */
 
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
-import { Badge, Button, Input } from '@pixsim7/shared.ui'
+import {
+  ActionCard, Badge, Button, DisclosureSection, Input, StatusPill,
+  type StatusTone,
+} from '@pixsim7/shared.ui'
 import {
   getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
   getMigrationDatabases, getMigrationStatus, runMigrationAction, invalidateMigrationStatus,
@@ -14,8 +17,20 @@ import {
 
 type Section = 'codegen' | 'migrations' | 'buildables' | 'settings'
 
+/**
+ * Shared build progress so the tab strip can surface activity even when
+ * the user has switched away from the Buildables tab.
+ */
+export interface BuildProgress {
+  kind: 'idle' | 'single' | 'batch'
+  pkg?: string
+  done?: number
+  total?: number
+}
+
 export function ToolsPage() {
   const [activeSection, setActiveSection] = useState<Section>('codegen')
+  const [buildProgress, setBuildProgress] = useState<BuildProgress>({ kind: 'idle' })
 
   const sections: { id: Section; label: string }[] = [
     { id: 'codegen', label: 'Codegen' },
@@ -32,13 +47,14 @@ export function ToolsPage() {
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
-            className={`px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors ${
+            className={`px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
               activeSection === s.id
                 ? 'text-blue-400 border-blue-400'
                 : 'text-gray-500 border-transparent hover:text-gray-300'
             }`}
           >
-            {s.label}
+            <span>{s.label}</span>
+            {s.id === 'buildables' && <TabBuildProgress progress={buildProgress} />}
           </button>
         ))}
       </div>
@@ -46,10 +62,30 @@ export function ToolsPage() {
       <div className="flex-1 overflow-hidden relative">
         <div className={`h-full overflow-auto ${activeSection === 'codegen' ? '' : 'hidden'}`}><CodegenSection /></div>
         <div className={`h-full overflow-auto ${activeSection === 'migrations' ? '' : 'hidden'}`}><MigrationsSection /></div>
-        <div className={`h-full overflow-auto ${activeSection === 'buildables' ? '' : 'hidden'}`}><BuildablesSection /></div>
+        <div className={`h-full overflow-auto ${activeSection === 'buildables' ? '' : 'hidden'}`}>
+          <BuildablesSection progress={buildProgress} setProgress={setBuildProgress} />
+        </div>
         <div className={`h-full overflow-auto ${activeSection === 'settings' ? '' : 'hidden'}`}><SettingsSection /></div>
       </div>
     </div>
+  )
+}
+
+function TabBuildProgress({ progress }: { progress: BuildProgress }) {
+  if (progress.kind === 'idle') return null
+  if (progress.kind === 'batch' && progress.total) {
+    return (
+      <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 rounded px-1 py-0.5">
+        {progress.done ?? 0}/{progress.total}
+      </span>
+    )
+  }
+  // single build — just a pulse dot
+  return (
+    <span
+      className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"
+      title={progress.pkg ? `Building ${progress.pkg}` : 'Building'}
+    />
   )
 }
 
@@ -62,7 +98,7 @@ function CodegenSection() {
   const [tasks, setTasks] = useState<CodegenTask[]>([])
   const [runResult, setRunResult] = useState<CodegenRunResult | null>(null)
   const [running, setRunning] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [openParents, setOpenParents] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getCodegenTasks().then(setTasks)
@@ -80,19 +116,15 @@ function CodegenSection() {
     }
   }, [])
 
-  const toggleExpanded = useCallback((parentId: string) => {
-    setExpanded((prev) => ({ ...prev, [parentId]: !prev[parentId] }))
-  }, [])
-
   // Build parent → children map from naming convention
   const parentChildMap = useMemo(() => {
     const childIds = new Set<string>()
-    const map: Record<string, { parent: CodegenTask; children: CodegenTask[] }> = {}
+    const map: Record<string, { parent: CodegenTask | undefined; children: CodegenTask[] }> = {}
     for (const parentId of EXPANDABLE_PARENTS) {
       const parent = tasks.find((t) => t.id === parentId)
       const children = tasks.filter((t) => t.id.startsWith(`${parentId}-`))
       if (parent || children.length) {
-        map[parentId] = { parent: parent!, children }
+        map[parentId] = { parent, children }
         if (parent) childIds.add(parent.id)
         children.forEach((c) => childIds.add(c.id))
       }
@@ -101,67 +133,59 @@ function CodegenSection() {
     return { map, regular }
   }, [tasks])
 
-  const renderTask = (task: CodegenTask, parentId?: string) => {
-    const nested = !!parentId
+  const renderTaskCard = (task: CodegenTask, opts: { nested?: boolean; parentId?: string } = {}) => {
+    const { nested, parentId } = opts
     const dep = task.requires_service
     const depOk = task.service_running !== false
-    const ownGroup = parentChildMap.map[task.id]
-    const hasChildren = !nested && ownGroup && ownGroup.children.length > 0
-    const titleText = nested ? task.id.replace(new RegExp(`^${parentId}-`), '') : task.id
-    const descriptionText = task.description
+    const titleText = nested && parentId ? task.id.replace(new RegExp(`^${parentId}-`), '') : task.id
 
-    return (
-      <div
-        key={task.id}
-        className={`flex items-center gap-2 px-3 py-2 rounded border border-border ${nested ? 'bg-surface ml-5' : 'bg-surface-secondary'}`}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            {hasChildren && (
-              <button
-                type="button"
-                onClick={() => toggleExpanded(task.id)}
-                className="text-[10px] text-gray-400 hover:text-gray-200 w-3"
-                title={expanded[task.id] ? `Collapse ${task.id} subtasks` : `Expand ${task.id} subtasks`}
-              >
-                {expanded[task.id] ? 'v' : '>'}
-              </button>
-            )}
-            {nested && <span className="text-[10px] text-gray-500">-&gt;</span>}
-            <span className="text-xs font-medium text-gray-200">{titleText}</span>
-            {!nested && task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)}
-            {hasChildren && <Badge color="gray" className="text-[9px]">{ownGroup!.children.length} sub</Badge>}
-          </div>
-          <div className="text-[10px] text-gray-500 truncate">{descriptionText}</div>
-          {dep && !nested && (
-            <div className={`text-[9px] mt-0.5 flex items-center gap-1 ${depOk ? 'text-green-500' : 'text-amber-400'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${depOk ? 'bg-green-500' : 'bg-amber-500'}`} />
-              Requires {dep.label}
-              {!depOk && <span className="text-gray-500">- start it first</span>}
-            </div>
-          )}
-        </div>
-        <div className="flex gap-1 shrink-0">
-          {task.supports_check && (
-            <Button
-              size="xs"
-              className="bg-amber-700 hover:bg-amber-600 text-white"
-              onClick={() => run(task.id, true)}
-              disabled={!!running || !depOk}
-            >
-              Check
-            </Button>
-          )}
+    const tags = !nested
+      ? task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)
+      : null
+
+    const depLine = dep && !nested ? (
+      <div className="mt-0.5">
+        <StatusPill tone={depOk ? 'success' : 'warning'} dot size="xs">
+          Requires {dep.label}
+          {!depOk && <span className="ml-1 text-[10px] opacity-70">- start it first</span>}
+        </StatusPill>
+      </div>
+    ) : null
+
+    const actions = (
+      <>
+        {task.supports_check && (
           <Button
             size="xs"
-            className="bg-green-700 hover:bg-green-600 text-white"
-            onClick={() => run(task.id, false)}
+            className="bg-amber-700 hover:bg-amber-600 text-white"
+            onClick={() => run(task.id, true)}
             disabled={!!running || !depOk}
           >
-            {running === task.id ? 'Running...' : 'Run'}
+            Check
           </Button>
-        </div>
-      </div>
+        )}
+        <Button
+          size="xs"
+          className="bg-green-700 hover:bg-green-600 text-white"
+          onClick={() => run(task.id, false)}
+          disabled={!!running || !depOk}
+        >
+          {running === task.id ? 'Running...' : 'Run'}
+        </Button>
+      </>
+    )
+
+    return (
+      <ActionCard
+        key={task.id}
+        title={titleText}
+        description={task.description}
+        body={depLine || undefined}
+        tags={tags}
+        actions={actions}
+        indented={nested}
+        className={nested ? 'bg-surface' : undefined}
+      />
     )
   }
 
@@ -170,21 +194,45 @@ function CodegenSection() {
       {EXPANDABLE_PARENTS.map((parentId) => {
         const group = parentChildMap.map[parentId]
         if (!group) return null
+
+        // No explicit parent task — flatten children under no header
+        if (!group.parent) {
+          return <Fragment key={parentId}>{group.children.map((c) => renderTaskCard(c))}</Fragment>
+        }
+
+        const isOpen = !!openParents[parentId]
+        const parentBadge = group.children.length > 0
+          ? <Badge color="gray" className="text-[9px]">{group.children.length} sub</Badge>
+          : null
+
         return (
-          <Fragment key={parentId}>
-            {group.parent && renderTask(group.parent)}
-            {!group.parent && group.children.map((task) => renderTask(task))}
-            {group.parent && expanded[parentId] && group.children.map((task) => renderTask(task, parentId))}
-          </Fragment>
+          <div key={parentId} className="space-y-1">
+            {renderTaskCard(group.parent)}
+            {group.children.length > 0 && (
+              <DisclosureSection
+                label={<span className="text-[10px] text-gray-500">Subtasks</span>}
+                badge={parentBadge}
+                isOpen={isOpen}
+                onToggle={(o) => setOpenParents((p) => ({ ...p, [parentId]: o }))}
+                size="sm"
+                className="ml-5"
+              >
+                <div className="space-y-1 mt-1">
+                  {group.children.map((c) => renderTaskCard(c, { nested: true, parentId }))}
+                </div>
+              </DisclosureSection>
+            )}
+          </div>
         )
       })}
-      {parentChildMap.regular.map((task) => renderTask(task))}
+      {parentChildMap.regular.map((task) => renderTaskCard(task))}
       {runResult && <ResultBox result={runResult} />}
     </div>
   )
 }
 
 // ── Migrations ──
+
 function MigrationsSection() {
   const [databases, setDatabases] = useState<MigrationDatabase[]>([])
   const [statuses, setStatuses] = useState<Record<string, MigrationStatus>>({})
@@ -228,45 +276,49 @@ function MigrationsSection() {
         const status = statuses[db.id]
         const busy = loadingDb === db.id
         const hasPending = (status?.pending?.length ?? 0) > 0
-        const dotColor = !status ? 'bg-gray-500' : hasPending ? 'bg-amber-500' : 'bg-green-500'
 
-        return (
-          <div key={db.id} className="bg-surface-secondary rounded border border-border p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gray-200">{db.label}</div>
-                <div className="text-[10px] text-gray-500 font-mono truncate">{db.db_url}</div>
-              </div>
-              <Button size="xs" variant="ghost" onClick={() => refreshDb(db.id)} className="text-gray-400">&#x21bb;</Button>
-            </div>
+        const tone: StatusTone = !status ? 'muted' : hasPending ? 'warning' : 'success'
+        const statusLabel = !status
+          ? 'Loading'
+          : hasPending
+            ? `${status.pending.length} pending`
+            : 'Up to date'
 
-            {status ? (
-              <div className="space-y-0.5 text-[10px] mb-2">
+        const body = (
+          <div className="space-y-0.5 text-[10px] mt-1">
+            <div className="text-gray-500 font-mono truncate">{db.db_url}</div>
+            {status && (
+              <>
                 <div>
                   <span className="text-gray-500">Rev:</span>{' '}
                   <span className="text-gray-300 font-mono">{status.current_revision}</span>
                 </div>
-                {hasPending ? (
-                  <div className="text-amber-400">
-                    {status.pending.length} pending migration{status.pending.length > 1 ? 's' : ''}
-                  </div>
-                ) : (
-                  <div className="text-green-400">Up to date</div>
+                {status.pending_error && (
+                  <div className="text-red-400 select-text whitespace-pre-wrap break-words">{status.pending_error}</div>
                 )}
-                {status.pending_error && <div className="text-red-400 select-text whitespace-pre-wrap break-words">{status.pending_error}</div>}
-              </div>
-            ) : (
-              <div className="text-[10px] text-gray-500 mb-2">Loading...</div>
+              </>
             )}
-
-            <div className="flex gap-1">
-              <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => runAction('upgrade', db.id)} disabled={busy}>Upgrade</Button>
-              <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" onClick={() => runAction('downgrade', db.id)} disabled={busy}>Down</Button>
-              <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" onClick={() => runAction('stamp', db.id)} disabled={busy}>Stamp</Button>
-              <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" onClick={() => runAction('merge', db.id)} disabled={busy}>Merge</Button>
-            </div>
           </div>
+        )
+
+        const actions = (
+          <>
+            <Button size="xs" variant="ghost" onClick={() => refreshDb(db.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
+            <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => runAction('upgrade', db.id)} disabled={busy}>Upgrade</Button>
+            <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" onClick={() => runAction('downgrade', db.id)} disabled={busy}>Down</Button>
+            <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" onClick={() => runAction('stamp', db.id)} disabled={busy}>Stamp</Button>
+            <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" onClick={() => runAction('merge', db.id)} disabled={busy}>Merge</Button>
+          </>
+        )
+
+        return (
+          <ActionCard
+            key={db.id}
+            title={db.label}
+            status={<StatusPill tone={tone} dot size="xs">{statusLabel}</StatusPill>}
+            body={body}
+            actions={actions}
+          />
         )
       })}
 
@@ -277,21 +329,134 @@ function MigrationsSection() {
 
 // ── Buildables ──
 
-function BuildablesSection() {
+// Sort order: not_built first (urgent), then stale, then fresh, then unknown.
+const STATE_RANK: Record<string, number> = { not_built: 0, stale: 1, fresh: 2, unknown: 3 }
+const stateRank = (b: Buildable) => STATE_RANK[b.build_status?.state ?? 'unknown'] ?? 3
+const isNeedsBuild = (b: Buildable) => {
+  const s = b.build_status?.state
+  return s === 'not_built' || s === 'stale'
+}
+
+// Category order (known first, unknown last). Within category, packages sub-group
+// by first name segment (e.g. "shared.api.client" → "shared").
+const CATEGORY_ORDER = ['apps', 'packages', 'chrome-extension']
+const PACKAGE_SUBGROUP_THRESHOLD = 10  // sub-group packages only if >= this many items
+const PACKAGE_SUBGROUP_OTHER = '(other)'
+
+function packagePrefix(pkg: string): string {
+  const name = pkg.includes('/') ? pkg.split('/', 2)[1] : pkg
+  const dot = name.indexOf('.')
+  return dot > 0 ? name.slice(0, dot) : name
+}
+
+interface BuildableGroup {
+  id: string             // unique across all groups (for collapsed state)
+  label: string
+  items: Buildable[]
+  subgroups?: BuildableGroup[]
+  depth: number          // 0 = top, 1 = nested
+}
+
+function buildGroups(items: Buildable[]): BuildableGroup[] {
+  // Top-level by category
+  const byCategory = new Map<string, Buildable[]>()
+  for (const b of items) {
+    const key = b.category || 'uncategorized'
+    if (!byCategory.has(key)) byCategory.set(key, [])
+    byCategory.get(key)!.push(b)
+  }
+  const sortedCatKeys = [...byCategory.keys()].sort((a, b) => {
+    const ai = CATEGORY_ORDER.indexOf(a); const bi = CATEGORY_ORDER.indexOf(b)
+    if (ai === -1 && bi === -1) return a.localeCompare(b)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+
+  const groups: BuildableGroup[] = []
+  for (const cat of sortedCatKeys) {
+    const catItems = byCategory.get(cat)!
+    const group: BuildableGroup = { id: `cat:${cat}`, label: cat, items: catItems, depth: 0 }
+
+    // Sub-group packages by prefix when bulky
+    if (cat === 'packages' && catItems.length >= PACKAGE_SUBGROUP_THRESHOLD) {
+      const byPrefix = new Map<string, Buildable[]>()
+      for (const b of catItems) {
+        const pfx = packagePrefix(b.package)
+        if (!byPrefix.has(pfx)) byPrefix.set(pfx, [])
+        byPrefix.get(pfx)!.push(b)
+      }
+      // Merge one-off prefixes into "(other)" to avoid 1-item sub-groups
+      const main: [string, Buildable[]][] = []
+      const other: Buildable[] = []
+      for (const [pfx, arr] of byPrefix) {
+        if (arr.length >= 2) main.push([pfx, arr])
+        else other.push(...arr)
+      }
+      main.sort((a, b) => b[1].length - a[1].length)
+      if (other.length) main.push([PACKAGE_SUBGROUP_OTHER, other])
+      group.subgroups = main.map(([pfx, arr]) => ({
+        id: `cat:${cat}/${pfx}`, label: pfx, items: arr, depth: 1,
+      }))
+    }
+
+    groups.push(group)
+  }
+  return groups
+}
+
+function sortItems(items: Buildable[]): Buildable[] {
+  return [...items].sort((a, b) => {
+    const ra = stateRank(a); const rb = stateRank(b)
+    if (ra !== rb) return ra - rb
+    return a.title.localeCompare(b.title)
+  })
+}
+
+function countNeedsBuild(items: Buildable[]): number {
+  let n = 0
+  for (const b of items) if (isNeedsBuild(b)) n++
+  return n
+}
+
+function BuildablesSection({
+  progress, setProgress,
+}: { progress: BuildProgress; setProgress: (p: BuildProgress) => void }) {
   const [buildables, setBuildables] = useState<Buildable[]>([])
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
-  const [buildingPkg, setBuildingPkg] = useState<string | null>(null)
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null)
   const [lastBuiltPkg, setLastBuiltPkg] = useState<string | null>(null)
-  const [filterCategory, setFilterCategory] = useState('')
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const [batch, setBatch] = useState<{ running: boolean; done: number; total: number; failed: string[] } | null>(null)
+
+  // Derive "currently building single pkg" from lifted progress state
+  const buildingPkg = progress.kind === 'single' || progress.kind === 'batch' ? progress.pkg ?? null : null
+  const anyBusy = progress.kind !== 'idle'
 
   useEffect(() => { getBuildables().then(setBuildables) }, [])
 
-  const categories = [...new Set(buildables.map((b) => b.category).filter(Boolean))] as string[]
-  const filtered = filterCategory ? buildables.filter((b) => b.category === filterCategory) : buildables
+  const groups = useMemo(() => buildGroups(buildables), [buildables])
+  const totalStale = useMemo(() => countNeedsBuild(buildables), [buildables])
+
+  // Default: top-level groups open; sub-groups closed.
+  useEffect(() => {
+    if (!groups.length) return
+    setOpenGroups((prev) => {
+      const next = { ...prev }
+      for (const g of groups) {
+        if (next[g.id] === undefined) next[g.id] = true
+        if (g.subgroups) {
+          for (const sg of g.subgroups) {
+            if (next[sg.id] === undefined) next[sg.id] = false
+          }
+        }
+      }
+      return next
+    })
+  }, [groups])
 
   const handleBuild = useCallback(async (pkg: string) => {
-    setBuildingPkg(pkg)
+    setProgress({ kind: 'single', pkg })
     setBuildResult(null)
     setLastBuiltPkg(pkg)
     try {
@@ -299,9 +464,30 @@ function BuildablesSection() {
       // Force-refresh to get updated build_status
       getBuildables(true).then(setBuildables)
     } finally {
-      setBuildingPkg(null)
+      setProgress({ kind: 'idle' })
     }
-  }, [])
+  }, [setProgress])
+
+  const rebuildAllStale = useCallback(async (scope?: Buildable[]) => {
+    const pool = (scope ?? buildables).filter(isNeedsBuild)
+    if (!pool.length) return
+    setBuildResult(null)
+    setBatch({ running: true, done: 0, total: pool.length, failed: [] })
+    const failed: string[] = []
+    for (let i = 0; i < pool.length; i++) {
+      const b = pool[i]
+      setProgress({ kind: 'batch', pkg: b.package, done: i, total: pool.length })
+      try {
+        const res = await buildPackage(b.package)
+        if (!res.ok) failed.push(b.package)
+      } catch {
+        failed.push(b.package)
+      }
+      setBatch({ running: i < pool.length - 1, done: i + 1, total: pool.length, failed: [...failed] })
+    }
+    setProgress({ kind: 'idle' })
+    getBuildables(true).then(setBuildables)
+  }, [buildables, setProgress])
 
   const justBuiltLauncher = buildResult?.ok && lastBuiltPkg === '@pixsim7/launcher'
 
@@ -310,94 +496,210 @@ function BuildablesSection() {
       {/* Sticky toolbar + result */}
       <div className="shrink-0 p-3 pb-0 space-y-2">
         <div className="flex items-center gap-2 text-[10px]">
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="bg-surface-secondary border border-border rounded px-1.5 py-0.5 text-gray-300 text-[11px]"
+          <span className="text-gray-500">
+            {buildables.length} packages
+            {totalStale > 0 && (
+              <span className="text-amber-400 ml-1">- {totalStale} need build</span>
+            )}
+          </span>
+          <Button
+            size="xs"
+            className="bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+            onClick={() => rebuildAllStale()}
+            disabled={anyBusy || totalStale === 0}
           >
-            <option value="">All ({buildables.length})</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c} ({buildables.filter((b) => b.category === c).length})</option>
-            ))}
-          </select>
+            {batch?.running ? `Building ${batch.done}/${batch.total}...` : `Rebuild stale (${totalStale})`}
+          </Button>
           <div className="flex-1" />
           <Button size="xs" variant={viewMode === 'cards' ? 'secondary' : 'ghost'} onClick={() => setViewMode('cards')}>Cards</Button>
           <Button size="xs" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')}>List</Button>
         </div>
 
-        {buildResult && <ResultBox result={buildResult} />}
+        {batch && !batch.running && (
+          <div className={`flex items-center gap-2 p-2 rounded border text-[11px] ${batch.failed.length ? 'bg-red-900/20 border-red-800/50 text-red-200' : 'bg-green-900/20 border-green-800/50 text-green-200'}`}>
+            <span className="flex-1">
+              Batch done: {batch.total - batch.failed.length}/{batch.total} succeeded
+              {batch.failed.length > 0 && (
+                <span className="ml-2 font-mono text-red-300">(failed: {batch.failed.join(', ')})</span>
+              )}
+            </span>
+            <Button size="xs" variant="ghost" onClick={() => setBatch(null)}>Dismiss</Button>
+          </div>
+        )}
+
+        {buildResult && !batch?.running && <ResultBox result={buildResult} />}
         {justBuiltLauncher && (
           <div className="flex items-center gap-2 p-2 rounded border border-blue-800/50 bg-blue-900/20 text-[11px] text-blue-200">
-            <span className="flex-1">Launcher UI rebuilt — reload to apply. (Tab state will reset.)</span>
+            <span className="flex-1">Launcher UI rebuilt - reload to apply. (Tab state will reset.)</span>
             <Button size="xs" variant="primary" onClick={() => window.location.reload()}>Reload now</Button>
           </div>
         )}
       </div>
 
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto p-3 pt-2">
-        {viewMode === 'cards' && (
-          <div className="space-y-1.5">
-            {filtered.map((b) => (
-              <div key={b.id} className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded border border-border">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-gray-200">{b.title}</span>
-                    <BuildBadge status={b.build_status} />
-                    {b.category && <Badge color="purple" className="text-[9px]">{b.category}</Badge>}
-                    {b.tags.filter((t) => t !== b.category).map((t) => (
-                      <Badge key={t} color="blue" className="text-[9px]">{t}</Badge>
-                    ))}
-                  </div>
-                  {b.description && <div className="text-[10px] text-gray-500 truncate mt-0.5">{b.description}</div>}
-                  <div className="text-[10px] text-gray-600 font-mono mt-0.5">
-                    {b.directory}
-                    {b.build_status?.build_modified && (
-                      <span className="ml-2 text-gray-500">built {formatRelativeTime(b.build_status.build_modified)}</span>
-                    )}
-                  </div>
-                </div>
-                <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => handleBuild(b.package)} disabled={!!buildingPkg}>
-                  {buildingPkg === b.package ? 'Building...' : 'Build'}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {viewMode === 'list' && (
-          <div className="space-y-0.5">
-            {filtered.map((b) => (
-              <div key={b.id} className="flex items-center gap-2 px-2 py-1 hover:bg-surface-hover rounded text-[11px]">
-                <span className="text-gray-200 w-40 truncate font-medium">{b.title}</span>
-                <BuildBadge status={b.build_status} />
-                <span className="text-gray-500 w-20 truncate">{b.category}</span>
-                <span className="text-gray-600 font-mono flex-1 truncate">{b.directory}</span>
-                <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => handleBuild(b.package)} disabled={!!buildingPkg}>
-                  {buildingPkg === b.package ? '...' : 'Build'}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Scrollable grouped content */}
+      <div className="flex-1 overflow-y-auto p-3 pt-2 space-y-1">
+        {groups.map((group) => (
+          <GroupNode
+            key={group.id}
+            group={group}
+            openGroups={openGroups}
+            setOpen={(id, o) => setOpenGroups((prev) => ({ ...prev, [id]: o }))}
+            viewMode={viewMode}
+            buildingPkg={buildingPkg}
+            anyBusy={anyBusy}
+            onBuild={handleBuild}
+            onRebuildStale={rebuildAllStale}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-// ── Build status helpers ──
+function GroupNode({
+  group, openGroups, setOpen, viewMode, buildingPkg, anyBusy, onBuild, onRebuildStale,
+}: {
+  group: BuildableGroup
+  openGroups: Record<string, boolean>
+  setOpen: (id: string, open: boolean) => void
+  viewMode: 'cards' | 'list'
+  buildingPkg: string | null
+  anyBusy: boolean
+  onBuild: (pkg: string) => void
+  onRebuildStale: (scope?: Buildable[]) => void
+}) {
+  const isOpen = !!openGroups[group.id]
+  const staleCount = countNeedsBuild(group.items)
 
-const BUILD_BADGE: Record<string, { color: 'green' | 'orange' | 'red' | 'gray'; label: string }> = {
-  fresh:     { color: 'green', label: 'Fresh' },
-  stale:     { color: 'orange', label: 'Stale' },
-  not_built: { color: 'red', label: 'Not built' },
+  const label = (
+    <span className="flex items-center gap-1.5">
+      <span className={group.depth === 0 ? 'text-xs uppercase tracking-wide' : 'text-[11px]'}>{group.label}</span>
+      <span className="text-[10px] text-gray-500">({group.items.length})</span>
+      {staleCount > 0 && (
+        <span className="text-[10px] text-amber-400">- {staleCount} need build</span>
+      )}
+    </span>
+  )
+
+  const actions = staleCount > 0 ? (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="text-amber-400 hover:text-amber-300"
+      disabled={anyBusy}
+      onClick={(e) => { e.stopPropagation(); onRebuildStale(group.items) }}
+    >
+      Rebuild stale
+    </Button>
+  ) : null
+
+  return (
+    <DisclosureSection
+      label={label}
+      actions={actions}
+      isOpen={isOpen}
+      onToggle={(o) => setOpen(group.id, o)}
+      size="sm"
+      className={group.depth === 1 ? 'ml-4' : ''}
+    >
+      {group.subgroups
+        ? (
+          <div className="space-y-1">
+            {group.subgroups.map((sub) => (
+              <GroupNode
+                key={sub.id}
+                group={sub}
+                openGroups={openGroups}
+                setOpen={setOpen}
+                viewMode={viewMode}
+                buildingPkg={buildingPkg}
+                anyBusy={anyBusy}
+                onBuild={onBuild}
+                onRebuildStale={onRebuildStale}
+              />
+            ))}
+          </div>
+        )
+        : (
+          <div className="space-y-1">
+            {sortItems(group.items).map((b) => (
+              <BuildableItem
+                key={b.id}
+                b={b}
+                viewMode={viewMode}
+                buildingPkg={buildingPkg}
+                anyBusy={anyBusy}
+                onBuild={onBuild}
+              />
+            ))}
+          </div>
+        )}
+    </DisclosureSection>
+  )
 }
 
-function BuildBadge({ status }: { status?: BuildStatus }) {
+function BuildableItem({
+  b, viewMode, buildingPkg, anyBusy, onBuild,
+}: { b: Buildable; viewMode: 'cards' | 'list'; buildingPkg: string | null; anyBusy: boolean; onBuild: (pkg: string) => void }) {
+  const statusPill = buildStateToPill(b.build_status)
+  const tags = b.tags.filter((t) => t !== b.category).map((t) => (
+    <Badge key={t} color="blue" className="text-[9px]">{t}</Badge>
+  ))
+
+  const buildBtn = (
+    <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => onBuild(b.package)} disabled={anyBusy}>
+      {buildingPkg === b.package ? (viewMode === 'list' ? '...' : 'Building...') : 'Build'}
+    </Button>
+  )
+
+  if (viewMode === 'list') {
+    return (
+      <ActionCard
+        title={b.title}
+        status={statusPill}
+        meta={b.directory}
+        density="compact"
+        actions={buildBtn}
+        indented
+      />
+    )
+  }
+
+  const meta = (
+    <>
+      {b.directory}
+      {b.build_status?.build_modified && (
+        <span className="ml-2 text-gray-500">built {formatRelativeTime(b.build_status.build_modified)}</span>
+      )}
+    </>
+  )
+
+  return (
+    <ActionCard
+      title={b.title}
+      status={statusPill}
+      tags={tags}
+      description={b.description}
+      meta={meta}
+      actions={buildBtn}
+      indented
+    />
+  )
+}
+
+// ── Build status helpers ──
+
+const BUILD_STATE_TONE: Record<string, { tone: StatusTone; label: string; dot: boolean }> = {
+  fresh:     { tone: 'success', label: 'Fresh',     dot: false },
+  stale:     { tone: 'warning', label: 'Stale',     dot: true  },
+  not_built: { tone: 'danger',  label: 'Not built', dot: true  },
+}
+
+function buildStateToPill(status?: BuildStatus) {
   const state = status?.state ?? 'unknown'
-  const style = BUILD_BADGE[state]
-  if (!style) return null
-  return <Badge color={style.color} className="text-[9px]">{style.label}</Badge>
+  const cfg = BUILD_STATE_TONE[state]
+  if (!cfg) return null
+  return <StatusPill tone={cfg.tone} dot={cfg.dot} size="xs">{cfg.label}</StatusPill>
 }
 
 function formatRelativeTime(iso: string): string {
