@@ -14,12 +14,6 @@ export function isValidPromptSegmentRole(value: string): value is PromptSegmentR
   return PROMPT_SEGMENT_ROLES.includes(value as PromptSegmentRole);
 }
 
-export type {
-  PromptRole,
-  PromptCandidateLike,
-  PromptBlockLike,
-  PromptBlockSeedOptions,
-} from './blocks';
 export {
   BASE_PROMPT_ROLES,
   DEFAULT_PROMPT_ROLE,
@@ -29,3 +23,22 @@ export {
   deriveBlocksFromCandidates,
   ensurePromptBlocks,
 } from './blocks';
+export type {
+  PromptRole,
+  PromptCandidateLike,
+  PromptBlockLike,
+  PromptBlockSeedOptions,
+} from './blocks';
+
+export {
+  DEFAULT_ACTIVE_PATTERNS,
+  detectPromptSections,
+  parseSectionBlocks,
+  formatSectionBlock,
+  composePromptFromSectionBlocks,
+} from './sections';
+export type {
+  PatternId,
+  DetectedSection,
+  PromptSectionBlock,
+} from './sections';
