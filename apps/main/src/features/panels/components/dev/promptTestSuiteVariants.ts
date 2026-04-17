@@ -75,7 +75,7 @@ export function serializeVariant(
   const target = sections.find((s) => s.label === ref);
   if (!target) return basePrompt;
 
-  const [hStart, hEnd] = target.headerRange;
+  const [hStart] = target.headerRange;
   const [bStart, bEnd] = target.bodyRange;
 
   switch (mode) {

@@ -21,12 +21,12 @@ export interface DetectedSection {
 }
 
 const PATTERNS: Array<{ id: PatternId; regex: RegExp }> = [
-  { id: 'colon', regex: /^[ \t]*([A-Z][A-Za-z /&\-]{1,38}?)\s*:\s*$/gm },
+  { id: 'colon', regex: /^[ \t]*([A-Z][A-Za-z /&-]{1,38}?)\s*:\s*$/gm },
   { id: 'assignment', regex: /^[ \t]*([A-Z][A-Z0-9_]{1,58}?)\s*=\s*/gm },
   // Arrow-assignment requires whitespace before the arrow so focal chains
   // (`NAME>OTHER>X`) don't false-match.
   { id: 'assignment_arrow', regex: /^[ \t]*([A-Z][A-Z0-9_]{1,58}?)[ \t]+>+\s*/gm },
-  { id: 'angle_bracket', regex: /^[ \t]*>\s*([A-Z][A-Z /&\-]+?)\s*<\s*$/gm },
+  { id: 'angle_bracket', regex: /^[ \t]*>\s*([A-Z][A-Z /&-]+?)\s*<\s*$/gm },
   { id: 'freestanding', regex: /^[ \t]*([A-Z][A-Z0-9_]{2,40})\s*$/gm },
 ];
 
