@@ -7,6 +7,7 @@ import pytest
 from pixsim7.backend.main.services.prompt.parser.simple import (
     SimplePromptParser,
     PromptSection,
+    BUILTIN_SECTION_PATTERNS,
 )
 from pixsim7.backend.main.services.prompt.parser.dsl_adapter import (
     analyze_prompt,
@@ -456,3 +457,239 @@ class TestDefaultRole:
         )
         seg = result.segments[0]
         assert seg.role == "unclassified"
+
+
+# ---------------------------------------------------------------------------
+# Configurable section patterns
+# ---------------------------------------------------------------------------
+
+
+class TestBuiltinPatternIds:
+    """Built-in pattern IDs resolve correctly."""
+
+    def test_all_builtin_ids_exist(self):
+        assert set(BUILTIN_SECTION_PATTERNS.keys()) == {
+            "colon", "assignment", "angle_bracket", "freestanding",
+        }
+
+    def test_empty_patterns_uses_colon_default(self):
+        result = _parse("CAMERA:\nSlow dolly-in.", config={"section_patterns": []})
+        assert result.sections is not None
+        assert result.sections[0].label == "CAMERA"
+
+
+class TestAssignmentPattern:
+    """Assignment pattern (KEY = value) detects sections correctly."""
+
+    PROMPT = (
+        "ACTOR1 = BIPEDAL Male HUMAN\n"
+        "\n"
+        "ACTOR1_APPROACHES = Accessus posticus in uno axe procedit.\n"
+    )
+
+    def test_detects_assignment_sections(self):
+        result = _parse(self.PROMPT, config={"section_patterns": ["assignment"]})
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "ACTOR1" in labels
+        assert "ACTOR1_APPROACHES" in labels
+
+    def test_body_starts_after_equals(self):
+        result = _parse(self.PROMPT, config={"section_patterns": ["assignment"]})
+        actor1 = [s for s in result.sections if s.label == "ACTOR1"][0]
+        assert "BIPEDAL Male HUMAN" in actor1.text
+
+    def test_no_space_before_equals(self):
+        result = _parse(
+            "ACTOR1= BIPEDAL Male HUMAN\n",
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == "ACTOR1"
+
+    def test_empty_assignment_followed_by_blank_line(self):
+        # Empty-value assignments (e.g. `ACTOR2_DISTRACTED=`) must still be
+        # detected as their own section — used as an experimental marker.
+        result = _parse(
+            "ACTOR2_DISTRACTED=\n\nACTOR1 = real value\n",
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "ACTOR2_DISTRACTED" in labels
+        assert "ACTOR1" in labels
+
+    def test_empty_assignment_at_eof(self):
+        result = _parse(
+            "ACTOR1 = value\nACTOR2_DISTRACTED=",
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "ACTOR2_DISTRACTED" in labels
+
+    def test_empty_assignment_between_filled(self):
+        result = _parse(
+            "ACTOR1=hello\nACTOR2=\nACTOR3=world\n",
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert labels == ["ACTOR1", "ACTOR2", "ACTOR3"]
+
+
+class TestAssignmentArrowPattern:
+    """Arrow-separator assignments (NAME > value, NAME >>> value)."""
+
+    def test_single_arrow_assignment(self):
+        result = _parse(
+            "ACTOR1 > BIPEDAL Male HUMAN\n",
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == "ACTOR1"
+        assert "BIPEDAL Male HUMAN" in result.sections[0].text
+
+    def test_multiple_arrows_assignment(self):
+        result = _parse(
+            "MOOD >>> dreamy and distracted\n",
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == "MOOD"
+        assert "dreamy" in result.sections[0].text
+
+    def test_focal_chain_not_false_matched(self):
+        # `NAME>OTHER>X` (no whitespace before `>`) must NOT match as assignment
+        result = _parse(
+            "ACTOR2_BEHAVIOR>ACTIONS>SCENE_GOALS<ACTIONS<ACTOR1_BEHAVIOR\n",
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is None or all(s.label is None for s in result.sections)
+
+    def test_empty_arrow_assignment(self):
+        result = _parse(
+            "NAME >\n\nOTHER > value\n",
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "NAME" in labels
+        assert "OTHER" in labels
+
+    def test_mixed_assignment_eq_and_arrow(self):
+        # Same prompt can mix separators; both get detected when both patterns enabled
+        result = _parse(
+            "ACTOR1 = value one\nACTOR2 > value two\nACTOR3 >>> value three\n",
+            config={"section_patterns": ["assignment", "assignment_arrow"]},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert labels == ["ACTOR1", "ACTOR2", "ACTOR3"]
+
+
+class TestAngleBracketPattern:
+    """>HEADER< pattern detects sections correctly."""
+
+    PROMPT = (
+        ">SCENE SETUP<\n"
+        "A dark room.\n"
+        ">CAMERA<\n"
+        "Slow dolly-in.\n"
+    )
+
+    def test_detects_angle_bracket_sections(self):
+        result = _parse(self.PROMPT, config={"section_patterns": ["angle_bracket"]})
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "SCENE SETUP" in labels
+        assert "CAMERA" in labels
+
+    def test_body_on_next_line(self):
+        result = _parse(self.PROMPT, config={"section_patterns": ["angle_bracket"]})
+        scene = [s for s in result.sections if s.label == "SCENE SETUP"][0]
+        assert "A dark room." in scene.text
+
+
+class TestFreestandingPattern:
+    """Freestanding uppercase tokens detected as sections."""
+
+    PROMPT = (
+        "PLAYING\n"
+        "\n"
+        "ACTOR1 = BIPEDAL Male HUMAN\n"
+    )
+
+    def test_detects_freestanding_token(self):
+        result = _parse(self.PROMPT, config={
+            "section_patterns": ["freestanding", "assignment"],
+        })
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "PLAYING" in labels
+
+    def test_short_tokens_rejected(self):
+        # Two-char tokens should NOT match freestanding (min 3 chars)
+        result = _parse("OK\nSome text.", config={
+            "section_patterns": ["freestanding"],
+        })
+        assert result.sections is None or all(s.label is None for s in result.sections)
+
+
+class TestMixedPatterns:
+    """Multiple patterns active simultaneously."""
+
+    PROMPT = (
+        "PLAYING\n"
+        "\n"
+        ">SCENE SETUP<\n"
+        "A dark room.\n"
+        "ACTOR1 = BIPEDAL Male HUMAN\n"
+        "CAMERA:\n"
+        "Slow dolly-in.\n"
+    )
+
+    def test_all_four_patterns(self):
+        result = _parse(self.PROMPT, config={
+            "section_patterns": ["colon", "assignment", "angle_bracket", "freestanding"],
+        })
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "PLAYING" in labels
+        assert "SCENE SETUP" in labels
+        assert "ACTOR1" in labels
+        assert "CAMERA" in labels
+
+    def test_section_order_matches_text_order(self):
+        result = _parse(self.PROMPT, config={
+            "section_patterns": ["colon", "assignment", "angle_bracket", "freestanding"],
+        })
+        labels = [s.label for s in result.sections]
+        assert labels == ["PLAYING", "SCENE SETUP", "ACTOR1", "CAMERA"]
+
+
+class TestCustomRegexPattern:
+    """Custom regex strings work as section patterns."""
+
+    def test_custom_pattern(self):
+        result = _parse(
+            "## INTRO ##\nHello world.\n## OUTRO ##\nGoodbye.\n",
+            config={"section_patterns": [r'^[ \t]*##\s*([A-Z]+)\s*##\s*$']},
+        )
+        assert result.sections is not None
+        labels = [s.label for s in result.sections]
+        assert "INTRO" in labels
+        assert "OUTRO" in labels
+
+
+class TestPreambleWithConfiguredPatterns:
+    """Text before first configured header becomes unlabeled preamble."""
+
+    def test_preamble_preserved(self):
+        result = _parse(
+            "Some intro text.\nACTOR1 = The hero.\n",
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label is None
+        assert "Some intro text." in result.sections[0].text

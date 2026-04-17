@@ -46,6 +46,10 @@ class SimpleParserConfig(BaseModel):
     default_role: str = "other"
     disabled_roles: List[str] = []
     role_keywords: Dict[str, RoleKeywordOverrides] = {}
+    # Section header pattern IDs and/or custom regex strings.
+    # Built-in IDs: 'colon', 'assignment', 'angle_bracket', 'freestanding'
+    # Empty list (default) uses the built-in colon pattern only.
+    section_patterns: List[str] = []
 
 
 class PromptSection(BaseModel):
@@ -76,6 +80,17 @@ class PromptParseResult(BaseModel):
     text: str
     segments: List[PromptSegment]
     sections: Optional[List[PromptSection]] = None
+
+
+BUILTIN_SECTION_PATTERNS: Dict[str, str] = {
+    'colon': r'^[ \t]*([A-Z][A-Za-z /&\-]{1,38}?)\s*:\s*$',
+    'assignment': r'^[ \t]*([A-Z][A-Z0-9_]{1,58}?)\s*=\s*',
+    # Arrow-assignment (name > value, name >>> value). Requires whitespace
+    # before the arrow(s) so focal chains (`NAME>OTHER>X`) don't false-match.
+    'assignment_arrow': r'^[ \t]*([A-Z][A-Z0-9_]{1,58}?)[ \t]+>+\s*',
+    'angle_bracket': r'^[ \t]*>\s*([A-Z][A-Z /&\-]+?)\s*<\s*$',
+    'freestanding': r'^[ \t]*([A-Z][A-Z0-9_]{2,40})\s*$',
+}
 
 
 class SimplePromptParser:
@@ -322,14 +337,51 @@ class SimplePromptParser:
 
         return sentences
 
+    def _resolve_section_patterns(self) -> List[tuple[str, re.Pattern]]:
+        """Resolve configured pattern specs to compiled regexes.
+
+        Each entry in ``config.section_patterns`` is either a built-in ID
+        (``colon``, ``assignment``, ``angle_bracket``, ``freestanding``) or a
+        raw regex string with one capture group for the label.
+
+        Returns the default colon pattern when the list is empty.
+        """
+        if not self.config.section_patterns:
+            return [('colon', self.SECTION_HEADER)]
+
+        patterns: List[tuple[str, re.Pattern]] = []
+        for spec in self.config.section_patterns:
+            if spec in BUILTIN_SECTION_PATTERNS:
+                patterns.append((spec, re.compile(BUILTIN_SECTION_PATTERNS[spec], re.MULTILINE)))
+            else:
+                patterns.append(('custom', re.compile(spec, re.MULTILINE)))
+        return patterns
+
     def _split_sections(self, text: str) -> List[PromptSection]:
         """
-        Split text into sections delimited by explicit headers like 'CAMERA:'.
+        Split text into sections using configured header patterns.
+
+        Supports multiple pattern types (colon, assignment, angle-bracket,
+        freestanding, custom regex).  Matches from all active patterns are
+        merged by position; overlapping matches are deduplicated.
 
         Returns a list of PromptSection objects. If no headers are found,
         returns a single section with label=None covering the entire text.
         """
-        matches = list(self.SECTION_HEADER.finditer(text))
+        patterns = self._resolve_section_patterns()
+
+        # Collect matches from all active patterns
+        raw_matches: List[tuple[int, int, str]] = []
+        for _pat_id, compiled in patterns:
+            for m in compiled.finditer(text):
+                raw_matches.append((m.start(), m.end(), m.group(1).strip()))
+
+        # Sort by position, deduplicate overlapping matches
+        raw_matches.sort(key=lambda x: x[0])
+        matches: List[tuple[int, int, str]] = []
+        for start, end, label in raw_matches:
+            if not matches or start >= matches[-1][1]:
+                matches.append((start, end, label))
 
         if not matches:
             return [PromptSection(
@@ -342,7 +394,7 @@ class SimplePromptParser:
         sections: List[PromptSection] = []
 
         # Text before first header → unlabeled preamble
-        first_header_start = matches[0].start()
+        first_header_start = matches[0][0]
         if first_header_start > 0:
             preamble_text = text[:first_header_start]
             if preamble_text.strip():
@@ -353,15 +405,14 @@ class SimplePromptParser:
                     end_pos=first_header_start,
                 ))
 
-        for i, match in enumerate(matches):
-            label = match.group(1).strip()
-            header_start = match.start()
-            header_end = match.end()
+        for i, (start, end, label) in enumerate(matches):
+            header_start = start
+            header_end = end
 
-            # Body runs from end of header line to start of next header (or EOF)
+            # Body runs from end of header match to start of next header (or EOF)
             body_start = header_end
             if i + 1 < len(matches):
-                body_end = matches[i + 1].start()
+                body_end = matches[i + 1][0]
             else:
                 body_end = len(text)
 

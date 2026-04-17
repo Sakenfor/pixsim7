@@ -21,8 +21,21 @@
  * ```
  */
 
+import type { DevToolCategory } from '@pixsim7/shared.devtools.core';
 import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 import type { ComponentType } from 'react';
+
+/**
+ * Optional DevTool auto-registration config for dev-category panels.
+ * Panels with `category: 'dev'` are auto-registered into the Dev Tools
+ * catalog at discovery time unless `devTool: false` opts out.
+ */
+export interface PanelDevToolConfig {
+  /** DevTool category override (default: 'misc'). */
+  category?: DevToolCategory;
+  /** Whether the tool is safe to expose outside dev mode. */
+  safeForNonDev?: boolean;
+}
 
 import type { PanelRole } from './panelConstants';
 import type {
@@ -140,6 +153,15 @@ export interface DefinePanelOptions<TSettings = any> {
   // Internal panel (hidden from user lists)
   internal?: boolean;
 
+  /**
+   * DevTool auto-registration config.  Only applies to panels with
+   * `category: 'dev'` — they are auto-added to the Dev Tools catalog so
+   * the search/nav inside the Dev Tools panel can find them.  Pass
+   * `false` to opt out; pass an object to override category /
+   * safeForNonDev without opting out.
+   */
+  devTool?: PanelDevToolConfig | false;
+
   // Lifecycle hooks
   onMount?: () => void;
   onUnmount?: () => void;
@@ -215,6 +237,7 @@ export function definePanel<TSettings = any>(
     addPanelEquivalentIds,
     navigation,
     internal = false,
+    devTool,
     onMount,
     onUnmount,
   } = options;
@@ -330,6 +353,7 @@ export function definePanel<TSettings = any>(
     // Store contexts in metadata for legacy filtering
     metadata: {
       contexts: resolvedContexts,
+      devTool,
     },
   } as PanelDefinition<TSettings>;
 }
