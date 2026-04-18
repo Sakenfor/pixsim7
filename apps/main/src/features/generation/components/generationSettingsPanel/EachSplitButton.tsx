@@ -1,8 +1,8 @@
 import { DropdownItem, DropdownSectionHeader, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import { useAccentButtonClasses } from '@features/appearance';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
@@ -23,6 +23,27 @@ import {
   type FanoutPreset,
   type FanoutRunOptions,
 } from '../../lib/fanoutPresets';
+
+const STRATEGY_ICONS: Record<CombinationStrategy, IconName> = {
+  each: 'list',
+  anchor_sweep: 'target',
+  sequential_pairs: 'link',
+  all_pairs: 'grid',
+  input_x_set_random: 'shuffle',
+  input_x_set_sequential: 'layers',
+  set_each: 'layers',
+};
+
+/** Short 2-character codes — readable at a glance, scroll-cycle friendly. */
+const STRATEGY_CODES: Record<CombinationStrategy, string> = {
+  each: 'Ea',
+  anchor_sweep: 'An',
+  sequential_pairs: 'Pr',
+  all_pairs: 'AP',
+  input_x_set_random: 'Rn',
+  input_x_set_sequential: 'Sq',
+  set_each: 'SE',
+};
 
 /** Split-button for "Each" (fanout) with strategy + preset controls. */
 export function EachSplitButton({
@@ -50,6 +71,7 @@ export function EachSplitButton({
 
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const strategyWheelRef = useRef<HTMLButtonElement>(null);
 
   const sets = useAssetSetStore((s) => s.sets);
   const currentRunOptions = normalizeFanoutRunOptions(draftRunOptions);
@@ -107,6 +129,30 @@ export function EachSplitButton({
 
   const handleToggle = () => setOpen((o) => !o);
 
+  // Wheel cycles through the "each" (non-set) strategies so the compact pill
+  // can scroll-through without opening the popover. Ref pattern keeps the
+  // listener attached once with { passive: false } so preventDefault works.
+  const strategyWheelStateRef = useRef({ selectedStrategy, disabled, setDraftPatch });
+  strategyWheelStateRef.current = { selectedStrategy, disabled, setDraftPatch };
+  useEffect(() => {
+    const el = strategyWheelRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      const { selectedStrategy: s, disabled: d, setDraftPatch: patch } = strategyWheelStateRef.current;
+      if (d) return;
+      e.preventDefault();
+      const list = EACH_STRATEGIES;
+      const idx = list.findIndex((x) => x.id === s);
+      const baseIdx = idx < 0 ? 0 : idx;
+      const next = e.deltaY < 0
+        ? (baseIdx + 1) % list.length
+        : (baseIdx - 1 + list.length) % list.length;
+      patch({ strategy: list[next].id, setId: undefined });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
   function applyPreset(preset: FanoutRunOptions) {
     const normalized = normalizeFanoutRunOptions(preset);
     if ('id' in (preset as any) && typeof (preset as any).id === 'string') {
@@ -140,42 +186,43 @@ export function EachSplitButton({
     }
   }
 
+  const activeStrategyEntry = useMemo(
+    () => [...EACH_STRATEGIES, ...SET_STRATEGIES].find((s) => s.id === selectedStrategy) ?? EACH_STRATEGIES[0],
+    [selectedStrategy],
+  );
+
   return (
     <div className="relative flex-shrink-0">
       <div className="flex">
-        {/* Strategy slices — each strategy is a clickable vertical slice */}
-        {EACH_STRATEGIES.map((s, idx) => {
-          const isActive = selectedStrategy === s.id;
-          const isFirst = idx === 0;
-          return (
-            <button
-              key={s.id}
-              onClick={() => {
-                setDraftPatch({ strategy: s.id, setId: undefined });
-                if (isActive && canRun) onGenerateEach(currentRunOptions);
-              }}
-              disabled={disabled}
-              className={clsx(
-                'px-1.5 py-1.5 text-[10px] font-semibold',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                isFirst ? 'rounded-l-lg' : 'border-l border-white/20',
-                disabled
-                  ? 'text-white bg-neutral-400'
-                  : isActive
-                  ? btn.primary
-                  : 'text-white/50 bg-neutral-600 hover:text-white/80 hover:bg-neutral-500',
-              )}
-              style={{ transition: 'none', animation: 'none' }}
-              title={buildStrategyTooltip(s.id, s.description, isActive, inputCount, currentRunOptions.repeatCount, plannedGroupCount)}
-            >
-              <span className="inline-flex items-center justify-center gap-0.5">
-                {isActive && canRun && !showProgress && <Icon name="play" size={9} color="#fff" />}
-                {s.shortLabel}
-                {isActive && !showProgress && plannedGroupCount != null && plannedGroupCount > 1 ? ` ×${plannedGroupCount}` : ''}
-              </span>
-            </button>
-          );
-        })}
+        {/* Single active-strategy pill — click to run, scroll-wheel to cycle, chevron to pick */}
+        <button
+          ref={strategyWheelRef}
+          onClick={() => {
+            if (canRun) onGenerateEach(currentRunOptions);
+          }}
+          disabled={disabled}
+          className={clsx(
+            'px-2 py-1.5 text-[10px] font-semibold rounded-l-lg inline-flex items-center gap-1',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            disabled ? 'text-white bg-neutral-400' : btn.primary,
+            !disabled && !canRun && 'opacity-60 cursor-not-allowed',
+          )}
+          style={{ transition: 'none', animation: 'none' }}
+          title={
+            buildStrategyTooltip(activeStrategyEntry.id, activeStrategyEntry.description, true, inputCount, currentRunOptions.repeatCount, plannedGroupCount)
+            + '\n\nScroll to cycle strategies'
+            + (!canRun ? '\n\nPick an asset set below before running.' : '')
+          }
+        >
+          {canRun && !showProgress && <Icon name="play" size={9} color="#fff" />}
+          <Icon name={STRATEGY_ICONS[activeStrategyEntry.id]} size={11} color="#fff" />
+          <span className="text-[10px] font-bold uppercase tracking-wider tabular-nums text-white">
+            {STRATEGY_CODES[activeStrategyEntry.id]}
+          </span>
+          {!showProgress && plannedGroupCount != null && plannedGroupCount > 1 && (
+            <span className="tabular-nums">×{plannedGroupCount}</span>
+          )}
+        </button>
         {/* Popover trigger + asset sets */}
         <div className="flex flex-col">
           <button

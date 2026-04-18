@@ -61,7 +61,7 @@ export function ModelDropdown({
         }}
         disabled={disabled}
         className={clsx(
-          'flex items-center gap-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+          'flex items-center gap-1.5 w-fit max-w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
           'bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700',
           disabled && 'opacity-50 cursor-not-allowed',
           isFree
@@ -70,7 +70,7 @@ export function ModelDropdown({
         )}
       >
         {currentFamily && <ModelBadge family={currentFamily} size={14} />}
-        <span className="flex-1 text-left truncate">{currentValue}</span>
+        <span className="min-w-0 text-left truncate">{currentValue}</span>
         {isFree && (
           <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.04em] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
             Free

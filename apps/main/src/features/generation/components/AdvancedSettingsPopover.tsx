@@ -1,24 +1,10 @@
 import { Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 
 import type { ParamSpec } from '@lib/generation-ui';
-
-import { PromotionDetailsPopover } from '@features/providers/components/PromotionDetailsPopover';
-
-import { AccountPromoBadge, AccountTierBadge } from './AccountDisplayBadges';
-import { countActivePromotions } from './accountDisplayUtils';
-
-interface AccountOption {
-  id: number;
-  nickname?: string;
-  email: string;
-  promotions?: Record<string, unknown>;
-  plan_tier?: number;
-  status?: string;
-}
 
 interface AdvancedSettingsPopoverProps {
   params: ParamSpec[];
@@ -27,16 +13,6 @@ interface AdvancedSettingsPopoverProps {
   disabled?: boolean;
   /** Current model value for filtering params with applies_to_models metadata */
   currentModel?: string;
-  /** Provider accounts for the account selector */
-  accounts?: AccountOption[];
-  /** Active promo model ids resolved from account metadata */
-  promoModels?: string[];
-  /** Promo model ids with unknown discount mapping in UI */
-  unknownPromoModels?: string[];
-  /** Number of accounts contributing active promotions */
-  promoSourceAccountCount?: number;
-  /** Known model ids for provider classification (model promo vs feature promo) */
-  knownPromoModelIds?: string[];
 }
 
 /**
@@ -52,11 +28,6 @@ export function AdvancedSettingsPopover({
   onChange,
   disabled = false,
   currentModel,
-  accounts,
-  promoModels = [],
-  unknownPromoModels = [],
-  promoSourceAccountCount = 0,
-  knownPromoModelIds,
 }: AdvancedSettingsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -148,36 +119,16 @@ export function AdvancedSettingsPopover({
     }
     return true;
   });
-  const hasAccounts = accounts && accounts.length > 0;
-  const selectedAccountId = values.preferred_account_id ?? '';
-  const hasPromoModels = promoModels.length > 0;
-  const resolvedPromotionFlags = useMemo(() => {
-    const merged: Record<string, unknown> = {};
-    if (!accounts || accounts.length === 0) return merged;
-    const selectedId = selectedAccountId ? Number(selectedAccountId) : null;
-    const sourceAccounts = selectedId
-      ? accounts.filter((account) => account.id === selectedId)
-      : accounts;
-    for (const account of sourceAccounts) {
-      const promotions = account.promotions;
-      if (!promotions || typeof promotions !== 'object') continue;
-      for (const [key, value] of Object.entries(promotions)) {
-        if (!(key in merged) || Boolean(value)) merged[key] = value;
-      }
-    }
-    return merged;
-  }, [accounts, selectedAccountId]);
-  if (safeParams.length === 0 && !hasAccounts) return null;
+  if (safeParams.length === 0) return null;
 
   // Count how many advanced params have non-default values
-  let activeCount = safeParams.filter(p => {
+  const activeCount = safeParams.filter(p => {
     const val = values[p.name];
     if (val === undefined || val === null || val === '') return false;
     if (p.type === 'boolean' && !val) return false;
     if (p.default !== undefined && val === p.default) return false;
     return true;
   }).length;
-  if (selectedAccountId) activeCount++;
 
   const popoverContent = isOpen && position && (
     <div
@@ -195,78 +146,6 @@ export function AdvancedSettingsPopover({
         </h3>
       </div>
       <div className="p-3 space-y-3 max-h-[300px] overflow-y-auto">
-        {hasAccounts && (
-          <div className="space-y-1">
-            <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-              Account
-            </label>
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => onChange('preferred_account_id', undefined)}
-                disabled={disabled}
-                className={clsx(
-                  'px-2 py-1 text-[11px] font-medium rounded-lg transition-colors',
-                  !selectedAccountId
-                    ? 'bg-accent text-accent-text shadow-sm'
-                    : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700',
-                )}
-              >
-                Auto
-              </button>
-              {accounts!.map(a => {
-                const isSelected = String(a.id) === String(selectedAccountId);
-                const tier = a.plan_tier ?? 0;
-                const promoCount = countActivePromotions(a.promotions);
-                return (
-                  <button
-                    type="button"
-                    key={a.id}
-                    onClick={() => onChange('preferred_account_id', a.id)}
-                    disabled={disabled}
-                    className={clsx(
-                      'flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg transition-colors',
-                      isSelected
-                        ? 'bg-accent text-accent-text shadow-sm'
-                        : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700',
-                    )}
-                    title={a.email}
-                  >
-                    <span className="truncate max-w-[100px]">{a.nickname || a.email}</span>
-                    {tier >= 1 && <AccountTierBadge tier={tier} />}
-                    {promoCount > 0 && <AccountPromoBadge count={promoCount} />}
-                  </button>
-                );
-              })}
-            </div>
-            {hasPromoModels && (
-              <div className="mt-1 rounded-md border border-amber-200/70 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
-                <div>
-                  Active promos ({promoSourceAccountCount} account{promoSourceAccountCount === 1 ? '' : 's'}):{' '}
-                  {promoModels.slice(0, 3).join(', ')}
-                  {promoModels.length > 3 ? ` +${promoModels.length - 3}` : ''}
-                </div>
-                {unknownPromoModels.length > 0 && (
-                  <div className="text-[9px] mt-0.5 opacity-90">
-                    Unmapped pricing for: {unknownPromoModels.slice(0, 3).join(', ')}
-                    {unknownPromoModels.length > 3 ? ` +${unknownPromoModels.length - 3}` : ''}. Cost estimate may be higher than real charge.
-                  </div>
-                )}
-                {Object.keys(resolvedPromotionFlags).length > 0 && (
-                  <div className="mt-1 flex justify-end">
-                    <PromotionDetailsPopover
-                      promotions={resolvedPromotionFlags}
-                      knownModelIds={knownPromoModelIds}
-                      title="Promotions in account scope"
-                      triggerClassName="px-1.5 py-0.5 text-[9px] font-medium"
-                      triggerTitle="Show promotion details"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
         {safeParams.map(param => (
           <div key={param.name} className="space-y-1">
             <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">

@@ -30,13 +30,13 @@ import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types
 import type { FanoutRunOptions } from '../lib/fanoutPresets';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
+import { AccountIconButton } from './generationSettingsPanel/AccountIconButton';
 import { EachSplitButton } from './generationSettingsPanel/EachSplitButton';
 import { GenerationParamControls } from './generationSettingsPanel/GenerationParamControls';
 import {
   filterQuickGenStyleParamSpecs,
   getQuickGenStyleAdvancedParamSpecs,
 } from './generationSettingsPanel/generationParamFilters';
-import { AccountIconButton } from './generationSettingsPanel/AccountIconButton';
 import { MaskPicker } from './generationSettingsPanel/MaskPicker';
 import { OperationIconButton } from './generationSettingsPanel/OperationIconButton';
 import { ProviderIconButton } from './generationSettingsPanel/ProviderIconButton';
@@ -55,6 +55,61 @@ function getModelMatchKeys(value: unknown): string[] {
 
 function isModelInUnlimitedSet(unlimitedModels: Set<string>, value: unknown): boolean {
   return getModelMatchKeys(value).some((key) => unlimitedModels.has(key));
+}
+
+function toPositiveId(value: unknown): number | null {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+type MaskSourceAssetLike =
+  | {
+      id?: unknown;
+      providerAssetId?: unknown;
+      last_upload_asset_id?: unknown;
+      lastUploadAssetId?: unknown;
+      parentAssetId?: unknown;
+      parent_asset_id?: unknown;
+      uploadContext?: Record<string, unknown> | null;
+      upload_context?: Record<string, unknown> | null;
+    }
+  | null
+  | undefined;
+
+function pushUniquePositiveId(target: number[], value: unknown): void {
+  const id = toPositiveId(value);
+  if (id && !target.includes(id)) {
+    target.push(id);
+  }
+}
+
+/**
+ * Resolve all plausible backend source IDs for mask lookup.
+ * This lets linked masks appear even when the selected input is a sibling
+ * variant (local folder mirror, library upload, or version-chain relative).
+ */
+function resolveMaskSourceAssetIds(asset: MaskSourceAssetLike): number[] {
+  if (!asset) return [];
+  const resolved: number[] = [];
+
+  pushUniquePositiveId(resolved, asset.last_upload_asset_id);
+  pushUniquePositiveId(resolved, asset.lastUploadAssetId);
+  pushUniquePositiveId(resolved, asset.id);
+  pushUniquePositiveId(resolved, asset.providerAssetId);
+  pushUniquePositiveId(resolved, asset.parentAssetId);
+  pushUniquePositiveId(resolved, asset.parent_asset_id);
+
+  const uploadContext =
+    (asset.uploadContext ?? asset.upload_context) as Record<string, unknown> | null | undefined;
+  if (uploadContext) {
+    pushUniquePositiveId(resolved, uploadContext.source_asset_id);
+    const sourceAssetIds = uploadContext.source_asset_ids;
+    if (Array.isArray(sourceAssetIds)) {
+      sourceAssetIds.forEach((id) => pushUniquePositiveId(resolved, id));
+    }
+  }
+
+  return resolved;
 }
 
 const OP_SHORT: Record<string, string> = {
@@ -221,6 +276,8 @@ export function GenerationSettingsPanel({
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
   const switchProviderInputs = useInputStore(s => s.switchProviderInputs);
+  const setCurrentProviderForOp = useInputStore(s => s.setCurrentProviderForOp);
+  const taggedProviderForOp = useInputStore(s => s.currentProviderByOp[operationType]);
   const [perProviderInputs] = usePersistedScopeState('perProviderInputs', false, { stable: true });
 
   // Burst mode - persisted per operation type in session store uiState
@@ -275,6 +332,18 @@ export function GenerationSettingsPanel({
   );
   const inferredProviderId = providerId ?? modelProviderId;
 
+  // Seed the store's currentProviderByOp tag once per {op, provider} pair so
+  // that the first switchProviderInputs call saves the current items under
+  // the right bucket.  We only seed when the tag is missing — subsequent
+  // writes happen through switchProviderInputs itself, which preserves the
+  // tag against model-triggered inferredProviderId drift.
+  useEffect(() => {
+    if (!perProviderInputs) return;
+    if (!inferredProviderId) return;
+    if (taggedProviderForOp !== undefined) return;
+    setCurrentProviderForOp(operationType, inferredProviderId);
+  }, [perProviderInputs, inferredProviderId, taggedProviderForOp, operationType, setCurrentProviderForOp]);
+
   // Account selector data (used by row picker + AdvancedSettingsPopover)
   const { accounts: allAccounts } = useProviderAccounts(inferredProviderId);
   const activeAccounts = useMemo(
@@ -306,7 +375,6 @@ export function GenerationSettingsPanel({
     promoted: promotedModels,
     discounts: modelDiscounts,
     unknownPromotions,
-    sourceAccountIds: promoSourceAccountIds,
   } = useModelPromotions(preferredAccountId, inferredProviderId, knownModelIds);
   const unknownPromotionModels = useMemo(
     () => Array.from(unknownPromotions).sort(),
@@ -345,6 +413,36 @@ export function GenerationSettingsPanel({
     return filterQuickGenStyleParamSpecs(workbench.paramSpecs, operationType, excludeParams);
   }, [operationType, workbench.paramSpecs, excludeParams]);
 
+  // OpenAPI toggle visibility: only for Pixverse, only when the resolvable
+  // account actually has OpenAPI credits.  In auto mode we check whether any
+  // active account has some; when a specific account is pinned we check that
+  // account directly.  Image operations cannot use OpenAPI (adapter enforces),
+  // so hide the toggle for those too.
+  const showApiMethodToggle = useMemo(() => {
+    if (inferredProviderId !== 'pixverse') return false;
+    if (operationType === 'text_to_image' || operationType === 'image_to_image'
+      || operationType === 'video_transition' || operationType === 'video_modify') {
+      return false;
+    }
+    const hasOpenapi = (account: typeof activeAccounts[number]) => {
+      const credits = (account as { credits?: Record<string, number> | null }).credits;
+      return !!credits && typeof credits.openapi === 'number' && credits.openapi > 0;
+    };
+    if (preferredAccountId == null) {
+      return activeAccounts.some(hasOpenapi);
+    }
+    const chosen = activeAccounts.find((a) => a.id === preferredAccountId);
+    return !!chosen && hasOpenapi(chosen);
+  }, [inferredProviderId, operationType, preferredAccountId, activeAccounts]);
+
+  // Clear a stale api_method override when the toggle stops being applicable
+  // (e.g., user switches provider or to an op that can't use OpenAPI).
+  useEffect(() => {
+    if (!showApiMethodToggle && workbench.dynamicParams?.api_method !== undefined) {
+      workbench.handleParamChange('api_method', undefined);
+    }
+  }, [showApiMethodToggle, workbench.dynamicParams?.api_method, workbench.handleParamChange]);
+
   const advancedParams = useMemo(() => {
     return getQuickGenStyleAdvancedParamSpecs(filteredParamSpecs);
   }, [filteredParamSpecs]);
@@ -366,21 +464,37 @@ export function GenerationSettingsPanel({
     return true;
   }, [workbench.allParamSpecs, workbench.dynamicParams]);
   // Read mask and asset ID from the current input item (per-asset masks)
-  const { currentInputId, currentInputAssetId, currentInputMaskUrl, currentInputMaskLayers } = useInputStore(
+  const {
+    currentInputId,
+    currentInputAsset,
+    currentInputMaskUrl,
+    currentInputMaskLayers,
+  } = useInputStore(
     useShallow((s) => {
       const inputs = s.inputsByOperation[operationType];
-      if (!inputs || inputs.items.length === 0) return { currentInputId: null, currentInputAssetId: null, currentInputMaskUrl: undefined, currentInputMaskLayers: undefined };
+      if (!inputs || inputs.items.length === 0) {
+        return {
+          currentInputId: null,
+          currentInputAsset: null,
+          currentInputMaskUrl: undefined,
+          currentInputMaskLayers: undefined,
+        };
+      }
       const idx = Math.max(0, Math.min(inputs.currentIndex - 1, inputs.items.length - 1));
       const item = inputs.items[idx];
-      const id = item?.asset?.id;
       return {
         currentInputId: item?.id ?? null,
-        currentInputAssetId: typeof id === 'number' ? id : null,
+        currentInputAsset: item?.asset ?? null,
         currentInputMaskUrl: item?.maskUrl,
         currentInputMaskLayers: item?.maskLayers,
       };
     }),
   );
+  const currentInputSourceAssetIds = useMemo(
+    () => resolveMaskSourceAssetIds(currentInputAsset as MaskSourceAssetLike),
+    [currentInputAsset],
+  );
+  const currentInputAssetId = currentInputSourceAssetIds[0] ?? null;
   const addMaskLayer = useInputStore((s) => s.addMaskLayer);
   const removeMaskLayer = useInputStore((s) => s.removeMaskLayer);
   const updateMaskLayer = useInputStore((s) => s.updateMaskLayer);
@@ -403,15 +517,18 @@ export function GenerationSettingsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
       <div className="gen-panel-content flex flex-col gap-1 p-1.5">
         {/* Row 1: Provider icon, Operation type, Target, Advanced settings */}
-        <div className="flex gap-1 items-center">
+        <div className="flex flex-wrap gap-1 items-center">
           {showProvider && (
             <ProviderIconButton
               providerId={inferredProviderId}
               providers={workbench.providers}
               onSelect={(id) => {
-                // Save/restore inputs per provider when enabled
+                // Save/restore inputs per provider when enabled.  The store
+                // tracks the "old" provider itself (see currentProviderByOp),
+                // so drift in `inferredProviderId` from model changes cannot
+                // route items to the wrong bucket.
                 if (perProviderInputs && inferredProviderId !== id) {
-                  switchProviderInputs(operationType, inferredProviderId, id);
+                  switchProviderInputs(operationType, id);
                 }
                 // setProvider handles prompt + param save/restore atomically
                 setProvider(id);
@@ -468,15 +585,19 @@ export function GenerationSettingsPanel({
               <Icon name="target" size={12} />
             </button>
           )}
-          {sourceToggle && <div className="ml-auto">{sourceToggle}</div>}
+          {showPresets && <PresetSelector disabled={generating} />}
+          {/* Credit estimate pill — compact cost indicator */}
+          {!isCurrentGenerationFree && creditEstimate !== null && !creditLoading && (
+            <span
+              className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-white dark:bg-neutral-800 shadow-sm text-[10px] font-medium text-amber-600 dark:text-amber-400 tabular-nums"
+              title={`Estimated credits per generation${burstCount > 1 ? ` (×${burstCount} = ${Math.round(creditEstimate * burstCount)})` : ''}`}
+            >
+              <span aria-hidden="true">◆</span>
+              <span>{creditEstimate < 10 ? creditEstimate.toFixed(1) : Math.round(creditEstimate)}</span>
+            </span>
+          )}
+          {sourceToggle}
         </div>
-
-        {/* Row 2: Generation presets */}
-        {showPresets && (
-          <div className="flex items-center gap-1">
-            <PresetSelector disabled={generating} />
-          </div>
-        )}
 
         {/* Mask picker (shown when provider supports mask_url) */}
         {hasMaskParam && currentInputId && (
@@ -500,6 +621,7 @@ export function GenerationSettingsPanel({
             onClearAllMasks={() => setMaskLayers(operationType, currentInputId, [])}
             hasMaskParam={hasMaskParam}
             sourceAssetId={currentInputAssetId}
+            sourceAssetIds={currentInputSourceAssetIds}
             disabled={generating}
           />
         )}
@@ -535,6 +657,7 @@ export function GenerationSettingsPanel({
             generating={generating}
             unlimitedModels={unlimitedModels}
             promotedModels={promotedModels}
+            showApiMethodToggle={showApiMethodToggle}
           />
         </div>
 
@@ -589,11 +712,6 @@ export function GenerationSettingsPanel({
                 onChange={workbench.handleParamChange}
                 disabled={generating}
                 currentModel={workbench.dynamicParams?.model as string | undefined}
-                accounts={activeAccounts}
-                promoModels={Array.from(promotedModels)}
-                unknownPromoModels={unknownPromotionModels}
-                promoSourceAccountCount={promoSourceAccountIds.length}
-                knownPromoModelIds={knownModelIds}
               />
             </div>
             {/* Primary Go button with inline burst stepper */}
@@ -650,15 +768,6 @@ export function GenerationSettingsPanel({
                     title={isModelUnlimited ? "Currently free for the selected account/model" : "Estimated free"}
                   >
                     Free
-                  </span>
-                </span>
-              ) : creditLoading ? (
-                'Go'
-              ) : creditEstimate !== null ? (
-                <span className="flex min-w-0 items-center justify-center gap-1">
-                  <span className="truncate">Go</span>
-                  <span className="shrink-0 text-amber-200 text-[10px]">
-                    +{Math.round(creditEstimate * burstCount)}
                   </span>
                 </span>
               ) : (
@@ -764,9 +873,7 @@ export function GenerationSettingsPanel({
               style={{ transition: 'none', animation: 'none' }}
               title="Generate using Media Viewer asset"
             >
-              {generating ? (
-                (secondaryButton.label || 'Go')
-              ) : isCurrentGenerationFree ? (
+              {isCurrentGenerationFree && !generating ? (
                 <span className="flex min-w-0 items-center justify-center gap-1">
                   <span className="truncate">{secondaryButton.label || 'Go'}</span>
                   <span
@@ -775,13 +882,6 @@ export function GenerationSettingsPanel({
                   >
                     Free
                   </span>
-                </span>
-              ) : creditLoading ? (
-                secondaryButton.label || 'Go'
-              ) : creditEstimate !== null ? (
-                <span className="flex min-w-0 items-center justify-center gap-1">
-                  <span className="truncate">{secondaryButton.label || 'Go'}</span>
-                  <span className="shrink-0 text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
                 </span>
               ) : (
                 secondaryButton.label || 'Go'

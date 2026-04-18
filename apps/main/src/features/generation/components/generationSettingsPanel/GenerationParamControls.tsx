@@ -43,6 +43,7 @@ interface GenerationParamControlsProps {
   generating?: boolean;
   unlimitedModels?: Set<string>;
   promotedModels?: Set<string>;
+  showApiMethodToggle?: boolean;
 }
 
 export function GenerationParamControls({
@@ -52,6 +53,7 @@ export function GenerationParamControls({
   generating = false,
   unlimitedModels = new Set<string>(),
   promotedModels = new Set<string>(),
+  showApiMethodToggle = false,
 }: GenerationParamControlsProps) {
   const durationOptions = useMemo(
     () => getDurationOptions(paramSpecs, values?.model)?.options ?? null,
@@ -143,35 +145,45 @@ export function GenerationParamControls({
 
         if (param.name === 'duration' && param.type === 'number' && durationOptions) {
           const currentDuration = Number(values[param.name]) || durationOptions[0];
-          const currentIdx = durationOptions.indexOf(currentDuration);
           // Audio toggle: find the audio boolean param and check if applicable to current model
           const audioParam = paramSpecs.find((p) => p.name === 'audio' && p.type === 'boolean');
           const audioAppliesTo: string[] | undefined = audioParam?.metadata?.applies_to_models;
           const currentModelStr = typeof values?.model === 'string' ? values.model : '';
           const showAudio = !!audioParam && (!audioAppliesTo || audioAppliesTo.includes(currentModelStr));
           const audioOn = !!values?.audio;
+          const apiMethodOn = values?.api_method === 'openapi';
           return (
             <div key="duration" className="flex items-center gap-1">
-              <div
-                ref={durationWheelCallbackRef}
-                className="flex items-center flex-1 min-w-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
-              >
+              {showApiMethodToggle && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (currentIdx > 0) onChange('duration', durationOptions[currentIdx - 1]);
-                  }}
-                  disabled={generating || currentIdx <= 0}
-                  className="flex items-center justify-center px-1 py-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Decrease duration"
+                  onClick={() => onChange('api_method', apiMethodOn ? undefined : 'openapi')}
+                  disabled={generating}
+                  className={clsx(
+                    'flex items-center justify-center rounded-lg px-1.5 py-1.5 transition-colors',
+                    apiMethodOn
+                      ? 'bg-accent text-accent-text shadow-sm'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300',
+                    generating && 'opacity-50 cursor-not-allowed',
+                  )}
+                  title={apiMethodOn ? 'Route via OpenAPI (click to use WebAPI)' : 'Route via WebAPI (click to force OpenAPI)'}
                 >
-                  <Icon name="minus" size={12} />
+                  <Icon name="key" size={14} />
                 </button>
+              )}
+              <div
+                ref={durationWheelCallbackRef}
+                className="flex items-center flex-shrink-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
+                title="Duration — scroll to adjust"
+              >
+                <span className="flex items-center justify-center pl-1.5 pr-0 py-1.5 text-neutral-400 dark:text-neutral-500" aria-hidden="true">
+                  <Icon name="clock" size={12} />
+                </span>
                 <select
                   value={currentDuration}
                   onChange={(e) => onChange('duration', Number(e.target.value))}
                   disabled={generating}
-                  className="flex-1 min-w-0 px-0.5 py-1.5 text-[11px] text-center bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
+                  className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
                   title="Duration"
                 >
                   {durationOptions.map((seconds) => (
@@ -180,17 +192,6 @@ export function GenerationParamControls({
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (currentIdx < durationOptions.length - 1) onChange('duration', durationOptions[currentIdx + 1]);
-                  }}
-                  disabled={generating || currentIdx >= durationOptions.length - 1}
-                  className="flex items-center justify-center px-1 py-1.5 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="Increase duration"
-                >
-                  <Icon name="plus" size={12} />
-                </button>
               </div>
               {showAudio && (
                 <button

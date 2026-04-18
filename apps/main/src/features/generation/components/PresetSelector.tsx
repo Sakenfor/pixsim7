@@ -117,22 +117,22 @@ export function PresetSelector({
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled || presetLoading}
         className={clsx(
-          'flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium',
+          'flex items-center justify-center px-1.5 py-1.5 rounded-lg',
           'bg-white dark:bg-neutral-800 shadow-sm',
           'hover:bg-neutral-50 dark:hover:bg-neutral-700',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           'transition-colors',
           presetLoading && 'animate-pulse-subtle'
         )}
-        title="Generation Presets - Save and load prompt + inputs + settings"
+        title={
+          presetLoading
+            ? 'Loading preset…'
+            : lastUsedPreset?.name
+              ? `Presets — current: ${lastUsedPreset.name}`
+              : 'Generation Presets — save and load prompt + inputs + settings'
+        }
       >
-        <Icon name="archive" size={12} className={presetLoading ? 'animate-spin' : ''} />
-        <span className="max-w-[60px] truncate">
-          {presetLoading ? 'Loading...' : lastUsedPreset?.name ?? 'Presets'}
-        </span>
-        {!presetLoading && (
-          <Icon name="chevronDown" size={10} className={clsx('transition-transform', isOpen && 'rotate-180')} />
-        )}
+        <Icon name="archive" size={14} className={presetLoading ? 'animate-spin' : ''} />
       </button>
 
       {/* Dropdown */}
