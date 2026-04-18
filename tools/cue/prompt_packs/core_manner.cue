@@ -60,10 +60,18 @@ pack: #PromptBlockPackV1 & {
 							default: "medium"
 							tag_key: "manner_intensity"
 						},
+						{
+							key:     "delay"
+							type:    "enum"
+							enum:    #MannerDelayValues
+							default: "none"
+							tag_key: "manner_delay"
+						},
 					]
 					default_args: {
 						quality:   "neutral"
 						intensity: "medium"
+						delay:     "none"
 					}
 				}
 				variants: [

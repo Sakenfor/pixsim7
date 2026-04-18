@@ -47,6 +47,7 @@ package promptpacks
 #TargetInvolvementValues: ["none", "indirect", "direct"]
 #BodyRegionValues:   ["arms", "upper_body", "full_body", "hands", "head"]
 #MannerQualityValues: ["gentle", "tender", "firm", "sharp", "fluid", "hesitant", "deliberate", "languid", "urgent", "playful", "cautious", "abrupt", "neutral"]
+#MannerDelayValues:   ["none", "brief", "moderate", "long"]
 
 #SubjectActionParams: [
 	{
