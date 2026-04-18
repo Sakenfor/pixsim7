@@ -719,19 +719,16 @@ class AssetCreationMixin:
 
         if composition_metadata and isinstance(composition_metadata, list):
             try:
-                lineage_rows = build_lineage_from_composition_metadata(
+                written = await build_lineage_from_composition_metadata(
+                    self.db,
                     child_asset_id=asset.id,
                     composition_metadata=composition_metadata,
                     operation_type=operation_type,
                 )
 
-                if lineage_rows:
-                    for row in lineage_rows:
-                        self.db.add(row)
-                    await self.db.flush()
-
+                if written:
                     logger.info(
-                        f"Created {len(lineage_rows)} lineage edge(s) for asset {asset.id} "
+                        f"Created {written} lineage edge(s) for asset {asset.id} "
                         f"from composition_metadata ({operation_type.value})"
                     )
                     return  # Success - don't fall back to inputs-based lineage

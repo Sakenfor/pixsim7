@@ -9,7 +9,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from pixsim7.backend.main.domain import OperationType
-from pixsim7.backend.main.domain import relation_types
+from pixsim7.backend.main.domain.assets import relation_types
 from pixsim7.backend.main.shared.asset_refs import extract_asset_id, extract_asset_ref
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 

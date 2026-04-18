@@ -16,7 +16,7 @@ from sqlalchemy import select
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, normalize_enum
-from pixsim7.backend.main.domain.relation_types import DERIVATION
+from pixsim7.backend.main.domain.assets.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 from pixsim7.backend.main.services.asset.events import ASSET_CREATED
 from pixsim7.backend.main.domain.assets.upload_attribution import (
@@ -31,6 +31,7 @@ from urllib.parse import urlparse
 # upload_method → asset_kind mapping for non-content artifacts
 _UPLOAD_METHOD_TO_KIND: Dict[str, str] = {
     "mask_draw": "mask",
+    "video_capture": "extracted_frame",
 }
 
 
@@ -302,10 +303,13 @@ async def add_asset(
                 logger = get_logger()
                 uploads = dict(existing.provider_uploads or {})
                 current = uploads.get(provider_id)
+                # `current` may be a legacy string or a {"id","url"} dict;
+                # dedup-compare against the id component in either shape.
+                current_id = current.get("id") if isinstance(current, dict) else current
                 if not current:
                     uploads[provider_id] = str(provider_asset_id)
                     existing.provider_uploads = uploads
-                elif str(current) != str(provider_asset_id):
+                elif str(current_id) != str(provider_asset_id):
                     logger.warning(
                         "asset_provider_upload_conflict",
                         existing_asset_id=existing.id,
@@ -476,9 +480,23 @@ async def create_capture_lineage(
     * anything else                   → CROPPED_REGION
     """
     from pixsim7.backend.main.domain.assets.lineage import AssetLineage
-    from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME, CROPPED_REGION
+    from pixsim7.backend.main.domain.assets.relation_types import PAUSED_FRAME, CROPPED_REGION
 
     relation_type = PAUSED_FRAME if upload_method == "video_capture" else CROPPED_REGION
+
+    # Idempotent: skip if this exact edge already exists. Backs up the DB
+    # unique index on (child, parent, relation_type, sequence_order) by
+    # keeping happy-path calls from raising IntegrityError.
+    existing = await db.execute(
+        select(AssetLineage.id).where(
+            AssetLineage.child_asset_id == child_asset_id,
+            AssetLineage.parent_asset_id == parent_asset_id,
+            AssetLineage.relation_type == relation_type,
+            AssetLineage.sequence_order == 0,
+        ).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
 
     db.add(
         AssetLineage(
@@ -599,6 +617,8 @@ async def create_lineage_links_with_metadata(
         for row in existing_rows
     }
 
+    rows_to_insert: List[Dict[str, Any]] = []
+
     for entry in parsed_inputs:
         parent_id = entry["parent_id"]
         relation_type = entry["relation_type"]
@@ -624,19 +644,40 @@ async def create_lineage_links_with_metadata(
                 updated_count += 1
             continue
 
-        db.add(
-            AssetLineage(
-                child_asset_id=child_asset_id,
-                parent_asset_id=parent_id,
-                relation_type=relation_type,
-                operation_type=operation_type,
-                sequence_order=sequence_order,
-                parent_start_time=start_time,
-                parent_end_time=end_time,
-                parent_frame=frame,
-            )
+        rows_to_insert.append(
+            {
+                "child_asset_id": child_asset_id,
+                "parent_asset_id": parent_id,
+                "relation_type": relation_type,
+                "operation_type": operation_type,
+                "sequence_order": sequence_order,
+                "parent_start_time": start_time,
+                "parent_end_time": end_time,
+                "parent_frame": frame,
+            }
         )
-        created_count += 1
+
+    if rows_to_insert:
+        # ON CONFLICT DO NOTHING using the uq_asset_lineage_edge invariant
+        # (added in 20260417_0001). Race-safe against concurrent refreshes;
+        # RETURNING gives us the accurate inserted count.
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(AssetLineage)
+            .values(rows_to_insert)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    "child_asset_id",
+                    "parent_asset_id",
+                    "relation_type",
+                    "sequence_order",
+                ]
+            )
+            .returning(AssetLineage.id)
+        )
+        result = await db.execute(stmt)
+        created_count = len(result.scalars().all())
 
     if created_count > 0 or updated_count > 0:
         await db.commit()

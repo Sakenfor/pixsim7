@@ -321,7 +321,7 @@ class AssetEnrichmentService:
             add_asset,
             create_lineage_links_with_metadata,
         )
-        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION
+        from pixsim7.backend.main.domain.assets.relation_types import SOURCE_IMAGE, DERIVATION
 
         # Extract create_mode ONCE at the start for stable operation_type
         meta = asset.media_metadata or {}
@@ -458,7 +458,7 @@ class AssetEnrichmentService:
         2. Infer from create_mode
         3. Default based on media_type
         """
-        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE
+        from pixsim7.backend.main.domain.assets.relation_types import SOURCE_IMAGE
 
         # Map relation_type to role
         RELATION_TO_ROLE = {

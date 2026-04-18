@@ -92,11 +92,24 @@ class AssetService:
         """
         import os
 
+        from sqlalchemy.orm.attributes import flag_modified
+
+        from pixsim_logging import get_logger
+
         from pixsim7.backend.main.domain import MediaType, SyncStatus
-        from pixsim7.backend.main.services.asset.frame_extractor import extract_frame_with_metadata
+        from pixsim7.backend.main.services.asset.frame_extractor import (
+            download_native_last_frame,
+            extract_frame_with_metadata,
+            get_pixverse_native_last_frame_url,
+        )
         from pixsim7.backend.main.services.asset.asset_factory import add_asset, create_capture_lineage
         from pixsim7.backend.main.services.storage.storage_service import get_storage_service
-        from pixsim7.backend.main.shared.errors import InvalidOperationError
+        from pixsim7.backend.main.shared.errors import (
+            InvalidOperationError,
+            ResourceNotFoundError,
+        )
+
+        logger = get_logger()
 
         # 1. Get video asset with authorization
         video_asset = await self.get_asset_for_user(video_asset_id, user)
@@ -104,26 +117,100 @@ class AssetService:
         if video_asset.media_type != MediaType.VIDEO:
             raise InvalidOperationError("Source asset must be a video")
 
-        # 2. Ensure video is downloaded locally
-        if not video_asset.local_path or not os.path.exists(video_asset.local_path):
-            video_asset = await self.sync_asset(video_asset_id, user, include_embedded=False)
-
-        # 3. Extract frame with ffmpeg
-        frame_path, sha256, width, height = extract_frame_with_metadata(
-            video_asset.local_path, timestamp, frame_number, last_frame=last_frame
-        )
         owner_user_id = resolve_effective_user_id(user)
         if owner_user_id is None:
             raise InvalidOperationError("User-scoped principal required")
 
+        # 2. Short-circuit on prior last-frame extraction. The first successful
+        # extract stamps `media_metadata["last_frame_asset_id"]` onto the
+        # source video; subsequent extends reuse that asset and skip the
+        # network/ffmpeg work entirely. Stale IDs (asset deleted, different
+        # owner) fall through to a fresh extract.
+        if last_frame:
+            cached_id = None
+            video_meta = video_asset.media_metadata or {}
+            if isinstance(video_meta, dict):
+                raw = video_meta.get("last_frame_asset_id")
+                if isinstance(raw, int):
+                    cached_id = raw
+            if cached_id:
+                try:
+                    cached_asset = await self._core.get_asset(cached_id)
+                except ResourceNotFoundError:
+                    cached_asset = None
+                if cached_asset and cached_asset.user_id == owner_user_id:
+                    logger.info(
+                        "last_frame_cache_hit",
+                        video_asset_id=video_asset.id,
+                        frame_asset_id=cached_id,
+                    )
+                    return cached_asset
+                logger.info(
+                    "last_frame_cache_stale",
+                    video_asset_id=video_asset.id,
+                    cached_id=cached_id,
+                )
+
+        # 3. Prefer provider-native last frame when requesting the terminal
+        # frame — Pixverse (and potentially future providers) stamp a
+        # byte-exact last-frame URL on the video, avoiding ffmpeg re-encode
+        # drift. Fall back to local ffmpeg extraction on miss or failure.
+        extraction_method = "ffmpeg"
+        frame_path: Optional[str] = None
+        sha256: Optional[str] = None
+        width: Optional[int] = None
+        height: Optional[int] = None
+
+        if last_frame:
+            native_url = get_pixverse_native_last_frame_url(video_asset)
+            if native_url:
+                try:
+                    frame_path, sha256, width, height = await download_native_last_frame(native_url)
+                    extraction_method = "pixverse_native"
+                    logger.info(
+                        "last_frame_from_native_url",
+                        video_asset_id=video_asset.id,
+                        provider_id=video_asset.provider_id,
+                        url=native_url,
+                    )
+                except InvalidOperationError as e:
+                    logger.warning(
+                        "last_frame_native_download_failed_fallback_ffmpeg",
+                        video_asset_id=video_asset.id,
+                        provider_id=video_asset.provider_id,
+                        error=str(e),
+                    )
+
+        if frame_path is None:
+            # 3a. Ensure video is downloaded locally for ffmpeg path.
+            if not video_asset.local_path or not os.path.exists(video_asset.local_path):
+                video_asset = await self.sync_asset(video_asset_id, user, include_embedded=False)
+
+            # 4. Extract frame with ffmpeg
+            frame_path, sha256, width, height = extract_frame_with_metadata(
+                video_asset.local_path, timestamp, frame_number, last_frame=last_frame
+            )
+
+        async def _stamp_last_frame_cache(frame_asset_id: int) -> None:
+            if not last_frame:
+                return
+            meta = video_asset.media_metadata if isinstance(video_asset.media_metadata, dict) else {}
+            if meta.get("last_frame_asset_id") == frame_asset_id:
+                return
+            meta["last_frame_asset_id"] = frame_asset_id
+            video_asset.media_metadata = meta
+            flag_modified(video_asset, "media_metadata")
+            await self.db.commit()
+
         try:
-            # 4. Deduplication
+            # 5. Deduplication
             existing = await self.find_asset_by_hash(sha256, owner_user_id)
             if existing:
                 os.remove(frame_path)
+                await _stamp_last_frame_cache(existing.id)
                 return existing
 
-            # 5. Store in CAS and create asset via add_asset
+            # 6. Store in CAS and create asset via add_asset
             file_size = os.path.getsize(frame_path)
             storage = get_storage_service()
             stored_key = await storage.store_from_path_with_hash(
@@ -166,6 +253,7 @@ class AssetService:
                     "source_asset_id": video_asset.id,
                     "frame_time": timestamp,
                     "source": "scrubber",
+                    "extraction_method": extraction_method,
                 },
                 # Hidden from gallery until provider upload succeeds (or fails to
                 # a target). Flipped to True by the extract-frame / reupload
@@ -174,7 +262,7 @@ class AssetService:
                 searchable=False,
             )
 
-            # 6. Create lineage with timestamp metadata
+            # 7. Create lineage with timestamp metadata
             await create_capture_lineage(
                 self.db,
                 child_asset_id=asset.id,
@@ -184,9 +272,13 @@ class AssetService:
                 frame_number=frame_number,
             )
 
-            # 7. Update user storage quota
+            # 8. Update user storage quota
             storage_gb = file_size / (1024 ** 3)
             await self.users.increment_storage(owner_user_id, storage_gb)
+
+            # 9. Stamp the source video so future last-frame extends
+            # short-circuit to this asset.
+            await _stamp_last_frame_cache(asset.id)
 
             return asset
 

@@ -12,6 +12,13 @@ from __future__ import annotations
 from typing import Optional, Tuple, List, Dict, Any
 import copy
 
+from pixsim7.backend.main.domain.assets.relation_types import (
+    COMPOSITION_ENVIRONMENT,
+    COMPOSITION_MAIN_CHARACTER,
+    COMPOSITION_STYLE_REFERENCE,
+    SOURCE_VIDEO,
+    TRANSITION_INPUT,
+)
 from pixsim7.backend.main.services.provider.adapters.pixverse_ids import extract_uuid_from_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 
@@ -302,7 +309,7 @@ def build_embedded_from_pixverse_metadata(
                     "remote_url": parent_video_url or "",
                     "provider_asset_id": str(original_video_id or f"{provider_video_id}_src_video"),
                     "candidate_ids": video_candidate_ids,  # For dedup lookups
-                    "relation_type": "SOURCE_VIDEO",
+                    "relation_type": SOURCE_VIDEO,
                     "operation_type": "video_extend",
                     "media_metadata": {"pixverse_extend": parent_meta},
                 }
@@ -341,8 +348,7 @@ def build_embedded_from_pixverse_metadata(
         # If this looks like a transition, mark relation/operation hints
         # so lineage creation can classify correctly.
         if create_mode == "transition":
-            # Relation type maps to relation_types.TRANSITION_INPUT
-            item["relation_type"] = "TRANSITION_INPUT"
+            item["relation_type"] = TRANSITION_INPUT
             # Operation type matches OperationType.VIDEO_TRANSITION.value
             item["operation_type"] = "video_transition"
 
@@ -364,11 +370,11 @@ def build_embedded_from_pixverse_metadata(
             fusion_type = fusion_type_list[idx] if idx < len(fusion_type_list) else None
 
             if fusion_type == "subject":
-                relation_type = "COMPOSITION_MAIN_CHARACTER"
+                relation_type = COMPOSITION_MAIN_CHARACTER
             elif fusion_type == "background":
-                relation_type = "COMPOSITION_ENVIRONMENT"
+                relation_type = COMPOSITION_ENVIRONMENT
             else:
-                relation_type = "COMPOSITION_STYLE_REFERENCE"
+                relation_type = COMPOSITION_STYLE_REFERENCE
 
             item["relation_type"] = relation_type
             # Operation type matches OperationType.FUSION.value

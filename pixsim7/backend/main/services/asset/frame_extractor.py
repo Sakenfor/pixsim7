@@ -7,7 +7,7 @@ via SHA256 hashing and asset lineage tracking.
 import os
 import subprocess
 import tempfile
-from typing import Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 from pathlib import Path
 
 from pixsim7.backend.main.shared.errors import InvalidOperationError
@@ -300,6 +300,74 @@ def extract_frame_with_metadata(
         if os.path.exists(frame_path):
             os.remove(frame_path)
         raise InvalidOperationError(f"Failed to extract frame metadata: {e}")
+
+
+def get_pixverse_native_last_frame_url(video_asset: Any) -> Optional[str]:
+    """
+    Return the Pixverse-native last-frame image URL for a video asset, if any.
+
+    Pixverse stamps `customer_video_last_frame_url` into `media_metadata` on
+    every synced video — the byte-exact terminal frame Pixverse would itself
+    use on a native `extend_video` call. Prefer this over an ffmpeg grab,
+    which re-encodes through H.264 → JPEG and lands ~100ms shy of the true
+    end.
+    """
+    if getattr(video_asset, "provider_id", None) != "pixverse":
+        return None
+    meta = getattr(video_asset, "media_metadata", None)
+    if not isinstance(meta, Mapping):
+        return None
+    direct = meta.get("customer_video_last_frame_url")
+    if isinstance(direct, str) and direct.startswith("http"):
+        return direct
+    paths = meta.get("customer_paths")
+    if isinstance(paths, Mapping):
+        nested = paths.get("customer_video_last_frame_url")
+        if isinstance(nested, str) and nested.startswith("http"):
+            return nested
+    return None
+
+
+async def download_native_last_frame(url: str) -> Tuple[str, str, int, int]:
+    """
+    Download a provider-hosted last-frame image and compute metadata.
+
+    Returns (local_path, sha256, width, height). Raises InvalidOperationError
+    on network failure, empty body, or unreadable image so callers can fall
+    back to ffmpeg extraction.
+
+    Routes the HTTP fetch through the shared `download_url_to_temp` helper
+    for consistent retry/timeout/error shape with other asset downloads.
+    """
+    from urllib.parse import urlparse
+
+    from pixsim7.backend.main.shared.http_utils import download_url_to_temp
+
+    parsed_path = urlparse(url).path or ""
+    ext = os.path.splitext(parsed_path)[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+
+    out_path = await download_url_to_temp(
+        url,
+        suffix=ext,
+        prefix="pxv_lastframe_",
+        timeout=30.0,
+    )
+
+    try:
+        sha256 = compute_sha256(out_path)
+        width, height = get_image_dimensions(out_path)
+        return out_path, sha256, width, height
+    except Exception as e:
+        if os.path.exists(out_path):
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+        if isinstance(e, InvalidOperationError):
+            raise
+        raise InvalidOperationError(f"Native last-frame metadata failed: {e}") from e
 
 
 def get_image_dimensions(image_path: str) -> Tuple[int, int]:

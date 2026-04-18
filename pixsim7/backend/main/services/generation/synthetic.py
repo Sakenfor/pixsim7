@@ -26,7 +26,7 @@ from pixsim7.backend.main.domain import (
 from pixsim7.backend.main.domain.enums import GenerationOrigin
 from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 from pixsim7.backend.main.domain.prompt import PromptVersion
-from pixsim7.backend.main.domain import relation_types
+from pixsim7.backend.main.domain.assets import relation_types
 from pixsim_logging import get_logger
 
 logger = get_logger()

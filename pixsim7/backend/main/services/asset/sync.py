@@ -7,7 +7,6 @@ from typing import Optional, Literal, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import httpx
 import os
 
 from pixsim7.backend.main.domain import (
@@ -354,12 +353,18 @@ class AssetSyncService:
 
         # Check if already uploaded to this provider
         if target_provider_id in asset.provider_uploads:
-            cached_id = asset.provider_uploads[target_provider_id]
+            cached_entry = asset.provider_uploads[target_provider_id]
+            # New shape: {"id", "url"}.  Prefer URL for generic consumers;
+            # Pixverse-specific callers that need the id read the dict directly.
+            if isinstance(cached_entry, dict):
+                cached_id = cached_entry.get("url") or cached_entry.get("id")
+            else:
+                cached_id = cached_entry
 
             # Self-heal: bare UUIDs are not usable as provider refs (WebAPI
             # needs full URLs).  Older uploads stored the UUID instead of the
             # URL — evict them so we fall through to re-upload.
-            if cached_id and not cached_id.startswith(("http://", "https://")):
+            if cached_id and isinstance(cached_id, str) and not cached_id.startswith(("http://", "https://")):
                 from pixsim7.backend.main.services.provider.adapters.pixverse_ids import looks_like_pixverse_uuid
                 if looks_like_pixverse_uuid(cached_id):
                     from pixsim_logging import get_logger
@@ -418,11 +423,17 @@ class AssetSyncService:
             detail="Successfully uploaded and cached asset to provider"
         )
 
-        # Reassign the full dict so SQLAlchemy detects the JSON column change
+        # Reassign the full dict so SQLAlchemy detects the JSON column change.
+        # provider_asset_id may be a dict ({"id","url"}) for providers that
+        # return both — preserve that shape on the asset.
         asset.provider_uploads = {**asset.provider_uploads, target_provider_id: provider_asset_id}
         await self.db.commit()
         await self.db.refresh(asset)
 
+        # Back-compat return: single string, URL-preferring.  Callers that
+        # need the id read asset.provider_uploads[target_provider_id] directly.
+        if isinstance(provider_asset_id, dict):
+            return provider_asset_id.get("url") or provider_asset_id.get("id") or ""
         return provider_asset_id
 
     async def _upload_to_provider(
@@ -463,9 +474,17 @@ class AssetSyncService:
                 media_type=asset.media_type,
                 tmp_path=local_path,
             )
-            # Prefer external_url (full https:// URL) over provider_asset_id (UUID).
-            # WebAPI mode (e.g. Pixverse) requires URLs; bare UUIDs are invalid.
-            uploaded_id = result.external_url or result.provider_asset_id
+            # When the provider returns both an id and a URL (Pixverse OpenAPI
+            # upload), persist the dict shape so OpenAPI routing can recover
+            # the integer id later.  Otherwise fall back to the URL-preferring
+            # single-string form for legacy compatibility.
+            if result.external_url and result.provider_asset_id:
+                uploaded_id: Any = {
+                    "id": str(result.provider_asset_id),
+                    "url": result.external_url,
+                }
+            else:
+                uploaded_id = result.external_url or result.provider_asset_id
 
             # Record successful upload (Task 104)
             await self.record_upload_attempt(
@@ -498,7 +517,10 @@ class AssetSyncService:
 
     async def _download_asset_to_temp(self, asset: Asset) -> str:
         """
-        Download asset to temporary file with retry logic
+        Download asset to temporary file with retry logic.
+
+        Routes through `shared.http_utils.download_url_to_temp` for consistent
+        retry/timeout/error semantics with other URL-level downloads.
 
         Args:
             asset: Asset to download
@@ -509,66 +531,18 @@ class AssetSyncService:
         Raises:
             InvalidOperationError: If download fails
         """
-        import httpx
-        import tempfile
-        import os
-        from pixsim_logging import get_logger
-        logger = get_logger()
+        from pixsim7.backend.main.shared.http_utils import download_url_to_temp
 
-        # Determine file extension
         ext = ".mp4" if asset.media_type == MediaType.VIDEO else ".jpg"
 
-        # Create temp file
-        fd, temp_path = tempfile.mkstemp(suffix=ext, prefix=f"asset_{asset.id}_")
-        os.close(fd)
-
-        try:
-            # Download with retry logic
-            max_retries = 3
-            retry_delay = 2.0
-
-            for attempt in range(max_retries):
-                try:
-                    async with httpx.AsyncClient(timeout=60) as client:
-                        response = await client.get(asset.remote_url, follow_redirects=True)
-                        response.raise_for_status()
-
-                        # Write to temp file
-                        with open(temp_path, "wb") as f:
-                            f.write(response.content)
-                    break  # Success
-                except (httpx.TimeoutException, httpx.NetworkError) as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            "temp_download_retry",
-                            asset_id=asset.id,
-                            attempt=attempt + 1,
-                            max_retries=max_retries,
-                            error=str(e)
-                        )
-                        import asyncio
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        raise
-
-            return temp_path
-
-        except Exception as e:
-            # Cleanup temp file on error
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception as cleanup_error:
-                    logger.warning(
-                        "temp_file_cleanup_failed",
-                        file_path=temp_path,
-                        error=str(cleanup_error)
-                    )
-
-            raise InvalidOperationError(
-                f"Failed to download asset from {asset.remote_url}: {e}"
-            )
+        return await download_url_to_temp(
+            asset.remote_url,
+            suffix=ext,
+            prefix=f"asset_{asset.id}_",
+            timeout=60.0,
+            max_retries=3,
+            log_context={"asset_id": asset.id},
+        )
 
     async def cache_provider_upload(
         self,
