@@ -22,7 +22,7 @@
  *     ReferenceItem. If `insertMode` is 'token' but the item has `insertText`,
  *     text mode still wins for that item (explicit override).
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import type { ReferencePickerHandle } from './ReferencePicker';
 import type { ReferenceItem } from './types';
@@ -40,6 +40,7 @@ export function useReferenceInput(
   // popups to its position via an effect.
   const [triggerPos, setTriggerPos] = useState(-1);
   const insertMode = opts?.insertMode ?? 'token';
+  const mentionActiveRef = useRef(false);
 
   const active = query !== null;
 
@@ -48,22 +49,26 @@ export function useReferenceInput(
       const el = e.currentTarget;
       const val = el.value;
       const cursor = el.selectionStart ?? val.length;
-
-      const before = val.slice(0, cursor);
-      const atIdx = before.lastIndexOf('@');
+      // Avoid copying the whole prefix on every keystroke.
+      const atIdx = cursor > 0 ? val.lastIndexOf('@', cursor - 1) : -1;
       if (
         atIdx >= 0 &&
-        (atIdx === 0 || before[atIdx - 1] === ' ' || before[atIdx - 1] === '\n')
+        (atIdx === 0 || val[atIdx - 1] === ' ' || val[atIdx - 1] === '\n')
       ) {
-        const q = before.slice(atIdx + 1);
+        const q = val.slice(atIdx + 1, cursor);
         if (!q.includes(' ') && q.length < 40) {
-          loader.load();
-          setQuery(q);
-          setTriggerPos(atIdx);
+          // Load candidates only when entering mention mode.
+          if (!mentionActiveRef.current) {
+            loader.load();
+            mentionActiveRef.current = true;
+          }
+          setQuery((prev) => (prev === q ? prev : q));
+          setTriggerPos((prev) => (prev === atIdx ? prev : atIdx));
           return;
         }
       }
-      setQuery(null);
+      mentionActiveRef.current = false;
+      setQuery((prev) => (prev === null ? prev : null));
     },
     [loader],
   );

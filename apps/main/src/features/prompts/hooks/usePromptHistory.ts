@@ -58,8 +58,11 @@ export interface PromptHistoryControls {
 
 const STORAGE_KEY = 'prompt_draft_history_v1';
 const DEFAULT_MAX_ENTRIES = 80;
+const STORAGE_WRITE_DEBOUNCE_MS = 250;
 let persistedCache: Record<string, HistoryStack> | null = null;
 let entryIdSequence = 0;
+let persistWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersistMap: Record<string, HistoryStack> | null = null;
 
 function generateEntryId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -205,11 +208,20 @@ function readPersistedMap(): Record<string, HistoryStack> {
 
 function writePersistedMap(map: Record<string, HistoryStack>): void {
   if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // Best effort.
-  }
+  pendingPersistMap = map;
+  if (persistWriteTimer !== null) return;
+
+  persistWriteTimer = window.setTimeout(() => {
+    persistWriteTimer = null;
+    const nextMap = pendingPersistMap;
+    pendingPersistMap = null;
+    if (!nextMap) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMap));
+    } catch {
+      // Best effort.
+    }
+  }, STORAGE_WRITE_DEBOUNCE_MS);
 }
 
 function loadInitialStack(

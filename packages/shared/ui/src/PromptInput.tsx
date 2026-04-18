@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useCallback, useRef, useLayoutEffect } from 'react';
 import clsx from 'clsx';
 
 const DEFAULT_PROMPT_MAX_CHARS = 800;
@@ -57,24 +57,30 @@ export const PromptInput: React.FC<PromptInputProps> = ({
 
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = externalTextareaRef ?? internalRef;
-  const cursorPosRef = useRef<number | null>(null);
+  const selectionStartRef = useRef<number | null>(null);
+  const selectionEndRef = useRef<number | null>(null);
   const scrollPosRef = useRef<number | null>(null);
   const isUserTypingRef = useRef(false);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
-    const cursorPos = e.target.selectionStart;
+    const selectionStart = e.target.selectionStart;
+    const selectionEnd = e.target.selectionEnd;
 
     // Store cursor position AND scroll position before state update
-    cursorPosRef.current = cursorPos;
+    selectionStartRef.current = selectionStart;
+    selectionEndRef.current = selectionEnd;
     scrollPosRef.current = e.target.scrollTop;
     isUserTypingRef.current = true;
 
     const valueToSend = enforceLimit && next.length > maxChars ? next.slice(0, maxChars) : next;
 
     // If we're enforcing and truncating, adjust cursor position
-    if (enforceLimit && next.length > maxChars && cursorPos > maxChars) {
-      cursorPosRef.current = maxChars;
+    if (enforceLimit && next.length > maxChars && selectionStart > maxChars) {
+      selectionStartRef.current = maxChars;
+    }
+    if (enforceLimit && next.length > maxChars && selectionEnd > maxChars) {
+      selectionEndRef.current = maxChars;
     }
 
     onChange(valueToSend);
@@ -83,29 +89,47 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   // Restore cursor position and scroll position after value updates
   // Use useLayoutEffect to run synchronously before browser paint (prevents flash)
   useLayoutEffect(() => {
-    if (!isUserTypingRef.current || cursorPosRef.current === null || !textareaRef.current) {
+    if (!isUserTypingRef.current || selectionStartRef.current === null || !textareaRef.current) {
       return;
     }
 
     const textarea = textareaRef.current;
-    const pos = cursorPosRef.current;
+    const start = selectionStartRef.current;
+    const end = selectionEndRef.current ?? start;
     const scrollPos = scrollPosRef.current;
 
     try {
       // Only restore if the textarea is still focused
       if (document.activeElement === textarea) {
-        // Restore scroll position FIRST to prevent auto-scroll
-        if (scrollPos !== null) {
+        const safeStart = Math.min(start, textarea.value.length);
+        const safeEnd = Math.min(end, textarea.value.length);
+        const needsScroll = scrollPos !== null && textarea.scrollTop !== scrollPos;
+        const needsSelection =
+          textarea.selectionStart !== safeStart || textarea.selectionEnd !== safeEnd;
+
+        // Fast path for the common case: browser already kept selection/scroll
+        // stable for controlled input updates.
+        if (!needsSelection && !needsScroll) {
+          isUserTypingRef.current = false;
+          selectionStartRef.current = null;
+          selectionEndRef.current = null;
+          scrollPosRef.current = null;
+          return;
+        }
+
+        // Restore scroll position FIRST to prevent auto-scroll.
+        if (needsScroll && scrollPos !== null) {
           textarea.scrollTop = scrollPos;
         }
 
-        // Then restore cursor position, clamping to current value length
-        const safePos = Math.min(pos, textarea.value.length);
-        textarea.setSelectionRange(safePos, safePos);
+        // Then restore selection, clamping to current value length.
+        if (needsSelection) {
+          textarea.setSelectionRange(safeStart, safeEnd);
+        }
 
-        // Restore scroll position AGAIN after cursor restoration
-        // (setSelectionRange can trigger auto-scroll in some browsers)
-        if (scrollPos !== null) {
+        // Restore scroll position AGAIN after selection restoration
+        // (setSelectionRange can trigger auto-scroll in some browsers).
+        if (needsSelection && scrollPos !== null && textarea.scrollTop !== scrollPos) {
           textarea.scrollTop = scrollPos;
         }
       }
@@ -115,7 +139,8 @@ export const PromptInput: React.FC<PromptInputProps> = ({
 
     // Reset flags after restoration
     isUserTypingRef.current = false;
-    cursorPosRef.current = null;
+    selectionStartRef.current = null;
+    selectionEndRef.current = null;
     scrollPosRef.current = null;
   }, [value]);
 

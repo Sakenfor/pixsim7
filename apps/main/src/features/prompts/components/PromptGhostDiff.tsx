@@ -14,8 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 
-import type { DiffSegment } from '../lib/promptDiff';
-import { diffPrompt } from '../lib/promptDiff';
+import { diffPromptWithRanges, type DiffSegmentWithRange } from '../lib/promptDiff';
 
 import { TextareaBackdrop } from './TextareaBackdrop';
 
@@ -70,9 +69,9 @@ export function PromptGhostDiff({
   onRemovedSegments,
 }: PromptGhostDiffProps) {
   // ── Diff computation ──
-  const segments: DiffSegment[] = useMemo(() => {
+  const segments: DiffSegmentWithRange[] = useMemo(() => {
     if (!source) return [];
-    return diffPrompt(source.comparisonText, value);
+    return diffPromptWithRanges(source.comparisonText, value);
   }, [source, value]);
 
   const hasChanges = useMemo(
@@ -117,23 +116,69 @@ export function PromptGhostDiff({
   const opacity = source ? ghostOpacity(source.stepDistance) : 0;
   const active = !!source && hasChanges && opacity > 0 && !isTooNoisy;
 
-  // Only render keep + add spans in the backdrop.  Removed segments are
-  // content that isn't in the textarea — rendering them inline would push
-  // adjacent highlights off alignment.  Use `diffPrompt()` in a sibling view
-  // (history popover, badge) if you need to surface removed text.
+  const addRanges = useMemo(() => {
+    const ranges = segments
+      .filter(
+        (segment): segment is DiffSegmentWithRange & { from: number; to: number } =>
+          segment.type === 'add' &&
+          typeof segment.from === 'number' &&
+          typeof segment.to === 'number' &&
+          segment.from < segment.to,
+      )
+      .map((segment) => ({ from: segment.from, to: segment.to }))
+      .sort((a, b) => a.from - b.from);
+
+    if (ranges.length <= 1) return ranges;
+
+    // Coalesce overlaps/adjacent ranges so we render a minimal chunk set.
+    const merged: Array<{ from: number; to: number }> = [ranges[0]];
+    for (let i = 1; i < ranges.length; i += 1) {
+      const current = ranges[i];
+      const last = merged[merged.length - 1];
+      if (current.from <= last.to) {
+        last.to = Math.max(last.to, current.to);
+      } else {
+        merged.push(current);
+      }
+    }
+    return merged;
+  }, [segments]);
+
+  const renderedChunks = useMemo(() => {
+    // Render against the exact current text, slicing by add ranges. This
+    // preserves all whitespace/newlines and prevents overlay drift.
+    if (!active || addRanges.length === 0) {
+      return value ? [{ type: 'keep' as const, text: value }] : [];
+    }
+
+    const chunks: Array<{ type: 'keep' | 'add'; text: string }> = [];
+    let cursor = 0;
+    for (const range of addRanges) {
+      if (cursor < range.from) {
+        chunks.push({ type: 'keep', text: value.slice(cursor, range.from) });
+      }
+      chunks.push({ type: 'add', text: value.slice(range.from, range.to) });
+      cursor = range.to;
+    }
+    if (cursor < value.length) {
+      chunks.push({ type: 'keep', text: value.slice(cursor) });
+    }
+    return chunks.filter((chunk) => chunk.text.length > 0);
+  }, [active, addRanges, value]);
+
+  // Removed segments are surfaced out-of-band. Inline rendering uses exact
+  // slices of the current text so whitespace/layout always stays aligned.
   return (
     <TextareaBackdrop textareaRef={textareaRef} active={active} variant={variant}>
-      {segments.map((seg, i) => {
-        if (seg.type === 'remove') return null;
-
-        if (seg.type === 'add') {
+      {renderedChunks.map((chunk, i) => {
+        if (chunk.type === 'add') {
           return (
             <span
               key={i}
               className="text-transparent rounded-sm"
               style={{ backgroundColor: `rgba(34, 197, 94, ${opacity})` }}
             >
-              {seg.text}
+              {chunk.text}
             </span>
           );
         }
@@ -141,7 +186,7 @@ export function PromptGhostDiff({
         // 'keep' — occupies space but invisible (matches textarea flow)
         return (
           <span key={i} className="text-transparent">
-            {seg.text}
+            {chunk.text}
           </span>
         );
       })}

@@ -11,17 +11,83 @@ export interface DiffSegment {
   text: string;
 }
 
+export interface DiffSegmentWithRange extends DiffSegment {
+  /** Offset in the "next" string where this segment starts (keep/add only). */
+  from?: number;
+  /** Offset in the "next" string where this segment ends (keep/add only). */
+  to?: number;
+}
+
+interface TextToken {
+  text: string;
+  from: number;
+  to: number;
+}
+
+interface IndexedDiffSegment extends DiffSegment {
+  nextIndex?: number;
+}
+
 /**
  * Split prompt text into clause-level segments for diffing.
  * Splits on sentence-ending punctuation + space, commas + space, or newlines.
  * Keeps delimiters attached to the preceding segment.
  */
 function splitClauses(text: string): string[] {
+  return splitClausesWithRanges(text).map((token) => token.text);
+}
+
+function pushTrimmedToken(tokens: TextToken[], source: string, start: number, end: number): void {
+  let from = start;
+  let to = end;
+
+  while (from < to && /\s/.test(source[from])) from += 1;
+  while (to > from && /\s/.test(source[to - 1])) to -= 1;
+
+  if (to > from) {
+    tokens.push({
+      text: source.slice(from, to),
+      from,
+      to,
+    });
+  }
+}
+
+/**
+ * Clause splitter with stable offsets back to the original source text.
+ * This mirrors `splitClauses()` behavior but retains exact token ranges.
+ */
+function splitClausesWithRanges(text: string): TextToken[] {
   if (!text.trim()) return [];
-  return text
-    .split(/(?<=[.!?,;])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+
+  const tokens: TextToken[] = [];
+  const boundary = /(?<=[.!?,;])\s+|\n+/g;
+  let chunkStart = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = boundary.exec(text)) !== null) {
+    const chunkEnd = match.index;
+    pushTrimmedToken(tokens, text, chunkStart, chunkEnd);
+    chunkStart = match.index + match[0].length;
+  }
+
+  pushTrimmedToken(tokens, text, chunkStart, text.length);
+  return tokens;
+}
+
+/** Word splitter with stable offsets back to the original source text. */
+function splitWordsWithRanges(text: string): TextToken[] {
+  const tokens: TextToken[] = [];
+  const wordRegex = /\S+/g;
+  let match: RegExpExecArray | null;
+  while ((match = wordRegex.exec(text)) !== null) {
+    tokens.push({
+      text: match[0],
+      from: match.index,
+      to: match.index + match[0].length,
+    });
+  }
+  return tokens;
 }
 
 /** LCS table for two string arrays */
@@ -64,6 +130,32 @@ function diffArrays(prev: string[], next: string[]): DiffSegment[] {
   return segments;
 }
 
+/** Same LCS backtracking as `diffArrays`, but keeps the matched next-token index. */
+function diffTokenArrays(prev: TextToken[], next: TextToken[]): IndexedDiffSegment[] {
+  const prevText = prev.map((token) => token.text);
+  const nextText = next.map((token) => token.text);
+  const dp = lcsTable(prevText, nextText);
+  const segments: IndexedDiffSegment[] = [];
+  let i = prevText.length;
+  let j = nextText.length;
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && prevText[i - 1] === nextText[j - 1]) {
+      segments.unshift({ type: 'keep', text: nextText[j - 1], nextIndex: j - 1 });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      segments.unshift({ type: 'add', text: nextText[j - 1], nextIndex: j - 1 });
+      j--;
+    } else {
+      segments.unshift({ type: 'remove', text: prevText[i - 1] });
+      i--;
+    }
+  }
+
+  return segments;
+}
+
 /**
  * Compute a diff between two prompt texts.
  *
@@ -88,6 +180,39 @@ export function diffPrompt(prev: string, next: string): DiffSegment[] {
   }
 
   return diffArrays(prevClauses, nextClauses);
+}
+
+/**
+ * Diff with stable offsets into the "next" text for keep/add segments.
+ *
+ * This is used by CodeMirror decorations so highlights can be anchored by
+ * exact character ranges instead of substring lookups.
+ */
+export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWithRange[] {
+  if (prev === next) {
+    if (!next) return [];
+    return [{ type: 'keep', text: next, from: 0, to: next.length }];
+  }
+  if (!prev.trim() && !next.trim()) return [];
+  if (!prev.trim()) return [{ type: 'add', text: next, from: 0, to: next.length }];
+  if (!next.trim()) return [{ type: 'remove', text: prev }];
+
+  const prevClauses = splitClausesWithRanges(prev);
+  const nextClauses = splitClausesWithRanges(next);
+
+  // Keep parity with `diffPrompt`: only fall back to word-level when both
+  // sides are a single clause.
+  const useWordLevel = prevClauses.length <= 1 && nextClauses.length <= 1;
+  const prevTokens = useWordLevel ? splitWordsWithRanges(prev) : prevClauses;
+  const nextTokens = useWordLevel ? splitWordsWithRanges(next) : nextClauses;
+
+  return diffTokenArrays(prevTokens, nextTokens).map((segment) => {
+    if (typeof segment.nextIndex === 'number') {
+      const token = nextTokens[segment.nextIndex];
+      return { type: segment.type, text: segment.text, from: token.from, to: token.to };
+    }
+    return { type: segment.type, text: segment.text };
+  });
 }
 
 /**

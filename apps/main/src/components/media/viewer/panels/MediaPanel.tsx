@@ -35,6 +35,18 @@ interface MediaPanelProps {
   params?: any; // Dockview params
 }
 
+function toPositiveId(value: unknown): number | null {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function pushUniquePositiveId(target: number[], value: unknown): void {
+  const id = toPositiveId(value);
+  if (id && !target.includes(id)) {
+    target.push(id);
+  }
+}
+
 export function MediaPanel({ context }: MediaPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -414,6 +426,47 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const viewerGesture = useViewerGestures(viewerGestureCtx);
   const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none' && !isZoomed;
 
+  const sourceAssetIds = useMemo(() => {
+    if (!asset) return [] as number[];
+    const ids: number[] = [];
+
+    pushUniquePositiveId(ids, asset.metadata?.assetId);
+    pushUniquePositiveId(ids, asset.id);
+
+    const model = asset._assetModel as
+      | {
+          id?: unknown;
+          providerAssetId?: unknown;
+          parentAssetId?: unknown;
+          parent_asset_id?: unknown;
+          lastUploadAssetId?: unknown;
+          last_upload_asset_id?: unknown;
+          uploadContext?: Record<string, unknown> | null;
+        }
+      | undefined;
+
+    if (model) {
+      pushUniquePositiveId(ids, model.id);
+      pushUniquePositiveId(ids, model.providerAssetId);
+      pushUniquePositiveId(ids, model.parentAssetId);
+      pushUniquePositiveId(ids, model.parent_asset_id);
+      pushUniquePositiveId(ids, model.lastUploadAssetId);
+      pushUniquePositiveId(ids, model.last_upload_asset_id);
+
+      const uploadContext = model.uploadContext;
+      if (uploadContext) {
+        pushUniquePositiveId(ids, uploadContext.source_asset_id);
+        const sourceIds = uploadContext.source_asset_ids;
+        if (Array.isArray(sourceIds)) {
+          sourceIds.forEach((id) => pushUniquePositiveId(ids, id));
+        }
+      }
+    }
+
+    return ids;
+  }, [asset]);
+  const sourceAssetId = sourceAssetIds[0] ?? null;
+
   if (!asset) {
     return (
       <div className="h-full flex items-center justify-center text-neutral-500">
@@ -465,6 +518,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
               configuration={viewerOverlay.overlayConfig}
               data={viewerOverlay.overlayData}
               className="flex-1 min-h-0 relative flex flex-col"
+              validate={false}
             >
               {ActiveMain && (
                 <div className="absolute inset-0 z-10">
@@ -537,7 +591,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
           <ViewerLayersPanel
             assetId={asset.id}
             activeOverlayId={activeOverlayId}
-            sourceAssetId={typeof asset.id === 'number' ? asset.id : (Number(asset.id) || null)}
+            sourceAssetId={sourceAssetId}
+            sourceAssetIds={sourceAssetIds}
           />
         )}
       </div>

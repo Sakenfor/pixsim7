@@ -38,6 +38,7 @@ import {
 } from '@/plugins/ui/prompt-companion/components';
 
 
+import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -56,8 +57,11 @@ import type { PromptTag } from '../types';
 import { FloatingToolPanel } from './FloatingToolPanel';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
+import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
+import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
+import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowSidePanel } from './ShadowSidePanel';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
@@ -122,6 +126,7 @@ interface PromptVersionRecord {
 const QUICKGEN_HISTORY_FAMILY_CACHE_KEY = 'quickgen_history_prompt_family_id_v1';
 const QUICKGEN_HISTORY_FAMILY_TITLE = 'QuickGen History';
 const QUICKGEN_HISTORY_FAMILY_SLUG = 'quickgen-history';
+const EMPTY_SHADOW_CANDIDATES: PromptBlockCandidate[] = [];
 
 function readCachedQuickGenHistoryFamilyId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -293,6 +298,12 @@ export function PromptComposer({
   const [showPromptTools, setShowPromptTools] = useState(false);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
 
+  // --- Shadow analysis click popover (CM path) ---
+  const [cmShadowPopover, setCmShadowPopover] = useState<{
+    anchor: HTMLElement;
+    candidate: PromptBlockCandidate;
+  } | null>(null);
+
   // --- Ghost diff (inline comparison backdrop) ---
   const [ghostSource, setGhostSource] = useState<GhostDiffSource | null>(null);
   const [ghostSticky, setGhostSticky] = useState(false);
@@ -305,8 +316,13 @@ export function PromptComposer({
   const [ghostRemoved, setGhostRemoved] = useState<string[]>([]);
   /** Whether Shift is held — while held + in media-compare mode, hover overrides selection. */
   const [shiftHeld, setShiftHeld] = useState(false);
+  const ghostStickyRef = useRef(false);
+  ghostStickyRef.current = ghostSticky;
+  const ghostCompareOffsetRef = useRef(1);
+  ghostCompareOffsetRef.current = ghostCompareOffset;
   const ghostClearTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const promptEditorRef = useRef<import('@codemirror/view').EditorView | null>(null);
 
   // @mention picker — vocabulary references (anatomy, etc.) + any other
   // sources registered in `referenceRegistry`. Inserts plain text via
@@ -326,6 +342,19 @@ export function PromptComposer({
       });
     },
     [referenceInput],
+  );
+
+  // CM-specific @mention picker
+  const cmRefInput = useCmReferenceInput(references, referencePickerRef, promptEditorRef, {
+    insertMode: 'text',
+  });
+  const handleCmReferenceSelect = useCallback(
+    (item: ReferenceItem) => {
+      cmRefInput.select(item, (fn) => {
+        onChangeRef.current(fn(valueRef.current));
+      });
+    },
+    [cmRefInput],
   );
 
   // Caret-anchored popup coords. Computed when the picker becomes active
@@ -429,7 +458,10 @@ export function PromptComposer({
     (offset: number) => {
       const tl = history.getTimeline();
       const targetIdx = tl.currentIndex - offset;
-      if (targetIdx < 0 || offset < 1) return;
+      if (targetIdx < 0 || offset < 1) {
+        setGhostSource(null);
+        return;
+      }
       setGhostCompareOffset(offset);
       setGhostSource({
         comparisonText: tl.entries[targetIdx],
@@ -492,6 +524,9 @@ export function PromptComposer({
     clearTimeout(undoDebounceRef.current);
     undoDebounceRef.current = setTimeout(() => {
       history.snapshot(value);
+      if (ghostStickyRef.current) {
+        applyStickyGhost(ghostCompareOffsetRef.current);
+      }
     }, 600);
 
     // User is typing new text — clear transient ghost
@@ -502,7 +537,7 @@ export function PromptComposer({
     }
 
     return () => clearTimeout(undoDebounceRef.current);
-  }, [value, history]); // ghostSource/ghostSticky intentionally excluded — read reactively
+  }, [value, history, applyStickyGhost]); // ghostSource/ghostSticky intentionally excluded — read reactively
 
   // Capture-phase keyboard handler — intercepts before native textarea undo
   const handleUndoKeyDown = useCallback(
@@ -662,6 +697,42 @@ export function PromptComposer({
     enabled: mode === 'text' && showShadow && autoAnalyze,
     analyzerId: defaultAnalyzer,
   });
+
+  // --- CM extensions for CodeMirror mode ---
+  const cmGhostConfig: GhostDiffConfig | null = ghostSource
+    ? { comparisonText: ghostSource.comparisonText, stepDistance: ghostSource.stepDistance }
+    : null;
+  const cmShadowCandidates = useMemo(
+    () =>
+      useCodemirror && showShadow && autoAnalyze
+        ? (shadowAnalysis.result?.candidates ?? EMPTY_SHADOW_CANDIDATES)
+        : EMPTY_SHADOW_CANDIDATES,
+    [useCodemirror, showShadow, autoAnalyze, shadowAnalysis.result?.candidates],
+  );
+  const cmExtensions = useMemo(
+    () => {
+      const exts = [
+        ghostDiffExtension(cmGhostConfig, {
+          onSuppress: setGhostSuppressed,
+          onRemovedSegments: setGhostRemoved,
+        }),
+        cmRefInput.extension,
+      ];
+      if (cmShadowCandidates.length > 0) {
+        exts.push(shadowAnalysisExtension(
+          { candidates: cmShadowCandidates, roleColors: promptRoleColors },
+          {
+            onCandidateClick: (candidate, anchor) => {
+              setCmShadowPopover({ anchor, candidate });
+            },
+          },
+        ));
+      }
+      return exts;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cmGhostConfig?.comparisonText, cmGhostConfig?.stepDistance, cmShadowCandidates, promptRoleColors, cmRefInput.extension],
+  );
 
   const {
     results: semanticMatches,
@@ -1175,6 +1246,7 @@ export function PromptComposer({
             e.preventDefault();
             const tl = history.getTimeline();
             const maxOffset = tl.currentIndex; // can't go further back than the start
+            if (maxOffset < 1) return;
             const delta = e.deltaY > 0 ? 1 : -1; // scroll down = further back
             const next = Math.max(1, Math.min(maxOffset, ghostCompareOffset + delta));
             if (next !== ghostCompareOffset) {
@@ -1439,20 +1511,53 @@ export function PromptComposer({
 
       {mode === 'text' ? (
         useCodemirror ? (
-          <div className="relative flex flex-col flex-1 min-h-0">
-            <PromptEditor
-              value={value}
-              onChange={onChange}
-              maxChars={maxChars}
-              placeholder={placeholder}
-              disabled={disabled}
-              variant={variant}
-              showCounter={showCounter}
-              resizable={resizable}
-              minHeight={minHeight}
-              transparent={!!ghostSource}
-              className="flex-1 min-h-0"
-            />
+          <div className="flex-1 min-h-0 flex">
+            <div className="relative flex flex-col flex-1 min-w-0">
+              <PromptEditor
+                value={value}
+                onChange={onChange}
+                maxChars={maxChars}
+                placeholder={placeholder}
+                disabled={disabled}
+                variant={variant}
+                showCounter={showCounter}
+                resizable={resizable}
+                minHeight={minHeight}
+                transparent={!!ghostSource}
+                className="flex-1 min-h-0"
+                extensions={cmExtensions}
+                editorRef={promptEditorRef}
+              />
+              <ReferencePicker
+                ref={referencePickerRef}
+                visible={cmRefInput.active && cmRefInput.anchor !== null}
+                query={cmRefInput.query}
+                items={references.items}
+                onSelect={handleCmReferenceSelect}
+                onClose={cmRefInput.dismiss}
+                disallowedTypes={['plan', 'world', 'project']}
+                className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-30"
+                style={cmRefInput.anchor ?? undefined}
+              />
+              <Popover
+                anchor={cmShadowPopover?.anchor ?? null}
+                placement="bottom"
+                align="start"
+                offset={6}
+                open={!!cmShadowPopover}
+                onClose={() => setCmShadowPopover(null)}
+              >
+                {cmShadowPopover && (
+                  <ShadowAnalysisPopover
+                    candidate={cmShadowPopover.candidate}
+                    roleColors={promptRoleColors}
+                  />
+                )}
+              </Popover>
+            </div>
+            {showShadow && autoAnalyze && (
+              <ShadowSidePanel analysis={shadowAnalysis} />
+            )}
           </div>
         ) : showShadow && autoAnalyze ? (
           <div className="flex-1 min-h-0 flex">

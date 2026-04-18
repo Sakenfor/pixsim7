@@ -20,6 +20,8 @@ const isDev = import.meta.env?.DEV;
 
 /** Track which config IDs have already been logged to avoid flooding the console. */
 const _loggedConfigIds = new Set<string>();
+/** Cache validation result per config id to avoid re-validating identical runtime overlays. */
+const _validationResultByConfigId = new Map<string, ValidationResult>();
 
 /**
  * Validates a complete overlay configuration
@@ -401,7 +403,14 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
  * Runs validation and logs errors/warnings in development
  */
 export function validateAndLog(config: OverlayConfiguration): ValidationResult {
+  if (isDev && _validationResultByConfigId.has(config.id)) {
+    return _validationResultByConfigId.get(config.id)!;
+  }
+
   const result = validateConfiguration(config);
+  if (isDev) {
+    _validationResultByConfigId.set(config.id, result);
+  }
 
   if (isDev && !_loggedConfigIds.has(config.id)) {
     const allIssues = [...result.errors, ...lintConfiguration(config)];
