@@ -18,17 +18,23 @@ describe('diffPromptWithRanges', () => {
     expect(added[0].from).toBe(next.lastIndexOf('beta'));
   });
 
-  it('returns stable ranges for clause-level additions with newlines', () => {
+  it('returns stable ranges for word-level additions with newlines', () => {
     const prev = 'Wide shot, warm light.\nSubject smiles.';
     const next = 'Wide shot, warm light.\nSubject smiles.\nCamera pushes in.';
 
     const segments = diffPromptWithRanges(prev, next);
     const added = segments.filter((segment) => segment.type === 'add');
+    const first = added[0];
+    const last = added[added.length - 1];
 
-    expect(added).toHaveLength(1);
-    expect(added[0].text).toBe('Camera pushes in.');
-    expect(added[0].from).toBeDefined();
-    expect(added[0].to).toBeDefined();
-    expect(next.slice(added[0].from!, added[0].to!)).toBe('Camera pushes in.');
+    expect(added.map((segment) => segment.text)).toEqual(['Camera', 'pushes', 'in.']);
+    expect(first.from).toBeDefined();
+    expect(last.to).toBeDefined();
+    expect(next.slice(first.from!, last.to!)).toBe('Camera pushes in.');
+    for (const segment of added) {
+      expect(segment.from).toBeDefined();
+      expect(segment.to).toBeDefined();
+      expect(next.slice(segment.from!, segment.to!)).toBe(segment.text);
+    }
   });
 });

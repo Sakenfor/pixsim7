@@ -197,14 +197,10 @@ export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWit
   if (!prev.trim()) return [{ type: 'add', text: next, from: 0, to: next.length }];
   if (!next.trim()) return [{ type: 'remove', text: prev }];
 
-  const prevClauses = splitClausesWithRanges(prev);
-  const nextClauses = splitClausesWithRanges(next);
-
-  // Keep parity with `diffPrompt`: only fall back to word-level when both
-  // sides are a single clause.
-  const useWordLevel = prevClauses.length <= 1 && nextClauses.length <= 1;
-  const prevTokens = useWordLevel ? splitWordsWithRanges(prev) : prevClauses;
-  const nextTokens = useWordLevel ? splitWordsWithRanges(next) : nextClauses;
+  // For visual overlays we prefer precise, local highlights. Use word-level
+  // tokenization so small edits inside a clause don't light up whole sentences.
+  const prevTokens = splitWordsWithRanges(prev);
+  const nextTokens = splitWordsWithRanges(next);
 
   return diffTokenArrays(prevTokens, nextTokens).map((segment) => {
     if (typeof segment.nextIndex === 'number') {
