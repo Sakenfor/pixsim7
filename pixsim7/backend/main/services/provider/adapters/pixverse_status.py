@@ -223,7 +223,13 @@ class PixverseStatusMixin:
                     raw_status = _get_field(video, "video_status", "status")
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
-                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame", "first_frame", "thumbnail_url", "thumbnail")
+                    # Strict: only accept the last-frame URL. `first_frame`,
+                    # `thumbnail_url`, and `thumbnail` are semantically ambiguous
+                    # — stamping them here would poison submission.response
+                    # and self-heal asset.media_metadata.provider_thumbnail_url
+                    # with a first-frame value, silently breaking the synthetic
+                    # extend seed path.
+                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
                     video_url, thumb_url, media_url_signals = (
                         _extract_sanitized_video_urls(video_url_raw, thumb_raw)
                     )
@@ -344,11 +350,13 @@ class PixverseStatusMixin:
                             return list_result
 
                     raw_video_url = _get_field(raw_data, "url", "video_url")
-                    # Priority: last-frame fields first, first_frame as fallback
-                    # (semantically WRONG for extend seeding but kept for display).
-                    # See pixverse-py/client.py:_parse_video_response for the
-                    # canonical priority + rationale.
-                    raw_thumb = _get_field(raw_data, "customer_video_last_frame_url", "last_frame", "first_frame", "thumbnail_url", "thumbnail")
+                    # Strict: only accept the last-frame URL. `first_frame`,
+                    # `thumbnail_url`, and `thumbnail` are semantically ambiguous
+                    # — stamping them here would poison submission.response
+                    # and self-heal asset.media_metadata.provider_thumbnail_url
+                    # with a first-frame value, silently breaking the synthetic
+                    # extend seed path.
+                    raw_thumb = _get_field(raw_data, "customer_video_last_frame_url", "last_frame")
                     raw_status = _get_field(raw_data, "video_status", "status")
                     video_url, thumbnail_url, media_url_signals = (
                         _extract_sanitized_video_urls(raw_video_url, raw_thumb)
@@ -473,7 +481,13 @@ class PixverseStatusMixin:
                     raw_status = _get_field(video, "video_status", "status")
                     status = self._map_pixverse_status(video)
                     video_url_raw = _get_field(video, "url", "video_url")
-                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame", "first_frame", "thumbnail_url", "thumbnail")
+                    # Strict: only accept the last-frame URL. `first_frame`,
+                    # `thumbnail_url`, and `thumbnail` are semantically ambiguous
+                    # — stamping them here would poison submission.response
+                    # and self-heal asset.media_metadata.provider_thumbnail_url
+                    # with a first-frame value, silently breaking the synthetic
+                    # extend seed path.
+                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
                     video_url, thumb_url, media_url_signals = (
                         _extract_sanitized_video_urls(video_url_raw, thumb_raw)
                     )
@@ -622,7 +636,13 @@ class PixverseStatusMixin:
                 raw_status = _get_field(video, "video_status", "status")
                 status = self._map_pixverse_status(video)
                 video_url_raw = _get_field(video, "url", "video_url")
-                thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame", "first_frame", "thumbnail_url", "thumbnail")
+                # Strict: only accept the last-frame URL. `first_frame`,
+                # `thumbnail_url`, and `thumbnail` are semantically ambiguous
+                # — stamping them here would poison submission.response
+                # and self-heal asset.media_metadata.provider_thumbnail_url
+                # with a first-frame value, silently breaking the synthetic
+                # extend seed path.
+                thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
                 video_url, thumb_url, media_url_signals = (
                     _extract_sanitized_video_urls(video_url_raw, thumb_raw)
                 )

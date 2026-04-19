@@ -10,8 +10,8 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDoma
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 
 # Canonical asset kind values — extend this tuple when adding new kinds
-ASSET_KINDS = ("content", "mask", "guidance", "reference")
-AssetKind = Literal["content", "mask", "guidance", "reference"]
+ASSET_KINDS = ("content", "mask", "guidance", "reference", "extracted_frame")
+AssetKind = Literal["content", "mask", "guidance", "reference", "extracted_frame"]
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as normalize_pixverse_url,
@@ -209,7 +209,7 @@ class AssetResponse(BaseModel):
 
     # Cross-provider upload mapping (provider_id -> uploaded asset URL/ID)
     # Used by frontend to get provider-specific URLs for operations like IMAGE_TO_IMAGE
-    provider_uploads: Optional[Dict[str, str]] = None
+    provider_uploads: Optional[Dict[str, Any]] = None
 
     # Upload history (Task 104 - derived from media_metadata)
     last_upload_status_by_provider: Optional[Dict[str, Literal['success', 'error']]] = None
@@ -300,9 +300,11 @@ class AssetResponse(BaseModel):
 
         # Compute thumbnail_url from key
         # Priority: thumbnail_key > provider_thumbnail_url > file_url > remote_url > original_source_url
-        # provider_thumbnail_url is a cover/first-frame image URL returned by the provider,
-        # stashed in media_metadata during asset creation. It's an image (not video) so the
-        # frontend can display it immediately before local ingestion generates a thumbnail.
+        # provider_thumbnail_url is the provider's last-frame image URL (Pixverse:
+        # customer_video_last_frame_url / last_frame), stashed in media_metadata
+        # during asset creation by the strict status extractor. It's an image
+        # (not video) so the frontend can display it immediately before local
+        # ingestion generates a thumbnail.
         media_type = getattr(self, "media_type", None)
         media_type_value = getattr(media_type, "value", media_type)
         media_metadata = getattr(self, "media_metadata", None) or {}

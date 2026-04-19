@@ -93,14 +93,6 @@ def _extract_video_url(video: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _extract_video_thumbnail(video: Dict[str, Any]) -> Optional[str]:
-    """Extract a thumbnail URL from a Pixverse video payload."""
-    for key in ("customer_video_last_frame_url", "first_frame", "thumbnail", "cover"):
-        if key in video and video[key]:
-            return str(video[key])
-    return None
-
-
 def _extract_image_url(image: Dict[str, Any]) -> Optional[str]:
     """Extract the best image URL from a Pixverse image payload."""
     for key in ("image_url", "url"):
