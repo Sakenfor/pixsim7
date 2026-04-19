@@ -156,6 +156,56 @@ function diffTokenArrays(prev: TextToken[], next: TextToken[]): IndexedDiffSegme
   return segments;
 }
 
+/** Merge neighboring segments of the same type into larger chunks. */
+function coalesceSegments(segments: DiffSegment[]): DiffSegment[] {
+  if (segments.length <= 1) return segments;
+  const merged: DiffSegment[] = [];
+  for (const segment of segments) {
+    const last = merged[merged.length - 1];
+    if (last && last.type === segment.type) {
+      last.text += segment.text;
+    } else {
+      merged.push({ ...segment });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Refine a replacement block with character-level diff.
+ * Returns keep/add/remove segments with stable next-text ranges for keep/add.
+ */
+function refineRunWithCharDiff(
+  prevText: string,
+  nextText: string,
+  nextOffset: number,
+): DiffSegmentWithRange[] {
+  // Safety guard: avoid expensive char-level DP on very large runs.
+  const MAX_BLOCK_CHARS = 600;
+  if (prevText.length * nextText.length > MAX_BLOCK_CHARS * MAX_BLOCK_CHARS) {
+    return [{ type: 'add', text: nextText, from: nextOffset, to: nextOffset + nextText.length }];
+  }
+
+  const raw = diffArrays(prevText.split(''), nextText.split(''));
+  const charSegments = coalesceSegments(raw);
+  const refined: DiffSegmentWithRange[] = [];
+
+  let cursor = nextOffset;
+  for (const segment of charSegments) {
+    if (segment.type === 'remove') {
+      refined.push(segment);
+      continue;
+    }
+
+    const from = cursor;
+    const to = cursor + segment.text.length;
+    refined.push({ type: segment.type, text: segment.text, from, to });
+    cursor = to;
+  }
+
+  return refined;
+}
+
 /**
  * Compute a diff between two prompt texts.
  *
@@ -201,14 +251,58 @@ export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWit
   // tokenization so small edits inside a clause don't light up whole sentences.
   const prevTokens = splitWordsWithRanges(prev);
   const nextTokens = splitWordsWithRanges(next);
-
-  return diffTokenArrays(prevTokens, nextTokens).map((segment) => {
+  const base = diffTokenArrays(prevTokens, nextTokens).map((segment) => {
     if (typeof segment.nextIndex === 'number') {
       const token = nextTokens[segment.nextIndex];
-      return { type: segment.type, text: segment.text, from: token.from, to: token.to };
+      return { type: segment.type as 'keep' | 'add', text: segment.text, from: token.from, to: token.to };
     }
-    return { type: segment.type, text: segment.text };
+    return { type: segment.type as 'remove', text: segment.text };
   });
+
+  const refined: DiffSegmentWithRange[] = [];
+  let i = 0;
+  while (i < base.length) {
+    const segment = base[i];
+    if (segment.type === 'keep') {
+      refined.push(segment);
+      i += 1;
+      continue;
+    }
+
+    let j = i;
+    let hasAdd = false;
+    let hasRemove = false;
+    while (j < base.length && base[j].type !== 'keep') {
+      if (base[j].type === 'add') hasAdd = true;
+      if (base[j].type === 'remove') hasRemove = true;
+      j += 1;
+    }
+
+    const run = base.slice(i, j);
+    if (hasAdd && hasRemove) {
+      const addSegments = run.filter(
+        (item): item is DiffSegmentWithRange & { type: 'add'; from: number; to: number } =>
+          item.type === 'add' && typeof item.from === 'number' && typeof item.to === 'number',
+      );
+      if (addSegments.length > 0) {
+        const blockFrom = addSegments[0].from;
+        const blockTo = addSegments[addSegments.length - 1].to;
+        const prevBlock = run.filter((item) => item.type === 'remove').map((item) => item.text).join(' ');
+        const nextBlock = next.slice(blockFrom, blockTo);
+
+        if (prevBlock.length > 0 && nextBlock.length > 0) {
+          refined.push(...refineRunWithCharDiff(prevBlock, nextBlock, blockFrom));
+          i = j;
+          continue;
+        }
+      }
+    }
+
+    refined.push(...run);
+    i = j;
+  }
+
+  return refined;
 }
 
 /**

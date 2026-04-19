@@ -37,4 +37,19 @@ describe('diffPromptWithRanges', () => {
       expect(next.slice(segment.from!, segment.to!)).toBe(segment.text);
     }
   });
+
+  it('pinpoints intra-word edits instead of highlighting the whole token', () => {
+    const prev = 'soft lighting on subject';
+    const next = 'soft lightning on subject';
+
+    const segments = diffPromptWithRanges(prev, next);
+    const added = segments.filter((segment) => segment.type === 'add');
+    const removed = segments.filter((segment) => segment.type === 'remove');
+
+    expect(added.map((segment) => segment.text)).toEqual(['n']);
+    expect(removed).toHaveLength(0);
+    expect(added[0].from).toBeDefined();
+    expect(added[0].to).toBeDefined();
+    expect(next.slice(added[0].from!, added[0].to!)).toBe('n');
+  });
 });
