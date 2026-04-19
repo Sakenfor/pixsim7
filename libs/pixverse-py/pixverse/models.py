@@ -633,7 +633,31 @@ class Video(BaseModel):
     url: Optional[str] = Field(default=None, description="Video URL")
     status: str = Field(default="pending", description="Video status (pending, processing, completed, failed)")
     prompt: Optional[str] = Field(default=None, description="Generation prompt")
-    thumbnail: Optional[str] = Field(default=None, description="Thumbnail URL")
+    thumbnail: Optional[str] = Field(
+        default=None,
+        description=(
+            "Representative frame URL. Back-compat field — may be the LAST "
+            "frame (preferred) or the FIRST frame (fallback). Ambiguous by "
+            "design; consumers that need strict semantics should read "
+            "last_frame_url / first_frame_url instead."
+        ),
+    )
+    last_frame_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Final rendered frame URL — sourced from "
+            "customer_video_last_frame_url or last_frame. Reusable as an "
+            "extend seed or i2v input. None when Pixverse never produced "
+            "one (filtered videos, early-CDN-terminated sources)."
+        ),
+    )
+    first_frame_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Opening frame URL — sourced from first_frame. Display-only; "
+            "never semantically valid as an extend seed."
+        ),
+    )
     duration: Optional[float] = Field(default=None, description="Video duration in seconds")
     model: Optional[str] = Field(default=None, description="Model used for generation")
     created_at: Optional[datetime] = Field(default=None, description="Creation timestamp")

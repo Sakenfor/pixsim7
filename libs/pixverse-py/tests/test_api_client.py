@@ -216,9 +216,77 @@ class TestParseVideoResponse:
         assert video.status == "completed"
         assert video.url == "https://example.com/video.mp4"
         assert video.thumbnail == "https://example.com/thumb.jpg"
+        assert video.last_frame_url == "https://example.com/thumb.jpg"
+        assert video.first_frame_url is None
         assert video.prompt == "Test prompt"
         assert video.duration == 5
         assert video.model == "v2"
+
+    def test_parse_video_frame_urls_last_frame_only(self, api_client):
+        """Only `last_frame` present → last_frame_url set, first_frame_url None,
+        thumbnail falls back to last_frame_url."""
+        data = {
+            "video_id": "1",
+            "status": 1,
+            "last_frame": "https://example.com/last.jpg",
+        }
+        video = api_client._parse_video_response(data)
+        assert video.last_frame_url == "https://example.com/last.jpg"
+        assert video.first_frame_url is None
+        assert video.thumbnail == "https://example.com/last.jpg"
+
+    def test_parse_video_frame_urls_first_frame_only(self, api_client):
+        """Only `first_frame` present (e.g. CDN-filtered source) → last_frame_url
+        stays None; thumbnail falls back to first_frame for display only.
+        Consumers that need an extend seed must check last_frame_url strictly."""
+        data = {
+            "video_id": "1",
+            "status": 1,
+            "first_frame": "https://example.com/first.jpg",
+        }
+        video = api_client._parse_video_response(data)
+        assert video.last_frame_url is None
+        assert video.first_frame_url == "https://example.com/first.jpg"
+        assert video.thumbnail == "https://example.com/first.jpg"
+
+    def test_parse_video_frame_urls_both_present(self, api_client):
+        """Both frames present → both typed fields populated; thumbnail prefers last."""
+        data = {
+            "video_id": "1",
+            "status": 1,
+            "last_frame": "https://example.com/last.jpg",
+            "first_frame": "https://example.com/first.jpg",
+        }
+        video = api_client._parse_video_response(data)
+        assert video.last_frame_url == "https://example.com/last.jpg"
+        assert video.first_frame_url == "https://example.com/first.jpg"
+        assert video.thumbnail == "https://example.com/last.jpg"
+
+    def test_parse_video_frame_urls_none_present(self, api_client):
+        """Neither frame present → both typed fields None; thumbnail falls back
+        to generic `thumbnail` key if present, else None."""
+        data_no_thumb = {"video_id": "1", "status": 1}
+        video = api_client._parse_video_response(data_no_thumb)
+        assert video.last_frame_url is None
+        assert video.first_frame_url is None
+        assert video.thumbnail is None
+
+        data_generic = {"video_id": "1", "status": 1, "thumbnail": "https://example.com/generic.jpg"}
+        video = api_client._parse_video_response(data_generic)
+        assert video.last_frame_url is None
+        assert video.first_frame_url is None
+        assert video.thumbnail == "https://example.com/generic.jpg"
+
+    def test_parse_video_frame_urls_customer_takes_priority_over_last_frame(self, api_client):
+        """customer_video_last_frame_url wins over last_frame (canonical field name)."""
+        data = {
+            "video_id": "1",
+            "status": 1,
+            "customer_video_last_frame_url": "https://example.com/customer.jpg",
+            "last_frame": "https://example.com/last.jpg",
+        }
+        video = api_client._parse_video_response(data)
+        assert video.last_frame_url == "https://example.com/customer.jpg"
 
     def test_parse_video_status_codes(self, api_client):
         """Test status code mapping"""

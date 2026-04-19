@@ -872,20 +872,18 @@ class PixverseAPI:
 
         # Extract URLs
         video_url = data.get("customer_video_url") or data.get("video_url") or data.get("url")
-        # Priority for the representative frame URL (stored on Video.thumbnail).
-        # For Pixverse the intended value is the LAST rendered frame —
-        # reusable as an extend seed (customer_video_last_frame_url).
-        #   1. customer_video_last_frame_url — canonical extend-input field name.
-        #   2. last_frame — raw field name in get_video responses.
-        #   3. first_frame — OPENING frame, semantically WRONG for extend use;
-        #      accepted as a last-resort display fallback only.
-        #   4. thumbnail — generic catch-all.
-        thumbnail_url = (
+
+        # Typed frame-URL split. Pixverse's extend endpoint requires the LAST
+        # rendered frame; seeding from the FIRST frame is silently wrong.
+        # Callers that need strict semantics read last_frame_url / first_frame_url.
+        # `.thumbnail` stays as a back-compat representative URL — last preferred,
+        # first as fallback, generic thumbnail as last resort.
+        last_frame_url = (
             data.get("customer_video_last_frame_url")
             or data.get("last_frame")
-            or data.get("first_frame")
-            or data.get("thumbnail")
         )
+        first_frame_url = data.get("first_frame")
+        thumbnail_url = last_frame_url or first_frame_url or data.get("thumbnail")
 
         return Video(
             id=str(video_id) if video_id else None,
@@ -893,6 +891,8 @@ class PixverseAPI:
             status=status,
             prompt=data.get("prompt"),
             thumbnail=thumbnail_url,
+            last_frame_url=last_frame_url,
+            first_frame_url=first_frame_url,
             duration=data.get("duration"),
             model=data.get("model"),
             metadata=data

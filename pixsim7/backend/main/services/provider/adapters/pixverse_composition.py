@@ -118,16 +118,24 @@ async def resolve_pixverse_last_frame_url(
     """Three-level lookup for a Pixverse video asset's last-frame URL.
 
     Pixverse labels this ``customer_video_last_frame_url`` server-side and
-    ``Video.thumbnail`` in the SDK — it IS the last rendered frame, reusable
-    as both an extend seed AND as an i2v/i2i input image without re-upload.
+    exposes it as ``Video.last_frame_url`` in the SDK (``customer_video_last_frame_url``
+    or ``last_frame`` from the raw response). It is the LAST rendered frame,
+    reusable as both an extend seed AND as an i2v/i2i input image without
+    re-upload. Never a cover or first-frame fallback — callers that want a
+    display thumbnail (where first_frame is an acceptable stand-in) should
+    read the asset's computed ``thumbnail_url`` field instead.
 
     Chain:
       1. ``asset.media_metadata['provider_thumbnail_url']`` — free DB read.
+         Stamped by the strict status extractor, so its value is always
+         a last-frame URL (or absent) for Pixverse.
       2. latest successful ``ProviderSubmission.response['thumbnail_url']``
-         — free DB read, stamped by the status poller on terminal.
-      3. live ``client.get_video(provider_job_id).thumbnail`` — one Pixverse
-         API call, self-heals by stamping both L1 and L2 on success so
-         subsequent lookups are zero-cost.
+         — free DB read, stamped by the status poller on terminal (same
+         strict last-frame semantics as L1).
+      3. live ``client.get_video(provider_job_id).last_frame_url`` — one
+         Pixverse API call; None when Pixverse never produced a last frame
+         (filtered / early-CDN-terminated). Self-heals by stamping both L1
+         and L2 on success so subsequent lookups are zero-cost.
 
     Returns the URL or None.  Never raises — caller just falls through.
     """
@@ -193,7 +201,15 @@ async def resolve_pixverse_last_frame_url(
 
         live_client = provider._create_client(active_account)
         video = await live_client.get_video(video_id=str(latest_sub.provider_job_id))
-        thumb = getattr(video, "thumbnail", None)
+        # Strict: only accept last_frame_url (sourced from
+        # customer_video_last_frame_url / last_frame). The legacy .thumbnail
+        # attribute falls back to first_frame for display, which would silently
+        # pin extend output to the OPENING frame of the source. For old SDKs
+        # without the typed attribute, fall back to .thumbnail for back-compat.
+        if hasattr(video, "last_frame_url"):
+            thumb = video.last_frame_url
+        else:
+            thumb = getattr(video, "thumbnail", None)
         # Reject placeholder URLs (e.g. .../default.jpg) — Pixverse returns
         # those for FILTERED videos.  Not a real last frame.
         from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
