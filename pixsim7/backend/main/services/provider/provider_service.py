@@ -1257,6 +1257,56 @@ class ProviderService:
         # Assign new dict to trigger SQLAlchemy change detection for JSON column
         submission.response = updated_response
 
+        # Propagate real thumbnail to asset.media_metadata so downstream
+        # consumers (media-card badge, synthetic-extend reuse, asset listing
+        # schema) can read it without joining through the submission table.
+        # Gate to avoid stamping transient or placeholder URLs:
+        #   - Terminal status only (skip in-flight processing polls).
+        #   - Non-placeholder URL (skip default.jpg that filtered videos
+        #     return — those must not show a "real thumb" signal).
+        #   - Video operations only (images stamp their thumbnail at
+        #     creation time via a different path).
+        _terminal = status_result.status in (
+            ProviderStatus.COMPLETED,
+            ProviderStatus.FILTERED,
+        )
+        _is_video_op = operation_type in (
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+            OperationType.VIDEO_EXTEND,
+            OperationType.FUSION,
+        )
+        if (
+            thumbnail_url
+            and _terminal
+            and _is_video_op
+            and not _is_pixverse_placeholder_url(thumbnail_url)
+        ):
+            try:
+                from pixsim7.backend.main.domain import Generation, Asset
+                from sqlalchemy.orm.attributes import flag_modified
+                gen = await self.db.get(Generation, submission.generation_id)
+                if gen and gen.asset_id:
+                    asset = await self.db.get(Asset, gen.asset_id)
+                    if asset is not None:
+                        meta = dict(asset.media_metadata or {})
+                        if meta.get("provider_thumbnail_url") != thumbnail_url:
+                            meta["provider_thumbnail_url"] = thumbnail_url
+                            asset.media_metadata = meta
+                            flag_modified(asset, "media_metadata")
+                            logger.info(
+                                "asset_provider_thumbnail_stamped",
+                                asset_id=asset.id,
+                                submission_id=submission.id,
+                                thumbnail_url=thumbnail_url[:80],
+                            )
+            except Exception as exc:
+                logger.warning(
+                    "asset_provider_thumbnail_stamp_failed",
+                    submission_id=submission.id,
+                    error=str(exc),
+                )
+
         await self.db.commit()
         await self.db.refresh(submission)
 

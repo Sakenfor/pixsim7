@@ -236,7 +236,10 @@ class PixverseStatusMixin:
                         height=_get_field(video, "output_height", "height"),
                         duration_sec=_get_field(video, "video_duration", "duration"),
                         provider_video_id=str(raw_video_id or video_id),
-                        suppress_thumbnail=True,
+                        # Only suppress when we actually got a placeholder
+                        # (e.g. /default.jpg on filtered videos).  Real
+                        # thumbnails are the last-frame URL we want to keep.
+                        suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
                         has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
                         metadata={
                             "provider_status": raw_status,
@@ -374,7 +377,10 @@ class PixverseStatusMixin:
                         height=_get_field(raw_data, "output_height", "height"),
                         duration_sec=_get_field(raw_data, "video_duration", "duration"),
                         provider_video_id=str(_get_field(raw_data, "video_id", "id")),
-                        suppress_thumbnail=True,
+                        # Only suppress when we actually got a placeholder
+                        # (e.g. /default.jpg on filtered videos).  Real
+                        # thumbnails are the last-frame URL we want to keep.
+                        suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
                         has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
                         metadata={
                             "provider_status": raw_status,
@@ -480,7 +486,10 @@ class PixverseStatusMixin:
                         height=_get_field(video, "output_height", "height"),
                         duration_sec=_get_field(video, "video_duration", "duration"),
                         provider_video_id=str(raw_video_id or video_id),
-                        suppress_thumbnail=True,
+                        # Only suppress when we actually got a placeholder
+                        # (e.g. /default.jpg on filtered videos).  Real
+                        # thumbnails are the last-frame URL we want to keep.
+                        suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
                         has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
                         metadata={
                             "provider_status": raw_status,
