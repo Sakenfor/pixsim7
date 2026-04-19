@@ -4,10 +4,12 @@ Asset helper functions shared across asset endpoints.
 from typing import List
 
 from fastapi import HTTPException
+
 from pixsim7.backend.main.api.dependencies import DatabaseSession
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
+from pixsim7.backend.main.services.asset.lineage import AssetLineageService
 from pixsim7.backend.main.services.tag import TagAssignment
 from pixsim7.backend.main.domain.assets.tag import AssetTag
 
@@ -62,6 +64,8 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     ar = AssetResponse.model_validate(asset)
     ar.provider_status = _compute_provider_status(asset)
     ar.tags = [TagSummary.model_validate(tag) for tag in tags]
+    has_children_map = await AssetLineageService(db).has_children_map([asset.id])
+    ar.has_children = has_children_map.get(asset.id, False)
 
     return ar
 
@@ -74,13 +78,16 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
         return []
 
     asset_tags = TagAssignment(db, AssetTag, "asset_id")
-    tags_map = await asset_tags.get_tags_batch([a.id for a in assets])
+    ids = [a.id for a in assets]
+    tags_map = await asset_tags.get_tags_batch(ids)
+    has_children_map = await AssetLineageService(db).has_children_map(ids)
 
     responses: List[AssetResponse] = []
     for asset in assets:
         ar = AssetResponse.model_validate(asset)
         ar.provider_status = _compute_provider_status(asset)
         ar.tags = [TagSummary.model_validate(tag) for tag in tags_map.get(asset.id, [])]
+        ar.has_children = has_children_map.get(asset.id, False)
         responses.append(ar)
 
     return responses

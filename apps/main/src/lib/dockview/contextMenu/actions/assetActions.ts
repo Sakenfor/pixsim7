@@ -847,6 +847,15 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
     }
   }
 
+  if (asset.hasChildren) {
+    variants.push({
+      id: 'derived-from-this',
+      label: 'Derived from this asset',
+      icon: 'git-branch',
+      filters: { source_asset_id: asset.id },
+    });
+  }
+
   if (asset.sourceGenerationId) {
     variants.push({ id: 'generation', label: 'Same generation', icon: 'sparkles', filters: { source_generation_id: asset.sourceGenerationId } });
   }

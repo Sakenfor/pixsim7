@@ -10,8 +10,8 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDoma
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 
 # Canonical asset kind values — extend this tuple when adding new kinds
-ASSET_KINDS = ("content", "mask", "guidance", "reference", "extracted_frame")
-AssetKind = Literal["content", "mask", "guidance", "reference", "extracted_frame"]
+ASSET_KINDS = ("content", "mask", "guidance", "reference")
+AssetKind = Literal["content", "mask", "guidance", "reference"]
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as normalize_pixverse_url,
@@ -209,7 +209,7 @@ class AssetResponse(BaseModel):
 
     # Cross-provider upload mapping (provider_id -> uploaded asset URL/ID)
     # Used by frontend to get provider-specific URLs for operations like IMAGE_TO_IMAGE
-    provider_uploads: Optional[Dict[str, Any]] = None
+    provider_uploads: Optional[Dict[str, str]] = None
 
     # Upload history (Task 104 - derived from media_metadata)
     last_upload_status_by_provider: Optional[Dict[str, Literal['success', 'error']]] = None

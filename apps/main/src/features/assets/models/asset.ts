@@ -69,6 +69,8 @@ export interface AssetModel {
   sourceGenerationId?: number | null;
   /** True when asset has a Generation record or usable media_metadata for regen/extend */
   hasGenerationContext?: boolean;
+  /** True when at least one other asset lists this one as its source/parent (via lineage or upload_context) */
+  hasChildren?: boolean;
   storedKey?: string | null;
   syncStatus: AssetSyncStatus;
   tags?: TagSummary[];
@@ -84,6 +86,19 @@ export interface AssetModel {
   prompt?: string | null;
   operationType?: string | null;
   reproducibleHash?: string | null;
+
+  /** When present, asset was produced via the "artificial extend" flow
+   *  (extract a frame → image-to-video). Carries lineage back to the
+   *  source video plus the frame selector used. */
+  artificialExtend?: {
+    source_video_id?: number;
+    source_frame_asset_id?: number;
+    method?: string;
+    frame?: {
+      mode?: 'last' | 'first' | 'timestamp';
+      timestamp_sec?: number;
+    };
+  } | null;
 
   // Versioning fields
   /** UUID of version family (null = standalone asset, not versioned) */
@@ -176,6 +191,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     remoteUrl: response.remote_url,
     sourceGenerationId: response.source_generation_id,
     hasGenerationContext: response.has_generation_context ?? false,
+    hasChildren: (response as any).has_children ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
     tags: response.tags?.map((tag) => ({
@@ -197,6 +213,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     prompt: (response as any).prompt ?? null,
     operationType: (response as any).operation_type ?? null,
     reproducibleHash: (response as any).reproducible_hash ?? null,
+    artificialExtend: (response as any).artificial_extend ?? null,
 
     // Versioning fields
     versionFamilyId: response.version_family_id ?? null,
