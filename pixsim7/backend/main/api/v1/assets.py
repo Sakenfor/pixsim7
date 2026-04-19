@@ -559,6 +559,96 @@ async def archive_asset(
         raise HTTPException(status_code=500, detail=f"Failed to archive asset: {str(e)}")
 
 
+# ===== SIGNAL ANALYSIS (heuristic broken-video scan + manual override) =====
+
+class SignalScanResponse(BaseModel):
+    id: int
+    signal_metrics: Optional[dict] = Field(
+        default=None,
+        description="Result of the scan; null if asset wasn't eligible (non-video / no local file)",
+    )
+
+
+@router.post("/{asset_id}/scan-signal-metrics", response_model=SignalScanResponse)
+async def scan_signal_metrics(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+    force: bool = Query(default=True, description="Re-scan even if scanner_version matches"),
+):
+    """Run the broken-video heuristic scan on a single asset.
+
+    Stamps `media_metadata.signal_metrics` with audio/visual metrics and a
+    score. Preserves any existing `user_override`. Returns the new metrics
+    payload (or null if the asset isn't eligible — non-video or no local file).
+    """
+    from pixsim7.backend.main.services.asset.signal_analysis import SignalAnalysisService
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+        payload = await SignalAnalysisService(db).probe_and_stamp(asset, force=force)
+        return SignalScanResponse(id=asset.id, signal_metrics=payload)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error("signal_scan_failed", asset_id=asset_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to scan signal metrics: {str(e)}")
+
+
+class SignalOverrideRequest(BaseModel):
+    override: Optional[str] = Field(
+        default=None,
+        description="'clean' (kept), 'broken' (confirmed bad), or null to clear",
+    )
+
+
+class SignalOverrideResponse(BaseModel):
+    id: int
+    override: Optional[str]
+
+
+@router.post("/{asset_id}/signal-override", response_model=SignalOverrideResponse)
+async def set_signal_override(
+    asset_id: int,
+    request: SignalOverrideRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+):
+    """Set or clear the user's manual override on the signal-based heuristic.
+
+    This decides whether the asset appears in `signal_likely_broken` /
+    `signal_likely_clean` filters even when the heuristic score says otherwise.
+    Stored as `media_metadata.signal_metrics.user_override`.
+    """
+    if request.override not in (None, "clean", "broken"):
+        raise HTTPException(status_code=400, detail="override must be 'clean', 'broken', or null")
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+        # Merge into media_metadata.signal_metrics without clobbering siblings.
+        meta = dict(asset.media_metadata or {})
+        signal_metrics = dict(meta.get("signal_metrics") or {})
+        if request.override is None:
+            signal_metrics.pop("user_override", None)
+        else:
+            signal_metrics["user_override"] = request.override
+        meta["signal_metrics"] = signal_metrics
+        asset.media_metadata = meta
+        # SQLAlchemy mutation tracking on JSON columns: reassign to trigger update.
+        db.add(asset)
+        await db.commit()
+        return SignalOverrideResponse(id=asset.id, override=request.override)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error("signal_override_failed", asset_id=asset_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to set signal override: {str(e)}")
+
+
 # ===== SERVE LOCAL ASSET FILE =====
 
 @router.get("/{asset_id}/file")

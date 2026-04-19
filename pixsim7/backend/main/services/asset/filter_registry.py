@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists, String
+from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists, String, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB  # still used by provider_uploads cast
 
@@ -943,6 +943,46 @@ def register_default_asset_filters() -> None:
                 "flagged": "Flagged",
                 "unknown": "Unknown",
             },
+        )
+    )
+
+    # -- Signal-based quality filters (populated by scripts/scan_suspicious_videos.py) --
+    # media_metadata is JSON (not JSONB) — cast then use the -> / ->> operators.
+    # SQLAlchemy subscript on cast() emits raw [] which Postgres rejects, so use op().
+    _signal_metrics = cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
+    _signal_score = _signal_metrics.op("->>")("score").cast(Integer)
+    _signal_override = _signal_metrics.op("->>")("user_override")  # 'clean' | 'broken' | NULL
+
+    asset_filter_registry.register(
+        FilterSpec(
+            key="signal_likely_broken",
+            type="boolean",
+            label="Likely broken",
+            description="Heuristic flag: low audio + low visual divergence (score ≥ 3). Excludes user-marked Keep.",
+            # score >= 3 AND override IS NOT 'clean' (NULL is fine)
+            condition_builder=lambda v: (
+                (_signal_score >= 3) & (func.coalesce(_signal_override, "") != "clean")
+            ) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="signal_likely_clean",
+            type="boolean",
+            label="Likely clean",
+            description="Signal score == 0. Excludes user-marked broken.",
+            condition_builder=lambda v: (
+                (_signal_score == 0) & (func.coalesce(_signal_override, "") != "broken")
+            ) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="signal_overridden",
+            type="boolean",
+            label="Signal: overridden",
+            description="Assets where you manually marked Keep or Flag (audit your own decisions)",
+            condition_builder=lambda v: _signal_override.isnot(None) if v else None,
         )
     )
 

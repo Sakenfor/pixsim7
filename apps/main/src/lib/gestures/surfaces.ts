@@ -80,3 +80,27 @@ registerGestureSurface({
   actionPool: GESTURE_ACTIONS,
   allowMirrorFrom: ['gallery', 'viewer'],
 });
+
+registerGestureSurface({
+  id: 'signal-triage',
+  label: 'Signal Triage',
+  icon: '⚠️',
+  order: 40,
+  description: 'Cards in the signal triage gallery surface — swipe to keep or flag the heuristic decision.',
+  defaults: {
+    enabled: true,
+    threshold: 30,
+    edgeInset: 0.2,
+    cascadeStepPixels: 50,
+    gestureUp: ['markSignalKeep'],
+    gestureDown: ['markSignalFlag'],
+    gestureLeft: ['none'],
+    gestureRight: ['none'],
+    chainUp: 'none',
+    chainDown: 'none',
+    chainLeft: 'none',
+    chainRight: 'none',
+  },
+  actionPool: GESTURE_ACTIONS,
+  allowMirrorFrom: ['gallery'],
+});

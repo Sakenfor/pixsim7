@@ -111,6 +111,36 @@ export function createAssetsApi(client: PixSimApiClient) {
       );
     },
 
+    /**
+     * Set or clear the user's manual override on the signal-based broken-video heuristic.
+     * `override` = 'clean' (mark as kept) | 'broken' (confirm bad) | null (clear).
+     */
+    async setSignalOverride(
+      assetId: number,
+      override: 'clean' | 'broken' | null,
+    ): Promise<{ id: number; override: 'clean' | 'broken' | null }> {
+      return client.post<{ id: number; override: 'clean' | 'broken' | null }>(
+        `/assets/${assetId}/signal-override`,
+        { override }
+      );
+    },
+
+    /**
+     * Run the broken-video heuristic scan on a single asset. Useful for
+     * re-scanning after the heuristic version changes or for assets that were
+     * uploaded before the ingest-time hook was wired up.
+     */
+    async scanSignalMetrics(
+      assetId: number,
+      options?: { force?: boolean },
+    ): Promise<{ id: number; signal_metrics: Record<string, unknown> | null }> {
+      const params = options?.force === false ? '?force=false' : '';
+      return client.post<{ id: number; signal_metrics: Record<string, unknown> | null }>(
+        `/assets/${assetId}/scan-signal-metrics${params}`,
+        {}
+      );
+    },
+
     async extractFrame(request: ExtractFrameRequest): Promise<AssetResponse> {
       return client.post<AssetResponse>('/assets/extract-frame', request);
     },

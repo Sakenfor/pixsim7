@@ -13,11 +13,23 @@
  *  6. Thumbnails          — action-only (regenerate missing)
  */
 
-import { Button } from '@pixsim7/shared.ui';
+import {
+  Badge,
+  Button,
+  DisclosureSection,
+  LoadingSpinner,
+  SidebarContentLayout,
+  type SidebarContentLayoutSection,
+  StatusPill,
+  type StatusTone,
+} from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { Icon, type IconName } from '@lib/icons';
+
+import { DuplicatesRow } from './DuplicatesRow';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,7 +96,9 @@ interface ActionResult {
 // ---------------------------------------------------------------------------
 
 function apiBase() {
-  return (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
+  // Empty = relative mode (proxy handles routing). Undefined = hardcoded fallback.
+  const url = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
+  return url.replace(/\/$/, '');
 }
 
 function authHeaders(): Record<string, string> {
@@ -109,27 +123,20 @@ function fmt(n: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Spinner
+// Spinner — local alias mapping legacy className-based callers to the shared
+// LoadingSpinner. Existing call sites pass `className="w-3 h-3"` etc.; we
+// translate those to the shared size variants.
 // ---------------------------------------------------------------------------
 
-function Spinner({ className = 'w-3.5 h-3.5' }: { className?: string }) {
-  return (
-    <svg className={`${className} animate-spin text-muted-foreground`} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-    </svg>
-  );
+function Spinner({ className = '' }: { className?: string }) {
+  // Heuristic: w-3 h-3 → xs; w-3.5 h-3.5 (default) → sm; otherwise default sm.
+  const size: 'xs' | 'sm' = /w-3\b/.test(className) ? 'xs' : 'sm';
+  return <LoadingSpinner size={size} />;
 }
 
 // ---------------------------------------------------------------------------
 // System health header
 // ---------------------------------------------------------------------------
-
-function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span className={`inline-block w-1.5 h-1.5 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'}`} />
-  );
-}
 
 function HealthHeader() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -140,28 +147,23 @@ function HealthHeader() {
 
   if (!health) return null;
 
+  const tone = (ok: boolean): StatusTone => (ok ? 'success' : 'danger');
   const dbOk = health.database === 'connected';
   const redisOk = health.redis === 'connected';
+  const overallTone: StatusTone = health.status === 'healthy' ? 'success' : 'warning';
 
   return (
-    <div className="flex items-center gap-4 px-3 py-2 text-[11px] text-muted-foreground">
-      <div className="flex items-center gap-1.5">
-        <StatusDot ok={dbOk} />
-        <span>Database</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <StatusDot ok={redisOk} />
-        <span>Redis</span>
-      </div>
+    <div className="flex items-center gap-2 px-3 py-2">
+      <StatusPill tone={tone(dbOk)} dot>Database</StatusPill>
+      <StatusPill tone={tone(redisOk)} dot>Redis</StatusPill>
       {health.providers.length > 0 && (
-        <div className="flex items-center gap-1.5">
-          <StatusDot ok />
-          <span>{health.providers.length} provider{health.providers.length !== 1 ? 's' : ''}</span>
-        </div>
+        <StatusPill tone="success" dot>
+          {health.providers.length} provider{health.providers.length !== 1 ? 's' : ''}
+        </StatusPill>
       )}
-      <span className={`ml-auto text-[10px] font-medium uppercase tracking-wider ${health.status === 'healthy' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+      <StatusPill tone={overallTone} className="ml-auto uppercase tracking-wider">
         {health.status}
-      </span>
+      </StatusPill>
     </div>
   );
 }
@@ -174,10 +176,12 @@ interface RowConfig<S> {
   statsEndpoint: string;
   /** Endpoint with `{limit}` placeholder for batch size, e.g. `/api/v1/assets/backfill-sha?limit={limit}` */
   actionEndpoint: string;
-  /** Available batch sizes for the dropdown. Default: [50, 100, 200] */
+  /** Suggested quick-pick batch sizes (rendered as chips). Default: [50, 100, 200, 500] */
   batchSizes?: number[];
   /** Initial batch size. Default: first item in batchSizes */
   defaultBatchSize?: number;
+  /** Hard upper bound on the user-typed batch size. Default: 500 (matches most backend Query limits). */
+  maxBatchSize?: number;
   extract: (s: S) => {
     done: number;
     total: number;
@@ -194,6 +198,8 @@ interface RowConfig<S> {
 }
 
 const DEFAULT_BATCH_SIZES = [50, 100, 200, 500];
+const DEFAULT_MAX_BATCH_SIZE = 500;
+const BATCH_SIZE_STORAGE_PREFIX = 'maintenance:batchSize:';
 
 function resolveEndpoint(template: string, batchSize: number): string {
   if (template.includes('{limit}')) {
@@ -430,6 +436,54 @@ interface FormatConversionStats {
   estimated_savings_pct: number;
 }
 
+interface SignalScanStats {
+  total_videos: number;
+  scanned: number;
+  unscanned: number;
+  broken: number;
+  clean: number;
+  borderline: number;
+  overridden: number;
+  scanner_version: string;
+  percentage: number;
+}
+
+const signalScanConfig: RowConfig<SignalScanStats> = {
+  statsEndpoint: '/api/v1/assets/signal-scan-stats',
+  actionEndpoint: '/api/v1/assets/backfill-signal-scan?limit={limit}',
+  defaultBatchSize: 200,
+  extract: (s) => ({
+    done: s.scanned,
+    total: s.total_videos,
+    pct: s.percentage,
+    complete: s.unscanned === 0 && s.total_videos > 0,
+    actionable: s.unscanned,
+    label: 'Signal Scan',
+    statsText: `${fmt(s.scanned)} / ${fmt(s.total_videos)} videos scanned`,
+    actionVerb: 'Scan',
+  }),
+  detailLines: (s) => {
+    const lines: string[] = [];
+    if (s.broken > 0)     lines.push(`${fmt(s.broken)} likely broken (score ≥ 3)`);
+    if (s.borderline > 0) lines.push(`${fmt(s.borderline)} borderline (score 1–2)`);
+    if (s.clean > 0)      lines.push(`${fmt(s.clean)} likely clean (score 0)`);
+    if (s.overridden > 0) lines.push(`${fmt(s.overridden)} manually overridden`);
+    if (s.unscanned > 0)
+      lines.push(`${fmt(s.unscanned)} unscanned — open /assets/signal-triage to validate broken set`);
+    if (s.unscanned === 0 && s.total_videos > 0)
+      lines.push('All videos scanned at current heuristic version');
+    return lines;
+  },
+  resultMessage: (d) => {
+    const parts: string[] = [];
+    if (d.scanned > 0) parts.push(`${d.scanned} scanned`);
+    if (d.broken > 0)  parts.push(`${d.broken} flagged broken`);
+    if (d.skipped > 0) parts.push(`${d.skipped} skipped (no local file)`);
+    if (d.errors > 0)  parts.push(`${d.errors} errors`);
+    return parts.length > 0 ? parts.join(', ') : null;
+  },
+};
+
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
   statsEndpoint: '/api/v1/assets/format-conversion-stats?target_format=webp',
   actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit={limit}',
@@ -467,57 +521,81 @@ const formatConversionConfig: RowConfig<FormatConversionStats> = {
       : null,
 };
 
-// ---------------------------------------------------------------------------
-// Chevron
-// ---------------------------------------------------------------------------
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={`w-3 h-3 text-muted-foreground/50 transition-transform ${expanded ? 'rotate-90' : ''}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // MaintenanceRow — stats-based row with expandable detail
 // ---------------------------------------------------------------------------
 
-function MaintenanceRow<S>({
-  config,
-  onRefresh,
-}: {
-  config: RowConfig<S>;
-  onRefresh: React.MutableRefObject<(() => Promise<void>)[]>;
-}) {
+// ---------------------------------------------------------------------------
+// useMaintenanceTask — state + data fetching for one task in the new sidebar
+// layout. Keeps batchSize inside the hook so each task owns its own knob.
+// ---------------------------------------------------------------------------
+
+function useMaintenanceTask<S>(
+  config: RowConfig<S>,
+  onRefresh: React.MutableRefObject<(() => Promise<void>)[]>,
+) {
   const sizes = config.batchSizes ?? DEFAULT_BATCH_SIZES;
-  const [batchSize, setBatchSize] = useState(config.defaultBatchSize ?? sizes[0]);
-  const { stats, loading, acting, result, fetchStats, runAction } = useMaintenanceRow(config, batchSize);
-  const [expanded, setExpanded] = useState(false);
+  const maxBatchSize = config.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
+  const storageKey = BATCH_SIZE_STORAGE_PREFIX + config.statsEndpoint;
+  const fallback = config.defaultBatchSize ?? sizes[0];
+
+  const [batchSize, setBatchSizeState] = useState<number>(() => {
+    if (typeof window === 'undefined') return fallback;
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return fallback;
+    const n = Number(stored);
+    if (!Number.isFinite(n) || n < 1) return fallback;
+    return Math.min(Math.floor(n), maxBatchSize);
+  });
+
+  const setBatchSize = useCallback(
+    (next: number) => {
+      const clamped = Math.max(1, Math.min(Math.floor(next), maxBatchSize));
+      setBatchSizeState(clamped);
+      try {
+        window.localStorage.setItem(storageKey, String(clamped));
+      } catch {
+        // localStorage may be unavailable (private mode); ignore
+      }
+    },
+    [storageKey, maxBatchSize],
+  );
+
+  const row = useMaintenanceRow(config, batchSize);
 
   useEffect(() => {
     const cbs = onRefresh.current;
-    cbs.push(fetchStats);
+    cbs.push(row.fetchStats);
     return () => {
-      const idx = cbs.indexOf(fetchStats);
+      const idx = cbs.indexOf(row.fetchStats);
       if (idx >= 0) cbs.splice(idx, 1);
     };
-  }, [fetchStats, onRefresh]);
+  }, [row.fetchStats, onRefresh]);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    row.fetchStats();
+  }, [row.fetchStats]);
+
+  return { config, batchSize, setBatchSize, sizes, maxBatchSize, ...row };
+}
+
+type MaintenanceTask<S> = ReturnType<typeof useMaintenanceTask<S>>;
+
+// ---------------------------------------------------------------------------
+// MaintenanceTaskDetail — right-pane view for one task. Replaces the old
+// compact row layout with a full-size detail view: big progress, breakdown,
+// batch selector, action, result.
+// ---------------------------------------------------------------------------
+
+function MaintenanceTaskDetail<S>({ task }: { task: MaintenanceTask<S> }) {
+  const { config, stats, loading, acting, result, runAction, batchSize, setBatchSize, sizes, maxBatchSize } = task;
 
   if (!stats) {
     return (
-      <div className="flex items-center gap-3 py-2.5 px-3">
-        <Spinner />
-        <span className="text-xs text-muted-foreground">{loading ? 'Loading...' : 'No data'}</span>
+      <div className="flex items-center gap-3 py-8 px-6">
+        <LoadingSpinner size="sm" />
+        <span className="text-sm text-muted-foreground">{loading ? 'Loading stats…' : 'No data'}</span>
       </div>
     );
   }
@@ -525,102 +603,119 @@ function MaintenanceRow<S>({
   const info = config.extract(stats);
   const busy = loading || acting;
   const details = config.detailLines?.(stats) ?? [];
-  const hasDetails = details.length > 0;
   const effectiveBatch = Math.min(batchSize, info.actionable);
 
   return (
-    <div>
-      {/* Main row */}
-      <div
-        className={`flex items-center gap-3 py-2 px-3 ${hasDetails ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''}`}
-        onClick={hasDetails ? () => setExpanded((e) => !e) : undefined}
-      >
-        {/* Expand chevron */}
-        <div className="w-3 shrink-0">
-          {hasDetails && <Chevron expanded={expanded} />}
+    <div className="flex flex-col gap-5 p-6 max-w-2xl">
+      {/* Header */}
+      <header className="flex items-baseline justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">{info.label}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">{info.statsText}</p>
         </div>
-
-        {/* Label */}
-        <span className="text-xs font-medium w-[110px] shrink-0 truncate">{info.label}</span>
-
-        {/* Stats text */}
-        <span className="text-xs text-muted-foreground w-[160px] shrink-0 tabular-nums">{info.statsText}</span>
-
-        {/* Progress bar */}
-        <div className="flex-1 min-w-[80px]">
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${info.complete ? 'bg-green-500' : 'bg-blue-500'}`}
-              style={{ width: `${info.pct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Percentage */}
         <span
-          className={`text-xs font-medium w-[36px] text-right tabular-nums ${
-            info.complete ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
+          className={`text-3xl font-bold tabular-nums ${
+            info.complete ? 'text-green-600 dark:text-green-400' : 'text-foreground'
           }`}
         >
           {info.pct.toFixed(0)}%
         </span>
+      </header>
 
-        {/* Action: verb button + batch size selector */}
-        <div className="w-[130px] shrink-0 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          {info.complete ? (
-            <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          ) : info.actionable > 0 ? (
-            <>
-              <select
-                value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value))}
-                disabled={busy}
-                className="h-7 text-[11px] bg-transparent border border-border rounded px-1 text-muted-foreground disabled:opacity-50 cursor-pointer tabular-nums"
-              >
-                {sizes.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <Button onClick={runAction} disabled={busy} variant="outline" size="sm">
-                {acting ? <Spinner className="w-3 h-3" /> : `${info.actionVerb} ${effectiveBatch}`}
-              </Button>
-            </>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">—</span>
-          )}
-        </div>
+      {/* Progress */}
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${info.complete ? 'bg-green-500' : 'bg-accent'}`}
+          style={{ width: `${info.pct}%` }}
+        />
       </div>
 
-      {/* Expanded detail lines */}
-      {expanded && details.length > 0 && (
-        <div className="px-3 pb-2 pl-[30px] space-y-0.5">
+      {/* Breakdown */}
+      {details.length > 0 && (
+        <section className="rounded-md border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5">
+          <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Breakdown
+          </h3>
           {details.map((line, i) => (
-            <div key={i} className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-              <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
-              {line}
+            <div key={i} className="text-xs flex items-center gap-2">
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/40 shrink-0" />
+              <span className="text-muted-foreground">{line}</span>
             </div>
           ))}
-        </div>
+        </section>
       )}
 
-      {/* Inline result / error */}
+      {/* Action */}
+      <section className="flex flex-col gap-2">
+        {info.complete ? (
+          <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1.5">
+            <Icon name="check" size={16} /> Complete
+          </span>
+        ) : info.actionable > 0 ? (
+          <>
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-xs text-muted-foreground">Batch size</label>
+              <input
+                type="number"
+                min={1}
+                max={maxBatchSize}
+                step={1}
+                value={batchSize}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) setBatchSize(n);
+                }}
+                disabled={busy}
+                className="h-8 w-24 text-xs bg-transparent border border-border rounded px-2 text-foreground disabled:opacity-50 tabular-nums"
+              />
+              <Button onClick={runAction} disabled={busy} variant="primary" size="sm">
+                {acting ? <LoadingSpinner size="xs" /> : `${info.actionVerb} ${fmt(effectiveBatch)}`}
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                {fmt(info.actionable)} actionable · max {fmt(maxBatchSize)}
+              </span>
+            </div>
+            {sizes.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1">Quick</span>
+                {sizes
+                  .filter((s) => s <= maxBatchSize)
+                  .map((s) => {
+                    const active = s === batchSize;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setBatchSize(s)}
+                        disabled={busy}
+                        className={`h-6 min-w-[2.25rem] px-2 text-[11px] tabular-nums rounded border transition-colors disabled:opacity-50 ${
+                          active
+                            ? 'border-accent bg-accent text-accent-foreground'
+                            : 'border-border bg-transparent hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        {fmt(s)}
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+          </>
+        ) : (
+          <span className="text-sm text-muted-foreground">No actionable items right now.</span>
+        )}
+      </section>
+
+      {/* Result */}
       {result && (
         <div
-          className={`flex items-center gap-1.5 text-[11px] px-3 pl-[30px] pb-1.5 ${
-            result.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+          className={`flex items-center gap-2 text-xs px-3 py-2 rounded border ${
+            result.isError
+              ? 'text-red-600 dark:text-red-400 border-red-300/40 bg-red-500/5'
+              : 'text-green-700 dark:text-green-400 border-green-300/40 bg-green-500/5'
           }`}
         >
-          {result.isError ? (
-            <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          ) : (
-            <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
+          <Icon name={result.isError ? 'alertCircle' : 'check'} size={14} />
           {result.message}
         </div>
       )}
@@ -831,21 +926,22 @@ function Section({
   count?: number;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div>
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors select-none"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Chevron expanded={open} />
-        <span className="text-[11px] font-medium text-muted-foreground">{title}</span>
-        {count != null && (
-          <span className="text-[10px] text-muted-foreground/50">({count})</span>
-        )}
-      </div>
-      {open && children}
-    </div>
+    <DisclosureSection
+      label={
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+          {title}
+        </span>
+      }
+      badge={count != null ? <span className="text-[10px] text-muted-foreground/50">({count})</span> : undefined}
+      defaultOpen={defaultOpen}
+      iconStyle="chevron"
+      size="sm"
+      headerClassName="px-3 hover:bg-muted/30 transition-colors"
+      contentClassName=""
+    >
+      {children}
+    </DisclosureSection>
   );
 }
 
@@ -918,16 +1014,12 @@ function fmtCount(n: number): string {
 // ---------------------------------------------------------------------------
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const cls =
-    severity === 'critical'
-      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-      : severity === 'warning'
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  const color: 'red' | 'orange' | 'blue' =
+    severity === 'critical' ? 'red' : severity === 'warning' ? 'orange' : 'blue';
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wider ${cls}`}>
+    <Badge color={color} className="text-[9px] uppercase tracking-wider px-1.5 py-0.5">
       {severity}
-    </span>
+    </Badge>
   );
 }
 
@@ -1219,9 +1311,51 @@ function StorageOverview({
 // Dashboard
 // ---------------------------------------------------------------------------
 
+/** Sidebar section entry metadata (icon + label decoupled from the row's extract() call). */
+interface TaskNavEntry {
+  id: string;
+  label: string;
+  icon: IconName;
+}
+
+const STATS_TASK_NAV: readonly TaskNavEntry[] = [
+  { id: 'sha',           label: 'SHA256 Hashes',    icon: 'hash' },
+  { id: 'storage',       label: 'Content Storage',  icon: 'database' },
+  { id: 'content',       label: 'Content Links',    icon: 'link' },
+  { id: 'upload-method', label: 'Upload Method',    icon: 'upload' },
+  { id: 'folder',        label: 'Folder Context',   icon: 'folderTree' },
+  { id: 'format',        label: 'Format Conversion', icon: 'image' },
+  { id: 'signal',        label: 'Signal Scan',      icon: 'alertTriangle' },
+];
+
+/** Sidebar progress badge — shows % (or a ✓ when complete) next to the task name. */
+function TaskPctBadge<S>({ task }: { task: MaintenanceTask<S> }) {
+  if (!task.stats) return <span className="text-[10px] text-muted-foreground/40">…</span>;
+  const info = task.config.extract(task.stats);
+  if (info.complete) {
+    return <Icon name="check" size={12} className="text-green-600 dark:text-green-400" />;
+  }
+  return (
+    <span className="text-[10px] text-muted-foreground tabular-nums">{info.pct.toFixed(0)}%</span>
+  );
+}
+
 export function MaintenanceDashboard() {
   const refreshCallbacks = useRef<(() => Promise<void>)[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeId, setActiveId] = useState<string>('overview');
+
+  // One hook per RowConfig — all fire in parallel on mount, so sidebar badges
+  // populate as stats come back.
+  const taskMap = {
+    sha:             useMaintenanceTask(shaConfig, refreshCallbacks),
+    storage:         useMaintenanceTask(storageConfig, refreshCallbacks),
+    content:         useMaintenanceTask(contentConfig, refreshCallbacks),
+    'upload-method': useMaintenanceTask(uploadMethodConfig, refreshCallbacks),
+    folder:          useMaintenanceTask(folderContextConfig, refreshCallbacks),
+    format:          useMaintenanceTask(formatConversionConfig, refreshCallbacks),
+    signal:          useMaintenanceTask(signalScanConfig, refreshCallbacks),
+  } as const;
 
   const refreshAll = async () => {
     setRefreshing(true);
@@ -1229,59 +1363,83 @@ export function MaintenanceDashboard() {
     setRefreshing(false);
   };
 
+  const sections: SidebarContentLayoutSection[] = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: <Icon name="layers" size={14} />,
+    },
+    ...STATS_TASK_NAV.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      icon: <Icon name={entry.icon} size={14} />,
+    })),
+    {
+      id: 'duplicates',
+      label: 'Duplicates',
+      icon: <Icon name="copy" size={14} />,
+    },
+    {
+      id: 'thumbnails',
+      label: 'Thumbnails',
+      icon: <Icon name="image" size={14} />,
+    },
+  ];
+
+  const activeTask =
+    activeId in taskMap ? taskMap[activeId as keyof typeof taskMap] : null;
+
   return (
-    <div className="space-y-0">
-      {/* System health */}
-      <HealthHeader />
-      <div className="h-px bg-border mx-3" />
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={activeId}
+      onSelectSection={setActiveId}
+      sidebarTitle={
+        <div className="flex items-center justify-between w-full gap-2 pr-2">
+          <span className="text-xs font-medium">Maintenance</span>
+          <Button onClick={refreshAll} disabled={refreshing} variant="outline" size="sm">
+            {refreshing ? <LoadingSpinner size="xs" /> : <Icon name="refresh" size={12} />}
+          </Button>
+        </div>
+      }
+      sidebarWidth="w-52"
+      resizable
+      persistKey="maintenance-dashboard-sidebar"
+      className="h-full"
+      contentClassName="overflow-auto"
+    >
+      {/* Per-entry badges rendered via a sibling element layer. The nav itself
+          only takes label+icon, so we render badges inside each detail pane's
+          header via the TaskPctBadge helper — keeping the sidebar purely nav. */}
 
-      {/* Storage overview */}
-      <StorageOverview onRefresh={refreshCallbacks} />
-      <div className="h-px bg-border mx-3" />
+      {activeId === 'overview' && (
+        <div className="flex flex-col gap-0">
+          <HealthHeader />
+          <div className="h-px bg-border mx-3" />
+          <StorageOverview onRefresh={refreshCallbacks} />
+        </div>
+      )}
 
-      {/* Column headers */}
-      <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 select-none">
-        <span className="w-3 shrink-0" />
-        <span className="w-[110px] shrink-0">Task</span>
-        <span className="w-[160px] shrink-0">Status</span>
-        <span className="flex-1 min-w-[80px]">Progress</span>
-        <span className="w-[36px] text-right">%</span>
-        <span className="w-[130px] shrink-0 text-right">Action</span>
-      </div>
-      <div className="h-px bg-border mx-3" />
+      {activeTask && (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 px-6 pt-4">
+            <TaskPctBadge task={activeTask} />
+          </div>
+          <MaintenanceTaskDetail task={activeTask} />
+        </div>
+      )}
 
-      {/* Stats-based rows */}
-      <MaintenanceRow config={shaConfig} onRefresh={refreshCallbacks} />
-      <div className="h-px bg-border/50 mx-3" />
-      <MaintenanceRow config={storageConfig} onRefresh={refreshCallbacks} />
-      <div className="h-px bg-border/50 mx-3" />
-      <MaintenanceRow config={contentConfig} onRefresh={refreshCallbacks} />
-      <div className="h-px bg-border/50 mx-3" />
-      <MaintenanceRow config={uploadMethodConfig} onRefresh={refreshCallbacks} />
-      <div className="h-px bg-border/50 mx-3" />
-      <MaintenanceRow config={folderContextConfig} onRefresh={refreshCallbacks} />
+      {activeId === 'duplicates' && (
+        <div className="p-4">
+          <DuplicatesRow onRefresh={refreshCallbacks} />
+        </div>
+      )}
 
-      <div className="h-px bg-border/50 mx-3" />
-      <MaintenanceRow config={formatConversionConfig} onRefresh={refreshCallbacks} />
-
-      {/* Separator before action-only rows */}
-      <div className="h-px bg-border mx-3" />
-      <ThumbnailRow onRefresh={refreshCallbacks} />
-
-      {/* Footer */}
-      <div className="h-px bg-border mx-3" />
-      <div className="flex justify-end px-3 pt-2 pb-1">
-        <Button onClick={refreshAll} disabled={refreshing} variant="outline" size="sm">
-          {refreshing ? (
-            <>
-              <Spinner className="w-3 h-3" />
-              <span className="ml-1.5">Refreshing…</span>
-            </>
-          ) : (
-            'Refresh All'
-          )}
-        </Button>
-      </div>
-    </div>
+      {activeId === 'thumbnails' && (
+        <div className="p-4">
+          <ThumbnailRow onRefresh={refreshCallbacks} />
+        </div>
+      )}
+    </SidebarContentLayout>
   );
 }

@@ -36,6 +36,8 @@ export const GESTURE_ACTIONS = [
   { id: 'toggleFavorite', label: 'Toggle Favorite' },
   { id: 'approve', label: 'Approve', actionKey: 'onApprove' },
   { id: 'reject', label: 'Reject', actionKey: 'onReject' },
+  { id: 'markSignalKeep', label: 'Signal: Keep (override)', actionKey: 'onMarkSignalKeep' },
+  { id: 'markSignalFlag', label: 'Signal: Flag as broken', actionKey: 'onMarkSignalFlag' },
 ] as const satisfies readonly GestureActionDef[];
 
 // ─── Viewer-specific gesture actions ─────────────────────────────────────────

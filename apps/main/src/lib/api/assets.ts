@@ -52,6 +52,17 @@ export const deleteAsset = assetsApi.deleteAsset;
  */
 export const archiveAsset = assetsApi.archiveAsset;
 
+/**
+ * Set or clear the user's manual override on the signal-based broken-video heuristic.
+ * Stored as media_metadata.signal_metrics.user_override.
+ */
+export const setSignalOverride = assetsApi.setSignalOverride;
+
+/**
+ * Run the broken-video heuristic scan on a single asset (re-scan on demand).
+ */
+export const scanSignalMetrics = assetsApi.scanSignalMetrics;
+
 export const bulkDeleteAssets = assetsApi.bulkDeleteAssets;
 
 /**

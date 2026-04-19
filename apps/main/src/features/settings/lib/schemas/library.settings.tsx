@@ -21,9 +21,7 @@ import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiL
 import { pixsimClient } from '@/lib/api';
 import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferences';
 
-import { ContentPacksDashboard } from '../../components/shared/ContentPacksDashboard';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
-import { MaintenanceDashboard } from '../../components/shared/MaintenanceDashboard';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
@@ -422,43 +420,9 @@ const hashingTab: SettingTab = {
   ],
 };
 
-// =============================================================================
-// Tab: Maintenance
-// =============================================================================
-const maintenanceTab: SettingTab = {
-  id: 'maintenance',
-  label: 'Maintenance',
-  icon: '🔧',
-  groups: [
-    {
-      id: 'maintenance-dashboard',
-      showWhen: adminOnly,
-      adminGroup: true,
-      fields: [
-        {
-          id: 'maintenance-dashboard-widget',
-          type: 'custom',
-          label: '',
-          component: MaintenanceDashboard,
-        },
-      ],
-    },
-    {
-      id: 'content-packs-dashboard',
-      title: 'Content Packs',
-      showWhen: adminOnly,
-      adminGroup: true,
-      fields: [
-        {
-          id: 'content-packs-dashboard-widget',
-          type: 'custom',
-          label: '',
-          component: ContentPacksDashboard,
-        },
-      ],
-    },
-  ],
-};
+// Maintenance tab removed — both surfaces it hosted now live in dedicated panels:
+//   - asset maintenance: `features/panels/domain/definitions/asset-maintenance/`
+//   - content packs:     `features/panels/domain/definitions/content-packs/`
 
 // =============================================================================
 // Unified Store Adapter
@@ -697,17 +661,10 @@ export function registerLibrarySettings(): () => void {
     useStore: useLibrarySettingsStoreAdapter,
   });
 
-  const unregister5 = settingsSchemaRegistry.register({
-    categoryId: 'library',
-    tab: maintenanceTab,
-    useStore: useLibrarySettingsStoreAdapter,
-  });
-
   return () => {
     unregister1();
     unregister2();
     unregister3();
     unregister4();
-    unregister5();
   };
 }

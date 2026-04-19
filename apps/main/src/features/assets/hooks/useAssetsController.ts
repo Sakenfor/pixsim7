@@ -561,6 +561,8 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     // Per-asset actions
     getAssetActions,
     reuploadAsset,
+    /** Optimistic in-memory removal; does NOT delete from backend. */
+    removeAsset,
 
     // Delete modal
     deleteModalAssets,
