@@ -1,7 +1,26 @@
 """Backfill provider_submissions.response['thumbnail_url'] for Pixverse videos.
 
+Terminology
+-----------
+Despite the field being named ``thumbnail_url``, for Pixverse video
+submissions it stores the **LAST-FRAME URL** (resolved from Pixverse's
+``customer_video_last_frame_url`` / ``last_frame`` fields).  The field
+is named ``thumbnail_url`` as a legacy of the SDK's ``Video.thumbnail``
+attribute, which for video responses resolves to the last rendered
+frame.  "Candidates missing thumbnail_url" in the script output below
+means "Pixverse videos where we don't have the last-frame URL cached".
+
 Background
 ----------
+Two bugs caused every Pixverse video submission to stash None for
+``thumbnail_url`` (both fixed 2026-04):
+
+  1. ``pixverse_status.py`` set ``suppress_thumbnail=True`` unconditionally,
+     nuking the extracted URL before it reached the submission response.
+  2. The field-name lookup missed ``last_frame`` /
+     ``customer_video_last_frame_url``, falling through to ``first_frame``
+     (semantically wrong for extend-seed use).
+
 A field-name bug in pixverse_status.py (fixed 2026-04) caused every Pixverse
 video submission to stash None for ``thumbnail_url`` — the rendered last-frame
 URL that ``VIDEO_EXTEND`` seeds from via ``customer_video_last_frame_url``.
@@ -107,19 +126,29 @@ async def _fetch_candidates(session, limit: Optional[int]):
 
 
 async def _fetch_video_thumbnail(client: Any, video_id: str) -> Optional[str]:
-    """Call ``client.get_video(video_id)`` and return the thumbnail URL, or None.
+    """Call ``client.get_video(video_id)`` and return the last-frame URL, or None.
 
-    Pixverse surfaces ``customer_video_last_frame_url`` as ``Video.thumbnail``
-    (SDK naming — it IS the last rendered frame for video results).
+    Pixverse surfaces ``customer_video_last_frame_url`` (and raw
+    ``last_frame``) as ``Video.thumbnail`` (SDK naming — it IS the last
+    rendered frame for video results).  Placeholder URLs (e.g. the
+    ``/pixverse/jpg/media/default.jpg`` that filtered videos return) are
+    explicitly rejected — stamping them into asset.media_metadata would
+    signal "real last frame available" when none exists.
     """
+    from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+        is_pixverse_placeholder_url,
+    )
     try:
         video = await client.get_video(video_id=video_id)
     except Exception as e:
         return f"__error__:{e.__class__.__name__}:{e}"
     thumb = getattr(video, "thumbnail", None)
-    if isinstance(thumb, str) and thumb.startswith(("http://", "https://")):
-        return thumb
-    return None
+    if not isinstance(thumb, str) or not thumb.startswith(("http://", "https://")):
+        return None
+    if is_pixverse_placeholder_url(thumb):
+        # Filtered videos return /default.jpg — not a real last frame.
+        return None
+    return thumb
 
 
 async def _apply_to_row(
@@ -165,7 +194,10 @@ async def main() -> None:
     async with get_async_session() as session:
         candidates = await _fetch_candidates(session, limit=None)
         total = len(candidates)
-        print(f"Candidates (Pixverse video successes, NULL/missing thumbnail_url): {total}")
+        print(
+            f"Candidates: {total} Pixverse video submissions missing the "
+            f"last-frame URL (stored as response['thumbnail_url'])."
+        )
         if total == 0:
             return
 
