@@ -166,6 +166,7 @@ export function MinimizedPanelStack({
           y: panelData.originalPosition.y,
           width: panelData.originalSize.width,
           height: panelData.originalSize.height,
+          forceGeometry: true,
           context: panelData.context,
         });
       }
@@ -191,6 +192,7 @@ export function MinimizedPanelStack({
           y: panelData.originalPosition.y,
           width: panelData.originalSize.width,
           height: panelData.originalSize.height,
+          forceGeometry: true,
           context: panelData.context,
         });
       }

@@ -196,16 +196,16 @@ function ActorLabelWithAgent({ label, source }: { label: string; source: string 
 // ── Navigation ───────────────────────────────────────────────────
 
 /** Map refType to a panel ID or action. Returns null if no navigation. */
-function getNavigationTarget(n: NotificationItem): { panelId: string; width?: number; height?: number } | null {
+function getNavigationTarget(n: NotificationItem): { panelId: string } | null {
   if (!n.refType) return null;
 
   switch (n.refType) {
     case 'plan':
-      return { panelId: 'plans', width: 900, height: 600 };
+      return { panelId: 'plans' };
     case 'generation':
-      return { panelId: 'generation-history', width: 800, height: 500 };
+      return { panelId: 'generation-history' };
     case 'document':
-      return { panelId: 'plans', width: 900, height: 600 };
+      return { panelId: 'plans' };
     default:
       return null;
   }
@@ -370,10 +370,7 @@ export function NotificationActivityBarWidget() {
       }
       const target = getNavigationTarget(n);
       if (target) {
-        openFloatingPanel(target.panelId as any, {
-          width: target.width ?? 800,
-          height: target.height ?? 500,
-        });
+        openFloatingPanel(target.panelId as any);
         setPanelOpen(false);
       }
     },

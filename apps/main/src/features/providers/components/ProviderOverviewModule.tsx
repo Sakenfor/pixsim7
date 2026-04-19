@@ -14,7 +14,7 @@ export function ProviderOverviewModule() {
   const openFloatingPanel = useWorkspaceStore(s => s.openFloatingPanel);
 
   const openFullSettings = () => {
-    openFloatingPanel('providers', { width: 900, height: 700 });
+    openFloatingPanel('providers');
   };
 
   if (loading) {

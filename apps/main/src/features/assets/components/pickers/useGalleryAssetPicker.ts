@@ -33,7 +33,7 @@ export function useGalleryAssetPicker(options?: GalleryAssetPickerOptions) {
   const pick = useCallback(
     (onPicked: (asset: PickedAsset) => void) => {
       if (openGalleryPanel) {
-        openFloatingPanel('gallery', { x: 100, y: 100, width: 800, height: 600 });
+        openFloatingPanel('gallery', { x: 100, y: 100 });
       }
       enterSelectionMode((raw) => {
         onPicked({

@@ -733,8 +733,6 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
 
   const openPromptLibraryForRole = (roleId: string, tab: 'templates' | 'blocks') => {
     openFloatingPanel('prompt-library-inspector', {
-      width: 1200,
-      height: 760,
       context: {
         tab,
         focusRoleId: roleId,
@@ -744,8 +742,6 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
 
   const openPromptLibraryTemplate = (roleId: string, templateId: string) => {
     openFloatingPanel('prompt-library-inspector', {
-      width: 1200,
-      height: 760,
       context: {
         tab: 'templates',
         focusRoleId: roleId,

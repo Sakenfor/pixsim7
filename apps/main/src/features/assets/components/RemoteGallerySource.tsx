@@ -401,8 +401,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     (set: ManualAssetSet) => {
       if (set.assetIds.length === 0) return;
       openFloatingPanel('mini-gallery', {
-        width: 480,
-        height: 520,
         context: {
           initialFilters: { asset_ids: set.assetIds },
           sourceLabel: set.name,
@@ -415,8 +413,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const browseFilterInMiniGallery = useCallback(
     (_filterKey: string, currentFilters: AssetFilters) => {
       openFloatingPanel('mini-gallery', {
-        width: 480,
-        height: 520,
         context: {
           initialFilters: currentFilters,
           syncInitialFilters: true,

@@ -47,10 +47,7 @@ export function AIAssistantActivityBarWidget() {
   });
 
   const handleClick = useCallback(() => {
-    openFloatingPanel('ai-assistant' as any, {
-      width: 420,
-      height: 520,
-    });
+    openFloatingPanel('ai-assistant' as any);
   }, [openFloatingPanel]);
 
   return (

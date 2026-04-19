@@ -194,10 +194,7 @@ export function QuickPanelSwitcher() {
           <div className="border-t border-neutral-200 dark:border-neutral-700 p-2">
             <button
               onClick={() => {
-                openFloatingPanel("settings", {
-                  width: 900,
-                  height: 700,
-                });
+                openFloatingPanel("settings");
                 setIsOpen(false);
               }}
               className="w-full px-3 py-2 text-sm text-accent hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"

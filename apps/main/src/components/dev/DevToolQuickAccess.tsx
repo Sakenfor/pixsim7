@@ -63,8 +63,6 @@ export function DevToolQuickAccess() {
     if (tool.panelComponent) {
       const panelId = `dev-tool:${tool.id}` as any;
       openFloatingPanel(panelId, {
-        width: 800,
-        height: 600,
         context: {
           toolId: tool.id,
           toolDefinition: tool,

@@ -235,8 +235,6 @@ export function DevToolsPanel() {
     if (tool.panelComponent) {
       const panelId = `dev-tool:${tool.id}` as any;
       openFloatingPanel(panelId, {
-        width: 800,
-        height: 600,
         context: { toolId: tool.id, toolDefinition: tool },
       });
     } else if (tool.routePath) {

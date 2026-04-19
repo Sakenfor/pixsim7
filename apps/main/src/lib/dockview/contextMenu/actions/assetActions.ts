@@ -707,7 +707,7 @@ const debugFixAction: MenuAction = {
         requiredCapabilities: [CAP_ASSET],
         execute: () => {
           useSettingsUiStore.getState().setActiveTabId('library');
-          useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
+          useWorkspaceStore.getState().openFloatingPanel('settings');
         },
       },
     ];
@@ -871,8 +871,6 @@ function openRelatedGallery(asset: AssetModel, variantId: string) {
   if (!active) return;
 
   useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-    width: 620,
-    height: 520,
     context: {
       initialFilters: active.filters,
       sourceLabel: active.label,

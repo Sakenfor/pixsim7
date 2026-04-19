@@ -18,6 +18,31 @@ import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 /** Max z-index offset allowed for floating panels before normalization kicks in. */
 const FLOAT_Z_BUDGET = Z.floatOverlay - Z.floatPanel - 1; // 99
 
+const DEFAULT_FLOATING_PANEL_SIZE: Record<string, { width: number; height: number }> = {
+  "ai-assistant": { width: 420, height: 520 },
+  "agent-observability": { width: 900, height: 600 },
+  "composition-roles": { width: 920, height: 680 },
+  "dev-tools": { width: 800, height: 600 },
+  "gallery": { width: 800, height: 600 },
+  "generation-history": { width: 800, height: 500 },
+  "generations": { width: 800, height: 600 },
+  "mini-gallery": { width: 620, height: 520 },
+  "plans": { width: 900, height: 600 },
+  "prompt-library-inspector": { width: 1200, height: 760 },
+  "providers": { width: 900, height: 700 },
+  "quickgen-asset": { width: 640, height: 520 },
+  "quickgen-settings": { width: 520, height: 440 },
+  "settings": { width: 900, height: 700 },
+};
+
+function getDefaultFloatingPanelSize(panelId: string): { width: number; height: number } {
+  const defId = getFloatingDefinitionId(panelId);
+  if (defId.startsWith("dev-tool:")) {
+    return { width: 800, height: 600 };
+  }
+  return DEFAULT_FLOATING_PANEL_SIZE[defId] ?? { width: 600, height: 400 };
+}
+
 /**
  * Normalize z-index values on floating panels so they stay within the safe
  * range (0 .. FLOAT_Z_BUDGET). Preserves relative stacking order.
@@ -141,6 +166,11 @@ export interface WorkspaceActions {
       y?: number;
       width?: number;
       height?: number;
+      /**
+       * When true, provided geometry overrides remembered geometry.
+       * Default false: user-resized geometry is preferred when available.
+       */
+      forceGeometry?: boolean;
       context?: Record<string, any>;
     },
   ) => void;
@@ -428,7 +458,13 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           return;
         }
 
-        const { x, y, width, height, context } = options;
+        const { x, y, width, height, forceGeometry = false, context } = options;
+        const defaultSize = getDefaultFloatingPanelSize(panelId);
+        const resolveGeometry = (savedValue: number | undefined, providedValue: number | undefined, fallback: number) => {
+          if (forceGeometry) return providedValue ?? savedValue ?? fallback;
+          return savedValue ?? providedValue ?? fallback;
+        };
+
         const panelDef = panelSelectors.get(panelId);
         if (import.meta.env.DEV && !panelDef && !panelId.startsWith("dev-tool:")) {
           console.warn("[workspaceStore] opening floating panel without registered definition", {
@@ -453,10 +489,10 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           const floatingId = createFloatingInstanceId(panelId, floatingPanels);
 
           const saved = get().lastFloatingPanelStates[panelId];
-          const finalWidth = width ?? saved?.width ?? 600;
-          const finalHeight = height ?? saved?.height ?? 400;
-          const rawX = x ?? saved?.x ?? (window.innerWidth - finalWidth) / 2;
-          const rawY = y ?? saved?.y ?? (window.innerHeight - finalHeight) / 2;
+          const finalWidth = resolveGeometry(saved?.width, width, defaultSize.width);
+          const finalHeight = resolveGeometry(saved?.height, height, defaultSize.height);
+          const rawX = resolveGeometry(saved?.x, x, (window.innerWidth - finalWidth) / 2);
+          const rawY = resolveGeometry(saved?.y, y, (window.innerHeight - finalHeight) / 2);
           const finalX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(finalWidth, 100)));
           const finalY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(finalHeight, 40)));
           const maxZ = Math.max(...floatingPanels.map((p) => p.zIndex), 0);
@@ -483,10 +519,10 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         const existing = get().floatingPanels.find((p) => p.id === panelId);
         if (existing) {
           const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
-          const nextWidth = width ?? existing.width;
-          const nextHeight = height ?? existing.height;
-          const rawX = x ?? existing.x;
-          const rawY = y ?? existing.y;
+          const nextWidth = forceGeometry ? (width ?? existing.width) : existing.width;
+          const nextHeight = forceGeometry ? (height ?? existing.height) : existing.height;
+          const rawX = forceGeometry ? (x ?? existing.x) : existing.x;
+          const rawY = forceGeometry ? (y ?? existing.y) : existing.y;
           const nextX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(nextWidth, 100)));
           const nextY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(nextHeight, 40)));
           const nextContext =
@@ -516,10 +552,10 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         }
 
         const saved = get().lastFloatingPanelStates[panelId];
-        const finalWidth = width ?? saved?.width ?? 600;
-        const finalHeight = height ?? saved?.height ?? 400;
-        const rawX = x ?? saved?.x ?? (window.innerWidth - finalWidth) / 2;
-        const rawY = y ?? saved?.y ?? (window.innerHeight - finalHeight) / 2;
+        const finalWidth = resolveGeometry(saved?.width, width, defaultSize.width);
+        const finalHeight = resolveGeometry(saved?.height, height, defaultSize.height);
+        const rawX = resolveGeometry(saved?.x, x, (window.innerWidth - finalWidth) / 2);
+        const rawY = resolveGeometry(saved?.y, y, (window.innerHeight - finalHeight) / 2);
         // Clamp to viewport so panels don't appear off-screen
         const finalX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(finalWidth, 100)));
         const finalY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(finalHeight, 40)));
@@ -624,18 +660,46 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       },
 
       updateFloatingPanelPosition: (panelId, x, y) => {
+        const defId = getFloatingDefinitionId(panelId);
+        const panel = get().floatingPanels.find((p) => p.id === panelId);
+        const prev = get().lastFloatingPanelStates[defId];
+        const defaultSize = getDefaultFloatingPanelSize(panelId);
         set({
           floatingPanels: get().floatingPanels.map((p) =>
             p.id === panelId ? { ...p, x, y } : p,
           ),
+          lastFloatingPanelStates: {
+            ...get().lastFloatingPanelStates,
+            [defId]: {
+              x,
+              y,
+              width: prev?.width ?? panel?.width ?? defaultSize.width,
+              height: prev?.height ?? panel?.height ?? defaultSize.height,
+            },
+          },
         });
       },
 
       updateFloatingPanelSize: (panelId, width, height) => {
+        const defId = getFloatingDefinitionId(panelId);
+        const panel = get().floatingPanels.find((p) => p.id === panelId);
+        const prev = get().lastFloatingPanelStates[defId];
+        const defaultSize = getDefaultFloatingPanelSize(panelId);
+        const nextWidth = Number.isFinite(width) ? width : (prev?.width ?? panel?.width ?? defaultSize.width);
+        const nextHeight = Number.isFinite(height) ? height : (prev?.height ?? panel?.height ?? defaultSize.height);
         set({
           floatingPanels: get().floatingPanels.map((p) =>
-            p.id === panelId ? { ...p, width, height } : p,
+            p.id === panelId ? { ...p, width: nextWidth, height: nextHeight } : p,
           ),
+          lastFloatingPanelStates: {
+            ...get().lastFloatingPanelStates,
+            [defId]: {
+              x: prev?.x ?? panel?.x ?? 0,
+              y: prev?.y ?? panel?.y ?? 0,
+              width: nextWidth,
+              height: nextHeight,
+            },
+          },
         });
       },
 

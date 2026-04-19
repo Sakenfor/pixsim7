@@ -70,10 +70,7 @@ export function AgentActivityBarWidget() {
   });
 
   const handleClick = useCallback(() => {
-    openFloatingPanel('agent-observability' as any, {
-      width: 900,
-      height: 600,
-    });
+    openFloatingPanel('agent-observability' as any);
   }, [openFloatingPanel]);
 
   const isActive = activeAgents > 0 || bridgeConnected > 0;

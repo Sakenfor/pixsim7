@@ -579,10 +579,18 @@ const FloatingPanel = memo(function FloatingPanel({
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResizeStop={(e, direction, ref, delta, position) => {
+        const measuredWidth = Math.round(ref.getBoundingClientRect().width);
+        const measuredHeight = Math.round(ref.getBoundingClientRect().height);
+        const fallbackWidth = parseInt(ref.style.width, 10);
+        const fallbackHeight = parseInt(ref.style.height, 10);
+        const nextWidth =
+          Number.isFinite(measuredWidth) && measuredWidth > 0 ? measuredWidth : fallbackWidth;
+        const nextHeight =
+          Number.isFinite(measuredHeight) && measuredHeight > 0 ? measuredHeight : fallbackHeight;
         updateFloatingPanelSize(
           panel.id,
-          parseInt(ref.style.width),
-          parseInt(ref.style.height)
+          nextWidth,
+          nextHeight
         );
         updateFloatingPanelPosition(panel.id, position.x, position.y);
       }}

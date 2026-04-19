@@ -466,8 +466,6 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   }, [compositionPackages]);
   const openCompositionRole = useCallback((roleId: string) => {
     openFloatingPanel('composition-roles', {
-      width: 920,
-      height: 680,
       context: { focusRoleId: roleId },
     });
   }, [openFloatingPanel]);

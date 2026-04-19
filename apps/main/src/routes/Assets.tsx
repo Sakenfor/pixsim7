@@ -315,7 +315,7 @@ export function AssetsRoute() {
                     >
                       <DropdownItem
                         onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
+                          useWorkspaceStore.getState().openFloatingPanel('settings');
                           setPanelsDropdownOpen(false);
                         }}
                         icon={<IconBadge name="settings" size={12} variant="muted" />}
@@ -324,7 +324,7 @@ export function AssetsRoute() {
                       </DropdownItem>
                       <DropdownItem
                         onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
+                          useWorkspaceStore.getState().openFloatingPanel('generations');
                           setPanelsDropdownOpen(false);
                         }}
                         icon={<IconBadge name="sparkles" size={12} variant="success" />}
@@ -333,7 +333,7 @@ export function AssetsRoute() {
                       </DropdownItem>
                       <DropdownItem
                         onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('providers', { width: 700, height: 500 });
+                          useWorkspaceStore.getState().openFloatingPanel('providers');
                           setPanelsDropdownOpen(false);
                         }}
                         icon={<IconBadge name="plug" size={12} variant="info" />}
@@ -343,7 +343,7 @@ export function AssetsRoute() {
                       <DropdownDivider />
                       <DropdownItem
                         onClick={() => {
-                          useWorkspaceStore.getState().openFloatingPanel('dev-tools', { width: 800, height: 600 });
+                          useWorkspaceStore.getState().openFloatingPanel('dev-tools');
                           setPanelsDropdownOpen(false);
                         }}
                         icon={<IconBadge name="wrench" size={12} variant="warning" />}
@@ -356,7 +356,7 @@ export function AssetsRoute() {
                     type="button"
                     onClick={() => {
                       if (generationWsConnected) {
-                        useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
+                        useWorkspaceStore.getState().openFloatingPanel('generations');
                       }
                     }}
                     className={`h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border transition-colors ${

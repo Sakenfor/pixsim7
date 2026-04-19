@@ -13,8 +13,6 @@ import type { AssetModel } from '@features/assets';
 import { useAssetViewerStore, selectIsViewerOpen, toViewerAsset, toViewerAssets } from '@features/assets';
 import { PaginationStrip } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
-
-import { MediaCard } from '@/components/media/MediaCard';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
 import { useAssets } from '@features/assets/hooks/useAssets';
 import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
@@ -24,6 +22,7 @@ import { useQuickGenerateController } from '@features/prompts';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
+import { MediaCard } from '@/components/media/MediaCard';
 import { SlotPickerGrid, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA, isMultiAssetOperation } from '@/types/operations';
@@ -638,7 +637,7 @@ function MiniGalleryContent({
                       useWorkspaceStore.getState().replaceFloatingPanel(_floatingPanelId, peerId);
                     } else {
                       // Fallback: not in a floating panel, open new
-                      useWorkspaceStore.getState().openFloatingPanel(peerId, { width: 620, height: 520 });
+                      useWorkspaceStore.getState().openFloatingPanel(peerId);
                     }
                   } else {
                     setSelectedVariantId(val || undefined);

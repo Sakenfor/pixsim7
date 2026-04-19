@@ -246,8 +246,6 @@ export function PromptAuthoringEditor() {
     }
 
     openFloatingPanel(panelId, {
-      width: panelId === 'quickgen-settings' ? 520 : 640,
-      height: panelId === 'quickgen-settings' ? 440 : 520,
       context: {
         generationScopeId: localWidget.scopeId,
         ...buildFloatingOriginMetaRecord({
