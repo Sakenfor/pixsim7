@@ -116,6 +116,26 @@ class UploadService:
         provider = registry.get(provider_id)
         uploaded = await provider.upload_asset(account, prepared_path)  # type: ignore
 
+        # New shape: adapter returns {"id": ..., "url": ...} when the provider
+        # gave both (Pixverse OpenAPI upload).  Pack both fields so downstream
+        # callers can use whichever they need.
+        if isinstance(uploaded, dict):
+            return UploadResult(
+                provider_id=provider_id,
+                media_type=media_type,
+                external_url=uploaded.get("url"),
+                provider_asset_id=str(uploaded["id"]) if uploaded.get("id") is not None else None,
+                note=(prep_note or None) or (
+                    "Uploaded via OpenAPI"
+                    if provider_id == "pixverse"
+                    else None
+                ),
+                width=meta.get('width'),
+                height=meta.get('height'),
+                mime_type=meta.get('mime_type'),
+                file_size_bytes=meta.get('file_size_bytes'),
+            )
+
         # Heuristic: URL vs ID
         if isinstance(uploaded, str) and (uploaded.startswith("http://") or uploaded.startswith("https://")):
             # Extract UUID from URL for provider_asset_id (helps with dedup during enrichment)

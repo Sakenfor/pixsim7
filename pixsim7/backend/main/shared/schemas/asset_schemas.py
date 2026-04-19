@@ -10,8 +10,8 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDoma
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 
 # Canonical asset kind values — extend this tuple when adding new kinds
-ASSET_KINDS = ("content", "mask", "guidance", "reference")
-AssetKind = Literal["content", "mask", "guidance", "reference"]
+ASSET_KINDS = ("content", "mask", "guidance", "reference", "extracted_frame")
+AssetKind = Literal["content", "mask", "guidance", "reference", "extracted_frame"]
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as normalize_pixverse_url,
@@ -209,7 +209,7 @@ class AssetResponse(BaseModel):
 
     # Cross-provider upload mapping (provider_id -> uploaded asset URL/ID)
     # Used by frontend to get provider-specific URLs for operations like IMAGE_TO_IMAGE
-    provider_uploads: Optional[Dict[str, str]] = None
+    provider_uploads: Optional[Dict[str, Any]] = None
 
     # Upload history (Task 104 - derived from media_metadata)
     last_upload_status_by_provider: Optional[Dict[str, Literal['success', 'error']]] = None
@@ -229,6 +229,13 @@ class AssetResponse(BaseModel):
 
     # Generation context availability (computed)
     has_generation_context: bool = False
+
+    # Lineage: whether any other asset lists this one as its source/parent (computed at response build time)
+    has_children: bool = False
+
+    # Artificial-extend lineage (computed from media_metadata.generation_context.artificial_extend)
+    # When present, asset was produced via the "extend via last-frame i2v" flow.
+    artificial_extend: Optional[Dict[str, Any]] = None
 
     # Timestamps
     created_at: datetime
@@ -394,6 +401,19 @@ class AssetResponse(BaseModel):
             data["has_generation_context"] = has_ctx
         elif hasattr(data, "__dict__"):
             data.__dict__["has_generation_context"] = has_ctx
+
+        # Surface artificial_extend lineage from generation_context, if any.
+        artificial_extend = None
+        if media_metadata and isinstance(media_metadata, dict):
+            gen_ctx = media_metadata.get("generation_context")
+            if isinstance(gen_ctx, dict):
+                ae = gen_ctx.get("artificial_extend")
+                if isinstance(ae, dict):
+                    artificial_extend = ae
+        if isinstance(data, dict):
+            data["artificial_extend"] = artificial_extend
+        elif hasattr(data, "__dict__"):
+            data.__dict__["artificial_extend"] = artificial_extend
 
         return data
 

@@ -458,6 +458,26 @@ class AssetSyncService:
         from pixsim7.backend.main.services.account.account_service import AccountService
         import os
 
+        # Pixverse-reuse fast path: if this asset (or its PAUSED_FRAME parent)
+        # is a Pixverse video, its frames are already on Pixverse's CDN and
+        # passed moderation.  Return the CDN URL directly — skip the upload
+        # + moderation round-trip that would otherwise reject NSFW frames.
+        if target_provider_id == "pixverse":
+            from pixsim7.backend.main.services.provider.adapters.pixverse_composition import (
+                try_reuse_pixverse_cdn_url_for_upload,
+            )
+            reused_url = await try_reuse_pixverse_cdn_url_for_upload(
+                asset, db_session=self.db,
+            )
+            if reused_url:
+                await self.record_upload_attempt(
+                    asset,
+                    provider_id=target_provider_id,
+                    status='success',
+                    method='pixverse_cdn_reuse',
+                )
+                return reused_url
+
         # 1. Download asset locally if not cached
         local_path = asset.local_path
 

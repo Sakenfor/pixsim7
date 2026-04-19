@@ -29,6 +29,311 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+async def _backfill_openapi_img_id(
+    asset_id: int,
+    *,
+    db_session: AsyncSession,
+) -> Optional[str]:
+    """Re-upload an asset to Pixverse OpenAPI to recover its numeric img_id.
+
+    Used when ``provider_uploads["pixverse"]`` is URL-only but the caller
+    needs an OpenAPI id (Pixverse rejects URL input on ``/openapi/v2/video/
+    img/generate`` with ErrCode=400017).  Delegates to AssetSyncService —
+    invalidates the cached entry and lets the existing upload path run,
+    which now persists the dict shape ``{"id", "url"}``.
+
+    Returns the img_id string, or None if backfill couldn't produce one.
+    """
+    from pixsim7.backend.main.domain import Asset
+    from pixsim7.backend.main.services.asset.sync import AssetSyncService
+    from sqlalchemy import select
+
+    asset = (
+        await db_session.execute(select(Asset).where(Asset.id == asset_id))
+    ).scalar_one_or_none()
+    if not asset:
+        return None
+
+    # Invalidate the cached pixverse entry so get_asset_for_provider re-uploads.
+    previous = dict(asset.provider_uploads or {})
+    if "pixverse" in previous:
+        new_map = {k: v for k, v in previous.items() if k != "pixverse"}
+        asset.provider_uploads = new_map
+        await db_session.commit()
+
+    sync_service = AssetSyncService(db_session)
+    try:
+        await sync_service.get_asset_for_provider(
+            asset_id=asset_id,
+            target_provider_id="pixverse",
+        )
+    except Exception as e:
+        # Restore whatever was there so a failed re-upload doesn't lose the URL.
+        asset.provider_uploads = previous
+        await db_session.commit()
+        logger.warning(
+            "pixverse_openapi_backfill_failed",
+            asset_id=asset_id,
+            error=str(e),
+        )
+        return None
+
+    await db_session.refresh(asset)
+    new_entry = (asset.provider_uploads or {}).get("pixverse")
+    if isinstance(new_entry, dict):
+        raw = new_entry.get("id")
+        if raw is not None:
+            new_id = str(raw)
+            logger.info(
+                "pixverse_openapi_backfill_complete",
+                asset_id=asset_id,
+                new_img_id=new_id,
+                has_url=bool(new_entry.get("url")),
+            )
+            return new_id
+    if isinstance(new_entry, str) and new_entry.isdigit():
+        logger.info(
+            "pixverse_openapi_backfill_complete",
+            asset_id=asset_id,
+            new_img_id=new_entry,
+            has_url=False,
+        )
+        return new_entry
+
+    logger.warning(
+        "pixverse_openapi_backfill_no_id_after_reupload",
+        asset_id=asset_id,
+        shape=type(new_entry).__name__ if new_entry is not None else "none",
+    )
+    return None
+
+
+async def resolve_pixverse_last_frame_url(
+    asset_id: int,
+    *,
+    db_session: AsyncSession,
+    account: Optional[ProviderAccount] = None,
+    provider: Optional["PixverseProvider"] = None,
+) -> Optional[str]:
+    """Three-level lookup for a Pixverse video asset's last-frame URL.
+
+    Pixverse labels this ``customer_video_last_frame_url`` server-side and
+    ``Video.thumbnail`` in the SDK — it IS the last rendered frame, reusable
+    as both an extend seed AND as an i2v/i2i input image without re-upload.
+
+    Chain:
+      1. ``asset.media_metadata['provider_thumbnail_url']`` — free DB read.
+      2. latest successful ``ProviderSubmission.response['thumbnail_url']``
+         — free DB read, stamped by the status poller on terminal.
+      3. live ``client.get_video(provider_job_id).thumbnail`` — one Pixverse
+         API call, self-heals by stamping both L1 and L2 on success so
+         subsequent lookups are zero-cost.
+
+    Returns the URL or None.  Never raises — caller just falls through.
+    """
+    from pixsim7.backend.main.domain import Asset, Generation
+    from pixsim7.backend.main.domain.providers import ProviderSubmission as _ProviderSubmission, ProviderAccount as _ProviderAccount
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm.attributes import flag_modified as _flag_modified
+
+    asset = await db_session.get(Asset, asset_id)
+    if asset is None:
+        return None
+
+    # Level 1: asset.media_metadata
+    meta = asset.media_metadata if isinstance(asset.media_metadata, dict) else None
+    if isinstance(meta, dict):
+        ptu = meta.get("provider_thumbnail_url")
+        if isinstance(ptu, str) and ptu.startswith(("http://", "https://")):
+            return ptu
+
+    # Levels 2 + 3 need the asset's latest successful submission.
+    sub_gen = await db_session.execute(
+        _select(Generation.id)
+        .where(Generation.asset_id == asset_id)
+        .order_by(Generation.id.desc()).limit(1)
+    )
+    sub_gen_id = sub_gen.scalar_one_or_none()
+    if sub_gen_id is None:
+        return None
+    sub_q = await db_session.execute(
+        _select(
+            _ProviderSubmission.id,
+            _ProviderSubmission.provider_job_id,
+            _ProviderSubmission.response,
+            _ProviderSubmission.account_id,
+        )
+        .where(_ProviderSubmission.generation_id == sub_gen_id)
+        .where(_ProviderSubmission.status == "success")
+        .order_by(_ProviderSubmission.id.desc()).limit(1)
+    )
+    latest_sub = sub_q.first()
+    if latest_sub is None:
+        return None
+
+    # Level 2: submission.response
+    resp = latest_sub.response
+    if isinstance(resp, dict):
+        thumb = resp.get("thumbnail_url")
+        if isinstance(thumb, str) and thumb.startswith(("http://", "https://")):
+            return thumb
+
+    # Level 3: live fetch with self-heal.
+    if provider is None or not latest_sub.provider_job_id:
+        return None
+
+    try:
+        active_account = None
+        if account is not None and account.id == latest_sub.account_id:
+            active_account = account
+        else:
+            active_account = await db_session.get(_ProviderAccount, latest_sub.account_id)
+        if active_account is None:
+            return None
+
+        live_client = provider._create_client(active_account)
+        video = await live_client.get_video(video_id=str(latest_sub.provider_job_id))
+        thumb = getattr(video, "thumbnail", None)
+        # Reject placeholder URLs (e.g. .../default.jpg) — Pixverse returns
+        # those for FILTERED videos.  Not a real last frame.
+        from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+            is_pixverse_placeholder_url as _is_placeholder,
+        )
+        thumb_is_placeholder = isinstance(thumb, str) and _is_placeholder(thumb)
+        thumb_valid = (
+            isinstance(thumb, str)
+            and thumb.startswith(("http://", "https://"))
+            and not thumb_is_placeholder
+        )
+        if not thumb_valid:
+            logger.info(
+                "pixverse_last_frame_live_fetch_no_thumb",
+                asset_id=asset_id,
+                video_id=str(latest_sub.provider_job_id),
+                video_status=getattr(video, "status", None),
+                raw_thumb=repr(thumb)[:80],
+                is_placeholder=thumb_is_placeholder,
+                likely_cause=(
+                    "filtered_placeholder" if thumb_is_placeholder
+                    else "early_cdn_termination"
+                    if isinstance(resp, dict) and resp.get("metadata", {}).get("video_early_cdn_terminal")
+                    else "pixverse_never_wrote_last_frame"
+                ),
+            )
+            return None
+
+        # Self-heal L1 and L2 so the next call hits the free path.
+        sub_obj = await db_session.get(_ProviderSubmission, latest_sub.id)
+        if sub_obj is not None:
+            new_response = dict(sub_obj.response or {})
+            new_response["thumbnail_url"] = thumb
+            sub_obj.response = new_response
+            _flag_modified(sub_obj, "response")
+        new_meta = dict(asset.media_metadata or {})
+        if not new_meta.get("provider_thumbnail_url"):
+            new_meta["provider_thumbnail_url"] = thumb
+            asset.media_metadata = new_meta
+            _flag_modified(asset, "media_metadata")
+        await db_session.commit()
+
+        logger.info(
+            "pixverse_last_frame_live_fetch_ok",
+            asset_id=asset_id,
+            video_id=str(latest_sub.provider_job_id),
+            last_frame_url=thumb[:80],
+        )
+        return thumb
+    except Exception as e:
+        logger.warning(
+            "pixverse_last_frame_live_fetch_failed",
+            asset_id=asset_id,
+            video_id=str(latest_sub.provider_job_id) if latest_sub else None,
+            error=str(e),
+        )
+        return None
+
+
+async def try_reuse_pixverse_cdn_url_for_upload(
+    asset: Any,
+    *,
+    db_session: AsyncSession,
+) -> Optional[str]:
+    """Return a Pixverse CDN URL that can replace uploading ``asset``, or None.
+
+    Covers the two reuse cases:
+      a) ``asset`` IS a Pixverse video — use its own last-frame URL.
+      b) ``asset`` is an IMAGE extracted from a Pixverse video via
+         PAUSED_FRAME lineage — walk to parent, use parent's last-frame URL.
+
+    Why this is the right choke point: Pixverse's ``customer_video_last_frame_url``
+    is already hosted + moderation-approved from when the source video was
+    created.  Uploading the mp4 (or a locally-extracted frame) re-triggers
+    Pixverse's image moderation, which is stricter than its video moderation
+    and commonly rejects NSFW frames that the source video passed.
+
+    Used by ``AssetSyncService._upload_to_provider`` so every path that routes
+    through ``get_asset_for_provider`` benefits transparently — no per-caller
+    pre-check needed (composition resolver, extract-frame endpoint, etc.).
+    """
+    from pixsim7.backend.main.domain import Asset as _Asset
+    from pixsim7.backend.main.domain.assets.lineage import AssetLineage as _AssetLineage
+    from pixsim7.backend.main.domain.enums import MediaType as _MediaType
+    from sqlalchemy import select as _select
+
+    video_source_id: Optional[int] = None
+    skip_reason: Optional[str] = None
+    if asset.media_type == _MediaType.VIDEO and getattr(asset, "provider_id", None) == "pixverse":
+        video_source_id = asset.id
+    elif asset.media_type == _MediaType.IMAGE:
+        lineage_row = await db_session.execute(
+            _select(_AssetLineage.parent_asset_id)
+            .where(_AssetLineage.child_asset_id == asset.id)
+            .where(_AssetLineage.relation_type == "PAUSED_FRAME")
+            .limit(1)
+        )
+        parent_id = lineage_row.scalar_one_or_none()
+        if not parent_id:
+            skip_reason = "image_no_paused_frame_lineage"
+        else:
+            parent = await db_session.get(_Asset, parent_id)
+            if parent is None:
+                skip_reason = f"image_lineage_parent_{parent_id}_not_found"
+            elif parent.provider_id != "pixverse":
+                skip_reason = f"image_lineage_parent_provider_{parent.provider_id}"
+            elif parent.media_type != _MediaType.VIDEO:
+                skip_reason = f"image_lineage_parent_media_type_{parent.media_type}"
+            else:
+                video_source_id = parent_id
+    else:
+        skip_reason = f"unhandled_media_type_{asset.media_type}_provider_{getattr(asset, 'provider_id', None)}"
+
+    if video_source_id is None:
+        logger.info(
+            "pixverse_cdn_reuse_skipped",
+            asset_id=asset.id,
+            media_type=str(asset.media_type),
+            provider_id=getattr(asset, "provider_id", None),
+            reason=skip_reason,
+        )
+        return None
+
+    # Import lazily to avoid cycle (PixverseProvider imports composition).
+    from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+    url = await resolve_pixverse_last_frame_url(
+        video_source_id,
+        db_session=db_session,
+        provider=PixverseProvider(),
+    )
+    if url is None:
+        logger.info(
+            "pixverse_cdn_reuse_no_url",
+            asset_id=asset.id,
+            video_source_id=video_source_id,
+            via_lineage=(video_source_id != asset.id),
+        )
+    return url
+
+
 async def resolve_composition_assets_for_pixverse(
     composition_assets: list,
     *,
@@ -104,7 +409,12 @@ async def resolve_composition_assets_for_pixverse(
         )
 
         if asset_id is not None:
-            # Resolve via AssetSyncService (uploads if needed)
+            # Resolve via AssetSyncService (uploads if needed).  Pixverse-reuse
+            # for video-as-image-input (synthetic extend, PAUSED_FRAME lineage)
+            # is handled inside ``AssetSyncService._upload_to_provider`` — it
+            # short-circuits the upload and returns the video's CDN URL, which
+            # gets stamped as ``provider_uploads["pixverse"]`` for free reads
+            # on subsequent submits.
             try:
                 provider_ref = await sync_service.get_asset_for_provider(
                     asset_id=asset_id,
@@ -137,6 +447,28 @@ async def resolve_composition_assets_for_pixverse(
                 api_mode=api_mode.value,
                 validated_ref_ok=bool(validated_ref),
             )
+
+            # OpenAPI backfill: Pixverse /openapi/v2/video/img/generate rejects
+            # URL input (ErrCode=400017).  When provider_uploads is URL-only
+            # (stale entries from before we stored both id and url), re-upload
+            # via AssetSyncService to recover the numeric img_id.
+            if (
+                validated_ref
+                and api_mode == PixverseApiMode.OPENAPI
+                and not validated_ref.startswith("img_id:")
+                and not validated_ref.isdigit()
+            ):
+                backfilled_id = await _backfill_openapi_img_id(
+                    asset_id,
+                    db_session=db_session,
+                )
+                if backfilled_id:
+                    validated_ref = f"img_id:{backfilled_id}"
+                    logger.info(
+                        "pixverse_openapi_backfilled_ref",
+                        asset_id=asset_id,
+                        new_ref=validated_ref,
+                    )
 
             # If validation failed and we're in WebAPI mode, try to resolve UUID to URL
             if not validated_ref and api_mode == PixverseApiMode.WEBAPI:

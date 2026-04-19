@@ -399,8 +399,19 @@ def build_operation_parameter_spec() -> dict:
         field_names: list[str] = fallback
         if get_video_operation_fields is not None:
             try:
-                sdk_fields = list(get_video_operation_fields(operation))
+                # Pass api_mode="webapi" so OpenAPI-only fields (motion_mode,
+                # thinking_type, etc.) don't surface in the generic UI spec.
+                # When OpenAPI-mode surfacing is wanted per-generation, the
+                # caller can pass a different api_mode.
+                sdk_fields = list(
+                    get_video_operation_fields(operation, api_mode="webapi")
+                )
                 # Merge SDK fields with always-include fields from fallback
+                extra_fields = [f for f in fallback if f in always_include and f not in sdk_fields]
+                field_names = sdk_fields + extra_fields
+            except TypeError:
+                # Older SDK without api_mode kwarg — fall back to old signature.
+                sdk_fields = list(get_video_operation_fields(operation))
                 extra_fields = [f for f in fallback if f in always_include and f not in sdk_fields]
                 field_names = sdk_fields + extra_fields
             except Exception:

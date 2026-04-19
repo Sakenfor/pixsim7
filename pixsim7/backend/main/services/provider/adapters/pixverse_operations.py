@@ -566,10 +566,24 @@ class PixverseOperationsMixin:
         # Canonical contract:
         # - If original_video_id is present, submit ID-only.
         # - Otherwise submit URL.
+        # When the source's last-frame URL is known (stamped by
+        # prepare_execution_params from Asset.media_metadata), pass it
+        # through as a dict so the SDK forwards it as
+        # customer_video_last_frame_url — Pixverse seeds the extend from
+        # the pristine rendered frame rather than re-extracting from the
+        # mp4 server-side (which produces a blurry first frame).
         video_url = params.get("video_url") or params.get("customer_video_url")
         original_video_id = params.get("original_video_id")
+        last_frame_url = params.get("last_frame_url")
 
-        if original_video_id:
+        video_ref: Any
+        if last_frame_url and (original_video_id or video_url):
+            video_ref = {"last_frame_url": last_frame_url}
+            if original_video_id:
+                video_ref["original_video_id"] = str(original_video_id).strip()
+            if video_url:
+                video_ref["url"] = video_url
+        elif original_video_id:
             # Use SDK-supported video_id:<id> token to enforce ID-only payload.
             video_ref = f"video_id:{str(original_video_id).strip()}"
         elif video_url:
@@ -597,6 +611,7 @@ class PixverseOperationsMixin:
                 "video_ref_type": "original_video_id" if original_video_id else "video_url",
                 "original_video_id": original_video_id,
                 "has_input_video_url": bool(video_url),
+                "has_last_frame_url": bool(last_frame_url),
                 "prompt": params.get("prompt", "")[:100],
                 "quality": kwargs.get("quality"),
             }
@@ -813,14 +828,19 @@ class PixverseOperationsMixin:
                         "Ensure pixverse-py SDK v1.0.0+ is installed."
                     )
 
-            # Normalize response to either a URL or media ID
+            # Normalize response.  When the upload returns both an integer id
+            # and a CDN URL we keep both — the id is required by OpenAPI i2v
+            # (Pixverse rejects URL-only requests with ErrCode 400017), the
+            # URL is kept for WebAPI's customer_img_url path.
             if isinstance(response, dict):
                 url = response.get('url') or response.get('media_url') or response.get('download_url')
-                if url:
-                    return url
                 media_id = response.get('id') or response.get('media_id')
+                if media_id and url:
+                    return {"id": str(media_id), "url": url}
                 if media_id:
                     return str(media_id)
+                if url:
+                    return url
                 # Unknown shape
                 raise ProviderError(f"Unexpected Pixverse upload response shape: {response}")
             elif isinstance(response, str):
@@ -842,6 +862,15 @@ class PixverseOperationsMixin:
                 "content policy" in error_msg.lower() or
                 "upload failed" in error_msg.lower()
             )
+            # Content moderation is deterministic — same bytes, same rejection.
+            # Mark non-retryable so the worker doesn't burn two more attempts
+            # on guaranteed failures.
+            msg_lc = error_msg.lower()
+            is_moderation = (
+                "not compliant" in msg_lc
+                or "content policy" in msg_lc
+                or "moderation" in msg_lc
+            )
 
             if is_provider_error:
                 # Provider-side error - log as warning without traceback
@@ -853,7 +882,7 @@ class PixverseOperationsMixin:
                     email=account.email,
                     error=error_msg,
                     error_type=error_type,
-                    extra={"file_path": file_path},
+                    extra={"file_path": file_path, "retryable": not is_moderation},
                     severity="warning",
                 )
                 logger.warning(
@@ -861,8 +890,12 @@ class PixverseOperationsMixin:
                     provider_id="pixverse",
                     file_path=file_path,
                     reason=error_msg,
+                    retryable=(not is_moderation),
                 )
-                raise ProviderError(f"Upload rejected by Pixverse: {error_msg}")
+                raise ProviderError(
+                    f"Upload rejected by Pixverse: {error_msg}",
+                    retryable=(not is_moderation),
+                )
             else:
                 # Unexpected error - log as error with traceback
                 log_provider_error(

@@ -6,7 +6,7 @@ Upload, upload-from-url, frame extraction, and reupload operations.
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.params import Form as FormParam
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 import json
 import os
 import tempfile
@@ -395,10 +395,19 @@ async def upload_asset_to_provider(
             # Check if we're updating an existing asset (cross-provider upload)
             if provider_id != "local" and existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
                 # Update existing asset with new provider mapping
-                # Reassign full dict so SQLAlchemy detects the JSON column change
+                # Reassign full dict so SQLAlchemy detects the JSON column change.
+                # When the upload gave us both an id and a URL (Pixverse OpenAPI),
+                # store a {"id", "url"} dict so downstream code can use either.
+                if result.provider_asset_id and result.external_url:
+                    provider_uploads_value: Any = {
+                        "id": str(result.provider_asset_id),
+                        "url": result.external_url,
+                    }
+                else:
+                    provider_uploads_value = provider_asset_id
                 existing.provider_uploads = {
                     **(existing.provider_uploads or {}),
-                    provider_id: provider_asset_id,
+                    provider_id: provider_uploads_value,
                 }
 
                 db.add(existing)
@@ -783,6 +792,9 @@ async def upload_asset_from_url(
                 existing_external = f"/api/v1/assets/{existing.id}/file"
 
             provider_specific_id = existing.provider_uploads.get(request.provider_id) if existing.provider_uploads else None
+            # Unpack the {"id","url"} shape (present for Pixverse OpenAPI).
+            if isinstance(provider_specific_id, dict):
+                provider_specific_id = provider_specific_id.get("url") or provider_specific_id.get("id")
             if not provider_specific_id:
                 provider_specific_id = existing.provider_asset_id
 
@@ -1063,6 +1075,9 @@ async def extract_frame(
 
         # Upload to provider if determined. Track success so we can flip
         # searchable=True only on actually-uploaded frames (see below).
+        # AssetSyncService._upload_to_provider handles Pixverse-reuse
+        # internally (skips upload when the frame's parent video is on
+        # Pixverse's CDN already) — no per-caller fast-path needed here.
         upload_succeeded = False
         if target_provider_id:
             try:
@@ -1073,9 +1088,15 @@ async def extract_frame(
                 # Refresh asset to get updated provider_uploads
                 frame_asset = await asset_service.get_asset(frame_asset.id)
 
-                # Update remote_url to the provider URL (like badge uploads do)
-                provider_url = frame_asset.provider_uploads.get(target_provider_id)
-                if provider_url and provider_url.startswith('http'):
+                # Update remote_url to the provider URL (like badge uploads do).
+                # provider_uploads entries may be plain strings (legacy) or a
+                # {"id", "url"} dict for providers that return both.
+                upload_entry = frame_asset.provider_uploads.get(target_provider_id)
+                if isinstance(upload_entry, dict):
+                    provider_url = upload_entry.get("url")
+                else:
+                    provider_url = upload_entry
+                if provider_url and isinstance(provider_url, str) and provider_url.startswith('http'):
                     frame_asset.remote_url = provider_url
                     await asset_service.db.commit()
                     # Refresh again to get the updated remote_url

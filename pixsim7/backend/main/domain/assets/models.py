@@ -82,10 +82,14 @@ class Asset(SQLModel, table=True):
     # Maps provider_id → provider-specific asset ID for cross-provider usage
     # Example: {"pixverse": "video_abc123", "sora": "media_xyz789"}
     # This allows using a Pixverse video on Sora without re-downloading
-    provider_uploads: Dict[str, str] = Field(
+    provider_uploads: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
-        description="Map of provider_id to uploaded asset ID (for cross-provider ops)"
+        description=(
+            "Map of provider_id to uploaded-asset reference.  Legacy entries "
+            "are a plain string (URL or provider-side id).  Providers that "
+            "return both (e.g. Pixverse OpenAPI) store a {\"id\", \"url\"} dict."
+        ),
     )
 
     # ===== LOCATION =====

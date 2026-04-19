@@ -872,7 +872,20 @@ class PixverseAPI:
 
         # Extract URLs
         video_url = data.get("customer_video_url") or data.get("video_url") or data.get("url")
-        thumbnail_url = data.get("customer_video_last_frame_url") or data.get("first_frame") or data.get("thumbnail")
+        # Priority for the representative frame URL (stored on Video.thumbnail).
+        # For Pixverse the intended value is the LAST rendered frame —
+        # reusable as an extend seed (customer_video_last_frame_url).
+        #   1. customer_video_last_frame_url — canonical extend-input field name.
+        #   2. last_frame — raw field name in get_video responses.
+        #   3. first_frame — OPENING frame, semantically WRONG for extend use;
+        #      accepted as a last-resort display fallback only.
+        #   4. thumbnail — generic catch-all.
+        thumbnail_url = (
+            data.get("customer_video_last_frame_url")
+            or data.get("last_frame")
+            or data.get("first_frame")
+            or data.get("thumbnail")
+        )
 
         return Video(
             id=str(video_id) if video_id else None,

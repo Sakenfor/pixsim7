@@ -398,6 +398,20 @@ def resolve_reference(
     """
     if not value:
         return None
+
+    # New provider_uploads shape: {"id": "<int-str>", "url": "<https://...>"}.
+    # Pick the side that matches the target API: OpenAPI wants the id,
+    # WebAPI prefers the URL (falls back to id if URL missing).
+    if isinstance(value, dict):
+        id_part = value.get("id")
+        url_part = value.get("url")
+        if api_mode == PixverseApiMode.OPENAPI:
+            value = id_part or url_part
+        else:
+            value = url_part or id_part
+        if not value:
+            return None
+
     if not isinstance(value, str):
         value = str(value)
 
