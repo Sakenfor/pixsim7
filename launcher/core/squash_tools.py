@@ -1,0 +1,527 @@
+"""Squash helpers for the launcher: generate a baseline migration file from
+the live schema, then optionally verify that applying the baseline to a fresh
+DB produces the same schema we have now.
+
+Design goals:
+- **Non-destructive**: generate writes a NEW migration file but does NOT
+  delete the old ones, does NOT run ``alembic stamp``.  The user can always
+  delete the generated file and walk away.
+- **Faithful**: uses ``pg_dump -s`` against the live DB rather than
+  ``alembic revision --autogenerate`` — autogenerate has known blind spots
+  around enums, partial indexes, and server-side defaults.  Raw SQL
+  round-trips exactly.
+- **Docker-aware**: reuses the container-detection logic from ``db_tools``
+  so it works without a host-side PostgreSQL install.
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from launcher.core.db_tools import (
+    _detect_postgres_container,
+    _find_pg_dump,
+    _parse_db_url,
+    resolve_db_url,
+)
+
+
+# Map launcher db_id → alembic script_location (relative to repo root).
+# Pulled from the alembic*.ini files at discovery time; the mapping below is
+# the stable one we know about.  For an unknown db_id, we ask the migrations
+# discovery helper at call time.
+_VERSIONS_DIR_OVERRIDE: dict[str, Path] = {}
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _versions_dir(db_id: str) -> Optional[Path]:
+    """Resolve the alembic ``versions/`` directory for a db_id."""
+    if db_id in _VERSIONS_DIR_OVERRIDE:
+        return _VERSIONS_DIR_OVERRIDE[db_id]
+    try:
+        from launcher.core.migration_tools import discover_databases
+        dbs = discover_databases()
+    except Exception:
+        return None
+    db = next((d for d in dbs if d.get("id") == db_id), None)
+    if not db:
+        return None
+    script_loc = db.get("script_location") or ""
+    if not script_loc:
+        return None
+    path = Path(script_loc)
+    if not path.is_absolute():
+        path = _repo_root() / script_loc
+    versions = path / "versions"
+    return versions if versions.exists() else None
+
+
+def dump_schema(db_id: str, db_url: str, *, timeout: int = 300) -> tuple[int, str, str]:
+    """Run ``pg_dump -s --no-owner --no-privileges`` and return the SQL.
+
+    Returns ``(exit_code, schema_sql, error_message)``.  Uses docker exec
+    when a matching postgres container is running; falls back to a local
+    pg_dump binary.
+    """
+    container = _detect_postgres_container(db_url)
+    parsed = _parse_db_url(db_url)
+
+    if container:
+        cmd = ["docker", "exec"]
+        if parsed["password"]:
+            cmd += ["-e", f"PGPASSWORD={parsed['password']}"]
+        cmd += [
+            container,
+            "pg_dump",
+            "-s",
+            "--no-owner",
+            "--no-privileges",
+            "-U",
+            parsed["user"],
+            "-d",
+            parsed["dbname"],
+        ]
+    else:
+        pg_dump = _find_pg_dump()
+        if not pg_dump:
+            return 127, "", (
+                "No postgres container found for this DB's port and no local "
+                "pg_dump on PATH.  Start the DB container or install PostgreSQL "
+                "client tools."
+            )
+        cmd = [pg_dump, "-s", "--no-owner", "--no-privileges", "-d", db_url]
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if res.returncode == 0:
+            return 0, res.stdout, res.stderr.strip()
+        return res.returncode, "", (res.stderr or res.stdout or "pg_dump failed").strip()
+    except subprocess.TimeoutExpired:
+        return 124, "", f"pg_dump timed out after {timeout}s."
+    except FileNotFoundError as exc:
+        return 127, "", f"Command not found: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return 1, "", f"{type(exc).__name__}: {exc}"
+
+
+def _next_baseline_revision() -> str:
+    """Return a filename-prefix revision ID like ``YYYYMMDD_0001``.
+
+    Keeps numeric collision out of the picture — we only generate one
+    baseline per day in practice, and the wizard deletes/replaces before
+    generating again.
+    """
+    date = datetime.now().strftime("%Y%m%d")
+    return f"{date}_9900"  # 9900 to sort to end of the day's revisions
+
+
+def _render_baseline_migration(
+    *,
+    revision: str,
+    schema_sql: str,
+    db_id: str,
+) -> str:
+    """Produce the Python text for the baseline migration file."""
+    # Escape the raw SQL safely inside a Python triple-quoted string by
+    # replacing closing triple-quotes.  Use a sentinel unlikely to appear in
+    # pg_dump output.
+    safe_sql = schema_sql.replace('"""', '"\u200b""')  # zero-width-space trick
+    ts = datetime.now().strftime("%Y-%m-%d")
+    return f'''"""squash baseline — full schema snapshot via pg_dump -s
+
+Generated by the launcher squash wizard on {ts}.
+This migration replaces the entire pre-squash migration chain for the
+``{db_id}`` database.  The downgrade is intentionally a no-op — once you've
+squashed, there is no meaningful "undo" beyond restoring from a backup.
+
+Revision ID: {revision}
+Revises: (none — baseline)
+Create Date: {ts}
+"""
+from __future__ import annotations
+
+from alembic import op
+
+
+revision = "{revision}"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+_BASELINE_SQL = r"""
+{safe_sql}"""
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+    op.execute(_BASELINE_SQL)
+
+
+def downgrade() -> None:
+    # No-op: baseline cannot be meaningfully reversed.  Restore from a
+    # pg_dump backup if you need to undo.
+    return
+'''
+
+
+def baseline_file_path(db_id: str) -> Optional[Path]:
+    """Expected path for the baseline file (whether or not it exists yet)."""
+    versions = _versions_dir(db_id)
+    if not versions:
+        return None
+    revision = _next_baseline_revision()
+    return versions / f"{revision}_baseline_squash.py"
+
+
+def baseline_status(db_id: str) -> dict:
+    """Report whether a baseline file currently exists for db_id."""
+    path = baseline_file_path(db_id)
+    if not path:
+        return {"exists": False, "reason": f"versions dir not found for db_id '{db_id}'"}
+    if not path.exists():
+        return {"exists": False, "path": str(path)}
+    stat = path.stat()
+    return {
+        "exists": True,
+        "path": str(path),
+        "size_bytes": stat.st_size,
+        "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+    }
+
+
+def generate_baseline(db_id: str) -> dict:
+    """Generate a baseline migration file from the live schema."""
+    url = resolve_db_url(db_id)
+    if not url:
+        return {"ok": False, "error": f"DB URL not configured for '{db_id}'"}
+
+    versions = _versions_dir(db_id)
+    if not versions:
+        return {"ok": False, "error": f"versions dir not found for db_id '{db_id}'"}
+
+    code, schema_sql, err = dump_schema(db_id, url)
+    if code != 0 or not schema_sql:
+        return {"ok": False, "error": err or f"pg_dump exited with code {code}"}
+
+    revision = _next_baseline_revision()
+    path = versions / f"{revision}_baseline_squash.py"
+    content = _render_baseline_migration(revision=revision, schema_sql=schema_sql, db_id=db_id)
+
+    try:
+        path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "error": f"write failed: {exc}"}
+
+    return {
+        "ok": True,
+        "revision": revision,
+        "path": str(path),
+        "size_bytes": path.stat().st_size,
+        "schema_size_bytes": len(schema_sql.encode("utf-8")),
+        "warnings": err or None,
+    }
+
+
+def discard_baseline(db_id: str) -> dict:
+    """Delete a previously-generated baseline file (if any)."""
+    path = baseline_file_path(db_id)
+    if not path or not path.exists():
+        return {"ok": True, "deleted": False}
+    try:
+        path.unlink()
+        return {"ok": True, "deleted": True, "path": str(path)}
+    except OSError as exc:
+        return {"ok": False, "error": f"delete failed: {exc}"}
+
+
+def archive_old_migrations(db_id: str) -> dict:
+    """Move every migration file except the baseline into
+    ``versions_archive/<YYYYMMDD_HHMMSS>/`` AND stamp the live DB to the
+    baseline with ``--purge``.
+
+    Reversible part: files are moved (not deleted) — you can restore by
+    moving them back.  The DB stamp is harder to reverse: it rewrites
+    ``alembic_version`` to the baseline revision, clearing any prior chain
+    reference.  Restoration after that requires moving the archived files
+    back AND re-stamping to the old head.
+
+    These two steps are bundled because separating them leaves alembic in a
+    broken state (DB points at a revision no longer in ``versions/``, and
+    ``stamp head`` then fails its own integrity check).  ``--purge`` clears
+    ``alembic_version`` before writing the new stamp, which is the right
+    recovery path here.
+    """
+    versions = _versions_dir(db_id)
+    if not versions:
+        return {"ok": False, "error": f"versions dir not found for db_id '{db_id}'"}
+
+    baseline = baseline_file_path(db_id)
+    if not baseline or not baseline.exists():
+        return {
+            "ok": False,
+            "error": "No baseline file found — generate one before archiving.",
+        }
+
+    archive_root = versions.parent / "versions_archive"
+    archive_root.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_dir = archive_root / ts
+    try:
+        archive_dir.mkdir()
+    except FileExistsError:
+        # Extremely unlikely (same-second invocation); fall through
+        pass
+
+    moved: list[str] = []
+    skipped: list[str] = []
+    errors: list[dict] = []
+    for f in versions.iterdir():
+        if f.is_dir():
+            continue  # skip __pycache__
+        if f == baseline:
+            skipped.append(f.name)
+            continue
+        if not f.name.endswith(".py"):
+            skipped.append(f.name)
+            continue
+        if f.name == "__init__.py":
+            skipped.append(f.name)
+            continue
+        try:
+            dest = archive_dir / f.name
+            f.rename(dest)
+            moved.append(f.name)
+        except OSError as exc:
+            errors.append({"file": f.name, "error": str(exc)})
+
+    # Clean up empty archive dir if nothing moved (makes re-runs tidy)
+    if not moved and not errors:
+        try:
+            archive_dir.rmdir()
+        except OSError:
+            pass
+
+    # Wipe the versions/__pycache__ directory — stale .pyc files for the
+    # archived migrations confuse ``alembic history`` (it sees revisions it
+    # can't resolve to source files).  Safe to wipe: pycache rebuilds itself.
+    pycache = versions / "__pycache__"
+    if pycache.exists():
+        try:
+            import shutil
+            shutil.rmtree(pycache)
+        except OSError:
+            pass
+
+    # Extract the baseline revision id from the filename:
+    # "<revision>_baseline_squash.py" → "<revision>"
+    baseline_rev = baseline.stem.replace("_baseline_squash", "")
+
+    # Stamp the live DB to the baseline with --purge.  Without --purge,
+    # alembic fails ("Can't locate revision identified by <old_head>")
+    # because the DB's current version row was just invalidated by the
+    # archive move.
+    stamp_ok = False
+    stamp_output = ""
+    if errors:
+        # Don't stamp if file moves failed — state may be inconsistent
+        stamp_output = "skipped (archive had errors)"
+    else:
+        try:
+            from launcher.core.migration_tools import _run_alembic, discover_databases
+            dbs = discover_databases()
+            db = next((d for d in dbs if d.get("id") == db_id), None)
+            if not db:
+                stamp_output = f"db '{db_id}' not found in alembic config discovery"
+            else:
+                code, out, err = _run_alembic(
+                    "stamp", baseline_rev, "--purge", config=db["config"]
+                )
+                stamp_ok = code == 0
+                stamp_output = (out or "").strip() or (err or "").strip() or "stamped"
+                if not stamp_ok:
+                    stamp_output = (err or out or "stamp failed").strip()
+        except Exception as exc:  # noqa: BLE001
+            stamp_output = f"{type(exc).__name__}: {exc}"
+
+    return {
+        "ok": len(errors) == 0 and stamp_ok,
+        "archive_dir": str(archive_dir),
+        "moved_count": len(moved),
+        "skipped_count": len(skipped),
+        "sample_moved": moved[:5],
+        "errors": errors,
+        "stamp_ok": stamp_ok,
+        "stamp_revision": baseline_rev,
+        "stamp_output": stamp_output,
+    }
+
+
+# ── Verification: load baseline into throwaway DB, diff schema ────────────
+
+_THROWAWAY_PREFIX = "pixsim7_squash_verify_"
+
+
+def _normalize_schema(sql: str) -> str:
+    """Strip pg_dump preamble + empty lines + comments + random-token lines
+    so diffs only surface real structural differences.
+    """
+    lines: list[str] = []
+    for raw in sql.splitlines():
+        line = raw.rstrip()
+        if not line:
+            continue
+        if line.startswith("--"):
+            continue
+        if line.startswith("SET ") or line.startswith("SELECT pg_catalog"):
+            # pg_dump preamble — server settings, irrelevant to structure
+            continue
+        # psql 17+ emits `\restrict <random_token>` / `\unrestrict <random_token>`
+        # around each dump.  Tokens regenerate every run so the lines always
+        # differ even for identical schemas — pure noise.
+        if line.startswith("\\restrict ") or line.startswith("\\unrestrict "):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _psql_exec(db_url: str, command: str, *, input_text: Optional[str] = None,
+               container: Optional[str] = None, timeout: int = 120) -> tuple[int, str, str]:
+    """Run psql -c "<command>" or pipe input_text into psql via stdin."""
+    parsed = _parse_db_url(db_url)
+    if container:
+        args = ["docker", "exec", "-i"]
+        if parsed["password"]:
+            args += ["-e", f"PGPASSWORD={parsed['password']}"]
+        args += [container, "psql", "-U", parsed["user"], "-d", parsed["dbname"],
+                 "-v", "ON_ERROR_STOP=1", "-q"]
+    else:
+        env_prefix = []
+        if parsed["password"] and not os.environ.get("PGPASSWORD"):
+            os.environ["PGPASSWORD"] = parsed["password"]  # subprocess inherits
+        args = ["psql", "-h", parsed["host"], "-p", str(parsed["port"]),
+                "-U", parsed["user"], "-d", parsed["dbname"],
+                "-v", "ON_ERROR_STOP=1", "-q"]
+    if command:
+        args += ["-c", command]
+    try:
+        res = subprocess.run(
+            args,
+            input=input_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return res.returncode, res.stdout, res.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", f"psql timed out after {timeout}s"
+    except FileNotFoundError:
+        return 127, "", "psql not found on PATH (or in container)"
+    except Exception as exc:  # noqa: BLE001
+        return 1, "", f"{type(exc).__name__}: {exc}"
+
+
+def _with_dbname(url: str, new_dbname: str) -> str:
+    """Swap the database name in a postgres URL."""
+    # url shape: postgresql://user:pass@host:port/dbname?params
+    return re.sub(r"(://[^/]+/)([^?]+)", rf"\g<1>{new_dbname}", url, count=1)
+
+
+def verify_baseline(db_id: str, *, timeout: int = 600) -> dict:
+    """Load the baseline SQL into a throwaway DB, pg_dump both, return diff.
+
+    Steps:
+      1. Create ``pixsim7_squash_verify_<ts>`` database.
+      2. Load baseline SQL into it (extracted from the generated migration).
+      3. pg_dump -s both the throwaway and live DB.
+      4. Normalize + diff.
+      5. Drop throwaway DB.
+
+    Returns ``{ok, identical, diff_lines?, throwaway_dbname, error?}``.
+    """
+    url = resolve_db_url(db_id)
+    if not url:
+        return {"ok": False, "error": f"DB URL not configured for '{db_id}'"}
+
+    path = baseline_file_path(db_id)
+    if not path or not path.exists():
+        return {"ok": False, "error": "No baseline file found — generate one first."}
+
+    # Extract the raw SQL from the generated migration.  We wrote it inside
+    # a ``_BASELINE_SQL = r"""..."""`` block.
+    content = path.read_text(encoding="utf-8")
+    m = re.search(r'_BASELINE_SQL = r"""(.*?)"""', content, re.DOTALL)
+    if not m:
+        return {"ok": False, "error": "Couldn't extract baseline SQL from file."}
+    # Un-escape the zero-width-space we used to protect closing triple-quotes.
+    schema_sql = m.group(1).replace('"\u200b""', '"""').lstrip()
+
+    container = _detect_postgres_container(url)
+    throwaway = _THROWAWAY_PREFIX + datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Step 1: create the throwaway DB.  We issue CREATE DATABASE against the
+    # existing DB (which implicitly uses the postgres maintenance DB context
+    # — docker exec lands us there with the same user).
+    admin_url = url  # any existing DB is fine for issuing CREATE DATABASE
+    code, out, err = _psql_exec(admin_url, f'CREATE DATABASE "{throwaway}"', container=container, timeout=30)
+    if code != 0:
+        return {"ok": False, "error": f"create throwaway DB failed: {err.strip() or out.strip()}"}
+
+    throwaway_url = _with_dbname(url, throwaway)
+
+    try:
+        # Step 2: load baseline SQL
+        code, out, err = _psql_exec(throwaway_url, "", input_text=schema_sql,
+                                    container=container, timeout=timeout)
+        if code != 0:
+            return {
+                "ok": False,
+                "throwaway_dbname": throwaway,
+                "error": f"load baseline failed:\n{err.strip()[:4000]}",
+            }
+
+        # Step 3: pg_dump both
+        code, live_schema, live_err = dump_schema(db_id, url, timeout=timeout)
+        if code != 0:
+            return {"ok": False, "error": f"pg_dump live failed: {live_err}"}
+
+        code, throw_schema, throw_err = dump_schema(db_id, throwaway_url, timeout=timeout)
+        if code != 0:
+            return {"ok": False, "error": f"pg_dump throwaway failed: {throw_err}"}
+
+        # Step 4: normalize + diff
+        import difflib
+        live_lines = _normalize_schema(live_schema).splitlines(keepends=False)
+        throw_lines = _normalize_schema(throw_schema).splitlines(keepends=False)
+        identical = live_lines == throw_lines
+
+        diff_preview: list[str] = []
+        if not identical:
+            diff_preview = list(difflib.unified_diff(
+                throw_lines, live_lines,
+                fromfile="baseline",
+                tofile="live",
+                lineterm="",
+                n=3,
+            ))[:400]
+
+        return {
+            "ok": True,
+            "identical": identical,
+            "throwaway_dbname": throwaway,
+            "live_schema_lines": len(live_lines),
+            "baseline_schema_lines": len(throw_lines),
+            "diff_preview": diff_preview,
+        }
+    finally:
+        # Step 5: always drop the throwaway
+        _psql_exec(url, f'DROP DATABASE IF EXISTS "{throwaway}"', container=container, timeout=30)

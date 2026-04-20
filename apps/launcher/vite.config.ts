@@ -13,6 +13,8 @@ export default defineConfig({
       '/buildables': 'http://localhost:8100',
       '/codegen': 'http://localhost:8100',
       '/migrations': 'http://localhost:8100',
+      '/databases': 'http://localhost:8100',
+      '/squash': 'http://localhost:8100',
       '/settings': 'http://localhost:8100',
       '/debug': 'http://localhost:8100',
       '/_debug': 'http://localhost:8100',

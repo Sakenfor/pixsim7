@@ -10,12 +10,18 @@ import {
 import {
   getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
   getMigrationDatabases, getMigrationStatus, runMigrationAction, invalidateMigrationStatus,
+  listDbBackups, backupDatabase, getBackupInfo,
+  getSquashStatus, generateSquashBaseline, verifySquashBaseline, discardSquashBaseline,
+  archiveOldMigrations, getDbHealth, inspectTable,
   getSettings, saveSettings,
   type CodegenTask, type CodegenRunResult, type Buildable, type BuildResult, type BuildStatus,
   type MigrationDatabase, type MigrationStatus, type MigrationResult,
+  type DbBackupEntry, type DbBackupResult, type DbBackupInfo,
+  type SquashStatus, type SquashGenerateResult, type SquashVerifyResult, type SquashArchiveResult,
+  type DbHealth, type DbTableDetail,
 } from '../api/tools'
 
-type Section = 'codegen' | 'migrations' | 'buildables' | 'settings'
+type Section = 'codegen' | 'databases' | 'buildables' | 'settings'
 
 /**
  * Shared build progress so the tab strip can surface activity even when
@@ -34,7 +40,7 @@ export function ToolsPage() {
 
   const sections: { id: Section; label: string }[] = [
     { id: 'codegen', label: 'Codegen' },
-    { id: 'migrations', label: 'Migrations' },
+    { id: 'databases', label: 'Databases' },
     { id: 'buildables', label: 'Buildables' },
     { id: 'settings', label: 'Settings' },
   ]
@@ -61,7 +67,7 @@ export function ToolsPage() {
 
       <div className="flex-1 overflow-hidden relative">
         <div className={`h-full overflow-auto ${activeSection === 'codegen' ? '' : 'hidden'}`}><CodegenSection /></div>
-        <div className={`h-full overflow-auto ${activeSection === 'migrations' ? '' : 'hidden'}`}><MigrationsSection /></div>
+        <div className={`h-full overflow-auto ${activeSection === 'databases' ? '' : 'hidden'}`}><DatabasesSection /></div>
         <div className={`h-full overflow-auto ${activeSection === 'buildables' ? '' : 'hidden'}`}>
           <BuildablesSection progress={buildProgress} setProgress={setBuildProgress} />
         </div>
@@ -231,98 +237,804 @@ function CodegenSection() {
   )
 }
 
-// ── Migrations ──
+// ── Databases (master-detail: migrations + backups on a selected DB) ──
 
-function MigrationsSection() {
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+function DatabasesSection() {
   const [databases, setDatabases] = useState<MigrationDatabase[]>([])
   const [statuses, setStatuses] = useState<Record<string, MigrationStatus>>({})
-  const [actionResult, setActionResult] = useState<MigrationResult | null>(null)
-  const [loadingDb, setLoadingDb] = useState<string | null>(null)
+  const [backupInfo, setBackupInfo] = useState<Record<string, DbBackupInfo>>({})
+  const [backups, setBackups] = useState<DbBackupEntry[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [busy, setBusy] = useState<{ dbId: string; kind: 'migration' | 'backup' } | null>(null)
+  const [lastMigResult, setLastMigResult] = useState<MigrationResult | null>(null)
+  const [lastBackupResult, setLastBackupResult] = useState<DbBackupResult | null>(null)
 
-  useEffect(() => { getMigrationDatabases().then(setDatabases) }, [])
-
-  useEffect(() => {
-    databases.forEach((db) => {
-      getMigrationStatus(db.id).then((s) =>
-        setStatuses((prev) => ({ ...prev, [db.id]: s }))
-      ).catch(() => {})
-    })
-  }, [databases])
-
-  const refreshDb = useCallback(async (dbId: string) => {
+  const refreshStatus = useCallback(async (dbId: string) => {
     try {
       invalidateMigrationStatus(dbId)
       const s = await getMigrationStatus(dbId, true)
       setStatuses((prev) => ({ ...prev, [dbId]: s }))
-    } catch {}
+    } catch {
+      // ignore — detail panel will show '—'
+    }
   }, [])
 
-  const runAction = useCallback(async (action: 'upgrade' | 'downgrade' | 'stamp' | 'merge', dbId: string) => {
-    setLoadingDb(dbId)
-    setActionResult(null)
+  const refreshBackupsList = useCallback(async () => {
+    try { setBackups(await listDbBackups()) } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    getMigrationDatabases().then((dbs) => {
+      if (cancelled) return
+      setDatabases(dbs)
+      if (dbs.length > 0) setSelectedId((prev) => prev ?? dbs[0].id)
+      dbs.forEach((db) => {
+        getMigrationStatus(db.id)
+          .then((s) => !cancelled && setStatuses((prev) => ({ ...prev, [db.id]: s })))
+          .catch(() => { /* ignore */ })
+        getBackupInfo(db.id)
+          .then((info) => !cancelled && setBackupInfo((prev) => ({ ...prev, [db.id]: info })))
+          .catch(() => { /* ignore */ })
+      })
+    }).catch(() => { /* ignore */ })
+    refreshBackupsList()
+    return () => { cancelled = true }
+  }, [refreshBackupsList])
+
+  const runMigration = useCallback(async (action: 'upgrade' | 'downgrade' | 'stamp' | 'merge', dbId: string) => {
+    setBusy({ dbId, kind: 'migration' })
+    setLastMigResult(null)
     try {
       const result = await runMigrationAction(action, dbId)
-      setActionResult(result)
-      invalidateMigrationStatus(dbId)
-      await refreshDb(dbId)
+      setLastMigResult(result)
+      await refreshStatus(dbId)
     } finally {
-      setLoadingDb(null)
+      setBusy(null)
     }
-  }, [refreshDb])
+  }, [refreshStatus])
+
+  const runBackup = useCallback(async (dbId: string) => {
+    setBusy({ dbId, kind: 'backup' })
+    setLastBackupResult(null)
+    try {
+      const result = await backupDatabase(dbId)
+      setLastBackupResult(result)
+      if (result.ok) await refreshBackupsList()
+    } finally {
+      setBusy(null)
+    }
+  }, [refreshBackupsList])
+
+  const selected = databases.find((db) => db.id === selectedId) ?? null
+  const selectedStatus = selected ? statuses[selected.id] : undefined
+  const selectedInfo = selected ? backupInfo[selected.id] : undefined
+  const selectedBackups = selected ? backups.filter((b) => b.db_id === selected.id) : []
+  const dbBusy = busy?.dbId === selected?.id
+
+  const backupModeLabel =
+    !selectedInfo ? 'checking…' :
+    selectedInfo.mode === 'docker' ? `via ${selectedInfo.container}` :
+    selectedInfo.mode === 'local' ? 'local pg_dump' :
+    'unavailable'
+  const backupModeTone: StatusTone =
+    !selectedInfo ? 'muted' :
+    selectedInfo.mode === 'unavailable' ? 'warning' :
+    'success'
+  const canBackup = selectedInfo?.mode === 'docker' || selectedInfo?.mode === 'local'
 
   return (
-    <div className="p-3 space-y-2">
-      {databases.map((db) => {
-        const status = statuses[db.id]
-        const busy = loadingDb === db.id
-        const hasPending = (status?.pending?.length ?? 0) > 0
+    <div className="h-full flex min-h-0">
+      {/* Left pane: DB list */}
+      <div className="w-44 shrink-0 border-r border-border overflow-auto">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 px-2 py-1.5">Databases</div>
+        {databases.map((db) => {
+          const status = statuses[db.id]
+          const pending = status?.pending?.length ?? 0
+          const isSelected = db.id === selectedId
+          const tone: StatusTone =
+            !status ? 'muted' :
+            pending > 0 ? 'warning' :
+            'success'
+          const label =
+            !status ? '—' :
+            pending > 0 ? `${pending} pending` :
+            'ok'
+          return (
+            <button
+              key={db.id}
+              onClick={() => setSelectedId(db.id)}
+              className={`w-full text-left px-2 py-1.5 border-l-2 transition-colors ${
+                isSelected
+                  ? 'bg-surface-raised border-blue-400'
+                  : 'border-transparent hover:bg-surface-raised/50'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="text-[11px] text-gray-200 truncate">{db.label}</span>
+                <StatusPill tone={tone} dot size="xs">{label}</StatusPill>
+              </div>
+            </button>
+          )
+        })}
+      </div>
 
-        const tone: StatusTone = !status ? 'muted' : hasPending ? 'warning' : 'success'
-        const statusLabel = !status
-          ? 'Loading'
-          : hasPending
-            ? `${status.pending.length} pending`
-            : 'Up to date'
-
-        const body = (
-          <div className="space-y-0.5 text-[10px] mt-1">
-            <div className="text-gray-500 font-mono truncate">{db.db_url}</div>
-            {status && (
-              <>
-                <div>
-                  <span className="text-gray-500">Rev:</span>{' '}
-                  <span className="text-gray-300 font-mono">{status.current_revision}</span>
-                </div>
-                {status.pending_error && (
-                  <div className="text-red-400 select-text whitespace-pre-wrap break-words">{status.pending_error}</div>
-                )}
-              </>
-            )}
-          </div>
-        )
-
-        const actions = (
+      {/* Right pane: detail */}
+      <div className="flex-1 overflow-auto p-3 space-y-4 min-w-0">
+        {!selected ? (
+          <div className="text-[11px] text-gray-500 italic">Select a database on the left.</div>
+        ) : (
           <>
-            <Button size="xs" variant="ghost" onClick={() => refreshDb(db.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
-            <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => runAction('upgrade', db.id)} disabled={busy}>Upgrade</Button>
-            <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" onClick={() => runAction('downgrade', db.id)} disabled={busy}>Down</Button>
-            <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" onClick={() => runAction('stamp', db.id)} disabled={busy}>Stamp</Button>
-            <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" onClick={() => runAction('merge', db.id)} disabled={busy}>Merge</Button>
+            {/* Header */}
+            <div className="space-y-0.5">
+              <div className="text-sm font-semibold text-gray-100">{selected.label}</div>
+              <div className="text-[10px] text-gray-500 font-mono truncate select-text">{selected.db_url}</div>
+            </div>
+
+            {/* Health panel */}
+            <HealthPanel dbId={selected.id} />
+
+            {/* Migrations panel */}
+            <div className="border border-border rounded">
+              <div className="px-2 py-1.5 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-medium text-gray-300">Migrations</span>
+                <Button size="xs" variant="ghost" onClick={() => refreshStatus(selected.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
+              </div>
+              <div className="p-2 space-y-2">
+                <div className="text-[11px]">
+                  <span className="text-gray-500">Current:</span>{' '}
+                  <span className="text-gray-200 font-mono">{selectedStatus?.current_revision ?? '…'}</span>
+                </div>
+                {selectedStatus?.pending && selectedStatus.pending.length > 0 && (
+                  <div className="text-[11px] space-y-0.5">
+                    <div className="text-amber-400">{selectedStatus.pending.length} pending:</div>
+                    {selectedStatus.pending.slice(0, 5).map((p) => (
+                      <div key={p.revision} className="font-mono text-gray-300 truncate">
+                        <span className="text-gray-500">{p.revision.slice(0, 10)}</span>
+                        {p.message ? ` — ${p.message}` : ''}
+                      </div>
+                    ))}
+                    {selectedStatus.pending.length > 5 && (
+                      <div className="text-gray-500">…and {selectedStatus.pending.length - 5} more</div>
+                    )}
+                  </div>
+                )}
+                {selectedStatus?.pending_error && (
+                  <div className="text-[11px] text-red-400 whitespace-pre-wrap break-words select-text">
+                    {selectedStatus.pending_error}
+                  </div>
+                )}
+                <div className="flex gap-1.5 flex-wrap">
+                  <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" disabled={dbBusy} onClick={() => runMigration('upgrade', selected.id)}>Upgrade</Button>
+                  <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" disabled={dbBusy} onClick={() => runMigration('downgrade', selected.id)}>Down</Button>
+                  <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" disabled={dbBusy} onClick={() => runMigration('stamp', selected.id)}>Stamp</Button>
+                  <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" disabled={dbBusy} onClick={() => runMigration('merge', selected.id)}>Merge</Button>
+                </div>
+                {lastMigResult && busy?.kind !== 'backup' && <ResultBox result={lastMigResult} />}
+              </div>
+            </div>
+
+            {/* Squash wizard */}
+            <SquashPanel dbId={selected.id} />
+
+            {/* Backups panel */}
+            <div className="border border-border rounded">
+              <div className="px-2 py-1.5 border-b border-border flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-gray-300">Backups</span>
+                  <StatusPill tone={backupModeTone} dot size="xs">{backupModeLabel}</StatusPill>
+                </div>
+                <Button size="xs" variant="ghost" onClick={refreshBackupsList} className="text-gray-400" title="Refresh list">&#x21bb;</Button>
+              </div>
+              <div className="p-2 space-y-2">
+                {selectedInfo?.mode === 'unavailable' && selectedInfo.reason && (
+                  <div className="text-[11px] text-amber-400 whitespace-pre-wrap">{selectedInfo.reason}</div>
+                )}
+                <div>
+                  <Button
+                    size="xs"
+                    className="bg-green-700 hover:bg-green-600 text-white"
+                    disabled={dbBusy || !canBackup}
+                    onClick={() => runBackup(selected.id)}
+                  >
+                    {busy?.dbId === selected.id && busy.kind === 'backup' ? 'Backing up…' : 'Backup now'}
+                  </Button>
+                </div>
+                {lastBackupResult && (
+                  <div
+                    className={`p-2 rounded text-[11px] ${
+                      lastBackupResult.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                    }`}
+                  >
+                    {lastBackupResult.ok ? (
+                      <div>
+                        <span className="font-mono">{lastBackupResult.filename}</span>
+                        {typeof lastBackupResult.size_bytes === 'number' && ` (${formatBytes(lastBackupResult.size_bytes)})`}
+                        {lastBackupResult.mode && <span className="text-gray-500"> · {lastBackupResult.mode}</span>}
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap select-text">{lastBackupResult.error}</div>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                    Existing ({selectedBackups.length})
+                  </div>
+                  {selectedBackups.length === 0 ? (
+                    <div className="text-[11px] text-gray-500 italic">None yet.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {selectedBackups.map((b) => (
+                        <div
+                          key={b.path}
+                          className="text-[10px] font-mono bg-surface-raised border border-border rounded px-2 py-1 flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate text-gray-300">{b.filename}</span>
+                          <span className="text-gray-500 shrink-0">
+                            {formatBytes(b.size_bytes)} · {b.created_at.replace('T', ' ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </>
-        )
+        )}
+      </div>
+    </div>
+  )
+}
 
-        return (
-          <ActionCard
-            key={db.id}
-            title={db.label}
-            status={<StatusPill tone={tone} dot size="xs">{statusLabel}</StatusPill>}
-            body={body}
-            actions={actions}
-          />
-        )
-      })}
+// ── Health panel: size, table stats, recent migrations ──
 
-      {actionResult && <ResultBox result={actionResult} />}
+function HealthPanel({ dbId }: { dbId: string }) {
+  const [health, setHealth] = useState<DbHealth | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [openTable, setOpenTable] = useState<string | null>(null)
+  const [tableDetails, setTableDetails] = useState<Record<string, DbTableDetail | 'loading'>>({})
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      setHealth(await getDbHealth(dbId))
+    } finally {
+      setLoading(false)
+    }
+  }, [dbId])
+
+  const toggleTable = useCallback(async (schema: string, name: string) => {
+    const key = `${schema}.${name}`
+    if (openTable === key) {
+      setOpenTable(null)
+      return
+    }
+    setOpenTable(key)
+    if (!tableDetails[key]) {
+      setTableDetails((prev) => ({ ...prev, [key]: 'loading' }))
+      const detail = await inspectTable(dbId, schema, name)
+      setTableDetails((prev) => ({ ...prev, [key]: detail }))
+    }
+  }, [dbId, openTable, tableDetails])
+
+  useEffect(() => {
+    setHealth(null)
+    setExpanded(false)
+    setOpenTable(null)
+    setTableDetails({})
+    refresh()
+  }, [dbId, refresh])
+
+  const sizeLabel = !health
+    ? '—'
+    : health.ok
+      ? (health.size_pretty || formatBytes(health.size_bytes ?? 0))
+      : 'error'
+  const tableLabel = health?.ok && health.table_count != null ? `${health.table_count} tables` : ''
+
+  return (
+    <div className="border border-border rounded">
+      <button
+        className="w-full px-2 py-1.5 border-b border-border flex items-center justify-between hover:bg-surface-raised/30"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium text-gray-300">Health</span>
+          <StatusPill tone={health?.ok ? 'success' : (health ? 'warning' : 'muted')} dot size="xs">
+            {loading ? 'loading…' : sizeLabel}
+          </StatusPill>
+          {tableLabel && <span className="text-[10px] text-gray-500">· {tableLabel}</span>}
+        </div>
+        <span className="text-gray-500 text-[11px]">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="p-2 space-y-3 text-[11px]">
+          {!health ? (
+            <div className="text-gray-500 italic">Loading…</div>
+          ) : !health.ok ? (
+            <div className="text-red-300 whitespace-pre-wrap select-text">{health.error}</div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">Total size</div>
+                  <div className="font-semibold text-gray-200">{health.size_pretty}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">Tables</div>
+                  <div className="font-semibold text-gray-200">{health.table_count ?? '—'}</div>
+                </div>
+                <div className="ml-auto">
+                  <Button size="xs" variant="ghost" onClick={refresh} className="text-gray-400" title="Refresh">&#x21bb;</Button>
+                </div>
+              </div>
+
+              {health.top_tables && health.top_tables.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                    Top tables by size <span className="text-gray-600 normal-case">(click for details)</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {health.top_tables.map((t) => {
+                      const key = `${t.schema}.${t.name}`
+                      const isOpen = openTable === key
+                      const detail = tableDetails[key]
+                      return (
+                        <div key={key}>
+                          <button
+                            onClick={() => toggleTable(t.schema, t.name)}
+                            className={`w-full flex items-center justify-between gap-2 font-mono text-[10px] border rounded px-1.5 py-0.5 transition-colors ${
+                              isOpen
+                                ? 'bg-surface-raised border-blue-400/60'
+                                : 'bg-surface-raised/40 border-border hover:border-blue-400/40'
+                            }`}
+                          >
+                            <span className="text-gray-300 truncate">
+                              {isOpen ? '▾' : '▸'} {t.schema === 'public' ? t.name : key}
+                            </span>
+                            <span className="text-gray-500 shrink-0">
+                              {formatBytes(t.total_bytes)} · {t.row_estimate.toLocaleString()} rows
+                            </span>
+                          </button>
+                          {isOpen && (
+                            <div className="ml-3 mt-1 mb-1.5 border-l-2 border-blue-400/30 pl-2">
+                              <TableDetailInline detail={detail} />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {health.recent_migrations && health.recent_migrations.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                    Recent migrations
+                  </div>
+                  <div className="space-y-0.5">
+                    {health.recent_migrations.slice(0, 10).map((m, i) => (
+                      <div
+                        key={i}
+                        className="font-mono text-[10px] text-gray-300 bg-surface-raised/40 border border-border rounded px-1.5 py-0.5 truncate select-text"
+                        title={m.line}
+                      >
+                        {m.line}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {health.recent_migrations_error && (
+                <div className="text-[10px] text-amber-400">
+                  Migration history unavailable: {health.recent_migrations_error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TableDetailInline({ detail }: { detail: DbTableDetail | 'loading' | undefined }) {
+  if (detail === undefined) return null
+  if (detail === 'loading') {
+    return <div className="text-[10px] text-gray-500 italic py-1">Loading…</div>
+  }
+  if (!detail.ok) {
+    return (
+      <div className="text-[10px] text-red-400 whitespace-pre-wrap py-1 select-text">
+        {detail.error ?? 'Inspection failed'}
+      </div>
+    )
+  }
+
+  const exactOrEstimate = detail.exact_row_count != null
+    ? `${detail.exact_row_count.toLocaleString()} rows (exact)`
+    : detail.estimated_row_count != null
+      ? `~${detail.estimated_row_count.toLocaleString()} rows (estimate)`
+      : '?'
+
+  return (
+    <div className="space-y-2 text-[10px] py-1">
+      <div className="flex items-center gap-3 text-gray-400">
+        <span>{exactOrEstimate}</span>
+        {detail.total_bytes != null && detail.total_bytes > 0 && (
+          <span>
+            {formatBytes(detail.total_bytes)} total · {formatBytes(detail.heap_bytes ?? 0)} heap
+          </span>
+        )}
+      </div>
+
+      {detail.columns && detail.columns.length > 0 && (
+        <div>
+          <div className="text-gray-500 uppercase tracking-wide mb-0.5">Columns</div>
+          <div className="space-y-px">
+            {detail.columns.map((c) => (
+              <div key={c.name} className="font-mono flex items-baseline gap-2">
+                <span className="text-gray-300 shrink-0">{c.name}</span>
+                <span className="text-blue-300">{c.type}</span>
+                {!c.nullable && <span className="text-amber-400">NOT NULL</span>}
+                {c.default && (
+                  <span className="text-gray-500 truncate">
+                    default {c.default.length > 60 ? c.default.slice(0, 60) + '…' : c.default}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {detail.indexes && detail.indexes.length > 0 && (
+        <div>
+          <div className="text-gray-500 uppercase tracking-wide mb-0.5">Indexes ({detail.indexes.length})</div>
+          <div className="space-y-px">
+            {detail.indexes.map((idx) => (
+              <div key={idx.name} className="font-mono text-gray-400 truncate" title={idx.definition}>
+                <span className="text-gray-300">{idx.name}</span>
+                <span className="text-gray-600"> · </span>
+                <span className="text-gray-500">{idx.definition.replace(/^CREATE (UNIQUE )?INDEX [^ ]+ /i, '')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Squash wizard panel (non-destructive: generate + verify only) ──
+
+function SquashPanel({ dbId }: { dbId: string }) {
+  const [status, setStatus] = useState<SquashStatus | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [lastGenerate, setLastGenerate] = useState<SquashGenerateResult | null>(null)
+  const [lastVerify, setLastVerify] = useState<SquashVerifyResult | null>(null)
+  const [lastArchive, setLastArchive] = useState<SquashArchiveResult | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [archiveConfirming, setArchiveConfirming] = useState(false)
+
+  const refresh = useCallback(() => {
+    getSquashStatus(dbId).then(setStatus).catch(() => {})
+  }, [dbId])
+
+  useEffect(() => {
+    refresh()
+    setLastGenerate(null)
+    setLastVerify(null)
+    setLastArchive(null)
+    setArchiveConfirming(false)
+    setExpanded(false)
+  }, [dbId, refresh])
+
+  const onGenerate = useCallback(async () => {
+    setGenerating(true)
+    setLastGenerate(null)
+    try {
+      const r = await generateSquashBaseline(dbId)
+      setLastGenerate(r)
+      await refresh()
+    } finally {
+      setGenerating(false)
+    }
+  }, [dbId, refresh])
+
+  const onVerify = useCallback(async () => {
+    setVerifying(true)
+    setLastVerify(null)
+    try {
+      setLastVerify(await verifySquashBaseline(dbId))
+    } finally {
+      setVerifying(false)
+    }
+  }, [dbId])
+
+  const onDiscard = useCallback(async () => {
+    setDiscarding(true)
+    try {
+      const r = await discardSquashBaseline(dbId)
+      if (r.ok) {
+        setLastGenerate(null)
+        setLastVerify(null)
+        await refresh()
+      }
+    } finally {
+      setDiscarding(false)
+    }
+  }, [dbId, refresh])
+
+  const onArchive = useCallback(async () => {
+    setArchiving(true)
+    setLastArchive(null)
+    try {
+      setLastArchive(await archiveOldMigrations(dbId))
+    } finally {
+      setArchiving(false)
+      setArchiveConfirming(false)
+    }
+  }, [dbId])
+
+  const hasBaseline = status?.exists ?? false
+  const baselineRev = status?.path?.split(/[\\/]/).pop()?.replace(/_baseline_squash\.py$/, '') ?? lastGenerate?.revision
+
+  return (
+    <div className="border border-border rounded">
+      <button
+        className="w-full px-2 py-1.5 border-b border-border flex items-center justify-between hover:bg-surface-raised/30"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium text-gray-300">Squash wizard</span>
+          {hasBaseline && <StatusPill tone="warning" dot size="xs">baseline ready</StatusPill>}
+        </div>
+        <span className="text-gray-500 text-[11px]">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="p-2 space-y-2 text-[11px]">
+          <div className="text-gray-400">
+            Collapses the migration chain into a single baseline generated from the live schema via
+            <span className="font-mono text-gray-300"> pg_dump -s</span>. Non-destructive: writes a file
+            you can inspect and discard.  The final "commit" steps (archive old migrations +
+            <span className="font-mono text-gray-300"> alembic stamp</span>) stay manual.
+          </div>
+
+          {!hasBaseline ? (
+            <div>
+              <Button
+                size="xs"
+                className="bg-blue-700 hover:bg-blue-600 text-white"
+                disabled={generating}
+                onClick={onGenerate}
+              >
+                {generating ? 'Generating…' : 'Generate baseline'}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-[10px] font-mono text-gray-400 select-text break-all">
+                {status?.path}
+                {status?.size_bytes != null && ` · ${formatBytes(status.size_bytes)}`}
+              </div>
+              <div className="flex gap-1.5 flex-wrap items-center">
+                <Button
+                  size="xs"
+                  className="bg-blue-700 hover:bg-blue-600 text-white"
+                  disabled={verifying || discarding || archiving}
+                  onClick={onVerify}
+                >
+                  {verifying ? 'Verifying…' : 'Verify (diff vs live)'}
+                </Button>
+                <Button
+                  size="xs"
+                  className="bg-amber-700 hover:bg-amber-600 text-white"
+                  disabled={generating || verifying || discarding || archiving}
+                  onClick={() => setArchiveConfirming(true)}
+                >
+                  {archiving ? 'Committing…' : 'Archive + stamp…'}
+                </Button>
+                <Button
+                  size="xs"
+                  className="bg-red-800 hover:bg-red-700 text-white"
+                  disabled={generating || verifying || discarding || archiving}
+                  onClick={onDiscard}
+                >
+                  {discarding ? 'Discarding…' : 'Discard baseline'}
+                </Button>
+              </div>
+
+              {archiveConfirming && !archiving && (
+                <div className="p-2 rounded text-[11px] bg-amber-950/60 text-amber-200 border border-amber-800 space-y-2">
+                  <div className="font-medium">This commits the squash in one atomic step:</div>
+                  <ol className="list-decimal list-inside space-y-0.5 opacity-90">
+                    <li>Move every migration file except the baseline into <span className="font-mono">versions_archive/&lt;timestamp&gt;/</span></li>
+                    <li>Run <span className="font-mono">alembic stamp {baselineRev} --purge</span> so the DB points at the new baseline</li>
+                  </ol>
+                  <div className="opacity-90">
+                    Archive is reversible (move files back). The stamp rewrites <span className="font-mono">alembic_version</span> —
+                    reverse it by moving files back + stamping to the old head. Did you verify the baseline first? Backup the DB?
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" onClick={onArchive}>
+                      Yes, commit squash
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setArchiveConfirming(false)} className="text-gray-300">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {lastArchive && <SquashArchiveBanner result={lastArchive} />}
+              {lastVerify && <SquashVerifyResult result={lastVerify} />}
+
+              {baselineRev && (
+                <div className="text-[10px] text-gray-500 border-t border-border pt-2 mt-2 space-y-1">
+                  <div className="font-medium text-gray-400">Commit sequence:</div>
+                  <div>1. Back up the DB (Backups panel below).</div>
+                  <div>2. Verify baseline ↑</div>
+                  <div>
+                    3. <span className="font-mono text-gray-400">Archive + stamp</span> ↑ — atomic: archives old migration files AND
+                    stamps live DB to <span className="font-mono text-gray-400">{baselineRev}</span>.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {lastGenerate && (
+            <div
+              className={`p-2 rounded text-[11px] ${
+                lastGenerate.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+              }`}
+            >
+              {lastGenerate.ok ? (
+                <div>
+                  Generated <span className="font-mono">{lastGenerate.revision}</span>
+                  {lastGenerate.schema_size_bytes != null && ` · schema ${formatBytes(lastGenerate.schema_size_bytes)}`}
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap select-text">{lastGenerate.error}</div>
+              )}
+              {lastGenerate.warnings && (
+                <div className="text-amber-300 mt-1 whitespace-pre-wrap select-text">{lastGenerate.warnings}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SquashArchiveBanner({ result }: { result: SquashArchiveResult }) {
+  const archiveHasErrors = (result.errors?.length ?? 0) > 0
+  const movedCount = result.moved_count ?? 0
+  // Zero-move + zero-error = idempotent re-run, treat as fine.
+  const archiveOk = !archiveHasErrors
+  const stampOk = result.stamp_ok === true
+  const allOk = archiveOk && stampOk
+
+  if (archiveHasErrors && !stampOk && !result.error) {
+    // Pure archive failure
+    return (
+      <div className="p-2 rounded text-[11px] bg-red-900/40 text-red-300 space-y-1">
+        <div className="whitespace-pre-wrap select-text">{result.error ?? 'Archive failed'}</div>
+        {result.errors && result.errors.length > 0 && (
+          <pre className="bg-black/30 text-red-200 rounded p-1.5 text-[10px] font-mono max-h-40 overflow-auto select-text whitespace-pre">
+            {result.errors.map((e) => `${e.file}: ${e.error}`).join('\n')}
+          </pre>
+        )}
+      </div>
+    )
+  }
+
+  const archiveLabel = archiveHasErrors
+    ? '✗ Archive step had errors — see below.'
+    : movedCount > 0
+      ? (
+        <>
+          ✓ Archived {movedCount} file{movedCount === 1 ? '' : 's'} to{' '}
+          <span className="font-mono break-all">{result.archive_dir}</span>
+        </>
+      )
+      : <>✓ Archive step: no files to move (already archived).</>
+
+  return (
+    <div
+      className={`p-2 rounded text-[11px] space-y-1 ${
+        allOk ? 'bg-green-900/40 text-green-300' : 'bg-amber-900/40 text-amber-300'
+      }`}
+    >
+      <div>{archiveLabel}</div>
+      {result.sample_moved && result.sample_moved.length > 0 && (
+        <div className="text-[10px] opacity-80 font-mono">
+          e.g. {result.sample_moved.join(', ')}{(result.moved_count ?? 0) > result.sample_moved.length && ` …+${(result.moved_count ?? 0) - result.sample_moved.length} more`}
+        </div>
+      )}
+      <div>
+        {stampOk ? (
+          <>
+            ✓ Stamped live DB to <span className="font-mono">{result.stamp_revision}</span> (with --purge)
+          </>
+        ) : (
+          <>
+            ✗ Stamp step failed — DB may be in an inconsistent state. Run manually:
+            <div className="font-mono bg-black/30 rounded px-1.5 py-1 mt-1 select-text break-all">
+              alembic -c alembic.ini stamp {result.stamp_revision ?? '<baseline_rev>'} --purge
+            </div>
+            {result.stamp_output && (
+              <pre className="bg-black/30 rounded p-1.5 text-[10px] font-mono max-h-40 overflow-auto select-text whitespace-pre mt-1">
+                {result.stamp_output}
+              </pre>
+            )}
+          </>
+        )}
+      </div>
+      {result.errors && result.errors.length > 0 && (
+        <pre className="bg-black/30 rounded p-1.5 text-[10px] font-mono max-h-40 overflow-auto select-text whitespace-pre">
+          {result.errors.map((e) => `${e.file}: ${e.error}`).join('\n')}
+        </pre>
+      )}
+      {allOk && (
+        <div className="text-[10px] opacity-80 border-t border-green-700/40 pt-1 mt-1">
+          Squash complete. <span className="font-mono">alembic current</span> should now report{' '}
+          <span className="font-mono">{result.stamp_revision}</span>.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SquashVerifyResult({ result }: { result: SquashVerifyResult }) {
+  if (!result.ok) {
+    return (
+      <div className="p-2 rounded text-[11px] bg-red-900/40 text-red-300">
+        <div className="whitespace-pre-wrap select-text">{result.error}</div>
+      </div>
+    )
+  }
+  if (result.identical) {
+    return (
+      <div className="p-2 rounded text-[11px] bg-green-900/40 text-green-300">
+        Schemas match ✓ — baseline produces the same schema as live DB
+        {result.live_schema_lines != null && ` (${result.live_schema_lines} lines)`}.
+      </div>
+    )
+  }
+  return (
+    <div className="p-2 rounded text-[11px] bg-amber-900/40 text-amber-300 space-y-1">
+      <div>
+        Schemas differ. Most differences are <span className="font-semibold">cosmetic</span>: PostgreSQL
+        canonicalizes CHECK constraints / server-side defaults when they round-trip, and psql 17+ emits
+        random <span className="font-mono">\restrict</span> tokens on every dump. Safe to proceed if the
+        diff is only formatting / whitespace / constraint-normalization.
+      </div>
+      <div>
+        <span className="font-semibold">Not safe</span> if you see missing tables, missing columns,
+        missing indexes, or missing foreign keys — those mean the baseline is incomplete.
+      </div>
+      {result.diff_preview && result.diff_preview.length > 0 && (
+        <pre className="bg-black/30 text-amber-200 rounded p-1.5 text-[10px] font-mono max-h-60 overflow-auto select-text whitespace-pre">
+          {result.diff_preview.join('\n')}
+        </pre>
+      )}
     </div>
   )
 }

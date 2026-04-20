@@ -99,6 +99,8 @@ from .routes import (
     settings_router,
     codegen_router,
     migrations_router,
+    databases_router,
+    squash_router,
     debug_router,
     identity_router,
     window_router,
@@ -221,13 +223,24 @@ async def lifespan(app: FastAPI):
         services_list = [convert_service_def(sd) for sd in raw_services]
         _logger.info("services_loaded", count=len(services_list))
 
+        # Health tuning from platform settings (PIXSIM_HEALTH_* env, exported by _platform manifest).
+        def _env_float(name: str, default: float) -> float:
+            raw = os.environ.get(name)
+            if not raw:
+                return default
+            try:
+                return float(raw)
+            except ValueError:
+                return default
+
         _container = create_container(
             services_list,
             root_dir=ROOT,
             config_overrides={
                 'health': {
-                    'base_interval': 2.0,
-                    'adaptive_enabled': True
+                    'base_interval': _env_float('PIXSIM_HEALTH_INTERVAL', 2.0),
+                    'http_timeout': _env_float('PIXSIM_HEALTH_TIMEOUT', 1.5),
+                    'adaptive_enabled': True,
                 }
             }
         )
@@ -345,6 +358,8 @@ app.include_router(buildables_router)
 app.include_router(settings_router)
 app.include_router(codegen_router)
 app.include_router(migrations_router)
+app.include_router(databases_router)
+app.include_router(squash_router)
 app.include_router(debug_router)
 app.include_router(identity_router)
 app.include_router(window_router)

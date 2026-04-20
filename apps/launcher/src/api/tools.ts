@@ -165,6 +165,253 @@ export async function runMigrationAction(action: 'upgrade' | 'downgrade' | 'stam
   return res.json()
 }
 
+// ── Database tools (backup/restore/health) ──
+
+export interface DbBackupEntry {
+  filename: string
+  path: string
+  db_id: string
+  size_bytes: number
+  created_at: string
+}
+
+export type DbBackupMode = 'docker' | 'local' | 'unavailable'
+
+export interface DbBackupInfo {
+  db_id: string
+  mode: DbBackupMode
+  container?: string
+  pg_dump_path?: string
+  reason?: string
+}
+
+export interface DbBackupResult {
+  ok: boolean
+  db_id?: string
+  mode?: DbBackupMode
+  filename?: string
+  path?: string
+  size_bytes?: number
+  warnings?: string | null
+  error?: string
+}
+
+export async function listDbBackups(): Promise<DbBackupEntry[]> {
+  const res = await fetch('/databases/backups')
+  if (!res.ok) return []
+  return (await res.json()).backups ?? []
+}
+
+export interface DbHealthTable {
+  schema: string
+  name: string
+  total_bytes: number
+  heap_bytes: number
+  row_estimate: number
+}
+
+export interface DbHealth {
+  ok: boolean
+  db_id: string
+  size_bytes?: number
+  size_pretty?: string
+  table_count?: number | null
+  top_tables?: DbHealthTable[]
+  recent_migrations?: { line: string }[]
+  recent_migrations_error?: string | null
+  error?: string
+}
+
+export async function getDbHealth(dbId: string): Promise<DbHealth> {
+  try {
+    const res = await fetch(`/databases/${encodeURIComponent(dbId)}/health`)
+    if (!res.ok) {
+      return { ok: false, db_id: dbId, error: `HTTP ${res.status} — restart the launcher backend?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { ok: false, db_id: dbId, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export interface DbTableColumn {
+  name: string
+  type: string
+  nullable: boolean
+  default?: string | null
+}
+
+export interface DbTableIndex {
+  name: string
+  definition: string
+}
+
+export interface DbTableDetail {
+  ok: boolean
+  schema?: string
+  name?: string
+  columns?: DbTableColumn[]
+  indexes?: DbTableIndex[]
+  exact_row_count?: number | null
+  estimated_row_count?: number | null
+  total_bytes?: number
+  heap_bytes?: number
+  error?: string
+}
+
+export async function inspectTable(dbId: string, schema: string, name: string): Promise<DbTableDetail> {
+  try {
+    const res = await fetch(
+      `/databases/${encodeURIComponent(dbId)}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(name)}`,
+    )
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status} — restart the launcher backend?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function getBackupInfo(dbId: string): Promise<DbBackupInfo> {
+  try {
+    const res = await fetch(`/databases/${encodeURIComponent(dbId)}/backup-info`)
+    if (!res.ok) {
+      return {
+        db_id: dbId,
+        mode: 'unavailable',
+        reason: `probe failed (HTTP ${res.status}) — restart the launcher backend?`,
+      }
+    }
+    return await res.json()
+  } catch (e) {
+    return {
+      db_id: dbId,
+      mode: 'unavailable',
+      reason: `probe failed (${e instanceof Error ? e.message : String(e)})`,
+    }
+  }
+}
+
+export async function backupDatabase(dbId: string): Promise<DbBackupResult> {
+  try {
+    const res = await fetch(`/databases/${encodeURIComponent(dbId)}/backup`, { method: 'POST' })
+    if (!res.ok) {
+      return { ok: false, db_id: dbId, error: `HTTP ${res.status} — is the launcher backend up-to-date?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { ok: false, db_id: dbId, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// ── Squash wizard ──
+
+export interface SquashStatus {
+  db_id: string
+  exists: boolean
+  path?: string
+  size_bytes?: number
+  created_at?: string
+  reason?: string
+}
+
+export interface SquashGenerateResult {
+  db_id: string
+  ok: boolean
+  revision?: string
+  path?: string
+  size_bytes?: number
+  schema_size_bytes?: number
+  warnings?: string | null
+  error?: string
+}
+
+export interface SquashVerifyResult {
+  db_id: string
+  ok: boolean
+  identical?: boolean
+  throwaway_dbname?: string
+  live_schema_lines?: number
+  baseline_schema_lines?: number
+  diff_preview?: string[]
+  error?: string
+}
+
+export async function getSquashStatus(dbId: string): Promise<SquashStatus> {
+  try {
+    const res = await fetch(`/squash/${encodeURIComponent(dbId)}/status`)
+    if (!res.ok) {
+      return { db_id: dbId, exists: false, reason: `HTTP ${res.status} — restart the launcher backend?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { db_id: dbId, exists: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function generateSquashBaseline(dbId: string): Promise<SquashGenerateResult> {
+  try {
+    const res = await fetch(`/squash/${encodeURIComponent(dbId)}/generate`, { method: 'POST' })
+    if (!res.ok) {
+      return { db_id: dbId, ok: false, error: `HTTP ${res.status} — is the launcher backend up-to-date?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { db_id: dbId, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function verifySquashBaseline(dbId: string): Promise<SquashVerifyResult> {
+  try {
+    const res = await fetch(`/squash/${encodeURIComponent(dbId)}/verify`, { method: 'POST' })
+    if (!res.ok) {
+      return { db_id: dbId, ok: false, error: `HTTP ${res.status} — is the launcher backend up-to-date?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { db_id: dbId, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function discardSquashBaseline(dbId: string): Promise<{ ok: boolean; deleted?: boolean; path?: string; error?: string }> {
+  try {
+    const res = await fetch(`/squash/${encodeURIComponent(dbId)}/baseline`, { method: 'DELETE' })
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status} — is the launcher backend up-to-date?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export interface SquashArchiveResult {
+  db_id: string
+  ok: boolean
+  archive_dir?: string
+  moved_count?: number
+  skipped_count?: number
+  sample_moved?: string[]
+  errors?: { file: string; error: string }[]
+  stamp_ok?: boolean
+  stamp_revision?: string
+  stamp_output?: string
+  error?: string
+}
+
+export async function archiveOldMigrations(dbId: string): Promise<SquashArchiveResult> {
+  try {
+    const res = await fetch(`/squash/${encodeURIComponent(dbId)}/archive-old`, { method: 'POST' })
+    if (!res.ok) {
+      return { db_id: dbId, ok: false, error: `HTTP ${res.status} — is the launcher backend up-to-date?` }
+    }
+    return await res.json()
+  } catch (e) {
+    return { db_id: dbId, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 // ── Settings ──
 
 export async function getSettings(): Promise<Record<string, unknown>> {
