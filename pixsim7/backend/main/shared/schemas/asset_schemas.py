@@ -448,7 +448,6 @@ class AssetGenerationContext(BaseModel):
     provider_id: str
     final_prompt: Optional[str] = None
     canonical_params: Dict[str, Any] = Field(default_factory=dict)
-    raw_params: Dict[str, Any] = Field(default_factory=dict)
     inputs: List[Dict[str, Any]] = Field(default_factory=list)
     source_asset_ids: List[int] = Field(default_factory=list)
 

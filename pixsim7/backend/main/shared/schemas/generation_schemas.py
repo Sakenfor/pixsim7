@@ -359,7 +359,6 @@ class GenerationResponse(BaseModel):
     provider_id: str
 
     # Params
-    raw_params: Dict[str, Any]
     canonical_params: Dict[str, Any]
     latest_submission_payload: Optional[Dict[str, Any]] = None
     latest_submission_provider_job_id: Optional[str] = None

@@ -38,7 +38,7 @@ class Generation(SQLModel, table=True):
 
     Immutable-ish fields (set at creation):
       - operation_type, provider_id
-      - raw_params, canonical_params
+      - canonical_params, run_context
       - inputs, reproducible_hash
       - prompt_version_id, final_prompt
 
@@ -65,11 +65,6 @@ class Generation(SQLModel, table=True):
     provider_id: str = Field(max_length=50, index=True)
 
     # Params
-    raw_params: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSON),
-        description="Original request params (from API)",
-    )
     canonical_params: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
@@ -79,6 +74,17 @@ class Generation(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON),
         description="Provider-ready params with resolved URLs (cached after first resolution for retries)",
+    )
+    run_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description=(
+            "Batch/chain bookkeeping: run_id, item_index, block_template_id, "
+            "roll_seed, slot_results, selected_block_ids, assembled_prompt, "
+            "guidance_plan, character_bindings, etc.  Populated from the "
+            "incoming request's generation_config.run_context at creation; "
+            "survives retry via ``rehydrate_structured_from_canonical``."
+        ),
     )
 
     # Inputs & reproducibility
