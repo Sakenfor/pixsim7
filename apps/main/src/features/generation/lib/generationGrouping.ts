@@ -46,8 +46,10 @@ const ASSET_REF_RE = /^asset:(\d+)$/;
 
 /**
  * Extract all asset IDs associated with a generation.
- * Checks source inputs first (may have multiple for multi-asset ops),
- * then rawParams legacy fields, then the output asset.
+ * Checks source inputs first (may have multiple for multi-asset ops), then
+ * the output asset.  Legacy rawParams.source_asset_id(s) fallback removed as
+ * part of the raw_params retirement — inputs[] is populated for all modern
+ * generations.
  * Returns at least one key (falls back to '__no_asset__').
  */
 function extractAssetKeys(g: GenerationModel): string[] {
@@ -63,20 +65,7 @@ function extractAssetKeys(g: GenerationModel): string[] {
   }
   if (ids.length > 0) return ids;
 
-  // 2. rawParams legacy source_asset_ids / source_asset_id
-  const raw = g.rawParams;
-  const legacyIds = raw.source_asset_ids ?? raw.sourceAssetIds;
-  if (Array.isArray(legacyIds)) {
-    for (const id of legacyIds) {
-      if (typeof id === 'number') ids.push(String(id));
-    }
-  }
-  if (ids.length > 0) return ids;
-
-  const legacyId = raw.source_asset_id ?? raw.sourceAssetId;
-  if (typeof legacyId === 'number') return [String(legacyId)];
-
-  // 3. Output asset (result of generation)
+  // 2. Output asset (result of generation)
   if (g.assetId != null) return [String(g.assetId)];
 
   return ['__no_asset__'];

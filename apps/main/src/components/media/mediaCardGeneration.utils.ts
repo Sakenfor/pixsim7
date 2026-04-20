@@ -115,8 +115,6 @@ function pickGenerationParams(genRecord: Record<string, unknown>): Record<string
   const candidates = [
     (genRecord as any).canonical_params,
     (genRecord as any).canonicalParams,
-    (genRecord as any).raw_params,
-    (genRecord as any).rawParams,
     (genRecord as any).params,
   ];
 
@@ -282,15 +280,10 @@ export function parseGenerationContext(
       ? (ctx.operation_type as OperationType)
       : fallbackOperationType;
 
-  const rawParams = (ctx.raw_params && typeof ctx.raw_params === 'object' && !Array.isArray(ctx.raw_params))
-    ? (ctx.raw_params as Record<string, unknown>)
-    : {};
-
-  // canonical_params is expected to be flat provider params (backend handles unwrapping);
-  // keep raw_params as a backward-compat fallback for missing keys.
+  // canonical_params is the authoritative flat provider-param shape; raw_params
+  // fallback removed as part of the raw_params retirement.
   const params = {
-    ...rawParams,
-    ...ctx.canonical_params,
+    ...(ctx.canonical_params ?? {}),
   } as Record<string, unknown>;
 
   // Normalize common legacy/camelCase keys used by some providers/exports.

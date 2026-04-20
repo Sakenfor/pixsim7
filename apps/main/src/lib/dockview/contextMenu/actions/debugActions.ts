@@ -360,9 +360,7 @@ function summarizeGenerationTrace(): Record<string, unknown> {
     const pick = (generation: any) => {
       if (!generation) return null;
       const canonicalMaskUrl = extractMaskUrl(generation.canonicalParams);
-      const rawMaskUrl = extractMaskUrl(generation.rawParams);
       const canonicalCompositionCount = extractCompositionAssetsCount(generation.canonicalParams);
-      const rawCompositionCount = extractCompositionAssetsCount(generation.rawParams);
       const latestSubmissionPayload = isRecord(generation.latestSubmissionPayload)
         ? generation.latestSubmissionPayload
         : null;
@@ -375,9 +373,7 @@ function summarizeGenerationTrace(): Record<string, unknown> {
         updatedAt: generation.updatedAt ?? null,
         latestSubmissionProviderJobId: generation.latestSubmissionProviderJobId ?? null,
         canonicalMaskUrl,
-        rawMaskUrl,
         canonicalCompositionAssetsCount: canonicalCompositionCount,
-        rawCompositionAssetsCount: rawCompositionCount,
         latestSubmissionPayload: latestSubmissionPayload
           ? {
               mode:
@@ -805,6 +801,12 @@ function resolveMaskFileUrl(maskUrl: string): string | null {
 
 function isBackendUrl(url: string): boolean {
   try {
+    // Relative mode: backend == same origin as the page.
+    if (!BACKEND_BASE) {
+      if (typeof window === 'undefined') return false;
+      const resolvedOrigin = new URL(url, window.location.origin).origin;
+      return resolvedOrigin === window.location.origin;
+    }
     const backendOrigin = new URL(BACKEND_BASE).origin;
     const resolvedOrigin = new URL(url, BACKEND_BASE).origin;
     return backendOrigin === resolvedOrigin;

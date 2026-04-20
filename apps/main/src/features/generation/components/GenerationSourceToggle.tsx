@@ -99,8 +99,8 @@ export function GenerationSourceToggle({
         if (gen.providerId) {
           state.setProvider(gen.providerId);
         }
-        if (gen.canonicalParams || gen.rawParams) {
-          (useSettingsStore as any).getState().setDynamicParams(gen.canonicalParams || gen.rawParams || {});
+        if (gen.canonicalParams) {
+          (useSettingsStore as any).getState().setDynamicParams(gen.canonicalParams);
         }
       })
       .catch((err) => {
@@ -161,7 +161,7 @@ export function GenerationSourceToggle({
       prompt: sourceGeneration.finalPrompt || '',
       operationType: sourceGeneration.operationType,
       providerId: sourceGeneration.providerId,
-      params: sourceGeneration.canonicalParams ?? sourceGeneration.rawParams ?? EMPTY_PARAMS,
+      params: sourceGeneration.canonicalParams ?? EMPTY_PARAMS,
     };
   }, [sourceGeneration]);
 

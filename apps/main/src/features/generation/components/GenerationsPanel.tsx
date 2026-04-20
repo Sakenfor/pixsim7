@@ -12,8 +12,6 @@ import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
 import { AssetGrid } from '@features/assets/components/shared';
-
-import { MediaCard } from '@/components/media/MediaCard';
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
@@ -21,6 +19,7 @@ import { getGenerationStatusDisplay } from '@features/generation/lib/core/genera
 import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
 import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
 
+import { MediaCard } from '@/components/media/MediaCard';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { useBatchCancelGenerations } from '../hooks/useBatchCancelGenerations';
@@ -317,8 +316,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
       sessionStore.setPrompt(generation.finalPrompt);
     }
 
-    // Set params from rawParams or canonicalParams
-    const params = generation.canonicalParams || generation.rawParams;
+    // Set params from canonicalParams (rawParams fallback removed).
+    const params = generation.canonicalParams;
     if (params) {
       useGenerationSettingsStore.getState().setDynamicParams(params);
     }
@@ -1506,10 +1505,11 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
 
           {/* Provider/Account Debug Info */}
           {(() => {
-            const rawParams = generation.rawParams as Record<string, any> | undefined;
-            const accountId = rawParams?.account_id || rawParams?.accountId;
-            const accountEmail = rawParams?.account_email || rawParams?.accountEmail || rawParams?.email;
-            const providerJobId = rawParams?.provider_job_id || rawParams?.providerJobId || rawParams?.job_id;
+            // Account + provider-job fields come from the first-class response
+            // fields, not the legacy rawParams blob.
+            const accountId = generation.account?.id;
+            const accountEmail = generation.accountEmail;
+            const providerJobId = generation.latestSubmissionProviderJobId;
             const hasAnyInfo = accountId || accountEmail || providerJobId;
 
             return hasAnyInfo ? (
@@ -1543,19 +1543,15 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
 
           {/* Parameters with tabs - collapsible */}
           {(() => {
-            const hasRaw = generation.rawParams && Object.keys(generation.rawParams).length > 0;
             const hasCanonical = generation.canonicalParams && Object.keys(generation.canonicalParams).length > 0;
             const hasSubmitted =
               generation.latestSubmissionPayload &&
               Object.keys(generation.latestSubmissionPayload).length > 0;
-            if (!hasRaw && !hasCanonical && !hasSubmitted) return null;
+            if (!hasCanonical && !hasSubmitted) return null;
 
             const tabs: Array<{ id: ParamTab; label: string; data: Record<string, unknown> }> = [];
             if (hasCanonical) {
               tabs.push({ id: 'canonical', label: 'Canonical', data: generation.canonicalParams });
-            }
-            if (hasRaw) {
-              tabs.push({ id: 'raw', label: 'Raw', data: generation.rawParams });
             }
             if (hasSubmitted) {
               tabs.push({

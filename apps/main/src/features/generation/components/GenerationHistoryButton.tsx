@@ -80,11 +80,9 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
         ) : (
           <div className="flex flex-col gap-1.5">
             {generationArray.map((generation) => {
-              const rawParams = generation.rawParams as Record<string, any> | undefined;
               const canonicalParams = generation.canonicalParams as Record<string, any> | undefined;
               const prompt =
                 generation.finalPrompt ||
-                rawParams?.prompt ||
                 canonicalParams?.prompt ||
                 '';
               const label =

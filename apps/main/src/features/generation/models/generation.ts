@@ -73,7 +73,6 @@ export interface GenerationModel {
   promptConfig: Record<string, unknown> | null;
 
   // Parameters
-  rawParams: Record<string, unknown>;
   canonicalParams: Record<string, unknown>;
   latestSubmissionPayload: Record<string, unknown> | null;
   latestSubmissionProviderJobId: string | null;
@@ -147,17 +146,16 @@ function ensureUtc(ts: string | null | undefined): string | null | undefined {
 }
 
 /**
- * Resolve provider model name from canonical/raw params or latest submission payload.
+ * Resolve provider model name from canonical params or latest submission payload.
  */
 export function getGenerationModelName(
   generation: Pick<
     GenerationModel,
-    'canonicalParams' | 'rawParams' | 'latestSubmissionPayload'
+    'canonicalParams' | 'latestSubmissionPayload'
   >,
 ): string | null {
   return (
     getModelFromRecord(generation.canonicalParams) ??
-    getModelFromRecord(generation.rawParams) ??
     getModelFromRecord(generation.latestSubmissionPayload)
   );
 }
@@ -222,7 +220,6 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     promptConfig: response.prompt_config,
 
     // Parameters
-    rawParams: { ...response.raw_params, ...paramsPreferredAccount },
     canonicalParams: { ...response.canonical_params, ...paramsPreferredAccount },
     latestSubmissionPayload,
     latestSubmissionProviderJobId,
@@ -412,7 +409,6 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     promptSourceType: 'inline',
     promptVersionId: null,
     promptConfig: null,
-    rawParams: options.params,
     canonicalParams: options.params,
     latestSubmissionPayload: null,
     latestSubmissionProviderJobId: null,

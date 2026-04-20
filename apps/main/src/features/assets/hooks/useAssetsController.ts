@@ -91,8 +91,6 @@ function pickGenerationParams(original: Record<string, unknown>): Record<string,
   const candidates = [
     (original as any).canonical_params,
     (original as any).canonicalParams,
-    (original as any).raw_params,
-    (original as any).rawParams,
     (original as any).params,
   ];
 
