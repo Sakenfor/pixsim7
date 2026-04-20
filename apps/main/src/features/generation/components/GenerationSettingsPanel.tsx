@@ -399,7 +399,7 @@ export function GenerationSettingsPanel({
       ? { ...workbench.dynamicParams, discounts: modelDiscounts }
       : workbench.dynamicParams;
   }, [workbench.dynamicParams, modelDiscounts, preferredAccountId]);
-  const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
+  const { estimate: costEstimate } = useCostEstimate({
     providerId: inferredProviderId,
     operationType,
     params: costParams,
