@@ -8,13 +8,14 @@
  */
 
 import clsx from 'clsx';
-import { useEffect, useRef, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { getAspectRatioLabel } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 
 import { useAccentButtonClasses } from '@features/appearance';
+import type { AssetModel } from '@features/assets';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   CAP_GENERATION_WIDGET,
@@ -500,6 +501,35 @@ export function GenerationSettingsPanel({
   const updateMaskLayer = useInputStore((s) => s.updateMaskLayer);
   const setMaskLayers = useInputStore((s) => s.setMaskLayers);
 
+  // Stable mask handlers so <MaskPicker> can React.memo and skip re-renders
+  // when unrelated params (duration, quality, etc.) change.
+  const handleAddMaskLayer = useCallback((asset: AssetModel) => {
+    if (!currentInputId) return;
+    const layerId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    addMaskLayer(operationType, currentInputId, {
+      id: layerId,
+      assetUrl: `asset:${asset.id}`,
+      label: asset.description || undefined,
+      visible: true,
+    });
+  }, [addMaskLayer, operationType, currentInputId]);
+
+  const handleRemoveMaskLayer = useCallback((layerId: string) => {
+    if (!currentInputId) return;
+    removeMaskLayer(operationType, currentInputId, layerId);
+  }, [removeMaskLayer, operationType, currentInputId]);
+
+  const handleToggleMaskLayer = useCallback((layerId: string) => {
+    if (!currentInputId) return;
+    const layer = currentInputMaskLayers?.find((l) => l.id === layerId);
+    if (layer) updateMaskLayer(operationType, currentInputId, layerId, { visible: !layer.visible });
+  }, [updateMaskLayer, operationType, currentInputId, currentInputMaskLayers]);
+
+  const handleClearAllMasks = useCallback(() => {
+    if (!currentInputId) return;
+    setMaskLayers(operationType, currentInputId, []);
+  }, [setMaskLayers, operationType, currentInputId]);
+
   const showTargetButton = canTarget;
 
   // Authoring hints — only shown when the authoring editor has synced hints for this scope
@@ -586,8 +616,9 @@ export function GenerationSettingsPanel({
             </button>
           )}
           {showPresets && <PresetSelector disabled={generating} />}
-          {/* Credit estimate pill — compact cost indicator */}
-          {!isCurrentGenerationFree && creditEstimate !== null && !creditLoading && (
+          {/* Credit estimate pill — compact cost indicator. Kept visible while
+              loading so the optimistic value doesn't blink during reconcile. */}
+          {!isCurrentGenerationFree && creditEstimate !== null && (
             <span
               className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-white dark:bg-neutral-800 shadow-sm text-[10px] font-medium text-amber-600 dark:text-amber-400 tabular-nums"
               title={`Estimated credits per generation${burstCount > 1 ? ` (×${burstCount} = ${Math.round(creditEstimate * burstCount)})` : ''}`}
@@ -604,21 +635,10 @@ export function GenerationSettingsPanel({
           <MaskPicker
             maskLayers={currentInputMaskLayers}
             maskUrl={currentInputMaskUrl}
-            onAddMaskLayer={(asset) => {
-              const layerId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-              addMaskLayer(operationType, currentInputId, {
-                id: layerId,
-                assetUrl: `asset:${asset.id}`,
-                label: asset.description || undefined,
-                visible: true,
-              });
-            }}
-            onRemoveMaskLayer={(layerId) => removeMaskLayer(operationType, currentInputId, layerId)}
-            onToggleMaskLayer={(layerId) => {
-              const layer = currentInputMaskLayers?.find((l) => l.id === layerId);
-              if (layer) updateMaskLayer(operationType, currentInputId, layerId, { visible: !layer.visible });
-            }}
-            onClearAllMasks={() => setMaskLayers(operationType, currentInputId, [])}
+            onAddMaskLayer={handleAddMaskLayer}
+            onRemoveMaskLayer={handleRemoveMaskLayer}
+            onToggleMaskLayer={handleToggleMaskLayer}
+            onClearAllMasks={handleClearAllMasks}
             hasMaskParam={hasMaskParam}
             sourceAssetId={currentInputAssetId}
             sourceAssetIds={currentInputSourceAssetIds}

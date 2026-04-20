@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -21,16 +21,20 @@ interface MaskPickerProps {
   hasMaskParam: boolean;
   /** Current input asset ID (from input store) */
   sourceAssetId: number | null;
+  /** Equivalent source IDs (version/local/library variants) for linked lookup. */
+  sourceAssetIds?: number[];
   disabled?: boolean;
 }
 
 /** Extract the numeric asset ID from an `asset:123` URL. */
 function parseAssetIdFromUrl(url: string): number | null {
-  const m = url.match(/^asset:(\d+)$/);
-  return m ? Number(m[1]) : null;
+  const m = url.match(/^asset:(-?\d+)(?:[?#].*)?$/);
+  if (!m) return null;
+  const value = Number(m[1]);
+  return Number.isFinite(value) ? value : null;
 }
 
-export function MaskPicker({
+function MaskPickerInner({
   maskLayers,
   maskUrl,
   onAddMaskLayer,
@@ -39,6 +43,7 @@ export function MaskPicker({
   onClearAllMasks,
   hasMaskParam,
   sourceAssetId,
+  sourceAssetIds,
   disabled,
 }: MaskPickerProps) {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -48,7 +53,7 @@ export function MaskPicker({
   const setForceFullAlpha = useMaskOverlayStore((s) => s.setForceFullAlpha);
 
   const layers = useMemo(() => maskLayers ?? [], [maskLayers]);
-  const visibleCount = layers.filter((l) => l.visible).length;
+  const visibleCount = layers.filter((l) => l.visible !== false).length;
   const hasLayers = layers.length > 0;
   const hasLegacyMask = !hasLayers && !!maskUrl;
   const hasSelection = hasLayers || hasLegacyMask;
@@ -198,9 +203,12 @@ export function MaskPicker({
           onClose={handleClose}
           onItemSelect={handleToggleAsset}
           sourceAssetId={sourceAssetId}
+          sourceAssetIds={sourceAssetIds}
           renderItemOverlay={renderItemOverlay}
         />
       )}
     </div>
   );
 }
+
+export const MaskPicker = memo(MaskPickerInner);

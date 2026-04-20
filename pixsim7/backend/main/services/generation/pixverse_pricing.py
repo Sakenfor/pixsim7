@@ -6,7 +6,7 @@ Provides a single source of truth for Pixverse credit estimates.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 # Import from pixverse-py SDK
 try:  # pragma: no cover - optional dependency
@@ -15,12 +15,22 @@ try:  # pragma: no cover - optional dependency
         calculate_image_cost as pixverse_calculate_image_cost,
         IMAGE_CREDITS as _SDK_IMAGE_CREDITS,
         normalize_quality as pixverse_normalize_quality,
+        WEBAPI_BASE_COSTS as _SDK_WEBAPI_BASE_COSTS,
+        OPENAPI_BASE_COSTS as _SDK_OPENAPI_BASE_COSTS,
+        MULTI_SHOT_COST_SHORT as _SDK_MULTI_SHOT_SHORT,
+        MULTI_SHOT_COST_LONG as _SDK_MULTI_SHOT_LONG,
+        NATIVE_AUDIO_COST as _SDK_NATIVE_AUDIO,
     )
 except Exception:  # pragma: no cover
     pixverse_calculate_cost = None  # type: ignore
     pixverse_calculate_image_cost = None  # type: ignore
     _SDK_IMAGE_CREDITS = None  # type: ignore
     pixverse_normalize_quality = None  # type: ignore
+    _SDK_WEBAPI_BASE_COSTS = None  # type: ignore
+    _SDK_OPENAPI_BASE_COSTS = None  # type: ignore
+    _SDK_MULTI_SHOT_SHORT = 10  # type: ignore
+    _SDK_MULTI_SHOT_LONG = 20  # type: ignore
+    _SDK_NATIVE_AUDIO = 10  # type: ignore
 
 # Fallback credit table (only used if SDK not available)
 # Uses both *p format (1440p, 2160p) and legacy labels (2k, 4k) for compatibility
@@ -95,8 +105,43 @@ def estimate_video_credit_change(
         return None
 
 
+def get_client_pricing_payload() -> Optional[dict[str, Any]]:
+    """Serialize pricing constants for the frontend optimistic estimator.
+
+    Mirrors the small deterministic formula in pixverse.pricing.calculate_cost
+    so the client can render credit estimates synchronously. Server estimates
+    remain authoritative and reconcile async.
+    """
+    if _SDK_WEBAPI_BASE_COSTS is None:
+        return None
+
+    image_credits: dict[str, dict[str, int]] = {}
+    if _SDK_IMAGE_CREDITS:
+        for model_id, qualities in _SDK_IMAGE_CREDITS.items():
+            image_credits[model_id] = dict(qualities)
+    else:
+        for model_id, qualities in _FALLBACK_IMAGE_CREDITS.items():
+            image_credits[model_id] = dict(qualities)
+
+    return {
+        "provider": "pixverse",
+        "base_duration_seconds": 5,
+        "webapi_base_costs": dict(_SDK_WEBAPI_BASE_COSTS),
+        "openapi_base_costs": {
+            tier: dict(qualities)
+            for tier, qualities in (_SDK_OPENAPI_BASE_COSTS or {}).items()
+        },
+        "multi_shot_short": int(_SDK_MULTI_SHOT_SHORT),
+        "multi_shot_long": int(_SDK_MULTI_SHOT_LONG),
+        "native_audio": int(_SDK_NATIVE_AUDIO),
+        "image_credits": image_credits,
+        "quality_aliases": {"2k": "1440p", "4k": "2160p"},
+    }
+
+
 __all__ = [
     "get_image_credit_change",
     "estimate_video_credit_change",
+    "get_client_pricing_payload",
     "pixverse_calculate_cost",
 ]

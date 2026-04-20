@@ -23,6 +23,7 @@ from pixsim7.backend.main.services.provider.base import Provider
 from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
     estimate_video_credit_change,
+    get_client_pricing_payload,
     pixverse_calculate_cost,
 )
 try:  # pragma: no cover - optional SDK dependency
@@ -498,6 +499,18 @@ def extract_provider_capabilities(provider) -> dict:
         base.setdefault("quality_presets", ["360p", "720p", "1080p"])
         base.setdefault("default_model", "v5")
         base.setdefault("aspect_ratios", ["16:9", "9:16", "1:1"])
+
+        # Inject pricing_table into cost_estimator so the frontend can compute
+        # credit estimates synchronously (optimistic). Server estimate remains
+        # authoritative and reconciles async.
+        pricing_payload = get_client_pricing_payload()
+        if pricing_payload is not None:
+            existing_estimator = base.get("cost_estimator")
+            if isinstance(existing_estimator, dict):
+                base["cost_estimator"] = {
+                    **existing_estimator,
+                    "pricing_table": pricing_payload,
+                }
 
         # Cost hints: prefer exact Pixverse credit calculator when available.
         cost_hints: dict = {}

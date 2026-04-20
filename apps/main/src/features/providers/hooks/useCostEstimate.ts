@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
 
+import { computeLocalCost } from './computeLocalCost';
 import { useProviderCapabilities } from './useProviderCapabilities';
+
+const RECONCILE_DEBOUNCE_MS = 300;
 
 export interface UseCostEstimateOptions {
   providerId?: string;
@@ -79,6 +82,35 @@ export function useCostEstimate({
     [providerId, operationType, depSnapshot],
   );
 
+  // Optimistic local estimate — computed synchronously from the provider's
+  // pricing_table when available. The server fetch below reconciles it.
+  const localEstimate = useMemo(() => {
+    const table = estimatorConfig?.pricing_table;
+    if (!table) return null;
+    const credits = computeLocalCost(table, {
+      model: params.model,
+      quality: params.quality,
+      duration: params.duration,
+      api_method: params.api_method,
+      multi_shot: params.multi_shot,
+      audio: params.audio,
+      discounts: params.discounts,
+      operationType,
+    });
+    if (credits == null) return null;
+    return { estimated_credits: credits, estimated_cost_usd: null } as CostEstimateResult;
+  }, [estimatorConfig, operationType, depSnapshot]);
+
+  useEffect(() => {
+    if (localEstimate) {
+      setEstimate(localEstimate);
+      setLoading(false);
+    }
+  }, [localEstimate]);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     const debugEnabled =
@@ -87,7 +119,7 @@ export function useCostEstimate({
       globalThis.localStorage.getItem('debug_cost_estimate') === '1';
     const debug = (message: string, details?: Record<string, any>) => {
       if (!debugEnabled) return;
-       
+
       console.info(`[cost-estimate] ${message}`, details || {});
     };
 
@@ -97,7 +129,7 @@ export function useCostEstimate({
         inferredProviderId,
         hasCapabilities: capabilities.length > 0,
       });
-      setEstimate(null);
+      if (!localEstimate) setEstimate(null);
       setLoading(false);
       return () => {
         cancelled = true;
@@ -259,7 +291,7 @@ export function useCostEstimate({
           payload.model = fallbackModel;
         } else {
           debug('skip: model not in provider specs', { model: payload.model });
-          setEstimate(null);
+          if (!localEstimate) setEstimate(null);
           setLoading(false);
           return () => {
             cancelled = true;
@@ -279,47 +311,63 @@ export function useCostEstimate({
         payload,
         operationType,
       });
-      setEstimate(null);
+      if (!localEstimate) setEstimate(null);
       setLoading(false);
       return () => {
         cancelled = true;
       };
     }
 
-    debug('request', { endpoint: estimatorConfig.endpoint, payload });
-    setLoading(true);
-    const method = (estimatorConfig.method || 'POST').toUpperCase();
-    const request =
-      method === 'GET'
-        ? pixsimClient.get<CostEstimateResult>(estimatorConfig.endpoint, { params: payload })
-        : pixsimClient.post<CostEstimateResult>(estimatorConfig.endpoint, payload);
+    // Cancel any pending debounce or in-flight request from a prior param change.
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (abortRef.current) abortRef.current.abort();
 
-    request
-      .then((data) => {
-        if (!cancelled) {
+    // If we have no local estimate to show, fall back to the classic loading
+    // spinner. Otherwise stay silent — the local value is already on screen.
+    if (!localEstimate) setLoading(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    timerRef.current = setTimeout(() => {
+      debug('request', { endpoint: estimatorConfig.endpoint, payload });
+      const method = (estimatorConfig.method || 'POST').toUpperCase();
+      const signal = controller.signal;
+      const request =
+        method === 'GET'
+          ? pixsimClient.get<CostEstimateResult>(estimatorConfig.endpoint, {
+              params: payload,
+              signal,
+            })
+          : pixsimClient.post<CostEstimateResult>(estimatorConfig.endpoint, payload, { signal });
+
+      request
+        .then((data) => {
+          if (cancelled || signal.aborted) return;
           setEstimate({
             estimated_credits:
               typeof data?.estimated_credits === 'number' ? data.estimated_credits : null,
             estimated_cost_usd:
               typeof data?.estimated_cost_usd === 'number' ? data.estimated_cost_usd : null,
           });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setEstimate(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
+        })
+        .catch(() => {
+          if (cancelled || signal.aborted) return;
+          // Keep the optimistic estimate on error; only clear when none exists.
+          if (!localEstimate) setEstimate(null);
+        })
+        .finally(() => {
+          if (cancelled || signal.aborted) return;
           setLoading(false);
-        }
-      });
+        });
+    }, RECONCILE_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      controller.abort();
     };
-  }, [estimatorConfig, operationType, depKey]);
+  }, [estimatorConfig, operationType, depKey, localEstimate]);
 
   return { estimate, loading };
 }

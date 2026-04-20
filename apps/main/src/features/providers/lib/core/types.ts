@@ -41,12 +41,25 @@ export interface CostHints {
   estimation_note?: string;
 }
 
+export interface CostEstimatorPricingTable {
+  provider: string;
+  base_duration_seconds: number;
+  webapi_base_costs: Record<string, number>;
+  openapi_base_costs: Record<string, Record<string, number>>;
+  multi_shot_short: number;
+  multi_shot_long: number;
+  native_audio: number;
+  image_credits: Record<string, Record<string, number>>;
+  quality_aliases: Record<string, string>;
+}
+
 export interface CostEstimatorConfig {
   endpoint: string;
   method?: string;
   payload_keys?: string[];
   required_keys?: string[];
   include_operation_type?: boolean;
+  pricing_table?: CostEstimatorPricingTable;
 }
 
 export interface ProviderCapability {
