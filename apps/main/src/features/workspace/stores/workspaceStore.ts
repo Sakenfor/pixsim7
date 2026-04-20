@@ -44,6 +44,13 @@ function getDefaultFloatingPanelSize(panelId: string): { width: number; height: 
 }
 
 /**
+ * Pseudo dockview-id used for floating-panel dismissal so the same
+ * dismissedPanels machinery can mark standalone floats as user-closed
+ * without re-spawning on rehydrate.
+ */
+export const FLOATING_DISMISS_KEY = "floating";
+
+/**
  * Normalize z-index values on floating panels so they stay within the safe
  * range (0 .. FLOAT_Z_BUDGET). Preserves relative stacking order.
  */
@@ -80,6 +87,19 @@ export interface FloatingPanelState {
 }
 
 /**
+ * User-created sidebar shortcut group (iOS-style folder).
+ * Children are panel:/page: keys only — no nested groups.
+ */
+export interface ShortcutGroupRecord {
+  id: string;
+  label: string;
+  /** Optional override icon; when absent, UI renders a mini-grid of child icons. */
+  icon?: string;
+  /** Ordered list of shortcut keys ('panel:id' | 'page:id'). */
+  childKeys: string[];
+}
+
+/**
  * Layout preset using dockview's native serialization format
  */
 export interface LayoutPreset {
@@ -111,7 +131,17 @@ export interface WorkspaceState {
   /** Currently active preset ID per scope */
   activePresetByScope: Partial<Record<PresetScope, string | null>>;
   /** User-pinned panels shown as quick-add shortcuts in context menu */
-  pinnedQuickAddPanels: string[];
+  /**
+   * User-pinned sidebar shortcuts. Each entry is a shortcut key of the form
+   * `'panel:<id>'`, `'page:<id>'`, or `'group:<groupId>'`. Order is user-controlled.
+   * Groups themselves live in `shortcutGroups`.
+   */
+  pinnedShortcuts: string[];
+  /**
+   * User-created shortcut groups (iOS-style folders).
+   * A group can only contain 'panel:' and 'page:' keys — no nested groups.
+   */
+  shortcutGroups: Record<string, ShortcutGroupRecord>;
   /** Remembered geometry for floating panels (persists across close/reopen) */
   lastFloatingPanelStates: Record<string, { x: number; y: number; width: number; height: number }>;
   /** Currently focused floating panel (others fade when set) */
@@ -152,10 +182,36 @@ export interface WorkspaceActions {
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
   /** Set active preset ID for a scope (UI state only, layout handled by SmartDockview) */
   setActivePreset: (scope: PresetScope, presetId: string | null) => void;
-  /** Toggle a panel's pinned state for quick-add shortcuts */
+  /** Toggle a panel's pinned state (panel-only convenience — wraps toggleShortcutPin). */
   toggleQuickAddPin: (panelId: string) => void;
-  /** Check if a panel is pinned for quick-add */
+  /** Check if a panel is pinned (panel-only convenience — wraps isPinnedShortcut). */
   isPinnedQuickAdd: (panelId: string) => boolean;
+  /** Toggle a shortcut key ('panel:id' or 'page:id') in pinnedShortcuts. */
+  toggleShortcutPin: (key: string) => void;
+  /** Check if a shortcut key is pinned. */
+  isPinnedShortcut: (key: string) => boolean;
+  /**
+   * Move or insert a shortcut key in pinnedShortcuts.
+   * If fromKey is already pinned, it's removed from its current slot first.
+   * Then inserted before toKey (or appended if toKey is null or missing from list).
+   * Serves both reorder (drag within pinned) and drag-in (pin from another source).
+   */
+  reorderShortcutPin: (fromKey: string, toKey: string | null) => void;
+  /**
+   * Merge two shortcut keys into a new group (iOS-style folder).
+   * If `targetKey` is already a group key, `sourceKey` is added to it instead.
+   * `sourceKey` may be a panel/page OR a member of another group (which is removed from that group).
+   * Returns the group id.
+   */
+  mergeShortcutsIntoGroup: (sourceKey: string, targetKey: string) => string;
+  /** Add a shortcut (panel/page) to an existing group. No-op for group-into-group. */
+  addToShortcutGroup: (groupId: string, key: string) => void;
+  /** Remove a child from a group. Auto-dissolves the group if ≤1 child remains. */
+  removeFromShortcutGroup: (groupId: string, key: string, opts?: { promoteToPinned?: boolean }) => void;
+  /** Rename a group. */
+  renameShortcutGroup: (groupId: string, label: string) => void;
+  /** Delete a group entirely; optionally flattens children back into pinnedShortcuts. */
+  dissolveShortcutGroup: (groupId: string, opts?: { flatten?: boolean }) => void;
   /** Reset all state */
   reset: () => void;
   // Floating panel actions
@@ -174,7 +230,7 @@ export interface WorkspaceActions {
       context?: Record<string, any>;
     },
   ) => void;
-  closeFloatingPanel: (panelId: string) => void;
+  closeFloatingPanel: (panelId: string, options?: { dismiss?: boolean }) => void;
   /** Swap a floating panel's definition in-place (keeps position, size, z-index). */
   replaceFloatingPanel: (panelId: string, newDefinitionId: string, context?: Record<string, any>) => void;
   minimizeFloatingPanel: (panelId: string) => void;
@@ -214,6 +270,66 @@ export interface WorkspaceActions {
 }
 
 const STORAGE_KEY = "workspace_v9"; // v9: remove gallery from pinned (duplicate of page nav)
+
+// ─────────────────────────────────────────────────────────
+// Shortcut key helpers (module-scope, used by group actions)
+// ─────────────────────────────────────────────────────────
+
+type ShortcutKeyKind = 'panel' | 'page' | 'group';
+
+function parseStoreKey(key: string): { kind: ShortcutKeyKind; id: string } | null {
+  const sep = key.indexOf(':');
+  if (sep === -1) return null;
+  const kind = key.slice(0, sep);
+  const id = key.slice(sep + 1);
+  if ((kind !== 'panel' && kind !== 'page' && kind !== 'group') || !id) return null;
+  return { kind, id };
+}
+
+function findOwningGroupId(
+  childKey: string,
+  groups: Record<string, ShortcutGroupRecord>,
+): string | null {
+  for (const [groupId, group] of Object.entries(groups)) {
+    if (group.childKeys.includes(childKey)) return groupId;
+  }
+  return null;
+}
+
+/**
+ * If a group has ≤1 child, auto-dissolve it. The single remaining child (if any)
+ * is promoted into the top-level pinned list at the group's previous position.
+ * Mutates the passed-in state object in place.
+ */
+function autoDissolveIfNeeded(
+  groupId: string,
+  state: { pinnedShortcuts: string[]; shortcutGroups: Record<string, ShortcutGroupRecord> },
+): void {
+  const group = state.shortcutGroups[groupId];
+  if (!group) return;
+  if (group.childKeys.length > 1) return;
+  const groupKey = `group:${groupId}`;
+  const idx = state.pinnedShortcuts.indexOf(groupKey);
+  const remaining = group.childKeys[0];
+  const nextGroups = { ...state.shortcutGroups };
+  delete nextGroups[groupId];
+  state.shortcutGroups = nextGroups;
+  if (idx === -1) {
+    if (remaining && !state.pinnedShortcuts.includes(remaining)) {
+      state.pinnedShortcuts = [...state.pinnedShortcuts, remaining];
+    }
+    return;
+  }
+  if (remaining && !state.pinnedShortcuts.includes(remaining)) {
+    state.pinnedShortcuts = [
+      ...state.pinnedShortcuts.slice(0, idx),
+      remaining,
+      ...state.pinnedShortcuts.slice(idx + 1),
+    ];
+  } else {
+    state.pinnedShortcuts = state.pinnedShortcuts.filter((k) => k !== groupKey);
+  }
+}
 
 function getDockviewGroupPanelCount(group: any): number {
   if (!group) return 0;
@@ -287,7 +403,8 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       presets: [],
       fullscreenPanel: null,
       floatingPanels: [],
-      pinnedQuickAddPanels: ['inspector'],
+      pinnedShortcuts: ['panel:inspector'],
+      shortcutGroups: {},
       lastFloatingPanelStates: {},
       focusedFloatingPanelId: null,
       dismissedPanels: {},
@@ -420,16 +537,179 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       },
 
       toggleQuickAddPin: (panelId) => {
-        const current = get().pinnedQuickAddPanels;
-        if (current.includes(panelId)) {
-          set({ pinnedQuickAddPanels: current.filter((id) => id !== panelId) });
-        } else {
-          set({ pinnedQuickAddPanels: [...current, panelId] });
-        }
+        get().toggleShortcutPin(`panel:${panelId}`);
       },
 
       isPinnedQuickAdd: (panelId) => {
-        return get().pinnedQuickAddPanels.includes(panelId);
+        return get().isPinnedShortcut(`panel:${panelId}`);
+      },
+
+      toggleShortcutPin: (key) => {
+        const current = get().pinnedShortcuts;
+        if (current.includes(key)) {
+          set({ pinnedShortcuts: current.filter((k) => k !== key) });
+        } else {
+          set({ pinnedShortcuts: [...current, key] });
+        }
+      },
+
+      isPinnedShortcut: (key) => {
+        return get().pinnedShortcuts.includes(key);
+      },
+
+      reorderShortcutPin: (fromKey, toKey) => {
+        if (fromKey === toKey) return;
+        const current = get().pinnedShortcuts;
+        const without = current.filter((k) => k !== fromKey);
+        if (toKey === null) {
+          set({ pinnedShortcuts: [...without, fromKey] });
+          return;
+        }
+        const toIdx = without.indexOf(toKey);
+        if (toIdx === -1) {
+          set({ pinnedShortcuts: [...without, fromKey] });
+          return;
+        }
+        const next = [...without.slice(0, toIdx), fromKey, ...without.slice(toIdx)];
+        set({ pinnedShortcuts: next });
+      },
+
+      mergeShortcutsIntoGroup: (sourceKey, targetKey) => {
+        if (sourceKey === targetKey) return '';
+        const state = get();
+        const sourceParsed = parseStoreKey(sourceKey);
+        const targetParsed = parseStoreKey(targetKey);
+        if (!sourceParsed || !targetParsed) return '';
+        // Disallow merging a group INTO another group.
+        if (sourceParsed.kind === 'group') return '';
+
+        // Resolve the actual child payload for source (panel/page key).
+        // Source may currently live inside another group — detach from there first.
+        const sourceChildKey = sourceKey;
+        const nextGroups = { ...state.shortcutGroups };
+        let nextPinned = [...state.pinnedShortcuts];
+        const prevOwner = findOwningGroupId(sourceKey, state.shortcutGroups);
+        if (prevOwner) {
+          const prev = nextGroups[prevOwner];
+          nextGroups[prevOwner] = { ...prev, childKeys: prev.childKeys.filter((k) => k !== sourceKey) };
+        } else {
+          nextPinned = nextPinned.filter((k) => k !== sourceKey);
+        }
+
+        if (targetParsed.kind === 'group') {
+          // Add to existing group.
+          const target = nextGroups[targetParsed.id];
+          if (!target) return '';
+          if (!target.childKeys.includes(sourceChildKey)) {
+            nextGroups[targetParsed.id] = { ...target, childKeys: [...target.childKeys, sourceChildKey] };
+          }
+          set({ pinnedShortcuts: nextPinned, shortcutGroups: nextGroups });
+          // Check if old owner group auto-dissolves.
+          if (prevOwner) {
+            const finalState = { pinnedShortcuts: nextPinned, shortcutGroups: nextGroups };
+            autoDissolveIfNeeded(prevOwner, finalState);
+            set(finalState);
+          }
+          return targetParsed.id;
+        }
+
+        // Target is a flat panel/page — create a new group replacing the target slot.
+        const groupId = `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+        const groupKey = `group:${groupId}`;
+        const record: ShortcutGroupRecord = {
+          id: groupId,
+          label: 'Group',
+          childKeys: [targetKey, sourceChildKey],
+        };
+        nextGroups[groupId] = record;
+        const targetIdx = nextPinned.indexOf(targetKey);
+        if (targetIdx === -1) {
+          nextPinned = [...nextPinned, groupKey];
+        } else {
+          nextPinned = [
+            ...nextPinned.slice(0, targetIdx),
+            groupKey,
+            ...nextPinned.slice(targetIdx + 1),
+          ];
+        }
+        const finalState = { pinnedShortcuts: nextPinned, shortcutGroups: nextGroups };
+        if (prevOwner) autoDissolveIfNeeded(prevOwner, finalState);
+        set(finalState);
+        return groupId;
+      },
+
+      addToShortcutGroup: (groupId, key) => {
+        const state = get();
+        const group = state.shortcutGroups[groupId];
+        if (!group) return;
+        const parsed = parseStoreKey(key);
+        if (!parsed || parsed.kind === 'group') return;
+        if (group.childKeys.includes(key)) return;
+
+        const nextGroups = { ...state.shortcutGroups };
+        let nextPinned = [...state.pinnedShortcuts];
+        const prevOwner = findOwningGroupId(key, state.shortcutGroups);
+        if (prevOwner && prevOwner !== groupId) {
+          const prev = nextGroups[prevOwner];
+          nextGroups[prevOwner] = { ...prev, childKeys: prev.childKeys.filter((k) => k !== key) };
+        } else if (!prevOwner) {
+          nextPinned = nextPinned.filter((k) => k !== key);
+        }
+        nextGroups[groupId] = { ...group, childKeys: [...group.childKeys, key] };
+        const finalState = { pinnedShortcuts: nextPinned, shortcutGroups: nextGroups };
+        if (prevOwner && prevOwner !== groupId) autoDissolveIfNeeded(prevOwner, finalState);
+        set(finalState);
+      },
+
+      removeFromShortcutGroup: (groupId, key, opts) => {
+        const state = get();
+        const group = state.shortcutGroups[groupId];
+        if (!group) return;
+        if (!group.childKeys.includes(key)) return;
+        const nextGroups = {
+          ...state.shortcutGroups,
+          [groupId]: { ...group, childKeys: group.childKeys.filter((k) => k !== key) },
+        };
+        let nextPinned = state.pinnedShortcuts;
+        if (opts?.promoteToPinned && !nextPinned.includes(key)) {
+          // Insert at the group's position so the promoted item replaces the vacated slot visually.
+          const groupKey = `group:${groupId}`;
+          const idx = nextPinned.indexOf(groupKey);
+          if (idx === -1) nextPinned = [...nextPinned, key];
+          else nextPinned = [...nextPinned.slice(0, idx + 1), key, ...nextPinned.slice(idx + 1)];
+        }
+        const finalState = { pinnedShortcuts: nextPinned, shortcutGroups: nextGroups };
+        autoDissolveIfNeeded(groupId, finalState);
+        set(finalState);
+      },
+
+      renameShortcutGroup: (groupId, label) => {
+        const state = get();
+        const group = state.shortcutGroups[groupId];
+        if (!group) return;
+        set({
+          shortcutGroups: { ...state.shortcutGroups, [groupId]: { ...group, label } },
+        });
+      },
+
+      dissolveShortcutGroup: (groupId, opts) => {
+        const state = get();
+        const group = state.shortcutGroups[groupId];
+        if (!group) return;
+        const nextGroups = { ...state.shortcutGroups };
+        delete nextGroups[groupId];
+        const groupKey = `group:${groupId}`;
+        const pinnedIdx = state.pinnedShortcuts.indexOf(groupKey);
+        let nextPinned = state.pinnedShortcuts.filter((k) => k !== groupKey);
+        if (opts?.flatten && group.childKeys.length > 0) {
+          const toInsert = group.childKeys.filter((k) => !nextPinned.includes(k));
+          if (pinnedIdx === -1) {
+            nextPinned = [...nextPinned, ...toInsert];
+          } else {
+            nextPinned = [...nextPinned.slice(0, pinnedIdx), ...toInsert, ...nextPinned.slice(pinnedIdx)];
+          }
+        }
+        set({ pinnedShortcuts: nextPinned, shortcutGroups: nextGroups });
       },
 
       reset: () =>
@@ -438,7 +718,8 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
-          pinnedQuickAddPanels: ['inspector'],
+          pinnedShortcuts: ['panel:inspector'],
+          shortcutGroups: {},
           lastFloatingPanelStates: {},
           focusedFloatingPanelId: null,
           activePresetByScope: {
@@ -464,7 +745,8 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           if (forceGeometry) return providedValue ?? savedValue ?? fallback;
           return savedValue ?? providedValue ?? fallback;
         };
-
+        // Opening a float clears any standalone-dismiss marker.
+        get().undismissPanel(FLOATING_DISMISS_KEY, panelId);
         const panelDef = panelSelectors.get(panelId);
         if (import.meta.env.DEV && !panelDef && !panelId.startsWith("dev-tool:")) {
           console.warn("[workspaceStore] opening floating panel without registered definition", {
@@ -609,7 +891,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         return !!list && list.includes(panelId);
       },
 
-      closeFloatingPanel: (panelId) => {
+      closeFloatingPanel: (panelId, options) => {
         const panel = get().floatingPanels.find((p) => p.id === panelId);
         const defId = getFloatingDefinitionId(panelId);
         const saved = panel
@@ -620,6 +902,9 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           lastFloatingPanelStates: saved,
           focusedFloatingPanelId: get().focusedFloatingPanelId === panelId ? null : get().focusedFloatingPanelId,
         });
+        if (options?.dismiss) {
+          get().dismissPanel(FLOATING_DISMISS_KEY, defId);
+        }
       },
 
       replaceFloatingPanel: (panelId, newDefinitionId, context) => {
@@ -654,6 +939,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           (p) => getFloatingDefinitionId(p.id) === defId,
         );
         if (existing) return;
+        get().undismissPanel(FLOATING_DISMISS_KEY, defId);
         set({
           floatingPanels: [...get().floatingPanels, panelState],
         });
@@ -848,7 +1134,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => createBackendStorage("workspace")),
-      version: 9, // v9: remove gallery from pinned (duplicate of page nav)
+      version: 11, // v11: add shortcutGroups for iOS-style folders
       migrate: (persistedState: any, version: number) => {
         if (version < 6) {
           persistedState.pinnedQuickAddPanels = ['inspector'];
@@ -872,6 +1158,23 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
             );
           }
         }
+        if (version < 10) {
+          // Unify shortcuts: old pinnedQuickAddPanels (string[]) → pinnedShortcuts with 'panel:' prefix
+          const legacy: unknown = persistedState.pinnedQuickAddPanels;
+          if (Array.isArray(legacy)) {
+            persistedState.pinnedShortcuts = legacy
+              .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+              .map((id: string) => `panel:${id}`);
+          } else if (!Array.isArray(persistedState.pinnedShortcuts)) {
+            persistedState.pinnedShortcuts = ['panel:inspector'];
+          }
+          delete persistedState.pinnedQuickAddPanels;
+        }
+        if (version < 11) {
+          if (typeof persistedState.shortcutGroups !== 'object' || persistedState.shortcutGroups === null) {
+            persistedState.shortcutGroups = {};
+          }
+        }
         return persistedState;
       },
       partialize: (state) => ({
@@ -880,7 +1183,8 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         presets: state.presets,
         fullscreenPanel: state.fullscreenPanel,
         floatingPanels: state.floatingPanels,
-        pinnedQuickAddPanels: state.pinnedQuickAddPanels,
+        pinnedShortcuts: state.pinnedShortcuts,
+        shortcutGroups: state.shortcutGroups,
         lastFloatingPanelStates: state.lastFloatingPanelStates,
         activePresetByScope: state.activePresetByScope,
         dismissedPanels: state.dismissedPanels,
@@ -894,6 +1198,34 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         }
         if (state && (typeof state.dismissedPanels !== 'object' || state.dismissedPanels === null)) {
           state.dismissedPanels = {};
+        }
+        if (state && (typeof state.shortcutGroups !== 'object' || state.shortcutGroups === null)) {
+          state.shortcutGroups = {};
+        }
+        // Self-heal: remove empty groups, promote single-child groups to flat pins,
+        // and strip dangling group:<id> references from pinnedShortcuts.
+        if (state && state.shortcutGroups && Array.isArray(state.pinnedShortcuts)) {
+          const groups = state.shortcutGroups;
+          let pinned = state.pinnedShortcuts;
+          for (const [groupId, group] of Object.entries(groups)) {
+            if (!group || !Array.isArray(group.childKeys) || group.childKeys.length <= 1) {
+              const groupKey = `group:${groupId}`;
+              const idx = pinned.indexOf(groupKey);
+              const remaining = group?.childKeys?.[0];
+              if (idx !== -1 && remaining && !pinned.includes(remaining)) {
+                pinned = [...pinned.slice(0, idx), remaining, ...pinned.slice(idx + 1)];
+              } else {
+                pinned = pinned.filter((k) => k !== groupKey);
+              }
+              delete groups[groupId];
+            }
+          }
+          // Strip any remaining dangling group keys whose record was never persisted.
+          pinned = pinned.filter((k) => {
+            if (!k.startsWith('group:')) return true;
+            return k.slice(6) in groups;
+          });
+          state.pinnedShortcuts = pinned;
         }
         // Deduplicate floating panels — keep only the last entry per definition ID.
         if (state && Array.isArray(state.floatingPanels) && state.floatingPanels.length > 1) {

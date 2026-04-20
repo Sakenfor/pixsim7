@@ -1,3 +1,4 @@
+import type { SubNavItem } from '@pixsim7/shared.modules.core';
 import { useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,9 +18,11 @@ import type { PageCategory } from '@app/modules/contracts';
 
 import { MorePanelsFlyout } from './MorePanelsFlyout';
 import { PanelShortcuts } from './PanelShortcuts';
+import { RecentShortcuts } from './RecentShortcuts';
 import { SettingsFlyout } from './SettingsFlyout';
+import { DRAG_MIME, pinnedPanelIdsFrom } from './shortcutDrag';
 import { buildSubNavForPage } from './subNavBuilder';
-import { SubNavFlyout } from './SubNavFlyout';
+import { SubNavFlyout, type NavFlyoutAction } from './SubNavFlyout';
 
 /** Category display order */
 const CATEGORY_ORDER: PageCategory[] = ['creation', 'automation', 'game', 'management', 'development'];
@@ -44,6 +47,7 @@ function isPageVisibleInNav(page: PageEntry): boolean {
 /** Reactive pages hook — mirrors the proven pattern from useModuleRoutes */
 function useRegistryPages() {
   const [version, setVersion] = useState(0);
+  const hiddenPageIds = useActivityBarStore((s) => s.hiddenPageIds);
 
   useEffect(() => {
     return moduleRegistry.subscribe(() => setVersion((v) => v + 1));
@@ -52,9 +56,10 @@ function useRegistryPages() {
   return useMemo(() => {
     void version; // reactive dependency
     const allPages = moduleRegistry.getPages({ includeHidden: true });
-    const visiblePages = allPages.filter(isPageVisibleInNav);
+    const hiddenSet = new Set(hiddenPageIds);
+    const visiblePages = allPages.filter((p) => isPageVisibleInNav(p) && !hiddenSet.has(p.id));
     return { allPages, visiblePages };
-  }, [version]);
+  }, [version, hiddenPageIds]);
 }
 
 /** Reactive activity bar widgets from all registered modules */
@@ -75,6 +80,16 @@ function groupByCategory(pages: PageEntry[]) {
   const groups: Partial<Record<PageCategory, PageEntry[]>> = {};
   for (const page of pages) {
     (groups[page.category] ??= []).push(page);
+  }
+  // Within each category, surface primary pages first (stable otherwise).
+  for (const key of Object.keys(groups) as PageCategory[]) {
+    const list = groups[key];
+    if (!list) continue;
+    list.sort((a, b) => {
+      const ap = a.featurePrimary ? 0 : 1;
+      const bp = b.featurePrimary ? 0 : 1;
+      return ap - bp;
+    });
   }
   return groups;
 }
@@ -130,23 +145,44 @@ function NavButton({
   const navigate = useNavigate();
   const triggerRef = useRef<HTMLDivElement>(null);
   const subNavItems = typeof page.subNav === 'function' ? page.subNav() : page.subNav;
-  const hasSubNav = subNavItems != null && subNavItems.length > 0;
   const hasGear = !!page.settingsPanelId;
 
-  const { isExpanded: showTooltip, handlers: tooltipHandlers } = useHoverExpand({
-    expandDelay: 400,
-    collapseDelay: 0,
-  });
+  const toggleShortcutPin = useWorkspaceStore((s) => s.toggleShortcutPin);
+  const isPinnedShortcut = useWorkspaceStore((s) => s.isPinnedShortcut);
+  const toggleHiddenPage = useActivityBarStore((s) => s.toggleHiddenPage);
 
   const handleClick = useCallback(() => {
     navigate(page.route);
   }, [navigate, page.route]);
 
+  const shortcutKey = `page:${page.id}`;
+  const isPinned = isPinnedShortcut(shortcutKey);
+
+  const pageActions: NavFlyoutAction[] = [
+    {
+      id: 'pin',
+      label: isPinned ? 'Unpin from shortcuts' : 'Pin to shortcuts',
+      icon: 'pin',
+      onClick: () => toggleShortcutPin(shortcutKey),
+    },
+    {
+      id: 'hide',
+      label: 'Hide from sidebar',
+      icon: 'eye-off',
+      danger: true,
+      onClick: () => toggleHiddenPage(page.id),
+    },
+  ];
+
   const button = (
     <div
-      ref={hasSubNav ? undefined : triggerRef}
+      ref={triggerRef}
       className="relative flex items-center justify-center group/navbtn"
-      {...(hasSubNav ? {} : tooltipHandlers)}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData(DRAG_MIME, shortcutKey);
+      }}
     >
       {/* Active indicator bar */}
       {active && (
@@ -169,21 +205,30 @@ function NavButton({
           <GearButton panelId={page.settingsPanelId!} />
         </div>
       )}
-      {!hasSubNav && showTooltip && (
-        <NavTooltip name={page.name} triggerRef={triggerRef} />
-      )}
     </div>
   );
 
-  if (hasSubNav) {
-    return (
-      <SubNavFlyout items={subNavItems!} route={page.route}>
-        {button}
-      </SubNavFlyout>
-    );
-  }
+  return (
+    <SubNavFlyout
+      items={subNavItems ?? []}
+      route={page.route}
+      pageActions={pageActions}
+    >
+      {button}
+    </SubNavFlyout>
+  );
+}
 
-  return button;
+/** Convert a page to a SubNavItem, forwarding its pre-built subNav as children. */
+function pageToSubNavItem(page: PageEntry): SubNavItem {
+  const subNav = typeof page.subNav === 'function' ? page.subNav() : page.subNav;
+  return {
+    id: `page:${page.id}`,
+    label: page.name,
+    icon: page.icon,
+    route: page.route,
+    ...(subNav && subNav.length > 0 ? { children: subNav } : {}),
+  };
 }
 
 function CategoryGroup({
@@ -198,14 +243,18 @@ function CategoryGroup({
   const isCollapsed = useActivityBarStore((s) => s.collapsedCategories.includes(category));
   const toggleCategory = useActivityBarStore((s) => s.toggleCategory);
 
+  const flyoutItems: SubNavItem[] = useMemo(() => pages.map(pageToSubNavItem), [pages]);
+
   return (
     <div className="flex flex-col items-center">
-      <button
-        onClick={() => toggleCategory(category)}
-        className="w-full py-0.5 text-[9px] uppercase font-semibold tracking-wider text-neutral-600 hover:text-neutral-400 transition-colors select-none"
-      >
-        {CATEGORY_LABELS[category] ?? category.toUpperCase()}
-      </button>
+      <SubNavFlyout items={flyoutItems} route="/">
+        <button
+          onClick={() => toggleCategory(category)}
+          className="w-full py-0.5 text-[9px] uppercase font-semibold tracking-wider text-neutral-600 hover:text-neutral-400 transition-colors select-none"
+        >
+          {CATEGORY_LABELS[category] ?? category.toUpperCase()}
+        </button>
+      </SubNavFlyout>
       {!isCollapsed &&
         pages.map((page) => (
           <NavButton
@@ -224,7 +273,11 @@ export function ActivityBar() {
   const location = useLocation();
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const lastFloatingPanelStates = useWorkspaceStore((s) => s.lastFloatingPanelStates);
-  const pinnedQuickAddPanels = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
+  const pinnedShortcuts = useWorkspaceStore((s) => s.pinnedShortcuts);
+  const pinnedQuickAddPanels = useMemo(
+    () => pinnedPanelIdsFrom(pinnedShortcuts),
+    [pinnedShortcuts],
+  );
   const { allPages, visiblePages } = useRegistryPages();
   const [panelVersion, setPanelVersion] = useState(0);
 
@@ -297,11 +350,14 @@ export function ActivityBar() {
           {homeHovered && <NavTooltip name="Home" triggerRef={homeRef} />}
         </div>
 
+        {/* Browse/search all panels — placed right under Home for discoverability */}
+        <MorePanelsFlyout />
+
         <Separator />
 
-        {/* Pinned panel shortcuts */}
+        {/* Pinned panel shortcuts + auto "recent" section */}
         <PanelShortcuts />
-        <MorePanelsFlyout />
+        <RecentShortcuts />
 
         <Separator />
 

@@ -7,6 +7,7 @@ import {
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { logEvent } from '@lib/utils';
+import { hmrSingleton } from '@lib/utils/hmrSafe';
 
 import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 
@@ -478,5 +479,8 @@ class ModuleRegistry {
   }
 }
 
-export const moduleRegistry = new ModuleRegistry();
+// HMR-safe singleton — otherwise every module edit creates a fresh empty
+// registry while `registerModules()` (only runs at boot in main.tsx) is not
+// re-invoked, leaving the sidebar categories empty until a full reload.
+export const moduleRegistry = hmrSingleton('app:moduleRegistry', () => new ModuleRegistry());
 

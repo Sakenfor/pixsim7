@@ -284,6 +284,9 @@ function buildPanelItems(options: {
     label: panel.navigation?.label ?? panel.title,
     icon: panel.navigation?.icon ?? panel.icon ?? 'layoutGrid',
     route: panel.navigation?.openRoute ?? `/workspace?openPanel=${encodeURIComponent(panel.id)}`,
+    // Forward the panel's child contribution (if any) so hover-cascading works
+    // generically — e.g., dev-tools panel returns registered dev tools.
+    ...(panel.navigation?.children ? { children: panel.navigation.children } : {}),
   }));
 }
 

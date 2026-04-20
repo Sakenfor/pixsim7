@@ -14,6 +14,8 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
 
+import { pinnedPanelIdsFrom } from '@/components/navigation/shortcutDrag';
+
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
@@ -270,7 +272,7 @@ export const addPanelAction: MenuAction = {
  * Get quick-add actions dynamically from the user's pinned panels.
  */
 export function getQuickAddActions(ctx: MenuActionContext): MenuAction[] {
-  const pinnedIds = useWorkspaceStore.getState().pinnedQuickAddPanels;
+  const pinnedIds = pinnedPanelIdsFrom(useWorkspaceStore.getState().pinnedShortcuts);
   if (!pinnedIds.length || !ctx.panelRegistry) return [];
 
   const allPanels = ctx.panelRegistry.getPublicPanels

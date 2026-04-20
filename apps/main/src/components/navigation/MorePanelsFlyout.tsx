@@ -8,7 +8,10 @@ import { CATEGORY_LABELS, CATEGORY_ORDER } from '@features/panels/lib/panelConst
 import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
+import { useActivityBarStore } from '@/stores/activityBarStore';
+
 import { NavIcon } from './ActivityBar';
+import { DRAG_MIME, pinnedPanelIdsFrom } from './shortcutDrag';
 
 const ROLE_ICONS: Record<string, string> = {
   "context-picker": "mouse-pointer",
@@ -90,7 +93,8 @@ export function MorePanelsFlyout() {
 
 function FlyoutContent() {
   const togglePin = useWorkspaceStore((s) => s.toggleQuickAddPin);
-  const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
+  const pinnedShortcuts = useWorkspaceStore((s) => s.pinnedShortcuts);
+  const pinnedIds = useMemo(() => pinnedPanelIdsFrom(pinnedShortcuts), [pinnedShortcuts]);
   const [search, setSearch] = useState('');
   const [showAuxiliary, setShowAuxiliary] = useState(false);
 
@@ -206,6 +210,11 @@ function FlyoutContent() {
                   }`}
                   onClick={() => handleOpen(panel.id)}
                   title={panel.description ?? undefined}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData(DRAG_MIME, `panel:${panel.id}`);
+                  }}
                 >
                   {panel.icon && <NavIcon name={panel.icon} size={14} />}
                   <span className="flex-1 truncate text-xs">{panel.title}</span>
@@ -235,24 +244,42 @@ function FlyoutContent() {
         ))}
       </div>
 
-      {/* Footer: auxiliary toggle */}
-      {auxiliaryCount > 0 && (
-        <div className="border-t border-neutral-700/60 px-2 pt-1.5 mt-1">
-          <button
-            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
-              showAuxiliary
-                ? 'text-accent bg-accent/10'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/40'
-            }`}
-            onClick={() => setShowAuxiliary((v) => !v)}
-          >
-            <Icon name={showAuxiliary ? 'eye' : 'eye-off'} size={11} className="shrink-0" />
-            <span>Auxiliary panels</span>
-            <span className="ml-auto text-[10px] opacity-60">{auxiliaryCount}</span>
-          </button>
-        </div>
-      )}
+      {/* Footer: auxiliary toggle + hidden-pages restore */}
+      <div className="border-t border-neutral-700/60 px-2 pt-1.5 mt-1 flex flex-col gap-0.5 empty:hidden">
+        {auxiliaryCount > 0 && (
+            <button
+              className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
+                showAuxiliary
+                  ? 'text-accent bg-accent/10'
+                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/40'
+              }`}
+              onClick={() => setShowAuxiliary((v) => !v)}
+            >
+              <Icon name={showAuxiliary ? 'eye' : 'eye-off'} size={11} className="shrink-0" />
+              <span>Auxiliary panels</span>
+              <span className="ml-auto text-[10px] opacity-60">{auxiliaryCount}</span>
+            </button>
+          )}
+        <HiddenPagesFooterRow />
+      </div>
     </>
+  );
+}
+
+function HiddenPagesFooterRow() {
+  const hiddenPageIds = useActivityBarStore((s) => s.hiddenPageIds);
+  const unhideAllPages = useActivityBarStore((s) => s.unhideAllPages);
+  if (hiddenPageIds.length === 0) return null;
+  return (
+    <button
+      className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/40 transition-colors"
+      onClick={() => unhideAllPages()}
+      title="Restore all pages hidden from the sidebar"
+    >
+      <Icon name="eye" size={11} className="shrink-0" />
+      <span>Restore hidden pages</span>
+      <span className="ml-auto text-[10px] opacity-60">{hiddenPageIds.length}</span>
+    </button>
   );
 }
 

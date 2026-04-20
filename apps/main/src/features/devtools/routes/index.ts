@@ -87,6 +87,10 @@ export const devToolsPanelModule = defineModule({
     category: 'development',
     featureId: 'dev-tools',
     featurePrimary: true,
+    // Keep the route reachable (via URL and cascading hover on other DEV pages),
+    // but don't render a direct icon in the sidebar — the Interaction Demo hover
+    // already surfaces all dev-category panels via the children cascade.
+    showInNav: false,
     component: DevToolsPage,
   },
 });

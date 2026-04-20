@@ -104,6 +104,11 @@ export interface SubNavItem {
   param?: { key: string; value: string };
   /** Absolute route to navigate to (overrides parent route + param) */
   route?: string;
+  /**
+   * Nested items revealed on hover-cascade. Can be a static array or a
+   * thunk that's evaluated lazily (e.g., to pull from a registry).
+   */
+  children?: SubNavItem[] | (() => SubNavItem[]);
 }
 
 export interface ModuleDevToolConfig<DevToolCategory = string> extends PluginMeta {

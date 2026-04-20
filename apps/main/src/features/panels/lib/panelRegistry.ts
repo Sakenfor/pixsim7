@@ -5,6 +5,7 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
+import type { SubNavItem } from "@pixsim7/shared.modules.core";
 import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy, CapabilityDeclaration } from "@pixsim7/shared.ui.panels";
 import { getCapabilityKeys } from "@pixsim7/shared.ui.panels";
 import type { ComponentType } from "react";
@@ -84,6 +85,12 @@ export interface PanelNavigationContribution {
    * and as the Ctrl/Cmd+Click route target.
    */
   openRoute?: string;
+  /**
+   * Nested subnav items revealed by hover-cascading into this panel's entry.
+   * Static array or thunk (lazy evaluation — useful for pulling from a registry
+   * at render time, e.g. `() => devToolRegistry.getAll().map(...)`).
+   */
+  children?: SubNavItem[] | (() => SubNavItem[]);
 }
 
 /**
