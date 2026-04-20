@@ -24,8 +24,6 @@ import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferenc
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
-const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
-
 // Fetch server settings on mount
 async function fetchServerSettings(): Promise<ServerMediaSettings> {
   return pixsimClient.get<ServerMediaSettings>('/media/settings');

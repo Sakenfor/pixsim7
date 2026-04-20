@@ -8,17 +8,9 @@
  * dashboard hard to keep visible while operating on assets.
  */
 
-import { MaintenanceDashboard } from '@features/settings/components/shared/MaintenanceDashboard';
-
 import { definePanel } from '../../../lib/definePanel';
 
-function AssetMaintenancePanel() {
-  return (
-    <div className="h-full overflow-auto">
-      <MaintenanceDashboard />
-    </div>
-  );
-}
+import { AssetMaintenancePanel } from './AssetMaintenancePanel';
 
 export default definePanel({
   id: 'asset-maintenance',

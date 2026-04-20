@@ -9,17 +9,9 @@
  * separate panels: `prompt-library-inspector`, `block-explorer`, `block-matrix`.
  */
 
-import { ContentPacksDashboard } from '@features/settings/components/shared/ContentPacksDashboard';
-
 import { definePanel } from '../../../lib/definePanel';
 
-function ContentPacksPanel() {
-  return (
-    <div className="h-full overflow-auto">
-      <ContentPacksDashboard />
-    </div>
-  );
-}
+import { ContentPacksPanel } from './ContentPacksPanel';
 
 export default definePanel({
   id: 'content-packs',
