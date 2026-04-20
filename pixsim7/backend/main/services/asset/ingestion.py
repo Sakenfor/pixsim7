@@ -83,6 +83,7 @@ class AssetIngestionService:
         extract_metadata: bool = True,
         generate_thumbnails: Optional[bool] = None,
         generate_previews: Optional[bool] = None,
+        derivatives_mode: str = "auto",
     ) -> Asset:
         """
         Ingest a single asset.
@@ -90,7 +91,21 @@ class AssetIngestionService:
         Idempotent by default: skips if already ingested (has stored_key and
         ingested_at) unless force=True. Individual steps (metadata, thumbnails, previews)
         can be re-run independently.
+
+        ``derivatives_mode`` controls where thumbnail/preview/signal-analysis
+        run:
+          * ``"auto"``   (default) — dispatched to the ARQ ``process_derivatives``
+                         task when ``MediaSettings.derivatives_async`` is True.
+          * ``"async"``  — always enqueue derivatives to ARQ.
+          * ``"inline"`` — run derivatives in-process (legacy behaviour; used
+                         by manual re-ingest endpoints so the response reflects
+                         the final thumbnail state).
         """
+        if derivatives_mode not in ("auto", "inline", "async"):
+            raise ValueError(
+                f"derivatives_mode must be 'auto', 'inline', or 'async' (got {derivatives_mode!r})"
+            )
+
         # Load asset
         asset = await self.db.get(Asset, asset_id)
         if not asset:
@@ -103,6 +118,16 @@ class AssetIngestionService:
             generate_thumbnails = self.settings.generate_thumbnails
         if generate_previews is None:
             generate_previews = self.settings.generate_previews
+
+        # Resolve the derivatives dispatch mode once.  "auto" follows the
+        # persisted media setting so ops can toggle it without redeploying.
+        effective_async = (
+            derivatives_mode == "async"
+            or (
+                derivatives_mode == "auto"
+                and getattr(self.settings, "derivatives_async", False)
+            )
+        )
 
         # Idempotent check: skip if already ingested with content-addressed storage (unless forced)
         is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
@@ -176,37 +201,21 @@ class AssetIngestionService:
                 await self._do_extract_metadata(asset, local_path)
                 asset.metadata_extracted_at = datetime.now(timezone.utc)
 
-            # Step 5: Generate thumbnails
-            # Self-heal: also retry if timestamp is set but key is missing
-            # (previous run marked it done but generation actually failed).
-            thumb_needed = force or not asset.thumbnail_generated_at or (
-                asset.thumbnail_generated_at and not asset.thumbnail_key
-            )
-            if generate_thumbnails and thumb_needed:
-                await generate_thumbnail(asset, local_path, self.settings)
-                # Only mark as done if thumbnail_key was actually set —
-                # generate_thumbnail silently returns on ffmpeg failure
-                # without setting the key.  Leaving thumbnail_generated_at
-                # unset allows future ingestion runs to retry.
-                if asset.thumbnail_key:
-                    asset.thumbnail_generated_at = datetime.now(timezone.utc)
-                elif asset.thumbnail_generated_at:
-                    # Clear stale timestamp from a previous failed attempt
-                    asset.thumbnail_generated_at = None
+            if not effective_async:
+                # Inline derivatives path — legacy behaviour.
+                await self._run_derivatives_inline(
+                    asset,
+                    local_path,
+                    force=force,
+                    generate_thumbnails=generate_thumbnails,
+                    generate_previews=generate_previews,
+                )
+                # Step 7.5: Stamp signal-quality metrics on video assets.
+                await self._trigger_signal_analysis(asset)
 
-            # Step 6: Generate previews
-            preview_needed = force or not asset.preview_generated_at or (
-                asset.preview_generated_at and not asset.preview_key
-            )
-            if generate_previews and preview_needed:
-                await generate_preview(asset, local_path, self.settings)
-                if asset.preview_key:
-                    asset.preview_generated_at = datetime.now(timezone.utc)
-                elif asset.preview_generated_at:
-                    # Clear stale timestamp from a previous failed attempt
-                    asset.preview_generated_at = None
-
-            # Step 7: Trigger on-ingest analyzers (best-effort)
+            # Step 7: Trigger on-ingest analyzers (best-effort).
+            # Runs regardless of derivatives mode — analyzers fall back to
+            # local_path when a thumbnail isn't available yet.
             await self._trigger_on_ingest_analyses(asset, local_path)
 
             # Link to global content blob (best-effort)
@@ -247,6 +256,37 @@ class AssetIngestionService:
             await self.db.commit()
             await self.db.refresh(asset)
 
+            # Kick off async derivatives if the caller opted in (or "auto"
+            # resolved to async).  Do this after commit so the worker sees a
+            # fully persisted row.  Redis failures are logged and tolerated —
+            # derivatives become a future-retry concern, not an ingest blocker.
+            if effective_async and (generate_thumbnails or generate_previews):
+                needs_thumb = generate_thumbnails and (
+                    force
+                    or not asset.thumbnail_generated_at
+                    or not asset.thumbnail_key
+                )
+                needs_preview = generate_previews and (
+                    force
+                    or not asset.preview_generated_at
+                    or not asset.preview_key
+                )
+                if needs_thumb or needs_preview:
+                    try:
+                        from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
+                        await queue_task("process_derivatives", asset.id, force=force)
+                        logger.debug(
+                            "derivatives_enqueued",
+                            asset_id=asset.id,
+                            force=force,
+                        )
+                    except Exception as enqueue_err:
+                        logger.warning(
+                            "derivatives_enqueue_failed",
+                            asset_id=asset.id,
+                            error=str(enqueue_err),
+                        )
+
             logger.info(
                 "asset_ingestion_completed",
                 asset_id=asset.id,
@@ -254,6 +294,7 @@ class AssetIngestionService:
                 thumbnail_key=asset.thumbnail_key,
                 metadata_extracted=asset.metadata_extracted_at is not None,
                 thumbnail_generated=asset.thumbnail_generated_at is not None,
+                derivatives_mode="async" if effective_async else "inline",
             )
 
             # Push a real-time asset update so generation/gallery clients can
@@ -285,6 +326,116 @@ class AssetIngestionService:
             )
 
             raise
+
+    # ── Derivatives (async-friendly) ──────────────────────────────────────
+
+    async def generate_derivatives(
+        self,
+        asset_id: int,
+        *,
+        force: bool = False,
+        generate_thumbnails: Optional[bool] = None,
+        generate_previews: Optional[bool] = None,
+    ) -> Asset:
+        """Run thumbnail + preview + signal-analysis for an already-ingested
+        asset.  Called by the ``process_derivatives`` ARQ worker.
+
+        Idempotent: re-uses the same self-heal conditions as ``ingest_asset``.
+        On missing ``local_path`` we re-download from ``remote_url`` so a
+        worker on a different host (or after a disk clean-up) can still work.
+        """
+        asset = await self.db.get(Asset, asset_id)
+        if not asset:
+            raise ValueError(f"Asset {asset_id} not found")
+
+        if generate_thumbnails is None:
+            generate_thumbnails = self.settings.generate_thumbnails
+        if generate_previews is None:
+            generate_previews = self.settings.generate_previews
+
+        local_path = await self._ensure_local_file(asset)
+        if not local_path:
+            logger.warning(
+                "derivatives_skipped_no_source",
+                asset_id=asset.id,
+                detail="No local_path or remote_url available",
+            )
+            return asset
+
+        await self._run_derivatives_inline(
+            asset,
+            local_path,
+            force=force,
+            generate_thumbnails=generate_thumbnails,
+            generate_previews=generate_previews,
+        )
+        await self._trigger_signal_analysis(asset)
+
+        attributes.flag_modified(asset, "media_metadata")
+        await self.db.commit()
+        await self.db.refresh(asset)
+
+        await event_bus.publish(
+            ASSET_UPDATED,
+            {
+                "asset_id": asset.id,
+                "user_id": asset.user_id,
+                "source_generation_id": asset.source_generation_id,
+                "reason": "derivatives_completed",
+                "thumbnail_generated": asset.thumbnail_generated_at is not None,
+                "preview_generated": asset.preview_generated_at is not None,
+            },
+        )
+
+        logger.info(
+            "derivatives_completed",
+            asset_id=asset.id,
+            thumbnail_key=asset.thumbnail_key,
+            preview_key=asset.preview_key,
+        )
+        return asset
+
+    async def _run_derivatives_inline(
+        self,
+        asset: Asset,
+        local_path: str,
+        *,
+        force: bool,
+        generate_thumbnails: bool,
+        generate_previews: bool,
+    ) -> None:
+        """Thumbnail + preview generation with self-heal.
+
+        Extracted from ``ingest_asset`` so ``generate_derivatives`` can share
+        the exact same logic.  Does NOT commit or emit events — the caller
+        owns the transaction boundary.
+        """
+        # Step 5: Generate thumbnails
+        # Self-heal: also retry if timestamp is set but key is missing
+        # (previous run marked it done but generation actually failed).
+        thumb_needed = force or not asset.thumbnail_generated_at or (
+            asset.thumbnail_generated_at and not asset.thumbnail_key
+        )
+        if generate_thumbnails and thumb_needed:
+            await generate_thumbnail(asset, local_path, self.settings)
+            # generate_thumbnail silently returns on ffmpeg failure without
+            # setting the key.  Leaving thumbnail_generated_at unset allows
+            # future ingestion runs to retry.
+            if asset.thumbnail_key:
+                asset.thumbnail_generated_at = datetime.now(timezone.utc)
+            elif asset.thumbnail_generated_at:
+                asset.thumbnail_generated_at = None
+
+        # Step 6: Generate previews
+        preview_needed = force or not asset.preview_generated_at or (
+            asset.preview_generated_at and not asset.preview_key
+        )
+        if generate_previews and preview_needed:
+            await generate_preview(asset, local_path, self.settings)
+            if asset.preview_key:
+                asset.preview_generated_at = datetime.now(timezone.utc)
+            elif asset.preview_generated_at:
+                asset.preview_generated_at = None
 
     # ── Private helpers ───────────────────────────────────────────────────
 
@@ -333,6 +484,22 @@ class AssetIngestionService:
     async def _do_extract_metadata(self, asset: Asset, local_path: str) -> None:
         """Delegate metadata extraction to media module."""
         await extract_metadata(asset, local_path)
+
+    async def _trigger_signal_analysis(self, asset: Asset) -> None:
+        """Stamp signal-quality metrics for video assets at ingest time.
+
+        Best-effort: never blocks ingestion. Service is idempotent — re-runs
+        skip if scanner_version matches what's already stored.
+
+        Cost: ~1s of ffmpeg work per 15s clip; runs only for video assets.
+        """
+        try:
+            from pixsim7.backend.main.services.asset.signal_analysis import SignalAnalysisService
+            if not SignalAnalysisService.is_eligible(asset):
+                return
+            await SignalAnalysisService(self.db).probe_and_stamp(asset, commit=False)
+        except Exception as e:  # noqa: BLE001 — never let a probe block ingest
+            logger.warning("signal_analysis_ingest_failed", asset_id=asset.id, error=str(e))
 
     async def _trigger_on_ingest_analyses(
         self,

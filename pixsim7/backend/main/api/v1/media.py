@@ -140,6 +140,9 @@ async def trigger_ingestion(
                 extract_metadata=extract_metadata,
                 generate_thumbnails=generate_thumbnails,
                 generate_previews=generate_previews,
+                # Manual endpoint — run derivatives inline so the response
+                # body reflects the final thumbnail/preview keys.
+                derivatives_mode="inline",
             )
             return {
                 "success": True,
@@ -164,7 +167,11 @@ async def trigger_ingestion(
     else:
         # Full ingestion
         try:
-            asset = await service.ingest_asset(asset_id, force=force)
+            asset = await service.ingest_asset(
+                asset_id,
+                force=force,
+                derivatives_mode="inline",
+            )
             return {
                 "success": True,
                 "asset_id": asset.id,

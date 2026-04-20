@@ -80,6 +80,14 @@ class MediaSettings(SettingsBase):
         False,
         description="Generate preview derivatives",
     )
+    derivatives_async: bool = Field(
+        True,
+        description=(
+            "Run thumbnail/preview/signal-analysis generation in an ARQ worker "
+            "after the core ingestion commits.  Disable to force inline "
+            "ffmpeg inside the request path (debugging / single-process setups)."
+        ),
+    )
     preview_size: list[int] = Field(
         default_factory=lambda: [800, 800],
         description="Preview dimensions [width, height]",

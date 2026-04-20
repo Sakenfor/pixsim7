@@ -34,6 +34,7 @@ from pixsim7.backend.main.workers.status_poller_maintenance import (
     refresh_stale_account_credits,
 )
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
+from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
 from pixsim7.backend.main.workers.health import (
@@ -70,6 +71,13 @@ configure_stdlib_root_logger()
 
 _event_bridge = None
 _retry_event_bridge = None
+
+
+def _redis_settings() -> RedisSettings:
+    s = RedisSettings.from_dsn(settings.redis_url)
+    s.conn_retries = 20
+    s.retry_on_timeout = True
+    return s
 
 
 def _sync_preload_system_config() -> None:
@@ -184,6 +192,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_analysis")
+    logger.info("worker_component_registered", component="process_derivatives")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
@@ -420,13 +429,14 @@ class WorkerSettings:
     """
 
     # Redis connection (shared with API via settings.redis_url)
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = _redis_settings()
     queue_name = GENERATION_FRESH_QUEUE_NAME
 
     # Task functions that can be queued
     functions = [
         process_generation,
         process_analysis,
+        process_derivatives,
         run_analysis_backfill_batch,
         poll_job_statuses,
         requeue_pending_generations,
@@ -516,7 +526,7 @@ class WorkerSettings:
 class GenerationRetryWorkerSettings:
     """ARQ worker for deferred/retry generation jobs only."""
 
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = _redis_settings()
     queue_name = GENERATION_RETRY_QUEUE_NAME
 
     functions = [
@@ -552,7 +562,7 @@ class GenerationRetryWorkerSettings:
 class SimulationWorkerSettings:
     """ARQ worker dedicated to periodic world simulation scheduling."""
 
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = _redis_settings()
     queue_name = SIMULATION_SCHEDULER_QUEUE_NAME
 
     functions = [
@@ -592,7 +602,7 @@ class AutomationWorkerSettings:
     control, potentially long-running) cannot eat generation processing slots.
     """
 
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = _redis_settings()
     queue_name = AUTOMATION_QUEUE_NAME
 
     functions = [
