@@ -48,7 +48,6 @@ def _fake_generation_response(*, user_id: int = 42):
         workspace_id=None,
         operation_type="text_to_video",
         provider_id="pixverse",
-        raw_params={},
         canonical_params={},
         latest_submission_payload=None,
         inputs=[],

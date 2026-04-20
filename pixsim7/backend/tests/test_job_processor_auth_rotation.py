@@ -72,7 +72,6 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
         account_id=None,
         provider_id="pixverse",
         canonical_params={},
-        raw_params={},
         started_at=None,
     )
     preferred_account = SimpleNamespace(

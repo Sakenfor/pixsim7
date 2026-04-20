@@ -255,50 +255,25 @@ class ProviderService:
             )
 
         # Normalize params and ensure composition_assets for asset-based operations.
+        # Canonicalization already coerces all legacy URL / asset_id inputs into
+        # ``composition_assets`` on ``generation.canonical_params`` — so at this
+        # point we only need to coerce whatever shape the caller handed us into
+        # the normalized form.  The previous raw_params fallback is retired.
         params = dict(params)
         operation_type = generation.operation_type
         spec = OPERATION_REGISTRY.get(operation_type)
         if spec and "composition_assets" in (spec.required_inputs or []):
-            raw_params = getattr(generation, "raw_params", None) or {}
-            if not isinstance(raw_params, dict):
-                raw_params = {}
-            raw_gen_config = raw_params.get("generation_config")
-            if not isinstance(raw_gen_config, dict):
-                raw_gen_config = {}
-
-            composition_assets = (
-                params.get("composition_assets")
-                or raw_gen_config.get("composition_assets")
-                or raw_params.get("composition_assets")
-            )
-
-            def _legacy_value(*keys: str):
-                for key in keys:
-                    if key in params and params.get(key) is not None:
-                        return params.get(key)
-                    if raw_gen_config.get(key) is not None:
-                        return raw_gen_config.get(key)
-                    if raw_params.get(key) is not None:
-                        return raw_params.get(key)
-                return None
+            composition_assets = params.get("composition_assets")
 
             default_media_type = "image"
             default_role = "composition_reference"
-            legacy_keys: tuple[str, ...] = ("source_asset_ids", "image_urls", "image_url")
             if operation_type == OperationType.IMAGE_TO_VIDEO:
                 default_role = "source_image"
-                legacy_keys = ("source_asset_id", "image_url", "image_urls")
-            elif operation_type == OperationType.IMAGE_TO_IMAGE:
-                legacy_keys = ("source_asset_ids", "source_asset_id", "image_urls", "image_url")
             elif operation_type == OperationType.VIDEO_EXTEND:
                 default_media_type = "video"
                 default_role = "source_video"
-                legacy_keys = ("source_asset_id", "video_url")
             elif operation_type == OperationType.VIDEO_TRANSITION:
                 default_role = "transition_input"
-
-            if not composition_assets and legacy_keys:
-                composition_assets = _legacy_value(*legacy_keys)
 
             if composition_assets:
                 params["composition_assets"] = coerce_composition_assets(

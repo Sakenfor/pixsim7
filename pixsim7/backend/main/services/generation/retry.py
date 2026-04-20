@@ -157,11 +157,13 @@ class GenerationRetryService:
         # Create new generation with same params
         logger.info(f"Retrying generation {generation_id} (retry {(original.retry_count or 0) + 1}/{max_retries})")
 
+        retry_params = self._build_retry_params(original)
+
         new_generation = await self.creation.create_generation(
             user=user,
             operation_type=original.operation_type,
             provider_id=original.provider_id,
-            params=original.raw_params,  # Use original raw params
+            params=retry_params,
             workspace_id=original.workspace_id,
             name=f"Retry: {original.name}" if original.name else None,
             description=original.description,
@@ -262,6 +264,32 @@ class GenerationRetryService:
         return False
 
     # ===== PRIVATE HELPERS =====
+
+    def _build_retry_params(self, original: Generation) -> dict:
+        """Build the ``params`` payload that ``create_generation`` will accept
+        for a retry.
+
+        Rehydrates structured params from ``canonical_params`` + ``run_context``
+        with ``final_prompt`` as the authoritative prompt — never reads
+        ``raw_params``.  Round-trip safety is covered by
+        ``test_canonical_roundtrip``.
+        """
+        from pixsim7.backend.main.services.generation.creation_helpers.params import (
+            rehydrate_structured_from_canonical,
+        )
+
+        canonical = dict(original.canonical_params or {})
+        # final_prompt is the authoritative source (patch endpoint writes it).
+        # Layer it over any stale prompt in canonical.
+        if original.final_prompt:
+            canonical["prompt"] = original.final_prompt
+
+        return rehydrate_structured_from_canonical(
+            canonical,
+            provider_id=original.provider_id,
+            operation_type=original.operation_type,
+            run_context=original.run_context,
+        )
 
     async def _get_generation(self, generation_id: int) -> Generation:
         """Get generation by ID or raise ResourceNotFoundError"""

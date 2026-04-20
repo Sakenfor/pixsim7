@@ -23,9 +23,11 @@ def _make_original(
     status: str = "failed",
     retry_count: int = 0,
     attempt_id: int = 0,
-    operation_type: str = "text_to_image",
+    operation_type=None,
     provider_id: str = "pixverse",
-    raw_params: dict | None = None,
+    canonical_params: dict | None = None,
+    final_prompt: str | None = None,
+    run_context: dict | None = None,
     workspace_id: int | None = None,
     name: str | None = "test gen",
     description: str | None = None,
@@ -34,15 +36,18 @@ def _make_original(
     preferred_account_id=None,
     analyzer_id=None,
 ) -> SimpleNamespace:
+    from pixsim7.backend.main.domain import OperationType
     return SimpleNamespace(
         id=id,
         user_id=user_id,
         status=GenerationStatus(status),
         retry_count=retry_count,
         attempt_id=attempt_id,
-        operation_type=operation_type,
+        operation_type=operation_type if operation_type is not None else OperationType.TEXT_TO_IMAGE,
         provider_id=provider_id,
-        raw_params=raw_params or {"model": "v2"},
+        canonical_params=canonical_params or {"model": "v2"},
+        final_prompt=final_prompt,
+        run_context=run_context,
         workspace_id=workspace_id,
         name=name,
         description=description,
@@ -194,7 +199,7 @@ async def test_max_retries_resolved_from_settings():
 async def test_create_generation_called_with_original_params():
     original = _make_original(
         provider_id="pixverse",
-        raw_params={"model": "v3", "quality": "1080p"},
+        canonical_params={"model": "v3", "quality": "1080p"},
         priority=8,
         name="original",
         preferred_account_id=7,
@@ -204,7 +209,11 @@ async def test_create_generation_called_with_original_params():
 
     call_kwargs = svc.creation.create_generation.call_args.kwargs
     assert call_kwargs["provider_id"] == "pixverse"
-    assert call_kwargs["params"] == {"model": "v3", "quality": "1080p"}
+    # Retry now rehydrates structured params from canonical — model/quality
+    # land under generation_config.style.<provider>.*
+    style = call_kwargs["params"]["generation_config"]["style"]["pixverse"]
+    assert style["model"] == "v3"
+    assert style["quality"] == "1080p"
     assert call_kwargs["priority"] == 8
     assert call_kwargs["name"] == "Retry: original"
     assert call_kwargs["parent_generation_id"] == 1

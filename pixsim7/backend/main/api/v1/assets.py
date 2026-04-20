@@ -181,13 +181,23 @@ async def get_asset_generation_context(
                     error=str(e),
                 )
 
+        # Prefer the denormalized columns (indexed, always populated for
+        # app-generated assets); fall back to the blob for legacy assets
+        # predating the columns, then to a safe default.
+        operation_type = (
+            asset.operation_type
+            or gen_ctx.get("operation_type")
+            or "text_to_image"
+        )
+        provider_id = asset.provider_id or gen_ctx.get("provider_id") or ""
         return AssetGenerationContext(
             source="metadata",
-            operation_type=gen_ctx.get("operation_type", "text_to_image"),
-            provider_id=gen_ctx.get("provider_id", asset.provider_id),
-            final_prompt=asset.prompt or gen_ctx.get("prompt"),
+            operation_type=operation_type,
+            provider_id=provider_id,
+            # asset.prompt is now the sole source of truth (blob copy retired
+            # in migration 20260419_0005).
+            final_prompt=asset.prompt,
             canonical_params=canonical_params,
-            raw_params={},
             inputs=[],
             source_asset_ids=source_asset_ids,
         )
@@ -251,7 +261,6 @@ async def get_asset_generation_context(
                 provider_id=generation.provider_id or asset.provider_id,
                 final_prompt=generation.final_prompt,
                 canonical_params=flat_params,
-                raw_params={},
                 inputs=generation.inputs or [],
                 source_asset_ids=source_asset_ids,
             )

@@ -51,11 +51,13 @@ class AssetLineageService:
         return list(res.scalars().all())
 
     async def has_children_map(self, asset_ids: Iterable[int]) -> Dict[int, bool]:
-        """Batch-check whether each asset is referenced as a parent/source.
+        """Batch-check whether each asset is referenced as a parent in lineage.
 
-        Unions two sources to stay consistent with the `has_children` gallery filter
-        (see services/asset/_search.py): the AssetLineage table, plus legacy rows
-        that only carry the link via Asset.upload_context.source_asset_id.
+        Reads exclusively from ``asset_lineage``.  Legacy rows that once held
+        the link only via ``Asset.upload_context.source_asset_id`` have been
+        backfilled into ``asset_lineage`` (migration 20260419_0002), so the
+        old JSON-path fallback is gone — it was a full-table scan of
+        ``upload_context`` and defeated the lineage indexes at scale.
         """
         ids = [int(i) for i in asset_ids if i is not None]
         if not ids:
@@ -71,22 +73,6 @@ class AssetLineageService:
         for (parent_id,) in (await self.db.execute(lineage_q)).all():
             if parent_id in result:
                 result[parent_id] = True
-
-        remaining = [i for i, v in result.items() if not v]
-        if remaining:
-            id_strs = [str(i) for i in remaining]
-            uc_q = (
-                select(Asset.upload_context["source_asset_id"].astext)
-                .where(Asset.upload_context["source_asset_id"].astext.in_(id_strs))
-                .distinct()
-            )
-            for (source_str,) in (await self.db.execute(uc_q)).all():
-                try:
-                    sid = int(source_str)
-                except (TypeError, ValueError):
-                    continue
-                if sid in result:
-                    result[sid] = True
 
         return result
 

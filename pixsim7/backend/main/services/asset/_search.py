@@ -76,10 +76,9 @@ class AssetSearchMixin:
                 .subquery()
             )
             join_lineage = True
-            raw_key = func.coalesce(
-                cast(lineage_primary.c.parent_asset_id, String),
-                func.nullif(cast(Asset.upload_context["source_asset_id"].astext, String), ""),
-            )
+            # Legacy upload_context fallback removed — all source links now
+            # live in asset_lineage (backfill 20260419_0002).
+            raw_key = cast(lineage_primary.c.parent_asset_id, String)
         elif group_by == "generation":
             raw_key = cast(Asset.source_generation_id, String)
         elif group_by == "prompt":
@@ -316,18 +315,41 @@ class AssetSearchMixin:
             from sqlalchemy import literal
             query = query.where(literal(False))
 
-        # Source asset filter (lineage + upload_context)
+        # Source asset filter (lineage + upload_context).
+        # Supports both:
+        # - top-level `source_asset_id` (legacy single value)
+        # - registry filter `filters.source_asset_ids` (multi-value)
+        source_asset_ids: list[int] = []
+
+        def _append_source_asset_id(raw: Any) -> None:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return
+            if value <= 0 or value in source_asset_ids:
+                return
+            source_asset_ids.append(value)
+
         if source_asset_id is not None:
-            source_asset_str = str(source_asset_id)
+            _append_source_asset_id(source_asset_id)
+
+        if isinstance(filters, dict):
+            raw_source_asset_ids = filters.get("source_asset_ids")
+            if isinstance(raw_source_asset_ids, (list, tuple, set)):
+                for raw_id in raw_source_asset_ids:
+                    _append_source_asset_id(raw_id)
+            elif raw_source_asset_ids is not None:
+                _append_source_asset_id(raw_source_asset_ids)
+
+        if source_asset_ids:
+            # Legacy upload_context fallback removed — all source links now
+            # live in asset_lineage (backfill 20260419_0002).
             query = query.where(
-                or_(
-                    exists(
-                        select(AssetLineage.id).where(
-                            AssetLineage.child_asset_id == Asset.id,
-                            AssetLineage.parent_asset_id == source_asset_id,
-                        )
-                    ),
-                    Asset.upload_context["source_asset_id"].astext == source_asset_str,
+                exists(
+                    select(AssetLineage.id).where(
+                        AssetLineage.child_asset_id == Asset.id,
+                        AssetLineage.parent_asset_id.in_(source_asset_ids),
+                    )
                 )
             )
 

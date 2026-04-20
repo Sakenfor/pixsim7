@@ -106,6 +106,37 @@ def extract_source_asset_ids(inputs: list) -> List[int]:
     return ids
 
 
+# Keys that get stripped from the stamped `params` blob before it lands on
+# `asset.media_metadata["generation_context"]`.  They are either:
+#   * rebuildable at read time (composition_assets ← source_asset_ids), or
+#   * ephemeral (CDN URLs that expire), or
+#   * duplicated at a higher level (source_asset_id* ← ctx["source_asset_ids"]).
+# Provider-specific knobs (model, quality, seed, motion_mode, etc.) stay — the
+# frontend's Regenerate / Load-to-Quick-Gen flow feeds them back into the
+# generation widget.
+_STAMP_DROP_FROM_PARAMS = frozenset({
+    "composition_assets",
+    "image_url",
+    "image_urls",
+    "video_url",
+    "source_asset_id",
+    "sourceAssetId",
+    "source_asset_ids",
+    "sourceAssetIds",
+})
+
+
+def _slim_stamped_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip the redundant-or-ephemeral keys before stamping onto an asset.
+
+    The bulk of the 5-10KB per-asset bloat comes from ``composition_assets``
+    (full asset descriptors) and stale CDN URLs; both are recoverable.
+    """
+    if not isinstance(params, dict):
+        return params
+    return {k: v for k, v in params.items() if k not in _STAMP_DROP_FROM_PARAMS}
+
+
 def build_generation_context(
     *,
     operation_type: str,
@@ -115,23 +146,36 @@ def build_generation_context(
     source_asset_ids: List[int],
     prompt_version_id: Optional[str] = None,
     reproducible_hash: Optional[str] = None,
+    artificial_extend: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Assemble the generation_context dict with a consistent shape.
 
     This is the canonical shape stored in asset.media_metadata["generation_context"].
+    The ``params`` blob is slimmed (see ``_STAMP_DROP_FROM_PARAMS``) so per-asset
+    metadata stays small at scale.
+
+    ``operation_type`` / ``provider_id`` / ``prompt`` / ``prompt_version_id`` /
+    ``reproducible_hash`` are accepted for backward-compat but NOT stamped
+    into the ctx: those fields already live on the ``Asset`` row (columns
+    are indexed + queried) and the blob copies were dead weight / stamp-only.
+    Readers now go through the column.  Kwargs stay on the signature so
+    callers don't break.
     """
+    _ = (
+        operation_type,
+        provider_id,
+        prompt,
+        prompt_version_id,
+        reproducible_hash,
+    )  # consumed via columns
+
     ctx: Dict[str, Any] = {
-        "operation_type": operation_type,
-        "provider_id": provider_id,
-        "prompt": prompt,
-        "params": params,
+        "params": _slim_stamped_params(params),
         "source_asset_ids": source_asset_ids,
     }
-    if prompt_version_id:
-        ctx["prompt_version_id"] = prompt_version_id
-    if reproducible_hash:
-        ctx["reproducible_hash"] = reproducible_hash
+    if artificial_extend:
+        ctx["artificial_extend"] = artificial_extend
     return ctx
 
 
@@ -175,6 +219,13 @@ def build_generation_context_from_generation(generation) -> Dict[str, Any]:
     # Get reproducible_hash
     reproducible_hash = getattr(generation, "reproducible_hash", None)
 
+    # Passthrough: artificial_extend marker (set by i2v-last-frame flow)
+    artificial_extend = None
+    if isinstance(canonical_params, dict):
+        ae = canonical_params.get("artificial_extend")
+        if isinstance(ae, dict):
+            artificial_extend = ae
+
     return build_generation_context(
         operation_type=operation_type,
         provider_id=provider_id,
@@ -183,4 +234,5 @@ def build_generation_context_from_generation(generation) -> Dict[str, Any]:
         source_asset_ids=source_asset_ids,
         prompt_version_id=prompt_version_id,
         reproducible_hash=reproducible_hash,
+        artificial_extend=artificial_extend,
     )

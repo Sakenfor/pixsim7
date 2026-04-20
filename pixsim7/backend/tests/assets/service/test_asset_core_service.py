@@ -142,17 +142,13 @@ async def test_create_from_submission_persists_batch_manifest_from_run_context()
     generation.final_prompt = "A test prompt"
     generation.operation_type = MagicMock()
     generation.operation_type.value = "image_to_video"
-    generation.raw_params = {
-        "generation_config": {
-            "run_context": {
-                "mode": "quickgen_each",
-                "run_id": "c8ff6f4d-5af8-4f36-a768-f8d4d9097b78",
-                "strategy": "each",
-                "item_index": 2,
-                "item_total": 5,
-                "input_asset_ids": [11, 22],
-            }
-        }
+    generation.run_context = {
+        "mode": "quickgen_each",
+        "run_id": "c8ff6f4d-5af8-4f36-a768-f8d4d9097b78",
+        "strategy": "each",
+        "item_index": 2,
+        "item_total": 5,
+        "input_asset_ids": [11, 22],
     }
     generation.inputs = [{"asset": "asset:11"}, {"asset": "asset:22"}]
 

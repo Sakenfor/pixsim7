@@ -125,7 +125,6 @@ class SyntheticGenerationService:
             user_id=user.id,
             operation_type=gen_data["operation_type"],
             provider_id=asset.provider_id,
-            raw_params={},  # Not available from sync
             canonical_params=gen_data["canonical_params"],
             inputs=gen_data["inputs"],
             reproducible_hash=gen_data["reproducible_hash"],
@@ -607,7 +606,6 @@ async def resolve_generation_context_from_metadata(
         "provider_id": asset.provider_id,
         "final_prompt": prompt_text,
         "canonical_params": params,
-        "raw_params": {},
         "inputs": inputs,
         "source_asset_ids": source_asset_ids,
     }

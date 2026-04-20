@@ -319,15 +319,11 @@ class AssetCreationMixin:
 
     @staticmethod
     def _extract_run_context(generation: Any) -> Optional[Dict[str, Any]]:
-        raw_params = getattr(generation, "raw_params", None)
-        if not isinstance(raw_params, dict):
-            return None
-        gen_config = raw_params.get("generation_config")
-        if not isinstance(gen_config, dict):
-            return None
-        run_context = gen_config.get("run_context") or gen_config.get("runContext")
-        if isinstance(run_context, dict):
-            return dict(run_context)
+        # First-class column after migration 20260419_0003 backfilled legacy
+        # rows.  No more raw_params fallback.
+        direct = getattr(generation, "run_context", None)
+        if isinstance(direct, dict) and direct:
+            return dict(direct)
         return None
 
     async def _upsert_generation_batch_manifest(self, asset: Asset, generation: Any) -> None:
@@ -664,8 +660,7 @@ class AssetCreationMixin:
         Tries multiple sources in order of preference:
         1. generation.final_prompt (post-substitution)
         2. generation.canonical_params.prompt
-        3. generation.raw_params.prompt
-        4. submission.payload.prompt
+        3. submission.payload.prompt
 
         Returns:
             Prompt text if found, None otherwise
@@ -677,12 +672,6 @@ class AssetCreationMixin:
         # Try canonical_params.prompt
         if hasattr(generation, 'canonical_params') and generation.canonical_params:
             prompt = generation.canonical_params.get('prompt')
-            if prompt:
-                return prompt
-
-        # Try raw_params.prompt
-        if hasattr(generation, 'raw_params') and generation.raw_params:
-            prompt = generation.raw_params.get('prompt')
             if prompt:
                 return prompt
 

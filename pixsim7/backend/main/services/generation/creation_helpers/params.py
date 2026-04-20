@@ -5,7 +5,7 @@ Handles the transformation of raw API parameters into canonical form that
 provider adapters can consume, plus validation of operation-specific fields.
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from pixsim7.backend.main.domain import OperationType
 from pixsim7.backend.main.shared.errors import InvalidOperationError
@@ -17,6 +17,90 @@ from pixsim7.backend.main.services.generation.creation_helpers.inputs import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Provider-specific flat keys that canonicalize hoists from
+# ``generation_config.style.<provider>.*``.  Mirror in rehydrate so the inverse
+# places them back under the same provider-style block.
+_PROVIDER_STYLE_KEYS = frozenset({
+    "model", "quality", "off_peak", "audio", "multi_shot",
+    "aspect_ratio", "seed", "camera_movement", "negative_prompt",
+    "motion_mode", "style", "template_id",
+    "api_method", "pixverse_api_mode", "use_openapi",
+    "task_type", "image_resolution",
+})
+
+# Top-level context blobs passed through unchanged by canonicalize.
+_TOP_LEVEL_CONTEXT_KEYS = (
+    "scene_context",
+    "player_context",
+    "social_context",
+    "artificial_extend",
+)
+
+
+def rehydrate_structured_from_canonical(
+    canonical: Dict[str, Any],
+    *,
+    provider_id: str,
+    operation_type: OperationType,
+    run_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Reverse of :func:`canonicalize_params` — rebuild a structured params
+    dict that ``create_generation`` will accept.
+
+    Used by the retry path so a generation can be re-submitted from its
+    stored ``canonical_params`` + ``run_context`` column without digging
+    into the legacy ``raw_params`` blob.
+
+    Round-trip guarantee: ``canonicalize_params(rehydrate(c, ...), op, pid) == c``
+    for any canonical ``c`` produced by an earlier canonicalize pass.  Covered
+    by ``test_canonicalize_rehydrate_roundtrip``.
+    """
+    gen_config: Dict[str, Any] = {}
+
+    # Provider-style block (flat knobs nested back under style.<provider>).
+    provider_style = {
+        k: canonical[k] for k in _PROVIDER_STYLE_KEYS if k in canonical
+    }
+    style: Dict[str, Any] = {}
+    if "pacing" in canonical:
+        style["pacing"] = canonical["pacing"]
+    if provider_style:
+        style[provider_id] = provider_style
+    if style:
+        gen_config["style"] = style
+
+    # Duration / constraints / prompt.
+    if "duration" in canonical:
+        gen_config["duration"] = {"target": canonical["duration"]}
+    if "content_rating" in canonical:
+        gen_config["constraints"] = {"rating": canonical["content_rating"]}
+    if "prompt" in canonical:
+        gen_config["prompt"] = canonical["prompt"]
+
+    # Operation-specific fields — composition_assets is the canonical input
+    # list; the legacy source_asset_id / image_url fallbacks are deliberately
+    # NOT rehydrated (they collapse into composition_assets on canonicalize).
+    if "composition_assets" in canonical:
+        gen_config["composition_assets"] = canonical["composition_assets"]
+    if "mask_url" in canonical:
+        gen_config["mask_url"] = canonical["mask_url"]
+    if "file_extension" in canonical:
+        gen_config["file_extension"] = canonical["file_extension"]
+    if "prompts" in canonical:  # VIDEO_TRANSITION carries per-shot prompts
+        gen_config["prompts"] = canonical["prompts"]
+
+    # Bookkeeping (batch id, item index, roll seed, guidance plan, ...).
+    if run_context:
+        gen_config["run_context"] = dict(run_context)
+
+    result: Dict[str, Any] = {"generation_config": gen_config}
+    for ctx_key in _TOP_LEVEL_CONTEXT_KEYS:
+        if ctx_key in canonical:
+            result[ctx_key] = canonical[ctx_key]
+
+    return result
 
 
 def canonicalize_params(
@@ -267,7 +351,7 @@ def canonicalize_params(
                 canonical["composition_metadata"] = composition_metadata
 
     # Preserve scene_context and other structured fields if present
-    for context_key in ["scene_context", "player_context", "social_context"]:
+    for context_key in ["scene_context", "player_context", "social_context", "artificial_extend"]:
         if context_key in params:
             canonical[context_key] = params[context_key]
 

@@ -429,6 +429,16 @@ class GenerationCreationService:
                 else:
                     debug.generation(f"Reusing existing PromptVersion {prompt_version_id}")
 
+        # Promote run_context out of raw_params.generation_config into its
+        # own column so batch-manifest creation and retry can read it without
+        # digging into the nested raw_params blob.
+        _gc = params.get("generation_config") if isinstance(params, dict) else None
+        run_context = None
+        if isinstance(_gc, dict):
+            rc = _gc.get("run_context")
+            if isinstance(rc, dict) and rc:
+                run_context = rc
+
         # Create generation with billing fields
         # Note: credit_type is left None at creation - it will be determined
         # at billing time based on the account's available credits.
@@ -436,8 +446,8 @@ class GenerationCreationService:
             user_id=user.id,
             operation_type=operation_type,
             provider_id=provider_id,
-            raw_params=params,
             canonical_params=canonical_params,
+            run_context=run_context,
             inputs=inputs,
             reproducible_hash=reproducible_hash,
             prompt_version_id=prompt_version_id,

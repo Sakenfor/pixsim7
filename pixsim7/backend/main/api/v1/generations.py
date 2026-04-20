@@ -1106,7 +1106,9 @@ async def patch_generation_prompt(
     """
     Update the prompt on an existing generation.
 
-    Updates final_prompt and the prompt key inside raw_params / canonical_params.
+    Updates ``final_prompt`` and ``canonical_params.prompt``.  Retry
+    re-canonicalizes from canonical + final_prompt, so those two are
+    sufficient to make a retried generation use the patched prompt.
     Only the generation owner or admin can patch.
     """
     from datetime import timezone
@@ -1117,10 +1119,6 @@ async def patch_generation_prompt(
         new_prompt = request.prompt.strip()
         generation.final_prompt = new_prompt
 
-        # Patch prompt inside raw_params and canonical_params
-        if generation.raw_params is not None:
-            updated_raw = {**generation.raw_params, "prompt": new_prompt}
-            generation.raw_params = updated_raw
         if generation.canonical_params is not None:
             updated_canonical = {**generation.canonical_params, "prompt": new_prompt}
             generation.canonical_params = updated_canonical

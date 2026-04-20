@@ -15,13 +15,11 @@ def _generation(
     operation_type: OperationType = OperationType.IMAGE_TO_VIDEO,
     provider_id: str = "pixverse",
     canonical_params: dict | None = None,
-    raw_params: dict | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         provider_id=provider_id,
         operation_type=operation_type,
         canonical_params=canonical_params or {},
-        raw_params=raw_params or {},
     )
 
 

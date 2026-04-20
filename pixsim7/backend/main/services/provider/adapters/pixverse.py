@@ -213,12 +213,10 @@ class PixverseProvider(
         # === Guidance plan: inject references into composition_assets ===
         try:
             guidance_plan_raw = None
-            raw_params = getattr(generation, "raw_params", None) or {}
-            gen_cfg = raw_params.get("generation_config")
-            if isinstance(gen_cfg, dict):
-                rc = gen_cfg.get("run_context")
-                if isinstance(rc, dict):
-                    guidance_plan_raw = rc.get("guidance_plan")
+            # First-class run_context column after migration 20260419_0003.
+            rc = getattr(generation, "run_context", None)
+            if isinstance(rc, dict):
+                guidance_plan_raw = rc.get("guidance_plan")
 
             if isinstance(guidance_plan_raw, dict):
                 from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
@@ -477,34 +475,22 @@ class PixverseProvider(
         generation,
         params: Optional[Dict[str, Any]] = None,
     ) -> Optional[PixverseApiMode]:
-        """Extract API mode override from generation params."""
+        """Extract API mode override from generation params.
+
+        Reads ``provided_params`` (ad-hoc overrides) first, then
+        ``canonical_params``.  The old raw_params tier was belt-and-suspenders:
+        ``canonicalize_params`` already hoists ``style.pixverse.api_method`` /
+        ``use_openapi`` / ``pixverse_api_mode`` to the flat canonical top-level,
+        so digging back into the nested raw form was redundant.
+        """
         try:
             provided_params = params if isinstance(params, dict) else {}
-            raw_params = getattr(generation, "raw_params", None) or {}
             canonical_params = getattr(generation, "canonical_params", None) or {}
-
-            # Check style.pixverse for override
-            style_override = None
-            gen_cfg = raw_params.get("generation_config")
-            if isinstance(gen_cfg, dict):
-                style = gen_cfg.get("style")
-                if isinstance(style, dict):
-                    provider_style = style.get("pixverse")
-                    if isinstance(provider_style, dict):
-                        style_override = (
-                            provider_style.get("api_method")
-                            or provider_style.get("pixverse_api_mode")
-                            or provider_style.get("use_openapi")
-                        )
 
             api_override = (
                 provided_params.get("api_method")
                 or provided_params.get("pixverse_api_mode")
                 or provided_params.get("use_openapi")
-                or raw_params.get("api_method")
-                or raw_params.get("pixverse_api_mode")
-                or raw_params.get("use_openapi")
-                or style_override
                 or canonical_params.get("api_method")
                 or canonical_params.get("pixverse_api_mode")
                 or canonical_params.get("use_openapi")
@@ -742,7 +728,7 @@ class PixverseProvider(
 
         Uses actual duration from provider when available.
         """
-        params = generation.canonical_params or generation.raw_params or {}
+        params = generation.canonical_params or {}
         model = params.get("model") or "v5"
         quality = params.get("quality") or "360p"
 

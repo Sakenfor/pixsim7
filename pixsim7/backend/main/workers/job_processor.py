@@ -22,6 +22,7 @@ from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.account import AccountService
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.infrastructure.database.session import get_db
@@ -397,7 +398,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
 
             # Resolve model name for unlimited-model credit bypass
-            gen_params = generation.canonical_params or generation.raw_params or {}
+            gen_params = generation.canonical_params or {}
             gen_model = gen_params.get("model")
             required_credit_hint = _required_generation_credit_hint(generation, gen_params)
             required_credit_types_hint = resolve_required_credit_types(generation, gen_params)
@@ -876,7 +877,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 submission = await provider_service.execute_generation(
                     generation=generation,
                     account=account,
-                    params=generation.canonical_params or generation.raw_params,
+                    params=generation.canonical_params,
                 )
 
                 # Note: Concurrency was already incremented by select_and_reserve_account
@@ -1646,4 +1647,4 @@ class WorkerSettings:
     functions = [process_generation]
     on_startup = on_startup
     on_shutdown = on_shutdown
-    redis_settings = "redis://localhost:6379/0"  # Will be overridden by env
+    redis_settings = settings.redis_url

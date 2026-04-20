@@ -71,11 +71,15 @@ def _extract_pixverse_api_mode_override(
     generation: Generation,
     params: dict[str, Any] | None = None,
 ) -> str | None:
-    """Mirror Pixverse adapter override parsing for worker-side credit routing."""
+    """Mirror Pixverse adapter override parsing for worker-side credit routing.
+
+    ``canonicalize_params`` hoists ``style.pixverse.api_method`` /
+    ``use_openapi`` / ``pixverse_api_mode`` into top-level canonical keys, so
+    the raw_params tier has been retired.
+    """
     containers: list[dict[str, Any]] = []
     for candidate in (
         params,
-        getattr(generation, "raw_params", None),
         getattr(generation, "canonical_params", None),
     ):
         if isinstance(candidate, dict):
