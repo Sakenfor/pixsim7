@@ -42,7 +42,8 @@ class HealthManager:
         interval_sec: float = 2.0,
         adaptive_enabled: bool = True,
         startup_interval: float = 0.5,
-        stable_interval: float = 5.0
+        stable_interval: float = 5.0,
+        http_timeout: float = 1.5,
     ):
         self.states = states
         self.event_callback = event_callback
@@ -53,6 +54,7 @@ class HealthManager:
         self.startup_interval = startup_interval
         self.stable_interval = stable_interval
         self.interval = self.base_interval
+        self.http_timeout = http_timeout
 
         # State tracking
         self.failure_counts: Dict[str, int] = {}
@@ -572,7 +574,7 @@ class HealthManager:
                 state.detected_pid = None
             has_worker_pid = bool(state.pid or state.detected_pid)
 
-            redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
+            redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://127.0.0.1:6380/0'
             is_healthy = self._check_redis_health(redis_url)
             if is_healthy and has_worker_pid:
                 self.failure_counts[key] = 0
@@ -604,7 +606,7 @@ class HealthManager:
                 return
 
             try:
-                is_healthy = self._check_http_health(definition.health_url, timeout=1.5)
+                is_healthy = self._check_http_health(definition.health_url, timeout=self.http_timeout)
                 if is_healthy:
                     self._clear_transport_backoff(key)
                     self.failure_counts[key] = 0
