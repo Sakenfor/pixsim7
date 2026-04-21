@@ -25,7 +25,7 @@ load_dotenv()
 from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
-from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
+from pixsim7.automation.workers.automation import process_automation, run_automation_loops, queue_pending_executions
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses
 from pixsim7.backend.main.workers.status_poller_maintenance import (
     requeue_pending_generations,
@@ -36,7 +36,7 @@ from pixsim7.backend.main.workers.status_poller_maintenance import (
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
-from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
+from pixsim7.automation.services.device_sync_service import poll_device_ads
 from pixsim7.backend.main.workers.health import (
     update_main_heartbeat,
     update_retry_heartbeat,
@@ -190,6 +190,11 @@ async def startup(ctx: dict) -> None:
     await _load_persisted_system_config_for_worker()
     register_default_providers()
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
+
+    # Bind automation protocol locator — harmless in main worker (no automation
+    # callers today) but future-proofs any route handler that ends up here.
+    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
+    bind_automation_capabilities()
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_analysis")
     logger.info("worker_component_registered", component="process_derivatives")
@@ -393,6 +398,11 @@ async def automation_startup(ctx: dict) -> None:
     from pixsim7.backend.main.domain.providers.registry import register_default_providers
     await _load_persisted_system_config_for_worker()
     register_default_providers()
+
+    # Bind automation protocol locator — callers in this worker process
+    # (process_automation, loops, queue_pending_executions) need the adapters.
+    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
+    bind_automation_capabilities()
 
     logger.info("worker_component_registered", component="process_automation", queue=AUTOMATION_QUEUE_NAME)
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")

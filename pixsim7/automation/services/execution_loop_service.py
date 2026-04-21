@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.automation import (
+from pixsim7.automation.domain import (
     ExecutionLoop,
     LoopStatus,
     LoopSelectionMode,
@@ -23,7 +23,7 @@ from pixsim7.backend.main.domain.automation import (
 )
 from pixsim7.backend.main.domain import AccountStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
-from pixsim7.backend.main.infrastructure.queue import queue_task
+from pixsim7.automation.locator import get_job_queue
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +285,7 @@ class ExecutionLoopService:
             # other processes from selecting the same account concurrently.
             try:
                 execution = await self.create_execution_from_loop(loop, account)
-                task_id = await queue_task("process_automation", execution.id)
+                task_id = await get_job_queue().enqueue_automation(execution.id)
                 execution.task_id = task_id
                 await self.db.commit()  # Releases lock, execution now visible
 

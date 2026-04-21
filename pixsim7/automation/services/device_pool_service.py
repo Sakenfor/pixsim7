@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceStatus, AutomationExecution
+from pixsim7.automation.domain import AndroidDevice, DeviceStatus, AutomationExecution
 from pixsim_logging import configure_logging
 
 logger = configure_logging("device_pool")

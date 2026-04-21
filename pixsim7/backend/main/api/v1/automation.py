@@ -9,11 +9,11 @@ from sqlalchemy import select, cast
 from typing import List, Dict, Any, Optional
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceAgent, DeviceStatus, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
+from pixsim7.automation.domain import AndroidDevice, DeviceAgent, DeviceStatus, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
-from pixsim7.backend.main.services.automation import ExecutionLoopService
-from pixsim7.backend.main.services.automation.device_sync_service import DeviceSyncService
-from pixsim7.backend.main.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category
+from pixsim7.automation.services import ExecutionLoopService
+from pixsim7.automation.services.device_sync_service import DeviceSyncService
+from pixsim7.automation.services.action_schemas import get_action_schemas, get_action_schemas_by_category
 from pixsim7.backend.main.infrastructure.queue import queue_task
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from datetime import datetime, timezone
@@ -832,29 +832,46 @@ async def dump_device_ui(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    from pixsim7.backend.main.services.automation.uia2 import UIA2
+    from pixsim7.automation.services.uia2 import UIA2
     import asyncio
 
     # Get UI hierarchy via uiautomator2
     loop = asyncio.get_event_loop()
-    elements = await loop.run_in_executor(None, _dump_ui_elements_sync, device.adb_id, filter)
+    result = await loop.run_in_executor(None, _dump_ui_elements_sync, device.adb_id, filter)
 
+    elements = result.get("elements", [])
     return {
         "device_id": device_id,
         "device_name": device.name,
         "filter": filter,
         "count": len(elements),
-        "elements": elements
+        "elements": elements,
+        "display_width": result.get("display_width"),
+        "display_height": result.get("display_height"),
     }
 
 
-def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> list:
-    """Sync function to dump UI elements via uiautomator2."""
+def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> dict:
+    """Sync function to dump UI elements via uiautomator2.
+
+    Returns dict with `elements` plus `display_width`/`display_height` in the
+    device's current orientation so callers can translate pixel bounds into
+    normalized (0-1) coords that survive resolution/rotation changes.
+    """
     import uiautomator2 as u2
 
-    results = []
+    results: list = []
+    display_width: Optional[int] = None
+    display_height: Optional[int] = None
     try:
         d = u2.connect(serial)
+
+        # Current-orientation display size (matches pixel bounds coord system)
+        try:
+            w, h = d.window_size()
+            display_width, display_height = int(w), int(h)
+        except Exception:
+            pass
 
         # Get all elements with any selector
         for el in d.xpath('//*').all():
@@ -864,17 +881,27 @@ def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> li
             rid = info.get('resourceName', '') or ''
             cls = info.get('className', '') or ''
             bounds = info.get('bounds', {})
+            clickable = bool(info.get('clickable', False))
 
-            # Skip empty nodes
-            if not text and not desc and not rid:
+            # Skip degenerate (zero-area) bounds — they can't be tapped or
+            # rendered on the overlay.
+            width = bounds.get('right', 0) - bounds.get('left', 0)
+            height = bounds.get('bottom', 0) - bounds.get('top', 0)
+            if width <= 0 or height <= 0:
                 continue
 
-            # Apply filter if specified
+            # Drop only fully-anonymous non-clickable nodes (pure decorative
+            # groups). Un-named *clickable* nodes are exactly the buttons we
+            # were missing — OAuth tiles, icon-only taps, etc.
+            if not text and not desc and not rid and not clickable:
+                continue
+
             if filter_text:
                 filter_lower = filter_text.lower()
                 if (filter_lower not in text.lower() and
                     filter_lower not in desc.lower() and
-                    filter_lower not in rid.lower()):
+                    filter_lower not in rid.lower() and
+                    filter_lower not in cls.lower()):
                     continue
 
             bounds_str = f"[{bounds.get('left',0)},{bounds.get('top',0)}][{bounds.get('right',0)},{bounds.get('bottom',0)}]"
@@ -884,8 +911,40 @@ def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> li
                 "resource_id": rid,
                 "class": cls,
                 "bounds": bounds_str,
+                "clickable": clickable,
             })
     except Exception as e:
         results.append({"error": str(e)})
 
-    return results
+    return {
+        "elements": results,
+        "display_width": display_width,
+        "display_height": display_height,
+    }
+
+
+@router.get("/devices/{device_id}/screenshot")
+async def get_device_screenshot(
+    device_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a fresh PNG screenshot of the device for the UI Inspector overlay."""
+    from fastapi import Response
+    from pixsim7.automation.services.adb import ADB
+
+    device = await db.get(AndroidDevice, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    adb = ADB()
+    try:
+        png_bytes = await adb.exec_out(device.adb_id, "screencap", "-p")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Screenshot failed: {e}")
+
+    if not png_bytes:
+        raise HTTPException(status_code=500, detail="Device returned empty screenshot")
+
+    return Response(content=png_bytes, media_type="image/png", headers={
+        "Cache-Control": "no-store",
+    })

@@ -322,7 +322,7 @@ async def seed_default_presets(db):
         await seed_default_presets(db)
     """
     from sqlalchemy import select
-    from pixsim7.backend.main.domain.automation.preset import AppActionPreset
+    from pixsim7.automation.domain.preset import AppActionPreset
 
     for preset_data in DEFAULT_PRESETS:
         # Check if preset already exists

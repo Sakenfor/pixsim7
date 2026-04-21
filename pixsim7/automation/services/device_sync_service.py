@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim_logging import configure_logging
-from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod
+from pixsim7.automation.domain import AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod
 from .adb import ADB
 
 logger = configure_logging("device_sync").bind(channel="cron")

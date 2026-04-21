@@ -9,12 +9,17 @@ from pixsim_logging import configure_logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.automation import AutomationExecution, AutomationStatus, AppActionPreset, AndroidDevice
+from pixsim7.automation.domain import AutomationExecution, AutomationStatus, AppActionPreset, AndroidDevice
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.services.automation import ExecutionLoopService
+from pixsim7.automation.services import ExecutionLoopService
 from sqlalchemy import select
-from pixsim7.backend.main.services.automation.action_executor import ActionExecutor, ExecutionContext, ExecutionError
-from pixsim7.backend.main.shared.path_registry import get_path_registry
+from pixsim7.automation.services.action_executor import ActionExecutor, ExecutionContext, ExecutionError
+from pixsim7.automation.locator import (
+    get_account_lookup,
+    get_job_queue,
+    get_path_registry,
+    get_provider_metadata,
+)
 
 logger = configure_logging("worker").bind(channel="cron")
 
@@ -87,13 +92,18 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             else:
                 raise RuntimeError("No preset or test actions provided")
 
-            # Fetch account for credential injection
-            from pixsim7.backend.main.domain.providers import ProviderAccount
-            account = await db.get(ProviderAccount, execution.account_id) if execution.account_id else None
+            # Fetch account for credential injection — snapshot (no SQLModel) via
+            # automation's AccountLookup protocol; password fallback resolved by
+            # backend adapter (see BackendAccountLookup._resolve_password).
+            account = (
+                await get_account_lookup().get(execution.account_id)
+                if execution.account_id
+                else None
+            )
 
             # Smart device assignment using device pool service
             if not execution.device_id:
-                from pixsim7.backend.main.services.automation import DevicePoolService
+                from pixsim7.automation.services import DevicePoolService
                 pool_service = DevicePoolService(db)
                 assignment_result = await pool_service.assign_device(execution)
 
@@ -109,8 +119,8 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 raise RuntimeError("No device available for automation execution")
 
             # Pre-flight check: verify device is actually reachable via ADB
-            from pixsim7.backend.main.services.automation.adb import ADB
-            from pixsim7.backend.main.domain.automation import DeviceStatus
+            from pixsim7.automation.services.adb import ADB
+            from pixsim7.automation.domain import DeviceStatus
             adb = ADB()
             adb_devices = await adb.devices()
             adb_serials = {serial for serial, state in adb_devices if state == "device"}
@@ -159,19 +169,9 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 # Auto-inject account credentials if account exists
                 if account:
-                    # Try account password first, then fall back to provider global password
-                    password = account.password
-                    if not password:
-                        # Load provider settings for global password fallback
-                        from pixsim7.backend.main.api.v1.providers import _load_provider_settings
-                        provider_settings_map = _load_provider_settings()
-                        provider_settings = provider_settings_map.get(account.provider_id)
-                        if provider_settings:
-                            password = provider_settings.global_password
-
                     variables.update({
                         "email": account.email,
-                        "password": password or "",
+                        "password": account.resolved_password or "",
                         "provider_id": account.provider_id,
                         "account_id": str(account.id),
                     })
@@ -180,39 +180,22 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                         execution_id=execution_id,
                         account_id=account.id,
                         email=account.email,
-                        has_account_password=bool(account.password),
-                        has_global_password=bool(password and not account.password)
+                        has_password=bool(account.resolved_password),
                     )
 
                     # Provider-specific dynamic variables (best-effort).
-                    # For Pixverse rewards, the daily ad cap (total_counts) can change over time
-                    # (e.g., 2 or 3). Fetch the current task status once so presets can loop
-                    # the correct number of times.
-                    # Only fetch ad task data if the preset actually uses {pixverse_ad_*} variables
+                    # Only fetch when the preset actually references {pixverse_ad_*}
                     # to avoid unnecessary API calls that could trigger session conflicts.
                     preset_actions = getattr(preset, 'actions', None) or []
                     if account.provider_id == "pixverse" and _preset_uses_pixverse_ad_vars(preset_actions):
-                        try:
-                            from pixsim7.backend.main.services.provider import registry as provider_registry
-                            provider = provider_registry.get("pixverse")
-                            ad_task = None
-                            if hasattr(provider, "get_ad_watch_task"):
-                                ad_task = await provider.get_ad_watch_task(
-                                    account,
-                                    retry_on_session_error=False,
-                                )
-                            if isinstance(ad_task, dict):
-                                total_counts = ad_task.get("total_counts")
-                                if total_counts is not None:
-                                    variables["pixverse_ad_total_counts"] = int(total_counts)
-                                progress = ad_task.get("progress")
-                                if progress is not None:
-                                    variables["pixverse_ad_progress"] = int(progress)
-                                completed_counts = ad_task.get("completed_counts")
-                                if completed_counts is not None:
-                                    variables["pixverse_ad_completed_counts"] = int(completed_counts)
-                        except Exception:
-                            pass
+                        ad_task = await get_provider_metadata().pixverse_ad_task(account.id)
+                        if ad_task is not None:
+                            if ad_task.total_counts is not None:
+                                variables["pixverse_ad_total_counts"] = ad_task.total_counts
+                            if ad_task.progress is not None:
+                                variables["pixverse_ad_progress"] = ad_task.progress
+                            if ad_task.completed_counts is not None:
+                                variables["pixverse_ad_completed_counts"] = ad_task.completed_counts
 
                 ctx = ExecutionContext(serial=device.adb_id, variables=variables, screenshots_dir=screenshots_dir)
 
@@ -326,7 +309,7 @@ async def run_automation_loops(ctx: dict) -> dict:
     created = 0
     async for db in get_db():
         try:
-            from pixsim7.backend.main.domain.automation import ExecutionLoop, LoopStatus
+            from pixsim7.automation.domain import ExecutionLoop, LoopStatus
             result = await db.execute(select(ExecutionLoop).where(ExecutionLoop.is_enabled == True, ExecutionLoop.status == LoopStatus.ACTIVE))
             loops = result.scalars().all()
             svc = ExecutionLoopService(db)
@@ -359,7 +342,7 @@ async def queue_pending_executions(ctx: dict) -> dict:
     queued = 0
     async for db in get_db():
         try:
-            from pixsim7.backend.main.infrastructure.queue import queue_task, AUTOMATION_QUEUE_NAME
+            job_queue = get_job_queue()
 
             # Find PENDING executions that aren't already queued
             result = await db.execute(
@@ -378,8 +361,7 @@ async def queue_pending_executions(ctx: dict) -> dict:
 
             for execution in pending:
                 try:
-                    # Queue to the dedicated automation queue
-                    task_id = await queue_task("process_automation", execution.id, queue_name=AUTOMATION_QUEUE_NAME)
+                    task_id = await job_queue.enqueue_automation(execution.id)
                     queued += 1
                     logger.info("execution_queued", execution_id=execution.id, task_id=task_id)
                 except Exception as e:

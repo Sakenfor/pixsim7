@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import secrets
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.domain.automation import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod, PairingRequest
+from pixsim7.automation.domain import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod, PairingRequest
 from pixsim7.backend.main.api.dependencies import CurrentUser
 
 router = APIRouter(prefix="/automation/agents", tags=["device-agents"])

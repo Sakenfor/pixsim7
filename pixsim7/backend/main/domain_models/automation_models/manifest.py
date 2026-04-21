@@ -14,7 +14,7 @@ manifest = DomainModelManifest(
     description="Android automation models (devices, presets, executions)",
     models=[],
     source_modules=[
-        "pixsim7.backend.main.domain.automation",
+        "pixsim7.automation.domain",
     ],
     auto_discover=True,
     enabled=True,

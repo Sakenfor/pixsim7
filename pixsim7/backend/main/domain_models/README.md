@@ -165,7 +165,7 @@ from pixsim7.backend.main.domain import (
     Job,
     # ... 15 more models
 )
-from pixsim7.backend.main.domain.automation import (
+from pixsim7.automation.domain import (
     AndroidDevice,
     # ... 5 more models
 )

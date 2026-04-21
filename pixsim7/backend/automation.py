@@ -21,7 +21,7 @@ See docs/backend/automation.md for detailed documentation.
 # Domain Models
 # =============================================================================
 
-from pixsim7.backend.main.domain.automation import (
+from pixsim7.automation.domain import (
     # Device models
     AndroidDevice,
     DeviceType,
@@ -47,7 +47,7 @@ from pixsim7.backend.main.domain.automation import (
 # Services
 # =============================================================================
 
-from pixsim7.backend.main.services.automation import (
+from pixsim7.automation.services import (
     ExecutionLoopService,
     DevicePoolService,
     DeviceAssignmentResult,

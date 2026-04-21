@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_backend_logger
-from pixsim7.backend.main.domain.automation import AppActionPreset
+from pixsim7.automation.domain import AppActionPreset
 from .adb import ADB
 from .uia2 import UIA2
 import re

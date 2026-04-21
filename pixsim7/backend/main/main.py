@@ -88,8 +88,38 @@ async def lifespan(app: FastAPI):
     # ===== STARTUP =====
     logger.info("pixsim7_startup_begin")
 
+    # Silence the Windows ProactorEventLoop cleanup race for forcibly-closed
+    # peers (browser WS drops, cancelled health polls, subprocess pipe close).
+    # asyncio's connection_lost path does socket.shutdown() on an already-dead
+    # socket, raising WinError 10054/10053. Harmless but spammy.
+    if sys.platform == 'win32':
+        _loop = asyncio.get_running_loop()
+        _default_handler = _loop.get_exception_handler() or _loop.default_exception_handler
+
+        def _silence_proactor_disconnect(loop, context):
+            exc = context.get("exception")
+            if isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
+                if getattr(exc, "winerror", None) in (10053, 10054):
+                    return
+            _default_handler(context)
+
+        _loop.set_exception_handler(_silence_proactor_disconnect)
+
     # Validate settings (fail-fast if invalid)
     validate_settings(settings)
+
+    # Bind capability implementations into the runtime locator. Routes that use
+    # Depends(get_<capability>) read from this. See manifest-runtime-binding plan.
+    from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+        bind_default_capabilities,
+    )
+    bind_default_capabilities()
+
+    # Bind automation package's protocol locator — backend adapters over
+    # accounts / provider metadata / job queue / paths. See plan:
+    # automation-package-extraction.
+    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
+    bind_automation_capabilities()
 
     # Setup domain registry
     domain_registry = setup_domain_registry(settings.domain_models_dir)
