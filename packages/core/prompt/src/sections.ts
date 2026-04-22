@@ -1,10 +1,12 @@
 /**
  * Prompt section detection and section-block model.
  *
- * Mirrors the five built-in patterns from the backend SimplePromptParser
- * (`BUILTIN_SECTION_PATTERNS` in `services/prompt/parser/simple.py`).
- * Pure TS — no UI dependencies.
+ * Backed by the line-level grammar in `./grammar.ts` — no regex.
+ * The grammar's lexer/parser is the single source of truth for what
+ * counts as a section header; this file projects that into the legacy
+ * `DetectedSection` / `PromptSectionBlock` shape consumed by the UI.
  */
+import { lex, parseLines, type HeaderLine, type LineNode } from './grammar';
 
 export type PatternId =
   | 'colon'
@@ -30,15 +32,6 @@ export interface PromptSectionBlock {
   sep: PatternId;
 }
 
-const PATTERNS: Array<{ id: PatternId; regex: RegExp }> = [
-  { id: 'colon',            regex: /^[ \t]*([A-Z][A-Za-z /&-]{1,38}?)\s*:\s*$/gm },
-  { id: 'assignment',       regex: /^[ \t]*([A-Z][A-Z0-9_]{1,58}?)\s*=\s*/gm },
-  // Requires whitespace before the arrow so focal chains (NAME>OTHER>X) don't match.
-  { id: 'assignment_arrow', regex: /^[ \t]*([A-Z][A-Z0-9_]{1,58}?)[ \t]+>+\s*/gm },
-  { id: 'angle_bracket',    regex: /^[ \t]*>\s*([A-Z][A-Z /&-]+?)\s*<\s*$/gm },
-  { id: 'freestanding',     regex: /^[ \t]*([A-Z][A-Z0-9_]{2,40})\s*$/gm },
-];
-
 export const DEFAULT_ACTIVE_PATTERNS: PatternId[] = [
   'colon',
   'assignment',
@@ -53,32 +46,37 @@ export function detectPromptSections(
 ): DetectedSection[] {
   if (!text) return [];
 
-  const active = PATTERNS.filter((p) => activeIds.includes(p.id));
+  const tokens = lex(text);
+  const lines = parseLines(tokens, text);
 
-  const raw: Array<{ start: number; end: number; label: string; patternId: PatternId }> = [];
-  for (const { id, regex } of active) {
-    for (const m of text.matchAll(regex)) {
-      if (m.index === undefined || !m[1]) continue;
-      raw.push({ start: m.index, end: m.index + m[0].length, label: m[1].trim(), patternId: id });
-    }
+  const active = new Set<PatternId>(activeIds);
+  const headers: HeaderLine[] = lines.filter(
+    (n): n is HeaderLine => n.kind === 'header' && active.has(n.pattern),
+  );
+
+  return headers.map((h, i) => {
+    const nextStart = i + 1 < headers.length ? headers[i + 1].start : text.length;
+    return {
+      label: h.label,
+      patternId: h.pattern,
+      headerRange: [h.start, headerEnd(h)] as [number, number],
+      bodyRange: [h.bodyStart, nextStart] as [number, number],
+    };
+  });
+}
+
+/**
+ * For block-style headers the header span runs to the end of the line; for
+ * inline headers (`assignment`, `assignment_arrow`) it runs up to where the
+ * body starts. Mirrors the legacy regex behavior where the `headerRange`
+ * for inline patterns ends at the operator+padding and `bodyRange` starts
+ * immediately after.
+ */
+function headerEnd(h: HeaderLine): number {
+  if (h.pattern === 'assignment' || h.pattern === 'assignment_arrow') {
+    return h.bodyStart;
   }
-
-  raw.sort((a, b) => a.start - b.start);
-
-  // Remove overlapping matches — keep the first winner per position.
-  const winners: typeof raw = [];
-  for (const m of raw) {
-    if (winners.length === 0 || m.start >= winners[winners.length - 1].end) {
-      winners.push(m);
-    }
-  }
-
-  return winners.map((m, i) => ({
-    label: m.label,
-    patternId: m.patternId,
-    headerRange: [m.start, m.end] as [number, number],
-    bodyRange: [m.end, i + 1 < winners.length ? winners[i + 1].start : text.length] as [number, number],
-  }));
+  return h.end;
 }
 
 /**
@@ -114,3 +112,8 @@ export function formatSectionBlock(block: PromptSectionBlock): string {
 export function composePromptFromSectionBlocks(blocks: PromptSectionBlock[]): string {
   return blocks.map(formatSectionBlock).join('\n');
 }
+
+// Re-export grammar primitives so callers wanting raw tokens/AST
+// can import them from the same module.
+export type { Token, TokenKind, RunChar, LineNode, HeaderLine } from './grammar';
+export { lex, parseLines } from './grammar';

@@ -36,9 +36,16 @@ export {
   parseSectionBlocks,
   formatSectionBlock,
   composePromptFromSectionBlocks,
+  lex,
+  parseLines,
 } from './sections';
 export type {
   PatternId,
   DetectedSection,
   PromptSectionBlock,
+  Token,
+  TokenKind,
+  RunChar,
+  LineNode,
+  HeaderLine,
 } from './sections';
