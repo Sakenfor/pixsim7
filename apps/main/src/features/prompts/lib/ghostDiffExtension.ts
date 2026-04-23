@@ -1,13 +1,14 @@
 import { Facet, type Extension, RangeSetBuilder } from '@codemirror/state';
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
+import { Decoration, type DecorationSet, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 
-import { diffPromptWithRanges } from './promptDiff';
+import { diffPromptWithRanges, type DiffPromptRangeOptions } from './promptDiff';
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
 export interface GhostDiffConfig {
   comparisonText: string;
   stepDistance: number;
+  precision?: DiffPromptRangeOptions['precision'];
 }
 
 export interface GhostDiffCallbacks {
@@ -51,7 +52,9 @@ function computeDiff(docText: string, config: GhostDiffConfig | null): DiffResul
   const empty: DiffResult = { ranges: [], removed: [], suppressed: false, opacity: 0 };
   if (!config) return empty;
 
-  const segments = diffPromptWithRanges(config.comparisonText, docText);
+  const segments = diffPromptWithRanges(config.comparisonText, docText, {
+    precision: config.precision ?? 'coarse',
+  });
   const hasChanges = segments.some((s) => s.type !== 'keep');
   if (!hasChanges) return empty;
 
@@ -132,6 +135,7 @@ const ghostDiffPlugin = ViewPlugin.define(
         const configChanged =
           newConfig?.comparisonText !== lastConfig?.comparisonText ||
           newConfig?.stepDistance !== lastConfig?.stepDistance ||
+          newConfig?.precision !== lastConfig?.precision ||
           (newConfig === null) !== (lastConfig === null);
 
         // Fast path: ghost mode disabled and still disabled.
@@ -187,6 +191,7 @@ function ghostDiffCallbackPlugin(callbacks: GhostDiffCallbacks) {
         const configChanged =
           newConfig?.comparisonText !== lastConfig?.comparisonText ||
           newConfig?.stepDistance !== lastConfig?.stepDistance ||
+          newConfig?.precision !== lastConfig?.precision ||
           (newConfig === null) !== (lastConfig === null);
 
         // Fast path: ghost mode disabled and still disabled.

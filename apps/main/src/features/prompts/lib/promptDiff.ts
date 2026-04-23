@@ -18,6 +18,14 @@ export interface DiffSegmentWithRange extends DiffSegment {
   to?: number;
 }
 
+export interface DiffPromptRangeOptions {
+  /**
+   * `coarse`: smoother sentence/clause-level highlights.
+   * `fine`: precise intra-token highlights for inspection.
+   */
+  precision?: 'coarse' | 'fine';
+}
+
 interface TextToken {
   text: string;
   from: number;
@@ -26,6 +34,7 @@ interface TextToken {
 
 interface IndexedDiffSegment extends DiffSegment {
   nextIndex?: number;
+  prevIndex?: number;
 }
 
 /**
@@ -141,14 +150,19 @@ function diffTokenArrays(prev: TextToken[], next: TextToken[]): IndexedDiffSegme
 
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && prevText[i - 1] === nextText[j - 1]) {
-      segments.unshift({ type: 'keep', text: nextText[j - 1], nextIndex: j - 1 });
+      segments.unshift({
+        type: 'keep',
+        text: nextText[j - 1],
+        nextIndex: j - 1,
+        prevIndex: i - 1,
+      });
       i--;
       j--;
     } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
       segments.unshift({ type: 'add', text: nextText[j - 1], nextIndex: j - 1 });
       j--;
     } else {
-      segments.unshift({ type: 'remove', text: prevText[i - 1] });
+      segments.unshift({ type: 'remove', text: prevText[i - 1], prevIndex: i - 1 });
       i--;
     }
   }
@@ -238,7 +252,11 @@ export function diffPrompt(prev: string, next: string): DiffSegment[] {
  * This is used by CodeMirror decorations so highlights can be anchored by
  * exact character ranges instead of substring lookups.
  */
-export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWithRange[] {
+export function diffPromptWithRanges(
+  prev: string,
+  next: string,
+  options?: DiffPromptRangeOptions,
+): DiffSegmentWithRange[] {
   if (prev === next) {
     if (!next) return [];
     return [{ type: 'keep', text: next, from: 0, to: next.length }];
@@ -247,16 +265,44 @@ export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWit
   if (!prev.trim()) return [{ type: 'add', text: next, from: 0, to: next.length }];
   if (!next.trim()) return [{ type: 'remove', text: prev }];
 
-  // For visual overlays we prefer precise, local highlights. Use word-level
-  // tokenization so small edits inside a clause don't light up whole sentences.
-  const prevTokens = splitWordsWithRanges(prev);
-  const nextTokens = splitWordsWithRanges(next);
+  const precision = options?.precision ?? 'coarse';
+  let prevTokens: TextToken[];
+  let nextTokens: TextToken[];
+
+  if (precision === 'fine') {
+    // Fine mode: prefer local, token-level highlights.
+    prevTokens = splitWordsWithRanges(prev);
+    nextTokens = splitWordsWithRanges(next);
+  } else {
+    // Coarse mode: keep highlights smoother by diffing at clause granularity
+    // when possible and only falling back to words for single-clause input.
+    const prevClauses = splitClausesWithRanges(prev);
+    const nextClauses = splitClausesWithRanges(next);
+    const useWordLevel = prevClauses.length <= 1 && nextClauses.length <= 1;
+    prevTokens = useWordLevel ? splitWordsWithRanges(prev) : prevClauses;
+    nextTokens = useWordLevel ? splitWordsWithRanges(next) : nextClauses;
+  }
+
   const base = diffTokenArrays(prevTokens, nextTokens).map((segment) => {
+    const prevToken =
+      typeof segment.prevIndex === 'number' ? prevTokens[segment.prevIndex] : null;
     if (typeof segment.nextIndex === 'number') {
       const token = nextTokens[segment.nextIndex];
-      return { type: segment.type as 'keep' | 'add', text: segment.text, from: token.from, to: token.to };
+      return {
+        type: segment.type as 'keep' | 'add',
+        text: segment.text,
+        from: token.from,
+        to: token.to,
+        prevFrom: prevToken?.from,
+        prevTo: prevToken?.to,
+      };
     }
-    return { type: segment.type as 'remove', text: segment.text };
+    return {
+      type: segment.type as 'remove',
+      text: segment.text,
+      prevFrom: prevToken?.from,
+      prevTo: prevToken?.to,
+    };
   });
 
   const refined: DiffSegmentWithRange[] = [];
@@ -279,15 +325,43 @@ export function diffPromptWithRanges(prev: string, next: string): DiffSegmentWit
     }
 
     const run = base.slice(i, j);
-    if (hasAdd && hasRemove) {
+    if (precision === 'fine' && hasAdd && hasRemove) {
       const addSegments = run.filter(
-        (item): item is DiffSegmentWithRange & { type: 'add'; from: number; to: number } =>
+        (
+          item,
+        ): item is DiffSegmentWithRange & {
+          type: 'add';
+          from: number;
+          to: number;
+          prevFrom?: number;
+          prevTo?: number;
+        } =>
           item.type === 'add' && typeof item.from === 'number' && typeof item.to === 'number',
+      );
+      const removeSegments = run.filter(
+        (
+          item,
+        ): item is DiffSegmentWithRange & {
+          type: 'remove';
+          prevFrom: number;
+          prevTo: number;
+        } =>
+          item.type === 'remove' &&
+          typeof item.prevFrom === 'number' &&
+          typeof item.prevTo === 'number',
       );
       if (addSegments.length > 0) {
         const blockFrom = addSegments[0].from;
         const blockTo = addSegments[addSegments.length - 1].to;
-        const prevBlock = run.filter((item) => item.type === 'remove').map((item) => item.text).join(' ');
+        const prevFrom = removeSegments.length > 0 ? removeSegments[0].prevFrom : undefined;
+        const prevTo =
+          removeSegments.length > 0
+            ? removeSegments[removeSegments.length - 1].prevTo
+            : undefined;
+        const prevBlock =
+          typeof prevFrom === 'number' && typeof prevTo === 'number'
+            ? prev.slice(prevFrom, prevTo)
+            : '';
         const nextBlock = next.slice(blockFrom, blockTo);
 
         if (prevBlock.length > 0 && nextBlock.length > 0) {

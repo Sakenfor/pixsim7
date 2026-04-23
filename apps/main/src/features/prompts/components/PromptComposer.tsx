@@ -23,11 +23,11 @@ import {
 import { logEvent } from '@lib/utils/logging';
 import { getTextareaCaretCoords } from '@lib/utils/textareaCaret';
 
+import type { AssetModel, ViewerAsset } from '@features/assets';
 import { CAP_ASSET, CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
 import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
-import type { AssetModel } from '@/features/assets/models/asset';
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import {
@@ -42,12 +42,14 @@ import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
 import {
   getCachedAnalysis,
   setCachedAnalysis,
   type AnalysisResult,
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
+import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
@@ -57,8 +59,6 @@ import type { PromptTag } from '../types';
 import { FloatingToolPanel } from './FloatingToolPanel';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
-import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
-import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
@@ -67,6 +67,12 @@ import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 
 type PromptComposerMode = 'text' | 'blocks';
+
+type CompareMediaType = 'image' | 'video' | 'audio' | '3d_model';
+type ComparableAsset = Partial<AssetModel> &
+  Partial<ViewerAsset> & {
+    _assetModel?: AssetModel | null;
+  };
 
 interface PromptBlockItem extends PromptBlockLike {
   id: string;
@@ -238,6 +244,49 @@ function composeOverlayBlockText(item: {
   return `${tagLine}\n${item.text}`;
 }
 
+function normalizeComparePrompt(prompt: string | null | undefined): string | null {
+  if (typeof prompt !== 'string') return null;
+  const normalized = prompt.replace(/\r\n?/g, '\n');
+  return normalized.trim().length > 0 ? normalized : null;
+}
+
+function getComparablePrompt(asset: ComparableAsset | null | undefined): string | null {
+  const directPrompt =
+    typeof asset?.prompt === 'string' ? asset.prompt : null;
+  const modelPrompt =
+    typeof asset?._assetModel?.prompt === 'string'
+      ? asset._assetModel.prompt
+      : null;
+  return normalizeComparePrompt(directPrompt ?? modelPrompt);
+}
+
+function getComparableMediaType(asset: ComparableAsset | null | undefined): CompareMediaType {
+  const fromModel = asset?._assetModel?.mediaType;
+  if (
+    fromModel === 'image' ||
+    fromModel === 'video' ||
+    fromModel === 'audio' ||
+    fromModel === '3d_model'
+  ) {
+    return fromModel;
+  }
+
+  if (
+    asset?.mediaType === 'image' ||
+    asset?.mediaType === 'video' ||
+    asset?.mediaType === 'audio' ||
+    asset?.mediaType === '3d_model'
+  ) {
+    return asset.mediaType;
+  }
+
+  if (asset?.type === 'image' || asset?.type === 'video') {
+    return asset.type;
+  }
+
+  return 'image';
+}
+
 function resolveSequenceContext(response: AnalyzePromptResponse): SequenceContext | undefined {
   const sequenceContext = response.sequence_context ?? response.analysis?.sequence_context;
   if (!sequenceContext) return undefined;
@@ -314,6 +363,8 @@ export function PromptComposer({
   const [ghostSuppressed, setGhostSuppressed] = useState(false);
   /** Removed tokens from the current diff — not rendered inline (breaks alignment), surfaced as badge. */
   const [ghostRemoved, setGhostRemoved] = useState<string[]>([]);
+  const [ghostPrecisionHover, setGhostPrecisionHover] = useState(false);
+  const [pointerOverMediaCard, setPointerOverMediaCard] = useState(false);
   /** Whether Shift is held — while held + in media-compare mode, hover overrides selection. */
   const [shiftHeld, setShiftHeld] = useState(false);
   const ghostStickyRef = useRef(false);
@@ -386,21 +437,26 @@ export function PromptComposer({
   // (MediaCard on hover, MediaDisplay when in a viewer panel). CAP_ASSET_SELECTION
   // is root-scoped and stable — the viewer's currently selected asset.
   // Prefer live hover (for nice "scrub gallery to peek diff" UX) with selection fallback.
-  const { value: hoverAsset } = useCapability<AssetModel>(CAP_ASSET);
+  const hoverAssetCapability = useCapability<ComparableAsset>(CAP_ASSET);
+  const hoverAsset = hoverAssetCapability.value;
+  const hoverAssetProviderId = hoverAssetCapability.provider?.id ?? null;
   const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
   const pinnedCompareTarget = useMediaCompareTargetStore((state) => state.target);
-  const selectionAssetPrompt = selection?.asset?._assetModel?.prompt ?? null;
-  const hoverAssetPrompt = hoverAsset?.prompt ?? null;
-  const pinnedAssetPrompt = pinnedCompareTarget?.prompt ?? null;
+  const selectionAssetPrompt = getComparablePrompt(selection?.asset as ComparableAsset | null);
+  const hoverAssetPrompt = getComparablePrompt(hoverAsset);
+  const pinnedAssetPrompt = normalizeComparePrompt(pinnedCompareTarget?.prompt ?? null);
   const hasPinnedCompareTarget = !!pinnedAssetPrompt;
+  const canPeekHoveredAsset =
+    pointerOverMediaCard && hoverAssetProviderId === 'media-card' && !!hoverAssetPrompt;
   /** Selection (playing/viewed media) is the default anchor. Shift+hover peeks a different target. */
-  const peekingHover = shiftHeld && !!hoverAssetPrompt;
+  const peekingHover = shiftHeld && canPeekHoveredAsset;
   const activeAssetPrompt = peekingHover
     ? hoverAssetPrompt
     : pinnedAssetPrompt ?? selectionAssetPrompt;
   const activeAssetType = peekingHover
-    ? hoverAsset?.type ?? 'image'
-    : pinnedCompareTarget?.mediaType ?? selection?.asset?.type ?? 'image';
+    ? getComparableMediaType(hoverAsset)
+    : pinnedCompareTarget?.mediaType ??
+      getComparableMediaType(selection?.asset as ComparableAsset | null);
   /** Source label for the tooltip — tells the user what they're comparing against. */
   const comparisonSourceLabel = peekingHover
     ? 'hovered asset'
@@ -485,11 +541,35 @@ export function PromptComposer({
     setGhostSource({ comparisonText: activeAssetPrompt, stepDistance: 1 });
   }, [compareAgainstMedia, activeAssetPrompt]);
 
-  // Shift tracking for peek-on-hover. Only active when compare mode is on
-  // AND the cursor is actually over a peekable card — otherwise Shift for
-  // uppercase input would cause useless re-renders and visual flicker.
+  // Track pointer-over-card state from DOM to avoid peeking when Shift is
+  // pressed away from cards. Works for compact/small cards too since they use
+  // the same `data-pixsim7="media-card"` marker.
   useEffect(() => {
-    if (!compareAgainstMedia || !hoverAssetPrompt) {
+    if (!compareAgainstMedia) {
+      setPointerOverMediaCard(false);
+      return;
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      const overCard =
+        target instanceof Element && !!target.closest('[data-pixsim7="media-card"]');
+      setPointerOverMediaCard((prev) => (prev === overCard ? prev : overCard));
+    };
+    const clearPointerState = () => setPointerOverMediaCard(false);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('blur', clearPointerState);
+    document.addEventListener('mouseleave', clearPointerState);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('blur', clearPointerState);
+      document.removeEventListener('mouseleave', clearPointerState);
+    };
+  }, [compareAgainstMedia]);
+
+  // Shift tracking for peek-on-hover. Gated by `peekingHover` so pressing
+  // Shift outside media cards no longer changes compare target.
+  useEffect(() => {
+    if (!compareAgainstMedia) {
       setShiftHeld(false);
       return;
     }
@@ -508,7 +588,22 @@ export function PromptComposer({
       window.removeEventListener('keyup', onUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [compareAgainstMedia, hoverAssetPrompt]);
+  }, [compareAgainstMedia]);
+
+  useEffect(() => {
+    if (!ghostSource) {
+      setGhostPrecisionHover(false);
+    }
+  }, [ghostSource]);
+
+  const handleGhostPrecisionEnter = useCallback(() => {
+    if (!ghostSource) return;
+    setGhostPrecisionHover(true);
+  }, [ghostSource]);
+
+  const handleGhostPrecisionLeave = useCallback(() => {
+    setGhostPrecisionHover(false);
+  }, []);
 
   const flushSnapshot = useCallback(() => {
     clearTimeout(undoDebounceRef.current);
@@ -699,8 +794,13 @@ export function PromptComposer({
   });
 
   // --- CM extensions for CodeMirror mode ---
+  const ghostDiffPrecision: 'coarse' | 'fine' = ghostPrecisionHover ? 'fine' : 'coarse';
   const cmGhostConfig: GhostDiffConfig | null = ghostSource
-    ? { comparisonText: ghostSource.comparisonText, stepDistance: ghostSource.stepDistance }
+    ? {
+        comparisonText: ghostSource.comparisonText,
+        stepDistance: ghostSource.stepDistance,
+        precision: ghostDiffPrecision,
+      }
     : null;
   const cmShadowCandidates = useMemo(
     () =>
@@ -731,7 +831,14 @@ export function PromptComposer({
       return exts;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cmGhostConfig?.comparisonText, cmGhostConfig?.stepDistance, cmShadowCandidates, promptRoleColors, cmRefInput.extension],
+    [
+      cmGhostConfig?.comparisonText,
+      cmGhostConfig?.stepDistance,
+      cmGhostConfig?.precision,
+      cmShadowCandidates,
+      promptRoleColors,
+      cmRefInput.extension,
+    ],
   );
 
   const {
@@ -1303,8 +1410,8 @@ export function PromptComposer({
                   ? 'Peeking hovered asset (release Shift to return to pinned/selection target)'
                   : activeAssetPrompt
                     ? hasPinnedCompareTarget
-                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin'
-                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered`
+                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin, hover prompt for exact diff'
+                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered, hover prompt for exact diff`
                     : 'Compare mode on - waiting for a target (hold Shift + hover, or Shift+click a media card)'
               : 'Compare prompt vs viewer media (Shift+hover peeks, Shift+click pins a media card)'
           }
@@ -1325,7 +1432,7 @@ export function PromptComposer({
           {compareAgainstMedia && ghostSuppressed && (
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
           )}
-          {compareAgainstMedia && !ghostSuppressed && hoverAssetPrompt && !shiftHeld && (
+          {compareAgainstMedia && !ghostSuppressed && canPeekHoveredAsset && !shiftHeld && (
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-violet-500/60" title="Hold Shift to peek" />
           )}
           {compareAgainstMedia && !ghostSuppressed && ghostRemoved.length > 0 && (
@@ -1512,7 +1619,11 @@ export function PromptComposer({
       {mode === 'text' ? (
         useCodemirror ? (
           <div className="flex-1 min-h-0 flex">
-            <div className="relative flex flex-col flex-1 min-w-0">
+            <div
+              className="relative flex flex-col flex-1 min-w-0"
+              onMouseEnter={handleGhostPrecisionEnter}
+              onMouseLeave={handleGhostPrecisionLeave}
+            >
               <PromptEditor
                 value={value}
                 onChange={onChange}
@@ -1578,7 +1689,11 @@ export function PromptComposer({
             <ShadowSidePanel analysis={shadowAnalysis} />
           </div>
         ) : (
-          <div className="relative flex flex-col flex-1 min-h-0">
+          <div
+            className="relative flex flex-col flex-1 min-h-0"
+            onMouseEnter={handleGhostPrecisionEnter}
+            onMouseLeave={handleGhostPrecisionLeave}
+          >
             <PromptInput
               value={value}
               onChange={onChange}
@@ -1600,6 +1715,7 @@ export function PromptComposer({
               source={ghostSource}
               textareaRef={promptTextareaRef}
               variant={variant}
+              precision={ghostDiffPrecision}
               onSuppress={setGhostSuppressed}
               onRemovedSegments={setGhostRemoved}
             />

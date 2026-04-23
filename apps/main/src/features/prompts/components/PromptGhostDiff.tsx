@@ -14,7 +14,11 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 
-import { diffPromptWithRanges, type DiffSegmentWithRange } from '../lib/promptDiff';
+import {
+  diffPromptWithRanges,
+  type DiffPromptRangeOptions,
+  type DiffSegmentWithRange,
+} from '../lib/promptDiff';
 
 import { TextareaBackdrop } from './TextareaBackdrop';
 
@@ -25,7 +29,7 @@ const OPACITY_MIN = 0.08;
 const DECAY = 0.75;
 
 /** Map history step distance → [0..1] opacity for diff highlight washes. */
-export function ghostOpacity(stepDistance: number): number {
+function ghostOpacity(stepDistance: number): number {
   if (stepDistance <= 0) return 0;
   return OPACITY_MIN + (OPACITY_MAX - OPACITY_MIN) * DECAY ** (stepDistance - 1);
 }
@@ -56,6 +60,7 @@ export interface PromptGhostDiffProps {
   /** Called with the removed-segment text list so the host can surface it
       out-of-band (badge, tooltip, etc) — removes aren't rendered inline. */
   onRemovedSegments?: (removed: string[]) => void;
+  precision?: DiffPromptRangeOptions['precision'];
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -67,12 +72,13 @@ export function PromptGhostDiff({
   variant = 'default',
   onSuppress,
   onRemovedSegments,
+  precision = 'coarse',
 }: PromptGhostDiffProps) {
   // ── Diff computation ──
   const segments: DiffSegmentWithRange[] = useMemo(() => {
     if (!source) return [];
-    return diffPromptWithRanges(source.comparisonText, value);
-  }, [source, value]);
+    return diffPromptWithRanges(source.comparisonText, value, { precision });
+  }, [source, value, precision]);
 
   const hasChanges = useMemo(
     () => segments.some((s) => s.type !== 'keep'),

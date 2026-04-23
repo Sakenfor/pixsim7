@@ -18,11 +18,25 @@ describe('diffPromptWithRanges', () => {
     expect(added[0].from).toBe(next.lastIndexOf('beta'));
   });
 
-  it('returns stable ranges for word-level additions with newlines', () => {
+  it('returns smooth clause-level additions by default for multiline prompts', () => {
     const prev = 'Wide shot, warm light.\nSubject smiles.';
     const next = 'Wide shot, warm light.\nSubject smiles.\nCamera pushes in.';
 
     const segments = diffPromptWithRanges(prev, next);
+    const added = segments.filter((segment) => segment.type === 'add');
+
+    expect(added).toHaveLength(1);
+    expect(added[0].text).toBe('Camera pushes in.');
+    expect(added[0].from).toBeDefined();
+    expect(added[0].to).toBeDefined();
+    expect(next.slice(added[0].from!, added[0].to!)).toBe('Camera pushes in.');
+  });
+
+  it('returns stable ranges for word-level additions in fine mode', () => {
+    const prev = 'Wide shot, warm light.\nSubject smiles.';
+    const next = 'Wide shot, warm light.\nSubject smiles.\nCamera pushes in.';
+
+    const segments = diffPromptWithRanges(prev, next, { precision: 'fine' });
     const added = segments.filter((segment) => segment.type === 'add');
     const first = added[0];
     const last = added[added.length - 1];
@@ -42,7 +56,7 @@ describe('diffPromptWithRanges', () => {
     const prev = 'soft lighting on subject';
     const next = 'soft lightning on subject';
 
-    const segments = diffPromptWithRanges(prev, next);
+    const segments = diffPromptWithRanges(prev, next, { precision: 'fine' });
     const added = segments.filter((segment) => segment.type === 'add');
     const removed = segments.filter((segment) => segment.type === 'remove');
 

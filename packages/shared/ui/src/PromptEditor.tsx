@@ -27,6 +27,8 @@ export interface PromptEditorProps {
   editorRef?: React.RefObject<EditorView | null>;
   transparent?: boolean;
   onKeyDown?: (e: KeyboardEvent) => boolean | void;
+  /** Additional CM extensions (decorations, keymaps, etc.) managed by the host. */
+  extensions?: Extension[];
 }
 
 const baseTheme = EditorView.baseTheme({
@@ -53,6 +55,10 @@ const baseTheme = EditorView.baseTheme({
     color: 'var(--color-neutral-400)',
     fontStyle: 'normal',
   },
+  '.cm-tooltip': {
+    border: 'none',
+    background: 'transparent',
+  },
 });
 
 export const PromptEditor: React.FC<PromptEditorProps> = ({
@@ -71,6 +77,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   editorRef: externalEditorRef,
   transparent = false,
   onKeyDown,
+  extensions: hostExtensions,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -84,6 +91,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   const disabledComp = useRef(new Compartment());
   const placeholderComp = useRef(new Compartment());
   const variantComp = useRef(new Compartment());
+  const hostExtComp = useRef(new Compartment());
 
   const remaining = maxChars - value.length;
   const isOverLimit = remaining < 0;
@@ -137,6 +145,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             class: variant === 'compact' ? 'text-sm' : 'text-base',
           }),
         ),
+        hostExtComp.current.of(hostExtensions ?? []),
       ],
     });
 
@@ -193,6 +202,15 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       ),
     });
   }, [variant]);
+
+  // Reconfigure: host extensions
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: hostExtComp.current.reconfigure(hostExtensions ?? []),
+    });
+  }, [hostExtensions]);
 
   // Sync external value -> editor
   useEffect(() => {
