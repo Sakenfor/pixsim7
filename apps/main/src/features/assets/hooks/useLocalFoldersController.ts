@@ -69,6 +69,10 @@ const PREVIEW_LOAD_CONCURRENCY = 4;
 const PREVIEW_STATE_FLUSH_DELAY_MS = 80;
 const GLOBAL_PREVIEW_CACHE_MAX_ENTRIES = 400;
 const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 30;
+const BACKEND_CHECK_DEBOUNCE_MS = 300;
+const BACKEND_CHECK_RETRY_DELAY_MS = 2000;
+const BACKEND_CHECK_BATCH_SIZE = 500;
+const BACKEND_CHECK_MAX_BATCHES_PER_RUN = 2;
 
 /**
  * Module-level blob URL cache that survives panel mount/unmount cycles.
@@ -221,9 +225,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
   const backendSyncInFlightRef = useRef(false);
+  const backendCheckDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Force re-check trigger (bumped by recheckBackend)
   const [backendCheckTrigger, setBackendCheckTrigger] = useState(0);
+  const [backendCheckContinuationTick, setBackendCheckContinuationTick] = useState(0);
 
   // Background hashing progress & controls
   const [hashingProgress, setHashingProgress] = useState<HashingProgressState | null>(null);
@@ -587,7 +593,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [selectedFolderPath, filteredAssetsScopeSignature, autoHashOnSelect, hashChunkSize, getFileForAsset, updateAssetHashesBatch, manualHashRequest]);
 
   useEffect(() => {
-    // backendCheckTrigger > 0 means user clicked "Check library" manually — always run.
+    // backendCheckTrigger > 0 means user clicked "Check library" manually - always run.
     // Otherwise respect the autoCheckBackend setting.
     const isManualTrigger = backendCheckTrigger > 0;
     if (!autoCheckBackend && !isManualTrigger) return;
@@ -596,130 +602,173 @@ export function useLocalFoldersController(): LocalFoldersController {
       return;
     }
 
-    // When a hash run just completed (hashingProgress transitions to null/done),
-    // clear "checked-but-not-found" entries so re-hashed assets get rechecked.
-    // Hashes known to exist on backend (backendExistingHashesRef) stay cached.
-    if (!hashingProgress) {
-      for (const sha256 of backendHashCheckedRef.current) {
-        if (!backendExistingHashesRef.current.has(sha256)) {
-          backendHashCheckedRef.current.delete(sha256);
-        }
-      }
+    if (backendCheckDebounceTimerRef.current !== null) {
+      clearTimeout(backendCheckDebounceTimerRef.current);
+      backendCheckDebounceTimerRef.current = null;
     }
 
-    const allAssets = Object.values(assetsRecord);
-    const withHash = allAssets.filter((a) => !!a.sha256);
-    const candidates = withHash.filter(asset => (
-      hasValidStoredHash(asset) &&
-      // Include: not yet checked OR marked success but missing asset_id (legacy backfill)
-      (asset.last_upload_status !== 'success' ||
-       (asset.last_upload_status === 'success' && !asset.last_upload_asset_id))
-    ));
-    debugFlags.debug('localFolders', 'backendCheck effect fired', {
-      hashingProgress,
-      totalAssets: allAssets.length,
-      withHash: withHash.length,
-      candidates: candidates.length,
-      skippedInvalidHash: withHash.length - candidates.length - withHash.filter((a) => a.last_upload_status === 'success').length,
-      alreadySuccess: withHash.filter((a) => a.last_upload_status === 'success').length,
-    });
-    if (candidates.length === 0) return;
-    if (backendSyncInFlightRef.current) return;
-    backendSyncInFlightRef.current = true;
+    backendCheckDebounceTimerRef.current = setTimeout(() => {
+      backendCheckDebounceTimerRef.current = null;
 
-    const hashToAssetKeys = new Map<string, string[]>();
-    for (const asset of candidates) {
-      const sha256 = asset.sha256!;
-      const keys = hashToAssetKeys.get(sha256) || [];
-      keys.push(asset.key);
-      hashToAssetKeys.set(sha256, keys);
-    }
-
-    const syncKnownExisting = async () => {
-      for (const [sha256, assetKeys] of hashToAssetKeys) {
-        if (!backendExistingHashesRef.current.has(sha256)) continue;
-        for (const assetKey of assetKeys) {
-          const current = assetsRecord[assetKey];
-          if (
-            current &&
-            current.last_upload_status === 'success' &&
-            current.last_upload_note === 'Already in library'
-          ) {
-            continue;
+      // When a hash run just completed (hashingProgress transitions to null/done),
+      // clear "checked-but-not-found" entries so re-hashed assets get rechecked.
+      // Hashes known to exist on backend (backendExistingHashesRef) stay cached.
+      if (!hashingProgress) {
+        for (const sha256 of backendHashCheckedRef.current) {
+          if (!backendExistingHashesRef.current.has(sha256)) {
+            backendHashCheckedRef.current.delete(sha256);
           }
-          await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-          setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
         }
       }
-    };
 
-    const checkRemaining = async () => {
-      const hashesToQuery = Array.from(hashToAssetKeys.keys()).filter((sha256) => (
-        !backendExistingHashesRef.current.has(sha256) &&
-        !backendHashCheckedRef.current.has(sha256) &&
-        !backendHashCheckInProgressRef.current.has(sha256)
+      const allAssets = Object.values(assetsRecord);
+      const withHash = allAssets.filter((a) => !!a.sha256);
+      const candidates = withHash.filter(asset => (
+        hasValidStoredHash(asset) &&
+        // Include: not yet checked OR marked success but missing asset_id (legacy backfill)
+        (asset.last_upload_status !== 'success' ||
+         (asset.last_upload_status === 'success' && !asset.last_upload_asset_id))
       ));
-      debugFlags.debug('localFolders', 'backendCheck checkRemaining', {
-        uniqueHashes: hashToAssetKeys.size,
-        toQuery: hashesToQuery.length,
-        alreadyKnown: backendExistingHashesRef.current.size,
-        alreadyChecked: backendHashCheckedRef.current.size,
-        inProgress: backendHashCheckInProgressRef.current.size,
+      debugFlags.debug('localFolders', 'backendCheck effect fired', {
+        hashingProgress,
+        totalAssets: allAssets.length,
+        withHash: withHash.length,
+        candidates: candidates.length,
+        skippedInvalidHash: withHash.length - candidates.length - withHash.filter((a) => a.last_upload_status === 'success').length,
+        alreadySuccess: withHash.filter((a) => a.last_upload_status === 'success').length,
       });
-      if (hashesToQuery.length === 0) return;
+      if (candidates.length === 0) return;
+      if (backendSyncInFlightRef.current) return;
+      backendSyncInFlightRef.current = true;
 
-      for (const sha256 of hashesToQuery) {
-        backendHashCheckInProgressRef.current.add(sha256);
+      const hashToAssetKeys = new Map<string, string[]>();
+      for (const asset of candidates) {
+        const sha256 = asset.sha256!;
+        const keys = hashToAssetKeys.get(sha256) || [];
+        keys.push(asset.key);
+        hashToAssetKeys.set(sha256, keys);
       }
 
-      const BATCH_SIZE = 500;
-      try {
-        for (let i = 0; i < hashesToQuery.length; i += BATCH_SIZE) {
-          const batch = hashesToQuery.slice(i, i + BATCH_SIZE);
-          const matches = await checkHashesAgainstBackend(batch);
-          const foundHashSet = new Set(matches.map((m) => m.sha256));
-          debugFlags.debug('localFolders', 'backendCheck batch result', {
-            sent: batch.length,
-            found: matches.length,
-            sampleSent: batch.slice(0, 3),
-            sampleFound: matches.slice(0, 3),
-          });
-
-          for (const sha256 of batch) {
-            backendHashCheckedRef.current.add(sha256);
-            if (foundHashSet.has(sha256)) {
-              backendExistingHashesRef.current.add(sha256);
+      const syncKnownExisting = async () => {
+        for (const [sha256, assetKeys] of hashToAssetKeys) {
+          if (!backendExistingHashesRef.current.has(sha256)) continue;
+          for (const assetKey of assetKeys) {
+            const current = assetsRecord[assetKey];
+            if (
+              current &&
+              current.last_upload_status === 'success' &&
+              current.last_upload_note === 'Already in library'
+            ) {
+              continue;
             }
-          }
-
-          for (const { sha256, assetId } of matches) {
-            const assetKeys = hashToAssetKeys.get(sha256);
-            if (!assetKeys) continue;
-            for (const assetKey of assetKeys) {
-              await updateAssetUploadStatus(assetKey, 'success', 'Already in library', { assetId });
-              setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
-            }
+            await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+            setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
           }
         }
-      } catch (e) {
-        console.warn('Failed to check hashes against backend:', e);
-      } finally {
+      };
+
+      const checkRemaining = async (): Promise<{ hasRemaining: boolean; hadError: boolean }> => {
+        const allHashesToQuery = Array.from(hashToAssetKeys.keys()).filter((sha256) => (
+          !backendExistingHashesRef.current.has(sha256) &&
+          !backendHashCheckedRef.current.has(sha256) &&
+          !backendHashCheckInProgressRef.current.has(sha256)
+        ));
+        const maxHashesThisRun = BACKEND_CHECK_BATCH_SIZE * BACKEND_CHECK_MAX_BATCHES_PER_RUN;
+        const hashesToQuery = allHashesToQuery.slice(0, maxHashesThisRun);
+        const hasRemaining = allHashesToQuery.length > hashesToQuery.length;
+        debugFlags.debug('localFolders', 'backendCheck checkRemaining', {
+          uniqueHashes: hashToAssetKeys.size,
+          toQuery: hashesToQuery.length,
+          toQueryTotal: allHashesToQuery.length,
+          hasRemaining,
+          alreadyKnown: backendExistingHashesRef.current.size,
+          alreadyChecked: backendHashCheckedRef.current.size,
+          inProgress: backendHashCheckInProgressRef.current.size,
+        });
+        if (hashesToQuery.length === 0) {
+          return { hasRemaining, hadError: false };
+        }
+
         for (const sha256 of hashesToQuery) {
-          backendHashCheckInProgressRef.current.delete(sha256);
+          backendHashCheckInProgressRef.current.add(sha256);
         }
+
+        let hadError = false;
+        try {
+          for (let i = 0; i < hashesToQuery.length; i += BACKEND_CHECK_BATCH_SIZE) {
+            const batch = hashesToQuery.slice(i, i + BACKEND_CHECK_BATCH_SIZE);
+            const matches = await checkHashesAgainstBackend(batch);
+            const foundHashSet = new Set(matches.map((m) => m.sha256));
+            debugFlags.debug('localFolders', 'backendCheck batch result', {
+              sent: batch.length,
+              found: matches.length,
+              sampleSent: batch.slice(0, 3),
+              sampleFound: matches.slice(0, 3),
+            });
+
+            for (const sha256 of batch) {
+              backendHashCheckedRef.current.add(sha256);
+              if (foundHashSet.has(sha256)) {
+                backendExistingHashesRef.current.add(sha256);
+              }
+            }
+
+            for (const { sha256, assetId } of matches) {
+              const assetKeys = hashToAssetKeys.get(sha256);
+              if (!assetKeys) continue;
+              for (const assetKey of assetKeys) {
+                await updateAssetUploadStatus(assetKey, 'success', 'Already in library', { assetId });
+                setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
+              }
+            }
+          }
+        } catch (e) {
+          hadError = true;
+          console.warn('Failed to check hashes against backend:', e);
+        } finally {
+          for (const sha256 of hashesToQuery) {
+            backendHashCheckInProgressRef.current.delete(sha256);
+          }
+        }
+
+        return { hasRemaining, hadError };
+      };
+
+      void (async () => {
+        let hasRemaining = false;
+        let hadError = false;
+        try {
+          await syncKnownExisting();
+          const status = await checkRemaining();
+          hasRemaining = status.hasRemaining;
+          hadError = status.hadError;
+        } finally {
+          backendSyncInFlightRef.current = false;
+          if (hasRemaining || hadError) {
+            window.setTimeout(
+              () => setBackendCheckContinuationTick((n) => n + 1),
+              hadError ? BACKEND_CHECK_RETRY_DELAY_MS : BACKEND_CHECK_DEBOUNCE_MS,
+            );
+          }
+        }
+      })();
+    }, BACKEND_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      if (backendCheckDebounceTimerRef.current !== null) {
+        clearTimeout(backendCheckDebounceTimerRef.current);
+        backendCheckDebounceTimerRef.current = null;
       }
     };
-
-    void (async () => {
-      try {
-        await syncKnownExisting();
-        await checkRemaining();
-      } finally {
-        backendSyncInFlightRef.current = false;
-      }
-    })();
-   
-  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress, setInMemoryUploadState, backendCheckTrigger]);
+  }, [
+    assetsRecord,
+    updateAssetUploadStatus,
+    autoCheckBackend,
+    hashingProgress,
+    setInMemoryUploadState,
+    backendCheckTrigger,
+    backendCheckContinuationTick,
+  ]);
 
   const recheckBackend = useCallback(() => {
     // Clear all check caches so every hash gets re-queried
@@ -1235,7 +1284,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Refresh all folders
   const refresh = useCallback(async () => {
     for (const folder of rawFolders) {
-      refreshFolder(folder.id);
+      try {
+        await refreshFolder(folder.id);
+      } catch (e) {
+        console.warn('Local folder refresh failed', folder.id, e);
+      }
     }
   }, [rawFolders, refreshFolder]);
 

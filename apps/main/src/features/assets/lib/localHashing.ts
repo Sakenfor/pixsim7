@@ -1,5 +1,5 @@
-import { authService } from '@lib/auth';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { authService } from '@lib/auth';
 
 export {
   computeLocalAssetScopeSignature,
@@ -33,7 +33,9 @@ export async function checkHashesAgainstBackend(
   const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)));
   if (uniqueHashes.length === 0) return [];
 
-  const base = options?.backendUrl ?? (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000');
+  // Empty env var = relative mode. Undefined = hardcoded fallback.
+  const envBase = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
+  const base = options?.backendUrl ?? envBase;
   const token = options?.token ?? authService.getStoredToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) {

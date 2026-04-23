@@ -75,6 +75,7 @@ import { ReviewSurfaceContent } from './ReviewGallerySurface';
 import { BottomPagination } from './shared/BottomPagination';
 import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
 import { PaginationStrip } from './shared/PaginationStrip';
+import { SignalTriageContent } from './SignalTriageGallerySurface';
 
 
 // ---------------------------------------------------------------------------
@@ -589,6 +590,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // then the sync effect fires mid-settle, sees a transient mismatch,
   // and calls updatePanelSettings again — causing extra renders and sluggish clearing.
   const skipSyncRef = useRef(false);
+  const pendingPageUrlRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (skipSyncRef.current) {
@@ -1000,6 +1002,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     const params = new URLSearchParams(window.location.search);
     const current = params.get('page');
     const desired = page > 1 ? String(page) : null;
+    const targetPage = page > 1 ? page : 1;
 
     if (desired === null) {
       if (current === null) return;
@@ -1009,6 +1012,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       params.set('page', desired);
     }
 
+    pendingPageUrlRef.current = targetPage;
     const nextSearch = params.toString();
     navigate(
       {
@@ -1052,15 +1056,16 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     }
   }, [groupData, groupPage, groupTotalPages, syncGroupPageInUrl]);
 
-  const activePresetId = useFilterPresetStore((s) => s.activePresetId);
   const rememberPresetPage = useFilterPresetStore((s) => s.rememberPage);
 
   const goToPage = useCallback((page: number, replace = false) => {
     if (page < 1) return;
     syncPageInUrl(page, replace);
     controller.goToPage(page);
-    rememberPresetPage(activePresetId, page);
-  }, [controller.goToPage, syncPageInUrl, rememberPresetPage, activePresetId]);
+    // Resolve active preset at call-time to avoid stale closure writes during preset switches.
+    const currentPresetId = useFilterPresetStore.getState().activePresetId;
+    rememberPresetPage(currentPresetId, page);
+  }, [controller.goToPage, syncPageInUrl, rememberPresetPage]);
 
   const goToGroupPage = useCallback(
     (page: number, replace = false) => {
@@ -1076,6 +1081,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   useEffect(() => {
     if (controller.loading) return;
+    const pendingPage = pendingPageUrlRef.current;
+    if (pendingPage !== null) {
+      if (pageFromUrl !== pendingPage) return;
+      pendingPageUrlRef.current = null;
+    }
     if (pageFromUrl === controller.currentPage) return;
 
     // If the controller clamped the page (e.g. page 5 → 3 because only 3 pages exist),
@@ -1333,6 +1343,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   if (activeSurfaceId === 'assets-debug') {
     return <DebugSurfaceContent controller={controller} />;
   }
+  if (activeSurfaceId === 'assets-signal-triage') {
+    return <SignalTriageContent controller={controller} />;
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -1402,8 +1415,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           <FilterPresetBar
             currentFilters={controller.filters}
             onLoadPreset={(filters, page) => {
+              // Keep URL/controller page aligned while avoiding an immediate fetch
+              // against stale filters in the same tick as replaceFilters.
+              syncPageInUrl(page, true);
+              controller.reset(page);
               controller.replaceFilters(filters);
-              goToPage(page, true);
             }}
           />
           <div>

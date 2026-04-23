@@ -109,10 +109,13 @@ type LocalFoldersState = {
 
 // --- IndexedDB via shared helpers ---
 const STORAGE_KEY_PREFIX = 'ps7_local_folders';
+const LOCAL_TREE_SELECTION_STORAGE_KEY = 'ps7_localFolders_selectedFolderPath';
+const LOCAL_FILTER_STATE_STORAGE_KEY = 'ps7_localFolders_filter_state';
 
 const idbStore = createIdbKvStore('ps7_local_folders', 2);
 const BACKGROUND_REFRESH_MIN_INTERVAL_MS = 1000 * 60 * 30; // 30 minutes
 const BACKGROUND_REFRESH_START_DELAY_MS = 1500;
+const STARTUP_UNCACHED_SCAN_CONCURRENCY = 2;
 
 function getAnonymousNamespace(): string {
   return 'anonymous';
@@ -262,6 +265,37 @@ async function getFoldersFromBackend(): Promise<SyncedFolderMeta[]> {
     console.warn('[LocalFolders] Failed to get folders from backend:', e);
     return [];
   }
+}
+
+function readStartupScopedFolderIds(): Set<string> {
+  const scopedFolderIds = new Set<string>();
+  try {
+    const selectedPathRaw = localStorage.getItem(LOCAL_TREE_SELECTION_STORAGE_KEY);
+    const selectedPath = typeof selectedPathRaw === 'string' ? selectedPathRaw.trim() : '';
+    if (selectedPath) {
+      const [rootFolderId] = selectedPath.split('/');
+      if (rootFolderId) scopedFolderIds.add(rootFolderId);
+    }
+
+    const filterStateRaw = localStorage.getItem(LOCAL_FILTER_STATE_STORAGE_KEY);
+    if (filterStateRaw) {
+      const parsed = JSON.parse(filterStateRaw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const folderSelection = (parsed as Record<string, unknown>).folder;
+        if (Array.isArray(folderSelection)) {
+          for (const candidate of folderSelection) {
+            if (typeof candidate !== 'string') continue;
+            const value = candidate.trim();
+            if (value) scopedFolderIds.add(value);
+          }
+        }
+      }
+    }
+  } catch {
+    // Best-effort scope detection only.
+  }
+
+  return scopedFolderIds;
 }
 
 /**
@@ -775,17 +809,33 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         const allCachedMetas: LocalFolderMeta[] = [];
         const foldersNeedingScan: FolderEntry[] = [];
         const staleCachedFolderIds: string[] = [];
+        const startupScopedFolderIds = readStartupScopedFolderIds();
+        const hasStartupScope = startupScopedFolderIds.size > 0;
+        let staleSkippedOutOfScope = 0;
         for (const { folder, items, cacheMeta } of cacheResults) {
           if (items.length > 0) {
             allCachedMetas.push(...items);
             const cachedAt = cacheMeta?.cachedAt ?? 0;
             const isStale = !cachedAt || (now - cachedAt) >= BACKGROUND_REFRESH_MIN_INTERVAL_MS;
             if (isStale) {
-              staleCachedFolderIds.push(folder.id);
+              if (hasStartupScope && startupScopedFolderIds.has(folder.id)) {
+                staleCachedFolderIds.push(folder.id);
+              } else {
+                staleSkippedOutOfScope += 1;
+              }
             }
           } else {
             foldersNeedingScan.push(folder);
           }
+        }
+
+        if (staleSkippedOutOfScope > 0) {
+          debugFlags.debug(
+            'localFolders',
+            hasStartupScope
+              ? `Skipped startup refresh for ${staleSkippedOutOfScope} stale out-of-scope folder(s)`
+              : `Skipped startup refresh for ${staleSkippedOutOfScope} stale folder(s) because no folder scope is active`,
+          );
         }
 
         // Single state update for all cached assets
@@ -797,8 +847,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }));
         }
 
-        // Refresh stale cached folders in the background, sequentially.
-        // Avoid kicking a full disk walk for every cached folder on startup.
+        // Refresh only stale cached folders that are currently in scope.
+        // This prevents unscoped startup from walking every local folder in the background.
         if (staleCachedFolderIds.length > 0) {
           window.setTimeout(() => {
             void (async () => {
@@ -814,11 +864,18 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }, BACKGROUND_REFRESH_START_DELAY_MS);
         }
 
-        // Folders without cache need a full scan (parallel, then single merge).
+        // Folders without cache need a full scan.
+        // Run with limited concurrency to avoid saturating disk/CPU on startup.
         // Also try to restore hashes from backend so we skip re-hashing.
         if (foldersNeedingScan.length > 0) {
-          const scanResults = await Promise.all(
-            foldersNeedingScan.map(async (f) => {
+          const scanResults: LocalFolderMeta[][] = new Array(foldersNeedingScan.length);
+          let nextScanIndex = 0;
+
+          const scanWorker = async () => {
+            while (nextScanIndex < foldersNeedingScan.length) {
+              const currentIndex = nextScanIndex;
+              nextScanIndex += 1;
+              const f = foldersNeedingScan[currentIndex];
               const [items, backendManifest] = await Promise.all([
                 scanFolder(f.id, f.handle, 5),
                 getHashManifest(f.id).catch(() => null),
@@ -851,11 +908,22 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
               }
 
               void cacheLocalMeta(f.id, items);
-              return items;
-            }),
+              scanResults[currentIndex] = items;
+              await yieldToMain();
+            }
+          };
+
+          const workerCount = Math.min(
+            STARTUP_UNCACHED_SCAN_CONCURRENCY,
+            foldersNeedingScan.length,
           );
+          await Promise.all(
+            Array.from({ length: workerCount }, () => scanWorker()),
+          );
+
           const allScannedMetas: LocalFolderMeta[] = [];
           for (const items of scanResults) {
+            if (!items?.length) continue;
             allScannedMetas.push(...items);
           }
           if (allScannedMetas.length > 0) {
