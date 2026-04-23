@@ -5,7 +5,7 @@
   "name": "AI Client (Bridge)",
   "description": "Local agent bridge — connects Claude/Codex CLI sessions to the backend via WebSocket",
   "module": "pixsim7.client",
-  "args": ["--url", "ws://localhost:8000/api/v1/ws/agent-cmd", "--shared"],
+  "args": ["--url", "ws://localhost:8000/api/v1/ws/agent-cmd"],
   "depends_on": ["main-api"],
   "auto_start": false,
   "enabled": true,
@@ -18,6 +18,15 @@
       "description": "Port for Claude Code PreToolUse hooks (0 = auto-assign)",
       "default": 0,
       "arg_map": "--hook-port",
+      "section": "Connection"
+    },
+    {
+      "key": "shared",
+      "type": "boolean",
+      "label": "Shared bridge",
+      "description": "Run unscoped so the bridge serves any user. Leave off to bind to the launcher's logged-in user.",
+      "default": false,
+      "arg_map": "--shared",
       "section": "Connection"
     },
     {

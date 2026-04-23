@@ -157,6 +157,7 @@ nohup uvicorn pixsim7.backend.main.main:app \
     --host 0.0.0.0 \
     --port 8001 \
     --reload \
+    --no-access-log \
     > "$DEV_LOG_DIR/backend.log" 2>&1 &
 echo $! > "$DEV_LOG_DIR/backend.pid"
 echo "   Logs: $DEV_LOG_DIR/backend.log"

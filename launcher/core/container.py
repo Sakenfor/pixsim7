@@ -104,7 +104,8 @@ class LauncherContainer:
                 interval_sec=self.config.health.base_interval,
                 adaptive_enabled=self.config.health.adaptive_enabled,
                 startup_interval=self.config.health.startup_interval,
-                stable_interval=self.config.health.stable_interval
+                stable_interval=self.config.health.stable_interval,
+                http_timeout=self.config.health.http_timeout,
             )
 
         return self._health_mgr

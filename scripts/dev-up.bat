@@ -92,7 +92,7 @@ set PYTHONPATH=%PROJECT_ROOT%
 
 REM Start backend in new window
 echo Starting backend API (http://localhost:8001)...
-start "PixSim7 Backend" /MIN cmd /c "set PYTHONPATH=%PROJECT_ROOT% && uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001 --reload > data\logs\dev\backend.log 2>&1"
+start "PixSim7 Backend" /MIN cmd /c "set PYTHONPATH=%PROJECT_ROOT% && uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001 --reload --no-access-log > data\logs\dev\backend.log 2>&1"
 echo    Logs: data\logs\dev\backend.log
 
 REM Start worker in new window

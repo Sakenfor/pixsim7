@@ -69,6 +69,33 @@
       "default": "",
       "env_export": "PIXSIM_WORKER_DEBUG",
       "section": "Debug"
+    },
+    {
+      "key": "health_interval_sec",
+      "type": "number",
+      "label": "Health Check Interval",
+      "description": "Base polling interval in seconds. Lower = more responsive, higher = less CPU/log noise.",
+      "default": 2.0,
+      "env_export": "PIXSIM_HEALTH_INTERVAL",
+      "section": "Observability"
+    },
+    {
+      "key": "health_timeout_sec",
+      "type": "number",
+      "label": "Health Check Timeout",
+      "description": "HTTP timeout per /health request. Raise if backend is slow under DB load (causes flapping).",
+      "default": 1.5,
+      "env_export": "PIXSIM_HEALTH_TIMEOUT",
+      "section": "Observability"
+    },
+    {
+      "key": "log_exclude_paths",
+      "type": "string",
+      "label": "Log Exclude Paths",
+      "description": "Comma-separated HTTP paths dropped from request logs. Default silences routine health-check polling.",
+      "default": "/health,/ready,/",
+      "env_export": "PIXSIM_LOG_EXCLUDE_PATHS",
+      "section": "Observability"
     }
   ]
 }

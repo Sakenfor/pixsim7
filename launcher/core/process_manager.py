@@ -320,37 +320,45 @@ class ProcessManager:
             rotate_file(str(log_file_path), max_bytes=50 * 1024 * 1024, backups=2)  # 50 MB, keep 2 old
             log_file = open(log_file_path, 'a', encoding='utf-8', buffering=1)
 
-            # Platform-specific process group creation for detachment
-            if os.name == 'nt':
-                # Windows: CREATE_NEW_PROCESS_GROUP for independence
-                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+            try:
+                # Platform-specific process group creation for detachment
+                if os.name == 'nt':
+                    # Windows: CREATE_NEW_PROCESS_GROUP for independence
+                    creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+                    try:
+                        creation_flags |= subprocess.CREATE_BREAKAWAY_FROM_JOB
+                    except AttributeError:
+                        pass
+
+                    # Add CREATE_NO_WINDOW to avoid console windows
+                    if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+                        creation_flags |= subprocess.CREATE_NO_WINDOW
+
+                    proc = subprocess.Popen(
+                        cmd,
+                        cwd=definition.cwd,
+                        env=env,
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        creationflags=creation_flags
+                    )
+                else:
+                    # Unix: use start_new_session for process group
+                    proc = subprocess.Popen(
+                        cmd,
+                        cwd=definition.cwd,
+                        env=env,
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True
+                    )
+            finally:
+                # Release the parent's handle; subprocess keeps its own inherited handle.
+                # Without this the launcher pins the file until GC, blocking next rotation on Windows.
                 try:
-                    creation_flags |= subprocess.CREATE_BREAKAWAY_FROM_JOB
-                except AttributeError:
+                    log_file.close()
+                except Exception:
                     pass
-
-                # Add CREATE_NO_WINDOW to avoid console windows
-                if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-                    creation_flags |= subprocess.CREATE_NO_WINDOW
-
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=definition.cwd,
-                    env=env,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    creationflags=creation_flags
-                )
-            else:
-                # Unix: use start_new_session for process group
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=definition.cwd,
-                    env=env,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True
-                )
 
             # Store process and update state
             self.processes[service_key] = proc

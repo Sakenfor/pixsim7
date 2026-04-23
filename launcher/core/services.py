@@ -268,6 +268,7 @@ _PYTHON_ENV = {
     "PIXSIM_LOG_FORMAT": "human",
     "PYTHONUTF8": "1",
     "PYTHONIOENCODING": "utf-8",
+    "PYTHONUNBUFFERED": "1",
 }
 
 
@@ -400,7 +401,17 @@ class BackendConverter(ServiceConverter):
     def _args(self, config):
         port = self._resolve_port(config)
         module = config.get("module", "pixsim7.backend.main.main:app")
-        return ["-m", "uvicorn", module, "--host", "0.0.0.0", "--port", str(port), "--reload"]
+        return [
+            "-m",
+            "uvicorn",
+            module,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+            "--reload",
+            "--no-access-log",
+        ]
 
     def _env(self, config):
         return _merge_env_overrides(_PYTHON_ENV, config)
