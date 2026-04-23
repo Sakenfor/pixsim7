@@ -134,7 +134,7 @@
       "subdomain": "app",
       "env_overrides": {
         "VITE_GAME_URL": "$GAME_FRONTEND_BASE_URL",
-        "VITE_BACKEND_URL": "$BACKEND_BASE_URL",
+        "VITE_BACKEND_URL": "relative",
         "VITE_DEVTOOLS_URL": "$DEVTOOLS_BASE_URL"
       },
       "auto_start": false,

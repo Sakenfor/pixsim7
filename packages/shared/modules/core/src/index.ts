@@ -109,6 +109,11 @@ export interface SubNavItem {
    * thunk that's evaluated lazily (e.g., to pull from a registry).
    */
   children?: SubNavItem[] | (() => SubNavItem[]);
+  /**
+   * Optional grouping key. Consecutive items sharing a section render under
+   * one divider/header in the flyout. Undefined = default (no header).
+   */
+  section?: string;
 }
 
 export interface ModuleDevToolConfig<DevToolCategory = string> extends PluginMeta {

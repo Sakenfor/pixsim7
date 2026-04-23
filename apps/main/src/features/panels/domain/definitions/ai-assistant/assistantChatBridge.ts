@@ -76,6 +76,15 @@ type Listener = () => void;
 // ── WebSocket URL derivation ──
 
 function computeChatWsUrl(token: string | null): string {
+  // Relative API base (proxy mode): derive ws URL from current page origin so
+  // the dev-server / prod proxy routes the upgrade to the right backend.
+  if (API_BASE_URL.startsWith('/') && typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const pathname = API_BASE_URL.replace(/\/$/, '') + '/ws/chat';
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `${proto}//${window.location.host}${pathname}${tokenParam}`;
+  }
+
   try {
     const base = new URL(API_BASE_URL);
     base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -85,11 +94,11 @@ function computeChatWsUrl(token: string | null): string {
     if (token) base.searchParams.set('token', token);
     return base.toString();
   } catch {
-    // Fallback
+    // Fallback — absolute URL construction from window.location.
     const proto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8000';
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-    return `${proto}//${host}:8000/api/v1/ws/chat${tokenParam}`;
+    return `${proto}//${host}/api/v1/ws/chat${tokenParam}`;
   }
 }
 

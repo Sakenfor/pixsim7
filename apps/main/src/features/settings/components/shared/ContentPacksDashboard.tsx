@@ -9,8 +9,8 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
-import { authService } from '@lib/auth';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { authService } from '@lib/auth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,7 +50,9 @@ interface PurgeResult {
 // ---------------------------------------------------------------------------
 
 function apiBase() {
-  return (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
+  // Empty = relative mode (proxy handles routing). Undefined = hardcoded fallback.
+  const url = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
+  return url.replace(/\/$/, '');
 }
 
 function authHeaders(): Record<string, string> {

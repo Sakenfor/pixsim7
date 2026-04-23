@@ -564,6 +564,10 @@ function resolveBundleUrl(url: string): string {
 
   if (url.startsWith('/plugins/') || url.startsWith('/api/')) {
     const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    // Empty = relative mode: keep the path as-is so the proxy routes it.
+    if (backendUrl === '') {
+      return url;
+    }
     if (backendUrl) {
       return `${backendUrl.replace(/\/$/, '')}${url}`;
     }
