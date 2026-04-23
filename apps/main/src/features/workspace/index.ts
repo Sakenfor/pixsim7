@@ -21,6 +21,7 @@ export { WorkspaceRoute } from "./routes/Workspace";
 // Store
 export {
   useWorkspaceStore,
+  FLOATING_DISMISS_KEY,
   type PresetScope,
   type DockviewLayout,
   type LayoutPreset,

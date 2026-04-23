@@ -14,10 +14,11 @@
 import { PortalFloat, useHoverExpand, Z } from '@pixsim7/shared.ui';
 import { useState, useCallback, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
 
+import { readFloatingOriginMeta } from '@lib/dockview/floatingPanelInterop';
 import { Icon } from '@lib/icons';
 import { useInsetOn } from '@lib/layout/edgeInsets';
 
-import { useWorkspaceStore } from '@features/workspace';
+import { useWorkspaceStore, FLOATING_DISMISS_KEY, panelPlacementCoordinator } from '@features/workspace';
 import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
 
 import { cubeFaceRegistry, type CubeFaceRegistry } from '../lib/cubeFaceRegistry';
@@ -90,6 +91,8 @@ export function MinimizedPanelStack({
   const leftInset = useInsetOn('left');
   const dockPosition = settingsStore((s) => s.dockPosition);
   const setDockPosition = settingsStore((s) => s.setDockPosition);
+  const storedFloatingPos = settingsStore((s) => s.floatingPos);
+  const setStoredFloatingPos = settingsStore((s) => s.setFloatingPos);
 
   // ── Registry-derived face arrays (stable across renders unless registry changes) ──
   const registryRevision = registry.getSnapshot();
@@ -106,11 +109,19 @@ export function MinimizedPanelStack({
     [yFaces],
   );
 
-  // Position — either from dock zone or free-floating
-  const [floatingPos, setFloatingPos] = useState(() => ({
-    x: window.innerWidth / 2 - HALF_IDLE,
-    y: window.innerHeight - 80,
-  }));
+  // Position — either from dock zone or free-floating. The store holds the
+  // committed floating position; a local dragOverride gives smooth per-frame
+  // movement during an active drag without thrashing the persisted store.
+  const [dragOverride, setDragOverride] = useState<{ x: number; y: number } | null>(null);
+  const floatingPos = useMemo(
+    () =>
+      dragOverride ??
+      storedFloatingPos ?? {
+        x: window.innerWidth / 2 - HALF_IDLE,
+        y: window.innerHeight - 80,
+      },
+    [dragOverride, storedFloatingPos],
+  );
 
   const position = useMemo(() => {
     if (dockPosition === 'floating') return floatingPos;
@@ -199,13 +210,46 @@ export function MinimizedPanelStack({
     }
   }, [panelCubes, restorePanelFromCube, openFloatingPanel]);
 
-  const removeCube = useCubeStore((s) => s.removeCube);
+  /**
+   * Close a single cubed panel. Mirrors the FloatingPanelsManager X handler:
+   * if the minimized panel carries origin metadata, temporarily re-hydrate it
+   * as a floating state and return it to its origin dock; otherwise remove the
+   * cube and mark the definition dismissed under FLOATING_DISMISS_KEY.
+   */
+  const handleCloseOne = useCallback(
+    (cubeId: string) => {
+      const data = restorePanelFromCube(cubeId);
+      if (!data) return;
+      const origin = readFloatingOriginMeta(data.context);
+      const ws = useWorkspaceStore.getState();
+      if (origin?.sourceDockviewId && origin?.sourceDefinitionId) {
+        const alreadyFloating = ws.floatingPanels.some(
+          (p) => getFloatingDefinitionId(p.id) === data.panelId,
+        );
+        if (!alreadyFloating) {
+          ws.restoreFloatingPanel({
+            id: data.panelId,
+            x: data.originalPosition.x,
+            y: data.originalPosition.y,
+            width: data.originalSize.width,
+            height: data.originalSize.height,
+            zIndex: 0,
+            context: data.context,
+          });
+        }
+        panelPlacementCoordinator.closeFloatingPanelWithReturn(data.panelId);
+        return;
+      }
+      ws.dismissPanel(FLOATING_DISMISS_KEY, data.panelId);
+    },
+    [restorePanelFromCube],
+  );
 
   const handleClearAll = useCallback(() => {
     for (const cube of panelCubes) {
-      removeCube(cube.id);
+      handleCloseOne(cube.id);
     }
-  }, [panelCubes, removeCube]);
+  }, [panelCubes, handleCloseOne]);
 
   const cycleFace = useCallback(
     (direction: 1 | -1, axis: 'x' | 'y' = 'y') => {
@@ -273,9 +317,9 @@ export function MinimizedPanelStack({
       dragOffset.current = { x: e.clientX - position.x, y: e.clientY - position.y };
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       hasMoved.current = false;
-      // Undock on drag start so position updates go to floatingPos
+      // Seed override with current position and undock so movement is free.
+      setDragOverride(position);
       if (dockPosition !== 'floating') {
-        setFloatingPos(position);
         setDockPosition('floating');
       }
       setIsDragging(true);
@@ -285,18 +329,21 @@ export function MinimizedPanelStack({
 
   useEffect(() => {
     if (!isDragging) return;
+    let lastPos = { x: 0, y: 0 };
     const handleMove = (e: MouseEvent) => {
       const dx = e.clientX - dragStartPos.current.x;
       const dy = e.clientY - dragStartPos.current.y;
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasMoved.current = true;
-      setFloatingPos({
+      lastPos = {
         x: e.clientX - dragOffset.current.x,
         y: e.clientY - dragOffset.current.y,
-      });
+      };
+      setDragOverride(lastPos);
     };
     const handleUp = () => {
       setIsDragging(false);
       if (!hasMoved.current) {
+        setDragOverride(null);
         const absY = Math.abs(hoverTilt.y);
         const absX = Math.abs(hoverTilt.x);
         if (Math.max(absY, absX) > TILT_SWITCH) {
@@ -312,8 +359,10 @@ export function MinimizedPanelStack({
           setClickExpanded((v) => !v);
         }
       } else {
-        // Try to snap to nearest dock zone
-        const snap = findNearestDock(floatingPos, leftInset);
+        // Commit the final free-drag position, then try to snap to nearest dock.
+        setStoredFloatingPos(lastPos);
+        setDragOverride(null);
+        const snap = findNearestDock(lastPos, leftInset);
         if (snap !== 'floating') {
           setDockPosition(snap);
         }
@@ -325,7 +374,7 @@ export function MinimizedPanelStack({
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [isDragging, cycleFace, hoverTilt.y, floatingPos, leftInset, setDockPosition]);
+  }, [isDragging, cycleFace, hoverTilt.y, hoverTilt.x, leftInset, setDockPosition, setStoredFloatingPos]);
 
   // ── Hover tilt + auto-rotate when held at edge ──
   const AUTO_ROTATE_THRESHOLD = 0.88;

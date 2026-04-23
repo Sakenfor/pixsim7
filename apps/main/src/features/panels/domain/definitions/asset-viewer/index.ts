@@ -17,6 +17,7 @@ export default definePanel({
   internal: true,
   supportsCompactMode: false,
   supportsMultipleInstances: false,
+  providesCapabilities: ['assetSelection'],
   settingsSections: [
     {
       id: 'ui-settings',

@@ -27,11 +27,14 @@ export interface CubeSettingsState {
   formation: FormationPattern;
   activeFace: CubeFaceMode;
   dockPosition: CubeDockPosition;
+  /** Last free-drag position. Only meaningful when dockPosition === 'floating'. */
+  floatingPos: { x: number; y: number } | null;
   setVisible: (visible: boolean) => void;
   toggleVisible: () => boolean;
   setFormation: (formation: FormationPattern) => void;
   setActiveFace: (face: CubeFaceMode) => void;
   setDockPosition: (pos: CubeDockPosition) => void;
+  setFloatingPos: (pos: { x: number; y: number }) => void;
 }
 
 /** Create a cube settings store for a given instance. */
@@ -46,6 +49,7 @@ export function createCubeSettingsStore(instanceId: string) {
         formation: 'arc',
         activeFace: 'panels',
         dockPosition: 'floating',
+        floatingPos: null,
         setVisible: (visible) => set({ visible }),
         toggleVisible: () => {
           const next = !get().visible;
@@ -55,6 +59,7 @@ export function createCubeSettingsStore(instanceId: string) {
         setFormation: (formation) => set({ formation }),
         setActiveFace: (face) => set({ activeFace: face }),
         setDockPosition: (dockPosition) => set({ dockPosition }),
+        setFloatingPos: (floatingPos) => set({ floatingPos }),
       }),
       {
         name: storageKey,

@@ -83,7 +83,22 @@ function getPanelAddDisabledReason(
 }
 
 /**
- * Get panels grouped by category from the panel catalog
+ * Get panels grouped by category from the panel catalog.
+ *
+ * Filtering rules (in order):
+ *   1. Scope: if the host published `scopedPanelIds` (SmartDockview does this —
+ *      it's the dock's configured panels + scope-discovered extras), restrict
+ *      to that set. This is what makes "Add Panel" respect availability and
+ *      capability gates without re-running `getCompatiblePanels` here.
+ *   2. Self-exclusion: never offer the host dockview's own panel id. Prevents
+ *      recursive "add Media Viewer inside Media Viewer" entries.
+ *   3. Already-open single-instance panels are hidden outright (not greyed).
+ *      The "Add Panel" menu is for adding; showing an entry you can't click
+ *      just adds noise. Multi-instance panels stay — user may legitimately
+ *      want another copy.
+ *
+ * When no scopedPanelIds are published (legacy docks that haven't opted in),
+ * we fall back to the full public catalog to preserve old behavior.
  */
 function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
   id: string;
@@ -103,9 +118,22 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
     ? ctx.panelRegistry.getPublicPanels()
     : ctx.panelRegistry.getAll();
 
+  const scopedPanelIds = ctx.scopedPanelIds;
+  const scopedSet =
+    scopedPanelIds && scopedPanelIds.length > 0 ? new Set(scopedPanelIds) : null;
+  const hostPanelId = ctx.currentDockviewId;
+
   const defaultCategory = 'Other';
 
   for (const panel of allPanels) {
+    if (scopedSet && !scopedSet.has(panel.id)) continue;
+    if (hostPanelId && panel.id === hostPanelId) continue;
+
+    const allowMultiple = !!panel.supportsMultipleInstances;
+    if (!allowMultiple && isPanelOpenInCurrentDockview(ctx, panel.id, false)) {
+      continue;
+    }
+
     const category = panel.category || defaultCategory;
     if (!categories.has(category)) {
       categories.set(category, []);

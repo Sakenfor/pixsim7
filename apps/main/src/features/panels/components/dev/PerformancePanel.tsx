@@ -580,6 +580,17 @@ export function PerformancePanel() {
       if (v.currentSrc || v.src) videosWithSrc++;
       if (!v.paused && !v.ended && v.readyState > 2) videosPlaying++;
     }
+    const scrubVideos = videos.filter((v) => v.dataset.showTimeline !== undefined);
+    const scrubVideosWithSrc = scrubVideos.filter((v) => Boolean(v.currentSrc || v.src)).length;
+    const scrubKeepPausedWithSrc = scrubVideos.filter(
+      (v) => v.dataset.keepPaused === 'true' && Boolean(v.currentSrc || v.src),
+    ).length;
+    const scrubWaitingSlot = scrubVideos.filter(
+      (v) => v.dataset.videoSlot === 'waiting',
+    ).length;
+    const videosWithCurrentSrcOnly = videos.filter(
+      (v) => !v.getAttribute('src') && Boolean(v.currentSrc),
+    ).length;
     let imagesWithSrc = 0;
     for (const i of images) {
       if (i.currentSrc || i.src) imagesWithSrc++;
@@ -587,6 +598,9 @@ export function PerformancePanel() {
     const poolStats = getVideoActivationPoolStats();
     lines.push(`<video>:        ${videos.length} total, ${videosWithSrc} with src, ${videosPlaying} playing`);
     lines.push(`Video pool:     ${poolStats.active}/${poolStats.maxActive} active, ${poolStats.queued} queued`);
+    lines.push(`Video scrub:    ${scrubVideos.length} widgets, ${scrubVideosWithSrc} with src, ${scrubKeepPausedWithSrc} keep-paused`);
+    lines.push(`Scrub slots:    ${scrubWaitingSlot} waiting`);
+    lines.push(`Video stale:    ${videosWithCurrentSrcOnly} with currentSrc only`);
     lines.push(`<img>:          ${images.length} total, ${imagesWithSrc} with src`);
     lines.push(`<canvas>:       ${canvases.length}`);
     lines.push('');

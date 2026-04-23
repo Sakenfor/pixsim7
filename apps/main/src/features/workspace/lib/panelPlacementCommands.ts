@@ -75,7 +75,9 @@ export function dockFloatingPanelPlacement(
 }
 
 export function closeFloatingPanelPlacement(panelId: string): void {
-  useWorkspaceStore.getState().closeFloatingPanel(panelId);
+  // Explicit close via the coordinator is user-intent to dismiss the float —
+  // mark it so rehydrate / auto-open machinery treats it as dismissed.
+  useWorkspaceStore.getState().closeFloatingPanel(panelId, { dismiss: true });
 }
 
 /**
