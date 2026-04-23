@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useGenerationSettingsStore } from '@features/generation';
 import {
   Badge,
   Button,
@@ -14,6 +15,7 @@ import {
 import { Icon } from '@lib/icons';
 import { PromptComposer } from '@features/prompts/components/PromptComposer';
 
+import { resolveRecipe } from '@pixsim7/core.prompt';
 import {
   detectPromptSections,
   PATTERN_COLORS,
@@ -140,6 +142,21 @@ export function PromptTestSuitePanel() {
   const [newToken, setNewToken] = useState('');
   const [previewVariantId, setPreviewVariantId] = useState<string | null>(null);
 
+  // Inherit operation/model context from quickgen settings.
+  const operationType = useGenerationSettingsStore((s) => s.activeOperationType);
+  const modelId       = useGenerationSettingsStore((s) => s.params?.model as string | undefined);
+  const providerId    = useGenerationSettingsStore((s) => s.providerId);
+
+  const recipe = useMemo(
+    () => resolveRecipe({ operation_type: operationType, model_id: modelId, provider_id: providerId }),
+    [operationType, modelId, providerId],
+  );
+
+  const runContextSeed = useMemo(
+    () => ({ operation_type: operationType, model_id: modelId, provider_id: providerId }),
+    [operationType, modelId, providerId],
+  );
+
   // Selection helpers
   const isCellSelected = useCallback(
     (vId: string, iId: string) => {
@@ -204,10 +221,11 @@ export function PromptTestSuitePanel() {
     );
   }, []);
 
-  // Detect sections in the base prompt (client-side, instant feedback)
+  // Detect sections in the base prompt (client-side, instant feedback).
+  // Uses the active recipe so pattern selection follows the current operation.
   const sections: DetectedSection[] = useMemo(
-    () => detectPromptSections(basePrompt),
-    [basePrompt],
+    () => detectPromptSections(basePrompt, recipe),
+    [basePrompt, recipe],
   );
 
 
@@ -308,6 +326,7 @@ export function PromptTestSuitePanel() {
           maxChars={8000}
           showCounter={false}
           historyScopeKey="prompt-test-suite"
+          runContextSeed={runContextSeed}
         />
         {sections.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">

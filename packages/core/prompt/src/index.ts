@@ -49,3 +49,6 @@ export type {
   LineNode,
   HeaderLine,
 } from './sections';
+
+export { resolveRecipe, BUILT_IN_RECIPES } from './recipes';
+export type { Recipe, RecipeContext } from './recipes';

@@ -7,6 +7,7 @@
  * `DetectedSection` / `PromptSectionBlock` shape consumed by the UI.
  */
 import { lex, parseLines, type HeaderLine, type LineNode } from './grammar';
+import type { Recipe } from './recipes';
 
 export type PatternId =
   | 'colon'
@@ -42,14 +43,15 @@ export const DEFAULT_ACTIVE_PATTERNS: PatternId[] = [
 
 export function detectPromptSections(
   text: string,
-  activeIds: PatternId[] = DEFAULT_ACTIVE_PATTERNS,
+  activeIds: PatternId[] | Recipe = DEFAULT_ACTIVE_PATTERNS,
 ): DetectedSection[] {
+  const resolvedIds: PatternId[] = Array.isArray(activeIds) ? activeIds : activeIds.activePatterns;
   if (!text) return [];
 
   const tokens = lex(text);
   const lines = parseLines(tokens, text);
 
-  const active = new Set<PatternId>(activeIds);
+  const active = new Set<PatternId>(resolvedIds);
   const headers: HeaderLine[] = lines.filter(
     (n): n is HeaderLine => n.kind === 'header' && active.has(n.pattern),
   );
@@ -86,7 +88,7 @@ function headerEnd(h: HeaderLine): number {
  */
 export function parseSectionBlocks(
   text: string,
-  activeIds?: PatternId[],
+  activeIds?: PatternId[] | Recipe,
 ): PromptSectionBlock[] {
   return detectPromptSections(text, activeIds).map((s) => ({
     label: s.label,
