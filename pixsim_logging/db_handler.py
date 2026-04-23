@@ -24,6 +24,17 @@ from sqlalchemy import Integer, String, DateTime, JSON, Text
 from .schema import LOG_ENTRY_COLUMNS
 
 
+def _emit_self_diag(level: str, event: str, msg: str) -> None:
+    """Emit a single-line diagnostic for DBLogHandler's own failures.
+
+    Uses print() (not structlog) to avoid recursion while the DB handler
+    itself is failing. Format mirrors CleanConsoleRenderer so downstream
+    log viewers still parse a `[HH:MM:SS] LEVEL svc event ...` prefix.
+    """
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {level:<5} db-handler {event} {msg}", flush=True)
+
+
 def _to_json_safe(value: Any) -> Any:
     """
     Recursively convert values to JSON-serializable forms.
@@ -77,6 +88,7 @@ class DBLogHandler:
         self.engine = create_engine(
             self.db_url,
             pool_pre_ping=True,
+            pool_recycle=1800,
             pool_size=5,
             max_overflow=10,
         )
@@ -122,7 +134,7 @@ class DBLogHandler:
             except Exception as exc:
                 # Avoid blocking application startup, but emit a one-line hint so
                 # operators can discover that DB ingestion is not actually working.
-                print(f"[DBLogHandler] Failed to ensure log table exists: {exc}", flush=True)
+                _emit_self_diag("ERROR", "table_ensure_failed", f"error={exc}")
 
         self.queue: Queue = Queue(maxsize=1000)
         self.shutdown_event = Event()
@@ -208,10 +220,7 @@ class DBLogHandler:
             # a counter and occasionally emit a diagnostic to stderr.
             self._dropped_logs += 1
             if self._dropped_logs in {1, 10, 100} or self._dropped_logs % 1000 == 0:
-                print(
-                    f"[DBLogHandler] Dropped logs due to full queue; total dropped={self._dropped_logs}",
-                    flush=True,
-                )
+                _emit_self_diag("WARN", "queue_full_dropped", f"total_dropped={self._dropped_logs}")
         return event_dict
 
     def _worker(self):
@@ -235,10 +244,7 @@ class DBLogHandler:
                 # and emit a sparse diagnostic for observability.
                 self._worker_errors += 1
                 if self._worker_errors in {1, 10, 100} or self._worker_errors % 1000 == 0:
-                    print(
-                        f"[DBLogHandler] Worker loop error (count={self._worker_errors}): {exc}",
-                        flush=True,
-                    )
+                    _emit_self_diag("ERROR", "worker_loop_error", f"count={self._worker_errors} error={exc}")
 
         if batch:
             self._flush(batch)
@@ -256,7 +262,7 @@ class DBLogHandler:
         except Exception as exc:
             # Drop on error to avoid blocking application, but emit a terse
             # message so that ingestion failures do not go unnoticed.
-            print(f"[DBLogHandler] Failed to flush {len(rows)} log rows: {exc}", flush=True)
+            _emit_self_diag("ERROR", "flush_failed", f"rows={len(rows)} error={exc!r}")
 
     def _map_event(self, ev: dict[str, Any]) -> dict[str, Any]:
         """Map structlog event to DB row, collecting unknown keys into 'extra'."""

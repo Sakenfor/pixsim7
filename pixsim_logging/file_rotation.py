@@ -14,7 +14,10 @@ def _ensure_parent_dir(path: str) -> None:
 def rotate_file(path: str, max_bytes: Optional[int], backups: int = 1) -> bool:
     """Rotate file when it exceeds `max_bytes`.
 
-    Returns True if a rotation occurred.
+    Returns True if a rotation occurred. On Windows the file may still be
+    held open by a previous subprocess or log viewer; in that case rotation
+    is skipped (the current file keeps growing for this cycle) rather than
+    raising and blocking service startup.
     """
     if not max_bytes or max_bytes <= 0:
         return False
@@ -23,14 +26,22 @@ def rotate_file(path: str, max_bytes: Optional[int], backups: int = 1) -> bool:
     if not os.path.exists(path) or os.path.getsize(path) < max_bytes:
         return False
 
-    for idx in range(backups, 0, -1):
-        src = path if idx == 1 else f"{path}.{idx-1}"
-        dst = f"{path}.{idx}"
-        if os.path.exists(src):
-            os.replace(src, dst)
-
-    open(path, 'w', encoding='utf-8').close()
-    return True
+    try:
+        for idx in range(backups, 0, -1):
+            src = path if idx == 1 else f"{path}.{idx-1}"
+            dst = f"{path}.{idx}"
+            if os.path.exists(src):
+                os.replace(src, dst)
+        open(path, 'w', encoding='utf-8').close()
+        return True
+    except PermissionError:
+        # Windows: file handle still held. Skip rotation for this cycle.
+        return False
+    except OSError as exc:
+        # WinError 32 surfaces as OSError with errno 13 or similar.
+        if getattr(exc, 'winerror', None) == 32:
+            return False
+        raise
 
 
 def append_line(path: str, line: str, *, encoding: str = 'utf-8', errors: str = 'ignore') -> None:
