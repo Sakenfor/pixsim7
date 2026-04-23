@@ -143,6 +143,22 @@ export interface HeaderLine {
   bodyStart: number;
 }
 
+export interface RelationHop {
+  lhs: string | null;
+  rhs: string | null;
+  raw: string;
+  leadingChar: string | null;
+  terminalChar: string | null;
+  run: number;
+}
+
+export interface RelationLine {
+  kind: 'relation';
+  hops: RelationHop[];
+  start: number;
+  end: number;
+}
+
 export interface ProseLine {
   kind: 'prose';
   start: number;
@@ -150,7 +166,7 @@ export interface ProseLine {
   text: string;
 }
 
-export type LineNode = HeaderLine | ProseLine;
+export type LineNode = HeaderLine | RelationLine | ProseLine;
 
 interface LineSlice {
   /** Token indices [from, to) for this line, EXCLUDING the trailing NEWLINE. */
@@ -313,27 +329,33 @@ function parseLine(line: LineSlice, tokens: Token[]): LineNode {
   if (!isUpperIdent(first.text)) return proseFallback();
 
   // ── assignment: LABEL = ... ───────────────────────────────────────────
+  // Reject when = run is immediately followed by > or < (compound ===> is a relation op).
   {
     let k = i + 1;
     if (k < end && tokens[k].kind === 'WS') k++;
     if (k < end && tokens[k].kind === 'RUN' && tokens[k].run!.char === '=') {
-      const label = first.text;
-      const p = pat('assignment');
-      if (label.length >= p.label_min && label.length <= p.label_max) {
-        let after = k + 1;
-        while (after < end && tokens[after].kind === 'WS') after++;
-        const bodyStart = after < end ? tokens[after].start : line.next;
-        return { kind: 'header', pattern: 'assignment', label, start: line.start, end: line.end, bodyStart };
+      const nextK = k + 1;
+      const isCompound = nextK < end && tokens[nextK].kind === 'RUN'
+        && (tokens[nextK].run!.char === '>' || tokens[nextK].run!.char === '<');
+      if (!isCompound) {
+        const label = first.text;
+        const p = pat('assignment');
+        if (label.length >= p.label_min && label.length <= p.label_max) {
+          let after = k + 1;
+          while (after < end && tokens[after].kind === 'WS') after++;
+          const bodyStart = after < end ? tokens[after].start : line.next;
+          return { kind: 'header', pattern: 'assignment', label, start: line.start, end: line.end, bodyStart };
+        }
       }
     }
   }
 
-  // ── assignment_arrow: LABEL > ...  (whitespace before > mandatory) ────
+  // ── assignment_arrow: LABEL > ...  (single > only; >>> falls to relation)
   {
     let k = i + 1;
     if (k < end && tokens[k].kind === 'WS') {
       k++;
-      if (k < end && tokens[k].kind === 'RUN' && tokens[k].run!.char === '>') {
+      if (k < end && tokens[k].kind === 'RUN' && tokens[k].run!.char === '>' && tokens[k].run!.n === 1) {
         const label = first.text;
         const p = pat('assignment_arrow');
         if (label.length >= p.label_min && label.length <= p.label_max) {

@@ -21,6 +21,15 @@ import type { PromptBlockCandidate } from '../types';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface PromptTokenRelationHop {
+  lhs?: string | null;
+  rhs?: string | null;
+  raw: string;
+  leading_char?: string | null;
+  terminal_char?: string | null;
+  run: number;
+}
+
 // Token-level line nodes returned by the Python tokenizer.
 export interface PromptTokenLine {
   kind: 'header' | 'relation' | 'prose';
@@ -28,13 +37,8 @@ export interface PromptTokenLine {
   pattern?: string;
   label?: string;
   body_start?: number;
-  // relation fields
-  lhs?: string | null;
-  rhs?: string | null;
-  raw?: string;
-  leading_char?: string | null;
-  terminal_char?: string | null;
-  run?: number;
+  // relation fields — one or more hops, e.g. A===>B<===C → 2 hops
+  hops?: PromptTokenRelationHop[];
   // shared
   start: number;
   end: number;

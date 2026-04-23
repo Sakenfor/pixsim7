@@ -626,14 +626,21 @@ class PromptTokenHeaderLine(BaseModel):
     body_start: int
 
 
-class PromptTokenRelationLine(BaseModel):
-    kind: Literal["relation"] = "relation"
+class PromptTokenRelationHop(BaseModel):
     lhs: Optional[str] = None
     rhs: Optional[str] = None
-    raw: str = Field(..., description="Full operator string, e.g. '>>>>>>>'")
+    raw: str = Field(..., description="Operator string, e.g. '===>' or '<'")
     leading_char: Optional[str] = None
     terminal_char: Optional[str] = None
     run: int = Field(..., description="Total operator length in characters")
+
+
+class PromptTokenRelationLine(BaseModel):
+    kind: Literal["relation"] = "relation"
+    hops: List[PromptTokenRelationHop] = Field(
+        ...,
+        description="One or more (lhs? op rhs?) hops; e.g. A===>B<===C gives two hops",
+    )
     start: int
     end: int
 

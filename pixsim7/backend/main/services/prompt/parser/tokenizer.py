@@ -190,18 +190,25 @@ class HeaderLine:
 
 
 @dataclass(slots=True)
+class RelationHop:
+    """One (lhs?, op, rhs?) unit within a relation chain."""
+    lhs: Optional[str]
+    rhs: Optional[str]
+    raw: str
+    leading_char: Optional[str]
+    terminal_char: Optional[str]
+    run: int
+
+
+@dataclass(slots=True)
 class RelationLine:
     """
-    A line of the form  IDENT op IDENT  where op is a run of < / > / =
-    (or a compound like ==>).  Semantics are left to the recipe layer.
+    One or more relation hops on a single line.
+    e.g.  ACTOR1 ===> SCENE <=== ACTOR2  →  two hops.
+    Semantics of operators are left to the recipe layer.
     """
     kind: str = "relation"
-    lhs: Optional[str] = None
-    rhs: Optional[str] = None
-    raw: str = ""             # full operator string, e.g. ">>>>>>>"
-    leading_char: Optional[str] = None   # dominant char before terminal
-    terminal_char: Optional[str] = None  # final directional char
-    run: int = 0              # total operator length
+    hops: List[RelationHop] = field(default_factory=list)
     start: int = 0
     end: int = 0
 
@@ -324,25 +331,36 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
         return _try_relation(line, tokens, i, end, prose)
 
     # ── assignment: LABEL = ... ───────────────────────────────────────────
+    # Rejected when the = run is immediately followed by > or < (e.g. ===>),
+    # which makes it a compound relation operator rather than an assignment.
     p = _pat("assignment")
     k = i + 1
     if k < end and tokens[k].kind == "WS":
         k += 1
     if k < end and tokens[k].kind == "RUN" and tokens[k].run_char == "=":
-        label = first.text
-        if p["label_min"] <= len(label) <= p["label_max"]:
-            after = k + 1
-            while after < end and tokens[after].kind == "WS":
-                after += 1
-            body_start = tokens[after].start if after < end else line.next
-            return HeaderLine("header", "assignment", label, line.start, line.end, body_start)
+        next_k = k + 1
+        is_compound = (
+            next_k < end
+            and tokens[next_k].kind == "RUN"
+            and tokens[next_k].run_char in ("<", ">")
+        )
+        if not is_compound:
+            label = first.text
+            if p["label_min"] <= len(label) <= p["label_max"]:
+                after = k + 1
+                while after < end and tokens[after].kind == "WS":
+                    after += 1
+                body_start = tokens[after].start if after < end else line.next
+                return HeaderLine("header", "assignment", label, line.start, line.end, body_start)
 
-    # ── assignment_arrow: LABEL > ... (WS before > mandatory) ────────────
+    # ── assignment_arrow: LABEL > ... (WS before > mandatory, single > only)
+    # Multi-char runs like >>> are relation operators, not assignment arrows.
     p = _pat("assignment_arrow")
     k = i + 1
     if k < end and tokens[k].kind == "WS":
         k += 1
-        if k < end and tokens[k].kind == "RUN" and tokens[k].run_char == ">":
+        if (k < end and tokens[k].kind == "RUN"
+                and tokens[k].run_char == ">" and tokens[k].run_n == 1):
             label = first.text
             if p["label_min"] <= len(label) <= p["label_max"]:
                 after = k + 1
@@ -369,65 +387,73 @@ def _try_relation(
     fallback: ProseLine,
 ) -> LineNode:
     """
-    Try to parse IDENT? RUN(op) IDENT? as a relation node.
-    Both operands are optional (e.g. standalone `=====>` has no LHS/RHS).
+    Parse one or more (lhs? op rhs?) hops on a single line.
+
+    Examples:
+        ACTOR1 > ACTOR2               → 1 hop
+        ACTOR1 ===> SCENE <=== ACTOR2 → 2 hops, SCENE shared
+        =====>                        → 1 hop, both operands None
     """
     if i >= end:
         return fallback
 
-    # Collect optional leading IDENT
-    lhs: Optional[str] = None
+    hops: List[RelationHop] = []
     k = i
+
+    # Seed lhs from optional leading IDENT
+    lhs: Optional[str] = None
     if tokens[k].kind == "IDENT":
         lhs = tokens[k].text
         k += 1
         if k < end and tokens[k].kind == "WS":
             k += 1
 
-    # Must have at least one RUN token from the relation op_chars set
-    if k >= end or tokens[k].kind != "RUN" or tokens[k].run_char not in _RELATION_OP_CHARS:
+    while k < end:
+        if tokens[k].kind != "RUN" or tokens[k].run_char not in _RELATION_OP_CHARS:
+            break
+
+        # Collect all contiguous op-char RUN tokens as one operator
+        op_start = k
+        while k < end and tokens[k].kind == "RUN" and tokens[k].run_char in _RELATION_OP_CHARS:
+            k += 1
+
+        raw_op = "".join(t.text for t in tokens[op_start:k])
+        run_total = sum(t.run_n or 0 for t in tokens[op_start:k])
+        op_toks = tokens[op_start:k]
+        terminal_char: Optional[str] = op_toks[-1].run_char if op_toks[-1].run_char in ("<", ">") else None
+        leading_char: Optional[str] = op_toks[0].run_char if len(op_toks) > 1 else None
+
+        # Optional WS + rhs IDENT
+        if k < end and tokens[k].kind == "WS":
+            k += 1
+        rhs: Optional[str] = None
+        if k < end and tokens[k].kind == "IDENT":
+            rhs = tokens[k].text
+            k += 1
+
+        hops.append(RelationHop(
+            lhs=lhs,
+            rhs=rhs,
+            raw=raw_op,
+            leading_char=leading_char,
+            terminal_char=terminal_char,
+            run=run_total,
+        ))
+
+        # Skip inter-hop whitespace; rhs becomes lhs of the next hop
+        if k < end and tokens[k].kind == "WS":
+            k += 1
+        lhs = rhs
+
+    if not hops:
         return fallback
 
-    # Collect contiguous RUN tokens that form the operator (stay within op_chars)
-    op_start = k
-    while k < end and tokens[k].kind == "RUN" and tokens[k].run_char in _RELATION_OP_CHARS:
-        k += 1
-    op_end = k
-
-    if op_start == op_end:
+    # A standalone all-None hop (e.g. bare `=====>`) is valid only when it
+    # consumes the whole line — reject if there are leftover tokens.
+    if all(h.lhs is None and h.rhs is None for h in hops) and k < end:
         return fallback
 
-    raw_op = "".join(t.text for t in tokens[op_start:op_end])
-    run_total = sum(t.run_n or 0 for t in tokens[op_start:op_end])
-
-    # Derive leading char (dominant non-terminal) and terminal char
-    op_toks = tokens[op_start:op_end]
-    terminal_char: Optional[str] = op_toks[-1].run_char if op_toks[-1].run_char in ("<", ">") else None
-    leading_char: Optional[str] = op_toks[0].run_char if len(op_toks) > 1 else None
-
-    # Optional trailing WS + IDENT
-    if k < end and tokens[k].kind == "WS":
-        k += 1
-    rhs: Optional[str] = None
-    if k < end and tokens[k].kind == "IDENT":
-        rhs = tokens[k].text
-        k += 1
-
-    # For a relation, only accept if at least one of lhs/rhs is present
-    # OR the line is nothing but the operator (e.g. `=====>` alone).
-    if lhs is None and rhs is None and k < end:
-        return fallback
-
-    return RelationLine(
-        lhs=lhs,
-        rhs=rhs,
-        raw=raw_op,
-        leading_char=leading_char,
-        terminal_char=terminal_char,
-        run=run_total,
-        start=line.start,
-        end=line.end,
-    )
+    return RelationLine(hops=hops, start=line.start, end=line.end)
 
 
 def parse_lines(tokens: List[Token], source: str) -> List[LineNode]:
@@ -471,12 +497,17 @@ def _node_to_dict(n: LineNode) -> dict:
     if isinstance(n, RelationLine):
         return {
             "kind": "relation",
-            "lhs": n.lhs,
-            "rhs": n.rhs,
-            "raw": n.raw,
-            "leading_char": n.leading_char,
-            "terminal_char": n.terminal_char,
-            "run": n.run,
+            "hops": [
+                {
+                    "lhs": h.lhs,
+                    "rhs": h.rhs,
+                    "raw": h.raw,
+                    "leading_char": h.leading_char,
+                    "terminal_char": h.terminal_char,
+                    "run": h.run,
+                }
+                for h in n.hops
+            ],
             "start": n.start,
             "end": n.end,
         }
