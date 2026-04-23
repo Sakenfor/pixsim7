@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef } from 'react';
 
 import type { PresetGestureOverrides } from '@lib/ui/overlay';
+
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 
 import type { MediaCardActions } from '@/components/media/MediaCard';
 
@@ -70,8 +72,12 @@ export function useCardGestures({
   surfaceId = 'gallery',
 }: UseCardGesturesOptions): UseCardGesturesResult {
   const cfg = useSurfaceGestureConfig(surfaceId);
+  const isMobile = useIsMobileViewport();
 
-  const effectiveGestureEnabled = presetGestureOverrides?.enabled ?? cfg.enabled;
+  // Disable swipe/drag gestures on mobile — they clash with native touch
+  // scrolling and tap affordances. Cards stay fully interactive via tap.
+  const effectiveGestureEnabled =
+    !isMobile && (presetGestureOverrides?.enabled ?? cfg.enabled);
   const effectiveGestureThreshold = presetGestureOverrides?.threshold ?? cfg.threshold;
   const effectiveGestureEdgeInset = presetGestureOverrides?.edgeInset ?? cfg.edgeInset;
   const effectiveCascadeStepPixels = presetGestureOverrides?.cascadeStepPixels ?? cfg.cascadeStepPixels;

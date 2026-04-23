@@ -34,6 +34,8 @@ import {
   usePanelCatalogBootstrap,
   type PanelHostDockviewRef,
 } from '@features/panels';
+import { PanelHostMobile } from '@features/panels/components/host/PanelHostMobile';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
 import { useAppDockviewIntegration } from '@features/workspace';
 
@@ -300,6 +302,7 @@ export function AssetViewerDockview({
   const panelHostRef = useRef<PanelHostDockviewRef>(null);
   // Keep state for triggering re-renders when needed (but not in context deps)
   const [dockviewApiVersion, setDockviewApiVersion] = useState(0);
+  const isMobile = useIsMobileViewport();
 
   // Build context for panels (includes both ViewerPanelContext and WorkspaceContext fields)
   // Note: dockviewApi is provided via ref to avoid context changes on initial setup
@@ -381,6 +384,20 @@ export function AssetViewerDockview({
 
   if (showLoadingPlaceholder) {
     return <div className={className ?? "h-full w-full"} />;
+  }
+
+  if (isMobile) {
+    return (
+      <PanelHostMobile
+        dockId={useDockId ? DOCK_IDS.assetViewer : undefined}
+        panels={useDockId ? undefined : viewerPanelIds}
+        allowedPanels={useDockId ? viewerPanelIds : undefined}
+        excludePanels={useDockId ? floatingViewerPanelIds : undefined}
+        storageKey="dockview:asset-viewer:v6"
+        context={context}
+        className={className}
+      />
+    );
   }
 
   return (

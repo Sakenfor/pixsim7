@@ -231,7 +231,7 @@ export function AssetsRoute() {
   // Show loading state if source not available (should be rare since sources register at startup)
   if (!sourceDef || !SourceComponent) {
     return (
-      <div className="flex items-center justify-center h-screen" style={layoutStyle}>
+      <div className="flex items-center justify-center h-screen h-dvh" style={layoutStyle}>
         <div className="text-center">
           <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           <p className="text-sm text-neutral-600 dark:text-neutral-400">Loading asset sources...</p>
@@ -241,7 +241,7 @@ export function AssetsRoute() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={layoutStyle}>
+    <div className="flex flex-col h-screen h-dvh overflow-hidden" style={layoutStyle}>
       {/* Selection banners (only rendered when active) */}
       {isSelectionMode && (
         <div className="flex-shrink-0 px-6 pt-4">
@@ -276,9 +276,12 @@ export function AssetsRoute() {
           </div>
         )}
 
-        {/* Source component with side-push viewer layout */}
+        {/* Source component with side-push viewer layout.
+            Outer wrapper is overflow-hidden — each SourceComponent manages
+            its own internal scroll container. A nested overflow-y-auto here
+            caused double-scroll confusion on touch devices. */}
         <AssetViewerLayout>
-          <div className={`h-full overflow-y-auto transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+          <div className={`h-full overflow-hidden transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
             <SourceComponent
               layout={layout}
               cardSize={cardSize}

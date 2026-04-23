@@ -330,11 +330,16 @@ export function ControlCenterDock() {
   }
 
   // Docked mode: use fixed positioning with edge-based reveal
+  // When retracted, a tap/click anywhere on the container opens the dock.
+  // This is the only reveal path on touch devices (useDockBehavior uses
+  // mousemove/mouseleave exclusively).
+  const handleContainerClick = !open ? () => setOpen(true) : undefined;
   return (
     <div
       ref={dockRef}
-      className={clsx(positionClasses, transformClasses)}
+      className={clsx(positionClasses, transformClasses, !open && 'cursor-pointer')}
       style={{ ...containerStyle, ...retractedStyle }}
+      onClick={handleContainerClick}
     >
       {renderContent()}
     </div>

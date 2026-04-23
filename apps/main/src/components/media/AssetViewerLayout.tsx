@@ -5,10 +5,13 @@
  * Wraps gallery/folder content and shows the viewer panel when an asset is open.
  */
 
-import { ReactNode, useCallback, useRef } from 'react';
-import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
-import { AssetViewerPanel } from './AssetViewerPanel';
 import { ResizeDivider, useResizeHandle } from '@pixsim7/shared.ui';
+import { ReactNode, useCallback, useRef } from 'react';
+
+import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
+
+import { AssetViewerPanel } from './AssetViewerPanel';
 
 interface AssetViewerLayoutProps {
   children: ReactNode;
@@ -19,6 +22,7 @@ export function AssetViewerLayout({ children }: AssetViewerLayoutProps) {
   const mode = useAssetViewerStore((s) => s.mode);
   const settings = useAssetViewerStore((s) => s.settings);
   const updateSettings = useAssetViewerStore((s) => s.updateSettings);
+  const isMobile = useIsMobileViewport();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +58,19 @@ export function AssetViewerLayout({ children }: AssetViewerLayoutProps) {
         <AssetViewerPanel />
       </>
     );
+  }
+
+  // On mobile, collapse the side-push into a toggle: viewer full-screen when
+  // open, gallery full-screen when closed. Skips the resize divider entirely.
+  if (isMobile) {
+    if (isViewerOpen) {
+      return (
+        <div className="h-full">
+          <AssetViewerPanel />
+        </div>
+      );
+    }
+    return <div className="h-full">{children}</div>;
   }
 
   // Side-push layout

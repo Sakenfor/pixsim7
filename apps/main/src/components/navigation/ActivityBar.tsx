@@ -328,7 +328,7 @@ export function ActivityBar() {
     <>
       {/* Main bar — slides in/out */}
       <nav
-        className="fixed left-0 top-0 h-screen w-12 z-30 flex flex-col items-center py-2 bg-neutral-900/90 border-r border-neutral-800/60 backdrop-blur-sm transition-transform duration-200 ease-in-out"
+        className="fixed left-0 top-0 h-screen h-dvh w-12 z-30 flex flex-col items-center py-2 bg-neutral-900/90 border-r border-neutral-800/60 backdrop-blur-sm transition-transform duration-200 ease-in-out"
         style={{ transform: collapsed ? 'translateX(-100%)' : 'translateX(0)' }}
       >
         {/* Home button */}
@@ -400,7 +400,7 @@ export function ActivityBar() {
 
       {/* Expand affordance — visible only when collapsed */}
       <div
-        className="fixed left-0 top-0 h-screen w-2 z-30 group/expand transition-opacity duration-200"
+        className="fixed left-0 top-0 h-screen h-dvh w-2 z-30 group/expand transition-opacity duration-200"
         style={{ opacity: collapsed ? 1 : 0, pointerEvents: collapsed ? 'auto' : 'none' }}
       >
         <button

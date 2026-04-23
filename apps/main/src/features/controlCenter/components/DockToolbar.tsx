@@ -98,6 +98,11 @@ export function DockToolbar({
   const triggerDockLayoutReset = useDockUiStore((s) => s.triggerDockLayoutReset);
   const setDockRetractedMode = useDockUiStore((s) => s.setDockRetractedMode);
   const setDockLayoutBehavior = useDockUiStore((s) => s.setDockLayoutBehavior);
+  const setDockOpen = useDockUiStore((s) => s.setDockOpen);
+  const collapseDock = useCallback(
+    () => setDockOpen(DOCK_IDS.controlCenter, false),
+    [setDockOpen],
+  );
   const retractedMode = useDockState(
     DOCK_IDS.controlCenter,
     (dock) => dock.retractedMode,
@@ -254,6 +259,14 @@ export function DockToolbar({
           aria-pressed={pinned}
         >
           {pinned ? '📌' : '📍'}
+        </button>
+        <button
+          onClick={collapseDock}
+          className="text-xs px-1.5 py-0.5 rounded transition-colors hover:bg-accent-subtle leading-none"
+          title="Collapse"
+          aria-label="Collapse control center"
+        >
+          ✕
         </button>
       </div>
 

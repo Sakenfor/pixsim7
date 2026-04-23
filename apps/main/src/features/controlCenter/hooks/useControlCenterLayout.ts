@@ -15,6 +15,7 @@ import {
   type LayoutBehavior,
   type RetractedMode,
 } from '@features/docks/stores';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 export interface ControlCenterLayoutPadding {
@@ -63,12 +64,17 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
     (dock) => dock.retractedMode,
   );
   const height = useDockState(DOCK_IDS.controlCenter, (dock) => dock.size);
+  const isMobile = useIsMobileViewport();
 
   const result = useMemo(() => {
     const isFloating = dockPosition === 'floating';
+    // On mobile the dock always overlays content — reserving viewport space
+    // for a peek toolbar or open dock would squeeze the already-narrow page.
+    const pushSuppressed = isMobile;
     // Always push when retracted in peek mode (toolbar is visible and would overlap content)
-    const peekRetracted = !open && retractedMode === 'peek' && !isFloating;
-    const isPushActive = peekRetracted || (layoutBehavior === 'push' && open && !isFloating);
+    const peekRetracted = !pushSuppressed && !open && retractedMode === 'peek' && !isFloating;
+    const isPushActive =
+      !pushSuppressed && (peekRetracted || (layoutBehavior === 'push' && open && !isFloating));
     const pushSize = peekRetracted ? TOOLBAR_HEIGHT : height;
 
     const padding: ControlCenterLayoutPadding = {
@@ -110,7 +116,7 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
       dockPosition,
       isOpen: open,
     };
-  }, [open, dockPosition, layoutBehavior, retractedMode, height]);
+  }, [open, dockPosition, layoutBehavior, retractedMode, height, isMobile]);
 
   return result;
 }
