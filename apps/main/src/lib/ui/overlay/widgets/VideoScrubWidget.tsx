@@ -18,10 +18,13 @@ import {
   clearCapturedFrame,
   setCapturedFrame,
 } from '@lib/media/capturedFrameStore';
+import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
 
 import { claimAudio, registerActiveVideo } from '@features/assets/lib/activeVideoRegistry';
 
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
+import { BACKEND_BASE } from '@/lib/api/client';
+import { isBackendUrl } from '@/lib/media/backendUrl';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
@@ -183,6 +186,7 @@ export interface VideoScrubWidgetRendererProps {
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
+const SCRUB_HOVER_START_EVENT = 'pixsim:video-scrub-hover-start';
 /**
  * Keep the <video> element loaded for this long after mouse-leave so the
  * user sees the paused-at-last-frame state for a moment.  After this the
@@ -190,7 +194,7 @@ const DRAG_THRESHOLD = 5; // pixels before considered a drag
  * decoders pile up across many hovered cards; too short = re-hover feels
  * laggy from re-load.
  */
-const SRC_RELEASE_IDLE_MS = 30000;
+const SRC_RELEASE_IDLE_MS = 4000;
 export const STEP_COARSE = 0.5; // seconds per arrow key press
 export const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
 const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
@@ -237,16 +241,8 @@ export function VideoScrubWidgetRenderer({
   onDurationChange,
   onRegisterSeekFn,
 }: VideoScrubWidgetRendererProps) {
-  const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering, mediaType: 'video' });
-  const resolvedUrl = authenticatedSrc || url;
-  // Support both onDotClick and legacy onExtractFrame
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState<number | null>(null);
-  const [hoverPercent, setHoverPercent] = useState(0);
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
-  // Keep <video> mounted (and paused at last frame) for a window after
-  // mouse-leaves, then release src to free the GPU decoder.  Without this,
-  // every card the user ever hovered keeps its decoder pinned in VRAM.
+  // Keep <video> mounted (and paused at last frame) for a short window after
+  // mouse-leave, then release src to free the GPU decoder.
   const [keepSrcWhilePaused, setKeepSrcWhilePaused] = useState(false);
   const srcReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [videoError, setVideoError] = useState(false);
@@ -254,6 +250,23 @@ export function VideoScrubWidgetRenderer({
   const [timestampPosition, setTimestampPosition] = useState<{ top: number; left: number } | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mediaActive = isHovering || keepSrcWhilePaused;
+  const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: mediaActive, mediaType: 'video' });
+  const isBackendMediaUrl = Boolean(url && isBackendUrl(url, BACKEND_BASE));
+  const resolvedUrl = useMemo(() => {
+    if (!url) return undefined;
+    if (isBackendMediaUrl) {
+      // Backend media must use authenticated blob/object URLs only.
+      return authenticatedSrc;
+    }
+    return authenticatedSrc || url;
+  }, [authenticatedSrc, isBackendMediaUrl, url]);
+  // Support both onDotClick and legacy onExtractFrame
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [hoverPercent, setHoverPercent] = useState(0);
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -299,13 +312,18 @@ export function VideoScrubWidgetRenderer({
     () => (resolvedUrl ? buildCacheBustedUrl(resolvedUrl, cacheBustToken) : resolvedUrl),
     [resolvedUrl, cacheBustToken, buildCacheBustedUrl],
   );
+  // Reuse the global decoder pool so scrub previews cannot bypass the gallery
+  // memory cap and pile dozens of concurrent video decoders.
+  const wantsVideoDecoder = mediaActive && !!effectiveUrl;
+  const hasVideoDecoderSlot = useVideoActivationSlot(wantsVideoDecoder);
+  const shouldAttachVideoSrc = mediaActive && hasVideoDecoderSlot;
 
   // Force video to load when hovering starts — but skip the reload if the
   // video is already loaded (from a recent hover whose src was kept warm).
   // Re-calling load() would wipe the decoded frame buffer, making re-hover
   // flash blank/thumbnail.
   useEffect(() => {
-    if (!isHovering || !videoRef.current || !effectiveUrl) return;
+    if (!isHovering || !shouldAttachVideoSrc || !videoRef.current || !effectiveUrl) return;
     const current = videoRef.current;
     // If the element already has this URL loaded and ready, don't reload.
     // current.src is browser-normalized (absolute), so compare against a
@@ -323,7 +341,7 @@ export function VideoScrubWidgetRenderer({
     setCacheBustToken(null);
     current.src = effectiveUrl;
     current.load();
-  }, [isHovering, effectiveUrl]);
+  }, [isHovering, effectiveUrl, shouldAttachVideoSrc]);
 
   // Use provided duration or detected duration
   const videoDuration = duration || configDuration || 0;
@@ -387,6 +405,23 @@ export function VideoScrubWidgetRenderer({
       }
     };
   }, []);
+
+  // Explicitly release decoder/network resources when this widget should no
+  // longer hold a source.  Merely rendering src={undefined} can leave
+  // currentSrc + decoder state pinned in some browsers.
+  useEffect(() => {
+    if (shouldAttachVideoSrc) return;
+    const el = videoRef.current;
+    if (!el) return;
+    try {
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    } catch {
+      // Best effort cleanup.
+    }
+    setIsVideoLoaded(false);
+  }, [shouldAttachVideoSrc]);
 
   // Start playing video (loop from current position)
   const startPlaying = useCallback(() => {
@@ -893,6 +928,37 @@ export function VideoScrubWidgetRenderer({
     return () => { onActiveChange?.(false); };
   }, [isHovering, onActiveChange]);
 
+  // Hover-priority handoff: when a new scrub widget is hovered, ask other
+  // widgets to drop their keep-paused hold immediately so slot acquisition
+  // does not wait for idle timers.
+  useEffect(() => {
+    if (!isHovering || typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent<{ key: string }>(SCRUB_HOVER_START_EVENT, {
+        detail: { key: claimKeyRef.current },
+      }),
+    );
+  }, [isHovering]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onOtherHoverStart = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (!key || key === claimKeyRef.current) return;
+      if (isHovering || !keepSrcWhilePaused) return;
+      if (srcReleaseTimerRef.current) {
+        clearTimeout(srcReleaseTimerRef.current);
+        srcReleaseTimerRef.current = null;
+      }
+      setKeepSrcWhilePaused(false);
+      if (url) clearCapturedFrame(url);
+    };
+    window.addEventListener(SCRUB_HOVER_START_EVENT, onOtherHoverStart as EventListener);
+    return () => {
+      window.removeEventListener(SCRUB_HOVER_START_EVENT, onOtherHoverStart as EventListener);
+    };
+  }, [isHovering, keepSrcWhilePaused, url]);
+
   // Report live scrub time so capability actions can drive extract/upload
   // without needing direct access to the widget's internal state.
   useEffect(() => {
@@ -1113,17 +1179,18 @@ export function VideoScrubWidgetRenderer({
         data-hovering={isHovering}
         data-video-loaded={isVideoLoaded}
         data-keep-paused={keepSrcWhilePaused}
+        data-video-slot={hasVideoDecoderSlot ? 'granted' : 'waiting'}
         data-duration={videoDuration}
         data-show-timeline={showTimeline ? 'true' : 'false'}
-        src={isHovering || keepSrcWhilePaused ? effectiveUrl : undefined}
-        preload={isHovering || keepSrcWhilePaused ? 'auto' : 'none'}
+        src={shouldAttachVideoSrc ? effectiveUrl : undefined}
+        preload={shouldAttachVideoSrc ? 'metadata' : 'none'}
         muted={hoverSound && isHovering ? false : muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onError={handleError}
         className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
-          isVideoLoaded && (isHovering || keepSrcWhilePaused) ? 'opacity-100' : 'opacity-0'
+          isVideoLoaded && shouldAttachVideoSrc ? 'opacity-100' : 'opacity-0'
         }`}
         {...videoProps}
       />

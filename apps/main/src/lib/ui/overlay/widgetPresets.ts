@@ -109,7 +109,7 @@ export function buildCountBadgeWidget(
 }
 
 // ---------------------------------------------------------------------------
-// Set indicator widget (emerald dot — "in active set")
+// Set indicator widget ("in active set")
 // ---------------------------------------------------------------------------
 
 export interface SetIndicatorWidgetOptions {
@@ -122,24 +122,25 @@ export interface SetIndicatorWidgetOptions {
 }
 
 /**
- * Build an emerald-dot badge indicating an asset belongs to the active set.
- * Stacks at top-left via `badges-tl` group.
+ * Build a badge indicating an asset belongs to the active set.
+ * Stacks in the top-right badge column under status/favorite/tag controls.
  */
 export function buildSetIndicatorWidget(
   options?: SetIndicatorWidgetOptions,
 ): OverlayWidget {
   return createBadgeWidget({
     id: options?.id ?? 'set-indicator',
-    ...BADGE_SLOT.topLeft,
+    ...BADGE_SLOT.topRight,
     visibility: { trigger: 'always' },
     variant: 'icon',
+    icon: 'check',
     color: 'green',
     shape: 'circle',
     tooltip: options?.tooltip ?? 'In active set',
     className:
       options?.className ??
-      '!w-2.5 !h-2.5 !min-w-0 !min-h-0 !p-0 !bg-emerald-500 ring-2 ring-white/90 dark:ring-neutral-900/90 shadow-sm',
-    priority: BADGE_PRIORITY.interactive,
+      '!bg-emerald-600/90 !text-white backdrop-blur-sm',
+    priority: BADGE_PRIORITY.status + 1,
   });
 }
 
@@ -150,8 +151,6 @@ export function buildSetIndicatorWidget(
 export interface AddToSetWidgetOptions {
   /** Widget id. Default `'add-to-set'`. */
   id?: string;
-  /** Button label. Default `'Add'`. */
-  label?: string;
   /** Tooltip text. */
   tooltip?: string;
   /** Override className. */
@@ -159,29 +158,28 @@ export interface AddToSetWidgetOptions {
 }
 
 /**
- * Build an "Add" pill button that appears on hover for adding an asset to the
- * active set. Positioned at top-left, hover-only visibility.
+ * Build an "Add" icon button that appears on hover for adding an asset to the
+ * active set. Positioned in the top-right badge stack, hover-only visibility.
  */
 export function buildAddToSetWidget(
   onAdd: () => void,
   options?: AddToSetWidgetOptions,
 ): OverlayWidget {
-  const label = options?.label ?? 'Add';
   return createBadgeWidget({
     id: options?.id ?? 'add-to-set',
-    ...BADGE_SLOT.topLeft,
+    ...BADGE_SLOT.topRight,
     visibility: { trigger: 'hover-container' },
-    variant: 'icon-text',
+    variant: 'icon',
     icon: 'plus',
-    labelBinding: { kind: 'fn', target: 'label', fn: () => label },
     color: 'gray',
+    shape: 'circle',
     tooltip: options?.tooltip,
     onClick: () => onAdd(),
     className:
       options?.className ??
-      'border border-neutral-200 dark:border-neutral-700 !bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 hover:border-accent/40 shadow-sm text-[10px] font-medium',
-    // Keep the media-type icon as the top-left stack leader so Add appears as
-    // a secondary badge (same behavior as favorite under status on the right).
-    priority: BADGE_PRIORITY.info - 1,
+      '!bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 shadow-sm',
+    // Keep status/favorite/tag controls at the top-right leader positions.
+    priority: BADGE_PRIORITY.status + 1,
   });
 }
+

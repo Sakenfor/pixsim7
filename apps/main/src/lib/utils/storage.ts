@@ -12,6 +12,15 @@ function hasAuthToken(): boolean {
   return !!localStorage.getItem('access_token');
 }
 
+function hasNonEmptyRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length > 0
+  );
+}
+
 /**
  * Backend-synced storage for Zustand persist middleware
  *
@@ -100,14 +109,17 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
       // This prevents the race where a set() fires before async hydration completes,
       // writing the initial (empty) state over the real persisted data.
       const existing = localStorage.getItem(localStorageKey);
-      if (existing) {
+      if (existing && preferenceKey === 'generationSettings') {
         try {
           const incoming = JSON.parse(stringValue);
-          const incomingParams = incoming?.state?.params;
-          const paramsEmpty = !incomingParams || Object.keys(incomingParams).length === 0;
-          if (paramsEmpty) {
+          const incomingState = incoming?.state;
+          const hasPersistedGenerationSettings =
+            hasNonEmptyRecord(incomingState?.params)
+            || hasNonEmptyRecord(incomingState?.paramsPerOperation)
+            || hasNonEmptyRecord(incomingState?.paramsPerProviderOp);
+          if (!hasPersistedGenerationSettings) {
             debugFlags.warn('persistence',
-              `[BackendStorage:${preferenceKey}] Skipping write — empty params over existing data (pre-hydration race)`,
+              `[BackendStorage:${preferenceKey}] Skipping write - empty generation settings over existing data (pre-hydration race)`,
             );
             return;
           }
