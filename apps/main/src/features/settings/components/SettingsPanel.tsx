@@ -13,17 +13,10 @@ import { settingsRegistry, type SettingsModule } from '@features/settings';
 
 import { useSettingsUiStore } from '../stores/settingsUiStore';
 
+import { SettingsLoadingState } from './shared/SettingsLoadingState';
+
 // Import modules to trigger registration
 import './modules';
-
-/** Loading spinner for suspense fallback */
-function LoadingSpinner() {
-  return (
-    <div className="flex-1 flex items-center justify-center p-4">
-      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-}
 
 /** Content area that renders the active module/sub-section */
 function SettingsContent({
@@ -68,7 +61,7 @@ function SettingsContent({
       </div>
 
       {/* Content body */}
-      <Suspense fallback={<LoadingSpinner />}>
+      <Suspense fallback={<SettingsLoadingState fullHeight label="Loading settings panel..." />}>
         <Component />
       </Suspense>
     </div>

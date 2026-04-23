@@ -5,7 +5,7 @@
  * Supports both tabbed and non-tabbed layouts.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 
 import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
@@ -135,18 +135,18 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
 
   const category = settingsSchemaRegistry.getCategory(categoryId);
 
-  // Get tabs as array
-  const tabs = useMemo(() => {
-    if (!category) return [];
-    return Array.from(category.tabs.values());
-  }, [category]);
+  // NOTE: category objects are mutated in-place by settingsSchemaRegistry.
+  // Recompute tabs on every render so late registrations are reflected
+  // without requiring a remount (fixes "shows more tabs only on 2nd open").
+  const tabs = category ? Array.from(category.tabs.values()) : [];
+  const firstTabId = tabs[0]?.id ?? null;
 
   // Set initial active tab (use provided tabId or first tab)
   useEffect(() => {
-    if (tabs.length > 0 && !activeTabId) {
-      setActiveTabId(tabId || tabs[0].id);
+    if (firstTabId && !activeTabId) {
+      setActiveTabId(tabId || firstTabId);
     }
-  }, [tabs, activeTabId, tabId]);
+  }, [firstTabId, activeTabId, tabId]);
 
   if (!category) {
     return (
