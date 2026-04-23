@@ -9,6 +9,9 @@ import { useEffect, useCallback } from 'react';
 
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
+import { isTypingInEditable } from '@/hooks/useKeyboardShortcuts';
+
+
 import type { MediaOverlayHostState } from '../../overlays';
 import { useMaskOverlayStore } from '../../overlays/builtins/maskOverlayStore';
 
@@ -65,13 +68,10 @@ export function useOverlayShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if in input/textarea
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
+      // Skip if the user is typing (input, textarea, or contenteditable).
+      // Contenteditable was missing from the previous hand-rolled check
+      // and let bare letters (R/P/C/V) hijack typing in rich-text prompts.
+      if (isTypingInEditable(e)) return;
 
       switch (e.key.toLowerCase()) {
         case 'escape':

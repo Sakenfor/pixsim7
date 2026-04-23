@@ -6,10 +6,18 @@
  *
  * Migrated from the hardcoded keyboard handler that used to live inside
  * VideoScrubWidget.
+ *
+ * TODO: migrate onto `registerActiveTargetActions` (see
+ * `@lib/capabilities/activeTargetActions`). Currently blocked by the
+ * action bodies here reaching into `videoMarksStore` directly for marks,
+ * currentTime, duration, and per-mode seek — the factory assumes each
+ * action dispatches through a handler-bundle surface. To migrate, first
+ * move `goToPrev`/`goToNext`/`stepRelative`/... into `videoMarksStore`
+ * as methods, then register them as a bundle.
  */
 
-import { useToastStore } from '@pixsim7/shared.ui';
 import type { ActionDefinition } from '@pixsim7/shared.types';
+import { useToastStore } from '@pixsim7/shared.ui';
 
 import {
   registerAction,

@@ -6,6 +6,21 @@
 
 import { useEffect, useRef } from 'react';
 
+/**
+ * True when the keyboard event originated from an editable target
+ * (input, textarea, or contenteditable). Exported so ad-hoc listeners
+ * outside the capability registry can share the same gate instead of
+ * re-implementing it (often partially — e.g. forgetting contenteditable).
+ */
+export function isTypingInEditable(event: Event): boolean {
+  const target = event.target;
+  return (
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 export interface KeyboardShortcut {
   key: string;
   ctrl?: boolean;
@@ -36,6 +51,12 @@ export function useKeyboardShortcuts(
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!event.key) return;
+      // Skip bare-key / shift-only shortcuts while typing. Ctrl/Alt/Meta
+      // combos still fire (e.g. Ctrl+G for quick-generate) because the
+      // user explicitly chose a modifier; shift alone is ambiguous with
+      // typing uppercase/symbols so we treat it as unmodified here.
+      const isTyping = isTypingInEditable(event);
+
       for (const shortcut of shortcutsRef.current) {
         if (!shortcut.key) continue;
         const keyMatches = event.key.toLowerCase() === shortcut.key.toLowerCase();
@@ -45,6 +66,8 @@ export function useKeyboardShortcuts(
         const metaMatches = shortcut.meta ? event.metaKey : true;
 
         if (keyMatches && ctrlMatches && shiftMatches && altMatches && metaMatches) {
+          const hasExplicitModifier = !!(shortcut.ctrl || shortcut.alt || shortcut.meta);
+          if (isTyping && !hasExplicitModifier) continue;
           if (shortcut.preventDefault !== false) {
             event.preventDefault();
           }

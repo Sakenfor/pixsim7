@@ -40,6 +40,16 @@ import('./components/media/scrubberCapabilityActions').then(({ registerScrubberC
   registerScrubberCapabilityActions()
 })
 
+// Register media-card generation shortcuts (Extend/Regenerate/Quick-Gen/…).
+import('./components/media/mediaCardCapabilityActions').then(({ registerMediaCardCapabilityActions }) => {
+  registerMediaCardCapabilityActions()
+})
+
+// Register asset viewer panel shortcuts (Esc/←/→/F/I).
+import('./components/media/viewerPanelCapabilityActions').then(({ registerViewerPanelCapabilityActions }) => {
+  registerViewerPanelCapabilityActions()
+})
+
 try {
   if (typeof window !== 'undefined' && window.localStorage) {
     configureKVStorage(window.localStorage)
