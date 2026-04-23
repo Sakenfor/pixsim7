@@ -224,7 +224,9 @@ export function AccountRoutingManagerModal({
   const [denyPatterns, setDenyPatterns] = useState<string[]>([]);
   const [priorityOverrides, setPriorityOverrides] = useState<Record<string, number>>({});
   const accountCacheRef = useRef<Record<number, RoutingAccount>>({});
+  const loadedAccountIdRef = useRef<number | null>(null);
   const formDirtyRef = useRef(false);
+  const toastRef = useRef(toast);
 
   const [builderOperation, setBuilderOperation] = useState<string>(normalizeRouteToken(contextOperation));
   const [builderModel, setBuilderModel] = useState<string>(normalizeRouteToken(contextModel));
@@ -317,6 +319,10 @@ export function AccountRoutingManagerModal({
   };
 
   useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+
+  useEffect(() => {
     if (!isOpen) return;
     setSelectedAccountId(accountId);
     setBuilderOperation(normalizeRouteToken(contextOperation));
@@ -327,18 +333,31 @@ export function AccountRoutingManagerModal({
   }, [isOpen, accountId, contextOperation, contextModel]);
 
   useEffect(() => {
-    if (!isOpen || selectedAccountId == null) return;
+    if (!isOpen) {
+      loadedAccountIdRef.current = null;
+      return;
+    }
+    if (selectedAccountId == null) return;
 
-    formDirtyRef.current = false;
     let cancelled = false;
     const requestAccountId = selectedAccountId;
+    const accountChanged = loadedAccountIdRef.current !== requestAccountId;
     const cached = accountCacheRef.current[requestAccountId];
-    if (cached) {
-      applyAccountToForm(cached);
-      setLoadingAccount(false);
-    } else {
-      setLoadingAccount(true);
-      setAccount(null);
+
+    if (accountChanged) {
+      formDirtyRef.current = false;
+      if (cached) {
+        applyAccountToForm(cached);
+        setLoadingAccount(false);
+      } else {
+        setLoadingAccount(true);
+        setAccount(null);
+      }
+    }
+
+    // Avoid re-fetch loops while the same account stays selected.
+    if (!accountChanged && cached) {
+      return () => { cancelled = true; };
     }
 
     (async () => {
@@ -348,7 +367,7 @@ export function AccountRoutingManagerModal({
 
         const normalized: RoutingAccount = {
           id: Number(response.id),
-          provider_id: String(response.provider_id ?? providerId ?? ''),
+          provider_id: String(response.provider_id ?? ''),
           email: String(response.email ?? ''),
           nickname: typeof response.nickname === 'string' ? response.nickname : null,
           priority: Number(response.priority ?? 0),
@@ -358,13 +377,14 @@ export function AccountRoutingManagerModal({
         };
 
         accountCacheRef.current[normalized.id] = normalized;
+        loadedAccountIdRef.current = normalized.id;
         if (!formDirtyRef.current) {
           applyAccountToForm(normalized);
         }
       } catch (error) {
         if (!cancelled && !cached) {
           const message = error instanceof Error ? error.message : 'Failed to load account routing settings';
-          toast.error(message);
+          toastRef.current.error(message);
         }
       } finally {
         if (!cancelled) setLoadingAccount(false);
@@ -372,7 +392,7 @@ export function AccountRoutingManagerModal({
     })();
 
     return () => { cancelled = true; };
-  }, [isOpen, selectedAccountId, providerId, toast]);
+  }, [isOpen, selectedAccountId]);
 
   const effectiveBuilderModel = applyToAllModels ? '*' : (builderModel || '*');
 
