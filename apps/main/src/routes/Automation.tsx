@@ -1,59 +1,64 @@
-import { useState } from 'react';
+import { SidebarContentLayout, type SidebarContentLayoutSection, useSidebarNav } from '@pixsim7/shared.ui';
+import { useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
 
 import { DeviceList, PresetList, ExecutionList, LoopList } from '@features/automation';
 
-type AutomationTab = 'devices' | 'presets' | 'executions' | 'loops';
+type AutomationSectionId = 'devices' | 'presets' | 'executions' | 'loops';
+
+function buildSections(): SidebarContentLayoutSection[] {
+  return [
+    { id: 'devices', label: 'Devices', icon: <Icon name="cpu" size={14} className="flex-shrink-0" /> },
+    { id: 'presets', label: 'Action Presets', icon: <Icon name="settings" size={14} className="flex-shrink-0" /> },
+    { id: 'executions', label: 'Executions', icon: <Icon name="play" size={14} className="flex-shrink-0" /> },
+    { id: 'loops', label: 'Automation Loops', icon: <Icon name="refreshCw" size={14} className="flex-shrink-0" /> },
+  ];
+}
+
+function renderSection(sectionId: AutomationSectionId) {
+  switch (sectionId) {
+    case 'devices':
+      return <DeviceList />;
+    case 'presets':
+      return <PresetList />;
+    case 'executions':
+      return <ExecutionList />;
+    case 'loops':
+      return <LoopList />;
+    default:
+      return null;
+  }
+}
 
 export function AutomationRoute() {
-  const [activeTab, setActiveTab] = useState<AutomationTab>('devices');
-
-  const tabs: { id: AutomationTab; label: string; icon: string }[] = [
-    { id: 'devices', label: 'Devices', icon: '📱' },
-    { id: 'presets', label: 'Action Presets', icon: '⚙️' },
-    { id: 'executions', label: 'Executions', icon: '▶️' },
-    { id: 'loops', label: 'Automation Loops', icon: '🔁' },
-  ];
+  const sections = useMemo(() => buildSections(), []);
+  const nav = useSidebarNav<AutomationSectionId>({
+    sections,
+    initial: 'devices',
+    storageKey: 'automation:nav',
+  });
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900">
-      {/* Navigation */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              Automation
-            </h1>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex gap-4 -mb-px">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <Icon name={tab.icon} size={16} />
-                <span className="font-medium">{tab.label}</span>
-              </button>
-            ))}
-          </div>
+    <div className="h-full min-h-0 w-full flex bg-white dark:bg-neutral-900">
+      <SidebarContentLayout
+        sections={sections}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        sidebarTitle="Automation"
+        sidebarWidth="w-56"
+        variant="light"
+        navClassName="space-y-1"
+        collapsible
+        expandedWidth={224}
+        persistKey="automation-sidebar"
+        autoHideTitle={false}
+        contentClassName="overflow-y-auto"
+      >
+        <div className="mx-auto w-full max-w-7xl p-6">
+          {renderSection(nav.activeSectionId as AutomationSectionId)}
         </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'devices' && <DeviceList />}
-        {activeTab === 'presets' && <PresetList />}
-        {activeTab === 'executions' && <ExecutionList />}
-        {activeTab === 'loops' && <LoopList />}
-      </div>
+      </SidebarContentLayout>
     </div>
   );
 }

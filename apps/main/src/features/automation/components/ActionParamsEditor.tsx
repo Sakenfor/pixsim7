@@ -20,6 +20,54 @@ const MATCH_MODE_OPTIONS = [
   { value: MatchMode.REGEX, label: 'Regex' },
 ];
 
+// Controlled number input with local text state so the field can be fully
+// cleared while typing (plain `parseFloat(v) || 0` snaps the value to 0,
+// which then sticks next to the next digit the user types).
+function NumberInput({
+  value,
+  onChange,
+  step,
+  min,
+  className,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  step?: string;
+  min?: string | number;
+  className?: string;
+}) {
+  const [text, setText] = useState<string>(() =>
+    value == null || Number.isNaN(value) ? '' : String(value),
+  );
+
+  useEffect(() => {
+    const parsed = text === '' ? 0 : parseFloat(text);
+    if (!Number.isNaN(parsed) && parsed !== value) {
+      setText(value == null || Number.isNaN(value) ? '' : String(value));
+    }
+  }, [value]);
+
+  return (
+    <input
+      type="number"
+      step={step}
+      min={min}
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        if (next === '' || next === '-' || next === '.') {
+          onChange(0);
+          return;
+        }
+        const n = parseFloat(next);
+        if (!Number.isNaN(n)) onChange(n);
+      }}
+      className={className}
+    />
+  );
+}
+
 // Reusable component for text field with match mode
 function TextMatchField({
   label,
@@ -335,21 +383,19 @@ function SwipeParams({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X1 (0-1 or px)</label>
-              <input
-                type="number"
+              <NumberInput
                 step="any"
                 value={params.x1 ?? 0.5}
-                onChange={(e) => updateParam('x1', parseFloat(e.target.value) || 0)}
+                onChange={(v) => updateParam('x1', v)}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y1 (0-1 or px)</label>
-              <input
-                type="number"
+              <NumberInput
                 step="any"
                 value={params.y1 ?? 0.7}
-                onChange={(e) => updateParam('y1', parseFloat(e.target.value) || 0)}
+                onChange={(v) => updateParam('y1', v)}
                 className={inputClass}
               />
             </div>
@@ -357,21 +403,19 @@ function SwipeParams({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X2 (0-1 or px)</label>
-              <input
-                type="number"
+              <NumberInput
                 step="any"
                 value={params.x2 ?? 0.5}
-                onChange={(e) => updateParam('x2', parseFloat(e.target.value) || 0)}
+                onChange={(v) => updateParam('x2', v)}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y2 (0-1 or px)</label>
-              <input
-                type="number"
+              <NumberInput
                 step="any"
                 value={params.y2 ?? 0.3}
-                onChange={(e) => updateParam('y2', parseFloat(e.target.value) || 0)}
+                onChange={(v) => updateParam('y2', v)}
                 className={inputClass}
               />
             </div>
@@ -384,10 +428,9 @@ function SwipeParams({
         <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
           Duration (ms)
         </label>
-        <input
-          type="number"
+        <NumberInput
           value={params.duration_ms ?? 300}
-          onChange={(e) => updateParam('duration_ms', parseInt(e.target.value))}
+          onChange={(v) => updateParam('duration_ms', Math.round(v))}
           className={inputClass}
         />
       </div>
@@ -438,10 +481,9 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
           <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
             Seconds
           </label>
-          <input
-            type="number"
+          <NumberInput
             value={params?.seconds ?? 1}
-            onChange={(e) => updateParam('seconds', parseFloat(e.target.value))}
+            onChange={(v) => updateParam('seconds', v)}
             step="0.1"
             min="0"
             className={inputClass}
@@ -513,21 +555,19 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X (0-1 or px)</label>
-            <input
-              type="number"
+            <NumberInput
               step="any"
               value={params.x ?? 0.5}
-              onChange={(e) => updateParam('x', parseFloat(e.target.value) || 0)}
+              onChange={(v) => updateParam('x', v)}
               className={inputClass}
             />
           </div>
           <div>
             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y (0-1 or px)</label>
-            <input
-              type="number"
+            <NumberInput
               step="any"
               value={params.y ?? 0.5}
-              onChange={(e) => updateParam('y', parseFloat(e.target.value) || 0)}
+              onChange={(v) => updateParam('y', v)}
               className={inputClass}
             />
           </div>
@@ -596,10 +636,9 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
                 Timeout (s)
               </label>
-              <input
-                type="number"
+              <NumberInput
                 value={params.timeout ?? 10}
-                onChange={(e) => updateParam('timeout', parseInt(e.target.value))}
+                onChange={(v) => updateParam('timeout', Math.round(v))}
                 className={inputClass}
               />
             </div>
@@ -607,10 +646,9 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
                 Interval (s)
               </label>
-              <input
-                type="number"
+              <NumberInput
                 value={params.interval ?? 1}
-                onChange={(e) => updateParam('interval', parseFloat(e.target.value))}
+                onChange={(v) => updateParam('interval', v)}
                 step="0.1"
                 className={inputClass}
               />
@@ -666,10 +704,9 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
           <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
             Count
           </label>
-          <input
-            type="number"
+          <NumberInput
             value={params.count ?? 1}
-            onChange={(e) => updateParam('count', parseInt(e.target.value))}
+            onChange={(v) => updateParam('count', Math.round(v))}
             min="1"
             className={inputClass}
           />
