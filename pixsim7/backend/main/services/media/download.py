@@ -32,12 +32,25 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
+async def download_file(
+    asset: "Asset",
+    settings: "MediaSettings",
+    *,
+    fast_single_attempt: bool = False,
+) -> str:
     """
     Download file from remote URL to content-addressed storage.
 
     Uses StorageService with SHA256-based naming for automatic deduplication.
     Updates asset.local_path, stored_key, sha256, file_size_bytes, sync_status.
+
+    ``fast_single_attempt=True`` is used by the status poller's inline-prefetch
+    path to race the short-lived early-CDN window (Pixverse moderated content
+    disappears ~1–2 s after the URL is advertised).  It skips the retry loop
+    and uses a short HTTP timeout — if the file isn't fetchable right now, we
+    bail out fast and let async ingestion (with its normal retry budget) take
+    over.  The two paths share the same storage + hashing logic so the asset
+    ends up in the same state either way.
 
     Returns:
         Path to downloaded file
@@ -69,18 +82,25 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
         url=url[:100],
         is_pixverse_placeholder=url_is_placeholder,
         has_retrievable_pixverse_url=url_is_retrievable,
+        fast_single_attempt=fast_single_attempt,
     )
     logger.info(
         "download_starting",
         asset_id=asset.id,
         url=url[:100],
+        fast_single_attempt=fast_single_attempt,
     )
 
     ext = guess_extension(asset)
 
-    # Download with retries
-    max_retries = 6
-    retry_delay = 2.0
+    if fast_single_attempt:
+        max_retries = 1
+        retry_delay = 0.0
+        http_timeout = 15.0
+    else:
+        max_retries = 6
+        retry_delay = 2.0
+        http_timeout = 120.0
 
     for attempt in range(max_retries):
         try:
@@ -90,7 +110,7 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
             sha256_hash = hashlib.sha256()
 
             async with httpx.AsyncClient(
-                timeout=120,
+                timeout=http_timeout,
                 follow_redirects=True,
                 headers={"User-Agent": "PixSim7/1.0"}
             ) as client:

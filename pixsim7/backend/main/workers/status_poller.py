@@ -29,6 +29,7 @@ from pixsim7.backend.main.domain.enums import (
     GenerationErrorCode,
 )
 from pixsim7.backend.main.shared.operation_mapping import get_video_operations
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.workers._poller_backoff import (
     _TransientPollBackoffState,
     _TRANSIENT_POLL_BACKOFF_STEPS_SEC,
@@ -78,6 +79,7 @@ from pixsim7.backend.main.workers._poller_snapshots import (
     _ensure_aware,
     _is_stale_unsubmitted_error_submission,
     _load_processing_generation_snapshots,
+    _load_processing_generation_snapshot,
 )
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
@@ -1113,6 +1115,63 @@ async def _poll_single_generation(
                         asset_id=asset.id,
                     )
 
+                    # Inline prefetch: race the short-lived early-CDN window.
+                    # Pixverse nukes the CDN object ~1-2 s after the URL is
+                    # advertised for moderated content (confirmed via
+                    # tests/manual_test_early_cdn.py), so by the time async
+                    # ingestion picks up ASSET_CREATED via ARQ, the file may
+                    # already 404.  We do one best-effort synchronous fetch
+                    # here so the bytes land on disk while the URL is still
+                    # live; if it fails we fall through to the normal async
+                    # ingestion path, which has its own retry budget.
+                    if submission.provider_id == "pixverse" and asset.remote_url:
+                        try:
+                            from pixsim7.backend.main.services.media.download import download_file
+                            from pixsim7.backend.main.services.media.settings import get_media_settings
+                            from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+                                is_pixverse_placeholder_url,
+                            )
+                            if is_pixverse_placeholder_url(asset.remote_url):
+                                raise RuntimeError("remote_url is a pixverse placeholder; skipping prefetch")
+                            await download_file(
+                                asset,
+                                get_media_settings(),
+                                fast_single_attempt=True,
+                            )
+                            await db.commit()
+                            logger.info(
+                                "generation_prefetch_success",
+                                generation_id=generation.id,
+                                asset_id=asset.id,
+                                stored_key=asset.stored_key,
+                            )
+                            worker_debug.worker(
+                                "generation_prefetch_success",
+                                generation_id=generation.id,
+                                asset_id=asset.id,
+                            )
+                        except Exception as prefetch_err:
+                            # 404 = CDN already nuked (moderation race lost);
+                            # other = transient.  Either way async ingestion
+                            # will retry with its normal retry budget.
+                            logger.info(
+                                "generation_prefetch_failed",
+                                generation_id=generation.id,
+                                asset_id=asset.id,
+                                error=str(prefetch_err)[:200],
+                                error_type=type(prefetch_err).__name__,
+                            )
+                            worker_debug.worker(
+                                "generation_prefetch_failed",
+                                generation_id=generation.id,
+                                asset_id=asset.id,
+                                error_type=type(prefetch_err).__name__,
+                            )
+                            await db.rollback()
+                            # Re-fetch asset since rollback dropped our
+                            # in-memory attribute changes.
+                            asset = await db.get(Asset, asset.id)
+
                     # Detect early-CDN-terminal now so both the recheck delay
                     # and the credit-refresh branch below can use it.
                     _is_early_cdn = bool(
@@ -1882,6 +1941,76 @@ async def poll_job_statuses(ctx: dict) -> dict:
             await db.close()
 
 
+async def poll_generation_once(ctx: dict, generation_id: int) -> dict:
+    """One-shot poll for a freshly-submitted generation.
+
+    Enqueued by ``job_processor`` right after a successful provider submit so
+    we can catch very short-lived CDN URLs (e.g. Pixverse moderated content,
+    where the real URL stays up for only ~1-2 s) before the 2 s cron tick
+    would otherwise race past.
+
+    Uses the same ``_poll_in_flight`` guard as the cron path, so an overlap
+    between this one-shot and a cron tick won't double-process the generation.
+    """
+    _init_poller_debug_flags()
+    worker_debug = get_global_debug_logger()
+    worker_debug.worker("poll_generation_once_start", generation_id=generation_id)
+
+    async with get_async_session() as db:
+        snapshot = await _load_processing_generation_snapshot(db, generation_id)
+
+    if snapshot is None:
+        logger.info(
+            "poll_generation_once_skipped_not_processing",
+            generation_id=generation_id,
+        )
+        return {"polled": False, "reason": "not_processing"}
+
+    if snapshot.id in _poll_in_flight:
+        logger.info(
+            "poll_generation_once_skipped_in_flight",
+            generation_id=generation_id,
+        )
+        return {"polled": False, "reason": "in_flight"}
+
+    now = datetime.now(timezone.utc)
+    timeout_hours = 2
+    unsubmitted_timeout_minutes = 15
+    mixed_submission_timeout_minutes = 20
+    timeout_threshold = now - timedelta(hours=timeout_hours)
+    unsubmitted_timeout_threshold = now - timedelta(minutes=unsubmitted_timeout_minutes)
+    mixed_submission_timeout_threshold = now - timedelta(minutes=mixed_submission_timeout_minutes)
+
+    _poll_in_flight.add(snapshot.id)
+    try:
+        poll_cache: dict[str, object] = {}
+        result = await _poll_single_generation(
+            snapshot,
+            poll_cache,
+            timeout_threshold,
+            unsubmitted_timeout_threshold,
+            mixed_submission_timeout_threshold,
+            timeout_hours,
+            unsubmitted_timeout_minutes,
+            mixed_submission_timeout_minutes,
+        )
+    finally:
+        _poll_in_flight.discard(snapshot.id)
+
+    outcome = getattr(result, "outcome", None)
+    logger.info(
+        "poll_generation_once_done",
+        generation_id=generation_id,
+        outcome=outcome,
+    )
+    worker_debug.worker(
+        "poll_generation_once_done",
+        generation_id=generation_id,
+        outcome=outcome,
+    )
+    return {"polled": True, "outcome": outcome}
+
+
 _event_bridge = None
 
 
@@ -1907,7 +2036,7 @@ class WorkerSettings:
     functions = [poll_job_statuses]
     on_startup = on_startup
     on_shutdown = on_shutdown
-    redis_settings = "redis://localhost:6379/0"
+    redis_settings = settings.redis_url
 
     # Run poll_job_statuses every 10 seconds
     cron_jobs = [

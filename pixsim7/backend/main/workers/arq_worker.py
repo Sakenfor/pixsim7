@@ -26,7 +26,7 @@ from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.automation.workers.automation import process_automation, run_automation_loops, queue_pending_executions
-from pixsim7.backend.main.workers.status_poller import poll_job_statuses
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses, poll_generation_once
 from pixsim7.backend.main.workers.status_poller_maintenance import (
     requeue_pending_generations,
     reconcile_account_counters,
@@ -449,6 +449,7 @@ class WorkerSettings:
         process_derivatives,
         run_analysis_backfill_batch,
         poll_job_statuses,
+        poll_generation_once,
         requeue_pending_generations,
         requeue_pending_analyses,
         refresh_stale_account_credits,

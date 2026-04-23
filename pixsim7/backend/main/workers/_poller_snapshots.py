@@ -473,3 +473,26 @@ async def _load_processing_generation_snapshots(
         .order_by(Generation.started_at)
     )
     return _to_processing_generation_snapshots(result.all())
+
+
+async def _load_processing_generation_snapshot(
+    db: AsyncSession, generation_id: int,
+) -> _ProcessingGenerationSnapshot | None:
+    """Load a single processing generation.  Used by the one-shot poll path
+    that fires right after submit to catch early-CDN windows."""
+    result = await db.execute(
+        select(
+            Generation.id,
+            Generation.account_id,
+            Generation.operation_type,
+            Generation.started_at,
+            Generation.attempt_id,
+            Generation.deferred_action,
+        )
+        .where(Generation.id == generation_id)
+        .where(Generation.status == GenerationStatus.PROCESSING)
+    )
+    row = result.first()
+    if row is None:
+        return None
+    return _ProcessingGenerationSnapshot.from_row(tuple(row))

@@ -13,6 +13,7 @@ from .generation_jobs import (
     clear_generation_wait_metadata,
     enqueue_generation_fresh_job,
     enqueue_generation_retry_job,
+    enqueue_immediate_poll,
     get_generation_wait_metadata,
     release_generation_enqueue_lease,
     set_generation_wait_metadata,
@@ -29,5 +30,6 @@ __all__ = [
     "clear_generation_wait_metadata",
     "enqueue_generation_fresh_job",
     "enqueue_generation_retry_job",
+    "enqueue_immediate_poll",
     "release_generation_enqueue_lease",
 ]

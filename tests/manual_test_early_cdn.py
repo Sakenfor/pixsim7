@@ -2,7 +2,8 @@
 Manual test: measure Pixverse's early-CDN window for a known-filtered prompt.
 
 Usage:
-    python tests/manual_test_early_cdn.py
+    python tests/manual_test_early_cdn.py                # plain scrolling log
+    python tests/manual_test_early_cdn.py --pretty       # live rich dashboard
 
 Submits an image-to-video generation expected to trip Pixverse moderation,
 then polls ``get_video`` AND ``list_videos`` every 250 ms and HEAD-probes the
@@ -41,12 +42,24 @@ if str(_REPO_ROOT) not in sys.path:
 
 import httpx
 from pixverse import PixverseClient
+from rich.columns import Columns
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
 
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     has_retrievable_pixverse_media_url,
     is_pixverse_placeholder_url,
     normalize_url,
 )
+
+# --- CLI flags (stripped from argv before creds parsing) ---
+_PRETTY = "--pretty" in sys.argv
+if _PRETTY:
+    sys.argv.remove("--pretty")
+
+_console = Console()
 
 # ── Test parameters ──────────────────────────────────────────────────────
 
@@ -112,7 +125,7 @@ async def _build_client() -> Any:
                     "can't use WebAPI without an active session.  Log in via "
                     "the app first, or pass email:password directly."
                 )
-            print(f"[{_ts()}] Using account:{account_id} ({acc.email}) from pixsim7 DB.")
+            _log(f"[{_ts()}] Using account:{account_id} ({acc.email}) from pixsim7 DB.")
             return PixverseClient(
                 email=acc.email,
                 session={
@@ -122,7 +135,7 @@ async def _build_client() -> Any:
                 },
             )
     else:
-        print(f"[{_ts()}] Creating client for {_CREDS_EMAIL} (email+password login)...")
+        _log(f"[{_ts()}] Creating client for {_CREDS_EMAIL} (email+password login)...")
         return PixverseClient(email=_CREDS_EMAIL, password=_CREDS_PASSWORD)
 
 # Toggle which test to run — user-confirmed both trip moderation, "flagged"
@@ -218,6 +231,180 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
 
 
+# ── Live-dashboard state + helpers (used when --pretty is set) ───────────
+
+_state: dict = {
+    "job_id": None,
+    "t0": None,
+    "latest_gv": {},
+    "latest_lv": {},
+    "latest_head": {},
+    "timeline": None,
+}
+_live: Optional[Live] = None
+
+
+def _log(*args, **kwargs) -> None:
+    """Drop-in print replacement that routes through the rich console so that
+    log lines scroll cleanly above the live dashboard in --pretty mode."""
+    sep = kwargs.get("sep", " ")
+    msg = sep.join(str(a) for a in args)
+    _console.print(msg, markup=False, highlight=False)
+
+
+def _elapsed() -> float:
+    t0 = _state.get("t0")
+    return 0.0 if t0 is None else time.monotonic() - t0
+
+
+def _build_renderable() -> Group:
+    timeline: Optional[_Timeline] = _state.get("timeline")
+    job_id = _state.get("job_id") or "(submitting...)"
+    gv = _state.get("latest_gv") or {}
+    lv = _state.get("latest_lv") or {}
+    hp = _state.get("latest_head") or {}
+
+    header = Panel(
+        f"[bold cyan]Pixverse Early-CDN Probe[/]   "
+        f"[bold]Job:[/] {job_id}   "
+        f"[bold]Mode:[/] {TEST_MODE}   "
+        f"[bold]Elapsed:[/] {_elapsed():5.1f}s",
+        border_style="cyan",
+    )
+
+    def _url_tag(snap: dict) -> str:
+        if snap.get("url_is_retrievable"):
+            return "[green]REAL[/]"
+        if snap.get("url_is_placeholder"):
+            return "[yellow]PLH[/]"
+        if snap.get("url"):
+            return "[magenta]other[/]"
+        return "[dim]-[/]"
+
+    def _thumb_tag(snap: dict) -> str:
+        if snap.get("thumb_is_real"):
+            return "[green]YES[/]"
+        if snap.get("thumb_is_ph"):
+            return "[yellow]PLH[/]"
+        return "[dim]-[/]"
+
+    state_tbl = Table(title="Latest Observations", expand=True)
+    state_tbl.add_column("Source", style="cyan", no_wrap=True)
+    state_tbl.add_column("Status")
+    state_tbl.add_column("URL")
+    state_tbl.add_column("Thumb")
+    state_tbl.add_column("Dims")
+    for name, snap in (("get_video", gv), ("list_videos", lv)):
+        dims = f"{snap.get('width') or 0}x{snap.get('height') or 0}"
+        state_tbl.add_row(
+            name,
+            str(snap.get("raw_status", "-")),
+            _url_tag(snap),
+            _thumb_tag(snap),
+            dims,
+        )
+    head_status = hp.get("status")
+    if head_status is None:
+        head_cell = "[dim]-[/]"
+    elif head_status < 400:
+        head_cell = f"[green]{head_status}[/]"
+    else:
+        head_cell = f"[red]{head_status}[/]"
+    state_tbl.add_row("head_probe", head_cell, "-", "-", "-")
+
+    def _fmt_t(v: Optional[float]) -> str:
+        return f"[green]{v:5.2f}s[/]" if v is not None else "[dim]   -   [/]"
+
+    trans_tbl = Table(title="Key Transitions", expand=True)
+    trans_tbl.add_column("Event", no_wrap=True)
+    trans_tbl.add_column("Time", justify="right")
+    if timeline is not None:
+        trans_tbl.add_row("get_video → real URL",      _fmt_t(timeline.t_first_real_get))
+        trans_tbl.add_row("list_videos → real URL",    _fmt_t(timeline.t_first_real_list))
+        trans_tbl.add_row("get_video → placeholder",   _fmt_t(timeline.t_placeholder_get))
+        trans_tbl.add_row("list_videos → placeholder", _fmt_t(timeline.t_placeholder_list))
+        trans_tbl.add_row("HEAD → 404",                _fmt_t(timeline.t_404))
+        trans_tbl.add_row("first real thumb (get)",    _fmt_t(timeline.t_first_thumbnail_get))
+        trans_tbl.add_row("first real thumb (list)",   _fmt_t(timeline.t_first_thumbnail_list))
+
+    return Group(header, state_tbl, trans_tbl)
+
+
+def _refresh_live() -> None:
+    if _live is not None:
+        _live.update(_build_renderable(), refresh=True)
+
+
+def _render_summary(
+    timeline: _Timeline,
+    job_id: str,
+    seen_get_statuses: list[str],
+    seen_list_statuses: list[str],
+) -> None:
+    def f(v: Optional[float]) -> str:
+        return f"{v:6.2f}s" if v is not None else "   n/a"
+
+    tbl = Table(title=f"Summary — Job {job_id}", expand=True)
+    tbl.add_column("Metric", style="cyan", no_wrap=True)
+    tbl.add_column("Value")
+    tbl.add_row("get_video statuses", " → ".join(seen_get_statuses) or "-")
+    tbl.add_row("list_videos statuses", " → ".join(seen_list_statuses) or "-")
+    tbl.add_section()
+    tbl.add_row("t_first_real_get",    f(timeline.t_first_real_get))
+    tbl.add_row("t_first_real_list",   f(timeline.t_first_real_list))
+    tbl.add_row("t_first_thumb_get",   f(timeline.t_first_thumbnail_get))
+    tbl.add_row("t_first_thumb_list",  f(timeline.t_first_thumbnail_list))
+    tbl.add_row("t_placeholder_get",   f(timeline.t_placeholder_get))
+    tbl.add_row("t_placeholder_list",  f(timeline.t_placeholder_list))
+    tbl.add_row("t_404 (HEAD)",        f(timeline.t_404))
+    tbl.add_section()
+    if timeline.t_first_real_get is not None and timeline.t_placeholder_get is not None:
+        tbl.add_row(
+            "get_video window",
+            f"{timeline.t_placeholder_get - timeline.t_first_real_get:6.2f}s  (real URL advertised by get_video)",
+        )
+    if timeline.t_first_real_list is not None and timeline.t_placeholder_list is not None:
+        tbl.add_row(
+            "list_videos window",
+            f"{timeline.t_placeholder_list - timeline.t_first_real_list:6.2f}s  (real URL advertised by list_videos)",
+        )
+    # Anchor CDN lifespan on the EARLIEST real-URL sighting across either
+    # source.  list_videos often sees the URL 1+ seconds before get_video
+    # does, so anchoring on get_video alone under-reports the window.
+    first_real_candidates = [
+        t for t in (timeline.t_first_real_get, timeline.t_first_real_list) if t is not None
+    ]
+    earliest_real = min(first_real_candidates) if first_real_candidates else None
+    anchor_source = (
+        "list_videos" if earliest_real == timeline.t_first_real_list
+        else "get_video" if earliest_real == timeline.t_first_real_get
+        else "?"
+    )
+    if earliest_real is not None and timeline.t_404 is not None:
+        tbl.add_row(
+            "CDN lifespan (200→404)",
+            f"{timeline.t_404 - earliest_real:6.2f}s  "
+            f"(fetchable from first real URL via {anchor_source} @ {earliest_real:.2f}s → 404)",
+        )
+    elif earliest_real is not None and timeline.t_404 is None:
+        tbl.add_row(
+            "CDN lifespan (200→404)",
+            f"no 404 observed — file still fetchable after {POST_TERMINAL_PROBE_SEC}s post-terminal",
+        )
+    tbl.add_section()
+    tbl.add_row("unique thumbnails", str(len(timeline.unique_thumbnails)))
+    for i, t in enumerate(timeline.unique_thumbnails, 1):
+        tbl.add_row(f"  thumb [{i}]", t)
+    if not timeline.unique_thumbnails:
+        tbl.add_row(
+            "[yellow]note[/]",
+            "no thumbnail/last-frame URL observed — Pixverse didn't expose customer_video_last_frame_url",
+        )
+
+    _console.print()
+    _console.print(tbl)
+
+
 def _classify_url(url: Optional[str]) -> tuple[bool, bool, Optional[str]]:
     if not url:
         return False, False, None
@@ -241,7 +428,7 @@ async def _try_get_video(client: PixverseClient, job_id: str) -> Optional[Any]:
     try:
         return await client.get_video(video_id=job_id)
     except Exception as e:
-        print(f"[{_ts()}]   get_video error: {e}")
+        _log(f"[{_ts()}]   get_video error: {e}")
         return None
 
 
@@ -254,7 +441,7 @@ async def _try_list_videos(client: PixverseClient, job_id: str) -> Optional[dict
                 return v
         return None
     except Exception as e:
-        print(f"[{_ts()}]   list_videos error: {e}")
+        _log(f"[{_ts()}]   list_videos error: {e}")
         return None
 
 
@@ -319,8 +506,10 @@ async def _head_probe_monitor(
             note=f"{note} {result.get('final_url', '')[:80]}",
         )
         timeline.record(ob)
+        _state["latest_head"] = {"status": status, "url": url}
+        _refresh_live()
         marker = "✓" if status and status < 400 else "✗"
-        print(
+        _log(
             f"[{_ts()}] +{t_rel:6.2f}s  HEAD {marker} status={status} "
             f"url={url_preview}"
         )
@@ -329,9 +518,9 @@ async def _head_probe_monitor(
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
-async def main() -> None:
+async def main() -> tuple[_Timeline, str, list[str], list[str]]:
     client = await _build_client()
-    print(f"[{_ts()}] Logged in. Submitting i2v job ({TEST_MODE} mode)...")
+    _log(f"[{_ts()}] Logged in. Submitting i2v job ({TEST_MODE} mode)...")
 
     video = await client.create(
         prompt=PROMPT,
@@ -343,9 +532,13 @@ async def main() -> None:
     )
     job_id = str(video.id)
     t0 = time.monotonic()
-    print(f"[{_ts()}] Submitted — job_id={job_id}  t0 set.")
+    _log(f"[{_ts()}] Submitted — job_id={job_id}  t0 set.")
 
     timeline = _Timeline(t0=t0)
+    _state["job_id"] = job_id
+    _state["t0"] = t0
+    _state["timeline"] = timeline
+    _refresh_live()
     stop_event = asyncio.Event()
 
     async with httpx.AsyncClient(
@@ -401,6 +594,21 @@ async def main() -> None:
                     height=fields["height"],
                 )
                 timeline.record(ob)
+                snap = {
+                    "raw_status": fields["raw_status"],
+                    "url": fields["url"],
+                    "url_is_placeholder": is_ph,
+                    "url_is_retrievable": is_ret,
+                    "thumb_is_real": thumb_is_real,
+                    "thumb_is_ph": thumb_is_ph,
+                    "width": fields["width"],
+                    "height": fields["height"],
+                }
+                if source == "get_video":
+                    _state["latest_gv"] = snap
+                else:
+                    _state["latest_lv"] = snap
+                _refresh_live()
 
                 url_tag = (
                     "RETRIEVABLE" if is_ret else "PLACEHOLDER" if is_ph else
@@ -412,7 +620,7 @@ async def main() -> None:
                     else "PLH" if thumb_is_ph
                     else " no"
                 )
-                print(
+                _log(
                     f"[{_ts()}] +{t_rel:6.2f}s  {source:11s}  "
                     f"status={str(fields['raw_status']):<4}  "
                     f"dims={dims_str:<11}  "
@@ -429,13 +637,13 @@ async def main() -> None:
                     and gv_fields.get("width")
                     and gv_fields.get("height")
                 ):
-                    print(f"[{_ts()}] === get_video COMPLETED (raw={gv_status}) ===")
+                    _log(f"[{_ts()}] === get_video COMPLETED (raw={gv_status}) ===")
                     terminal = True
                 elif gv_status in (3, 7):
-                    print(f"[{_ts()}] === get_video FILTERED (raw={gv_status}) ===")
+                    _log(f"[{_ts()}] === get_video FILTERED (raw={gv_status}) ===")
                     terminal = True
                 elif gv_status in (-1, 4, 8, 9):
-                    print(f"[{_ts()}] === get_video FAILED (raw={gv_status}) ===")
+                    _log(f"[{_ts()}] === get_video FAILED (raw={gv_status}) ===")
                     terminal = True
 
             if terminal:
@@ -453,7 +661,7 @@ async def main() -> None:
             )
         )
         if was_filtered:
-            print(
+            _log(
                 f"\n[{_ts()}] Skipping post-terminal monitoring — video was "
                 f"FILTERED.  Pixverse doesn't produce a real last-frame URL "
                 f"for moderated content (last_frame='' in the raw response)."
@@ -464,7 +672,7 @@ async def main() -> None:
         # customer_video_last_frame_url some seconds AFTER the video file
         # itself appears).  Also keeps HEAD-probing in background.
         if (timeline.last_real_url or terminal) and not was_filtered:
-            print(
+            _log(
                 f"\n[{_ts()}] Post-terminal monitoring (get_video + list_videos "
                 f"+ HEAD) for up to {POST_TERMINAL_PROBE_SEC}s — watching for "
                 f"a late thumbnail_url..."
@@ -500,7 +708,7 @@ async def main() -> None:
                         )
                     )
                     if thumb_is_real and not thumb_seen:
-                        print(
+                        _log(
                             f"[{_ts()}] +{t_rel:6.2f}s  POST-TERMINAL real "
                             f"thumbnail appeared via {src}: {thumb_raw}"
                         )
@@ -512,52 +720,28 @@ async def main() -> None:
         stop_event.set()
         await probe_task
 
-    # ── Summary ──────────────────────────────────────────────────────────
-    def fmt(v: Optional[float]) -> str:
-        return f"{v:6.2f}s" if v is not None else "   n/a"
+    return timeline, job_id, seen_get_statuses, seen_list_statuses
 
-    print("\n" + "=" * 72)
-    print(f"Job ID:                 {job_id}")
-    print(f"get_video statuses:     {' → '.join(seen_get_statuses)}")
-    print(f"list_videos statuses:   {' → '.join(seen_list_statuses)}")
-    print(f"t_first_real_get:       {fmt(timeline.t_first_real_get)}")
-    print(f"t_first_real_list:      {fmt(timeline.t_first_real_list)}")
-    print(f"t_first_thumb_get:      {fmt(timeline.t_first_thumbnail_get)}")
-    print(f"t_first_thumb_list:     {fmt(timeline.t_first_thumbnail_list)}")
-    print(f"t_placeholder_get:      {fmt(timeline.t_placeholder_get)}")
-    print(f"t_placeholder_list:     {fmt(timeline.t_placeholder_list)}")
-    print(f"t_404 (HEAD):           {fmt(timeline.t_404)}")
 
-    # The two numbers that matter:
-    if timeline.t_first_real_get is not None and timeline.t_placeholder_get is not None:
-        window = timeline.t_placeholder_get - timeline.t_first_real_get
-        print(f"get_video window:       {window:6.2f}s  "
-              f"(how long the real URL was advertised by get_video)")
-    if timeline.t_first_real_list is not None and timeline.t_placeholder_list is not None:
-        window = timeline.t_placeholder_list - timeline.t_first_real_list
-        print(f"list_videos window:     {window:6.2f}s  "
-              f"(how long the real URL was advertised by list_videos)")
-    if timeline.t_first_real_get is not None and timeline.t_404 is not None:
-        lifespan = timeline.t_404 - timeline.t_first_real_get
-        print(f"CDN lifespan (200→404): {lifespan:6.2f}s  "
-              f"(how long the file itself was fetchable)")
-    elif timeline.t_first_real_get is not None and timeline.t_404 is None:
-        print(
-            "CDN lifespan (200→404):  no 404 observed — file still fetchable "
-            f"after {POST_TERMINAL_PROBE_SEC}s post-terminal"
-        )
-    print(f"unique thumbnails seen: {len(timeline.unique_thumbnails)}")
-    for i, t in enumerate(timeline.unique_thumbnails, 1):
-        print(f"  [{i}] {t}")
-    if not timeline.unique_thumbnails:
-        print(
-            "NOTE: no thumbnail/last-frame URL observed across the lifecycle "
-            "(including post-terminal monitoring).  Pixverse didn't expose "
-            "customer_video_last_frame_url for this job — synthetic extend "
-            "off this video will have no reusable seed."
-        )
-    print("=" * 72)
+async def _entry() -> None:
+    global _live
+    if _PRETTY:
+        with Live(
+            _build_renderable(),
+            console=_console,
+            refresh_per_second=2,
+            auto_refresh=False,
+            transient=True,
+        ) as live:
+            _live = live
+            try:
+                result = await main()
+            finally:
+                _live = None
+    else:
+        result = await main()
+    _render_summary(*result)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(_entry())

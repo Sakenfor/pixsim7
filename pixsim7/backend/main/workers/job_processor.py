@@ -29,6 +29,7 @@ from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.infrastructure.queue import (
     clear_generation_wait_metadata,
     enqueue_generation_retry_job,
+    enqueue_immediate_poll,
     GENERATION_RETRY_QUEUE_NAME,
     release_generation_enqueue_lease,
     set_generation_wait_metadata,
@@ -917,6 +918,22 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     ),
                     gen_logger=gen_logger,
                 )
+
+                # Fire a one-shot status poll immediately so we race the
+                # short-lived early-CDN window (~1-2 s for Pixverse moderated
+                # content) before the next 2 s cron tick could miss it.
+                # Best-effort: enqueue failures are logged but never block the
+                # submit-success path, since the cron will still catch it on
+                # the next tick.
+                try:
+                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                    arq_pool = await get_arq_pool()
+                    await enqueue_immediate_poll(arq_pool, generation_id)
+                except Exception as enqueue_err:
+                    gen_logger.warning(
+                        "immediate_poll_enqueue_error",
+                        error=str(enqueue_err),
+                    )
 
                 return {
                     "status": "submitted",

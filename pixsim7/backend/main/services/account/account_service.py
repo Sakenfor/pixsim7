@@ -3,6 +3,7 @@ AccountService - provider account selection and management
 
 Clean service for account pool management with normalized credit tracking
 """
+import re
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,7 @@ from pixsim7.backend.main.infrastructure.queue import (
     enqueue_generation_fresh_job,
     get_generation_wait_metadata,
 )
+from pixsim7.backend.main.domain.providers.model_families import MODEL_ID_TO_FAMILY
 
 logger = get_logger()
 
@@ -45,12 +47,71 @@ def _normalize_route_token(value: Any) -> str:
     return token
 
 
+def _strip_model_zero_segments(value: str) -> str:
+    """
+    Normalize ``x.0`` version segments used by operator shorthand.
+
+    Example: ``seedream-5.0-lite`` -> ``seedream-5-lite``.
+    """
+    return re.sub(r"(?<=\d)\.0(?=(?:[^0-9]|$))", "", value)
+
+
+def _build_route_model_alias_map() -> dict[str, str]:
+    canonical_ids = {
+        _normalize_route_token(model_id)
+        for model_id in MODEL_ID_TO_FAMILY.keys()
+        if str(model_id or "").strip()
+    }
+
+    aliases: dict[str, str] = {}
+    ambiguous_aliases: set[str] = set()
+
+    for canonical in canonical_ids:
+        candidates: set[str] = set()
+        if canonical.endswith("-lite"):
+            base = canonical[: -len("-lite")]
+            candidates.add(base)
+            candidates.add(_strip_model_zero_segments(base))
+        candidates.add(_strip_model_zero_segments(canonical))
+
+        for alias in candidates:
+            alias_token = _normalize_route_token(alias)
+            if alias_token in {"*", canonical}:
+                continue
+            # Never alias over another explicit canonical ID.
+            if alias_token in canonical_ids:
+                continue
+            existing = aliases.get(alias_token)
+            if existing is None:
+                aliases[alias_token] = canonical
+            elif existing != canonical:
+                ambiguous_aliases.add(alias_token)
+
+    for ambiguous in ambiguous_aliases:
+        aliases.pop(ambiguous, None)
+
+    # Guardrail for current high-volume shorthand that appears in manual routing.
+    aliases.setdefault("seedream-5.0", "seedream-5.0-lite")
+    aliases.setdefault("seedream-5", "seedream-5.0-lite")
+    return aliases
+
+
+_ROUTE_MODEL_ALIAS_MAP = _build_route_model_alias_map()
+
+
+def _normalize_route_model_token(value: Any) -> str:
+    token = _normalize_route_token(value)
+    if token == "*":
+        return token
+    return _ROUTE_MODEL_ALIAS_MAP.get(token, token)
+
+
 def _parse_route_pattern(value: Any) -> tuple[str, str] | None:
     if value is None:
         return None
     if isinstance(value, dict):
         op = _normalize_route_token(value.get("operation"))
-        model = _normalize_route_token(value.get("model"))
+        model = _normalize_route_model_token(value.get("model"))
         return op, model
 
     text = str(value).strip().lower()
@@ -58,7 +119,7 @@ def _parse_route_pattern(value: Any) -> tuple[str, str] | None:
         return None
     if ":" in text:
         op_raw, model_raw = text.split(":", 1)
-        return _normalize_route_token(op_raw), _normalize_route_token(model_raw)
+        return _normalize_route_token(op_raw), _normalize_route_model_token(model_raw)
     return _normalize_route_token(text), "*"
 
 
@@ -72,9 +133,9 @@ def _iter_route_patterns(raw: Any) -> list[tuple[str, str]]:
             op = _normalize_route_token(op_key)
             if isinstance(model_values, (list, tuple, set)):
                 for model_value in model_values:
-                    out.append((op, _normalize_route_token(model_value)))
+                    out.append((op, _normalize_route_model_token(model_value)))
             else:
-                out.append((op, _normalize_route_token(model_values)))
+                out.append((op, _normalize_route_model_token(model_values)))
         return out
 
     items = raw if isinstance(raw, (list, tuple, set)) else [raw]
@@ -84,7 +145,7 @@ def _iter_route_patterns(raw: Any) -> list[tuple[str, str]]:
             models = item.get("models")
             if isinstance(models, (list, tuple, set)):
                 for model_value in models:
-                    out.append((op, _normalize_route_token(model_value)))
+                    out.append((op, _normalize_route_model_token(model_value)))
                 continue
             parsed = _parse_route_pattern(item)
             if parsed:
@@ -108,7 +169,7 @@ def _iter_priority_rules(raw: Any) -> list[tuple[str, str, int]]:
                 op = _normalize_route_token(key)
                 for model_key, delta in value.items():
                     try:
-                        out.append((op, _normalize_route_token(model_key), int(delta)))
+                        out.append((op, _normalize_route_model_token(model_key), int(delta)))
                     except (TypeError, ValueError):
                         continue
                 continue
@@ -143,6 +204,30 @@ def _matches_route_pattern(pattern_op: str, pattern_model: str, op: str, model: 
     return op_match and model_match
 
 
+def _route_pattern_key(op: str, model: str) -> str:
+    return f"{op}:{model}"
+
+
+def _normalize_route_pattern_list(raw: Any) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for op, model in _iter_route_patterns(raw):
+        pattern = _route_pattern_key(op, model)
+        if pattern in seen:
+            continue
+        seen.add(pattern)
+        out.append(pattern)
+    return out
+
+
+def _normalize_route_priority_overrides(raw: Any) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for op, model, delta in _iter_priority_rules(raw):
+        key = _route_pattern_key(op, model)
+        out[key] = int(out.get(key, 0)) + int(delta)
+    return out
+
+
 def _account_route_payload(account: ProviderAccount) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, str, int]]]:
     allow_patterns = _iter_route_patterns(getattr(account, "routing_allow_patterns", None))
     deny_patterns = _iter_route_patterns(getattr(account, "routing_deny_patterns", None))
@@ -170,7 +255,7 @@ def _account_matches_routing(account: ProviderAccount, *, operation_type: str | 
         return True
 
     op = _normalize_route_token(operation_type)
-    model_token = _normalize_route_token(model)
+    model_token = _normalize_route_model_token(model)
     allow_patterns, deny_patterns, _ = _account_route_payload(account)
 
     if allow_patterns:
@@ -189,7 +274,7 @@ def _account_priority_delta(account: ProviderAccount, *, operation_type: str | N
         return 0
 
     op = _normalize_route_token(operation_type)
-    model_token = _normalize_route_token(model)
+    model_token = _normalize_route_model_token(model)
     _, _, priority_rules = _account_route_payload(account)
 
     delta = 0
@@ -359,6 +444,7 @@ class AccountService:
         required_credits: Optional[int] = None,
         operation_type: Optional[str] = None,
         model: Optional[str] = None,
+        ignore_availability: bool = False,
     ) -> ProviderAccount:
         """
         Select best available account for provider
@@ -376,6 +462,15 @@ class AccountService:
                              If None, just checks that account has any credits
             operation_type: Optional operation identifier for routing filters
             model: Optional model identifier for routing filters
+            ignore_availability: When True, skip the transient gates
+                (concurrency, cooldown, daily-limit) and only check whether an
+                account is *structurally* eligible — right status, right
+                routing, and sufficient credits. Used by the creation-time
+                fail-fast probe so concurrency-full accounts don't get
+                mis-reported as "insufficient credits"; the worker already
+                handles `NoAccountAvailableError` by deferring to the retry
+                queue, so the fail-fast only needs to reject on real credit
+                insufficiency.
 
         Returns:
             Selected account
@@ -399,17 +494,18 @@ class AccountService:
             # No user - only shared accounts
             query = query.where(ProviderAccount.is_private == False)
 
-        # Filter out accounts in cooldown
-        now = datetime.now(timezone.utc)
-        query = query.where(
-            (ProviderAccount.cooldown_until == None) |
-            (ProviderAccount.cooldown_until < now)
-        )
+        if not ignore_availability:
+            # Filter out accounts in cooldown
+            now = datetime.now(timezone.utc)
+            query = query.where(
+                (ProviderAccount.cooldown_until == None) |
+                (ProviderAccount.cooldown_until < now)
+            )
 
-        # Filter out accounts at max concurrency
-        query = query.where(
-            ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs
-        )
+            # Filter out accounts at max concurrency
+            query = query.where(
+                ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs
+            )
 
         # Sort by priority, then lowest credits first (drain cheap accounts),
         # then least recently used as tiebreaker.
@@ -432,9 +528,18 @@ class AccountService:
         # Filter by required credits (in Python, since credits are in related table)
         available_accounts = []
         for account in accounts:
-            # Check basic availability (status, concurrency, cooldown)
-            if not account.is_available():
-                continue
+            if ignore_availability:
+                # Structural eligibility only: status + any credits.
+                # Cooldown/concurrency/daily-limit are transient and the
+                # worker handles them via retry-queue deferral.
+                if account.status != AccountStatus.ACTIVE:
+                    continue
+                if not account.has_any_credits():
+                    continue
+            else:
+                # Check basic availability (status, concurrency, cooldown)
+                if not account.is_available():
+                    continue
 
             # If required_credits specified, check if account has sufficient credits
             if required_credits is not None:
@@ -454,7 +559,7 @@ class AccountService:
             # No regular account available: for providers that explicitly do not
             # require credentials, fall back to a managed shared system account.
             accountless = await self._ensure_accountless_shared_account(provider_id)
-            if accountless and accountless.is_operationally_available():
+            if accountless and (ignore_availability or accountless.is_operationally_available()):
                 if required_credits is None or accountless.has_sufficient_credits(required_credits):
                     logger.info(
                         "accountless_account_selected",
@@ -709,11 +814,16 @@ class AccountService:
 
         routing_filtered_count = 0
 
-        # First attempt: with credit pre-filter (if applicable)
+        # First attempt: with credit pre-filter (if applicable).  The primary
+        # path always drains cheapest-first — ``prefer_high_credits`` is only
+        # used by the stale-snapshot fallback below.  (Previously the flip was
+        # applied here too for expensive jobs, which had the side-effect of
+        # burning high-credit accounts before lower-credit ones even when the
+        # low-credit accounts had plenty for the job, defeating the
+        # deprioritization that ``priority`` exists for.)
         if _applied_credit_filter:
             account, routing_filtered_count = await _pick_account(
                 query.where(_credit_filter),
-                prefer_high_credits=prefer_high_credits,
             )
             if not account:
                 # Credit pre-filter excluded everyone - DB credits may be
@@ -724,23 +834,21 @@ class AccountService:
                     provider_id=provider_id,
                     min_credits=min_credits,
                     required_credit_types=normalized_credit_types or None,
-                    prefer_high_credits=True,
+                    prefer_high_credits=prefer_high_credits,
                     msg="credit pre-filter excluded all candidates, retrying without it",
                     routing_filtered_count=routing_filtered_count,
                 )
                 # When the DB pre-filter returns no rows (possibly stale credit
-                # snapshots), probe high-credit accounts first to reduce
-                # low-credit churn for expensive generations.
+                # snapshots), probe high-credit accounts first for expensive
+                # generations so we don't re-pick a low-credit account whose
+                # stale DB reading is what caused the pre-filter to drop it.
                 account, routing_filtered_count = await _pick_account(
                     query,
-                    prefer_high_credits=True,
+                    prefer_high_credits=prefer_high_credits,
                 )
         else:
             # Lock and skip already-locked rows (concurrent jobs will get different accounts)
-            account, routing_filtered_count = await _pick_account(
-                query,
-                prefer_high_credits=prefer_high_credits,
-            )
+            account, routing_filtered_count = await _pick_account(query)
 
         if not account:
             if routing_enabled:
@@ -1485,21 +1593,17 @@ class AccountService:
             nickname=nickname,
             priority=int(priority or 0),
             routing_allow_patterns=(
-                [str(item).strip() for item in (routing_allow_patterns or []) if str(item).strip()]
+                _normalize_route_pattern_list(routing_allow_patterns)
                 if routing_allow_patterns is not None
                 else None
             ),
             routing_deny_patterns=(
-                [str(item).strip() for item in (routing_deny_patterns or []) if str(item).strip()]
+                _normalize_route_pattern_list(routing_deny_patterns)
                 if routing_deny_patterns is not None
                 else None
             ),
             routing_priority_overrides=(
-                {
-                    str(k).strip(): int(v)
-                    for k, v in (routing_priority_overrides or {}).items()
-                    if str(k).strip()
-                }
+                _normalize_route_priority_overrides(routing_priority_overrides)
                 if routing_priority_overrides is not None
                 else None
             ),
@@ -1600,25 +1704,15 @@ class AccountService:
             account.priority = int(priority)
 
         if routing_allow_patterns is not None:
-            account.routing_allow_patterns = [
-                str(item).strip()
-                for item in (routing_allow_patterns or [])
-                if str(item).strip()
-            ]
+            account.routing_allow_patterns = _normalize_route_pattern_list(routing_allow_patterns)
 
         if routing_deny_patterns is not None:
-            account.routing_deny_patterns = [
-                str(item).strip()
-                for item in (routing_deny_patterns or [])
-                if str(item).strip()
-            ]
+            account.routing_deny_patterns = _normalize_route_pattern_list(routing_deny_patterns)
 
         if routing_priority_overrides is not None:
-            account.routing_priority_overrides = {
-                str(k).strip(): int(v)
-                for k, v in (routing_priority_overrides or {}).items()
-                if str(k).strip()
-            }
+            account.routing_priority_overrides = _normalize_route_priority_overrides(
+                routing_priority_overrides
+            )
 
         if is_google_account is not None:
             # Update provider_metadata to reflect Google authentication status

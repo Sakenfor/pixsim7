@@ -77,13 +77,20 @@ async def check_sufficient_credits(
 
     account_service = AccountService(db)
     try:
-        # Try to select an account with sufficient credits
+        # Fail-fast probe: we only want to reject on TRUE credit insufficiency.
+        # Concurrency, cooldown, and daily-limit are transient — the worker
+        # already handles ``NoAccountAvailableError`` at dispatch time by
+        # deferring the generation to the retry queue. If we filter them here,
+        # a user with plenty of credits but a busy account sees a misleading
+        # "insufficient credits" 500 instead of the generation landing in
+        # PENDING and queueing behind their in-flight jobs.
         await account_service.select_account(
             provider_id=provider_id,
             user_id=user_id,
             required_credits=required_credits,
             operation_type=operation_type.value if hasattr(operation_type, "value") else operation_type,
             model=model,
+            ignore_availability=True,
         )
         return True
     except NoAccountAvailableError:

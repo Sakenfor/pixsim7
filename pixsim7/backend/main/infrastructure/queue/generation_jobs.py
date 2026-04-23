@@ -196,6 +196,29 @@ async def enqueue_generation_fresh_job(arq_pool, generation_id: int) -> bool:
     return True
 
 
+async def enqueue_immediate_poll(arq_pool, generation_id: int) -> bool:
+    """Enqueue a one-shot status poll right after a successful provider submit.
+
+    Fires as a priority task so the poller can race the short-lived CDN URL
+    window (e.g. ~1-2 s for Pixverse moderated content) before the 2 s cron
+    tick would otherwise miss it.  Uses no dedupe lease — immediate polls are
+    idempotent (the `_poll_in_flight` guard handles overlap) and we never
+    want to suppress one because a regular cron tick was already queued.
+    """
+    try:
+        await arq_pool.enqueue_job(
+            "poll_generation_once",
+            generation_id=generation_id,
+        )
+        return True
+    except Exception as e:
+        logger.warning(
+            "immediate_poll_enqueue_failed",
+            extra={"generation_id": generation_id, "error": str(e)},
+        )
+        return False
+
+
 async def enqueue_generation_retry_job(
     arq_pool,
     generation_id: int,
