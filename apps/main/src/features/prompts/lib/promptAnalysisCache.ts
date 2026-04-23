@@ -9,6 +9,7 @@
  * produce different candidates).
  */
 import type { PromptBlockCandidate } from '../types';
+import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -20,6 +21,7 @@ export interface AnalysisResult {
   tags: Array<{ tag: string; candidates: number[]; source: string; confidence?: number }>;
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
+  tokens?: { lines: PromptTokenLine[] };
 }
 
 export interface SequenceContext {

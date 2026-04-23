@@ -21,6 +21,30 @@ import type { PromptBlockCandidate } from '../types';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface PromptTokenRelationHop {
+  lhs?: string | null;
+  rhs?: string | null;
+  raw: string;
+  leading_char?: string | null;
+  terminal_char?: string | null;
+  run: number;
+}
+
+// Token-level line nodes returned by the Python tokenizer.
+export interface PromptTokenLine {
+  kind: 'header' | 'relation' | 'prose';
+  // header fields
+  pattern?: string;
+  label?: string;
+  body_start?: number;
+  // relation fields — one or more hops, e.g. A===>B<===C → 2 hops
+  hops?: PromptTokenRelationHop[];
+  // shared
+  start: number;
+  end: number;
+  text?: string;  // prose only
+}
+
 interface AnalyzePromptResponse {
   analysis?: {
     prompt?: string;
@@ -30,6 +54,7 @@ interface AnalyzePromptResponse {
   };
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
+  tokens?: { lines: PromptTokenLine[] };
 }
 
 export interface ShadowAnalysisResult {
@@ -177,6 +202,7 @@ export function useShadowAnalysis(
 
         const candidates = response?.analysis?.candidates ?? [];
         const tags = response?.analysis?.tags ?? [];
+        const tokens = response?.tokens;
         const sequenceContext = resolveSequenceContext(response);
 
         // Write to shared cache
@@ -186,6 +212,7 @@ export function useShadowAnalysis(
           tags,
           role_in_sequence: sequenceContext.role_in_sequence,
           sequence_context: sequenceContext,
+          ...(tokens ? { tokens } : {}),
         });
 
         setResult({

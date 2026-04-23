@@ -693,3 +693,258 @@ class TestPreambleWithConfiguredPatterns:
         assert result.sections is not None
         assert result.sections[0].label is None
         assert "Some intro text." in result.sections[0].text
+
+
+# ---------------------------------------------------------------------------
+# Prompt builder — easy iteration of tokens before / between / after blocks
+# ---------------------------------------------------------------------------
+
+
+def make_section(label, body, sep=":"):
+    """Format one section using the given separator style.
+
+    sep: ":" colon (default), "=" assignment, ">" arrow, ">>>" triple-arrow,
+         "<>" angle-bracket, "free" freestanding uppercase.
+    """
+    if sep == ":":
+        return f"{label}:\n{body}"
+    if sep in ("=", ">", ">>>"):
+        return f"{label} {sep} {body}"
+    if sep == "<>":
+        return f">{label}<\n{body}"
+    if sep == "free":
+        return f"{label}\n{body}"
+    raise ValueError(f"Unknown sep: {sep!r}")
+
+
+def make_prompt(*sections, before="", between="", after="", sep=":"):
+    """Assemble a prompt from (label, body) section pairs.
+
+    Keyword args:
+      before   — text inserted before the first section header
+      between  — text inserted between every pair of consecutive section headers
+      after    — text appended after the last section body
+      sep      — separator style forwarded to make_section
+
+    Example:
+      make_prompt(("CAMERA", "Slow dolly."), before="Preamble.", after="THE END.")
+    """
+    parts = []
+    if before.strip():
+        parts.append(before.rstrip())
+    for i, (label, body) in enumerate(sections):
+        if i > 0 and between.strip():
+            parts.append(between.rstrip())
+        parts.append(make_section(label, body.rstrip(), sep))
+    if after.strip():
+        parts.append(after.rstrip())
+    return "\n".join(parts) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Token position tests — before / between / after blocks
+# ---------------------------------------------------------------------------
+
+
+class TestPreambleVariants:
+    """Parametrized before-block tokens become unlabeled preamble sections."""
+
+    @pytest.mark.parametrize("preamble", [
+        "A general establishing shot.",
+        "INT. FOREST - DAY",
+        "A dark and stormy night.",
+        ">>intro shot<<",
+        "Wide exterior. Wind. Silence.",
+    ])
+    def test_preamble_has_no_section_label(self, preamble):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), before=preamble)
+        result = _parse(prompt)
+        assert result.sections is not None
+        assert result.sections[0].label is None
+
+    @pytest.mark.parametrize("preamble", [
+        "A general establishing shot.",
+        "INT. FOREST - DAY",
+        "Wide exterior. Wind. Silence.",
+    ])
+    def test_preamble_text_preserved_in_section_body(self, preamble):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), before=preamble)
+        result = _parse(prompt)
+        assert preamble in result.sections[0].text
+
+
+class TestInterSectionContent:
+    """Non-header tokens between two section headers are absorbed into the
+    preceding section's body, not treated as new sections."""
+
+    @pytest.mark.parametrize("between_token", [
+        "---",
+        "...",
+        "* * *",
+        "[ transition ]",
+        "(cut)",
+        "~",
+    ])
+    def test_between_token_captured_in_preceding_section(self, between_token):
+        prompt = make_prompt(
+            ("SCENE ONE", "A dark room."),
+            ("SCENE TWO", "A bright room."),
+            between=between_token,
+        )
+        result = _parse(prompt)
+        assert result.sections is not None
+        scene_one = next(s for s in result.sections if s.label == "SCENE ONE")
+        assert between_token in scene_one.text
+
+    @pytest.mark.parametrize("between_token", [
+        "---",
+        "...",
+        "* * *",
+    ])
+    def test_between_token_does_not_create_extra_section(self, between_token):
+        prompt = make_prompt(
+            ("ACTOR", "A warrior."),
+            ("CAMERA", "Slow dolly-in."),
+            between=between_token,
+        )
+        result = _parse(prompt)
+        assert result.sections is not None
+        labeled = [s for s in result.sections if s.label is not None]
+        assert len(labeled) == 2
+
+
+class TestEpilogueContent:
+    """Tokens after the last section header are absorbed into the last
+    section's body."""
+
+    @pytest.mark.parametrize("epilogue", [
+        "End of prompt.",
+        "--- END ---",
+        "[Cut to black]",
+        "(fade out)",
+        ".",
+    ])
+    def test_epilogue_captured_in_last_section_body(self, epilogue):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), after=epilogue)
+        result = _parse(prompt)
+        assert result.sections is not None
+        assert epilogue in result.sections[-1].text
+
+    @pytest.mark.parametrize("epilogue", [
+        "End of prompt.",
+        "--- END ---",
+    ])
+    def test_epilogue_does_not_create_extra_section(self, epilogue):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), after=epilogue)
+        result = _parse(prompt)
+        assert result.sections is not None
+        labeled = [s for s in result.sections if s.label is not None]
+        assert len(labeled) == 1
+
+
+class TestTokenPositions:
+    """The same token exercised in all three positions relative to sections."""
+
+    @pytest.mark.parametrize("token", [
+        "---",
+        "...",
+        "* * *",
+        "[scene break]",
+    ])
+    def test_token_before_becomes_preamble(self, token):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), before=token)
+        result = _parse(prompt)
+        assert result.sections is not None
+        assert result.sections[0].label is None
+        assert token in result.sections[0].text
+
+    @pytest.mark.parametrize("token", [
+        "---",
+        "...",
+        "* * *",
+        "[scene break]",
+    ])
+    def test_token_between_absorbed_into_preceding_section(self, token):
+        prompt = make_prompt(
+            ("SCENE", "A dark room."),
+            ("CAMERA", "Slow dolly-in."),
+            between=token,
+        )
+        result = _parse(prompt)
+        assert result.sections is not None
+        scene = next(s for s in result.sections if s.label == "SCENE")
+        assert token in scene.text
+
+    @pytest.mark.parametrize("token", [
+        "---",
+        "...",
+        "* * *",
+        "[scene break]",
+    ])
+    def test_token_after_absorbed_into_last_section(self, token):
+        prompt = make_prompt(("CAMERA", "Slow dolly-in."), after=token)
+        result = _parse(prompt)
+        assert result.sections is not None
+        assert token in result.sections[-1].text
+
+
+# ---------------------------------------------------------------------------
+# Pattern × token matrix — same labels across all separator styles
+# ---------------------------------------------------------------------------
+
+
+class TestPatternTokenMatrix:
+    """The same label tokens exercised across all four builtin separator styles."""
+
+    LABELS = ["ACTOR1", "MOOD", "SCENE", "CAMERA"]
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_colon_pattern(self, label):
+        result = _parse(make_prompt((label, "Some content.")))
+        assert result.sections is not None
+        assert result.sections[0].label == label
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_assignment_pattern(self, label):
+        result = _parse(
+            make_prompt((label, "Some content."), sep="="),
+            config={"section_patterns": ["assignment"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == label
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_arrow_pattern(self, label):
+        result = _parse(
+            make_prompt((label, "Some content."), sep=">"),
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == label
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_triple_arrow_pattern(self, label):
+        result = _parse(
+            make_prompt((label, "Some content."), sep=">>>"),
+            config={"section_patterns": ["assignment_arrow"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == label
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_freestanding_pattern(self, label):
+        result = _parse(
+            make_prompt((label, "Some content."), sep="free"),
+            config={"section_patterns": ["freestanding"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == label
+
+    @pytest.mark.parametrize("label", LABELS)
+    def test_all_patterns_active_detects_same_label(self, label):
+        result = _parse(
+            make_prompt((label, "Some content.")),
+            config={"section_patterns": ["colon", "assignment", "angle_bracket", "freestanding"]},
+        )
+        assert result.sections is not None
+        assert result.sections[0].label == label

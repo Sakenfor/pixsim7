@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useGenerationSettingsStore } from '@features/generation';
 import {
   Badge,
   Button,
   Input,
-  PromptEditor,
   Table,
   TableBody,
   TableCell,
@@ -13,9 +13,9 @@ import {
   Tooltip,
 } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
-import { shadowAnalysisExtension } from '@features/prompts/lib/shadowAnalysisExtension';
-import type { PromptBlockCandidate } from '@features/prompts/types';
+import { PromptComposer } from '@features/prompts/components/PromptComposer';
 
+import { resolveRecipe } from '@pixsim7/core.prompt';
 import {
   detectPromptSections,
   PATTERN_COLORS,
@@ -142,6 +142,21 @@ export function PromptTestSuitePanel() {
   const [newToken, setNewToken] = useState('');
   const [previewVariantId, setPreviewVariantId] = useState<string | null>(null);
 
+  // Inherit operation/model context from quickgen settings.
+  const operationType = useGenerationSettingsStore((s) => s.activeOperationType);
+  const modelId       = useGenerationSettingsStore((s) => s.params?.model as string | undefined);
+  const providerId    = useGenerationSettingsStore((s) => s.providerId);
+
+  const recipe = useMemo(
+    () => resolveRecipe({ operation_type: operationType, model_id: modelId, provider_id: providerId }),
+    [operationType, modelId, providerId],
+  );
+
+  const runContextSeed = useMemo(
+    () => ({ operation_type: operationType, model_id: modelId, provider_id: providerId }),
+    [operationType, modelId, providerId],
+  );
+
   // Selection helpers
   const isCellSelected = useCallback(
     (vId: string, iId: string) => {
@@ -206,37 +221,13 @@ export function PromptTestSuitePanel() {
     );
   }, []);
 
-  // Detect sections in the base prompt (client-side, instant feedback)
+  // Detect sections in the base prompt (client-side, instant feedback).
+  // Uses the active recipe so pattern selection follows the current operation.
   const sections: DetectedSection[] = useMemo(
-    () => detectPromptSections(basePrompt),
-    [basePrompt],
+    () => detectPromptSections(basePrompt, recipe),
+    [basePrompt, recipe],
   );
 
-  // Convert sections to shadowAnalysisExtension candidates so the editor
-  // can visually decorate detected header lines.
-  const candidates: PromptBlockCandidate[] = useMemo(
-    () =>
-      sections.map((s) => ({
-        text: basePrompt.slice(s.headerRange[0], s.headerRange[1]),
-        role: s.patternId,
-        category: s.label,
-        confidence: 1,
-        start_pos: s.headerRange[0],
-        end_pos: s.headerRange[1],
-        matched_keywords: [],
-      })),
-    [sections, basePrompt],
-  );
-
-  const editorExtensions = useMemo(() => {
-    if (candidates.length === 0) return [];
-    return [
-      shadowAnalysisExtension({
-        candidates,
-        roleColors: PATTERN_COLORS as Record<string, string>,
-      }),
-    ];
-  }, [candidates]);
 
   const getCell = useCallback(
     (vId: string, iId: string): CellState =>
@@ -327,17 +318,16 @@ export function PromptTestSuitePanel() {
             </span>
           )}
         </div>
-        <div className="max-h-48 overflow-auto rounded border border-zinc-800">
-          <PromptEditor
-            value={basePrompt}
-            onChange={setBasePrompt}
-            placeholder="Paste prompt here — assignment (KEY = value), colon (KEY:), angle-bracket (>HEADER<), and freestanding uppercase tokens will be detected as blocks."
-            extensions={editorExtensions}
-            minHeight={80}
-            maxChars={8000}
-            showCounter={false}
-          />
-        </div>
+        <PromptComposer
+          value={basePrompt}
+          onChange={setBasePrompt}
+          placeholder="Paste or build prompt — sections (CAMERA:, ACTOR1 =, >HEADER<) are detected as blocks and available as position targets below."
+          minHeight={80}
+          maxChars={8000}
+          showCounter={false}
+          historyScopeKey="prompt-test-suite"
+          runContextSeed={runContextSeed}
+        />
         {sections.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {sections.map((s, i) => (
