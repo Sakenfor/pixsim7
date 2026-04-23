@@ -15,8 +15,19 @@ characters become TEXT tokens; unrecognised lines become prose nodes.
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from dataclasses import dataclass, field
 from typing import List, Optional, Literal
+
+# ── load grammar rules from generated JSON ─────────────────────────────────
+
+_RULES_PATH = pathlib.Path(__file__).parent / "grammar_rules.json"
+_GRAMMAR_RULES: dict = json.loads(_RULES_PATH.read_text(encoding="utf-8"))
+_HEADER_PATTERNS: dict[str, dict] = {
+    p["id"]: p for p in _GRAMMAR_RULES["header_patterns"]
+}
+_RELATION_OP_CHARS: frozenset[str] = frozenset(_GRAMMAR_RULES["relation"]["op_chars"])
 
 # ── token kinds ────────────────────────────────────────────────────────────
 
@@ -206,12 +217,10 @@ class ProseLine:
 LineNode = HeaderLine | RelationLine | ProseLine
 
 
-# ── length constraints (mirror TS grammar constants) ───────────────────────
+# ── pattern helpers (values come from grammar_rules.json) ─────────────────
 
-_COLON_MIN = 2;      _COLON_MAX = 39
-_ASSIGN_MIN = 2;     _ASSIGN_MAX = 59
-_FREESTAND_MIN = 3;  _FREESTAND_MAX = 41
-_ANGLE_MIN = 2
+def _pat(id: str) -> dict:
+    return _HEADER_PATTERNS[id]
 
 
 def _is_upper_ident(text: str) -> bool:
@@ -284,19 +293,21 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
     first = tokens[i]
 
     # ── angle_bracket: > LABEL < (line-terminal) ──────────────────────────
+    p = _pat("angle_bracket")
     if first.kind == "RUN" and first.run_char == ">" and first.run_n == 1:
         last = tokens[end - 1]
         if last.kind == "RUN" and last.run_char == "<" and last.run_n == 1 and end - 1 > i:
             lf, lt = _trim_ws(tokens, i + 1, end - 1)
             if lt > lf:
                 label = _try_assemble_mixed_label(tokens, lf, lt)
-                if label and len(label) >= _ANGLE_MIN and _is_all_upper(label):
+                if label and len(label) >= p["label_min"] and _is_all_upper(label):
                     return HeaderLine("header", "angle_bracket", label, line.start, line.end, line.next)
 
     if first.kind != "IDENT" or not _is_upper(first.text[0]):
         return _try_relation(line, tokens, i, end, prose)
 
     # ── colon header: Label: (possibly multi-word, line-terminal) ─────────
+    p = _pat("colon")
     for k in range(i, end):
         if tokens[k].kind == "COLON":
             after = k + 1
@@ -305,7 +316,7 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
             if after == end:
                 lf, lt = _trim_ws(tokens, i, k)
                 label = _try_assemble_mixed_label(tokens, lf, lt)
-                if label and _COLON_MIN <= len(label) <= _COLON_MAX:
+                if label and p["label_min"] <= len(label) <= p["label_max"]:
                     return HeaderLine("header", "colon", label, line.start, line.end, line.next)
             break
 
@@ -313,12 +324,13 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
         return _try_relation(line, tokens, i, end, prose)
 
     # ── assignment: LABEL = ... ───────────────────────────────────────────
+    p = _pat("assignment")
     k = i + 1
     if k < end and tokens[k].kind == "WS":
         k += 1
     if k < end and tokens[k].kind == "RUN" and tokens[k].run_char == "=":
         label = first.text
-        if _ASSIGN_MIN <= len(label) <= _ASSIGN_MAX:
+        if p["label_min"] <= len(label) <= p["label_max"]:
             after = k + 1
             while after < end and tokens[after].kind == "WS":
                 after += 1
@@ -326,22 +338,24 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
             return HeaderLine("header", "assignment", label, line.start, line.end, body_start)
 
     # ── assignment_arrow: LABEL > ... (WS before > mandatory) ────────────
+    p = _pat("assignment_arrow")
     k = i + 1
     if k < end and tokens[k].kind == "WS":
         k += 1
         if k < end and tokens[k].kind == "RUN" and tokens[k].run_char == ">":
             label = first.text
-            if _ASSIGN_MIN <= len(label) <= _ASSIGN_MAX:
+            if p["label_min"] <= len(label) <= p["label_max"]:
                 after = k + 1
                 while after < end and tokens[after].kind == "WS":
                     after += 1
                 body_start = tokens[after].start if after < end else line.next
                 return HeaderLine("header", "assignment_arrow", label, line.start, line.end, body_start)
 
-    # ── freestanding: LABEL (line-terminal, length 3-41) ─────────────────
+    # ── freestanding: LABEL (line-terminal) ──────────────────────────────
+    p = _pat("freestanding")
     if i + 1 == end:
         label = first.text
-        if _FREESTAND_MIN <= len(label) <= _FREESTAND_MAX:
+        if p["label_min"] <= len(label) <= p["label_max"]:
             return HeaderLine("header", "freestanding", label, line.start, line.end, line.next)
 
     return _try_relation(line, tokens, i, end, prose)
@@ -370,13 +384,13 @@ def _try_relation(
         if k < end and tokens[k].kind == "WS":
             k += 1
 
-    # Must have at least one RUN token (=, <, or >)
-    if k >= end or tokens[k].kind != "RUN" or tokens[k].run_char == "_":
+    # Must have at least one RUN token from the relation op_chars set
+    if k >= end or tokens[k].kind != "RUN" or tokens[k].run_char not in _RELATION_OP_CHARS:
         return fallback
 
-    # Collect contiguous RUN tokens that form the operator
+    # Collect contiguous RUN tokens that form the operator (stay within op_chars)
     op_start = k
-    while k < end and tokens[k].kind == "RUN" and tokens[k].run_char != "_":
+    while k < end and tokens[k].kind == "RUN" and tokens[k].run_char in _RELATION_OP_CHARS:
         k += 1
     op_end = k
 

@@ -12,6 +12,16 @@
  * the lexer baking in any semantics.
  */
 import type { PatternId } from './sections';
+import GRAMMAR_RULES from './grammar_rules.json';
+
+// ── grammar rules loaded from CUE-generated JSON ─────────────────────────
+
+type HeaderPatternDef = (typeof GRAMMAR_RULES.header_patterns)[number];
+
+const _PAT: Record<string, HeaderPatternDef> = Object.fromEntries(
+  GRAMMAR_RULES.header_patterns.map((p) => [p.id, p]),
+);
+const _RELATION_OP_CHARS = new Set<string>(GRAMMAR_RULES.relation.op_chars);
 
 // ── tokens ────────────────────────────────────────────────────────────────
 
@@ -183,11 +193,8 @@ function splitLines(tokens: Token[], source: string): LineSlice[] {
   return lines;
 }
 
-// Length constraints inherited from the legacy regex set.
-const COLON_MIN = 2,            COLON_MAX = 39;            // [A-Z][A-Za-z /&-]{1,38}
-const ASSIGN_MIN = 2,           ASSIGN_MAX = 59;           // [A-Z][A-Z0-9_]{1,58}
-const FREESTAND_MIN = 3,        FREESTAND_MAX = 41;        // [A-Z][A-Z0-9_]{2,40}
-const ANGLE_MIN = 2,            ANGLE_MAX = Infinity;      // [A-Z][A-Z /&-]+
+// Pattern constraints come from grammar_rules.json (CUE-generated).
+const pat = (id: string): HeaderPatternDef => _PAT[id];
 
 /** True if all-uppercase identifier (digits/underscore allowed). */
 function isUpperIdent(text: string): boolean {
@@ -271,81 +278,52 @@ function parseLine(line: LineSlice, tokens: Token[]): LineNode {
 
   // ── angle_bracket: > LABEL <  (line-terminal) ─────────────────────────
   if (first.kind === 'RUN' && first.run!.char === '>' && first.run!.n === 1) {
-    // Last meaningful token must be RUN '<' n=1
     const last = tokens[end - 1];
     if (last.kind === 'RUN' && last.run!.char === '<' && last.run!.n === 1 && end - 1 > i) {
       const labelTokens = trimWS(tokens, i + 1, end - 1);
       if (labelTokens.to > labelTokens.from) {
         const label = tryAssembleMixedLabel(tokens, labelTokens.from, labelTokens.to);
-        if (label && label.length >= ANGLE_MIN && isAllUpper(label)) {
-          return {
-            kind: 'header',
-            pattern: 'angle_bracket',
-            label,
-            start: line.start,
-            end: line.end,
-            bodyStart: line.next,
-          };
+        const p = pat('angle_bracket');
+        if (label && label.length >= p.label_min && isAllUpper(label)) {
+          return { kind: 'header', pattern: 'angle_bracket', label, start: line.start, end: line.end, bodyStart: line.next };
         }
       }
     }
   }
 
-  // The remaining patterns all begin with an IDENT.
   if (first.kind !== 'IDENT' || !isUpper(first.text[0])) return proseFallback();
 
   // ── colon header: Label: (possibly multi-word, line-terminal) ─────────
-  // Find a COLON; everything before is label, everything after must be empty
-  // (after trimming).
   for (let k = i; k < end; k++) {
     if (tokens[k].kind === 'COLON') {
-      // Body of the line after the colon (excluding trailing WS) must be empty.
-      let afterEnd = end;
       let after = k + 1;
-      while (after < afterEnd && tokens[after].kind === 'WS') after++;
-      if (after === afterEnd) {
+      while (after < end && tokens[after].kind === 'WS') after++;
+      if (after === end) {
         const labelSpan = trimWS(tokens, i, k);
         const label = tryAssembleMixedLabel(tokens, labelSpan.from, labelSpan.to);
-        if (label && label.length >= COLON_MIN && label.length <= COLON_MAX) {
-          return {
-            kind: 'header',
-            pattern: 'colon',
-            label,
-            start: line.start,
-            end: line.end,
-            bodyStart: line.next,
-          };
+        const p = pat('colon');
+        if (label && label.length >= p.label_min && label.length <= p.label_max) {
+          return { kind: 'header', pattern: 'colon', label, start: line.start, end: line.end, bodyStart: line.next };
         }
       }
-      break; // Don't try other patterns past a colon — colon dominates.
+      break;
     }
   }
 
-  // For the remaining patterns, the label is a single IDENT (uppercase-only).
   if (!isUpperIdent(first.text)) return proseFallback();
 
   // ── assignment: LABEL = ... ───────────────────────────────────────────
-  // After the IDENT, optional WS, then RUN '=' (any length). Body is rest of line.
   {
     let k = i + 1;
     if (k < end && tokens[k].kind === 'WS') k++;
     if (k < end && tokens[k].kind === 'RUN' && tokens[k].run!.char === '=') {
       const label = first.text;
-      if (label.length >= ASSIGN_MIN && label.length <= ASSIGN_MAX) {
-        // bodyStart: after the '=' run + any trailing whitespace on the same
-        // line. If nothing remains on the line, skip to the next line so the
-        // body picks up from where content actually begins.
+      const p = pat('assignment');
+      if (label.length >= p.label_min && label.length <= p.label_max) {
         let after = k + 1;
         while (after < end && tokens[after].kind === 'WS') after++;
         const bodyStart = after < end ? tokens[after].start : line.next;
-        return {
-          kind: 'header',
-          pattern: 'assignment',
-          label,
-          start: line.start,
-          end: line.end,
-          bodyStart,
-        };
+        return { kind: 'header', pattern: 'assignment', label, start: line.start, end: line.end, bodyStart };
       }
     }
   }
@@ -357,35 +335,23 @@ function parseLine(line: LineSlice, tokens: Token[]): LineNode {
       k++;
       if (k < end && tokens[k].kind === 'RUN' && tokens[k].run!.char === '>') {
         const label = first.text;
-        if (label.length >= ASSIGN_MIN && label.length <= ASSIGN_MAX) {
+        const p = pat('assignment_arrow');
+        if (label.length >= p.label_min && label.length <= p.label_max) {
           let after = k + 1;
           while (after < end && tokens[after].kind === 'WS') after++;
           const bodyStart = after < end ? tokens[after].start : line.next;
-          return {
-            kind: 'header',
-            pattern: 'assignment_arrow',
-            label,
-            start: line.start,
-            end: line.end,
-            bodyStart,
-          };
+          return { kind: 'header', pattern: 'assignment_arrow', label, start: line.start, end: line.end, bodyStart };
         }
       }
     }
   }
 
-  // ── freestanding: LABEL  (line-terminal, length 3-41) ─────────────────
+  // ── freestanding: LABEL  (line-terminal) ─────────────────────────────
   if (i + 1 === end) {
     const label = first.text;
-    if (label.length >= FREESTAND_MIN && label.length <= FREESTAND_MAX) {
-      return {
-        kind: 'header',
-        pattern: 'freestanding',
-        label,
-        start: line.start,
-        end: line.end,
-        bodyStart: line.next,
-      };
+    const p = pat('freestanding');
+    if (label.length >= p.label_min && label.length <= p.label_max) {
+      return { kind: 'header', pattern: 'freestanding', label, start: line.start, end: line.end, bodyStart: line.next };
     }
   }
 

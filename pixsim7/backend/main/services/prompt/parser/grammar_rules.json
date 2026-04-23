@@ -1,0 +1,86 @@
+{
+  "version": "1.0.0",
+  "token_kinds": [
+    "IDENT",
+    "NUMBER",
+    "RUN",
+    "COLON",
+    "LPAREN",
+    "RPAREN",
+    "PLUS",
+    "WS",
+    "NEWLINE",
+    "TEXT"
+  ],
+  "run_chars": [
+    "=",
+    "<",
+    ">",
+    "_"
+  ],
+  "header_patterns": [
+    {
+      "id": "colon",
+      "op_style": "colon",
+      "label_upper_only": false,
+      "label_min": 2,
+      "label_max": 39,
+      "terminal": true,
+      "ws_before_op": false,
+      "angle_wrap": false
+    },
+    {
+      "id": "assignment",
+      "op_style": "run_eq",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 59,
+      "terminal": false,
+      "ws_before_op": false,
+      "angle_wrap": false
+    },
+    {
+      "id": "assignment_arrow",
+      "op_style": "run_gt",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 59,
+      "terminal": false,
+      "ws_before_op": true,
+      "angle_wrap": false
+    },
+    {
+      "id": "angle_bracket",
+      "op_style": "run_angle",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 9999,
+      "terminal": true,
+      "ws_before_op": false,
+      "angle_wrap": true
+    },
+    {
+      "id": "freestanding",
+      "op_style": "none",
+      "label_upper_only": true,
+      "label_min": 3,
+      "label_max": 41,
+      "terminal": true,
+      "ws_before_op": false,
+      "angle_wrap": false
+    }
+  ],
+  "relation": {
+    "op_chars": [
+      "=",
+      "<",
+      ">"
+    ],
+    "op_excludes": [
+      "_"
+    ],
+    "lhs_optional": true,
+    "rhs_optional": true,
+    "allow_standalone": true
+  }
+}

@@ -29,6 +29,8 @@
     "prompt-roles:check": "tsx tools/codegen/generate-prompt-roles.ts --check",
     "cue:gen": "tsx tools/codegen/generate-prompt-pack-schemas.ts",
     "cue:check": "tsx tools/codegen/generate-prompt-pack-schemas.ts --check",
+    "grammar:gen": "tsx tools/codegen/generate-grammar-rules.ts",
+    "grammar:check": "tsx tools/codegen/generate-grammar-rules.ts --check",
     "cue:projection-corpus:gen": "tsx tools/codegen/generate-primitive-projection-corpus.ts",
     "cue:projection-corpus:check": "tsx tools/codegen/generate-primitive-projection-corpus.ts --check",
     "prompt-role-authority:report": "python scripts/check_prompt_role_authority.py",
