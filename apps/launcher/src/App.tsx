@@ -4,6 +4,7 @@ import { useWsStore } from './stores/websocket'
 import { DockLayout } from './components/DockLayout'
 import { SetupPage } from './components/SetupPage'
 import { getIdentity } from './api/client'
+import { usePollWhenVisible } from './hooks/usePollWhenVisible'
 
 export function App() {
   const { loadServices } = useServicesStore()
@@ -40,9 +41,9 @@ export function App() {
     if (!identityExists) return
     loadServices()
     connect()
-    const poll = setInterval(() => loadServices(), 3000)
-    return () => clearInterval(poll)
   }, [identityExists])
+
+  usePollWhenVisible(loadServices, 3000, identityExists)
 
   useEffect(() => {
     if (connected) loadServices()

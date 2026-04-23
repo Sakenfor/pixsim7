@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { getLogs, clearLogs } from '../api/client'
 import { getLogMeta, getCompiledFields, type LogMeta, type CompiledField } from '../api/logMeta'
 import { LogLine, matchesSearch } from './log'
+import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 const MAX_LINES = 2000
 const POLL_INTERVAL = 2000
@@ -24,7 +25,6 @@ export function EmbeddedLogViewer() {
   const [paused, setPaused] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const autoScroll = useRef(true)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const onHash = () => setServiceKey(location.hash.slice(1))
@@ -55,15 +55,8 @@ export function EmbeddedLogViewer() {
     fetchLogs()
   }, [serviceKey])
 
-  // Polling: start/stop based on pause state
-  useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    if (!paused) {
-      fetchLogs()
-      pollRef.current = setInterval(fetchLogs, POLL_INTERVAL)
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [paused, fetchLogs])
+  // Polling: pauses automatically when window is hidden
+  usePollWhenVisible(fetchLogs, POLL_INTERVAL, !paused && !!serviceKey)
 
   useEffect(() => {
     if (autoScroll.current && containerRef.current) {

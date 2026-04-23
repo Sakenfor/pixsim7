@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useLogsStore } from '../stores/logs'
 import { useServicesStore } from '../stores/services'
 import { getLogMeta, getCompiledFields, parseLine, type LogMeta, type CompiledField } from '../api/logMeta'
 import { VirtualLogList, matchesSearch } from './log'
+import { usePollWhenVisible } from '../hooks/usePollWhenVisible'
 
 const POLL_INTERVAL = 2000
 
@@ -56,7 +57,6 @@ function discoverFilters(lines: string[]) {
 export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
   const selectedKey = useServicesStore((s) => s.selectedKey)
   const { lines, loading, fetchLogs, clearLogs } = useLogsStore()
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [meta, setMeta] = useState<LogMeta | null>(null)
   const [fields, setFields] = useState<CompiledField[]>([])
@@ -75,13 +75,10 @@ export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, valu
     if (selectedKey) fetchLogs(selectedKey)
   }, [selectedKey])
 
-  useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    if (!paused && selectedKey) {
-      pollRef.current = setInterval(() => fetchLogs(selectedKey), POLL_INTERVAL)
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [paused, selectedKey])
+  const pollFn = useCallback(() => {
+    if (selectedKey) fetchLogs(selectedKey)
+  }, [selectedKey, fetchLogs])
+  usePollWhenVisible(pollFn, POLL_INTERVAL, !paused && !!selectedKey)
 
   // Discover dynamic filter options from current log lines
   const discovered = useMemo(() => discoverFilters(lines), [lines])
