@@ -25,6 +25,10 @@ manifest = MiddlewareManifest(
     enabled=True,
     config={
         "allow_origins": settings.cors_origins,
+        # Match any origin on the ZeroTier network (default 10.243.x.x) on any
+        # port so LAN/ZT devices (phone, tablet) can reach the frontend dev
+        # server + backend across whichever ports happen to be in use.
+        "allow_origin_regex": r"^http://10\.243\.\d+\.\d+(:\d+)?$",
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         "allow_headers": ["*"],

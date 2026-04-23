@@ -38,7 +38,10 @@ async def get_redis() -> redis.Redis:
         _redis_client = await redis.from_url(
             settings.redis_url,
             encoding="utf-8",
-            decode_responses=True
+            decode_responses=True,
+            socket_keepalive=True,
+            health_check_interval=30,
+            retry_on_timeout=True,
         )
         logger.info("✅ Redis connected")
 
@@ -59,9 +62,10 @@ async def get_arq_pool() -> ArqRedis:
 
     if _arq_pool is None:
         logger.info(f"Creating ARQ pool: {settings.redis_url}")
-        _arq_pool = await create_pool(
-            RedisSettings.from_dsn(settings.redis_url)
-        )
+        arq_settings = RedisSettings.from_dsn(settings.redis_url)
+        arq_settings.conn_retries = 20
+        arq_settings.retry_on_timeout = True
+        _arq_pool = await create_pool(arq_settings)
         logger.info("✅ ARQ pool created")
 
     return _arq_pool
