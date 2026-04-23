@@ -247,6 +247,13 @@ def build_operation_parameter_spec() -> dict:
             "note": "Single video input (extend).",
         },
     }
+    composition_assets_i2v = {
+        **composition_assets_base,
+        "metadata": {
+            "max_items": 1,
+            "note": "Pixverse image-to-video takes a single source image (use fusion for multi-image).",
+        },
+    }
     composition_assets_fusion = {
         **composition_assets_base,
         "metadata": {
@@ -480,7 +487,7 @@ def build_operation_parameter_spec() -> dict:
         },
         # Image-to-video: aspect ratio can override source image framing
         "image_to_video": {
-            "parameters": [base_prompt, composition_assets_image]
+            "parameters": [base_prompt, composition_assets_i2v]
             + _fields_for(
                 "image_to_video",
                 [

@@ -73,14 +73,19 @@ def extract_frame_ffmpeg(
         # -ss before -i: fast seek (keyframe-based)
         # -vframes 1: extract only 1 frame
         # -q:v: quality (2 = high quality JPEG)
+        # -vf scale=...:out_range=pc + -pix_fmt yuvj420p: convert H.264's
+        #   limited-range YUV (16–235) to JPEG's full-range (0–255). Without
+        #   this, pixel values are re-interpreted as full-range by viewers,
+        #   producing a washed-out/pale frame vs. the original video.
         # -y: overwrite output
         cmd = [
             "ffmpeg",
             "-ss", str(timestamp),
             "-i", video_path,
             "-vframes", "1",
+            "-vf", "scale=in_range=auto:out_range=pc:flags=lanczos",
+            "-pix_fmt", "yuvj420p",
             "-q:v", str(quality),
-            "-strict", "unofficial",  # Allow limited-range YUV in MJPEG
             "-y",
             output_path
         ]
@@ -191,6 +196,15 @@ def extract_last_frame_ffmpeg(
         # Get video duration for precise seeking
         duration = _get_video_duration(video_path)
 
+        # -vf/-pix_fmt pair rescales H.264 limited-range YUV (16–235) to
+        # JPEG's full range (0–255); without it, viewers re-interpret the
+        # narrow-range data as full-range and the frame looks pale vs. the
+        # source video.
+        color_args = [
+            "-vf", "scale=in_range=auto:out_range=pc:flags=lanczos",
+            "-pix_fmt", "yuvj420p",
+        ]
+
         if duration and duration > 0.5:
             # Seek to near end (duration - 0.1s) and extract last frame
             seek_time = max(0, duration - 0.1)
@@ -206,8 +220,8 @@ def extract_last_frame_ffmpeg(
                 "-ss", str(seek_time),
                 "-i", video_path,
                 "-update", "1",
+                *color_args,
                 "-q:v", str(quality),
-                "-strict", "unofficial",
                 "-y",
                 output_path
             ]
@@ -224,8 +238,8 @@ def extract_last_frame_ffmpeg(
                 "-sseof", "-0.5",
                 "-i", video_path,
                 "-update", "1",
+                *color_args,
                 "-q:v", str(quality),
-                "-strict", "unofficial",
                 "-y",
                 output_path
             ]
