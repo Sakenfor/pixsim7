@@ -161,3 +161,8 @@ tools/cue/bin/
 
 # MkDocs output
 site-docs/
+
+# Local-dev profiling/scan artifacts
+.coverage
+importtime-*.txt
+suspicious-scan*.csv

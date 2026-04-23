@@ -10,6 +10,13 @@ from pydantic import Field, field_validator
 import os
 
 
+# Default connection URLs — single source of truth for backend defaults and
+# scattered fallbacks. 127.0.0.1 (not localhost) avoids Docker Desktop's broken
+# Hyper-V IPv6 NAT path on Windows (WinError 64 after idle).
+DEFAULT_DATABASE_URL = "postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7"
+DEFAULT_REDIS_URL = "redis://127.0.0.1:6380/0"
+
+
 class Settings(BaseSettings):
     """
     Application settings with environment variable support
@@ -30,7 +37,7 @@ class Settings(BaseSettings):
 
     # ===== DATABASE =====
     database_url: str = Field(
-        default="postgresql://pixsim:pixsim123@localhost:5434/pixsim7",
+        default=DEFAULT_DATABASE_URL,
         description="PostgreSQL connection URL for application data"
     )
 
@@ -46,7 +53,7 @@ class Settings(BaseSettings):
 
     # ===== REDIS =====
     redis_url: str = Field(
-        default="redis://localhost:6380/0",
+        default=DEFAULT_REDIS_URL,
         description="Redis connection URL (cache + queue)"
     )
 
