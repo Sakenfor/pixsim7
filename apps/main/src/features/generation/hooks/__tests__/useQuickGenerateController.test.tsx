@@ -11,6 +11,12 @@ const testState = vi.hoisted(() => {
   const setGeneratingMock = vi.fn();
   const recordUsageMock = vi.fn();
   const syncOperationMock = vi.fn();
+  const quickGenerateBindings = {
+    dynamicParams: {} as Record<string, unknown>,
+    prompts: [] as string[],
+    transitionDurations: [] as number[],
+    lastSelectedAsset: null as any,
+  };
 
   const sessionState = {
     operationType: 'image_to_image',
@@ -61,6 +67,7 @@ const blockTemplateState = {
     inputState,
     generationsState,
     blockTemplateState,
+    quickGenerateBindings,
   };
 });
 
@@ -145,12 +152,7 @@ vi.mock('@features/generation/lib/api', () => ({
 }));
 
 vi.mock('@features/prompts', () => ({
-  useQuickGenerateBindings: vi.fn(() => ({
-    dynamicParams: {},
-    prompts: [],
-    transitionDurations: [],
-    lastSelectedAsset: null,
-  })),
+  useQuickGenerateBindings: vi.fn(() => testState.quickGenerateBindings),
 }));
 
 vi.mock('@features/prompts/stores/blockTemplateStore', () => {
@@ -218,6 +220,10 @@ describe('useQuickGenerateController.generate with assetOverrides', () => {
     testState.sessionState.generating = false;
     testState.sessionState.prompt = 'base prompt';
     testState.sessionState.uiState = {};
+    testState.quickGenerateBindings.dynamicParams = {};
+    testState.quickGenerateBindings.prompts = [];
+    testState.quickGenerateBindings.transitionDurations = [];
+    testState.quickGenerateBindings.lastSelectedAsset = null;
 
     testState.blockTemplateState.pinnedTemplateId = 'tpl-1';
     testState.blockTemplateState.templateRollMode = 'once';
@@ -376,5 +382,31 @@ describe('useQuickGenerateController.generate with assetOverrides', () => {
 
     expect(result.current.generationId).toBe(42);
     expect(testState.setWatchingGenerationMock).toHaveBeenCalledWith(42);
+  });
+
+  it('clears stale source/composition params when executing with assetOverrides', async () => {
+    testState.quickGenerateBindings.dynamicParams = {
+      source_asset_id: 999,
+      source_asset_ids: [999, 1000],
+      composition_assets: [{ asset: 'asset:999', role: 'source_image' }],
+      strength: 0.5,
+    };
+
+    const { result } = renderHook(() => useQuickGenerateController());
+    const asset = {
+      id: 123,
+      mediaType: 'video',
+      providerUploads: {},
+      lastUploadStatusByProvider: {},
+    } as any;
+
+    await act(async () => {
+      await result.current.executeGeneration({ assetOverrides: [asset] });
+    });
+
+    expect(testState.buildGenerationRequestMock).toHaveBeenCalled();
+    const buildContext = testState.buildGenerationRequestMock.mock.calls[0][0];
+    expect(buildContext.dynamicParams).toEqual({ strength: 0.5 });
+    expect(buildContext.activeAsset).toMatchObject({ id: 123 });
   });
 });

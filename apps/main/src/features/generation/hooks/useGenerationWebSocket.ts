@@ -12,6 +12,8 @@ import { useSyncExternalStore } from 'react';
 
 import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
+import { authService } from '@lib/auth';
+import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { debugFlags, hmrSingleton } from '@lib/utils';
 
 import { assetEvents, fromAssetResponse, getAssetDisplayUrls, useMediaSettingsStore } from '@features/assets';
@@ -49,6 +51,13 @@ function computeWebSocketUrl(): string {
   const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
   if (envUrl) {
     return envUrl;
+  }
+
+  // Relative mode (BACKEND_BASE === ''): derive from current page origin so the
+  // dev-server / prod proxy routes the WebSocket upgrade for us.
+  if (!BACKEND_BASE && typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/api/v1/ws/generations`;
   }
 
   try {
@@ -96,7 +105,13 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function probeVideoReadyViaFetch(url: string): Promise<boolean> {
-  const probeUrl = appendCacheBust(url);
+  const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
+  const probeUrl = appendCacheBust(fullUrl);
+  const token = isBackend ? authService.getStoredToken() : null;
+  if (isBackend && !token) {
+    return false;
+  }
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   try {
     const controller = new AbortController();
@@ -107,6 +122,7 @@ async function probeVideoReadyViaFetch(url: string): Promise<boolean> {
         mode: 'cors',
         cache: 'no-store',
         signal: controller.signal,
+        headers: authHeaders,
       });
       if (head.ok) return true;
     } finally {
@@ -124,7 +140,10 @@ async function probeVideoReadyViaFetch(url: string): Promise<boolean> {
         method: 'GET',
         mode: 'cors',
         cache: 'no-store',
-        headers: { Range: 'bytes=0-1' },
+        headers: {
+          ...(authHeaders ?? {}),
+          Range: 'bytes=0-1',
+        },
         signal: controller.signal,
       });
       if (range.status === 200 || range.status === 206) return true;
@@ -140,6 +159,12 @@ async function probeVideoReadyViaFetch(url: string): Promise<boolean> {
 
 async function probeVideoReadyViaElement(url: string): Promise<boolean> {
   if (typeof document === 'undefined') return false;
+  const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
+  if (isBackend) {
+    // <video src> probes cannot attach Authorization headers, so backend media
+    // endpoints would always 401 here and create noisy logs.
+    return false;
+  }
 
   return new Promise<boolean>((resolve) => {
     const video = document.createElement('video');
@@ -166,7 +191,7 @@ async function probeVideoReadyViaElement(url: string): Promise<boolean> {
     video.onloadedmetadata = () => finish(true);
     video.oncanplay = () => finish(true);
     video.onerror = () => finish(false);
-    video.src = appendCacheBust(url);
+    video.src = appendCacheBust(fullUrl);
     video.load();
   });
 }

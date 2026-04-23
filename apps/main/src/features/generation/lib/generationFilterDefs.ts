@@ -124,11 +124,10 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
       counts[ALL_TERMINAL] = terminalTotal;
 
       return GRANULAR_STATUS_OPTIONS
-        .filter(opt => (counts[opt.value] ?? 0) > 0)
         .map(opt => ({
           value: opt.value,
           label: opt.label,
-          count: counts[opt.value],
+          count: counts[opt.value] ?? 0,
           groupKey: opt.group,
           groupLabel: opt.groupLabel,
         }));

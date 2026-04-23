@@ -5,9 +5,9 @@
  * Shows status, allows filtering, grouping, and batch cancel.
  */
 import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton, ConfirmModal, PromptModal, useToast } from '@pixsim7/shared.ui';
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
-import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
+import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration, listGenerations } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
@@ -41,6 +41,8 @@ export interface GenerationsPanelProps {
 
 const GROUPING_STORAGE_KEY = 'generations-panel-grouping';
 const VIEW_MODE_STORAGE_KEY = 'generations-panel-view-mode';
+const PANEL_FETCH_LIMIT = 200;
+const ACTIVE_SYNC_INTERVAL_MS = 15_000;
 const VALID_GROUP_VALUES: GenerationGroupBy[] = ['prompt', 'operation', 'provider', 'model', 'account', 'asset'];
 
 function readStoredGroupByStack(): GenerationGroupBy[] {
@@ -166,7 +168,34 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const { isConnected: wsConnected } = useGenerationWebSocket();
 
   // Fetch recent generations (shared hook)
-  const { isLoading, refresh: handleRefresh } = useRecentGenerations({ limit: 200 });
+  const { isLoading, refresh: handleRefresh } = useRecentGenerations({
+    limit: PANEL_FETCH_LIMIT,
+    fetchOnMount: false,
+  });
+
+  const backgroundRefreshInFlightRef = useRef(false);
+  const prevWsConnectedRef = useRef(wsConnected);
+  const didInitialSyncRef = useRef(false);
+
+  const refreshFromApiSilently = useCallback(async () => {
+    if (backgroundRefreshInFlightRef.current) return;
+    backgroundRefreshInFlightRef.current = true;
+    try {
+      const response = await listGenerations({ limit: PANEL_FETCH_LIMIT, offset: 0 });
+      useGenerationsStore.setState((state) => {
+        const newMap = new Map(state.generations);
+        response.generations.forEach((gen) => {
+          const model = fromGenerationResponse(gen);
+          newMap.set(model.id, model);
+        });
+        return { generations: newMap };
+      });
+    } catch (error) {
+      console.warn('[GenerationsPanel] Background refresh failed:', error);
+    } finally {
+      backgroundRefreshInFlightRef.current = false;
+    }
+  }, []);
 
   // Get generations Map (stable reference)
   const generationsMap = useGenerationsStore(state => state.generations);
@@ -176,6 +205,39 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     () => Array.from(generationsMap.values()).filter(g => g && g.id != null),
     [generationsMap]
   );
+  const hasActiveGenerations = useMemo(
+    () => allGenerations.some((generation) => isGenerationActive(generation.status)),
+    [allGenerations]
+  );
+
+  // Always sync once when the panel opens so stale in-memory rows reconcile.
+  // Use foreground loading only when we have no rows yet.
+  useEffect(() => {
+    if (didInitialSyncRef.current) return;
+    didInitialSyncRef.current = true;
+    if (allGenerations.length === 0) {
+      void handleRefresh();
+      return;
+    }
+    void refreshFromApiSilently();
+  }, [allGenerations.length, handleRefresh, refreshFromApiSilently]);
+
+  // If websocket reconnects, backfill any missed events.
+  useEffect(() => {
+    if (wsConnected && !prevWsConnectedRef.current) {
+      void refreshFromApiSilently();
+    }
+    prevWsConnectedRef.current = wsConnected;
+  }, [wsConnected, refreshFromApiSilently]);
+
+  // Safety net: while active jobs exist, periodically reconcile with API.
+  useEffect(() => {
+    if (!hasActiveGenerations) return undefined;
+    const interval = window.setInterval(() => {
+      void refreshFromApiSilently();
+    }, ACTIVE_SYNC_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [hasActiveGenerations, refreshFromApiSilently]);
 
   // Reusable filter system
   const persistenceOptions = useClientFilterPersistence('generations-panel-filters');
@@ -378,7 +440,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
             </div>
             {/* Manual refresh */}
             <button
-              onClick={handleRefresh}
+              onClick={() => void handleRefresh()}
               disabled={isLoading}
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
               title="Refresh generations"

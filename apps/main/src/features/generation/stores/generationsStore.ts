@@ -98,7 +98,72 @@ export const generationsSelectors = {
     state.watchingGenerationId
       ? state.generations.get(state.watchingGenerationId)
       : undefined,
+
+  // Active child generations using this asset as a source input — extends,
+  // regenerates, compositions, artificial-extends. Scope is strictly
+  // children-of; the "this asset is itself being produced" case is already
+  // covered by `useMediaCardGenerationStatus` (see
+  // `generationAssetMapping.ts`), which also handles terminal states
+  // (completed/failed) and owns the status ring widget. Keep the two
+  // surfaces non-overlapping so we never double-drive the same indicator.
+  inFlightTouchingAsset: (assetId: number | null | undefined) => (state: GenerationsState) => {
+    if (!assetId) return [] as GenerationModel[];
+    const out: GenerationModel[] = [];
+    for (const g of state.generations.values()) {
+      if (!isActiveStatus(g.status)) continue;
+      // Skip self-scope: `useMediaCardGenerationStatus` owns that signal.
+      if (g.assetId === assetId) continue;
+      const params = g.canonicalParams ?? {};
+      const ae = (params as { artificial_extend?: { source_video_id?: number } }).artificial_extend;
+      if (ae?.source_video_id === assetId) { out.push(g); continue; }
+      const sources = extractGenerationAssetIdsForGeneration(g, params);
+      if (sources.includes(assetId)) out.push(g);
+    }
+    return out;
+  },
 };
+
+// Localized source-asset extractor for in-store generations. Kept here to
+// avoid a dependency from the store on feature-layer utils; the broader
+// `extractGenerationAssetIds` in components/media covers API/raw shapes,
+// but the store holds normalized GenerationModel — only a few fields on
+// `canonicalParams` + `inputs` can carry source asset references.
+function extractGenerationAssetIdsForGeneration(
+  gen: GenerationModel,
+  params: Record<string, unknown>,
+): number[] {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  const push = (id: unknown) => {
+    const n = typeof id === 'number' ? id : typeof id === 'string' ? Number(id) : NaN;
+    if (!Number.isFinite(n) || seen.has(n)) return;
+    seen.add(n);
+    ids.push(n);
+  };
+
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+  arr((params as { source_asset_ids?: unknown }).source_asset_ids).forEach(push);
+  push((params as { source_asset_id?: unknown }).source_asset_id);
+  push((params as { original_video_id?: unknown }).original_video_id);
+
+  const composition = (params as { composition_assets?: unknown }).composition_assets;
+  arr(composition).forEach((entry) => {
+    if (typeof entry === 'number' || typeof entry === 'string') { push(entry); return; }
+    if (entry && typeof entry === 'object') {
+      const e = entry as { asset_id?: unknown; assetId?: unknown; id?: unknown };
+      push(e.asset_id ?? e.assetId ?? e.id);
+    }
+  });
+
+  for (const input of gen.inputs ?? []) {
+    if (!input || typeof input !== 'object') continue;
+    const i = input as { asset_id?: unknown; assetId?: unknown; id?: unknown };
+    push(i.asset_id ?? i.assetId ?? i.id);
+  }
+
+  return ids;
+}
 
 // ============================================================================
 // Generation Status Helpers

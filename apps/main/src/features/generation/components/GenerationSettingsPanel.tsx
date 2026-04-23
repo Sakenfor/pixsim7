@@ -26,6 +26,7 @@ import { useAuthoringHintsStore, type AuthoringHints } from '@features/generatio
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels, useModelPromotions } from '@features/providers';
 import { providerCapabilityRegistry } from '@features/providers';
 
+import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
 import type { FanoutRunOptions } from '../lib/fanoutPresets';
@@ -409,6 +410,16 @@ export function GenerationSettingsPanel({
   const currentModel = workbench.dynamicParams?.model as string | undefined;
   const isModelUnlimited = isModelInUnlimitedSet(unlimitedModels, currentModel);
   const isCurrentGenerationFree = isModelUnlimited || (creditEstimate !== null && creditEstimate <= 0);
+
+  // When the op/model only accepts a single input, Go already collapses to
+  // the selected input — so "Current only" becomes redundant. Grey it out
+  // with a tooltip instead of hiding it to keep the button slot stable.
+  // Use allParamSpecs (unfiltered) because paramSpecs excludes composition_assets.
+  const resolvedMaxSlots = useMemo(() => {
+    return resolveMaxSlotsFromSpecs(workbench.allParamSpecs, operationType, currentModel)
+      ?? resolveMaxSlotsForModel(operationType, currentModel);
+  }, [workbench.allParamSpecs, operationType, currentModel]);
+  const currentOnlyRedundant = resolvedMaxSlots === 1;
 
   const filteredParamSpecs = useMemo(() => {
     return filterQuickGenStyleParamSpecs(workbench.paramSpecs, operationType, excludeParams);
@@ -800,21 +811,24 @@ export function GenerationSettingsPanel({
             {onGenerateCurrentOnly && inputCount > 1 && (() => {
               const currentOnlyIsText = isOnEmptySlot && (operationType === 'image_to_video' || operationType === 'image_to_image');
               const t2Label = operationType === 'image_to_video' ? 'text-to-video' : 'text-to-image';
+              const disableCurrentOnly = generating || !canGenerate || currentOnlyRedundant;
               return (
                 <button
                   onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
-                  disabled={generating || !canGenerate}
+                  disabled={disableCurrentOnly}
                   className={clsx(
                     'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
-                    generating || !canGenerate
+                    disableCurrentOnly
                       ? 'text-white bg-neutral-400'
                       : error
                       ? 'text-white bg-red-600 hover:bg-red-700'
                       : btn.primary
                   )}
                   style={{ transition: 'none', animation: 'none' }}
-                  title={currentOnlyIsText
+                  title={currentOnlyRedundant
+                    ? 'This model accepts one input — Go already uses the selected input'
+                    : currentOnlyIsText
                     ? `Generate as ${t2Label}${isBurstMode ? ` (${burstCount}x)` : ''}`
                     : isBurstMode ? `Generate ${burstCount}x with selected input only` : 'Generate with selected input only'}
                 >

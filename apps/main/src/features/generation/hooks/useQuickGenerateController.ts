@@ -961,14 +961,15 @@ export function useQuickGenerateController() {
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
     const activeOperationType = getActiveOperationType();
+    const hasAssetOverrides = Array.isArray(overrides?.assetOverrides);
 
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
     const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
 
-    // When explicitly skipping active asset fallback (e.g. virtual empty slot),
-    // also clear stale asset references from persisted settings params so
-    // buildGenerationRequest doesn't pick them up as an asset input.
-    if (overrides?.skipActiveAssetFallback) {
+    // assetOverrides are documented as replacing current inputs, so clear any
+    // persisted source/composition params that could override the provided assets.
+    // Keep the same clearing behavior for explicit skipActiveAssetFallback too.
+    if (overrides?.skipActiveAssetFallback || hasAssetOverrides) {
       delete dynamicParams.source_asset_id;
       delete dynamicParams.source_asset_ids;
       delete dynamicParams.composition_assets;
@@ -1012,6 +1013,22 @@ export function useQuickGenerateController() {
     } else {
       effectiveInputs = currentInputs;
       effectiveCurrentInput = currentInput;
+
+      // When the provider only accepts a single input for this op/model,
+      // Go should use the actively-selected carousel input rather than
+      // silently taking the first item in the queue. Matches the "current
+      // only" split-button behavior so tracking/history stay in sync with
+      // what the user sees selected.
+      const model = dynamicParams?.model as string | undefined;
+      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', activeOperationType);
+      const resolvedMax = resolveMaxSlotsFromSpecs(opSpec?.parameters, activeOperationType, model)
+        ?? resolveMaxSlotsForModel(activeOperationType, model);
+      if (resolvedMax === 1 && effectiveCurrentInput?.asset && effectiveInputs.length > 1) {
+        effectiveInputs = [effectiveCurrentInput];
+        delete dynamicParams.composition_assets;
+        delete dynamicParams.source_asset_id;
+        delete dynamicParams.source_asset_ids;
+      }
     }
 
     // Auto-upload any local-only assets (blob: URLs can't reach the backend)
@@ -1037,7 +1054,7 @@ export function useQuickGenerateController() {
     };
     if (activeAssetOverride) {
       requestOverrides.activeAsset = activeAssetOverride;
-    } else if (overrides?.skipActiveAssetFallback) {
+    } else if (overrides?.skipActiveAssetFallback || hasAssetOverrides) {
       requestOverrides.activeAsset = null;
     }
 

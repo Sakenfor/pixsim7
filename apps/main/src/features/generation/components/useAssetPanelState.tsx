@@ -97,6 +97,14 @@ function warningBadge(tooltip: string) {
   });
 }
 
+function parseAssetRefId(assetUrl: string | undefined): number | null {
+  if (!assetUrl) return null;
+  const match = assetUrl.match(/^asset:(-?\d+)(?:[?#].*)?$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 function maskBadge(
   count: number,
   maskAssetIds: number[],
@@ -208,7 +216,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const setArmedSlot = useInputStore(s => s.setArmedSlot);
   const setInputMode = useInputStore(s => s.setInputMode);
   const storeReorderInput = useInputStore(s => s.reorderInput);
-  const storeUpdateMaskLayer = useInputStore(s => s.updateMaskLayer);
+  const storeSetMaskLayers = useInputStore(s => s.setMaskLayers);
+  const storeSetInputMask = useInputStore(s => s.setInputMask);
   const storeToggleSkip = useInputStore(s => s.toggleSkip);
   const reorderInput = ctx?.reorderInput ?? storeReorderInput;
 
@@ -918,12 +927,26 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   // Switch a mask layer to a different version asset
   const handleMaskVersionSwitch = useCallback(
     (item: InputItem, oldAssetId: number, newAssetId: number) => {
-      const layer = item.maskLayers?.find((l) => l.assetUrl === `asset:${oldAssetId}`);
-      if (layer) {
-        storeUpdateMaskLayer(operationType, item.id, layer.id, { assetUrl: `asset:${newAssetId}` });
+      const nextAssetRef = `asset:${newAssetId}`;
+      const existingLayers = item.maskLayers ?? [];
+
+      if (existingLayers.length > 0) {
+        let changed = false;
+        const nextLayers = existingLayers.map((layer) => {
+          if (parseAssetRefId(layer.assetUrl) !== oldAssetId) return layer;
+          changed = true;
+          return { ...layer, assetUrl: nextAssetRef };
+        });
+        if (changed) {
+          storeSetMaskLayers(operationType, item.id, nextLayers);
+        }
+      }
+
+      if (parseAssetRefId(item.maskUrl) === oldAssetId) {
+        storeSetInputMask(operationType, item.id, nextAssetRef);
       }
     },
-    [storeUpdateMaskLayer, operationType],
+    [storeSetInputMask, storeSetMaskLayers, operationType],
   );
 
   // Unified widget assembly for any slot.
@@ -940,12 +963,12 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       } else {
         widgets.push(buildSetLinkWidget(slotIdx));
       }
-      const visibleMasks = item.maskLayers?.filter((l) => l.visible) ?? [];
+      const visibleMasks = item.maskLayers?.filter((l) => l.visible !== false) ?? [];
       const maskCount = visibleMasks.length || (item.maskUrl ? 1 : 0);
       if (maskCount > 0) {
         const maskAssetIds = visibleMasks
-          .map((l) => { const m = l.assetUrl.match(/^asset:(\d+)$/); return m ? Number(m[1]) : null; })
-          .filter((id): id is number => id !== null);
+          .map((l) => parseAssetRefId(l.assetUrl))
+          .filter((id): id is number => id !== null && id > 0);
         widgets.push(maskBadge(
           maskCount,
           maskAssetIds,

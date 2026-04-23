@@ -66,6 +66,8 @@ export type { UseQuickGenPanelLayoutConfig } from './hooks/useQuickGenPanelLayou
 export { useQuickGenScopeSync } from './hooks/useQuickGenScopeSync';
 export type { UseQuickGenScopeSyncConfig, UseQuickGenScopeSyncResult } from './hooks/useQuickGenScopeSync';
 export { usePersistedScopeState } from './hooks/usePersistedScopeState';
+export { useAssetInFlightGenerations } from './hooks/useAssetInFlightGenerations';
+export type { AssetInFlightGenerations } from './hooks/useAssetInFlightGenerations';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
