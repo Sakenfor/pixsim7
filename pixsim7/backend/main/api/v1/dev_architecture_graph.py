@@ -360,10 +360,45 @@ def build_metrics(
     )
 
 
+def check_locator_bindings() -> List[DriftWarning]:
+    """Emit warnings for expected capability bindings that aren't registered.
+
+    Part of the `manifest-runtime-binding` plan: routes using
+    `Depends(get_<capability>)` rely on `bind_default_capabilities()` having
+    been called at startup. If the locator is missing an expected name, those
+    routes would 500 at request time with KeyError. Surface it here so AppMap
+    shows the drift before a user triggers the endpoint.
+    """
+    warnings: List[DriftWarning] = []
+    try:
+        from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+            capability_locator,
+            CAP_ANALYZER_REGISTRY,
+        )
+    except Exception as exc:
+        return [DriftWarning(
+            code="capability_locator.import_failed",
+            message=f"Could not import capability locator: {exc}",
+            severity="error",
+        )]
+
+    expected = [CAP_ANALYZER_REGISTRY]
+    bound = capability_locator.list_bound()
+    for name in expected:
+        if name not in bound:
+            warnings.append(DriftWarning(
+                code="capability_locator.unbound",
+                message=f"Expected capability '{name}' is not bound. Ensure bind_default_capabilities() ran during lifespan startup.",
+                severity="warning",
+            ))
+    return warnings
+
+
 def build_architecture_graph() -> ArchitectureGraphV1:
     """Assemble the full architecture graph payload."""
     frontend, frontend_source, warnings = load_frontend_source()
     backend, backend_source = discover_backend_source()
+    warnings = warnings + check_locator_bindings()
 
     links = build_links(frontend, backend)
     capability_nodes = build_capability_nodes(frontend, backend)

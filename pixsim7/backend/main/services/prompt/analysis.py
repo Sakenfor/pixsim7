@@ -29,9 +29,11 @@ from pixsim7.backend.main.services.analysis.chain_executor import execute_first_
 from pixsim7.backend.main.services.analysis.observability import log_analyzer_run
 from pixsim7.backend.main.services.analysis.result_envelope import build_provenance
 from pixsim7.backend.main.services.prompt.parser import (
-    analyzer_registry,
     AnalyzerKind,
     AnalyzerTarget,
+)
+from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+    get_analyzer_registry,
 )
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.semantic_context import (
@@ -433,7 +435,7 @@ class PromptAnalysisService:
                 chain_result.error_summary,
             )
             analyzer_id = DEFAULT_PROMPT_ANALYZER_ID
-            analyzer_info = analyzer_registry.get(analyzer_id)
+            analyzer_info = get_analyzer_registry().get(analyzer_id)
             resolved_execution = resolve_analyzer_execution(
                 AnalyzerExecutionRequest(
                     analyzer_id=analyzer_id,

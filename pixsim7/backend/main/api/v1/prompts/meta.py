@@ -15,7 +15,12 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     DEFAULT_PROMPT_ANALYZER_ID,
     resolve_prompt_default_analyzer_ids,
 )
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+    get_analyzer_registry,
+)
+from pixsim7.backend.main.infrastructure.plugins.capabilities.protocols import (
+    AnalyzerRegistryProtocol,
+)
 from pixsim7.backend.main.services.prompt.authoring_mode_registry import (
     authoring_mode_registry,
 )
@@ -293,14 +298,17 @@ def _normalize_authoring_audience(audience: Optional[str]) -> Optional[str]:
 
 
 @router.get("/meta/analysis-contract", response_model=PromptAnalysisContractResponse)
-async def get_prompt_analysis_contract(current_user=Depends(get_current_user)):
+async def get_prompt_analysis_contract(
+    current_user=Depends(get_current_user),
+    analyzers: AnalyzerRegistryProtocol = Depends(get_analyzer_registry),
+):
     """
     Return a machine-readable contract for prompt analysis.
 
     Intended as a single discovery endpoint for local/remote AI agents.
     """
     prompt_analyzers: List[PromptAnalyzerContract] = []
-    for analyzer in analyzer_registry.list_prompt_analyzers(include_legacy=False):
+    for analyzer in analyzers.list_prompt_analyzers(include_legacy=False):
         prompt_analyzers.append(
             PromptAnalyzerContract(
                 id=analyzer.id,

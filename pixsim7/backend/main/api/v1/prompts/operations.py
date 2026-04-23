@@ -17,7 +17,13 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     normalize_analyzer_id_for_target,
     resolve_prompt_default_analyzer_id,
 )
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
+from pixsim7.backend.main.services.prompt.parser import AnalyzerTarget
+from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+    get_analyzer_registry,
+)
+from pixsim7.backend.main.infrastructure.plugins.capabilities.protocols import (
+    AnalyzerRegistryProtocol,
+)
 from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
     AnalyzerPresetService,
 )
@@ -661,6 +667,7 @@ async def analyze_prompt(
     request: AnalyzePromptRequest,
     user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    analyzers: AnalyzerRegistryProtocol = Depends(get_analyzer_registry),
 ):
     """
     Analyze a prompt without storage (preview only).
@@ -726,7 +733,7 @@ async def analyze_prompt(
             preset_id = instance_config.get("preset_id")
 
         if preset_id:
-            analyzer_info = analyzer_registry.get(analyzer_id)
+            analyzer_info = analyzers.get(analyzer_id)
             presets = (analyzer_info.config or {}).get("presets") if analyzer_info else None
             has_preset = isinstance(presets, dict) and preset_id in presets
             if not has_preset:
@@ -743,7 +750,7 @@ async def analyze_prompt(
                     preset_id = None
 
     if preset_id:
-        analyzer_info = analyzer_registry.get(analyzer_id)
+        analyzer_info = analyzers.get(analyzer_id)
         presets = (analyzer_info.config or {}).get("presets") if analyzer_info else None
         has_preset = isinstance(presets, dict) and preset_id in presets
         if not has_preset:
