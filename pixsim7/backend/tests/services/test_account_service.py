@@ -141,6 +141,13 @@ def test_account_matches_routing_allow_wildcard_model_matches_any_model() -> Non
     ) is True
 
 
+def test_account_matches_routing_allow_alias_matches_canonical_model() -> None:
+    account = _make_account(allow=["text_to_image:seedream-5.0"])
+    assert _account_matches_routing(
+        account, operation_type="text_to_image", model="seedream-5.0-lite"
+    ) is True
+
+
 def test_account_matches_routing_deny_list_blocks_match() -> None:
     account = _make_account(deny=["image_to_video:expensive-model"])
     assert _account_matches_routing(
@@ -149,6 +156,13 @@ def test_account_matches_routing_deny_list_blocks_match() -> None:
     assert _account_matches_routing(
         account, operation_type="image_to_video", model="cheap-model"
     ) is True
+
+
+def test_account_matches_routing_deny_alias_blocks_canonical_model() -> None:
+    account = _make_account(deny=["text_to_image:seedream-5"])
+    assert _account_matches_routing(
+        account, operation_type="text_to_image", model="seedream-5.0-lite"
+    ) is False
 
 
 def test_account_matches_routing_metadata_routing_rules_are_merged() -> None:
@@ -170,6 +184,13 @@ def test_account_priority_delta_applies_matching_rule() -> None:
     assert _account_priority_delta(
         account, operation_type="image_to_video", model="qwen-image"
     ) == 25
+
+
+def test_account_priority_delta_applies_model_alias_rule() -> None:
+    account = _make_account(priority_overrides={"text_to_image:seedream-5.0": -3})
+    assert _account_priority_delta(
+        account, operation_type="text_to_image", model="seedream-5.0-lite"
+    ) == -3
 
 
 def test_account_priority_delta_sums_overlapping_rules() -> None:
@@ -196,6 +217,10 @@ def test_parse_route_pattern_normalizes_wildcards_and_aliases() -> None:
     assert _parse_route_pattern("image_to_video:qwen") == ("image_to_video", "qwen")
     assert _parse_route_pattern("*:any") == ("*", "*")
     assert _parse_route_pattern({"operation": "ANY", "model": "Qwen"}) == ("*", "qwen")
+    assert _parse_route_pattern("text_to_image:seedream-5") == (
+        "text_to_image",
+        "seedream-5.0-lite",
+    )
     assert _parse_route_pattern("") is None
 
 
@@ -293,6 +318,31 @@ async def test_select_and_reserve_priority_override_promotes_account(
     )
 
     assert selected.id == boosted.id
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_alias_override_penalizes_canonical_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Alias keys should affect the canonical model route used at runtime."""
+    penalized = _make_account(
+        account_id=1,
+        priority=5,
+        priority_overrides={"text_to_image:seedream-5.0": -10},
+    )
+    neutral = _make_account(account_id=2, priority=0)
+    rows = [(penalized, 100), (neutral, 100)]
+
+    db = _FakeDb(results=[_FakeResult(rows)])
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="seedream-5.0-lite",
+    )
+
+    assert selected.id == neutral.id
 
 
 @pytest.mark.asyncio

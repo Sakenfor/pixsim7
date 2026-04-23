@@ -25,6 +25,10 @@ from pixsim7.backend.main.domain import AccountStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
+from pixsim7.backend.main.services.account.account_service import (
+    _normalize_route_pattern_list,
+    _normalize_route_priority_overrides,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -62,27 +66,15 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
     if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
         is_google_account = True
 
-    routing_allow_patterns = [
-        str(item).strip()
-        for item in (getattr(account, "routing_allow_patterns", None) or [])
-        if str(item).strip()
-    ]
-    routing_deny_patterns = [
-        str(item).strip()
-        for item in (getattr(account, "routing_deny_patterns", None) or [])
-        if str(item).strip()
-    ]
-    raw_overrides = getattr(account, "routing_priority_overrides", None) or {}
-    routing_priority_overrides: Dict[str, int] = {}
-    if isinstance(raw_overrides, dict):
-        for key, value in raw_overrides.items():
-            normalized_key = str(key).strip()
-            if not normalized_key:
-                continue
-            try:
-                routing_priority_overrides[normalized_key] = int(value)
-            except (TypeError, ValueError):
-                continue
+    routing_allow_patterns = _normalize_route_pattern_list(
+        getattr(account, "routing_allow_patterns", None)
+    )
+    routing_deny_patterns = _normalize_route_pattern_list(
+        getattr(account, "routing_deny_patterns", None)
+    )
+    routing_priority_overrides = _normalize_route_priority_overrides(
+        getattr(account, "routing_priority_overrides", None)
+    )
 
     # Sanitize api_keys for response (keep metadata)
     sanitized_api_keys = None
