@@ -24,6 +24,7 @@ from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
     normalize_primitive_projection_mode,
 )
 from .simple import SimplePromptParser
+from .tokenizer import tokenize
 
 
 async def parse_prompt_to_candidates(
@@ -130,4 +131,5 @@ async def analyze_prompt(
     return {
         "prompt": text,
         "candidates": candidates,
+        "tokens": tokenize(text),
     }
