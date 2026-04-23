@@ -8,6 +8,7 @@ import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUt
 
 import { NavIcon } from './ActivityBar';
 import { DRAG_MIME, pinnedPanelIdsFrom } from './shortcutDrag';
+import { SubNavFlyout, type NavFlyoutAction } from './SubNavFlyout';
 
 const MAX_RECENT = 3;
 
@@ -65,15 +66,36 @@ export function RecentShortcuts() {
   return (
     <div className="flex flex-col items-center gap-0.5">
       {panels.map((panel) => (
-        <RecentShortcutButton
+        <RecentShortcutRow
           key={panel.id}
           id={panel.id}
           icon={panel.icon ?? 'layout'}
           title={panel.title}
-          onClick={() => openWorkspacePanel(panel.id)}
         />
       ))}
     </div>
+  );
+}
+
+function RecentShortcutRow({ id, icon, title }: { id: string; icon: string; title: string }) {
+  const toggleShortcutPin = useWorkspaceStore((s) => s.toggleShortcutPin);
+  const pageActions: NavFlyoutAction[] = [
+    {
+      id: 'pin',
+      label: 'Pin to shortcuts',
+      icon: 'pin',
+      onClick: () => toggleShortcutPin(`panel:${id}`),
+    },
+  ];
+  return (
+    <SubNavFlyout items={[]} route="/" pageActions={pageActions}>
+      <RecentShortcutButton
+        id={id}
+        icon={icon}
+        title={title}
+        onClick={() => openWorkspacePanel(id)}
+      />
+    </SubNavFlyout>
   );
 }
 
@@ -116,7 +138,7 @@ function RecentShortcutButton({
         <NavIcon name={icon} size={16} />
       </button>
       <Tooltip
-        content={`${title} (recent — drag to pin)`}
+        content={`${title} (recent)`}
         position="right"
         show={hovered && !isDragging}
         delay={400}

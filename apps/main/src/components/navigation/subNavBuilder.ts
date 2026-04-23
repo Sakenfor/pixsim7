@@ -202,12 +202,14 @@ function buildRouteItems(page: PageEntry, allPages: PageEntry[]): SubNavItem[] {
 function buildPanelItems(options: {
   page: PageEntry;
   panels: PanelDefinition[];
+  // Kept in signature for upcoming state-glyph pass (open/recent indicators
+  // rendered as affordances, not as ranking boosts).
   openPanelIds: string[];
   recentPanelIds: string[];
   pinnedPanelIds: string[];
   maxItems: number;
 }): SubNavItem[] {
-  const { page, panels, openPanelIds, recentPanelIds, pinnedPanelIds, maxItems } = options;
+  const { page, panels, maxItems } = options;
   if (maxItems <= 0) {
     return [];
   }
@@ -219,11 +221,6 @@ function buildPanelItems(options: {
     ...(hints?.featureTagHints ?? []),
     ...(page.featureId ? FEATURE_TAG_HINTS[page.featureId] ?? [] : []),
   ]);
-
-  const openSet = new Set(openPanelIds);
-  const pinnedSet = new Set(pinnedPanelIds);
-  const recentBoost = new Map<string, number>();
-  recentPanelIds.forEach((panelId, index) => recentBoost.set(panelId, Math.max(1, 25 - index)));
 
   const ranked = new Map<string, { panel: PanelDefinition; score: number }>();
 
@@ -267,16 +264,12 @@ function buildPanelItems(options: {
     }
   }
 
-  for (const [panelId, entry] of ranked.entries()) {
-    let score = entry.score;
-    if (openSet.has(panelId)) score += 150;
-    if (pinnedSet.has(panelId)) score += 75;
-    score += recentBoost.get(panelId) ?? 0;
-    ranked.set(panelId, { panel: entry.panel, score });
-  }
-
   const ordered = Array.from(ranked.values())
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      // Deterministic tiebreaker so identical scores don't reorder across sessions.
+      return a.panel.id.localeCompare(b.panel.id);
+    })
     .map(({ panel }) => panel);
 
   return ordered.slice(0, maxItems).map((panel) => ({

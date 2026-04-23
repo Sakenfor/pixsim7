@@ -6,6 +6,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { openFloatingWorkspacePanel, openWorkspacePanel } from '@features/workspace';
+import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from './ActivityBar';
 
@@ -125,6 +127,18 @@ function SubNavItemsList({
   );
 }
 
+/**
+ * Subscribe only to booleans so rows rerender only when their state flips.
+ * When item is not a panel, both are `false` (no subscription payload churn).
+ */
+function usePanelLiveState(panelId: string | null): { isOpen: boolean; isRecent: boolean } {
+  const isOpen = useWorkspaceStore((s) =>
+    panelId ? s.floatingPanels.some((p) => getFloatingDefinitionId(p.id) === panelId) : false,
+  );
+  const isRecent = useWorkspaceStore((s) => (panelId ? panelId in s.lastFloatingPanelStates : false));
+  return { isOpen, isRecent };
+}
+
 function SubNavRow({
   item,
   route,
@@ -138,6 +152,10 @@ function SubNavRow({
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  const panelId = useMemo(() => getPanelIdFromSubNavItem(item), [item]);
+  const { isOpen, isRecent } = usePanelLiveState(panelId);
+  const kind = getItemKind(item, panelId);
 
   const resolvedChildren = useMemo(() => {
     if (!item.children) return null;
@@ -199,6 +217,25 @@ function SubNavRow({
       >
         {item.icon && <NavIcon name={item.icon} size={14} />}
         <span className="whitespace-nowrap flex-1 text-left">{item.label}</span>
+        {kind && (
+          <span
+            className="text-[8px] uppercase tracking-wider font-medium text-neutral-500"
+            aria-hidden
+          >
+            {kind}
+          </span>
+        )}
+        {panelId && (isOpen || isRecent) && (
+          <span
+            className={`text-[10px] leading-none ${
+              isOpen ? 'text-emerald-400/90' : 'text-neutral-500/80'
+            }`}
+            title={isOpen ? 'Currently open' : 'Recently used'}
+            aria-label={isOpen ? 'Currently open' : 'Recently used'}
+          >
+            ●
+          </span>
+        )}
         {hasChildren && (
           <NavIcon name="chevronRight" size={12} />
         )}
@@ -260,6 +297,16 @@ function handleSubNavItemClick(
 function getPanelOpenPreference(panelId: string): 'dock-preferred' | 'float-preferred' | 'route-preferred' {
   const panel = panelSelectors.get(panelId);
   return panel?.navigation?.openPreference ?? 'dock-preferred';
+}
+
+/**
+ * Classify a row so the UI can show a PANEL / PAGE chip. Returns null for
+ * items with no clear target (default stubs, param-only rows, bare labels).
+ */
+function getItemKind(item: SubNavItem, panelId: string | null): 'PANEL' | 'PAGE' | null {
+  if (panelId) return 'PANEL';
+  if (item.route && !item.route.startsWith('/workspace')) return 'PAGE';
+  return null;
 }
 
 function getPanelIdFromSubNavItem(item: SubNavItem): string | null {
