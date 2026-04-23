@@ -74,6 +74,29 @@ class BackfillContentBlobsResponse(BaseModel):
     errors: int
 
 
+class SignalScanStatsResponse(BaseModel):
+    """Coverage stats for the broken-video heuristic scan."""
+    total_videos: int
+    scanned: int
+    unscanned: int
+    broken: int
+    clean: int
+    borderline: int
+    overridden: int
+    scanner_version: str
+    percentage: float
+
+
+class BackfillSignalScanResponse(BaseModel):
+    """Result of a batch signal-scan backfill."""
+    success: bool
+    processed: int
+    scanned: int
+    broken: int
+    skipped: int
+    errors: int
+
+
 # ===== SHA STATS =====
 
 @router.get("/sha-stats", response_model=SHAStatsResponse)
@@ -1258,6 +1281,14 @@ async def convert_asset_format(
     limit: int = Query(50, ge=1, le=500, description="Max assets to process per batch"),
     source_format: str = Query("image/png", description="Source MIME type to convert"),
     dry_run: bool = Query(False, description="Preview what would be converted without modifying anything"),
+    require_smaller: bool = Query(
+        False,
+        description=(
+            "Skip assets when the converted output is not smaller than the "
+            "original. Opt-in safety guard — off by default so the endpoint "
+            "stays usable as a generic format converter."
+        ),
+    ),
 ):
     """
     Convert existing images to a more space-efficient format.
@@ -1315,11 +1346,13 @@ async def convert_asset_format(
                 continue
 
             original_size = os.path.getsize(source_path)
-            bytes_before += original_size
 
             if dry_run:
-                # Estimate: WebP ~65% smaller, JPEG ~50% smaller for PNGs
+                # Estimate: WebP ~65% smaller, JPEG ~50% smaller for PNGs.
+                # Guard is a live-only check — we can't know the exact output
+                # size without actually encoding.
                 est_ratio = 0.35 if fmt_upper == "WEBP" else 0.50
+                bytes_before += original_size
                 bytes_after += int(original_size * est_ratio)
                 converted += 1
                 continue
@@ -1343,6 +1376,21 @@ async def convert_asset_format(
                     new_content = buf.getvalue()
 
                 new_size = len(new_content)
+
+                # Opt-in guard: skip when the converted output isn't smaller.
+                # Bytes counters are untouched for skipped assets so the final
+                # savings number only reflects real conversions.
+                if require_smaller and new_size >= original_size:
+                    skipped += 1
+                    logger.info(
+                        "format_conversion_skipped_not_smaller",
+                        asset_id=asset.id,
+                        original_bytes=original_size,
+                        would_be_bytes=new_size,
+                    )
+                    continue
+
+                bytes_before += original_size
                 bytes_after += new_size
 
                 # Store with new hash
@@ -1371,7 +1419,13 @@ async def convert_asset_format(
                 asset.logical_size_bytes = new_size
                 attributes.flag_modified(asset, "media_metadata")
 
-                # Delete old file if no other asset shares it
+                # Commit per-asset so a failure partway through a long batch
+                # doesn't discard earlier successful conversions.
+                await db.commit()
+
+                # Post-commit: delete old blob if no other asset references it.
+                # Done after commit so the row's new stored_key is persisted
+                # before we remove the old file (avoids races with readers).
                 from sqlalchemy import func
                 sibling_count = (await db.execute(
                     select(func.count()).select_from(Asset).where(
@@ -1379,7 +1433,15 @@ async def convert_asset_format(
                     )
                 )).scalar() or 0
                 if sibling_count == 0 and os.path.exists(source_path):
-                    os.remove(source_path)
+                    try:
+                        os.remove(source_path)
+                    except OSError as del_err:
+                        logger.warning(
+                            "format_conversion_old_blob_delete_failed",
+                            asset_id=asset.id,
+                            old_key=old_key,
+                            error=str(del_err),
+                        )
 
                 converted += 1
 
@@ -1392,7 +1454,12 @@ async def convert_asset_format(
                 )
 
             except Exception as exc:
-                bytes_after += original_size  # no change on error
+                # Roll back the current asset's pending mutations so the next
+                # iteration starts from a clean session state.
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 errors += 1
                 error_ids.append(asset.id)
                 logger.warning(
@@ -1400,9 +1467,6 @@ async def convert_asset_format(
                     asset_id=asset.id,
                     error=str(exc),
                 )
-
-        if not dry_run:
-            await db.commit()
 
         savings = bytes_before - bytes_after
 
@@ -1431,3 +1495,330 @@ async def convert_asset_format(
             status_code=500,
             detail=f"Failed to convert formats: {str(exc)}"
         )
+
+
+# ===== DUPLICATES =====
+
+class DuplicatesStatsResponse(BaseModel):
+    """Aggregate stats for sha256-based duplicate groups."""
+    group_count: int
+    total_duplicates: int
+    wasted_bytes: int
+
+
+class DuplicateAssetInfo(BaseModel):
+    """Asset summary for duplicate group listing."""
+    id: int
+    created_at: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    mime_type: Optional[str] = None
+    media_type: Optional[str] = None
+    upload_method: Optional[str] = None
+    asset_kind: Optional[str] = None
+    source_folder: Optional[str] = None
+    source_relative_path: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+
+
+class DuplicateGroup(BaseModel):
+    """One sha256 group with its member assets."""
+    sha256: str
+    count: int
+    total_bytes: int
+    assets: list[DuplicateAssetInfo]
+
+
+class DuplicatesResponse(BaseModel):
+    """Paginated duplicate groups."""
+    groups: list[DuplicateGroup]
+    total_groups: int
+    offset: int
+    limit: int
+
+
+@router.get("/duplicates-stats", response_model=DuplicatesStatsResponse)
+async def get_duplicates_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> DuplicatesStatsResponse:
+    """
+    Aggregate stats for sha256-based duplicates across the user's library.
+
+    A "duplicate group" is 2+ assets sharing the same sha256. `wasted_bytes`
+    counts file_size_bytes for every asset beyond the first in each group
+    (what could be reclaimed by keeping one copy per group).
+    """
+    from sqlalchemy import text
+
+    row = (await db.execute(text("""
+        WITH dup_groups AS (
+            SELECT sha256,
+                   count(*) AS cnt,
+                   coalesce(sum(file_size_bytes), 0) AS total_bytes,
+                   coalesce(min(file_size_bytes), 0) AS min_bytes
+            FROM assets
+            WHERE user_id = :user_id
+              AND sha256 IS NOT NULL
+            GROUP BY sha256
+            HAVING count(*) > 1
+        )
+        SELECT count(*) AS group_count,
+               coalesce(sum(cnt), 0) AS total_assets,
+               coalesce(sum(total_bytes - min_bytes), 0) AS wasted
+        FROM dup_groups
+    """), {"user_id": admin.id})).fetchone()
+
+    group_count = int(row.group_count or 0) if row else 0
+    total_assets = int(row.total_assets or 0) if row else 0
+    wasted = int(row.wasted or 0) if row else 0
+
+    # total_duplicates = assets-above-one in each group
+    total_duplicates = max(0, total_assets - group_count)
+
+    return DuplicatesStatsResponse(
+        group_count=group_count,
+        total_duplicates=total_duplicates,
+        wasted_bytes=wasted,
+    )
+
+
+@router.get("/duplicates", response_model=DuplicatesResponse)
+async def list_duplicates(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+) -> DuplicatesResponse:
+    """
+    List sha256 duplicate groups with member asset details.
+
+    Groups ordered by count desc, then total bytes desc.
+    """
+    from sqlalchemy import text, select
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
+
+    # Total group count for pagination
+    total_row = (await db.execute(text("""
+        SELECT count(*) AS n
+        FROM (
+            SELECT sha256
+            FROM assets
+            WHERE user_id = :user_id AND sha256 IS NOT NULL
+            GROUP BY sha256
+            HAVING count(*) > 1
+        ) g
+    """), {"user_id": admin.id})).fetchone()
+    total_groups = int(total_row.n or 0) if total_row else 0
+
+    # Page of groups
+    group_rows = (await db.execute(text("""
+        SELECT sha256,
+               count(*) AS cnt,
+               coalesce(sum(file_size_bytes), 0) AS total_bytes
+        FROM assets
+        WHERE user_id = :user_id AND sha256 IS NOT NULL
+        GROUP BY sha256
+        HAVING count(*) > 1
+        ORDER BY cnt DESC, total_bytes DESC, sha256 ASC
+        OFFSET :offset LIMIT :limit
+    """), {"user_id": admin.id, "offset": offset, "limit": limit})).fetchall()
+
+    if not group_rows:
+        return DuplicatesResponse(groups=[], total_groups=total_groups, offset=offset, limit=limit)
+
+    sha_list = [r.sha256 for r in group_rows]
+
+    # Fetch all member assets for this page in one query
+    assets_result = await db.execute(
+        select(Asset).where(
+            Asset.user_id == admin.id,
+            Asset.sha256.in_(sha_list),
+        ).order_by(Asset.sha256, Asset.created_at.asc())
+    )
+    assets = assets_result.scalars().all()
+
+    by_sha: dict[str, list[DuplicateAssetInfo]] = {}
+    for a in assets:
+        ctx = a.upload_context or {}
+        by_sha.setdefault(a.sha256, []).append(DuplicateAssetInfo(
+            id=a.id,
+            created_at=a.created_at.isoformat() if a.created_at else None,
+            file_size_bytes=a.file_size_bytes,
+            mime_type=a.mime_type,
+            media_type=a.media_type,
+            upload_method=a.upload_method,
+            asset_kind=getattr(a, 'asset_kind', None),
+            source_folder=ctx.get('source_folder') if isinstance(ctx, dict) else None,
+            source_relative_path=ctx.get('source_relative_path') if isinstance(ctx, dict) else None,
+            thumbnail_url=storage_key_to_url(a.thumbnail_key),
+        ))
+
+    groups = [
+        DuplicateGroup(
+            sha256=r.sha256,
+            count=int(r.cnt),
+            total_bytes=int(r.total_bytes or 0),
+            assets=by_sha.get(r.sha256, []),
+        )
+        for r in group_rows
+    ]
+
+    return DuplicatesResponse(
+        groups=groups,
+        total_groups=total_groups,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ===== SIGNAL SCAN (broken-video heuristic coverage + batch backfill) =====
+
+@router.get("/signal-scan-stats", response_model=SignalScanStatsResponse)
+async def get_signal_scan_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> SignalScanStatsResponse:
+    """Coverage stats for the broken-video heuristic scan.
+
+    Counts video assets bucketed by their stored signal_metrics:
+    scanned/unscanned, broken (score >= 3 minus user-overridden as clean),
+    clean (score == 0 minus user-overridden as broken), borderline (1-2),
+    and overridden.
+    """
+    from sqlalchemy import select, func, case
+    from sqlalchemy.dialects.postgresql import JSONB
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.services.asset.signal_analysis import (
+        SCANNER_VERSION,
+        SUSPICIOUS_THRESHOLD,
+    )
+
+    # JSON path expressions — media_metadata is JSON, cast then -> / ->>.
+    sm = func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
+    score_text = sm.op("->>")("score")
+    version_text = sm.op("->>")("scanner_version")
+    override_text = sm.op("->>")("user_override")
+    score = score_text.cast(__import__("sqlalchemy").Integer)
+
+    base_filter = [
+        Asset.user_id == admin.id,
+        Asset.media_type == "VIDEO",
+        Asset.is_archived == False,  # noqa: E712
+    ]
+
+    # Single aggregating query — one round trip.
+    stmt = select(
+        func.count(Asset.id).label("total"),
+        func.count(case((score_text.isnot(None), 1))).label("scanned"),
+        func.count(
+            case((
+                (score_text.isnot(None))
+                & (score >= SUSPICIOUS_THRESHOLD)
+                & (func.coalesce(override_text, "") != "clean"),
+                1,
+            ))
+        ).label("broken"),
+        func.count(
+            case((
+                (score_text.isnot(None))
+                & (score == 0)
+                & (func.coalesce(override_text, "") != "broken"),
+                1,
+            ))
+        ).label("clean"),
+        func.count(
+            case((
+                (score_text.isnot(None))
+                & (score >= 1)
+                & (score < SUSPICIOUS_THRESHOLD),
+                1,
+            ))
+        ).label("borderline"),
+        func.count(case((override_text.isnot(None), 1))).label("overridden"),
+    ).where(*base_filter)
+
+    row = (await db.execute(stmt)).one()
+    total = int(row.total or 0)
+    scanned = int(row.scanned or 0)
+    return SignalScanStatsResponse(
+        total_videos=total,
+        scanned=scanned,
+        unscanned=total - scanned,
+        broken=int(row.broken or 0),
+        clean=int(row.clean or 0),
+        borderline=int(row.borderline or 0),
+        overridden=int(row.overridden or 0),
+        scanner_version=SCANNER_VERSION,
+        percentage=round((scanned / total * 100) if total > 0 else 0, 2),
+    )
+
+
+@router.post("/backfill-signal-scan", response_model=BackfillSignalScanResponse)
+async def backfill_signal_scan(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(default=100, ge=1, le=500, description="Max videos to scan"),
+) -> BackfillSignalScanResponse:
+    """Scan up to `limit` unscanned (or stale-version) video assets.
+
+    Uses SignalAnalysisService — same logic as the ingest hook and the
+    one-shot rescan endpoint. Skips assets without a local file.
+    """
+    from sqlalchemy import select, or_
+    from sqlalchemy.dialects.postgresql import JSONB
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.services.asset.signal_analysis import (
+        SCANNER_VERSION,
+        SignalAnalysisService,
+    )
+
+    sm = __import__("sqlalchemy").func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
+    version_text = sm.op("->>")("scanner_version")
+
+    stmt = (
+        select(Asset)
+        .where(
+            Asset.user_id == admin.id,
+            Asset.media_type == "VIDEO",
+            Asset.is_archived == False,  # noqa: E712
+            Asset.local_path.isnot(None),
+            or_(version_text.is_(None), version_text != SCANNER_VERSION),
+        )
+        .order_by(Asset.id.desc())
+        .limit(limit)
+    )
+    assets = (await db.execute(stmt)).scalars().all()
+
+    service = SignalAnalysisService(db)
+    scanned = 0
+    broken = 0
+    skipped = 0
+    errors = 0
+    processed = 0
+    for asset in assets:
+        processed += 1
+        try:
+            payload = await service.probe_and_stamp(asset, force=True, commit=False)
+        except Exception as e:  # noqa: BLE001 — surface but don't fail the batch
+            logger.warning("signal_scan_backfill_failed", asset_id=asset.id, error=str(e))
+            errors += 1
+            continue
+        if payload is None:
+            skipped += 1
+            continue
+        scanned += 1
+        if payload.get("suspicious"):
+            broken += 1
+
+    if scanned > 0 or skipped > 0:
+        await db.commit()
+
+    return BackfillSignalScanResponse(
+        success=True,
+        processed=processed,
+        scanned=scanned,
+        broken=broken,
+        skipped=skipped,
+        errors=errors,
+    )
