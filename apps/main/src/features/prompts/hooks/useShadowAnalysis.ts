@@ -47,10 +47,10 @@ interface AnalyzePromptResponse {
     candidates?: PromptBlockCandidate[];
     tags?: AnalysisResult['tags'];
     sequence_context?: SequenceContext;
-    tokens?: { lines: PromptTokenLine[] };
   };
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
+  tokens?: { lines: PromptTokenLine[] };
 }
 
 export interface ShadowAnalysisResult {
@@ -198,7 +198,7 @@ export function useShadowAnalysis(
 
         const candidates = response?.analysis?.candidates ?? [];
         const tags = response?.analysis?.tags ?? [];
-        const tokens = response?.analysis?.tokens;
+        const tokens = response?.tokens;
         const sequenceContext = resolveSequenceContext(response);
 
         // Write to shared cache

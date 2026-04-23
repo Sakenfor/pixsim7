@@ -4,7 +4,7 @@ Advanced Prompt Operations
 Batch operations, import/export, similarity search, template validation, and provider validation.
 """
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Literal, Optional, Dict, Any, Union
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
@@ -617,6 +617,44 @@ class AnalyzePromptRequest(BaseModel):
     )
 
 
+class PromptTokenHeaderLine(BaseModel):
+    kind: Literal["header"] = "header"
+    pattern: str = Field(..., description="PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding")
+    label: str
+    start: int
+    end: int
+    body_start: int
+
+
+class PromptTokenRelationLine(BaseModel):
+    kind: Literal["relation"] = "relation"
+    lhs: Optional[str] = None
+    rhs: Optional[str] = None
+    raw: str = Field(..., description="Full operator string, e.g. '>>>>>>>'")
+    leading_char: Optional[str] = None
+    terminal_char: Optional[str] = None
+    run: int = Field(..., description="Total operator length in characters")
+    start: int
+    end: int
+
+
+class PromptTokenProseLine(BaseModel):
+    kind: Literal["prose"] = "prose"
+    text: str
+    start: int
+    end: int
+
+
+PromptTokenLine = Annotated[
+    Union[PromptTokenHeaderLine, PromptTokenRelationLine, PromptTokenProseLine],
+    Field(discriminator="kind"),
+]
+
+
+class PromptTokensPayload(BaseModel):
+    lines: List[PromptTokenLine]
+
+
 class AnalyzePromptSequenceContext(BaseModel):
     role_in_sequence: str = Field(
         ...,
@@ -653,6 +691,10 @@ class AnalyzePromptResponse(BaseModel):
             "Detailed sequence-role envelope (role/source/confidence/evidence) "
             "derived from prompt analysis."
         ),
+    )
+    tokens: Optional[PromptTokensPayload] = Field(
+        None,
+        description="Line-level DSL token parse tree (header / relation / prose nodes).",
     )
 
 
@@ -771,11 +813,15 @@ async def analyze_prompt(
     sequence_context = _coerce_sequence_context_payload(analysis.get("sequence_context"))
     analysis["sequence_context"] = sequence_context
 
+    raw_tokens = analysis.get("tokens")
+    tokens_payload = PromptTokensPayload(**raw_tokens) if isinstance(raw_tokens, dict) else None
+
     return AnalyzePromptResponse(
         analysis=analysis,
         analyzer_id=analysis.get("analyzer_id", analyzer_id),
         role_in_sequence=sequence_context["role_in_sequence"],
         sequence_context=sequence_context,
+        tokens=tokens_payload,
     )
 
 
