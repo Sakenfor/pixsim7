@@ -83,7 +83,7 @@ export interface MaskOverlayStoreState {
   setActiveLayer: (layerId: string) => void;
   toggleLayerVisibility: (layerId: string) => void;
   renameLayer: (layerId: string, name: string) => void;
-  importSavedMask: (maskAssetId: number) => void;
+  importSavedMask: (maskAssetId: number, options?: { targetLayerId?: string }) => void;
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,

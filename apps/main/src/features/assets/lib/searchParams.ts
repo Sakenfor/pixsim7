@@ -32,6 +32,7 @@ const KNOWN_FILTER_KEYS = new Set([
   'searchable',
   'source_generation_id',
   'source_asset_id',
+  'source_asset_ids',
   'sha256',
   'similar_to',
   'similarity_threshold',
@@ -87,6 +88,9 @@ export function buildAssetSearchRequest(
   }
   if (filters.upload_method) {
     registryFilters.upload_method = filters.upload_method as RegistryFilterValue;
+  }
+  if (Array.isArray(filters.source_asset_ids) && filters.source_asset_ids.length > 0) {
+    registryFilters.source_asset_ids = filters.source_asset_ids as RegistryFilterValue;
   }
 
   const extras = extractExtraRegistryFilters(filters);

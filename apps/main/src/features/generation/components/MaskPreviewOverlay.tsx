@@ -12,14 +12,16 @@ interface MaskPreviewOverlayProps {
 
 function parseMaskAssetId(url: string | undefined): number | null {
   if (!url) return null;
-  const match = url.match(/^asset:(\d+)$/);
-  return match ? Number(match[1]) : null;
+  const match = url.match(/^asset:(-?\d+)(?:[?#].*)?$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
 }
 
 function SingleMaskLayer({ assetUrl, opacity }: { assetUrl: string; opacity: number }) {
   const assetId = parseMaskAssetId(assetUrl);
   const imageUrl = useMemo(
-    () => (assetId ? `/api/v1/assets/${assetId}/file` : undefined),
+    () => (assetId !== null && assetId > 0 ? `/api/v1/assets/${assetId}/file` : undefined),
     [assetId],
   );
   const { src } = useAuthenticatedMedia(imageUrl);
@@ -31,13 +33,13 @@ function SingleMaskLayer({ assetUrl, opacity }: { assetUrl: string; opacity: num
       src={src}
       alt="Mask"
       className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-      style={{ mixBlendMode: 'screen', opacity: opacity * 0.5 }}
+      style={{ mixBlendMode: 'screen', opacity: opacity * 0.6 }}
     />
   );
 }
 
 export function MaskPreviewOverlay({ maskLayers, maskUrl }: MaskPreviewOverlayProps) {
-  const visibleLayers = maskLayers?.filter((l) => l.visible);
+  const visibleLayers = maskLayers?.filter((l) => l.visible !== false);
 
   // Multi-layer mode
   if (visibleLayers && visibleLayers.length > 0) {
@@ -45,7 +47,7 @@ export function MaskPreviewOverlay({ maskLayers, maskUrl }: MaskPreviewOverlayPr
       <>
         {visibleLayers.map((layer) => (
           <SingleMaskLayer
-            key={layer.id}
+            key={`${layer.id}:${layer.assetUrl}:${layer.opacity ?? 1}`}
             assetUrl={layer.assetUrl}
             opacity={layer.opacity ?? 1}
           />

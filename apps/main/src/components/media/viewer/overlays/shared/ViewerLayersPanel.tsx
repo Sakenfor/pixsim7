@@ -65,7 +65,13 @@ function LayerGroup({
 // Mask Layers Group
 // ============================================================================
 
-function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
+function MaskLayerGroup({
+  sourceAssetId,
+  sourceAssetIds,
+}: {
+  sourceAssetId: number | null;
+  sourceAssetIds?: number[];
+}) {
   const {
     layers,
     activeLayerId,
@@ -117,7 +123,7 @@ function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
     return (
       <LayerVersionNavigator
         assetId={layer.savedAssetId}
-        onVersionSelect={importSavedMask}
+        onVersionSelect={(newAssetId) => importSavedMask(newAssetId, { targetLayerId: layer.id })}
       />
     );
   }, [importSavedMask]);
@@ -162,6 +168,7 @@ function MaskLayerGroup({ sourceAssetId }: { sourceAssetId: number | null }) {
             onClose={handleCloseImport}
             onItemSelect={handleSelectMask}
             sourceAssetId={sourceAssetId}
+            sourceAssetIds={sourceAssetIds}
             onItemHover={handleMaskHover}
             width={320}
             height={360}
@@ -295,7 +302,7 @@ function LayerVersionNavigator({
   assetId: number;
   onVersionSelect: (assetId: number) => void;
 }) {
-  const { versions, currentIndex, loading } = useVersions('asset', assetId);
+  const { versions, loading } = useVersions('asset', assetId);
 
   if (loading || versions.length <= 1) return null;
 
@@ -303,8 +310,8 @@ function LayerVersionNavigator({
     <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
       <VersionNavigator
         versions={versions}
-        currentIndex={currentIndex}
-        onSelect={(v) => onVersionSelect(v.entityId)}
+        currentEntityId={assetId}
+        onSelect={(v) => onVersionSelect(Number(v.entityId))}
         compact
       />
     </div>
@@ -319,12 +326,14 @@ export interface ViewerLayersPanelProps {
   assetId: string | number;
   activeOverlayId: string | null;
   sourceAssetId: number | null;
+  sourceAssetIds?: number[];
 }
 
 export function ViewerLayersPanel({
   assetId,
   activeOverlayId,
   sourceAssetId,
+  sourceAssetIds,
 }: ViewerLayersPanelProps) {
   const hasMaskLayers = useMaskOverlayStore((s) => s.layers.length > 0);
   const hasAnnotationLayers = useAssetRegionStore((s) => s.getLayers(assetId).length > 0);
@@ -338,7 +347,12 @@ export function ViewerLayersPanel({
 
   return (
     <div className="flex flex-col w-44 h-full flex-shrink-0 border-l border-th/10 bg-surface-secondary/95 text-xs select-none overflow-y-auto">
-      {showMask && <MaskLayerGroup sourceAssetId={sourceAssetId} />}
+      {showMask && (
+        <MaskLayerGroup
+          sourceAssetId={sourceAssetId}
+          sourceAssetIds={sourceAssetIds}
+        />
+      )}
       {showMask && showAnnotation && <div className="h-px bg-th/10 mx-1" />}
       {showAnnotation && <AnnotationLayerGroup assetId={assetId} />}
       {(showMask || showAnnotation) && showCapture && <div className="h-px bg-th/10 mx-1" />}

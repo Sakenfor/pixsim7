@@ -17,6 +17,8 @@ export interface MaskBrowserPopoverProps {
   onClose: () => void;
   onItemSelect: (asset: AssetModel) => void;
   sourceAssetId: number | null;
+  /** Optional equivalent source IDs (version/local/library variants). */
+  sourceAssetIds?: number[];
   /** Called when hovering over a mask (e.g. for live preview). */
   onItemHover?: (asset: AssetModel | null) => void;
   /** Custom overlay rendered on each card (e.g. checkmark for active masks). */
@@ -34,13 +36,26 @@ export function MaskBrowserPopover({
   onClose,
   onItemSelect,
   sourceAssetId,
+  sourceAssetIds,
   onItemHover,
   renderItemOverlay,
   title,
   width = 340,
   height = 380,
 }: MaskBrowserPopoverProps) {
-  const [showAll, setShowAll] = useState(!sourceAssetId);
+  const linkedSourceIds = useMemo(() => {
+    const ids: number[] = [];
+    const pushId = (value: unknown) => {
+      const num = typeof value === 'number' ? value : Number(value);
+      if (!Number.isFinite(num) || num <= 0) return;
+      if (!ids.includes(num)) ids.push(num);
+    };
+    pushId(sourceAssetId);
+    sourceAssetIds?.forEach(pushId);
+    return ids;
+  }, [sourceAssetId, sourceAssetIds]);
+
+  const [showAll, setShowAll] = useState(linkedSourceIds.length === 0);
 
   const initialFilters = useMemo(() => {
     const base = {
@@ -49,14 +64,18 @@ export function MaskBrowserPopover({
       asset_kind: 'mask' as const,
       sort: 'new' as const,
     };
-    if (!showAll && sourceAssetId) {
-      return { ...base, source_asset_id: sourceAssetId };
+    if (!showAll && linkedSourceIds.length > 0) {
+      return {
+        ...base,
+        source_asset_id: linkedSourceIds[0],
+        source_asset_ids: linkedSourceIds,
+      };
     }
     return base;
-  }, [showAll, sourceAssetId]);
+  }, [showAll, linkedSourceIds]);
 
   const resolvedTitle = title
-    ?? (showAll || !sourceAssetId ? 'All Masks' : 'Asset Masks');
+    ?? (showAll || linkedSourceIds.length === 0 ? 'All Masks' : 'Asset Masks');
 
   return (
     <MiniGalleryPopover
@@ -75,10 +94,10 @@ export function MaskBrowserPopover({
         onItemSelect,
         onItemHover,
         renderItemOverlay,
-        emptyMessage: sourceAssetId && !showAll
+        emptyMessage: linkedSourceIds.length > 0 && !showAll
           ? 'No masks for this asset.'
           : 'No saved masks.',
-        header: sourceAssetId ? (
+        header: linkedSourceIds.length > 0 ? (
           <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
             <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
               {showAll ? 'All masks' : 'Linked to this asset'}

@@ -45,6 +45,7 @@ export type AssetFilters = {
   // Lineage filters
   source_generation_id?: number;
   source_asset_id?: number;
+  source_asset_ids?: number[];
   sha256?: string;
   operation_type?: string;
   has_parent?: boolean;
@@ -169,6 +170,7 @@ export function useAssets(options?: {
     // Lineage filters
     source_generation_id: filters.source_generation_id,
     source_asset_id: filters.source_asset_id,
+    source_asset_ids: filters.source_asset_ids,
     sha256: filters.sha256 || undefined,
     operation_type: filters.operation_type || undefined,
     has_parent: filters.has_parent,
@@ -186,7 +188,7 @@ export function useAssets(options?: {
     filters.created_from, filters.created_to,
     filters.min_width, filters.max_width, filters.min_height, filters.max_height,
     filters.content_domain, filters.content_category, filters.content_rating, filters.searchable,
-    filters.source_generation_id, filters.source_asset_id, filters.sha256, filters.operation_type, filters.has_parent, filters.has_children,
+    filters.source_generation_id, filters.source_asset_id, filters.source_asset_ids, filters.sha256, filters.operation_type, filters.has_parent, filters.has_children,
     filters.similar_to, filters.similarity_threshold,
     filters.prompt_version_id,
   ]);
@@ -518,11 +520,12 @@ export function useAssets(options?: {
       // These views need an explicit refresh to pick up new assets.
       const hasScopedFilter = !!(
         filterParams.prompt_version_id
-        || filterParams.source_generation_id
-        || filterParams.source_asset_id
-        || filterParams.asset_ids
-        || filterParams.similar_to
-        || filterParams.sha256
+            || filterParams.source_generation_id
+            || filterParams.source_asset_id
+            || (Array.isArray(filterParams.source_asset_ids) && filterParams.source_asset_ids.length > 0)
+            || filterParams.asset_ids
+            || filterParams.similar_to
+            || filterParams.sha256
       );
       if (hasScopedFilter) return;
 
@@ -599,7 +602,7 @@ export function useAssets(options?: {
     filterParams.created_from, filterParams.created_to,
     filterParams.min_width, filterParams.max_width, filterParams.min_height, filterParams.max_height,
     filterParams.content_domain, filterParams.content_category, filterParams.content_rating, filterParams.searchable,
-    filterParams.source_generation_id, filterParams.source_asset_id, filterParams.sha256, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.source_generation_id, filterParams.source_asset_id, filterParams.source_asset_ids, filterParams.sha256, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
     filterParams.similar_to, filterParams.similarity_threshold,
     filterParams.prompt_version_id,
     filterParams.sort_by, filterParams.sort_dir,

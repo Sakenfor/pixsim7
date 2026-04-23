@@ -110,6 +110,46 @@ function getViewerBackendAssetId(asset: ViewerAsset): number | null {
   return null;
 }
 
+function pushUniquePositiveId(target: number[], value: unknown): void {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num) || num <= 0) return;
+  if (!target.includes(num)) target.push(num);
+}
+
+function resolveViewerMaskSourceAssetIds(asset: ViewerAsset): number[] {
+  const ids: number[] = [];
+
+  pushUniquePositiveId(ids, getViewerBackendAssetId(asset));
+  pushUniquePositiveId(ids, asset.metadata?.assetId);
+
+  const model = asset._assetModel as
+    | (AssetModel & {
+        lastUploadAssetId?: unknown;
+        last_upload_asset_id?: unknown;
+        parent_asset_id?: unknown;
+      })
+    | undefined;
+  if (!model) return ids;
+
+  pushUniquePositiveId(ids, model.id);
+  pushUniquePositiveId(ids, model.providerAssetId);
+  pushUniquePositiveId(ids, model.parentAssetId);
+  pushUniquePositiveId(ids, model.parent_asset_id);
+  pushUniquePositiveId(ids, model.lastUploadAssetId);
+  pushUniquePositiveId(ids, model.last_upload_asset_id);
+
+  const uploadContext = model.uploadContext as Record<string, unknown> | null | undefined;
+  if (uploadContext) {
+    pushUniquePositiveId(ids, uploadContext.source_asset_id);
+    const sourceAssetIds = uploadContext.source_asset_ids;
+    if (Array.isArray(sourceAssetIds)) {
+      sourceAssetIds.forEach((id) => pushUniquePositiveId(ids, id));
+    }
+  }
+
+  return ids;
+}
+
 function toMaskDraftMode(mode: InteractionMode): MaskDraftMode {
   if (mode === 'erase' || mode === 'view') return mode;
   return 'draw';
@@ -475,8 +515,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   }, [setInteractionView, setInteractionFitMode]);
 
   const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
-  const sourceAssetId = useMemo(() => getViewerBackendAssetId(asset), [asset]);
+  const sourceAssetIds = useMemo(() => resolveViewerMaskSourceAssetIds(asset), [asset]);
+  const sourceAssetId = sourceAssetIds[0] ?? null;
   const restoredDraftKeyRef = useRef<string | null>(null);
+  const autoImportedKeyRef = useRef<string | null>(null);
   const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
 
@@ -680,6 +722,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     limit: 50,
     filters: {
       source_asset_id: sourceAssetId ?? -1,
+      source_asset_ids: sourceAssetIds.length > 0 ? sourceAssetIds : undefined,
       media_type: 'image',
       upload_method: 'mask_draw',
       asset_kind: 'mask',
@@ -697,16 +740,17 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   });
 
   const sourceMaskAssets = useMemo(() => {
-    if (!sourceAssetId) return [] as AssetModel[];
+    if (sourceAssetIds.length === 0) return [] as AssetModel[];
+    const sourceSet = new Set(sourceAssetIds);
     return maskAssetsQuery.items.filter((candidate) => {
       const ctx = candidate.uploadContext ?? null;
       const candidateSourceId =
         typeof ctx?.source_asset_id === 'number'
           ? ctx.source_asset_id
           : (typeof ctx?.source_asset_id === 'string' ? Number(ctx.source_asset_id) : NaN);
-      return Number.isFinite(candidateSourceId) && candidateSourceId === sourceAssetId;
+      return Number.isFinite(candidateSourceId) && sourceSet.has(candidateSourceId);
     });
-  }, [sourceAssetId, maskAssetsQuery.items]);
+  }, [sourceAssetIds, maskAssetsQuery.items]);
 
   // ── Layer management callbacks ─────────────────────────────────────
 
@@ -751,13 +795,19 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     updateLayer(layerId, { name });
   }, [updateLayer]);
 
-  const handleImportSavedMask = useCallback(async (maskAssetId: number) => {
+  const handleImportSavedMask = useCallback(async (maskAssetId: number, options?: { targetLayerId?: string }) => {
     if (isImportingSavedMask) return;
 
-    // If active layer exists and has no content, replace it in-place.
-    // Otherwise create a new layer.
-    const targetLayer = activeLayerId ? getLayer(activeLayerId) : null;
-    const replaceActive = targetLayer && targetLayer.elements.length === 0 && !baseImagesRef.current.has(activeLayerId!);
+    // If caller specifies a target layer (e.g. version navigator), always
+    // replace that layer in-place. Otherwise: replace the active layer when
+    // it's empty, else create a new layer.
+    const explicitTargetId = options?.targetLayerId ?? null;
+    const explicitLayer = explicitTargetId ? getLayer(explicitTargetId) : null;
+    const activeLayer = activeLayerId ? getLayer(activeLayerId) : null;
+    const targetLayer = explicitLayer ?? activeLayer;
+    const replaceActive = explicitLayer
+      ? true
+      : !!(targetLayer && targetLayer.elements.length === 0 && !baseImagesRef.current.has(activeLayerId!));
 
     // Look up asset metadata for vector layers / raster-only data URL
     const assetModel = [...maskAssetsQuery.items, ...anyMaskAssetsQuery.items]
@@ -825,6 +875,36 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       setIsImportingSavedMask(false);
     }
   }, [activeLayerId, addLayer, getLayer, interactionSetActiveLayer, isImportingSavedMask, toast, updateLayer, maskAssetsQuery.items, anyMaskAssetsQuery.items]);
+
+  // Auto-import the most recent saved mask when opening an asset with no
+  // in-progress draft. Restores the expected round-trip: save mask → reopen
+  // asset → see the mask. Only fires once per asset open (key-guarded).
+  useEffect(() => {
+    if (restoredDraftKeyRef.current !== draftStorageKey) return;
+    if (autoImportedKeyRef.current === draftStorageKey) return;
+    if (maskAssetsQuery.loading) return;
+    if (sourceMaskAssets.length === 0) return;
+    if (!activeLayerId) return;
+
+    const maskLayers = state.layers.filter((l) => l.type === 'mask');
+    const anyContent = maskLayers.some(
+      (l) =>
+        l.elements.length > 0
+        || baseImagesRef.current.has(l.id)
+        || l.config?.savedAssetId != null,
+    );
+    if (anyContent) return;
+
+    autoImportedKeyRef.current = draftStorageKey;
+    handleImportSavedMask(sourceMaskAssets[0].id, { targetLayerId: activeLayerId });
+  }, [
+    draftStorageKey,
+    maskAssetsQuery.loading,
+    sourceMaskAssets,
+    state.layers,
+    activeLayerId,
+    handleImportSavedMask,
+  ]);
 
   // ── Draft persistence ──────────────────────────────────────────────
 
@@ -1177,7 +1257,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       setActiveLayer: (id) => callbacksRef.current.setActiveLayer(id),
       toggleLayerVisibility: (id) => callbacksRef.current.toggleLayerVisibility(id),
       renameLayer: (id, name) => callbacksRef.current.renameLayer(id, name),
-      importSavedMask: (id) => callbacksRef.current.importSavedMask(id),
+      importSavedMask: (id, options) => callbacksRef.current.importSavedMask(id, options),
       setVertexWidth: (lid, eid, vi, w) => callbacksRef.current.setVertexWidth(lid, eid, vi, w),
     });
   }, [store]);
