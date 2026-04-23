@@ -44,6 +44,7 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import { type AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
+import { getAssetWarnings } from '@features/assets/lib/assetWarnings';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 import { useMediaCompareTargetStore } from '@features/prompts/stores/mediaCompareTargetStore';
 
@@ -100,6 +101,9 @@ export interface MediaCardActions {
   // Review actions
   onApprove?: (id: number) => void;
   onReject?: (id: number) => void;
+  // Signal triage (heuristic-broken-video override)
+  onMarkSignalKeep?: (id: number) => void | Promise<void>;
+  onMarkSignalFlag?: (id: number) => void | Promise<void>;
 }
 
 export interface MediaCardBadgeConfig {
@@ -177,6 +181,13 @@ export interface MediaCardRuntimeProps {
 
   /** Layout bag — density + sizing knobs for compact contexts. */
   layout?: MediaCardLayoutProps;
+
+  /**
+   * Override which gesture surface this card draws config from.
+   * Defaults to 'gallery'. Specialized gallery surfaces (e.g. signal triage)
+   * pass their own surface id so users can rebind gestures per context.
+   */
+  gestureSurfaceId?: string;
 }
 
 // ─── Picker / layout bags (consolidating CompactAssetCard) ─────────────────
@@ -642,6 +653,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   // ── Gesture support ────────────────────────────────────────────────────
   const gesture = useCardGestures({
     id,
+    surfaceId: resolved.gestureSurfaceId,
     actions: resolved.actions,
     onToggleFavorite: resolved.onToggleFavorite,
     onUploadClick: resolved.onUploadClick,
@@ -875,6 +887,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     [!!resolved.onUploadToProvider, id],
   );
 
+  const warnings = useMemo(
+    () => getAssetWarnings(resolved.contextMenuAsset),
+    [resolved.contextMenuAsset],
+  );
+
   const overlayData: MediaCardOverlayData = useMemo(() => ({
     id,
     mediaType,
@@ -898,6 +915,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     onToggleFavorite: resolved.onToggleFavorite,
     prompt: resolved.prompt,
     operationType: resolved.operationType,
+    artificialExtend: resolved.contextMenuAsset?.artificialExtend ?? undefined,
     model: resolved.contextMenuAsset?.model,
     width: resolved.width,
     height: resolved.height,
@@ -908,6 +926,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     lockedTimestamp: picker?.lockedTimestamp,
     onLockTimestamp: picker?.onLockTimestamp,
     onHoldUploadFrame: picker?.onHoldUploadFrame,
+    warnings,
   }), [
     id, mediaType, providerId, providerStatus, tagSlugs, description, createdAt,
     resolved.uploadState, resolved.uploadProgress, resolved.remoteUrl,
@@ -918,6 +937,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
     resolved.width, resolved.height, stableOnUploadToProvider,
     picker?.lockedTimestamp, picker?.onLockTimestamp, picker?.onHoldUploadFrame,
+    warnings,
   ]);
 
   // Wrapper styling: gallery default keeps existing border; compact picker

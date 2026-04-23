@@ -7,7 +7,7 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 import { useState, useCallback } from 'react';
 
-import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
+import { extractFrame, getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { searchBlocks } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
@@ -41,6 +41,24 @@ import {
 } from './mediaCardGeneration.helpers';
 import { stripInputParams, parseGenerationContext } from './mediaCardGeneration.utils';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
+
+/** Selects which video frame to extract for an artificial i2v-extend. */
+export type ArtificialExtendFrameSelector =
+  | { mode: 'last' }
+  | { mode: 'first' }
+  | { mode: 'timestamp'; seconds: number };
+
+/** Options for an artificial-extend invocation. */
+export interface ArtificialExtendOptions {
+  /** Which frame to extract. Defaults to last. */
+  selector?: ArtificialExtendFrameSelector;
+  /**
+   * Whose prompt to use: the source video's original generation prompt
+   * ('same') or the one currently in the generation widget ('active').
+   * Defaults to 'same'.
+   */
+  promptSource?: 'same' | 'active';
+}
 
 export interface UseGenerationCardHandlersArgs {
   inputAsset: AssetModel;
@@ -217,12 +235,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     }
   }, [isQuickGenerating, widgetContext, inputAsset]);
 
-  const handleLoadToQuickGen = useCallback(async () => {
+  const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
     if ((!data.sourceGenerationId && !data.hasGenerationContext) || isLoadingSource) return;
 
     setIsLoadingSource(true);
 
     try {
+      const withoutSeed = options?.withoutSeed === true;
       const ctx = await getAssetGenerationContext(id);
       const {
         params,
@@ -235,6 +254,9 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       const sourceParams = (params && typeof params === 'object')
         ? (params as Record<string, unknown>)
         : {};
+      const paramsForWidget = withoutSeed
+        ? stripSeedFromParams(sourceParams)
+        : sourceParams;
 
       // Resolve input assets from context's source_asset_ids
       let assets: AssetModel[] = [];
@@ -249,7 +271,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         operationType: resolvedOperationType,
         providerId,
         prompt,
-        dynamicParams: stripInputParams(sourceParams),
+        dynamicParams: stripInputParams(paramsForWidget),
         assets,
       });
     } catch (error) {
@@ -405,6 +427,141 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   const handleExtendWithSamePrompt = useCallback(() => handleExtendVideo('same'), [handleExtendVideo]);
   const handleExtendWithActivePrompt = useCallback(() => handleExtendVideo('active'), [handleExtendVideo]);
+
+  // Artificial video extend: extract any frame and launch image_to_video
+  // carrying the original prompt/params. Frame selector defaults to 'last'
+  // but any video frame works — timestamp selects an arbitrary point,
+  // 'first' shortcuts to t=0. Tagged on the resulting asset's
+  // generation_context via the frame-mode-agnostic `artificial_extend`
+  // marker (method: 'i2v_extracted_frame').
+  const handleArtificialExtend = useCallback(async (
+    options: ArtificialExtendOptions = {},
+  ) => {
+    const selector = options.selector ?? { mode: 'last' };
+    const promptSource = options.promptSource ?? 'same';
+    if (isExtending || mediaType !== 'video') return;
+    if (promptSource === 'same' && !data.sourceGenerationId && !data.hasGenerationContext) return;
+
+    setIsExtending(true);
+
+    try {
+      const ctx = await getAssetGenerationContext(id);
+      const { params: originalParams, providerId, prompt: originalPrompt } = parseGenerationContext(ctx, operationType);
+
+      // Resolve prompt from chosen source
+      let prompt = originalPrompt;
+      if (promptSource === 'active') {
+        const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+        prompt = getGenerationSessionStore(scopeId).getState().prompt || '';
+      }
+
+      const frameRequest =
+        selector.mode === 'last'
+          ? { video_asset_id: id, last_frame: true }
+          : selector.mode === 'first'
+            ? { video_asset_id: id, timestamp: 0 }
+            : { video_asset_id: id, timestamp: selector.seconds };
+
+      const frameResponse = await extractFrame(frameRequest);
+      const frameAsset = fromAssetResponse(frameResponse);
+
+      const baseParams = stripInputParams(originalParams as Record<string, unknown>);
+      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', 'image_to_video');
+      const maxChars = resolvePromptLimitFromSpec(
+        providerId,
+        baseParams?.model as string | undefined,
+        opSpec,
+      );
+
+      const currentInput = {
+        id: `card-${frameAsset.id}`,
+        asset: frameAsset,
+        queuedAt: new Date().toISOString(),
+        lockedTimestamp: undefined,
+      };
+
+      const buildResult = await buildGenerationRequest({
+        operationType: 'image_to_video',
+        prompt: prompt || '',
+        dynamicParams: baseParams,
+        operationInputs: [currentInput],
+        prompts: [],
+        transitionDurations: [],
+        maxChars,
+        activeAsset: toSelectedAsset(frameAsset, 'gallery'),
+        currentInput,
+      });
+
+      if (buildResult.error || !buildResult.params) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: buildResult.error || 'Failed to build artificial extend request.',
+          duration: 4000,
+        });
+        return;
+      }
+
+      const frameMarker: Record<string, unknown> =
+        selector.mode === 'timestamp'
+          ? { mode: 'timestamp', timestamp_sec: selector.seconds }
+          : { mode: selector.mode };
+
+      const submitParams: Record<string, unknown> = {
+        ...buildResult.params,
+        artificial_extend: {
+          source_video_id: id,
+          source_frame_asset_id: frameAsset.id,
+          method: 'i2v_extracted_frame',
+          frame: frameMarker,
+        },
+      };
+
+      const successLabel =
+        selector.mode === 'last'
+          ? 'last frame'
+          : selector.mode === 'first'
+            ? 'first frame'
+            : `frame @ ${selector.seconds.toFixed(2)}s`;
+
+      const promptLabel = promptSource === 'active' ? ' (active prompt)' : '';
+      await submitDirectGeneration({
+        operationType: 'image_to_video',
+        providerId,
+        prompt: buildResult.finalPrompt,
+        params: submitParams,
+        successMessage: `Extending video from ${successLabel}${promptLabel}...`,
+      });
+    } catch (error) {
+      console.error('Failed to artificially extend video:', error);
+      const raw = extractErrorMessage(error);
+      const lower = raw.toLowerCase();
+      const isModerationReject =
+        lower.includes('not compliant')
+        || lower.includes('content policy')
+        || lower.includes('moderation')
+        || lower.includes('content filtered');
+      const message = isModerationReject
+        ? 'The source video has no reusable last frame (Pixverse filtered the generation). Try a different source, or use native extend instead.'
+        : `Failed to extend: ${raw}`;
+      useToastStore.getState().addToast({
+        type: 'error',
+        message,
+        duration: isModerationReject ? 6000 : 4000,
+      });
+    } finally {
+      setIsExtending(false);
+    }
+  }, [
+    data.sourceGenerationId,
+    data.hasGenerationContext,
+    isExtending,
+    mediaType,
+    operationType,
+    id,
+    widgetContext?.scopeId,
+    scopedScopeId,
+    submitDirectGeneration,
+  ]);
 
   // Handler for regenerating (re-run the exact same generation)
   const handleRegenerate = useCallback(async () => {
@@ -614,6 +771,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     handleInsertPromptOnly,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
+    handleArtificialExtend,
     handleRegenerate,
     handleGenerateStyleVariations,
     hydrateWidgetGenerationState,

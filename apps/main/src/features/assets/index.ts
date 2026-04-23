@@ -14,6 +14,8 @@ export { DebugSurfaceContent } from './components/DebugGallerySurface';
 export type { DebugSurfaceContentProps } from './components/DebugGallerySurface';
 export { ReviewSurfaceContent } from './components/ReviewGallerySurface';
 export type { ReviewSurfaceContentProps } from './components/ReviewGallerySurface';
+export { SignalTriageContent } from './components/SignalTriageGallerySurface';
+export type { SignalTriageContentProps } from './components/SignalTriageGallerySurface';
 export { AssetDetailModal } from './components/AssetDetailModal';
 export { DeleteAssetModal } from './components/DeleteAssetModal';
 
@@ -193,6 +195,14 @@ export {
 
 export { useQuickTagStore } from './lib/quickTagStore';
 export { applyQuickTag } from './lib/quickTag';
+
+export {
+  getAssetWarnings,
+  hasWarning,
+  type AssetWarning,
+  type AssetWarningId,
+  type AssetWarningSeverity,
+} from './lib/assetWarnings';
 
 export { useAssetContextMenu, useRegisterAssetContext } from './lib/assetContextResolver';
 

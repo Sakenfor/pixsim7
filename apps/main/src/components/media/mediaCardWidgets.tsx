@@ -26,9 +26,9 @@ import {
   type TooltipWidgetSettings,
 } from '@lib/widgets';
 
+import type { AssetWarning } from '@features/assets/lib/assetWarnings';
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
-
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
 import { PROVIDER_BRANDS } from '@features/generation/components/generationSettingsPanel/constants';
 import { providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
@@ -95,6 +95,18 @@ export interface MediaCardOverlayData {
   // Info popover fields
   prompt?: string | null;
   operationType?: string | null;
+  /** Present when asset was produced via the "artificial extend" flow
+   *  (extract a frame → image-to-video). Carries back-links and the
+   *  frame selector used (last / first / timestamp). */
+  artificialExtend?: {
+    source_video_id?: number;
+    source_frame_asset_id?: number;
+    method?: string;
+    frame?: {
+      mode?: 'last' | 'first' | 'timestamp';
+      timestamp_sec?: number;
+    };
+  } | null;
   model?: string | null;
   width?: number;
   height?: number;
@@ -112,13 +124,15 @@ export interface MediaCardOverlayData {
   onLockTimestamp?: (timestamp: number | undefined) => void;
   /** Fallback for hold-on-dot when actions.onExtractFrame is absent. */
   onHoldUploadFrame?: (timestamp: number) => void | Promise<void>;
+  /** Per-asset warnings rendered as a clustered pill at bottom-left. */
+  warnings?: AssetWarning[];
 }
 
 /**
  * Create primary media type icon widget (top-left)
  */
 export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
-  const { mediaType, providerStatus, hashStatus, badgeConfig, uploadState } = props;
+  const { mediaType, providerStatus, hashStatus, badgeConfig, uploadState, contextMenuAsset } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
   // MediaStatusBadge keys used by MEDIA_STATUS_ICON.
@@ -137,16 +151,38 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
       ? 'ring-accent'  // green ring for "in library"
       : 'ring-neutral-400';
 
-  // Provider/upload status ring takes priority over hash status ring
+  // Media-origin indicator: top-left ring is reserved for media-level signals
+  // (mirrors top-right ring = provider signal). Artificial extend (i2v from
+  // extracted frame) takes precedence so the marker persists regardless of
+  // provider upload state.
+  const artificialExtend = contextMenuAsset?.artificialExtend ?? null;
+
+  // Ring priority: artificial-extend media marker > provider/upload status > hash duplicate
   let ringColor: string;
   let hasRing = false;
+  let tooltip = `${mediaType} media`;
 
-  if (badgeConfig?.showStatusIcon && effectiveHasStatus) {
+  if (artificialExtend) {
+    hasRing = true;
+    ringColor = 'ring-fuchsia-500';  // distinct from provider (accent/amber/red) so the two concepts read separately
+    const frameMode = artificialExtend.frame?.mode;
+    const frameLabel =
+      frameMode === 'first'
+        ? 'first frame'
+        : frameMode === 'timestamp' && typeof artificialExtend.frame?.timestamp_sec === 'number'
+          ? `frame @ ${artificialExtend.frame.timestamp_sec.toFixed(2)}s`
+          : 'last frame';
+    const srcId = artificialExtend.source_video_id;
+    tooltip = srcId
+      ? `${mediaType} — artificial extend (i2v from ${frameLabel} of #${srcId})`
+      : `${mediaType} — artificial extend (i2v from ${frameLabel})`;
+  } else if (badgeConfig?.showStatusIcon && effectiveHasStatus) {
     hasRing = true;
     ringColor = effectiveRingColor;
   } else if (hashStatus === 'duplicate') {
     hasRing = true;
     ringColor = 'ring-amber-500';
+    tooltip = `${mediaType} - duplicate`;
   } else {
     ringColor = 'ring-neutral-400';
   }
@@ -159,7 +195,7 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
     icon: MEDIA_TYPE_ICON[mediaType],
     color: 'gray',
     shape: 'circle',
-    tooltip: hashStatus === 'duplicate' ? `${mediaType} - duplicate` : `${mediaType} media`,
+    tooltip,
     className: hasRing
       ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
       : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
@@ -304,13 +340,13 @@ function ProviderStatusContent({ data, widgetProps }: {
     : undefined;
   const textColor = (showModelOnBadge && modelFamily?.textColor) || '#fff';
 
-  // Status ring overlay
+  // Status ring overlay. 'flagged' is intentionally dropped here — the
+  // bottom-left warnings pill now carries the filtered/moderated signal,
+  // so we avoid stacking two red rings on the same card.
   const effectiveStatus = data.status || 'unknown';
   const statusRing = effectiveStatus === 'local_only'
     ? 'ring-2 ring-amber-400 ring-offset-1'
-    : effectiveStatus === 'flagged'
-      ? 'ring-2 ring-red-500 ring-offset-1'
-      : '';
+    : '';
 
   // Additional providers from cross-provider uploads AND failed upload attempts
   const additionalProviders = useMemo(() => {
@@ -533,6 +569,7 @@ export function createVersionBadge(): OverlayWidget<MediaCardOverlayData> {
     id: 'version',
     type: 'badge',
     ...BADGE_SLOT.bottomLeft,
+    stackGroup: 'badges-bl',
     visibility: { trigger: 'always', transition: 'none' },
     priority: BADGE_PRIORITY.background,
     interactive: false,
@@ -546,6 +583,108 @@ export function createVersionBadge(): OverlayWidget<MediaCardOverlayData> {
           <span className="whitespace-nowrap">v{data.versionNumber}</span>
         </Badge>
       );
+    },
+  };
+}
+
+/** Upper bound before the warnings pill collapses to an aggregate count. */
+const WARNINGS_INLINE_THRESHOLD = 2;
+
+function warningRingClass(severity: AssetWarning['severity']): string {
+  return severity === 'error' ? 'ring-red-500/90' : 'ring-amber-400/90';
+}
+
+function WarningChip({ warning, size = 4 }: { warning: AssetWarning; size?: 4 | 5 }) {
+  const dim = size === 5 ? 'w-5 h-5' : 'w-4 h-4';
+  const iconSize = size === 5 ? 11 : 9;
+  return (
+    <span
+      className={`inline-flex items-center justify-center ${dim} rounded-full bg-neutral-900/80 ring-2 ${warningRingClass(warning.severity)}`}
+      title={warning.tooltip}
+      aria-label={warning.tooltip}
+    >
+      <Icon name={warning.icon} size={iconSize} className="text-white" color="#fff" />
+    </span>
+  );
+}
+
+function WarningsBadgeContent({ warnings }: { warnings: AssetWarning[] }) {
+  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  if (warnings.length <= WARNINGS_INLINE_THRESHOLD) {
+    return (
+      <div className="cq-badge inline-flex items-center gap-0.5 rounded-full bg-black/60 backdrop-blur-sm shadow-sm px-1 py-0.5">
+        {warnings.map((w) => <WarningChip key={w.id} warning={w} />)}
+      </div>
+    );
+  }
+
+  // Overflow: one aggregate chip (highest-severity ring + count). Hover expands
+  // a portal listing every warning with its label.
+  const hasError = warnings.some((w) => w.severity === 'error');
+  const aggregateSeverity: AssetWarning['severity'] = hasError ? 'error' : 'warning';
+  const aggregateTooltip = `${warnings.length} warnings — hover for details`;
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
+        {...handlers}
+        className="cq-badge inline-flex items-center gap-0.5 rounded-full bg-black/60 backdrop-blur-sm shadow-sm pl-1 pr-1.5 py-0.5"
+      >
+        <span
+          className={`inline-flex items-center justify-center w-4 h-4 rounded-full bg-neutral-900/80 ring-2 ${warningRingClass(aggregateSeverity)}`}
+          title={aggregateTooltip}
+          aria-label={aggregateTooltip}
+        >
+          <Icon name="alertTriangle" size={9} className="text-white" color="#fff" />
+        </span>
+        <span className="text-[10px] font-semibold text-white leading-none">{warnings.length}</span>
+      </div>
+      {isExpanded && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="top"
+          align="start"
+          offset={6}
+          onMouseEnter={handlers.onMouseEnter}
+          onMouseLeave={handlers.onMouseLeave}
+        >
+          <div className="min-w-[180px] max-w-[260px] rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-xl py-1 ring-1 ring-white/10">
+            {warnings.map((w) => (
+              <div key={w.id} className="flex items-start gap-2 px-2 py-1">
+                <WarningChip warning={w} size={5} />
+                <span className="text-[11px] leading-snug text-white/90">{w.tooltip}</span>
+              </div>
+            ))}
+          </div>
+        </PortalFloat>
+      )}
+    </>
+  );
+}
+
+/**
+ * Warnings badge (bottom-left) — clustered pill showing per-asset warning
+ * icons (e.g. "no reusable last frame"). Up to {WARNINGS_INLINE_THRESHOLD}
+ * render as inline chips; beyond that, collapses to a count + hover-expand
+ * list so the pill never crowds the card.
+ */
+export function createWarningsBadge(): OverlayWidget<MediaCardOverlayData> {
+  return {
+    id: 'warnings',
+    type: 'custom',
+    ...BADGE_SLOT.bottomLeft,
+    stackGroup: 'badges-bl',
+    visibility: { trigger: 'always', transition: 'none' },
+    priority: BADGE_PRIORITY.important,
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => {
+      const warnings = data.warnings;
+      if (!warnings || warnings.length === 0) return null;
+      return <WarningsBadgeContent warnings={warnings} />;
     },
   };
 }
@@ -1237,5 +1376,6 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createQuickTagWidget,
     createQuickAddButton,
     createVersionBadge,
+    createWarningsBadge,
   });
 }

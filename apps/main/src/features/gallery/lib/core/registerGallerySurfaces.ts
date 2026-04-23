@@ -17,6 +17,7 @@ import {
   ReviewSurfaceContent,
   CuratorSurfaceContent,
   DebugSurfaceContent,
+  SignalTriageContent,
 } from '@features/assets';
 
 const builtInGallerySurfaces = [
@@ -77,6 +78,17 @@ const builtInGallerySurfaces = [
     onEnter: () => {
       console.log('[GallerySurfaces] Debug mode - System diagnostics enabled');
     },
+  },
+  {
+    id: 'assets-signal-triage',
+    label: 'Assets – Signal Triage',
+    description: 'Validate the broken-video heuristic. Keep / Flag overrides the score.',
+    icon: '⚠️',
+    category: 'review',
+    component: SignalTriageContent,
+    supportsMediaTypes: ['video'],
+    supportsSelection: false,
+    routePath: '/assets/signal-triage',
   },
 ];
 
