@@ -1,112 +1,134 @@
 """
-Generation API - Separate microservice for AI generation
+Generation API - Lightweight microservice for AI generation.
 
-Provides:
-- Image/asset generation endpoints
-- Prompt management and versioning
-- Provider configuration
+Bundles: generations, prompts, providers, analytics, auth, accounts, automation.
 
-This service can be scaled independently from the main backend.
+Runs standalone. Its lifespan runs only the startup steps that the included
+routers actually need (DB init + content seed, providers, optional Redis +
+analyzer definitions). The heavy main-api setups are deliberately skipped:
+plugin discovery, ECS, stat/composition/link/behavior systems, authoring
+workflow / meta-contract plugin hooks, AI-model registry, event handlers,
+middleware lifecycle manager.
+
+Trade-off: no in-memory analyzer plugins (only DB-backed analyzer definitions),
+no authoring-workflow or meta-contract registries. Endpoints that depend on
+those return degraded (empty registry) results. Run main-api alongside if you
+need full plugin-based behavior.
 """
+from contextlib import asynccontextmanager
 import os
 import sys
 from pathlib import Path
 
-# Add project root to path for imports
-# __file__ = .../pixsim7/pixsim7/backend/generation/main.py
-# ROOT should be .../pixsim7/ (project root)
+# __file__ = .../pixsim7/pixsim7/backend/generation/main.py → project root is 4 levels up
 ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-print(f"[Generation API] Python: {sys.executable}")
-print(f"[Generation API] Project root: {ROOT}")
-print(f"[Generation API] Importing dependencies...")
+# Load .env before any setting reads
+from dotenv import load_dotenv
+load_dotenv()
 
-try:
-    from fastapi import FastAPI, Request
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
-    print("[Generation API] ✓ FastAPI imported")
-except ImportError as e:
-    print(f"[Generation API] ✗ Failed to import FastAPI: {e}")
-    raise
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-print("[Generation API] Importing backend infrastructure...")
-try:
-    # Import shared backend infrastructure
-    from pixsim7.backend.main.shared.config import settings
-    from pixsim7.backend.main.infrastructure.database.session import sync_engine
-    from sqlmodel import SQLModel
-    print("[Generation API] ✓ Backend infrastructure imported")
-except ImportError as e:
-    print(f"[Generation API] ✗ Failed to import backend infrastructure: {e}")
-    import traceback
-    traceback.print_exc()
-    raise
+from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.infrastructure.database.session import sync_engine
 
-print("[Generation API] Importing API routes...")
-try:
-    # Import routes from main backend (re-use existing code)
-    from pixsim7.backend.main.api.v1.generations import router as generations_router
-    from pixsim7.backend.main.api.v1.prompts import (
-        operations_router,
-        analytics_router,
-        variants_router,
-        families_router,
+# Structured logging (same pipeline as main-api)
+from pixsim_logging import configure_logging, configure_stdlib_root_logger
+logger = configure_logging("generation-api")
+configure_stdlib_root_logger()
+
+# Route modules re-used from main-api
+from pixsim7.backend.main.api.v1.generations import router as generations_router
+from pixsim7.backend.main.api.v1.prompts import (
+    operations_router,
+    analytics_router,
+    variants_router,
+    families_router,
+)
+from pixsim7.backend.main.api.v1.auth import router as auth_router
+from pixsim7.backend.main.api.v1.users import router as users_router
+from pixsim7.backend.main.api.v1.accounts import router as accounts_router
+from pixsim7.backend.main.api.v1.providers import router as providers_router
+from pixsim7.backend.main.api.v1.automation import router as automation_router
+
+# Standalone middleware (no dependency on main-api's middleware manager)
+from pixsim7.backend.main.middleware.request_id.manifest import RequestIdMiddleware
+from pixsim7.backend.main.middleware.request_logging.manifest import RequestLoggingMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Standalone lifespan covering the routes this app exposes.
+
+    Required: setup_database_and_seed (tables + seeded tags/presets), setup_providers.
+    Recommended: setup_redis (ARQ + caching; degrades if unavailable),
+    setup_analyzer_definitions (DB-stored analyzers — lightweight alternative to the
+    plugin-based `setup_analyzer_plugins`, which only registers listeners that fire
+    during `setup_plugins`, and we deliberately skip full plugin discovery).
+    """
+    from pixsim7.backend.main.startup import (
+        setup_database_and_seed,
+        setup_providers,
+        setup_redis,
+        setup_analyzer_definitions,
     )
 
-    # Lightweight routes for chrome extension support
-    from pixsim7.backend.main.api.v1.auth import router as auth_router
-    from pixsim7.backend.main.api.v1.users import router as users_router
-    from pixsim7.backend.main.api.v1.accounts import router as accounts_router
-    from pixsim7.backend.main.api.v1.providers import router as providers_router
+    logger.info("generation_api_startup_begin")
+    try:
+        await setup_database_and_seed()
+        setup_providers()
 
-    # Automation routes (device management, execution loops)
-    from pixsim7.backend.main.api.v1.automation import router as automation_router
+        # Bind capability implementations (analyzer_registry, etc.).
+        from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
+            bind_default_capabilities,
+        )
+        bind_default_capabilities()
 
-    # Import for architecture introspection
-    from pixsim7.backend.main.api.v1.dev_architecture import (
-        discover_routes,
-        discover_services,
-        calculate_metrics,
-    )
-    print("[Generation API] ✓ All routes imported")
-except ImportError as e:
-    print(f"[Generation API] ✗ Failed to import routes: {e}")
-    import traceback
-    traceback.print_exc()
-    raise
+        # Optional: Redis (arq + caching). Degraded mode if unavailable.
+        try:
+            await setup_redis()
+        except Exception:
+            logger.warning("redis_unavailable_degraded_mode", exc_info=True)
+
+        # Optional: DB-backed analyzer definitions (prompt operations router).
+        try:
+            await setup_analyzer_definitions()
+        except Exception:
+            logger.warning("analyzer_definitions_load_failed", exc_info=True)
+
+        logger.info(
+            "generation_api_ready",
+            port=int(os.getenv("GENERATION_API_PORT", 8001)),
+        )
+    except Exception:
+        logger.exception("generation_api_startup_failed")
+        raise
+    yield
+    logger.info("generation_api_shutdown")
 
 app = FastAPI(
     title="PixSim7 Generation API",
-    description="""
-    AI Generation and Prompt Management Microservice
-
-    ## Features
-
-    - **Generation**: Create and manage image/asset generations
-    - **Prompts**: Prompt versioning, variants, and families
-    - **Providers**: AI provider configuration
-    - **Analytics**: Generation metrics and statistics
-    - **Chrome Extension**: Auth, accounts, and provider management
-    - **Automation**: Device management, execution loops, and action presets
-
-    ## Architecture
-
-    This is a lightweight API for development, containing generation capabilities,
-    chrome extension support, and automation, while excluding heavy game engine features.
-
-    Perfect for development when you only need generation + chrome extension + automation.
-    """,
+    description=(
+        "Lightweight FastAPI bundle over the main backend's generation, prompt, "
+        "provider, auth, account, and automation routers. Boots without the "
+        "main-api's plugin discovery and content seeding — see module docstring "
+        "for known coupling."
+    ),
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
-# CORS middleware
+# Middleware (added in reverse-execution order — last added runs first)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -354,53 +376,6 @@ app.include_router(
     prefix="/api/v1",
     tags=["automation"]
 )
-
-
-# ===== STARTUP/SHUTDOWN EVENTS =====
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database tables and resources."""
-    print("=" * 70)
-    print("Generation API starting...")
-    print("=" * 70)
-
-    try:
-        # Tables are already created by main backend
-        # Just verify connection
-        print("Checking database connection...")
-        from sqlalchemy import text
-        with sync_engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        print("✓ Database connected")
-
-        # Register providers (needed for chrome extension)
-        print("Registering providers...")
-        from pixsim7.backend.main.services.provider import register_default_providers
-        register_default_providers()
-        print("✓ Providers registered")
-
-        print("=" * 70)
-        print("✓ Generation API started successfully")
-        print(f"Port: {os.getenv('GENERATION_API_PORT', 8001)}")
-        print(f"Docs: http://localhost:{os.getenv('GENERATION_API_PORT', 8001)}/docs")
-        print(f"Chrome Extension: Supported (auth, accounts, providers)")
-        print(f"Automation: Supported (devices, loops, presets)")
-        print("=" * 70)
-    except Exception as e:
-        print("=" * 70)
-        print("✗ STARTUP FAILED")
-        print(f"Error: {e}")
-        print("=" * 70)
-        import traceback
-        traceback.print_exc()
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Cleanup on shutdown."""
-    print("Generation API shutting down...")
 
 
 # ===== ROOT ENDPOINT =====
