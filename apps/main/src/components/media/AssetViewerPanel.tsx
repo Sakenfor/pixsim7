@@ -25,6 +25,8 @@ import {
 import { ensurePanelMetadataRegistered, panelManager, usePanel } from '@features/panels';
 import { PANEL_IDS } from '@features/panels/lib/panelIds';
 
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+
 import { AssetViewerDockview } from './viewer';
 
 
@@ -142,46 +144,19 @@ export function AssetViewerPanel() {
     }
   }, [isAssetViewerPanelRegistered, mode, panelOpen, panelClose]);
 
-  // Keyboard navigation
-  useEffect(() => {
-    if (mode === 'closed') return;
+  // Keyboard shortcuts (Escape/Arrow/F/I) are registered as capability
+  // actions in `viewerPanelCapabilityActions.ts` — user-rebindable via
+  // settings, input-focus-gated through the shared shortcut hook.
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      switch (e.key) {
-        case 'Escape':
-          closeViewer();
-          break;
-        case 'ArrowLeft':
-          if (canNavigatePrev) navigatePrev();
-          break;
-        case 'ArrowRight':
-          if (canNavigateNext) navigateNext();
-          break;
-        case 'f':
-        case 'F':
-          toggleFullscreen();
-          break;
-        case 'i':
-        case 'I':
-          toggleMetadata();
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mode, canNavigatePrev, canNavigateNext, closeViewer, navigatePrev, navigateNext, toggleFullscreen, toggleMetadata]);
+  const mediaTypeHint = currentAsset?.type === 'video' ? 'video' : 'image';
+  const { mediaSrc: mediaUrl } = useResolvedAssetMedia({
+    mediaUrl: currentAsset?.fullUrl || currentAsset?.url,
+    mediaType: mediaTypeHint,
+  });
 
   if (!currentAsset || mode === 'closed') {
     return null;
   }
-
-  const mediaUrl = currentAsset.fullUrl || currentAsset.url;
 
   // Side panel mode - uses dockview for resizable panels
   if (mode === 'side') {

@@ -5,7 +5,7 @@
  * Fetches with Authorization header and converts to blob URL for use in img/video src.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
@@ -70,6 +70,14 @@ export interface UseAuthenticatedMediaOptions {
   mediaType?: 'video' | 'image';
 }
 
+class MediaHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`HTTP ${status}`);
+    this.status = status;
+  }
+}
+
 export function useAuthenticatedMedia(
   url: string | undefined,
   options: UseAuthenticatedMediaOptions = {},
@@ -77,6 +85,7 @@ export function useAuthenticatedMedia(
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const lastRequestUrlRef = useRef<string | undefined>(undefined);
   const isActive = options.active ?? true;
   const cache = options.mediaType === 'video' ? _authVideoBlobCache : _authImageBlobCache;
 
@@ -84,6 +93,7 @@ export function useAuthenticatedMedia(
     let cancelled = false;
 
     if (!url || !isActive) {
+      lastRequestUrlRef.current = undefined;
       setSrc(undefined);
       setLoading(false);
       setError(false);
@@ -102,6 +112,7 @@ export function useAuthenticatedMedia(
 
     // External URLs - use directly (no auth needed)
     if (!isBackend) {
+      lastRequestUrlRef.current = fullUrl;
       setSrc(fullUrl);
       setLoading(false);
       setError(false);
@@ -112,15 +123,18 @@ export function useAuthenticatedMedia(
 
     const token = authService.getStoredToken();
 
-    // No token - try the URL directly (might work for public endpoints)
+    // Backend media endpoints require Authorization. Avoid falling back to a raw
+    // backend URL because that creates noisy 401s from <img>/<video> elements.
     if (!token) {
-      setSrc(fullUrl);
+      setSrc(undefined);
       setLoading(false);
-      setError(false);
+      setError(true);
       return;
     }
 
     // Check module-level cache first
+    const requestChanged = lastRequestUrlRef.current !== fullUrl;
+    lastRequestUrlRef.current = fullUrl;
     const cached = cache.get(fullUrl);
     if (cached) {
       setSrc(cached);
@@ -130,53 +144,52 @@ export function useAuthenticatedMedia(
     }
 
     // Fetch with authentication
+    if (requestChanged) {
+      setSrc(undefined);
+    }
     setLoading(true);
     setError(false);
 
     const fetchMedia = async () => {
       try {
-        // cache: 'no-store' prevents Chrome from holding a second copy of
-        // the response body in its HTTP cache on top of our blob cache.
-        const res = await fetch(fullUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: 'no-store',
+        const blobUrl = await cache.deduplicatedFetch(fullUrl, async () => {
+          // Another caller may have cached while this request was waiting in-flight.
+          const cachedAgain = cache.get(fullUrl);
+          if (cachedAgain) return cachedAgain;
+
+          // cache: 'no-store' prevents Chrome from holding a second copy of
+          // the response body in its HTTP cache on top of our blob cache.
+          const res = await fetch(fullUrl, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          });
+          if (!res.ok) throw new MediaHttpError(res.status);
+
+          const blob = await res.blob();
+          // Re-check cache after blob read in case another in-flight path
+          // populated it during this await.
+          const raceCached = cache.get(fullUrl);
+          if (raceCached) return raceCached;
+
+          const objectUrl = URL.createObjectURL(blob);
+          cache.set(fullUrl, objectUrl, blob.size);
+          return objectUrl;
         });
 
-        if (!res.ok) {
-          if (!cancelled) {
-            console.warn(`[useAuthenticatedMedia] Failed to fetch ${fullUrl}: ${res.status}`);
-            setError(true);
-            setLoading(false);
-            setSrc(fullUrl);
-          }
-          return;
-        }
-
-        const blob = await res.blob();
-        // Re-check cache: another concurrent fetch for the same URL may have
-        // already cached a blob URL.  Reuse it to avoid revoking the existing
-        // one (which could still be referenced by another component's <img>).
-        const raceCached = cache.get(fullUrl);
-        if (raceCached) {
-          if (!cancelled) {
-            setSrc(raceCached);
-            setLoading(false);
-          }
-          return;
-        }
-        const objectUrl = URL.createObjectURL(blob);
-        cache.set(fullUrl, objectUrl, blob.size);
-
         if (!cancelled) {
-          setSrc(objectUrl);
+          setSrc(blobUrl);
           setLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
-          console.warn(`[useAuthenticatedMedia] Error fetching ${fullUrl}:`, err);
+          if (err instanceof MediaHttpError) {
+            console.warn(`[useAuthenticatedMedia] Failed to fetch ${fullUrl}: ${err.status}`);
+          } else {
+            console.warn(`[useAuthenticatedMedia] Error fetching ${fullUrl}:`, err);
+          }
           setError(true);
           setLoading(false);
-          setSrc(fullUrl);
+          setSrc(undefined);
         }
       }
     };

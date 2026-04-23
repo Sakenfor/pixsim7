@@ -1,5 +1,3 @@
-import { useMemo } from 'react';
-
 import { useAuthenticatedMedia } from './useAuthenticatedMedia';
 import { useMediaThumbnailFull, type UseMediaThumbnailOptions } from './useMediaThumbnail';
 
@@ -40,13 +38,8 @@ export function useResolvedAssetMedia(
   const media = useAuthenticatedMedia(mediaUrl, { active: mediaActive, mediaType });
   const thumb = useMediaThumbnailFull(thumbUrl, previewUrl, remoteUrl, thumbOptions);
 
-  const resolvedMediaSrc = useMemo(
-    () => media.src ?? mediaUrl,
-    [media.src, mediaUrl],
-  );
-
   return {
-    mediaSrc: resolvedMediaSrc,
+    mediaSrc: media.src,
     mediaLoading: media.loading,
     mediaError: media.error,
     thumbSrc: thumb.src,

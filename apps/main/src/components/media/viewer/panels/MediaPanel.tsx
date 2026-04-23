@@ -26,8 +26,8 @@ import { useFrameCapture, useOverlayShortcuts, useRecentScope, useViewerContext 
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
-import { useViewerViewportStore } from './viewerViewportStore';
 import { ViewerToolStrip } from './ViewerToolStrip';
+import { useViewerViewportStore } from './viewerViewportStore';
 
 interface MediaPanelProps {
   context?: ViewerPanelContext;
@@ -328,6 +328,14 @@ export function MediaPanel({ context }: MediaPanelProps) {
     if (e.button !== 0) return;
     const el = mediaContainerRef.current;
     if (!el) return;
+    // Skip pan/capture if the pointerdown originated on an interactive child.
+    // React events bubble through the React tree even from portals, so
+    // setPointerCapture here would retarget pointerup to the container and
+    // swallow the child's click/dblclick.
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"], [data-no-pan]')) {
+      return;
+    }
     el.setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX,

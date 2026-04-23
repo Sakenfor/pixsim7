@@ -284,6 +284,63 @@ export function useInteractionLayer(
   );
 
   const undo = useCallback(() => {
+    // In curve mode (open polygon), undo should affect the in-progress shape
+    // before touching committed history entries.
+    const currentPolygon = currentPolygonRef.current;
+    const isCurveDraft = !!currentPolygon && !polygonCloseRef.current;
+    if (currentPolygon && isCurveDraft) {
+      const { layerId, elementId } = currentPolygon;
+      const layer = layers.find((l) => l.id === layerId);
+      const element = layer?.elements.find(
+        (e) => e.id === elementId && e.type === 'polygon'
+      ) as PolygonElement | undefined;
+
+      // If the draft is missing, clear stale refs and do not consume history.
+      if (!element) {
+        currentPolygonRef.current = null;
+        preShapeLayersRef.current = null;
+        return;
+      }
+
+      if (element.points.length <= 1) {
+        // Last point -> cancel draft curve/polygon entirely.
+        setLayers((prev) =>
+          prev.map((l) => {
+            if (l.id !== layerId) return l;
+            return {
+              ...l,
+              elements: l.elements.filter((e) => e.id !== elementId),
+            };
+          })
+        );
+        currentPolygonRef.current = null;
+        preShapeLayersRef.current = null;
+        return;
+      }
+
+      // Remove only the most recently added vertex.
+      setLayers((prev) =>
+        prev.map((l) => {
+          if (l.id !== layerId) return l;
+          return {
+            ...l,
+            elements: l.elements.map((e) => {
+              if (e.id !== elementId || e.type !== 'polygon') return e;
+              const poly = e as PolygonElement;
+              return {
+                ...poly,
+                points: poly.points.slice(0, -1),
+                pointWidths: poly.pointWidths
+                  ? poly.pointWidths.slice(0, -1)
+                  : undefined,
+              };
+            }),
+          };
+        })
+      );
+      return;
+    }
+
     if (historyIndex < 0) return;
 
     const entry = history[historyIndex];
@@ -295,7 +352,7 @@ export function useInteractionLayer(
     }
 
     setHistoryIndex((prev) => prev - 1);
-  }, [history, historyIndex]);
+  }, [history, historyIndex, layers]);
 
   const redo = useCallback(() => {
     if (historyIndex >= history.length - 1) return;
@@ -1314,7 +1371,9 @@ export function useInteractionLayer(
     // History
     undo,
     redo,
-    canUndo: historyIndex >= 0,
+    canUndo:
+      historyIndex >= 0 ||
+      (!!currentPolygonRef.current && !polygonCloseRef.current),
     canRedo: historyIndex < history.length - 1,
     clearHistory,
 

@@ -46,6 +46,42 @@ interface Entry {
   bytes: number;
 }
 
+const REVOKE_RETRY_MS = 15_000;
+const MAX_REVOKE_RETRIES = 8;
+
+function blobUrlInUse(blobUrl: string): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    const mediaEls = document.querySelectorAll('video, audio, img, source');
+    for (const el of mediaEls) {
+      const attrSrc = el.getAttribute('src');
+      if (attrSrc === blobUrl) return true;
+      if (el instanceof HTMLMediaElement) {
+        if (el.src === blobUrl || el.currentSrc === blobUrl) return true;
+      } else if (el instanceof HTMLImageElement) {
+        if (el.src === blobUrl || el.currentSrc === blobUrl) return true;
+      }
+    }
+  } catch {
+    // Best-effort guard only; fall back to immediate revoke on errors.
+  }
+  return false;
+}
+
+function revokeBlobUrlSafely(blobUrl: string, attempt = 0): void {
+  if (!blobUrl) return;
+  if (!blobUrlInUse(blobUrl)) {
+    URL.revokeObjectURL(blobUrl);
+    return;
+  }
+  if (attempt >= MAX_REVOKE_RETRIES) {
+    // Give up after a bounded grace period to avoid leaking forever.
+    URL.revokeObjectURL(blobUrl);
+    return;
+  }
+  setTimeout(() => revokeBlobUrlSafely(blobUrl, attempt + 1), REVOKE_RETRY_MS);
+}
+
 export function createBlobCache(
   singletonKey: string,
   config: BlobCacheConfig | number,
@@ -62,7 +98,7 @@ export function createBlobCache(
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
-      for (const entry of map.values()) URL.revokeObjectURL(entry.blobUrl);
+      for (const entry of map.values()) revokeBlobUrlSafely(entry.blobUrl);
       map.clear();
       inFlight.clear();
     });
@@ -83,7 +119,7 @@ export function createBlobCache(
       map.delete(firstKey);
       if (oldEntry) {
         totalBytes -= oldEntry.bytes;
-        URL.revokeObjectURL(oldEntry.blobUrl);
+        revokeBlobUrlSafely(oldEntry.blobUrl);
       }
     }
   };
@@ -103,7 +139,7 @@ export function createBlobCache(
     set(fetchUrl: string, blobUrl: string, byteSize = 0): void {
       const existing = map.get(fetchUrl);
       if (existing) {
-        if (existing.blobUrl !== blobUrl) URL.revokeObjectURL(existing.blobUrl);
+        if (existing.blobUrl !== blobUrl) revokeBlobUrlSafely(existing.blobUrl);
         totalBytes -= existing.bytes;
         map.delete(fetchUrl);
       }
@@ -127,7 +163,7 @@ export function createBlobCache(
     },
 
     clear(): void {
-      for (const entry of map.values()) URL.revokeObjectURL(entry.blobUrl);
+      for (const entry of map.values()) revokeBlobUrlSafely(entry.blobUrl);
       map.clear();
       inFlight.clear();
       totalBytes = 0;

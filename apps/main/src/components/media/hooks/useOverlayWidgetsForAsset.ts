@@ -120,6 +120,7 @@ export function useOverlayWidgetsForAsset({
       hasGenerationContext: asset.hasGenerationContext ?? false,
       prompt: asset.prompt ?? undefined,
       operationType: asset.operationType ?? undefined,
+      artificialExtend: asset.artificialExtend ?? undefined,
       model: asset.model ?? undefined,
       width: asset.width ?? undefined,
       height: asset.height ?? undefined,

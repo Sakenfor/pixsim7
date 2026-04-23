@@ -12,8 +12,8 @@ import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { Icon } from '@lib/icons';
 
 import { fromAssetResponse, type AssetModel } from '@features/assets';
-import { MediaCard } from '@/components/media/MediaCard';
 
+import { MediaCard } from '@/components/media/MediaCard';
 import type { OperationType } from '@/types/operations';
 
 import { parseGenerationContext } from './mediaCardGeneration.utils';
@@ -78,6 +78,7 @@ export function SourceAssetsPreview({ assetId, operationType, onOpenAsset }: {
 
       {isExpanded && popupPos && createPortal(
         <div
+          data-no-pan
           className="fixed rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-white/10 p-1.5 z-popover"
           style={{ left: popupPos.x, top: popupPos.y, transform: 'translateY(-50%)' }}
           {...handlers}

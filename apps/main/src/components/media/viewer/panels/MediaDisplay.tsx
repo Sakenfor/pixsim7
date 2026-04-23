@@ -68,7 +68,15 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
     setVideoReady(asset.type !== 'video');
     setVideoLoadFailed(false);
     setVideoCandidateIndex(0);
-  }, [asset.id, asset.type, asset.fullUrl, asset.url, remoteModelUrl]);
+  }, [asset.id, asset.type]);
+
+  useEffect(() => {
+    if (asset.type !== 'video') return;
+    // Only hide/reset readiness when the resolved playback source changes.
+    // Asset metadata updates can mutate URL candidates without changing src.
+    setVideoReady(false);
+    setVideoLoadFailed(false);
+  }, [asset.type, resolvedMediaUrl]);
 
   useEffect(() => {
     if (asset.type === 'video' && videoCandidates.length === 0) {
@@ -76,6 +84,12 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, im
       setVideoLoadFailed(true);
     }
   }, [asset.type, videoCandidates.length]);
+
+  useEffect(() => {
+    if (asset.type !== 'video') return;
+    if (videoCandidateIndex < videoCandidates.length) return;
+    setVideoCandidateIndex(0);
+  }, [asset.type, videoCandidateIndex, videoCandidates.length]);
 
   useEffect(() => {
     if (asset.type !== 'video') return;

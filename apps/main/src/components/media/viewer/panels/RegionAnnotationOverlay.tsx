@@ -199,58 +199,6 @@ export function RegionAnnotationOverlay({
     updateRegion(asset.id, editId, updates);
   }, [editingPolygonId, editingRectId, updateRegion, asset.id]);
 
-  /**
-   * Finalize the in-progress polygon/curve without switching away from the
-   * current drawing mode.  Called on Enter / Escape so the user can finish
-   * one shape and immediately start the next.
-   *
-   * @param switchToSelect  When true (double-click path), also switches mode
-   *                        to 'select'.
-   */
-  const finalizeInProgressShape = useCallback(
-    (switchToSelect = false) => {
-      if (!isActiveLayerEditable) return;
-      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
-      const colorIndex = regions.length % REGION_COLORS.length;
-      const colors = REGION_COLORS[colorIndex];
-
-      if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
-        const regionId = addRegion(asset.id, {
-          layerId: targetLayerId,
-          type: 'polygon',
-          points: polygonPoints,
-          label: `Region ${regions.length + 1}`,
-          style: { strokeColor: colors.stroke, fillColor: colors.fill },
-        });
-        selectRegion(regionId);
-        const region = getRegion(asset.id, regionId);
-        if (region) onRegionCreated?.(region);
-      } else if (drawingMode === 'curve' && polygonPoints.length >= 2) {
-        const regionId = addRegion(asset.id, {
-          layerId: targetLayerId,
-          type: 'curve',
-          points: polygonPoints,
-          label: `Curve ${regions.length + 1}`,
-          style: { strokeColor: colors.stroke, strokeWidth: 3 },
-        });
-        selectRegion(regionId);
-        const region = getRegion(asset.id, regionId);
-        if (region) onRegionCreated?.(region);
-      } else {
-        // Not enough points — just discard
-      }
-
-      setPolygonPoints([]);
-      setCursorPosition(null);
-      if (switchToSelect) setDrawingMode('select');
-    },
-    [
-      activeLayerId, addRegion, asset.id, drawingMode, ensureDefaultLayer,
-      getRegion, isActiveLayerEditable, onRegionCreated, polygonPoints,
-      regions, selectRegion, setDrawingMode,
-    ],
-  );
-
   // Derived
   const editingRegionId = editingPolygonId ?? editingRectId;
   /** Whether the polygon currently being edited is an open curve (not a closed polygon) */
@@ -316,6 +264,58 @@ export function RegionAnnotationOverlay({
     const layer = layerById.get(id);
     return !!layer && layer.visible && !layer.locked;
   }, [activeLayerId, layerById]);
+
+  /**
+   * Finalize the in-progress polygon/curve without switching away from the
+   * current drawing mode.  Called on Enter / Escape so the user can finish
+   * one shape and immediately start the next.
+   *
+   * @param switchToSelect  When true (double-click path), also switches mode
+   *                        to 'select'.
+   */
+  const finalizeInProgressShape = useCallback(
+    (switchToSelect = false) => {
+      if (!isActiveLayerEditable) return;
+      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
+      const colorIndex = regions.length % REGION_COLORS.length;
+      const colors = REGION_COLORS[colorIndex];
+
+      if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
+        const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
+          type: 'polygon',
+          points: polygonPoints,
+          label: `Region ${regions.length + 1}`,
+          style: { strokeColor: colors.stroke, fillColor: colors.fill },
+        });
+        selectRegion(regionId);
+        const region = getRegion(asset.id, regionId);
+        if (region) onRegionCreated?.(region);
+      } else if (drawingMode === 'curve' && polygonPoints.length >= 2) {
+        const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
+          type: 'curve',
+          points: polygonPoints,
+          label: `Curve ${regions.length + 1}`,
+          style: { strokeColor: colors.stroke, strokeWidth: 3 },
+        });
+        selectRegion(regionId);
+        const region = getRegion(asset.id, regionId);
+        if (region) onRegionCreated?.(region);
+      } else {
+        // Not enough points — just discard
+      }
+
+      setPolygonPoints([]);
+      setCursorPosition(null);
+      if (switchToSelect) setDrawingMode('select');
+    },
+    [
+      activeLayerId, addRegion, asset.id, drawingMode, ensureDefaultLayer,
+      getRegion, isActiveLayerEditable, onRegionCreated, polygonPoints,
+      regions, selectRegion, setDrawingMode,
+    ],
+  );
 
   const syncSignatureRef = useRef('');
 

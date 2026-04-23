@@ -21,7 +21,7 @@ interface PopupPosition {
 
 function QueueThumbnail({ url, alt }: { url: string; alt: string }) {
   const { mediaSrc } = useResolvedAssetMedia({ mediaUrl: url });
-  return <img src={mediaSrc || url} alt={alt} className="w-full h-full object-cover" />;
+  return <img src={mediaSrc} alt={alt} className="w-full h-full object-cover" />;
 }
 
 export function MediaCardQueueNav({ queue }: { queue: MediaCardQueueConfig }) {
