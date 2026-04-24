@@ -42,6 +42,7 @@ package promptpacks
 #PlacementDistanceValues: ["contact", "near", "medium", "far"]
 #PlacementOrientationValues: ["front", "profile_left", "profile_right", "back"]
 #LookFocusValues: ["eyes", "head", "away", "body"]
+#ExpressionValues: ["neutral", "happy", "sad", "angry", "fearful", "surprised", "disgusted", "pained"]
 #GaitValues: ["step", "walk", "run", "drift", "turn"]
 #ActionVerbValues: ["reach", "grasp", "pull", "push", "lift", "lower", "strike", "embrace", "release", "gesture", "react", "turn_to"]
 #TargetInvolvementValues: ["none", "indirect", "direct"]

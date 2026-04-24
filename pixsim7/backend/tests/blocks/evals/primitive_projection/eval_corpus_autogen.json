@@ -3,13 +3,14 @@
     "description": "Auto-generated corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
     "generated_from": "tools/cue/prompt_packs",
-    "total_entries": 113,
+    "total_entries": 154,
     "category_counts": {
       "camera": 41,
       "color": 13,
       "direction": 9,
-      "character_pose": 26,
+      "character_pose": 54,
       "light": 5,
+      "manner": 13,
       "location": 7,
       "continuity": 7,
       "interaction_beat": 5
@@ -498,6 +499,110 @@
     },
     {
       "id": "auto_0061",
+      "text": "Manner token: gentle. gently gentle low none gentle.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.gentle",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:gentle"
+    },
+    {
+      "id": "auto_0062",
+      "text": "Manner token: tender. tenderly tender medium none tender.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.tender",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:tender"
+    },
+    {
+      "id": "auto_0063",
+      "text": "Manner token: languid. languidly languid low none languid.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.languid",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:languid"
+    },
+    {
+      "id": "auto_0064",
+      "text": "Manner token: hesitant. hesitantly hesitant low none hesitant.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.hesitant",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:hesitant"
+    },
+    {
+      "id": "auto_0065",
+      "text": "Manner token: cautious. cautiously cautious low none cautious.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.cautious",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:cautious"
+    },
+    {
+      "id": "auto_0066",
+      "text": "Manner token: fluid. fluidly fluid medium none fluid.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.fluid",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:fluid"
+    },
+    {
+      "id": "auto_0067",
+      "text": "Manner token: deliberate. deliberately deliberate medium none deliberate.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.deliberate",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:deliberate"
+    },
+    {
+      "id": "auto_0068",
+      "text": "Manner token: playful. playfully playful medium none playful.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.playful",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:playful"
+    },
+    {
+      "id": "auto_0069",
+      "text": "Manner token: firm. firmly firm medium none firm.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.firm",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:firm"
+    },
+    {
+      "id": "auto_0070",
+      "text": "Manner token: forceful. forcefully firm high none forceful.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.forceful",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:forceful"
+    },
+    {
+      "id": "auto_0071",
+      "text": "Manner token: sharp. sharply sharp high none sharp.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.sharp",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:sharp"
+    },
+    {
+      "id": "auto_0072",
+      "text": "Manner token: urgent. urgently urgent high none urgent.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.urgent",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:urgent"
+    },
+    {
+      "id": "auto_0073",
+      "text": "Manner token: abrupt. abruptly abrupt high none abrupt.",
+      "category": "manner",
+      "expected_block_prefix": "core.manner.quality.abrupt",
+      "expected_category": "manner",
+      "notes": "autogen from core_manner/quality:abrupt"
+    },
+    {
+      "id": "auto_0074",
       "text": "Placement token: near. nearby near near front near.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.near",
@@ -505,7 +610,7 @@
       "notes": "autogen from core_placement/anchor:near"
     },
     {
-      "id": "auto_0062",
+      "id": "auto_0075",
       "text": "Placement token: left of. left of left of medium front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.left_of",
@@ -513,7 +618,7 @@
       "notes": "autogen from core_placement/anchor:left_of"
     },
     {
-      "id": "auto_0063",
+      "id": "auto_0076",
       "text": "Placement token: right of. right of right of medium front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.right_of",
@@ -521,7 +626,7 @@
       "notes": "autogen from core_placement/anchor:right_of"
     },
     {
-      "id": "auto_0064",
+      "id": "auto_0077",
       "text": "Placement token: in front of. in front of in front of medium front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.in_front_of",
@@ -529,7 +634,7 @@
       "notes": "autogen from core_placement/anchor:in_front_of"
     },
     {
-      "id": "auto_0065",
+      "id": "auto_0078",
       "text": "Placement token: behind. behind behind medium front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.behind",
@@ -537,7 +642,7 @@
       "notes": "autogen from core_placement/anchor:behind"
     },
     {
-      "id": "auto_0066",
+      "id": "auto_0079",
       "text": "Placement token: above. above above far front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.above",
@@ -545,7 +650,7 @@
       "notes": "autogen from core_placement/anchor:above"
     },
     {
-      "id": "auto_0067",
+      "id": "auto_0080",
       "text": "Placement token: below. below below far front.",
       "category": "location",
       "expected_block_prefix": "core.placement.anchor.below",
@@ -553,7 +658,7 @@
       "notes": "autogen from core_placement/anchor:below"
     },
     {
-      "id": "auto_0068",
+      "id": "auto_0081",
       "text": "POV token: first person eye level. first person eye level.",
       "category": "camera",
       "expected_block_prefix": "core.camera.pov.first_person_eye_level",
@@ -561,7 +666,7 @@
       "notes": "autogen from core_pov/pov:first_person_eye_level"
     },
     {
-      "id": "auto_0069",
+      "id": "auto_0082",
       "text": "POV token: first person waist. first person waist.",
       "category": "camera",
       "expected_block_prefix": "core.camera.pov.first_person_waist",
@@ -569,7 +674,7 @@
       "notes": "autogen from core_pov/pov:first_person_waist"
     },
     {
-      "id": "auto_0070",
+      "id": "auto_0083",
       "text": "POV token: over shoulder. over shoulder chest over shoulder.",
       "category": "camera",
       "expected_block_prefix": "core.camera.pov.over_shoulder",
@@ -577,7 +682,7 @@
       "notes": "autogen from core_pov/pov:over_shoulder"
     },
     {
-      "id": "auto_0071",
+      "id": "auto_0084",
       "text": "POV token: third person follow. third person chest third person follow.",
       "category": "camera",
       "expected_block_prefix": "core.camera.pov.third_person_follow",
@@ -585,7 +690,7 @@
       "notes": "autogen from core_pov/pov:third_person_follow"
     },
     {
-      "id": "auto_0072",
+      "id": "auto_0085",
       "text": "POV token: observer top down. top down overhead observer top down.",
       "category": "camera",
       "expected_block_prefix": "core.camera.pov.observer_top_down",
@@ -593,7 +698,7 @@
       "notes": "autogen from core_pov/pov:observer_top_down"
     },
     {
-      "id": "auto_0073",
+      "id": "auto_0086",
       "text": "Sequence continuity token: initial setting lock. initial setting medium initial setting lock.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.initial_setting_lock",
@@ -601,7 +706,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:initial_setting_lock"
     },
     {
-      "id": "auto_0074",
+      "id": "auto_0087",
       "text": "Sequence continuity token: continuation subject lock. continuation subject high continuation subject lock.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.continuation_subject_lock",
@@ -609,7 +714,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:continuation_subject_lock"
     },
     {
-      "id": "auto_0075",
+      "id": "auto_0088",
       "text": "Sequence continuity token: continuation target lock. continuation target high continuation target lock.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.continuation_target_lock",
@@ -617,7 +722,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:continuation_target_lock"
     },
     {
-      "id": "auto_0076",
+      "id": "auto_0089",
       "text": "Sequence continuity token: transition setting shift. transition setting medium transition setting shift.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.transition_setting_shift",
@@ -625,7 +730,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:transition_setting_shift"
     },
     {
-      "id": "auto_0077",
+      "id": "auto_0090",
       "text": "Sequence continuity token: transition tone shift. transition tone medium transition tone shift.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.transition_tone_shift",
@@ -633,7 +738,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:transition_tone_shift"
     },
     {
-      "id": "auto_0078",
+      "id": "auto_0091",
       "text": "Sequence continuity token: transition props shift. transition props low transition props shift.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.transition_props_shift",
@@ -641,7 +746,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:transition_props_shift"
     },
     {
-      "id": "auto_0079",
+      "id": "auto_0092",
       "text": "Sequence continuity token: unspecified soft hold. unspecified subject low unspecified soft hold.",
       "category": "continuity",
       "expected_block_prefix": "core.sequence.continuity.unspecified_soft_hold",
@@ -649,7 +754,7 @@
       "notes": "autogen from core_sequence_continuity/continuity:unspecified_soft_hold"
     },
     {
-      "id": "auto_0080",
+      "id": "auto_0093",
       "text": "Shot token: extreme wide establishing. extreme wide group extreme wide establishing.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.extreme_wide_establishing",
@@ -657,7 +762,7 @@
       "notes": "autogen from core_shot/shot:extreme_wide_establishing"
     },
     {
-      "id": "auto_0081",
+      "id": "auto_0094",
       "text": "Shot token: wide single. wide single.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.wide_single",
@@ -665,7 +770,7 @@
       "notes": "autogen from core_shot/shot:wide_single"
     },
     {
-      "id": "auto_0082",
+      "id": "auto_0095",
       "text": "Shot token: medium single. medium single.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.medium_single",
@@ -673,7 +778,7 @@
       "notes": "autogen from core_shot/shot:medium_single"
     },
     {
-      "id": "auto_0083",
+      "id": "auto_0096",
       "text": "Shot token: close up single. close up single.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.close_up_single",
@@ -681,7 +786,7 @@
       "notes": "autogen from core_shot/shot:close_up_single"
     },
     {
-      "id": "auto_0084",
+      "id": "auto_0097",
       "text": "Shot token: medium pair. medium pair.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.medium_pair",
@@ -689,7 +794,7 @@
       "notes": "autogen from core_shot/shot:medium_pair"
     },
     {
-      "id": "auto_0085",
+      "id": "auto_0098",
       "text": "Shot token: close up pair. close up pair.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.close_up_pair",
@@ -697,7 +802,7 @@
       "notes": "autogen from core_shot/shot:close_up_pair"
     },
     {
-      "id": "auto_0086",
+      "id": "auto_0099",
       "text": "Shot token: wide group. wide group.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.wide_group",
@@ -705,7 +810,7 @@
       "notes": "autogen from core_shot/shot:wide_group"
     },
     {
-      "id": "auto_0087",
+      "id": "auto_0100",
       "text": "Shot token: extreme close up detail. extreme close up single extreme close up detail.",
       "category": "camera",
       "expected_block_prefix": "core.camera.shot.extreme_close_up_detail",
@@ -713,7 +818,223 @@
       "notes": "autogen from core_shot/shot:extreme_close_up_detail"
     },
     {
-      "id": "auto_0088",
+      "id": "auto_0101",
+      "text": "React token: react strong. flinches react none full body react strong.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.react.react_strong",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/react:react_strong"
+    },
+    {
+      "id": "auto_0102",
+      "text": "React token: react subtle. subtle reaction react none upper body react subtle.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.react.react_subtle",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/react:react_subtle"
+    },
+    {
+      "id": "auto_0103",
+      "text": "React token: react to target. reacts to react indirect upper body react to target.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.react.react_to_target",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/react:react_to_target"
+    },
+    {
+      "id": "auto_0104",
+      "text": "Gesture token: gesture expressive. gestures gesture none arms gesture expressive.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.gesture.gesture_expressive",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/gesture:gesture_expressive"
+    },
+    {
+      "id": "auto_0105",
+      "text": "Gesture token: turn to face. turns toward turn to indirect full body turn to face.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.gesture.turn_to_face",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/gesture:turn_to_face"
+    },
+    {
+      "id": "auto_0106",
+      "text": "Gesture token: beckon. beckons gesture indirect arms beckon.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.gesture.beckon",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/gesture:beckon"
+    },
+    {
+      "id": "auto_0107",
+      "text": "Reach token: reach extend. reaches out reach none arms reach extend.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.reach.reach_extend",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/reach:reach_extend"
+    },
+    {
+      "id": "auto_0108",
+      "text": "Reach token: reach toward. reaches toward reach indirect arms reach toward.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.reach.reach_toward",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/reach:reach_toward"
+    },
+    {
+      "id": "auto_0109",
+      "text": "Reach token: reach full body. leans in toward reach indirect full body reach full body.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.reach.reach_full_body",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/reach:reach_full_body"
+    },
+    {
+      "id": "auto_0110",
+      "text": "Contact token: grasp. grabs grasp direct hands grasp.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.contact.grasp",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/contact:grasp"
+    },
+    {
+      "id": "auto_0111",
+      "text": "Contact token: pull toward. pulls toward pull direct arms pull toward.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.contact.pull_toward",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/contact:pull_toward"
+    },
+    {
+      "id": "auto_0112",
+      "text": "Contact token: push away. pushes away push direct arms push away.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.contact.push_away",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/contact:push_away"
+    },
+    {
+      "id": "auto_0113",
+      "text": "Contact token: lift. lifts lift direct arms lift.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.contact.lift",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/contact:lift"
+    },
+    {
+      "id": "auto_0114",
+      "text": "Contact token: embrace. embraces embrace direct full body embrace.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.contact.embrace",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/contact:embrace"
+    },
+    {
+      "id": "auto_0115",
+      "text": "Release token: release. releases release direct hands release.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.release.release",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/release:release"
+    },
+    {
+      "id": "auto_0116",
+      "text": "Release token: lower gently. lowers gently lower direct arms lower gently.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.release.lower_gently",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/release:lower_gently"
+    },
+    {
+      "id": "auto_0117",
+      "text": "Release token: push back soft. gently pushes back push direct hands push back soft.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.action.release.push_back_soft",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_action/release:push_back_soft"
+    },
+    {
+      "id": "auto_0118",
+      "text": "Expression token: neutral. neutral expression neutral low neutral.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.neutral",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:neutral"
+    },
+    {
+      "id": "auto_0119",
+      "text": "Expression token: smile soft. soft smile happy low smile soft.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.smile_soft",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:smile_soft"
+    },
+    {
+      "id": "auto_0120",
+      "text": "Expression token: smile wide. wide smile happy high smile wide.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.smile_wide",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:smile_wide"
+    },
+    {
+      "id": "auto_0121",
+      "text": "Expression token: sad. sad expression sad medium sad.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.sad",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:sad"
+    },
+    {
+      "id": "auto_0122",
+      "text": "Expression token: tearful. tearful sad high.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.tearful",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:tearful"
+    },
+    {
+      "id": "auto_0123",
+      "text": "Expression token: fearful. fearful expression fearful medium fearful.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.fearful",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:fearful"
+    },
+    {
+      "id": "auto_0124",
+      "text": "Expression token: surprised. surprised expression surprised medium surprised.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.surprised",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:surprised"
+    },
+    {
+      "id": "auto_0125",
+      "text": "Expression token: angry. angry expression angry medium angry.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.angry",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:angry"
+    },
+    {
+      "id": "auto_0126",
+      "text": "Expression token: pained. pained expression pained high pained.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.pained",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:pained"
+    },
+    {
+      "id": "auto_0127",
+      "text": "Expression token: disgusted. disgusted expression disgusted medium disgusted.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.expression.disgusted",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_expression/expression:disgusted"
+    },
+    {
+      "id": "auto_0128",
       "text": "Interaction token: greet offer hand. greet offered hand neutral warm greet offer hand.",
       "category": "interaction_beat",
       "expected_block_prefix": "core.subject.interaction.greet_offer_hand",
@@ -721,7 +1042,7 @@
       "notes": "autogen from core_subject_interaction/interaction:greet_offer_hand"
     },
     {
-      "id": "auto_0089",
+      "id": "auto_0129",
       "text": "Interaction token: brief exchange contact. brief exchange brief contact receptive warm brief exchange contact.",
       "category": "interaction_beat",
       "expected_block_prefix": "core.subject.interaction.brief_exchange_contact",
@@ -729,7 +1050,7 @@
       "notes": "autogen from core_subject_interaction/interaction:brief_exchange_contact"
     },
     {
-      "id": "auto_0090",
+      "id": "auto_0130",
       "text": "Interaction token: pass item handoff. pass item brief contact neutral neutral pass item handoff.",
       "category": "interaction_beat",
       "expected_block_prefix": "core.subject.interaction.pass_item_handoff",
@@ -737,7 +1058,7 @@
       "notes": "autogen from core_subject_interaction/interaction:pass_item_handoff"
     },
     {
-      "id": "auto_0091",
+      "id": "auto_0131",
       "text": "Interaction token: hold boundary. hold none boundary neutral hold boundary.",
       "category": "interaction_beat",
       "expected_block_prefix": "core.subject.interaction.hold_boundary",
@@ -745,7 +1066,7 @@
       "notes": "autogen from core_subject_interaction/interaction:hold_boundary"
     },
     {
-      "id": "auto_0092",
+      "id": "auto_0132",
       "text": "Interaction token: acknowledge playful. brief acknowledge none receptive playful acknowledge playful.",
       "category": "interaction_beat",
       "expected_block_prefix": "core.subject.interaction.acknowledge_playful",
@@ -753,39 +1074,47 @@
       "notes": "autogen from core_subject_interaction/interaction:acknowledge_playful"
     },
     {
-      "id": "auto_0093",
-      "text": "Subject look token: glance target. eyes low glance target.",
+      "id": "auto_0133",
+      "text": "Subject look token: glance target. glances at eyes glance target.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.look.glance_target",
       "expected_category": "character_pose",
       "notes": "autogen from core_subject_look/look:glance_target"
     },
     {
-      "id": "auto_0094",
-      "text": "Subject look token: hold eye contact. eyes high hold eye contact.",
+      "id": "auto_0134",
+      "text": "Subject look token: hold eye contact. holds eye contact eyes hold eye contact.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.look.hold_eye_contact",
       "expected_category": "character_pose",
       "notes": "autogen from core_subject_look/look:hold_eye_contact"
     },
     {
-      "id": "auto_0095",
-      "text": "Subject look token: turn head target. head medium turn head target.",
+      "id": "auto_0135",
+      "text": "Subject look token: turn head target. turns head toward head turn head target.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.look.turn_head_target",
       "expected_category": "character_pose",
       "notes": "autogen from core_subject_look/look:turn_head_target"
     },
     {
-      "id": "auto_0096",
-      "text": "Subject look token: look away soft. away low look away soft.",
+      "id": "auto_0136",
+      "text": "Subject look token: look away. looks away away look away.",
       "category": "character_pose",
-      "expected_block_prefix": "core.subject.look.look_away_soft",
+      "expected_block_prefix": "core.subject.look.look_away",
       "expected_category": "character_pose",
-      "notes": "autogen from core_subject_look/look:look_away_soft"
+      "notes": "autogen from core_subject_look/look:look_away"
     },
     {
-      "id": "auto_0097",
+      "id": "auto_0137",
+      "text": "Subject look token: look at body. looks at body body look at body.",
+      "category": "character_pose",
+      "expected_block_prefix": "core.subject.look.look_at_body",
+      "expected_category": "character_pose",
+      "notes": "autogen from core_subject_look/look:look_at_body"
+    },
+    {
+      "id": "auto_0138",
       "text": "Subject motion token: move forward. forward normal walk move forward.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_forward",
@@ -793,7 +1122,7 @@
       "notes": "autogen from core_subject_motion/motion:move_forward"
     },
     {
-      "id": "auto_0098",
+      "id": "auto_0139",
       "text": "Subject motion token: move left. left slow step move left.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_left",
@@ -801,7 +1130,7 @@
       "notes": "autogen from core_subject_motion/motion:move_left"
     },
     {
-      "id": "auto_0099",
+      "id": "auto_0140",
       "text": "Subject motion token: move right. right slow step move right.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_right",
@@ -809,7 +1138,7 @@
       "notes": "autogen from core_subject_motion/motion:move_right"
     },
     {
-      "id": "auto_0100",
+      "id": "auto_0141",
       "text": "Subject motion token: turn around. around normal turn turn around.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.turn_around",
@@ -817,7 +1146,7 @@
       "notes": "autogen from core_subject_motion/motion:turn_around"
     },
     {
-      "id": "auto_0101",
+      "id": "auto_0142",
       "text": "Subject motion token: move backward. backward normal walk move backward.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_backward",
@@ -825,7 +1154,7 @@
       "notes": "autogen from core_subject_motion/motion:move_backward"
     },
     {
-      "id": "auto_0102",
+      "id": "auto_0143",
       "text": "Subject motion token: move in. in slow step move in.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_in",
@@ -833,7 +1162,7 @@
       "notes": "autogen from core_subject_motion/motion:move_in"
     },
     {
-      "id": "auto_0103",
+      "id": "auto_0144",
       "text": "Subject motion token: move out. out slow step move out.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.move_out",
@@ -841,7 +1170,7 @@
       "notes": "autogen from core_subject_motion/motion:move_out"
     },
     {
-      "id": "auto_0104",
+      "id": "auto_0145",
       "text": "Subject motion token: run forward. forward fast run run forward.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.run_forward",
@@ -849,7 +1178,7 @@
       "notes": "autogen from core_subject_motion/motion:run_forward"
     },
     {
-      "id": "auto_0105",
+      "id": "auto_0146",
       "text": "Subject motion token: drift left. left slow drift drift left.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.drift_left",
@@ -857,7 +1186,7 @@
       "notes": "autogen from core_subject_motion/motion:drift_left"
     },
     {
-      "id": "auto_0106",
+      "id": "auto_0147",
       "text": "Subject motion token: drift right. right slow drift drift right.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.drift_right",
@@ -865,7 +1194,7 @@
       "notes": "autogen from core_subject_motion/motion:drift_right"
     },
     {
-      "id": "auto_0107",
+      "id": "auto_0148",
       "text": "Subject motion token: turn left. left slow turn turn left.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.turn_left",
@@ -873,7 +1202,7 @@
       "notes": "autogen from core_subject_motion/motion:turn_left"
     },
     {
-      "id": "auto_0108",
+      "id": "auto_0149",
       "text": "Subject motion token: turn right. right slow turn turn right.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.motion.turn_right",
@@ -881,7 +1210,7 @@
       "notes": "autogen from core_subject_motion/motion:turn_right"
     },
     {
-      "id": "auto_0109",
+      "id": "auto_0150",
       "text": "Pose token: standing neutral. standing at sides forward standing neutral.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.pose.standing_neutral",
@@ -889,7 +1218,7 @@
       "notes": "autogen from core_subject_pose/pose:standing_neutral"
     },
     {
-      "id": "auto_0110",
+      "id": "auto_0151",
       "text": "Pose token: seated relaxed. seated neutral down seated relaxed.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.pose.seated_relaxed",
@@ -897,7 +1226,7 @@
       "notes": "autogen from core_subject_pose/pose:seated_relaxed"
     },
     {
-      "id": "auto_0111",
+      "id": "auto_0152",
       "text": "Pose token: leaning forward. leaning on hips at target leaning forward.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.pose.leaning_forward",
@@ -905,7 +1234,7 @@
       "notes": "autogen from core_subject_pose/pose:leaning_forward"
     },
     {
-      "id": "auto_0112",
+      "id": "auto_0153",
       "text": "Pose token: crouched ready. crouching neutral forward crouched ready.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.pose.crouched_ready",
@@ -913,7 +1242,7 @@
       "notes": "autogen from core_subject_pose/pose:crouched_ready"
     },
     {
-      "id": "auto_0113",
+      "id": "auto_0154",
       "text": "Pose token: kneeling reach. kneeling holding object at target kneeling reach.",
       "category": "character_pose",
       "expected_block_prefix": "core.subject.pose.kneeling_reach",
