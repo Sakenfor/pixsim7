@@ -78,11 +78,34 @@ type AssetActionInput = {
   width?: number | null;
   height?: number | null;
   tags?: unknown;
+  metadata?: {
+    createdAt?: string;
+  };
+  _assetModel?: Partial<AssetModel>;
 } & Partial<AssetModel>;
+
+function resolveAssetCreatedAt(asset: AssetActionInput): string {
+  const createdAt =
+    asset.createdAt ??
+    asset.created_at ??
+    asset.metadata?.createdAt ??
+    asset._assetModel?.createdAt;
+  return typeof createdAt === 'string' ? createdAt : '';
+}
 
 function normalizeAsset(asset: AssetActionInput): AssetModel | null {
   if (!asset || typeof asset.id !== 'number') {
     return null;
+  }
+
+  const viewerModel = asset._assetModel;
+  if (
+    viewerModel &&
+    typeof viewerModel === 'object' &&
+    typeof viewerModel.id === 'number' &&
+    typeof viewerModel.mediaType === 'string'
+  ) {
+    return viewerModel as AssetModel;
   }
 
   if (asset.mediaType) {
@@ -98,7 +121,7 @@ function normalizeAsset(asset: AssetActionInput): AssetModel | null {
 
   return {
     id: asset.id,
-    createdAt: asset.createdAt || asset.created_at || new Date().toISOString(),
+    createdAt: resolveAssetCreatedAt(asset),
     description: asset.description ?? null,
     durationSec: (asset as any).durationSec ?? (asset as any).duration_sec ?? null,
     fileSizeBytes: (asset as any).fileSizeBytes ?? (asset as any).file_size_bytes ?? null,
@@ -555,6 +578,8 @@ const selectAssetAction: MenuAction = {
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
     if (assets.length !== 1) return false;
+    // Show only in gallery-style contexts that provide a selection payload.
+    if (!Array.isArray(ctx.data?.selection)) return false;
     const selectionStore = useAssetSelectionStore.getState();
     return !selectionStore.isSelected(assets[0].id);
   },

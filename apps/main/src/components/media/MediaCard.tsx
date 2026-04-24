@@ -24,7 +24,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
-import { useContextMenuOptional } from '@lib/dockview';
+import { useContextMenuItem, useContextMenuOptional } from '@lib/dockview';
 import {
   useCardGestures,
   GestureOverlay,
@@ -704,6 +704,28 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     [contextMenu, enableMediaCardContextMenu, contextMenuAsset, contextMenuSelection],
   );
 
+  // Register component-level context data so panel-level capture handlers
+  // can resolve this card as an asset target before falling back to panel-content.
+  const componentContextMenuAttrs = useContextMenuItem(
+    'asset-card',
+    contextMenuAsset?.id,
+    contextMenuAsset
+      ? {
+          id: contextMenuAsset.id,
+          name: contextMenuAsset.description || contextMenuAsset.providerAssetId || `Asset ${contextMenuAsset.id}`,
+          asset: contextMenuAsset,
+          selection: contextMenuSelection,
+        }
+      : { name: undefined },
+    [
+      contextMenuAsset?.id,
+      contextMenuAsset?.description,
+      contextMenuAsset?.providerAssetId,
+      contextMenuAsset,
+      contextMenuSelection,
+    ],
+  );
+
   // Build overlay configuration dynamically
   const overlayConfig: OverlayConfiguration = useMemo(() => {
     // Get default widgets from factory
@@ -956,6 +978,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     <div
       className={wrapperClass}
       data-pixsim7="media-card"
+      {...componentContextMenuAttrs}
       onClick={isCompact ? layout?.onClick : undefined}
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >

@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { useContextMenuItem } from '@lib/dockview';
 import { useCardGestures } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 
@@ -76,10 +77,23 @@ function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: S
     ? actionLabel
     : null;
 
+  const contextMenuAttrs = useContextMenuItem(
+    'asset-card',
+    asset.id,
+    {
+      id: asset.id,
+      name: asset.name,
+      asset: model ?? asset,
+      'viewer-asset': asset,
+    },
+    [asset.id, asset.name, asset, model],
+  );
+
   return (
     <button
       ref={activeRef}
       type="button"
+      {...contextMenuAttrs}
       onClick={() => onClick(index)}
       onPointerDown={gestureHandlers.onPointerDown}
       className={[
