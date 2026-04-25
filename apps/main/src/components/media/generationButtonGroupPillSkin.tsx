@@ -150,9 +150,11 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
     isLoadingSource,
     isInsertingPrompt,
     insertPromptTitle,
+    insertSeedTitle,
     onLoadToQuickGen,
     onLoadToQuickGenNoSeed,
     onInsertPrompt,
+    onInsertSeed,
     onOpenSourceAsset,
   } = expand;
   return (
@@ -182,20 +184,31 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
           <Icon name={isLoadingSource ? 'loader' : 'shuffle'} size={12} className={isLoadingSource ? 'animate-spin' : ''} />
         </button>
       </div>
-      <button
-        onClick={onInsertPrompt}
-        className={`w-36 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 ${assetAcceptsInput ? '' : 'rounded-b-xl'}`}
-        title={insertPromptTitle}
-        disabled={isInsertingPrompt}
-        type="button"
-      >
-        {isInsertingPrompt ? (
-          <Icon name="loader" size={12} className="animate-spin" />
-        ) : (
-          <Icon name="fileText" size={12} />
-        )}
-        <span>Insert Prompt</span>
-      </button>
+      <div className="w-36 flex items-stretch">
+        <button
+          onClick={onInsertPrompt}
+          className={`flex-1 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 ${assetAcceptsInput ? '' : 'rounded-bl-xl'}`}
+          title={insertPromptTitle}
+          disabled={isInsertingPrompt}
+          type="button"
+        >
+          {isInsertingPrompt ? (
+            <Icon name="loader" size={12} className="animate-spin" />
+          ) : (
+            <Icon name="fileText" size={12} />
+          )}
+          <span>Insert Prompt</span>
+        </button>
+        <button
+          onClick={onInsertSeed}
+          className={`w-8 h-8 text-white hover:bg-white/15 border-l border-white/15 transition-colors flex items-center justify-center ${assetAcceptsInput ? '' : 'rounded-br-xl'}`}
+          title={insertSeedTitle}
+          disabled={isInsertingPrompt}
+          type="button"
+        >
+          <Icon name={isInsertingPrompt ? 'loader' : 'hash'} size={12} className={isInsertingPrompt ? 'animate-spin' : ''} />
+        </button>
+      </div>
       {assetAcceptsInput && (
         <SourceAssetsPreview
           assetId={assetId}

@@ -97,9 +97,11 @@ export type GenerationActionExpand =
       isLoadingSource: boolean;
       isInsertingPrompt: boolean;
       insertPromptTitle: string;
+      insertSeedTitle: string;
       onLoadToQuickGen: () => void;
       onLoadToQuickGenNoSeed: () => void;
       onInsertPrompt: () => void;
+      onInsertSeed: () => void;
       onOpenSourceAsset: (asset: AssetModel, list?: AssetModel[]) => void;
     }
   | {
@@ -350,6 +352,7 @@ export function useGenerationButtonGroup({
     handleQuickGenerate,
     handleLoadToQuickGen,
     handleInsertPromptOnly,
+    handleInsertSeedOnly,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleArtificialExtend,
@@ -857,9 +860,11 @@ export function useGenerationButtonGroup({
         isLoadingSource,
         isInsertingPrompt,
         insertPromptTitle: withShortcut('Insert only the prompt', insertPromptAction?.shortcut),
+        insertSeedTitle: 'Insert only the seed',
         onLoadToQuickGen: () => { void handleLoadToQuickGen(); },
         onLoadToQuickGenNoSeed: handleLoadToQuickGenNoSeed,
         onInsertPrompt: handleInsertPromptOnly,
+        onInsertSeed: handleInsertSeedOnly,
         onOpenSourceAsset: handleOpenSourceAsset,
       },
       expandDelay: 150,

@@ -76,6 +76,21 @@ export interface UseGenerationCardHandlersArgs {
   mediaType: string;
 }
 
+function parseSeedValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      return Math.trunc(parsed);
+    }
+  }
+  return undefined;
+}
+
 export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const {
     inputAsset,
@@ -311,6 +326,55 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       useToastStore.getState().addToast({
         type: 'error',
         message: 'Failed to load prompt.',
+        duration: 4000,
+      });
+    } finally {
+      setIsInsertingPrompt(false);
+    }
+  }, [
+    id,
+    data.sourceGenerationId,
+    data.hasGenerationContext,
+    isInsertingPrompt,
+    operationType,
+    scopedScopeId,
+    widgetContext,
+  ]);
+
+  const handleInsertSeedOnly = useCallback(async () => {
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingPrompt) return;
+
+    setIsInsertingPrompt(true);
+    try {
+      const ctx = await getAssetGenerationContext(id);
+      const { params } = parseGenerationContext(ctx, operationType);
+      const parsedParams = (params && typeof params === 'object')
+        ? (params as Record<string, unknown>)
+        : {};
+      const seed = parseSeedValue(parsedParams.seed);
+
+      if (seed === undefined) {
+        useToastStore.getState().addToast({
+          type: 'info',
+          message: 'No seed found for this generation.',
+          duration: 2500,
+        });
+        return;
+      }
+
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const settingsStore = getGenerationSettingsStore(scopeId).getState();
+      settingsStore.setDynamicParams((prev: Record<string, unknown>) => ({
+        ...prev,
+        seed,
+      }));
+
+      widgetContext?.setOpen(true);
+    } catch (error) {
+      console.error('Failed to insert seed:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: 'Failed to load seed.',
         duration: 4000,
       });
     } finally {
@@ -769,6 +833,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     handleQuickGenerate,
     handleLoadToQuickGen,
     handleInsertPromptOnly,
+    handleInsertSeedOnly,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleArtificialExtend,
