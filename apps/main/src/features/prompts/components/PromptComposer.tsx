@@ -194,6 +194,14 @@ function truncate(text: string, maxLen: number) {
   return `${text.slice(0, Math.max(0, maxLen - 1))}\u2026`;
 }
 
+function blockIdToLabel(blockId: string): string {
+  const segment = blockId.split('.').pop() ?? blockId;
+  return segment
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 function composePrompt(blocks: PromptBlockItem[]) {
   return composePromptFromBlocks(blocks);
 }
@@ -1544,7 +1552,7 @@ export function PromptComposer({
                   )}
                   title={`${match.block_id} (${Math.round(match.similarity_score * 100)}%)`}
                 >
-                  {match.block_id}
+                  {blockIdToLabel(match.block_id)}
                 </button>
               ))}
             </div>
