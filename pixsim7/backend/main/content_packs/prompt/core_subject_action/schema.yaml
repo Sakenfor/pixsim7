@@ -77,8 +77,8 @@ blocks:
             default: upper_body
             tag_key: body_region
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           action_verb: react
@@ -182,8 +182,8 @@ blocks:
             default: upper_body
             tag_key: body_region
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           action_verb: gesture
@@ -288,8 +288,8 @@ blocks:
             default: upper_body
             tag_key: body_region
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           action_verb: reach
@@ -391,8 +391,8 @@ blocks:
             default: upper_body
             tag_key: body_region
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           action_verb: grasp
@@ -519,8 +519,8 @@ blocks:
             default: upper_body
             tag_key: body_region
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           action_verb: release

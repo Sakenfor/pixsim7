@@ -1,0 +1,16 @@
+id: latin-touch-dynamics
+title: Latin Touch Dynamics
+description: Curated Latin phrase enhancers for hand-gluteal contact. 50/50 technical/poetic register, tagged by intensity, motion type, and applies_to.
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_touch_dynamics
+      include_empty: true
+  - label: Motion Type by Register
+    query:
+      row_key: tag:motion_type
+      col_key: tag:register
+      package_name: latin_touch_dynamics
+      include_empty: true

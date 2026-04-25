@@ -1,0 +1,184 @@
+version: 1.0.0
+package_name: latin_touch_dynamics
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: hand_gluteal
+    block_schema:
+      id_prefix: latin.touch.hand_gluteal
+      mode: surface
+      category: latin_enhancer
+      capabilities:
+        - latin.enhancer
+        - touch.dynamics
+      text_template: 'Latin enhancer: {variant}.'
+      tags:
+        modifier_family: latin_enhancer
+        modality_support: both
+        temporal: neutral
+        domain:
+          - touch
+          - gluteal
+          - hand_contact
+      variants:
+        - key: palma_premit_nates
+          text: palma premit nates
+          tags:
+            register: technical
+            intensity: firm
+            motion_type: press
+            applies_to: gluteal
+            latin_form: predication
+        - key: digiti_in_gluteos_imprimuntur
+          text: digiti in gluteos imprimuntur
+          tags:
+            register: technical
+            intensity: firm
+            motion_type: press
+            applies_to: gluteal
+            latin_form: predication
+        - key: manus_curva_super_nates
+          text: manus curva super nates vertitur
+          tags:
+            register: technical
+            intensity: subtle
+            motion_type: cup
+            applies_to: gluteal
+            latin_form: predication
+        - key: palmae_pressura_in_gluteis
+          text: palmae pressura in gluteis
+          tags:
+            register: technical
+            intensity: moderate
+            motion_type: press
+            applies_to: gluteal
+            latin_form: noun_phrase
+        - key: pollicis_apex_in_natium_sulco
+          text: pollicis apex in natium sulco quiescit
+          tags:
+            register: technical
+            intensity: subtle
+            motion_type: trace
+            applies_to: gluteal
+            latin_form: predication
+        - key: resistentia_carnis_sub_digitis
+          text: resistentia carnis sub digitis palpatur
+          tags:
+            register: technical
+            intensity: moderate
+            motion_type: press
+            applies_to: flesh_general
+            latin_form: predication
+        - key: adipis_massa_cedit
+          text: adipis massa sub manu cedit et deflectitur
+          tags:
+            register: technical
+            intensity: firm
+            motion_type: press
+            applies_to: flesh_general
+            latin_form: predication
+        - key: musculi_clunium_cedunt
+          text: musculi clunium sub pressione cedunt
+          tags:
+            register: technical
+            intensity: firm
+            motion_type: press
+            applies_to: gluteal
+            latin_form: predication
+        - key: digitus_in_carnem_insinuatur
+          text: digitus in natium carnem insinuatur
+          tags:
+            register: technical
+            intensity: absolute
+            motion_type: grip
+            applies_to: gluteal
+            latin_form: predication
+        - key: tremor_carnis_sub_ictu
+          text: tremor carnis sub ictu palmae
+          tags:
+            register: technical
+            intensity: firm
+            motion_type: strike
+            applies_to: flesh_general
+            latin_form: noun_phrase
+        - key: nates_plenae_cedunt
+          text: nates plenae sub tactu velut fluctus cedunt
+          tags:
+            register: poetic
+            intensity: subtle
+            motion_type: cup
+            applies_to: gluteal
+            latin_form: predication
+        - key: caro_docilis_servit
+          text: caro docilis digitorum nutui servit
+          tags:
+            register: poetic
+            intensity: moderate
+            motion_type: trace
+            applies_to: flesh_general
+            latin_form: predication
+        - key: carnis_vellus_tremit
+          text: carnis vellus sub digitis tremit
+          tags:
+            register: poetic
+            intensity: subtle
+            motion_type: press
+            applies_to: flesh_general
+            latin_form: predication
+        - key: nates_rosarum_pleniores
+          text: nates rosarum pleniores sub palma murmurant
+          tags:
+            register: poetic
+            intensity: subtle
+            motion_type: cup
+            applies_to: gluteal
+            latin_form: predication
+        - key: corporis_pondus_in_manu
+          text: pulchri corporis pondus in manu capitur
+          tags:
+            register: poetic
+            intensity: moderate
+            motion_type: cradle
+            applies_to: gluteal
+            latin_form: predication
+        - key: manus_terrae_similis
+          text: manus terrae similis, nates argillae
+          tags:
+            register: poetic
+            intensity: firm
+            motion_type: grip
+            applies_to: gluteal
+            latin_form: noun_phrase
+        - key: globi_carnis_invitant
+          text: globi carnis manum invitant
+          tags:
+            register: poetic
+            intensity: subtle
+            motion_type: cup
+            applies_to: gluteal
+            latin_form: predication
+        - key: pressura_formam_revelat
+          text: pressura formam absconditam revelat
+          tags:
+            register: poetic
+            intensity: moderate
+            motion_type: press
+            applies_to: flesh_general
+            latin_form: predication
+        - key: corpus_cedit_manus_regnat
+          text: corpus cedit; manus regnat
+          tags:
+            register: poetic
+            intensity: absolute
+            motion_type: grip
+            applies_to: flesh_general
+            latin_form: predication
+        - key: natium_forma_sub_palma_fluit
+          text: natium forma sub palma fluit
+          tags:
+            register: poetic
+            intensity: moderate
+            motion_type: trace
+            applies_to: gluteal
+            latin_form: predication

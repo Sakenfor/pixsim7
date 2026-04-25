@@ -1,0 +1,16 @@
+id: core-subject-expression
+title: Core Subject Expression
+description: Facial expression primitives covering primary emotion states. Compose with core_manner for quality (e.g. smile_soft + manner.tender) and core_subject_look for gaze direction.
+matrix_presets:
+  - label: Expression Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_subject_expression
+      include_empty: true
+  - label: Expression by Intensity
+    query:
+      row_key: tag:expression
+      col_key: tag:expression_intensity
+      package_name: core_subject_expression
+      include_empty: true
