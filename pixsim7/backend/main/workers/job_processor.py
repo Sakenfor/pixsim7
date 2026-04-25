@@ -133,6 +133,29 @@ def _quota_rotation_max_defer_seconds() -> int:
     return _settings_int("quota_rotation_max_defer_seconds", 30, minimum=base_seconds)
 
 
+async def _count_submissions_in_current_round(
+    db, generation_id: int, retry_count: int
+) -> int:
+    """Count provider_submissions rows for this generation at the current
+    auto-retry round (snapshot retry_attempt == retry_count). Used to cap
+    runaway account-rotation loops where all accounts return quota errors
+    in quick succession — without this, one round can produce N rows for
+    N accounts. Index hit: idx_submission_generation_attempt.
+    """
+    from sqlalchemy import select, func
+    from pixsim7.backend.main.domain.providers.models.submission import ProviderSubmission
+
+    result = await db.execute(
+        select(func.count())
+        .select_from(ProviderSubmission)
+        .where(
+            ProviderSubmission.generation_id == generation_id,
+            ProviderSubmission.retry_attempt == retry_count,
+        )
+    )
+    return int(result.scalar_one() or 0)
+
+
 def _safe_attempt_id(generation: Generation | None) -> int:
     """Read ``generation.attempt_id`` without triggering a lazy reload.
 
@@ -1039,29 +1062,54 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Quota exhaustion is a hard account-level failure for this
                         # attempt; rotate even for pinned generations by clearing the
                         # preferred account if it matches the exhausted account.
-                        quota_defer_seconds = _quota_rotation_requeue_defer_seconds(generation)
-                        if quota_defer_seconds is not None:
+                        # Cap rotations within the current auto-retry round so that
+                        # one round can't produce N rows for N accounts when every
+                        # account is dry. Once at cap, fall through to mark_failed →
+                        # auto_retry handler picks up the next round (with retry_count++
+                        # and escalating defer).
+                        from pixsim7.backend.main.services.generation.generation_settings import (
+                            get_generation_settings,
+                        )
+                        rotation_cap = (
+                            get_generation_settings().auto_retry_max_quota_rotations_per_round
+                        )
+                        rotations_so_far = await _count_submissions_in_current_round(
+                            db, generation.id, generation.retry_count or 0,
+                        )
+                        if rotations_so_far >= rotation_cap:
                             gen_logger.info(
-                                "quota_rotation_defer_scheduled",
+                                "auto_retry_quota_rotation_cap_reached",
                                 generation_id=generation.id,
-                                attempt_id=generation.__dict__.get("attempt_id"),
+                                rotations_so_far=rotations_so_far,
+                                cap=rotation_cap,
+                                retry_count=generation.retry_count or 0,
+                                msg="bailing rotation; auto_retry handles next round",
+                            )
+                            # Fall through to mark as failed; auto_retry will resume.
+                        else:
+                            quota_defer_seconds = _quota_rotation_requeue_defer_seconds(generation)
+                            if quota_defer_seconds is not None:
+                                gen_logger.info(
+                                    "quota_rotation_defer_scheduled",
+                                    generation_id=generation.id,
+                                    attempt_id=generation.__dict__.get("attempt_id"),
+                                    defer_seconds=quota_defer_seconds,
+                                )
+                            requeue_result = await _requeue_generation_for_account_rotation(
+                                db=db,
+                                generation=generation,
+                                generation_id=generation_id,
+                                failed_account_id=account.id,
+                                reason="account_quota_exhausted",
+                                log_event="generation_requeued_for_different_account",
+                                account_log_field="exhausted_account_id",
+                                gen_logger=gen_logger,
+                                clear_preferred_on_account_match=True,
                                 defer_seconds=quota_defer_seconds,
                             )
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_quota_exhausted",
-                            log_event="generation_requeued_for_different_account",
-                            account_log_field="exhausted_account_id",
-                            gen_logger=gen_logger,
-                            clear_preferred_on_account_match=True,
-                            defer_seconds=quota_defer_seconds,
-                        )
-                        if requeue_result:
-                            return requeue_result
-                        # Fall through to mark as failed if requeue fails
+                            if requeue_result:
+                                return requeue_result
+                            # Fall through to mark as failed if requeue fails
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
