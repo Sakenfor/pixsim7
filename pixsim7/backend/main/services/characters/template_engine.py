@@ -98,6 +98,7 @@ class CharacterTemplateEngine:
             "expanded_text": expanded_text,
             "characters_used": [
                 {
+                    "id": str(c.id),
                     "character_id": c.character_id,
                     "name": c.name,
                     "display_name": c.display_name
@@ -545,6 +546,7 @@ class CharacterTemplateEngine:
             "expanded_text": expanded_text,
             "characters_used": [
                 {
+                    "id": str(c.id),
                     "character_id": c.character_id,
                     "name": c.name,
                     "display_name": c.display_name

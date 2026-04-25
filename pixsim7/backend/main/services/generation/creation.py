@@ -150,6 +150,59 @@ class GenerationCreationService:
             user_id=user_id,
         )
 
+    async def _track_character_refs_for_generation(self, generation: Generation) -> None:
+        """Expand {{character:id}} tokens in the final prompt and record usage.
+
+        Writes two kinds of CharacterUsage rows per referenced character:
+          - usage_type="prompt" via CharacterTemplateEngine.expand_prompt
+          - usage_type="generation" via track_character_usage_in_generation
+        Both carry prompt_version_id for provenance. Also populates
+        generation.canonical_params["character_refs"] so downstream code
+        (asset inheritance, gallery filters, …) can read the refs without
+        re-parsing the prompt.
+
+        No-op if the prompt is empty or contains no character tokens.
+        """
+        if not generation.final_prompt or not generation.final_prompt.strip():
+            return
+
+        from pixsim7.backend.main.services.characters.template_engine import (
+            CharacterTemplateEngine,
+        )
+        from pixsim7.backend.main.domain.game.entities.character_linkage import (
+            format_character_ref,
+            track_character_usage_in_generation,
+        )
+
+        engine = CharacterTemplateEngine(self.db)
+        result = await engine.expand_prompt(
+            generation.final_prompt,
+            track_usage=True,
+            prompt_version_id=generation.prompt_version_id,
+        )
+        characters_used = result.get("characters_used") or []
+        if not characters_used:
+            return
+
+        char_uuids = [UUID(c["id"]) for c in characters_used if c.get("id")]
+        if not char_uuids:
+            return
+
+        for uuid in char_uuids:
+            await track_character_usage_in_generation(
+                self.db,
+                character_id=uuid,
+                generation_id=generation.id,
+                prompt_version_id=generation.prompt_version_id,
+            )
+
+        # Reassign dict so SQLAlchemy detects the change (JSON mutation
+        # tracking isn't automatic on plain dict columns).
+        refs = [format_character_ref(u) for u in char_uuids]
+        existing = dict(generation.canonical_params or {})
+        existing["character_refs"] = refs
+        generation.canonical_params = existing
+
     async def create_generation(
         self,
         user: User,
@@ -469,6 +522,18 @@ class GenerationCreationService:
         )
 
         self.db.add(generation)
+        await self.db.flush()  # assigns generation.id for downstream writers
+
+        # Extract {{character:id}} refs from the final prompt and record
+        # per-generation usage tied to prompt_version_id. Guarded so a
+        # tracking failure never blocks generation creation.
+        try:
+            await self._track_character_refs_for_generation(generation)
+        except Exception as exc:
+            logger.warning(
+                f"character_ref_tracking_failed gen={generation.id} err={exc!r}"
+            )
+
         await self.db.commit()
         await self.db.refresh(generation)
 

@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import BigInteger, JSON, String, Text
+from sqlalchemy import BigInteger, ForeignKey, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from pgvector.sqlalchemy import Vector
 
@@ -306,7 +306,12 @@ class Asset(SQLModel, table=True):
     )
     prompt_version_id: Optional[UUID] = Field(
         default=None,
-        sa_column=Column(PG_UUID(as_uuid=True), index=True, nullable=True),
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("prompt_versions.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        ),
         description="Prompt version reference for prompt grouping"
     )
 

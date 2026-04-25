@@ -393,16 +393,12 @@ async def track_character_usage_in_scene(
     db,
     character_id: UUID,
     scene_id: int,
+    prompt_version_id: Optional[UUID] = None,
 ):
-    """Track character usage in a scene
+    """Track character usage in a scene (usage_type = "scene").
 
-    This extends CharacterUsage to track scene appearances.
-    Uses usage_type = "scene"
-
-    Args:
-        db: Database session
-        character_id: Character template UUID
-        scene_id: GameScene ID
+    flush, not commit: caller owns the transaction boundary so these writes
+    stay atomic with the surrounding entity write (scene save, etc.).
     """
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime, timezone
@@ -410,64 +406,57 @@ async def track_character_usage_in_scene(
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="scene",
+        prompt_version_id=prompt_version_id,
         template_reference=f"scene:{scene_id}",
         used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)
-    await db.commit()
+    await db.flush()
 
 
 async def track_character_usage_in_asset(
     db,
     character_id: UUID,
     asset_id: int,
+    prompt_version_id: Optional[UUID] = None,
 ):
-    """Track character usage in an asset
-
-    Args:
-        db: Database session
-        character_id: Character template UUID
-        asset_id: Asset ID
-    """
+    """Track character usage in an asset (usage_type = "asset")."""
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime, timezone
 
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="asset",
+        prompt_version_id=prompt_version_id,
         template_reference=f"asset:{asset_id}",
         used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)
-    await db.commit()
+    await db.flush()
 
 
 async def track_character_usage_in_generation(
     db,
     character_id: UUID,
     generation_id: int,
+    prompt_version_id: Optional[UUID] = None,
 ):
-    """Track character usage in a generation
-
-    Args:
-        db: Database session
-        character_id: Character template UUID
-        generation_id: Generation ID
-    """
+    """Track character usage in a generation (usage_type = "generation")."""
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime, timezone
 
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="generation",
+        prompt_version_id=prompt_version_id,
         template_reference=f"generation:{generation_id}",
         used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)
-    await db.commit()
+    await db.flush()
 
 
 # ============================================================================

@@ -17,6 +17,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, ForeignKey, Integer, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from pydantic import field_validator
 import hashlib
 import json
@@ -392,7 +393,12 @@ class GenerationBatchItemManifest(SQLModel, table=True):
     # Optional provenance links
     prompt_version_id: Optional[UUID] = Field(
         default=None,
-        index=True,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("prompt_versions.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        ),
         description="Prompt version ultimately used for this output, if any",
     )
     generation_id: Optional[int] = Field(
