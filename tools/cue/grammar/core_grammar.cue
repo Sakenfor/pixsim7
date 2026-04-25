@@ -14,16 +14,17 @@ grammar_rules: #GrammarRules & {
     version: "1.0.0"
 
     token_kinds: [
-        "IDENT",    // [A-Za-z][A-Za-z0-9_]*  (underscore stays in IDENT when adjacent to letters)
-        "NUMBER",   // [0-9]+
-        "RUN",      // consecutive run of one run_char
-        "COLON",    // :
-        "LPAREN",   // (
-        "RPAREN",   // )
-        "PLUS",     // +
-        "WS",       // [ \t]+
-        "NEWLINE",  // \n | \r\n | \r
-        "TEXT",     // any other single character (fallback — lexer never fails)
+        "IDENT",     // [A-Za-z][A-Za-z0-9_]*  (underscore stays in IDENT when adjacent to letters)
+        "NUMBER",    // [0-9]+
+        "RUN",       // consecutive run of one run_char
+        "COLON",     // :
+        "LPAREN",    // (
+        "RPAREN",    // )
+        "PLUS",      // +
+        "STMT_SEP",  // ;  logical line separator — splits one physical line into multiple parse units
+        "WS",        // [ \t]+
+        "NEWLINE",   // \n | \r\n | \r
+        "TEXT",      // any other single character (fallback — lexer never fails)
     ]
 
     // Characters that produce RUN tokens when they appear consecutively.

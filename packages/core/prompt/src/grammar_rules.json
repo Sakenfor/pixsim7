@@ -8,6 +8,7 @@
     "LPAREN",
     "RPAREN",
     "PLUS",
+    "STMT_SEP",
     "WS",
     "NEWLINE",
     "TEXT"

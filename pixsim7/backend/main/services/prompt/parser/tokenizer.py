@@ -32,16 +32,17 @@ _RELATION_OP_CHARS: frozenset[str] = frozenset(_GRAMMAR_RULES["relation"]["op_ch
 # ── token kinds ────────────────────────────────────────────────────────────
 
 TokenKind = Literal[
-    "IDENT",    # [A-Za-z][A-Za-z0-9_]*
-    "NUMBER",   # [0-9]+
-    "RUN",      # consecutive run of one of: = < > _
-    "COLON",    # :
-    "LPAREN",   # (
-    "RPAREN",   # )
-    "PLUS",     # +
-    "WS",       # [ \t]+
-    "NEWLINE",  # \n or \r\n or \r
-    "TEXT",     # any other single character (fallback)
+    "IDENT",     # [A-Za-z][A-Za-z0-9_]*
+    "NUMBER",    # [0-9]+
+    "RUN",       # consecutive run of one of: = < > _
+    "COLON",     # :
+    "LPAREN",    # (
+    "RPAREN",    # )
+    "PLUS",      # +
+    "STMT_SEP",  # ;  logical line separator
+    "WS",        # [ \t]+
+    "NEWLINE",   # \n or \r\n or \r
+    "TEXT",      # any other single character (fallback)
 ]
 
 RunChar = Literal["=", "<", ">", "_"]
@@ -141,6 +142,8 @@ def lex(text: str) -> List[Token]:
             kind = "RPAREN"
         elif ch == "+":
             kind = "PLUS"
+        elif ch == ";":
+            kind = "STMT_SEP"
         else:
             kind = "TEXT"
         out.append(Token(kind, start, i, ch))
@@ -165,12 +168,12 @@ def _split_lines(tokens: List[Token], source: str) -> List[_LineSlice]:
     line_start = 0
 
     for i, tok in enumerate(tokens):
-        if tok.kind == "NEWLINE":
+        if tok.kind in ("NEWLINE", "STMT_SEP"):
             lines.append(_LineSlice(from_idx, i, line_start, tok.start, tok.end))
             from_idx = i + 1
             line_start = tok.end
 
-    # trailing line (no final newline, or source has chars after last newline)
+    # trailing line (no final newline/separator, or source has chars after last one)
     if from_idx <= len(tokens) - 1 or line_start < len(source):
         lines.append(_LineSlice(from_idx, len(tokens), line_start, len(source), len(source)))
 

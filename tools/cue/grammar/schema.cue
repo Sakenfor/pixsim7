@@ -2,7 +2,7 @@ package grammar
 
 // ── primitive types ─────────────────────────────────────────────────────────
 
-#TokenKind: "IDENT" | "NUMBER" | "RUN" | "COLON" | "LPAREN" | "RPAREN" | "PLUS" | "WS" | "NEWLINE" | "TEXT"
+#TokenKind: "IDENT" | "NUMBER" | "RUN" | "COLON" | "LPAREN" | "RPAREN" | "PLUS" | "STMT_SEP" | "WS" | "NEWLINE" | "TEXT"
 
 // Characters that produce RUN tokens (consecutive runs of the same char).
 // Semantic interpretation is left entirely to the recipe layer.

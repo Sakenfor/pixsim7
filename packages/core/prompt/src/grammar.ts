@@ -25,16 +25,17 @@ const _RELATION_OP_CHARS = new Set<string>(GRAMMAR_RULES.relation.op_chars);
 // ── tokens ────────────────────────────────────────────────────────────────
 
 export type TokenKind =
-  | 'IDENT'   // [A-Za-z][A-Za-z0-9_]*
-  | 'NUMBER'  // [0-9]+
-  | 'RUN'     // consecutive run of one of: = < > _
-  | 'COLON'   // :
-  | 'LPAREN'  // (
-  | 'RPAREN'  // )
-  | 'PLUS'    // +
-  | 'WS'      // [ \t]+ (newlines are their own token)
-  | 'NEWLINE' // \n  (also \r\n, \r)
-  | 'TEXT';   // any other single character (fallback)
+  | 'IDENT'    // [A-Za-z][A-Za-z0-9_]*
+  | 'NUMBER'   // [0-9]+
+  | 'RUN'      // consecutive run of one of: = < > _
+  | 'COLON'    // :
+  | 'LPAREN'   // (
+  | 'RPAREN'   // )
+  | 'PLUS'     // +
+  | 'STMT_SEP' // ;  logical line separator
+  | 'WS'       // [ \t]+ (newlines are their own token)
+  | 'NEWLINE'  // \n  (also \r\n, \r)
+  | 'TEXT';    // any other single character (fallback)
 
 export type RunChar = '=' | '<' | '>' | '_';
 
@@ -118,6 +119,7 @@ export function lex(input: string): Token[] {
     else if (ch === '(') kind = 'LPAREN';
     else if (ch === ')') kind = 'RPAREN';
     else if (ch === '+') kind = 'PLUS';
+    else if (ch === ';') kind = 'STMT_SEP';
     out.push({ kind, start, end: i, text: ch });
   }
 
@@ -170,16 +172,17 @@ function splitLines(tokens: Token[], source: string): LineSlice[] {
   let lineStart = 0;
 
   for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].kind === 'NEWLINE') {
+    const tok = tokens[i];
+    if (tok.kind === 'NEWLINE' || tok.kind === 'STMT_SEP') {
       lines.push({
         from,
         to: i,
         start: lineStart,
-        end: tokens[i].start,
-        next: tokens[i].end,
+        end: tok.start,
+        next: tok.end,
       });
       from = i + 1;
-      lineStart = tokens[i].end;
+      lineStart = tok.end;
     }
   }
   if (from <= tokens.length - 1 || lineStart < source.length) {
