@@ -62,6 +62,7 @@ export interface ShadowAnalysisResult {
   candidates: PromptBlockCandidate[];
   roleInSequence: string;
   sequenceContext: SequenceContext;
+  tokens?: { lines: PromptTokenLine[] };
 }
 
 export interface ShadowAnalysisState {
@@ -178,6 +179,7 @@ export function useShadowAnalysis(
             candidates: cached.candidates,
             roleInSequence: sequenceContext.role_in_sequence,
             sequenceContext,
+            tokens: cached.tokens,
           });
           setLoading(false);
           return;
@@ -220,6 +222,7 @@ export function useShadowAnalysis(
           candidates,
           roleInSequence: sequenceContext.role_in_sequence,
           sequenceContext,
+          tokens,
         });
       } catch {
         // Fail silently

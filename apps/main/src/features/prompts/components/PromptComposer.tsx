@@ -759,6 +759,12 @@ export function PromptComposer({
         : EMPTY_SHADOW_CANDIDATES,
     [useCodemirror, showShadow, autoAnalyze, shadowAnalysis.result?.candidates],
   );
+  const cmShadowTokenLines = useMemo(
+    () => useCodemirror && showShadow && autoAnalyze
+      ? shadowAnalysis.result?.tokens?.lines
+      : undefined,
+    [useCodemirror, showShadow, autoAnalyze, shadowAnalysis.result?.tokens],
+  );
   const cmExtensions = useMemo(
     () => {
       const exts = [
@@ -770,7 +776,7 @@ export function PromptComposer({
       ];
       if (cmShadowCandidates.length > 0) {
         exts.push(shadowAnalysisExtension(
-          { candidates: cmShadowCandidates, roleColors: promptRoleColors },
+          { candidates: cmShadowCandidates, roleColors: promptRoleColors, tokenLines: cmShadowTokenLines },
           {
             onCandidateClick: (candidate, anchor) => {
               setCmShadowPopover({ anchor, candidate });
@@ -786,6 +792,7 @@ export function PromptComposer({
       cmGhostConfig?.stepDistance,
       cmGhostConfig?.precision,
       cmShadowCandidates,
+      cmShadowTokenLines,
       promptRoleColors,
       cmRefInput.extension,
     ],

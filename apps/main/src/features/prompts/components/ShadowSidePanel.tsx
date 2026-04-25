@@ -13,7 +13,7 @@ import { Icon } from '@lib/icons';
 
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
-import type { ShadowAnalysisState } from '../hooks/useShadowAnalysis';
+import type { PromptTokenLine, ShadowAnalysisState } from '../hooks/useShadowAnalysis';
 import {
   extractPrimitiveMatches,
   type CandidateWithPrimitiveMatch,
@@ -105,6 +105,51 @@ function SectionLabel({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Structure view helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PATTERN_BADGE: Record<string, string> = {
+  assignment_arrow: '→',
+  assignment: '=',
+  colon: ':',
+  angle_bracket: '‹›',
+  freestanding: '¶',
+};
+
+function StructureLine({ line }: { line: PromptTokenLine }) {
+  if (line.kind === 'header') {
+    const badge = PATTERN_BADGE[line.pattern ?? ''] ?? '?';
+    return (
+      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-white/60 dark:bg-neutral-800/40">
+        <span className="flex-shrink-0 font-mono text-sky-600 dark:text-sky-400 w-4 text-center">{badge}</span>
+        <span className="font-mono text-neutral-800 dark:text-neutral-200 truncate">{line.label}</span>
+      </div>
+    );
+  }
+
+  if (line.kind === 'relation' && line.hops && line.hops.length > 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-white/60 dark:bg-neutral-800/40">
+        {line.hops.map((hop, i) => (
+          <span key={i} className="flex items-center gap-0.5">
+            {hop.lhs && <span className="font-mono text-neutral-700 dark:text-neutral-300 truncate max-w-[48px]">{hop.lhs}</span>}
+            <span className="font-mono text-amber-600 dark:text-amber-400 flex-shrink-0">
+              {hop.raw}
+              {hop.run > 1 && <span className="text-neutral-400 dark:text-neutral-500">({hop.run})</span>}
+            </span>
+            {hop.rhs && i === (line.hops?.length ?? 1) - 1 && (
+              <span className="font-mono text-neutral-700 dark:text-neutral-300 truncate max-w-[48px]">{hop.rhs}</span>
+            )}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function getSequenceRoleLabel(role: string): string {
   switch (role) {
     case 'initial':
@@ -138,6 +183,12 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
   const primitiveMatches = useMemo(
     () => extractPrimitiveMatches(candidates),
     [candidates],
+  );
+
+  const tokenLines = result?.tokens?.lines;
+  const structureLines = useMemo(
+    () => (tokenLines ?? []).filter((l) => l.kind === 'header' || l.kind === 'relation'),
+    [tokenLines],
   );
 
   // Group candidates by role
@@ -310,6 +361,31 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
                     key={`${item.candidateIndex}-${item.match.block_id}`}
                     item={item}
                   />
+                ))}
+              </div>
+            </DisclosureSection>
+          </>
+        )}
+
+        {/* Structure */}
+        {structureLines.length > 0 && (
+          <>
+            <div className="h-px bg-neutral-200 dark:bg-neutral-700 mx-0.5 my-1" />
+            <DisclosureSection
+              label={
+                <SectionLabel
+                  dotClass="bg-sky-500"
+                  label="Structure"
+                  count={structureLines.length}
+                />
+              }
+              defaultOpen
+              size="sm"
+              bordered
+            >
+              <div className="space-y-0.5">
+                {structureLines.map((line, i) => (
+                  <StructureLine key={i} line={line} />
                 ))}
               </div>
             </DisclosureSection>
