@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from pixsim7.backend.main.domain.prompt import PromptVersion
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
@@ -193,13 +194,11 @@ class PromptAnalysisService:
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
 
-        # Try to find existing by hash (dedup on text only, not analysis).
-        # Use .first() instead of .scalar_one_or_none() because duplicate
-        # hashes can exist (no unique constraint on prompt_hash).
-        result = await self.db.execute(
-            select(PromptVersion).where(PromptVersion.prompt_hash == prompt_hash)
-        )
-        existing = result.scalars().first()
+        # Look up by the uq_prompt_versions_hash_family key: (prompt_hash, family_id)
+        # with NULLS NOT DISTINCT. Scoping by family_id prevents cross-family
+        # reuse of one-off rows and matches the exact constraint the retry
+        # path catches below on IntegrityError.
+        existing = await self._find_by_hash_and_family(prompt_hash, family_hint)
 
         if existing:
             # Check if we need to (re)analyze
@@ -259,24 +258,62 @@ class PromptAnalysisService:
             created_at=datetime.now(timezone.utc),
         )
 
-        self.db.add(new_version)
-        if family_hint is not None:
-            # Reuse shared versioning write path to prevent family/version drift.
-            from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
-                PromptVersioningService,
-            )
+        # Insert inside a SAVEPOINT so a concurrent caller winning the
+        # (prompt_hash, family_id) slot raises IntegrityError we can recover
+        # from without rolling back the outer transaction.
+        try:
+            async with self.db.begin_nested():
+                self.db.add(new_version)
+                if family_hint is not None:
+                    # Reuse shared versioning write path to prevent family/version drift.
+                    from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+                        PromptVersioningService,
+                    )
 
-            await PromptVersioningService(self.db).assign_version_metadata(
-                new_version=new_version,
-                family_id=family_hint,
-                commit_message=None,
-                parent_version=None,
+                    await PromptVersioningService(self.db).assign_version_metadata(
+                        new_version=new_version,
+                        family_id=family_hint,
+                        commit_message=None,
+                        parent_version=None,
+                    )
+                else:
+                    await self.db.flush()
+        except IntegrityError:
+            winner = await self._find_by_hash_and_family(prompt_hash, family_hint)
+            if winner is None:
+                # Collision fired but winner isn't visible — re-raise for visibility.
+                raise
+            logger.info(
+                f"Concurrent insert race on hash {prompt_hash[:16]}... "
+                f"(family_hint={family_hint}) — returning winner {winner.id}"
             )
-        else:
-            await self.db.flush()
+            return winner, False
 
         logger.info(f"Created PromptVersion {new_version.id} with {len(analysis.get('candidates', []))} candidates")
         return new_version, True
+
+    async def _find_by_hash_and_family(
+        self,
+        prompt_hash: str,
+        family_id: Optional[UUID],
+    ) -> Optional[PromptVersion]:
+        """Look up a PromptVersion by the uq_prompt_versions_hash_family key.
+
+        NULLS NOT DISTINCT on the constraint means a NULL family_id is a
+        value for dedup — mirror that here with an IS NULL branch.
+        """
+        if family_id is None:
+            stmt = select(PromptVersion).where(
+                PromptVersion.prompt_hash == prompt_hash,
+                PromptVersion.family_id.is_(None),
+            )
+        else:
+            stmt = select(PromptVersion).where(
+                PromptVersion.prompt_hash == prompt_hash,
+                PromptVersion.family_id == family_id,
+            )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def reanalyze_version(
         self,

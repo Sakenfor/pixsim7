@@ -9,7 +9,7 @@ Core models for prompt versioning and templates:
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Text
+from sqlalchemy import JSON, Text, UniqueConstraint
 from uuid import UUID, uuid4
 import hashlib
 
@@ -266,6 +266,11 @@ class PromptVersion(SQLModel, table=True):
         Index("idx_prompt_version_family_number", "family_id", "version_number", unique=True),
         Index("idx_prompt_version_created", "created_at"),
         Index("idx_prompt_version_parent", "parent_version_id"),
+        UniqueConstraint(
+            "prompt_hash", "family_id",
+            name="uq_prompt_versions_hash_family",
+            postgresql_nulls_not_distinct=True,
+        ),
     )
 
     def __repr__(self) -> str:
