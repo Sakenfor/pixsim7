@@ -292,6 +292,20 @@ tags:
         category: motion_beat
     status: active
 
+  manner_delay:
+    label: "Manner Delay"
+    description: "Delay/latency tier before manner execution begins."
+    data_type: string
+    allowed_values: [none, brief, moderate, long]
+    aliases: [delay_tier]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: action
+        category: motion_beat
+    status: active
+
   placement_relation:
     label: "Placement Relation"
     description: "Relative placement relation between subject and anchor."

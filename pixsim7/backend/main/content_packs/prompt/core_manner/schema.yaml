@@ -60,9 +60,19 @@ blocks:
               - medium
               - high
             default: medium
+          - key: delay
+            tag_key: manner_delay
+            type: enum
+            enum:
+              - none
+              - brief
+              - moderate
+              - long
+            default: none
         default_args:
           quality: neutral
           intensity: medium
+          delay: none
       variants:
         - key: gentle
           tags:
