@@ -29,8 +29,8 @@ blocks:
             required: false
         params:
           - key: pose
-            tag_key: pose
             type: enum
+            default: standing
             enum:
               - standing
               - seated
@@ -38,10 +38,10 @@ blocks:
               - leaning
               - crouching
               - lying
-            default: standing
+            tag_key: pose
           - key: hands
-            tag_key: hands
             type: enum
+            default: neutral
             enum:
               - neutral
               - at_sides
@@ -49,10 +49,10 @@ blocks:
               - on_hips
               - in_pockets
               - holding_object
-            default: neutral
+            tag_key: hands
           - key: gaze
-            tag_key: gaze
             type: enum
+            default: forward
             enum:
               - forward
               - down
@@ -61,10 +61,10 @@ blocks:
               - right
               - at_target
               - away
-            default: forward
+            tag_key: gaze
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           pose: standing

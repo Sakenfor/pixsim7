@@ -292,6 +292,20 @@ tags:
         category: motion_beat
     status: active
 
+  manner_delay:
+    label: "Manner Delay"
+    description: "Onset delay before a manner modifier takes effect."
+    data_type: string
+    allowed_values: [none, brief, moderate, long]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: action
+        category: motion_beat
+    status: active
+
   placement_relation:
     label: "Placement Relation"
     description: "Relative placement relation between subject and anchor."
@@ -1191,6 +1205,30 @@ tags:
       - role: action
         category: interaction_beat
     status: experimental
+
+  expression:
+    label: "Expression"
+    description: "Facial expression type."
+    data_type: string
+    allowed_values: [neutral, happy, sad, angry, fearful, surprised, disgusted, pained]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: expression_behavior
+    status: active
+
+  expression_intensity:
+    label: "Expression Intensity"
+    description: "Intensity tier for facial expression modifiers."
+    data_type: string
+    allowed_values: [low, medium, high]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: expression_behavior
+    status: active
 
   expression_tone:
     label: "Expression Tone"

@@ -35,7 +35,6 @@ blocks:
           - both
         params:
           - key: quality
-            tag_key: manner_quality
             type: enum
             enum:
               - gentle
@@ -52,17 +51,28 @@ blocks:
               - abrupt
               - neutral
             default: neutral
+            tag_key: manner_quality
           - key: intensity
-            tag_key: manner_intensity
             type: enum
             enum:
               - low
               - medium
               - high
             default: medium
+            tag_key: manner_intensity
+          - key: delay
+            type: enum
+            enum:
+              - none
+              - brief
+              - moderate
+              - long
+            default: none
+            tag_key: manner_delay
         default_args:
           quality: neutral
           intensity: medium
+          delay: none
       variants:
         - key: gentle
           tags:
