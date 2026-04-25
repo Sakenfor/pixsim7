@@ -293,6 +293,20 @@ def _install_shared_patches(monkeypatch: pytest.MonkeyPatch, db: _FakeDB) -> Non
         "refresh_account_credits_best_effort",
         _fake_refresh_account_credits_best_effort,
     )
+    # Stub the inline pixverse prefetch so SimpleNamespace fake-assets don't
+    # explode on missing attrs (mime_type, stored_key). The prefetch is a
+    # best-effort optimization on the real path; this stub lets the
+    # downstream success branch the tests are exercising run cleanly.
+    async def _noop_download(asset, *_args, **_kwargs):
+        # status_poller logs asset.stored_key on success — give it something.
+        if not hasattr(asset, "stored_key"):
+            asset.stored_key = None
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.media.download.download_file",
+        _noop_download,
+    )
 
 
 def _reset_fakes() -> None:
@@ -342,6 +356,9 @@ async def test_poll_job_statuses_completed_path_uses_snapshot_inputs(
         provider_job_id="job-601",
         status="success",
         response={"status": "processing"},
+        # Non-pixverse so the inline pixverse prefetch is skipped (this test
+        # exercises the generic completion path, not the prefetch race).
+        provider_id="generic",
     )
     account_model = _FakeAccount(501, current_processing_jobs=2)
     db = _FakeDB(
@@ -683,7 +700,8 @@ async def test_poll_job_statuses_early_cdn_completion_refreshes_credits_and_sche
     assert attempt == 0
     assert op_type == OperationType.TEXT_TO_VIDEO
     assert provider_id == "pixverse"
-    assert 20 <= (deadline_mono - time.monotonic()) <= 40
+    # Early-CDN recheck delay is 15s (status_poller._EARLY_CDN_RECHECK_DELAY_SEC).
+    assert 10 <= (deadline_mono - time.monotonic()) <= 20
 
 
 @pytest.mark.asyncio
@@ -769,7 +787,7 @@ async def test_poll_job_statuses_moderation_recheck_filtered_refreshes_credits(
 
 
 @pytest.mark.asyncio
-async def test_poll_job_statuses_early_cdn_filtered_marks_badge_publishes_and_refreshes(
+async def test_poll_job_statuses_early_cdn_filtered_skips_billing_and_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_fakes()
@@ -823,10 +841,17 @@ async def test_poll_job_statuses_early_cdn_filtered_marks_badge_publishes_and_re
             self.db = _db
 
         async def create_from_submission(self, submission, generation):
+            # Mirror real create_from_submission: when submission carries the
+            # early-CDN-filtered markers, stamp the flag onto the asset before
+            # returning so it rides on asset:created (covered separately by
+            # test_create_from_submission_stamps_early_cdn_filtered_flag_before_event).
             asset = SimpleNamespace(
                 id=9102,
                 media_type=SimpleNamespace(value="video"),
-                media_metadata={},
+                media_metadata={
+                    "provider_flagged": True,
+                    "provider_flagged_reason": "early_cdn_filtered",
+                },
                 user_id=654,
                 remote_url="https://media.pixverse.ai/pixverse/mp4/media/web/ori/early-filtered.mp4",
             )
@@ -873,15 +898,16 @@ async def test_poll_job_statuses_early_cdn_filtered_marks_badge_publishes_and_re
 
     assert result["checked"] == 1
     assert result["completed"] == 1
-    assert len(refresh_calls) == 1  # credits refreshed immediately
+    # Filtered completion: skip both local billing and provider credit refresh
+    # (Pixverse will auto-refund; moderation recheck reconciles later).
+    assert refresh_calls == []
     assert len(created_assets) == 1
+    # Flag travels with asset:created — no follow-up asset:updated needed.
     assert created_assets[0].media_metadata.get("provider_flagged") is True
     assert created_assets[0].media_metadata.get("provider_flagged_reason") == "early_cdn_filtered"
-    assert len(published) == 1
-    assert published[0][0][0] == status_poller.ASSET_UPDATED
-    assert published[0][0][1]["asset_id"] == 9102
-    assert published[0][0][1]["user_id"] == 654
-    assert published[0][0][1]["reason"] == "moderation_flagged"
+    assert not any(
+        call[0] and call[0][0] == status_poller.ASSET_UPDATED for call in published
+    )
 
 
 @pytest.mark.asyncio
@@ -1220,8 +1246,19 @@ async def test_poll_job_statuses_moderation_recheck_already_flagged_still_refres
     assert asset_model.media_metadata.get("provider_flagged_reason") == "early_cdn_filtered"
     assert published == []
     assert len(refresh_calls) == 1
-    assert refresh_calls[0][1].get("success_log_event") == "moderation_recheck_credits_refreshed"
-    assert asset_id not in status_poller._moderation_recheck
+    # known_flagged path emits a more specific log event than the generic
+    # moderation_recheck_credits_refreshed (set in status_poller for the
+    # already-flagged fast path).
+    assert (
+        refresh_calls[0][1].get("success_log_event")
+        == "moderation_recheck_credits_refreshed_known_flagged"
+    )
+    # First known_flagged refresh schedules ONE follow-up (attempt=1) in case
+    # Pixverse's refund hadn't landed yet — the entry is re-scheduled, not
+    # cleared. The follow-up itself doesn't loop (attempt > 0 in the branch).
+    follow_up = status_poller._moderation_recheck.get(asset_id)
+    assert follow_up is not None
+    assert follow_up[4] == 1  # attempt index
 
 
 @pytest.mark.asyncio

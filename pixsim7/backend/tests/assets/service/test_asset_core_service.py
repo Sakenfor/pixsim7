@@ -200,3 +200,89 @@ async def test_create_from_submission_persists_batch_manifest_from_run_context()
     assert manifest.generation_id == 101
     assert manifest.manifest_metadata.get("strategy") == "each"
     assert manifest.manifest_metadata.get("input_asset_ids") == [11, 22]
+
+
+@pytest.mark.asyncio
+async def test_create_from_submission_stamps_early_cdn_filtered_flag_before_event() -> None:
+    # Stamping must happen before asset:created so the gallery's
+    # fetchCreatedAssetWhenReady retry loop never sees an un-flagged version
+    # (a follow-up asset:updated would be silently dropped if the asset isn't
+    # yet in the gallery list).
+    db = AsyncMock()
+    service = AssetCoreService(db=db, user_service=MagicMock())
+
+    generation = MagicMock()
+    generation.id = 202
+    generation.asset_id = None
+    generation.user_id = 42
+    generation.prompt_version_id = None
+    generation.reproducible_hash = None
+    generation.final_prompt = None
+    generation.operation_type = MagicMock()
+    generation.operation_type.value = "image_to_video"
+    generation.run_context = None
+    generation.inputs = []
+
+    submission = MagicMock()
+    submission.status = "success"
+    submission.provider_id = "pixverse"
+    submission.account_id = 9
+    submission.model = "v6"
+    submission.response = {
+        "provider_asset_id": "pv-asset-2",
+        "asset_url": "https://media.pixverse.ai/pixverse/mp4/media/web/ori/early.mp4",
+        "media_type": "video",
+        "metadata": {
+            "video_early_cdn_terminal": True,
+            "video_original_status": "filtered",
+        },
+    }
+
+    db.execute = AsyncMock(
+        side_effect=[
+            _OneResult(generation),
+            _OneResult(None),
+        ]
+    )
+    db.get = AsyncMock(return_value=None)
+    db.refresh = AsyncMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    added: list = []
+
+    def _add(obj):
+        if obj.__class__.__name__ == "Asset" and getattr(obj, "id", None) is None:
+            obj.id = 999
+        added.append(obj)
+
+    db.add = MagicMock(side_effect=_add)
+
+    service._extract_prompt_from_generation = MagicMock(return_value=None)
+    service._auto_tag_generated_asset = AsyncMock()
+    service._create_generation_lineage = AsyncMock()
+
+    publish_mock = AsyncMock()
+    flag_state_at_publish: dict = {}
+
+    async def _capture_publish(event_type, payload):
+        # Snapshot the persisted asset's flag state at the moment of publish
+        # to prove the flag is set BEFORE the event fires.
+        asset_obj = next((o for o in added if o.__class__.__name__ == "Asset"), None)
+        if asset_obj is not None:
+            flag_state_at_publish["provider_flagged"] = (
+                (asset_obj.media_metadata or {}).get("provider_flagged")
+            )
+            flag_state_at_publish["reason"] = (
+                (asset_obj.media_metadata or {}).get("provider_flagged_reason")
+            )
+        return await publish_mock(event_type, payload)
+
+    with patch.object(event_bus, "publish", new=_capture_publish):
+        asset = await service.create_from_submission(submission=submission, generation=generation)
+
+    assert asset.id == 999
+    assert asset.media_metadata.get("provider_flagged") is True
+    assert asset.media_metadata.get("provider_flagged_reason") == "early_cdn_filtered"
+    # The flag must have been set in metadata at the time asset:created fired.
+    assert flag_state_at_publish.get("provider_flagged") is True
+    assert flag_state_at_publish.get("reason") == "early_cdn_filtered"

@@ -111,6 +111,10 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     stop_event_bus_bridge,
 )
 from pixsim7.backend.main.services.asset.events import ASSET_UPDATED
+from pixsim7.backend.main.services.provider.early_cdn import (
+    is_early_cdn_filtered,
+    is_early_cdn_terminal,
+)
 from pixsim7.backend.main.domain.providers.registry import registry as _provider_registry
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
@@ -1172,34 +1176,14 @@ async def _poll_single_generation(
                             # in-memory attribute changes.
                             asset = await db.get(Asset, asset.id)
 
-                    # Detect early-CDN-terminal now so both the recheck delay
-                    # and the credit-refresh branch below can use it.
-                    _is_early_cdn = bool(
-                        (status_result.metadata or {}).get("video_early_cdn_terminal")
-                    )
-                    _early_cdn_original_status = (
-                        (status_result.metadata or {}).get("video_original_status") or ""
-                    )
-
-                    # When early CDN original status was FILTERED we already know
-                    # the video is flagged — stamp it immediately so the red ring
-                    # badge appears without waiting for the 30 s moderation recheck.
-                    # (The recheck still runs to refresh credits once Pixverse refunds.)
-                    # Event is published AFTER the final db.commit() below.
-                    _publish_early_cdn_flagged = False
-                    if _is_early_cdn and _early_cdn_original_status == "filtered":
-                        meta = asset.media_metadata or {}
-                        if not meta.get("provider_flagged"):
-                            meta["provider_flagged"] = True
-                            meta["provider_flagged_reason"] = "early_cdn_filtered"
-                            asset.media_metadata = meta
-                            flag_modified(asset, "media_metadata")
-                            logger.info(
-                                "early_cdn_flagged_immediately",
-                                asset_id=asset.id,
-                                generation_id=generation.id,
-                            )
-                            _publish_early_cdn_flagged = True
+                    # Note: early-CDN-filtered flag is stamped inside
+                    # create_from_submission so it rides on the asset:created
+                    # event. Publishing a follow-up asset:updated here raced
+                    # the gallery's fetchCreatedAssetWhenReady retries (the
+                    # update was silently dropped when the asset wasn't yet in
+                    # the list — visible during 20-burst queues).
+                    _is_early_cdn = is_early_cdn_terminal(status_result.metadata)
+                    _is_filtered_completion = is_early_cdn_filtered(status_result.metadata)
 
                     # Schedule delayed moderation re-check for videos.
                     # For early-CDN-terminal completions use a shorter first delay
@@ -1243,10 +1227,6 @@ async def _poll_single_generation(
                     # Mark generation as completed
                     await generation_service.mark_completed(generation.id, asset.id)
 
-                    _is_filtered_completion = (
-                        _is_early_cdn and _early_cdn_original_status == "filtered"
-                    )
-
                     if _is_filtered_completion:
                         # Early CDN says filtered → Pixverse will auto-refund.
                         # Skip local billing deduction AND skip the credit refresh
@@ -1280,13 +1260,6 @@ async def _poll_single_generation(
                         )
 
                     await db.commit()
-
-                    if _publish_early_cdn_flagged:
-                        await event_bus.publish(ASSET_UPDATED, {
-                            "asset_id": asset.id,
-                            "user_id": asset.user_id,
-                            "reason": "moderation_flagged",
-                        })
 
                     return _PollGenerationResult(
                         generation_id=generation_id,

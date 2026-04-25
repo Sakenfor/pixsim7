@@ -26,6 +26,7 @@ from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
 )
+from pixsim7.backend.main.services.provider.early_cdn import is_early_cdn_filtered
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -224,12 +225,21 @@ class AssetCreationMixin:
             metadata = {}
         metadata["generation_context"] = gen_ctx
 
-        # Stamp placeholder-leak metadata so downstream consumers (moderation
-        # recheck, diagnostics, UI filters) can recognize these rows.
+        # Stamp provider_flagged + reason for known-bad-at-create cases so the
+        # flagged state rides on the asset:created event. (Otherwise a later
+        # asset:updated can race fetchCreatedAssetWhenReady retries and be
+        # silently dropped by useAssets.updateAsset when the asset isn't yet
+        # in the gallery list.)
+        flag_reason: str | None = None
         if _asset_url_is_placeholder:
-            metadata["provider_flagged"] = True
-            metadata["provider_flagged_reason"] = "placeholder_url_only"
+            flag_reason = "placeholder_url_only"
             metadata["asset_url_is_placeholder"] = True
+        elif is_early_cdn_filtered(metadata):
+            flag_reason = "early_cdn_filtered"
+
+        if flag_reason:
+            metadata["provider_flagged"] = True
+            metadata["provider_flagged_reason"] = flag_reason
 
         # Create asset — each generation always gets its own Asset record.
         # Content dedup is handled at the storage layer (content-addressed keys)
