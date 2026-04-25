@@ -269,34 +269,6 @@ export type {
 export { getDisplaySpacesFromWorldMeta, resolveDisplayTargetFromWorldMeta } from './display/displaySpaces';
 
 // ============================================================================
-// Prompt Companion Slot - Extension slot for prompt input surfaces
-// ============================================================================
-export {
-  GlobalPromptCompanionInjector,
-  PromptCompanionHost,
-  PromptSurfaceProvider,
-  promptCompanionEvents,
-  promptCompanionRegistry,
-  promptSurfaceRegistry,
-  usePromptCompanionContext,
-  usePromptCompanionEvents,
-  usePromptCompanionSlot,
-  usePromptSurface,
-  usePromptSurfaceContext,
-  useRegisterPromptCompanion,
-} from './promptCompanionSlot';
-export type {
-  PromptCompanionContext,
-  PromptCompanionEvent,
-  PromptCompanionHostProps,
-  PromptCompanionPlugin,
-  PromptCompanionSurface,
-  PromptSurfaceProviderProps,
-  UsePromptSurfaceOptions,
-  UsePromptSurfaceReturn,
-} from './promptCompanionSlot';
-
-// ============================================================================
 // Form Components - Reusable form inputs
 // ============================================================================
 export { ArrayFieldInput } from './forms';

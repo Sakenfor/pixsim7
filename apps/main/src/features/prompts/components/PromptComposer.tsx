@@ -30,14 +30,6 @@ import { useWorkspaceStore } from '@features/workspace';
 
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
-import {
-  BlockBreakdownDrawer,
-  BlockBuilderModal,
-  PackHintsDrawer,
-  VariantSuggestionsDrawer,
-} from '@/plugins/ui/prompt-companion/components';
-
-
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
@@ -87,33 +79,6 @@ interface AnalyzePromptResponse {
   };
   role_in_sequence?: string;
   sequence_context?: SequenceContext;
-}
-
-interface PromptAnalysis {
-  prompt: string;
-  candidates: PromptBlockCandidate[];
-  tags: PromptTag[];
-}
-
-interface CategoryDiscoveryResponse {
-  prompt_text: string;
-  candidates: PromptBlockCandidate[];
-  existing_ontology_ids: string[];
-  suggestions?: Record<string, unknown>;
-  suggested_ontology_ids: Array<{
-    id: string;
-    label: string;
-    description?: string;
-    kind: string;
-    confidence: number;
-  }>;
-  suggested_packs: Array<{
-    pack_id: string;
-    pack_label: string;
-    parser_hints: Record<string, string[]>;
-    notes?: string;
-  }>;
-  suggested_candidates: PromptBlockCandidate[];
 }
 
 type PromptHistoryScope = 'provider-operation' | 'operation' | 'global';
@@ -334,11 +299,6 @@ export function PromptComposer({
   const [assistantError, setAssistantError] = useState<string | null>(null);
 
   const [showShadow, setShowShadow] = useState(false);
-  const [showBlockBreakdown, setShowBlockBreakdown] = useState(false);
-  const [showVariants, setShowVariants] = useState(false);
-  const [showPackHints, setShowPackHints] = useState(false);
-  const [showBlockBuilder, setShowBlockBuilder] = useState(false);
-  const [showBlockTools, setShowBlockTools] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [, forceHistoryRender] = useState(0);
   const [promotingHistoryIndex, setPromotingHistoryIndex] = useState<number | null>(null);
@@ -466,22 +426,12 @@ export function PromptComposer({
       ? 'viewer selection'
       : null;
 
-  const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
-  const [fetchingVariants, setFetchingVariants] = useState(false);
-  const [fetchingPacks, setFetchingPacks] = useState(false);
-
-  const [blockAnalysis, setBlockAnalysis] = useState<PromptAnalysis | null>(null);
-  const [variants, setVariants] = useState<string[]>([]);
-  const [packHints, setPackHints] = useState<CategoryDiscoveryResponse | null>(null);
-
   const idCounterRef = useRef(1);
   const lastComposedRef = useRef<string | null>(null);
   const lastParsedRef = useRef<string | null>(null);
   const parseRequestIdRef = useRef(0);
   const expandAllRef = useRef<(() => void) | null>(null);
   const collapseAllRef = useRef<(() => void) | null>(null);
-  const blockToolsTriggerRef = useRef<HTMLButtonElement>(null);
-
   // Stable refs for callbacks — prevents identity cascade
   // (onChange/value changing → updateBlocks changing → seedBlocksFromPrompt changing → effect re-firing)
   const onChangeRef = useRef(onChange);
@@ -1011,125 +961,6 @@ export function PromptComposer({
     [insertSemanticBlock]
   );
 
-  const handleAnalyzeBlocks = useCallback(async () => {
-    const normalized = value.trim();
-    if (!normalized) {
-      setAssistantError('Enter a prompt to analyze');
-      return;
-    }
-
-    // Check shared cache first
-    const cached = getCachedAnalysis(normalized);
-    if (cached) {
-      setBlockAnalysis({
-        prompt: cached.prompt,
-        candidates: cached.candidates,
-        tags: cached.tags as PromptTag[],
-      });
-      setShowBlockBreakdown(true);
-      return;
-    }
-
-    setAnalyzingBlocks(true);
-    setAssistantError(null);
-
-    try {
-      const response = await api.post<AnalyzePromptResponse>('/prompts/analyze', {
-        text: normalized,
-      });
-      const analysis = response.analysis;
-      const next: PromptAnalysis = {
-        prompt: analysis?.prompt || normalized,
-        candidates: analysis?.candidates || [],
-        tags: analysis?.tags || [],
-      };
-
-      // Write to shared cache
-      setCachedAnalysis(normalized, undefined, {
-        prompt: next.prompt,
-        candidates: next.candidates,
-        tags: next.tags as AnalysisResult['tags'],
-        role_in_sequence: response?.role_in_sequence,
-        sequence_context: resolveSequenceContext(response),
-      });
-
-      setBlockAnalysis(next);
-      setShowBlockBreakdown(true);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to analyze prompt';
-      setAssistantError(message);
-    } finally {
-      setAnalyzingBlocks(false);
-    }
-  }, [api, value]);
-
-  const handleSuggestVariants = useCallback(async () => {
-    const normalized = value.trim();
-    if (!normalized) {
-      setAssistantError('Enter a prompt to get variants');
-      return;
-    }
-
-    const isDevMode = import.meta.env.DEV;
-    setFetchingVariants(true);
-    setAssistantError(null);
-
-    try {
-      const result = await api.post<{ variants: string[] }>(
-        '/dev/prompt-editor/suggest-variants',
-        { prompt_text: normalized, count: 3 }
-      );
-      setVariants(result.variants || []);
-      setShowVariants(true);
-    } catch (err: unknown) {
-      if (isDevMode) {
-        const message = err instanceof Error ? err.message : 'Variants API unavailable';
-        setAssistantError(message);
-      }
-      setVariants([]);
-      setShowVariants(true);
-    } finally {
-      setFetchingVariants(false);
-    }
-  }, [api, value]);
-
-  const handlePackHints = useCallback(async () => {
-    const normalized = value.trim();
-    if (!normalized) {
-      setAssistantError('Enter a prompt to discover packs');
-      return;
-    }
-
-    const isDevMode = import.meta.env.DEV;
-    setFetchingPacks(true);
-    setAssistantError(null);
-
-    try {
-      const result = await api.post<CategoryDiscoveryResponse>(
-        '/dev/prompt-categories/discover',
-        { prompt_text: normalized }
-      );
-      setPackHints(result);
-      setShowPackHints(true);
-    } catch (err: unknown) {
-      if (isDevMode) {
-        const message = err instanceof Error ? err.message : 'Pack hints unavailable';
-        setAssistantError(message);
-      }
-    } finally {
-      setFetchingPacks(false);
-    }
-  }, [api, value]);
-
-  const handleSelectVariant = useCallback(
-    (variant: string) => {
-      flushSnapshot();
-      onChange(variant);
-      setShowVariants(false);
-    },
-    [onChange, flushSnapshot]
-  );
-
   const handlePasteFromClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -1546,65 +1377,6 @@ export function PromptComposer({
               </>
             )}
 
-            <div className="relative">
-              <button
-                ref={blockToolsTriggerRef}
-                type="button"
-                disabled={disabled}
-                onClick={() => setShowBlockTools((prev) => !prev)}
-                title="Block tools"
-                aria-label="Block tools"
-                className={clsx(
-                  'p-1 rounded transition-colors',
-                  showBlockTools
-                    ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
-                    : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                )}
-              >
-                <Icon name="more-horizontal" size={14} />
-              </button>
-              <Popover
-                open={showBlockTools}
-                onClose={() => setShowBlockTools(false)}
-                anchor={blockToolsTriggerRef.current}
-                placement="bottom"
-                align="start"
-                offset={4}
-                triggerRef={blockToolsTriggerRef}
-                className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
-              >
-                <DropdownItem
-                  icon={analyzingBlocks ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="search" size={12} />}
-                  disabled={disabled || analyzingBlocks}
-                  onClick={() => { handleAnalyzeBlocks(); setShowBlockTools(false); }}
-                >
-                  Analyze blocks
-                </DropdownItem>
-                <DropdownItem
-                  icon={fetchingVariants ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="wand" size={12} />}
-                  disabled={disabled || fetchingVariants}
-                  onClick={() => { handleSuggestVariants(); setShowBlockTools(false); }}
-                >
-                  Suggest variants
-                </DropdownItem>
-                <DropdownItem
-                  icon={fetchingPacks ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="folder" size={12} />}
-                  disabled={disabled || fetchingPacks}
-                  onClick={() => { handlePackHints(); setShowBlockTools(false); }}
-                >
-                  Discover packs
-                </DropdownItem>
-                <DropdownDivider />
-                <DropdownItem
-                  icon={<Icon name="plus" size={12} />}
-                  disabled={disabled || !blockAnalysis || blockAnalysis.candidates.length === 0}
-                  onClick={() => { setShowBlockBuilder(true); setShowBlockTools(false); }}
-                >
-                  Block builder
-                </DropdownItem>
-              </Popover>
-            </div>
-
             <span className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
               {blocks.length} block{blocks.length === 1 ? '' : 's'}
             </span>
@@ -1944,35 +1716,6 @@ export function PromptComposer({
           )}
         </div>
       )}
-
-      <BlockBreakdownDrawer
-        open={showBlockBreakdown}
-        onClose={() => setShowBlockBreakdown(false)}
-        analysis={blockAnalysis}
-        onInsertBlock={handleInsertBlock}
-      />
-
-      <VariantSuggestionsDrawer
-        open={showVariants}
-        onClose={() => setShowVariants(false)}
-        variants={variants}
-        onSelectVariant={handleSelectVariant}
-        isDevMode={import.meta.env.DEV}
-      />
-
-      <PackHintsDrawer
-        open={showPackHints}
-        onClose={() => setShowPackHints(false)}
-        packHints={packHints}
-        isDevMode={import.meta.env.DEV}
-      />
-
-      <BlockBuilderModal
-        open={showBlockBuilder}
-        onClose={() => setShowBlockBuilder(false)}
-        candidates={blockAnalysis?.candidates || []}
-        onInsertBlock={handleInsertBlock}
-      />
 
       <PromptHistoryPopover
         open={showHistory}

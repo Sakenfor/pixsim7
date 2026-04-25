@@ -25,17 +25,16 @@ type DockviewPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
 // ── QuickGen panel IDs and presets ──
 
 /** QuickGen slot names */
-export type QuickGenSlot = 'asset' | 'prompt' | 'settings' | 'blocks';
+export type QuickGenSlot = 'asset' | 'prompt' | 'settings';
 
 /** QuickGen preset names */
-export type QuickGenPreset = 'promptSettings' | 'full' | 'fullWithBlocks' | 'promptSettingsBlocks';
+export type QuickGenPreset = 'promptSettings' | 'full';
 
 /** Panel IDs for quickgen slots */
 export const QUICKGEN_PANEL_IDS = {
   asset: 'quickgen-asset',
   prompt: 'quickgen-prompt',
   settings: 'quickgen-settings',
-  blocks: 'quickgen-blocks',
 } as const satisfies Record<QuickGenSlot, string>;
 
 /** Named panel sets for common quickgen configurations */
@@ -44,10 +43,6 @@ export const QUICKGEN_PRESETS = {
   promptSettings: [QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings],
   /** Asset + Prompt + Settings — for CC single-asset mode */
   full: [QUICKGEN_PANEL_IDS.asset, QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings],
-  /** Full with blocks panel */
-  fullWithBlocks: [QUICKGEN_PANEL_IDS.asset, QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings, QUICKGEN_PANEL_IDS.blocks],
-  /** Prompt + Settings + Blocks (no asset) */
-  promptSettingsBlocks: [QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings, QUICKGEN_PANEL_IDS.blocks],
 } as const satisfies Record<QuickGenPreset, readonly string[]>;
 
 /**
@@ -77,14 +72,6 @@ function deriveLayoutSpec(panelIds: readonly string[]): LayoutSpecEntry[] {
     spec.push(ref
       ? { id: QUICKGEN_PANEL_IDS.settings, direction: 'right', ref }
       : { id: QUICKGEN_PANEL_IDS.settings },
-    );
-  }
-
-  if (has(QUICKGEN_PANEL_IDS.blocks)) {
-    spec.push(
-      has(QUICKGEN_PANEL_IDS.prompt)
-        ? { id: QUICKGEN_PANEL_IDS.blocks, direction: 'below', ref: QUICKGEN_PANEL_IDS.prompt }
-        : { id: QUICKGEN_PANEL_IDS.blocks },
     );
   }
 

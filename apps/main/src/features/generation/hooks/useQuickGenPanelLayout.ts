@@ -3,8 +3,8 @@
  *
  * Centralizes quickgen panel selection and video_transition layout logic.
  * Reads operation type from scoped session store, computes panel set based
- * on input support and showBlocks config, and provides video_transition
- * default layout + panel position resolver when applicable.
+ * on input support, and provides video_transition default layout + panel
+ * position resolver when applicable.
  *
  * Hosts still compute their own storageKey (different prefixes/versions)
  * and pass it to QuickGenPanelHost.
@@ -23,8 +23,6 @@ import { useGenerationScopeStores } from './useGenerationScope';
 
 
 export interface UseQuickGenPanelLayoutConfig {
-  /** Include blocks panel in layout. CC: true, viewer: false */
-  showBlocks?: boolean;
   /**
    * Optional explicit panel IDs. When this differs from the default preset for
    * the current operation, transition-specific layout overrides are skipped.
@@ -33,7 +31,7 @@ export interface UseQuickGenPanelLayoutConfig {
 }
 
 export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}) {
-  const { showBlocks = false, panelIds } = config;
+  const { panelIds } = config;
   const { useSessionStore } = useGenerationScopeStores();
   const operationType = useSessionStore((s) => s.operationType);
 
@@ -41,11 +39,8 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
   const operationSupportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
 
   const defaultPanels = useMemo(() => {
-    if (operationSupportsInputs) {
-      return showBlocks ? QUICKGEN_PRESETS.fullWithBlocks : QUICKGEN_PRESETS.full;
-    }
-    return showBlocks ? QUICKGEN_PRESETS.promptSettingsBlocks : QUICKGEN_PRESETS.promptSettings;
-  }, [operationSupportsInputs, showBlocks]);
+    return operationSupportsInputs ? QUICKGEN_PRESETS.full : QUICKGEN_PRESETS.promptSettings;
+  }, [operationSupportsInputs]);
 
   const hasExplicitPanelIds = !!(panelIds && panelIds.length > 0);
 
@@ -74,21 +69,14 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
       const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
       const hasPrompt = panels.includes(QUICKGEN_PANEL_IDS.prompt);
       const hasSettings = panels.includes(QUICKGEN_PANEL_IDS.settings);
-      const hasBlocks = panels.includes(QUICKGEN_PANEL_IDS.blocks);
 
       const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
       const getTitle = (panelId: string) => {
         switch (panelId) {
-          case QUICKGEN_PANEL_IDS.asset:
-            return 'Asset';
-          case QUICKGEN_PANEL_IDS.prompt:
-            return 'Prompt';
-          case QUICKGEN_PANEL_IDS.settings:
-            return 'Settings';
-          case QUICKGEN_PANEL_IDS.blocks:
-            return 'Blocks';
-          default:
-            return panelId;
+          case QUICKGEN_PANEL_IDS.asset: return 'Asset';
+          case QUICKGEN_PANEL_IDS.prompt: return 'Prompt';
+          case QUICKGEN_PANEL_IDS.settings: return 'Settings';
+          default: return panelId;
         }
       };
 
@@ -113,15 +101,6 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
           component: QUICKGEN_PANEL_IDS.settings,
           title: getTitle(QUICKGEN_PANEL_IDS.settings),
           position: { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt },
-        });
-      }
-
-      if (hasBlocks) {
-        safe.addPanel({
-          id: QUICKGEN_PANEL_IDS.blocks,
-          component: QUICKGEN_PANEL_IDS.blocks,
-          title: getTitle(QUICKGEN_PANEL_IDS.blocks),
-          position: { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt },
         });
       }
     };

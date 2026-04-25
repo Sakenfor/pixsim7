@@ -9,4 +9,4 @@ export type { QuickGenPanelId, QuickGenPanelContext, QuickGenPanelProps } from '
 export { EMPTY_INPUTS } from './quickGenPanelTypes';
 export { AssetPanel } from './AssetPanel';
 export { PromptPanel } from './PromptPanel';
-export { SettingsPanel, BlocksPanel } from './SettingsBlocksPanels';
+export { SettingsPanel } from './SettingsBlocksPanels';
