@@ -1,15 +1,14 @@
 /**
- * Prompt grammar — line-level tokenizer and parser.
+ * Prompt grammar — line-level tokenizer and section-header parser.
  *
- * Replaces the regex-based section detector. The lexer scans left-to-right
- * and emits typed tokens; the parser walks tokens per line and classifies
- * each line as either a known structural form or `prose`. Neither stage
- * fails: unknown characters become `TEXT` tokens, unrecognised lines become
- * `prose` nodes.
+ * Scope: header detection only (colon, assignment, assignment_arrow,
+ * angle_bracket, freestanding). Relation parsing lives in the Python
+ * backend (tokenizer.py) and is consumed via the /prompts/analyze API.
  *
- * The lexer preserves raw run lengths for `=`, `<`, `>`, `_` so downstream
- * recipes can interpret cardinality (timing, intensity, duration) without
- * the lexer baking in any semantics.
+ * The lexer scans left-to-right and emits typed tokens; the parser
+ * classifies each line as a known header form or `prose`. Neither stage
+ * fails: unknown characters become `TEXT` tokens, unrecognised lines
+ * become `prose` nodes.
  */
 import type { PatternId } from './sections';
 import GRAMMAR_RULES from './grammar_rules.json';
@@ -143,22 +142,6 @@ export interface HeaderLine {
   bodyStart: number;
 }
 
-export interface RelationHop {
-  lhs: string | null;
-  rhs: string | null;
-  raw: string;
-  leadingChar: string | null;
-  terminalChar: string | null;
-  run: number;
-}
-
-export interface RelationLine {
-  kind: 'relation';
-  hops: RelationHop[];
-  start: number;
-  end: number;
-}
-
 export interface ProseLine {
   kind: 'prose';
   start: number;
@@ -166,7 +149,9 @@ export interface ProseLine {
   text: string;
 }
 
-export type LineNode = HeaderLine | RelationLine | ProseLine;
+// Relation parsing is Python-only (tokenizer.py). The TS grammar handles
+// header detection only; relation lines fall to prose here.
+export type LineNode = HeaderLine | ProseLine;
 
 interface LineSlice {
   /** Token indices [from, to) for this line, EXCLUDING the trailing NEWLINE. */
@@ -329,7 +314,7 @@ function parseLine(line: LineSlice, tokens: Token[]): LineNode {
   if (!isUpperIdent(first.text)) return proseFallback();
 
   // ── assignment: LABEL = ... ───────────────────────────────────────────
-  // Reject when = run is immediately followed by > or < (compound ===> is a relation op).
+  // Reject when = run is immediately followed by > or < (compound ===> is not an assignment).
   {
     let k = i + 1;
     if (k < end && tokens[k].kind === 'WS') k++;
@@ -350,7 +335,7 @@ function parseLine(line: LineSlice, tokens: Token[]): LineNode {
     }
   }
 
-  // ── assignment_arrow: LABEL > ...  (single > only; >>> falls to relation)
+  // ── assignment_arrow: LABEL > ...  (single > only; multi-char runs → prose)
   {
     let k = i + 1;
     if (k < end && tokens[k].kind === 'WS') {
