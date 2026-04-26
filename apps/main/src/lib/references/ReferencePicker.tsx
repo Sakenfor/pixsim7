@@ -62,7 +62,7 @@ export interface ReferencePickerHandle {
 }
 
 const DEFAULT_PICKER_CLASS =
-  'absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20';
+  'absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-float-overlay-popover';
 
 export const ReferencePicker = forwardRef<ReferencePickerHandle, ReferencePickerProps>(
   function ReferencePicker(

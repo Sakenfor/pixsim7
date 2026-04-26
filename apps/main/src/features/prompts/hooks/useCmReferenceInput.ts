@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extension } from '@codemirror/state';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
+import { getViewportAwarePopupPosition } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import type { ReferencePickerHandle } from '@lib/references';
 import type { ReferenceItem } from '@lib/references';
@@ -19,7 +20,7 @@ export function useCmReferenceInput(
 ) {
   const [query, setQuery] = useState<string | null>(null);
   const [triggerPos, setTriggerPos] = useState(-1);
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [anchor, setAnchor] = useState<CSSProperties | null>(null);
   const insertMode = opts?.insertMode ?? 'token';
 
   const active = query !== null;
@@ -105,15 +106,17 @@ export function useCmReferenceInput(
 
     const editorDom = view.dom;
     const container = editorDom.offsetParent as HTMLElement | null;
-    if (!container) {
-      setAnchor({ top: coords.bottom + 4, left: coords.left });
-      return;
-    }
-    const containerRect = container.getBoundingClientRect();
-    setAnchor({
-      top: coords.bottom - containerRect.top + 4,
-      left: coords.left - containerRect.left,
+    const containerRect = container?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const { style } = getViewportAwarePopupPosition({
+      anchorRect: coords,
+      containerRect,
+      popupWidth: 288,
+      popupMaxHeight: 320,
+      preferredPlacement: 'bottom',
+      offset: 4,
+      viewportMargin: 8,
     });
+    setAnchor(style);
   }, [active, triggerPos, editorRef]);
 
   const select = useCallback(

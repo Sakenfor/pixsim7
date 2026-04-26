@@ -7,9 +7,18 @@ import {
   ensurePromptBlocks,
 } from '@pixsim7/core.prompt';
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
-import { DropdownItem, DropdownDivider, FoldGroup, GroupedFold, Popover, PromptInput, PromptEditor } from '@pixsim7/shared.ui';
+import {
+  DropdownItem,
+  DropdownDivider,
+  FoldGroup,
+  GroupedFold,
+  Popover,
+  PromptInput,
+  PromptEditor,
+  getViewportAwarePopupPosition,
+} from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
@@ -73,6 +82,9 @@ type ComparableAsset = Partial<AssetModel> &
   Partial<ViewerAsset> & {
     _assetModel?: AssetModel | null;
   };
+
+const REFERENCE_PICKER_WIDTH = 288;
+const REFERENCE_PICKER_MAX_HEIGHT = 320;
 
 interface PromptBlockItem extends PromptBlockLike {
   id: string;
@@ -373,6 +385,7 @@ export function PromptComposer({
   ghostCompareOffsetRef.current = ghostCompareOffset;
   const ghostClearTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const referencePickerContainerRef = useRef<HTMLDivElement>(null);
   const promptEditorRef = useRef<import('@codemirror/view').EditorView | null>(null);
 
   // @mention picker — vocabulary references (anatomy, etc.) + any other
@@ -413,24 +426,39 @@ export function PromptComposer({
   // `@` index — not the live cursor — so the popup doesn't jitter as the
   // user types the query. Recomputed if the trigger moves (e.g. user types
   // over the query and @ ends up at a new position).
-  const [referenceAnchor, setReferenceAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [referenceAnchor, setReferenceAnchor] = useState<CSSProperties | null>(null);
   useEffect(() => {
     if (!referenceInput.active || referenceInput.triggerPos < 0) {
       setReferenceAnchor(null);
       return;
     }
-    const el = promptTextareaRef.current;
-    if (!el) return;
-    const coords = getTextareaCaretCoords(el, referenceInput.triggerPos);
-    // Caret coords are relative to the textarea's content area; the picker
-    // is positioned absolute within the outer container. Offset by the
-    // textarea's position within its offsetParent so the two coord systems
-    // align. This relies on the container being the nearest positioned
-    // ancestor (it is — `relative h-full` above).
-    setReferenceAnchor({
-      top: el.offsetTop + coords.top + coords.height + 4,
-      left: el.offsetLeft + coords.left,
+    const textarea = promptTextareaRef.current;
+    const container = referencePickerContainerRef.current;
+    if (!textarea || !container) {
+      setReferenceAnchor(null);
+      return;
+    }
+
+    const coords = getTextareaCaretCoords(textarea, referenceInput.triggerPos);
+    const textareaRect = textarea.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const caretRect = new DOMRect(
+      textareaRect.left + coords.left,
+      textareaRect.top + coords.top,
+      1,
+      coords.height,
+    );
+
+    const { style } = getViewportAwarePopupPosition({
+      anchorRect: caretRect,
+      containerRect,
+      popupWidth: REFERENCE_PICKER_WIDTH,
+      popupMaxHeight: REFERENCE_PICKER_MAX_HEIGHT,
+      preferredPlacement: 'bottom',
+      offset: 4,
+      viewportMargin: 8,
     });
+    setReferenceAnchor(style);
   }, [referenceInput.active, referenceInput.triggerPos]);
 
   // CAP_ASSET is local-scoped and comes from whatever you're hovering or focused on
@@ -1620,6 +1648,7 @@ export function PromptComposer({
         useCodemirror ? (
           <div className="flex-1 min-h-0 flex">
             <div
+              ref={referencePickerContainerRef}
               className="relative flex flex-col flex-1 min-w-0"
               onMouseEnter={handleGhostPrecisionEnter}
               onMouseLeave={handleGhostPrecisionLeave}
@@ -1647,7 +1676,7 @@ export function PromptComposer({
                 onSelect={handleCmReferenceSelect}
                 onClose={cmRefInput.dismiss}
                 disallowedTypes={['plan', 'world', 'project']}
-                className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-30"
+                className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
                 style={cmRefInput.anchor ?? undefined}
               />
               <Popover
@@ -1690,6 +1719,7 @@ export function PromptComposer({
           </div>
         ) : (
           <div
+            ref={referencePickerContainerRef}
             className="relative flex flex-col flex-1 min-h-0"
             onMouseEnter={handleGhostPrecisionEnter}
             onMouseLeave={handleGhostPrecisionLeave}
@@ -1727,7 +1757,7 @@ export function PromptComposer({
               onSelect={handleReferenceSelect}
               onClose={referenceInput.dismiss}
               disallowedTypes={['plan', 'world', 'project']}
-              className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-30"
+              className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
               style={referenceAnchor ?? undefined}
             />
           </div>
