@@ -23,6 +23,7 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 ANALYSIS_TAG_OPTION_DEFAULT_LIMIT = 150
+NULLISH_OPTION_TOKENS = {"null", "(null)", "undefined", "(undefined)"}
 
 EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD: dict[str, str] = {
     "pixverse_sync": "pixverse",
@@ -166,10 +167,11 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
             if spec.option_source is None:
                 continue
             if spec.option_source == "static":
-                options[spec.key] = [
+                raw_options = [
                     (value, label, None)
                     for value, label in (spec.label_map or {}).items()
                 ]
+                options[spec.key] = _sanitize_option_rows(raw_options)
                 continue
             if spec.option_source == "custom" and spec.option_loader:
                 coro = spec.option_loader(db, user, include_counts, context, limit)
@@ -200,7 +202,7 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
                     logger.warning("asset_filter_options_failed", key=key, error=str(result))
                     options[key] = []
                 else:
-                    options[key] = result
+                    options[key] = _sanitize_option_rows(result)
 
         return options
 
@@ -226,12 +228,27 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
             if column is None:
                 continue
             if isinstance(value, (list, tuple, set)):
-                values = [entry for entry in value if entry is not None]
-                if not values:
+                normalized_values: list[Any] = []
+                for entry in value:
+                    if entry is None:
+                        continue
+                    if isinstance(entry, str):
+                        normalized_entry = _normalize_option_value(entry)
+                        if normalized_entry is None:
+                            continue
+                        normalized_values.append(normalized_entry)
+                    else:
+                        normalized_values.append(entry)
+                if not normalized_values:
                     continue
-                conditions.append(column.in_(values))
+                conditions.append(column.in_(normalized_values))
             else:
-                conditions.append(column == value)
+                normalized_value = value
+                if isinstance(value, str):
+                    normalized_value = _normalize_option_value(value)
+                if normalized_value is None:
+                    continue
+                conditions.append(column == normalized_value)
         return conditions
 
 
@@ -275,7 +292,30 @@ def _normalize_option_value(value: Any) -> Optional[str]:
         value = value.strip()
         if value == "":
             return None
+        if value.lower() in NULLISH_OPTION_TOKENS:
+            return None
     return str(value) if value is not None else None
+
+
+def _sanitize_option_rows(
+    rows: Iterable[tuple[Any, Any, Any]],
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    sanitized: list[tuple[str, Optional[str], Optional[int]]] = []
+    seen_values: set[str] = set()
+    for raw_value, raw_label, raw_count in rows:
+        value = _normalize_option_value(raw_value)
+        if value is None or value in seen_values:
+            continue
+        seen_values.add(value)
+        if isinstance(raw_label, str):
+            label = _normalize_option_value(raw_label)
+        elif raw_label is None:
+            label = None
+        else:
+            label = str(raw_label)
+        count = int(raw_count) if raw_count is not None else None
+        sanitized.append((value, label, count))
+    return sanitized
 
 
 async def _load_distinct_options(

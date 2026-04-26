@@ -48,6 +48,16 @@ export const GROUP_VIEW_VALUES: GalleryGroupView[] = ['inline', 'folders', 'pane
 export const GROUP_PREVIEW_LIMIT = 4;
 export const GROUP_PAGE_SIZE = 50;
 
+const NULLISH_GROUP_LABEL_TOKENS = new Set(['null', '(null)', 'undefined', '(undefined)']);
+
+function normalizeGroupLabelText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (NULLISH_GROUP_LABEL_TOKENS.has(trimmed.toLowerCase())) return undefined;
+  return trimmed;
+}
+
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
@@ -159,22 +169,27 @@ export const formatGroupLabel = (
 ) => {
   if (key === 'other') return 'Other';
   if (key === 'ungrouped') return 'Ungrouped';
+  const normalizedKey = normalizeGroupLabelText(key);
+  if (!normalizedKey) return 'Unknown';
   if (meta && meta.kind === 'prompt' && meta.prompt_text) {
-    const text = meta.prompt_text.trim();
+    const text = normalizeGroupLabelText(meta.prompt_text);
+    if (!text) return 'Unknown';
     if (text.length <= 80) return text;
     return `${text.slice(0, 77)}...`;
   }
   if (meta && meta.kind === 'source' && meta.description) {
-    return meta.description;
+    const description = normalizeGroupLabelText(meta.description);
+    if (description) return description;
   }
   if (meta && meta.kind === 'sibling' && meta.prompt_snippet) {
-    return meta.prompt_snippet;
+    const promptSnippet = normalizeGroupLabelText(meta.prompt_snippet);
+    if (promptSnippet) return promptSnippet;
   }
-  if (groupBy === 'source') return `Source #${key}`;
-  if (groupBy === 'generation') return `Generation #${key}`;
-  if (groupBy === 'prompt') return `Prompt ${key}`;
-  if (groupBy === 'sibling') return `Sibling ${key.slice(0, 8)}`;
-  return key;
+  if (groupBy === 'source') return `Source #${normalizedKey}`;
+  if (groupBy === 'generation') return `Generation #${normalizedKey}`;
+  if (groupBy === 'prompt') return `Prompt ${normalizedKey}`;
+  if (groupBy === 'sibling') return `Sibling ${normalizedKey.slice(0, 8)}`;
+  return normalizedKey;
 };
 
 // ---------------------------------------------------------------------------

@@ -20,6 +20,20 @@ import type {
 } from '../lib/useClientFilters';
 import { useFilterChipState } from '../lib/useFilterChipState';
 
+const NULLISH_OPTION_TOKENS = new Set(['null', '(null)', 'undefined', '(undefined)']);
+
+function normalizeOptionText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (NULLISH_OPTION_TOKENS.has(trimmed.toLowerCase())) return undefined;
+  return trimmed;
+}
+
+function getOptionDisplayLabel(opt: Pick<ClientEnumFilterOption, 'label' | 'value'>): string {
+  return normalizeOptionText(opt.label) ?? normalizeOptionText(opt.value) ?? 'Unknown';
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -499,8 +513,8 @@ export function FilterContent<T>({
               { key: string; label: string; options: ClientEnumFilterOption[] }
             >();
             for (const opt of options) {
-              const key = opt.groupKey ?? '__ungrouped__';
-              const label = opt.groupLabel ?? key;
+              const key = normalizeOptionText(opt.groupKey) ?? '__ungrouped__';
+              const label = normalizeOptionText(opt.groupLabel) ?? (key === '__ungrouped__' ? 'Other' : key);
               const existing = groups.get(key);
               if (existing) {
                 existing.options.push(opt);
@@ -539,7 +553,7 @@ export function FilterContent<T>({
                 className="accent-accent flex-shrink-0"
               />
               <span className="truncate">
-                {opt.label}
+                {getOptionDisplayLabel(opt)}
                 {opt.count !== undefined ? ` (${opt.count})` : ''}
               </span>
             </label>

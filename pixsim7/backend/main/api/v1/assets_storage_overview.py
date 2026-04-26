@@ -257,7 +257,7 @@ async def _query_media_types(db: AsyncSession, user_id: int) -> list[MediaTypeBr
     result = await db.execute(text("""
         SELECT
             COALESCE(mime_type, 'unknown') as mime_type,
-            COALESCE(media_type, 'unknown') as media_type,
+            COALESCE(media_type::text, 'unknown') as media_type,
             COUNT(*) as cnt,
             COALESCE(SUM(file_size_bytes), 0) as total_bytes
         FROM assets

@@ -13,7 +13,7 @@ import { Icon } from '@lib/icons';
 
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
-import type { FilterDefinition, FilterOptionValue } from '../lib/api';
+import type { FilterDefinition, FilterMetadataResponse, FilterOptionValue } from '../lib/api';
 import { useCollapsedGroupsStore } from '../stores/collapsedGroupsStore';
 import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
 
@@ -21,10 +21,11 @@ import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
  * UI-specific metadata for filter keys.
  * Frontend owns display concerns (icons, order, labels override).
  */
-const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow?: boolean }> = {
+const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow?: boolean; label?: string }> = {
   q: { icon: 'search', order: 0 },
   media_type: { icon: 'video', order: 1 },
-  provider_id: { icon: 'globe', order: 2 },
+  provider_id: { icon: 'globe', order: 2, label: 'Provider' },
+  effective_provider_id: { icon: 'globe', order: 2, label: 'Provider' },
   operation_type: { icon: 'wand', order: 2 },
   tag: { icon: 'tag', order: 3 },
   content_elements: { icon: 'layers', order: 4 },
@@ -62,6 +63,23 @@ const GROUPED_FILTER_CONFIG: Record<string, {
   source_path:     { separator: '/', rootLabel: '(root)' },
   source_filename: { separator: '/', rootLabel: '(root)', ungroupedKey: 'other' },
 };
+
+const NULLISH_OPTION_TOKENS = new Set(['null', '(null)', 'undefined', '(undefined)']);
+const FILTER_KEY_ALIASES: Record<string, string> = {
+  provider_id: 'effective_provider_id',
+};
+
+function normalizeOptionText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (NULLISH_OPTION_TOKENS.has(trimmed.toLowerCase())) return undefined;
+  return trimmed;
+}
+
+function getOptionDisplayLabel(opt: Pick<FilterOptionValue, 'label' | 'value'>): string {
+  return normalizeOptionText(opt.label) ?? normalizeOptionText(opt.value) ?? 'Unknown';
+}
 
 /**
  * Group filter options by namespace parsed from a separator character.
@@ -147,12 +165,26 @@ export function DynamicFilters({
   const pinnedKeys = usePinnedFiltersStore((s) => s.pinnedKeys);
   const togglePin = usePinnedFiltersStore((s) => s.togglePin);
 
+  const readFilterValue = useCallback(
+    (key: string): string | boolean | number | string[] | undefined => {
+      if (key === 'effective_provider_id') {
+        return (filters.effective_provider_id ?? filters.provider_id) as string | boolean | number | string[] | undefined;
+      }
+      if (key === 'effective_provider_id__mode') {
+        return (filters.effective_provider_id__mode ?? filters.provider_id__mode) as string | boolean | number | string[] | undefined;
+      }
+      return filters[key as keyof AssetFilters] as string | boolean | number | string[] | undefined;
+    },
+    [filters],
+  );
+
   // Sort and split into primary bar vs overflow menu
   const { primaryFilters, overflowFilters } = useMemo(() => {
     if (!metadata) return { primaryFilters: [], overflowFilters: [] };
+    const availableKeys = new Set(metadata.filters.map((f) => f.key));
 
     const hasActiveSelection = (key: string) => {
-      const val = filters[key as keyof AssetFilters];
+      const val = readFilterValue(key);
       if (val === undefined || val === null || val === '' || val === false) return false;
       if (Array.isArray(val)) return val.length > 0;
       return true;
@@ -160,6 +192,8 @@ export function DynamicFilters({
 
     const all = metadata.filters
       .filter((f) => {
+        const canonicalKey = FILTER_KEY_ALIASES[f.key];
+        if (canonicalKey && availableKeys.has(canonicalKey)) return false;
         if (include && !include.includes(f.key)) return false;
         if (exclude.includes(f.key)) return false;
         return true;
@@ -187,7 +221,7 @@ export function DynamicFilters({
       }
     }
     return { primaryFilters: primary, overflowFilters: overflow };
-  }, [metadata, include, exclude, pinnedKeys, filters]);
+  }, [metadata, include, exclude, pinnedKeys, readFilterValue]);
 
   const handleFilterChange = useCallback(
     (key: string, value: string | boolean | number | string[] | undefined) => {
@@ -198,10 +232,16 @@ export function DynamicFilters({
         : value === ''
           ? undefined
           : value;
-      onFiltersChange({
+      const nextFilters = {
         ...filters,
         [key]: normalized,
-      });
+      };
+      // Keep one provider key active in UI/state to avoid duplicate provider chips.
+      if (key === 'effective_provider_id' || key === 'effective_provider_id__mode') {
+        nextFilters.provider_id = undefined;
+        nextFilters.provider_id__mode = undefined;
+      }
+      onFiltersChange(nextFilters);
     },
     [filters, onFiltersChange]
   );
@@ -278,7 +318,7 @@ export function DynamicFilters({
         const isOpen = openFilters.has(filter.key);
         const isHovered = hoveredKey === filter.key;
         const isVisible = isOpen || isHovered;
-        const selectedValue = filters[filter.key as keyof AssetFilters];
+        const selectedValue = readFilterValue(filter.key);
         const selectedCount = Array.isArray(selectedValue)
           ? selectedValue.length
           : selectedValue
@@ -288,6 +328,7 @@ export function DynamicFilters({
         const uiConfig = FILTER_UI_CONFIG[filter.key] || {};
         const resolvedIcon = uiConfig.icon ?? 'sliders';
         const displayLabel =
+          uiConfig.label ||
           filter.label ||
           filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -387,11 +428,15 @@ export function DynamicFilters({
             >
               <FilterControl
                 definition={filter}
-                options={metadata.options[filter.key] || []}
-                value={filters[filter.key as keyof AssetFilters]}
+                options={
+                  filter.key === 'effective_provider_id'
+                    ? (metadata.options.effective_provider_id || metadata.options.provider_id || [])
+                    : (metadata.options[filter.key] || [])
+                }
+                value={readFilterValue(filter.key)}
                 onChange={(value) => handleFilterChange(filter.key, value)}
                 matchModes={filter.match_modes}
-                mode={filters[`${filter.key}__mode` as keyof AssetFilters] as string | undefined}
+                mode={readFilterValue(`${filter.key}__mode`) as string | undefined}
                 onModeChange={(mode) => handleFilterChange(`${filter.key}__mode`, mode)}
                 compact={compact}
               />
@@ -586,7 +631,9 @@ const SEARCH_THRESHOLD = 10;
 /** Presentable label for a group key (e.g. "other" → "Other") */
 function formatGroupLabel(key: string): string {
   if (key === 'other') return 'Other';
-  return key.charAt(0).toUpperCase() + key.slice(1);
+  const normalized = normalizeOptionText(key);
+  if (!normalized) return 'Unknown';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function GroupedEnumFilter({
@@ -734,7 +781,7 @@ function FlatEnumFilter({
 
 interface OverflowMenuProps {
   filters: FilterDefinition[];
-  metadata: { options: Record<string, FilterOptionValue[]> };
+  metadata: FilterMetadataResponse;
   values: AssetFilters;
   onChange: (key: string, value: string | boolean | number | string[] | undefined) => void;
   hasSelection: boolean;
@@ -795,6 +842,7 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
               {filters.map((filter) => {
                 const uiConfig = FILTER_UI_CONFIG[filter.key] || {};
                 const displayLabel =
+                  uiConfig.label ||
                   filter.label ||
                   filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
                 const val = values[filter.key as keyof AssetFilters];
@@ -819,7 +867,8 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
 
                 // Enum overflow filters (e.g. provider_status)
                 if (filter.type === 'enum') {
-                  const options = metadata.options[filter.key] || [];
+                  const optionsByKey = metadata.options as unknown as Record<string, FilterOptionValue[]>;
+                  const options = optionsByKey?.[filter.key] || [];
                   const selectedValues = Array.isArray(val) ? val.map(String) : val ? [String(val)] : [];
                   return (
                     <div key={filter.key} className="space-y-1">
@@ -846,7 +895,7 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
                               }}
                               className="accent-accent"
                             />
-                            <span>{opt.label || opt.value}</span>
+                            <span>{getOptionDisplayLabel(opt)}</span>
                           </label>
                         );
                       })}
@@ -1052,14 +1101,14 @@ function FilterControl({
           const parts = opt.value.split(groupSeparator);
           if (parts.length > 1) {
             // Has separator: strip namespace prefix, show the rest
-            const afterSep = parts.slice(1).join(groupSeparator);
-            displayLabel = afterSep || (groupCfg?.rootLabel ?? opt.value);
+            const afterSep = normalizeOptionText(parts.slice(1).join(groupSeparator));
+            displayLabel = afterSep || (groupCfg?.rootLabel ?? getOptionDisplayLabel(opt));
           } else {
             // No separator found: show the original value (e.g. bare filename)
-            displayLabel = opt.label || opt.value;
+            displayLabel = getOptionDisplayLabel(opt);
           }
         } else {
-          displayLabel = opt.label || opt.value;
+          displayLabel = getOptionDisplayLabel(opt);
         }
         return (
           <label
