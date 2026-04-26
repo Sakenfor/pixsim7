@@ -9,6 +9,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
+import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
@@ -49,19 +50,13 @@ interface PurgeResult {
 // API helpers (same pattern as MaintenanceDashboard)
 // ---------------------------------------------------------------------------
 
-function apiBase() {
-  // Empty = relative mode (proxy handles routing). Undefined = hardcoded fallback.
-  const url = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
-  return url.replace(/\/$/, '');
-}
-
 function authHeaders(): Record<string, string> {
   const token = authService.getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function apiFetch<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await fetch(`${BACKEND_BASE}${path}`, {
     method,
     headers: withCorrelationHeaders(authHeaders(), 'settings:content-packs-dashboard'),
   });

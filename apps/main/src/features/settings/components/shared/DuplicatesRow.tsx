@@ -9,6 +9,7 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
 import { deleteAsset } from '@lib/api/assets';
+import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 
@@ -51,19 +52,13 @@ interface DuplicatesResponse {
 
 // ── API helpers ───────────────────────────────────────────────────────
 
-function apiBase() {
-  // Empty = relative mode (proxy handles routing). Undefined = hardcoded fallback.
-  const url = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
-  return url.replace(/\/$/, '');
-}
-
 function authHeaders(): Record<string, string> {
   const token = authService.getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await fetch(`${BACKEND_BASE}${path}`, {
     headers: withCorrelationHeaders(authHeaders(), 'settings:duplicates'),
   });
   if (!res.ok) {
