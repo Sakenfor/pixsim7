@@ -192,6 +192,37 @@ package promptpacks
 	[string]:     _
 }
 
+// ── Tag registry ──────────────────────────────────────────────────────────
+// Packs that introduce ad-hoc tag keys (used in variant `tags:` blocks)
+// declare them here so cue:gen can emit a vocabulary YAML the backend's
+// vocab loader picks up. Avoids the previous footgun where a pack used
+// `tag:foo` in its matrix preset but `foo` wasn't registered, 500-ing the
+// manifests endpoint.
+//
+// Two packs declaring the SAME key with IDENTICAL metadata is allowed
+// (deduped at codegen). Conflicting metadata is a hard error.
+
+#TagApplicability: {
+	role:      string
+	category?: string
+	[string]:  _
+}
+
+#TagRegistryEntry: {
+	label:           string
+	description:     string
+	data_type:       *"string" | "number" | "boolean"
+	allowed_values?: [...string]
+	aliases?:        *[] | [...string]
+	value_aliases?:  *{} | {[string]: string}
+	applies_to?:     [...#TagApplicability]
+	status?:         *"active" | "experimental" | "deprecated"
+}
+
+#TagRegistryV1: {
+	[#SimpleId]: #TagRegistryEntry
+}
+
 #PromptBlockPackV1: {
 	version:      *"1.0.0" | string
 	package_name: #PackageName

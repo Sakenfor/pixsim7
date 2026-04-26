@@ -9,6 +9,51 @@ package promptpacks
 // Tags enable suggestion filtering by register, intensity, motion_type,
 // and applies_to.  Register is 50/50 technical/poetic by design.
 
+// ── Shared enum values (also referenced by tag_registry below) ─────────
+#LatinRegisterValues:   ["technical", "poetic"]
+#LatinIntensityValues:  ["subtle", "moderate", "firm", "absolute"]
+#LatinFormValues:       ["predication", "noun_phrase"]
+#TouchMotionTypeValues: ["press", "lick", "cup", "trace", "grip", "strike", "cradle"]
+#TouchAppliesToValues:  ["gluteal", "flesh_general"]
+
+tag_registry: #TagRegistryV1 & {
+	register: {
+		label:          "Register"
+		description:    "Stylistic register of a Latin enhancer phrase."
+		allowed_values: #LatinRegisterValues
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	intensity: {
+		label:          "Intensity"
+		description:    "Intensity tier for Latin enhancer phrases."
+		allowed_values: #LatinIntensityValues
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	motion_type: {
+		label:          "Motion Type"
+		description:    "Kind of contact/motion the phrase describes."
+		allowed_values: #TouchMotionTypeValues
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	applies_to: {
+		label:          "Applies To"
+		description:    "Anatomical/contextual target the phrase applies to."
+		allowed_values: #TouchAppliesToValues
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	latin_form: {
+		label:          "Latin Form"
+		description:    "Grammatical form: predication (full clause) or noun_phrase (fragment)."
+		allowed_values: #LatinFormValues
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_touch_dynamics"

@@ -17,7 +17,7 @@ import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 const CHECK_MODE = process.argv.includes('--check');
 
@@ -42,6 +42,19 @@ const PROMPT_BLOCK_TAGS_VOCAB_FILE = path.join(
   'plugins',
   'starter_pack',
   'vocabularies',
+  'prompt_block_tags.yaml'
+);
+const CUE_PACKS_PLUGIN_DIR = path.join(
+  REPO_ROOT,
+  'pixsim7',
+  'backend',
+  'main',
+  'plugins',
+  'cue_packs'
+);
+const CUE_PACKS_VOCAB_DIR = path.join(CUE_PACKS_PLUGIN_DIR, 'vocabularies');
+const CUE_PACKS_TAG_REGISTRY_FILE = path.join(
+  CUE_PACKS_VOCAB_DIR,
   'prompt_block_tags.yaml'
 );
 const CUE_BIN = resolveCueBinary();
@@ -140,6 +153,259 @@ function loadCanonicalPromptTagKeys(): Set<string> {
     }
   }
   return keys;
+}
+
+// =============================================================================
+// Tag registry aggregation (per-pack tag_registry → cue_packs vocab YAML)
+// =============================================================================
+
+type TagApplicability = { role: string; category?: string };
+type TagRegistryEntry = {
+  label: string;
+  description: string;
+  data_type: 'string' | 'number' | 'boolean';
+  allowed_values: string[];
+  aliases: string[];
+  value_aliases: Record<string, string>;
+  applies_to: TagApplicability[];
+  status: 'active' | 'experimental' | 'deprecated';
+  // Provenance for conflict reporting; not emitted to YAML.
+  _packSources: string[];
+};
+
+const NON_VALUE_REGISTRY_FIELDS = [
+  'label',
+  'description',
+  'data_type',
+  'aliases',
+  'value_aliases',
+  'applies_to',
+  'status',
+] as const;
+
+function extractTagRegistryFromPack(
+  pack: { id: string; cueSource: string }
+): Record<string, JsonObject> | null {
+  // tag_registry is an optional sibling of `pack` and `manifest` at the cue
+  // file's top level. cue export errors when the expression doesn't resolve;
+  // catch and treat as "not declared". A real cue/syntax error would already
+  // have surfaced when the per-pack lint exported `pack` earlier, so we don't
+  // mask significant failures here.
+  let raw: unknown;
+  try {
+    raw = runCueExportJson(pack.cueSource, 'tag_registry');
+  } catch {
+    return null;
+  }
+  if (!isRecord(raw)) return null;
+  const out: Record<string, JsonObject> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isRecord(value)) {
+      throw new Error(
+        `[tag_registry] ${pack.id}: entry "${key}" must be an object, got ${typeof value}`
+      );
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function normalizeRegistryEntry(
+  packId: string,
+  tagKey: string,
+  raw: JsonObject
+): TagRegistryEntry {
+  const label = asNonEmptyString(raw.label);
+  const description = asNonEmptyString(raw.description);
+  if (!label) {
+    throw new Error(
+      `[tag_registry] ${packId}.${tagKey}: label must be a non-empty string`
+    );
+  }
+  if (!description) {
+    throw new Error(
+      `[tag_registry] ${packId}.${tagKey}: description must be a non-empty string`
+    );
+  }
+  const dataType = (raw.data_type ?? 'string') as TagRegistryEntry['data_type'];
+  if (dataType !== 'string' && dataType !== 'number' && dataType !== 'boolean') {
+    throw new Error(
+      `[tag_registry] ${packId}.${tagKey}: data_type must be string|number|boolean`
+    );
+  }
+  const allowedValuesRaw = raw.allowed_values;
+  const allowedValues = Array.isArray(allowedValuesRaw)
+    ? allowedValuesRaw.filter((v): v is string => typeof v === 'string')
+    : [];
+  const aliases = Array.isArray(raw.aliases)
+    ? raw.aliases.filter((v): v is string => typeof v === 'string')
+    : [];
+  const valueAliases = isRecord(raw.value_aliases)
+    ? Object.fromEntries(
+        Object.entries(raw.value_aliases).filter(
+          ([, v]) => typeof v === 'string'
+        ) as [string, string][]
+      )
+    : {};
+  const appliesToRaw = raw.applies_to;
+  const appliesTo: TagApplicability[] = Array.isArray(appliesToRaw)
+    ? appliesToRaw
+        .filter(isRecord)
+        .map((entry) => {
+          const role = asNonEmptyString(entry.role);
+          if (!role) {
+            throw new Error(
+              `[tag_registry] ${packId}.${tagKey}.applies_to: role required`
+            );
+          }
+          const category = asNonEmptyString(entry.category);
+          return category ? { role, category } : { role };
+        })
+    : [];
+  const statusRaw = raw.status ?? 'active';
+  if (
+    statusRaw !== 'active' &&
+    statusRaw !== 'experimental' &&
+    statusRaw !== 'deprecated'
+  ) {
+    throw new Error(
+      `[tag_registry] ${packId}.${tagKey}: status must be active|experimental|deprecated`
+    );
+  }
+  return {
+    label,
+    description,
+    data_type: dataType,
+    allowed_values: allowedValues,
+    aliases,
+    value_aliases: valueAliases,
+    applies_to: appliesTo,
+    status: statusRaw,
+    _packSources: [packId],
+  };
+}
+
+function mergeRegistryEntry(
+  tagKey: string,
+  existing: TagRegistryEntry,
+  incoming: TagRegistryEntry,
+  incomingPackId: string
+): TagRegistryEntry {
+  // Non-value metadata must be identical across packs declaring the same key.
+  for (const field of NON_VALUE_REGISTRY_FIELDS) {
+    const a = JSON.stringify(existing[field]);
+    const b = JSON.stringify(incoming[field]);
+    if (a !== b) {
+      throw new Error(
+        `[tag_registry] tag "${tagKey}" has conflicting "${field}" between packs ` +
+          `[${existing._packSources.join(', ')}] and [${incomingPackId}]:\n` +
+          `  existing: ${a}\n  incoming: ${b}`
+      );
+    }
+  }
+  // allowed_values unions across packs (each pack contributes its enum subset).
+  const merged = new Set<string>([
+    ...existing.allowed_values,
+    ...incoming.allowed_values,
+  ]);
+  return {
+    ...existing,
+    allowed_values: [...merged].sort(),
+    _packSources: [...existing._packSources, incomingPackId],
+  };
+}
+
+function aggregateTagRegistries(
+  packs: { id: string; cueSource: string }[]
+): Map<string, TagRegistryEntry> {
+  const aggregated = new Map<string, TagRegistryEntry>();
+  for (const pack of packs) {
+    const registry = extractTagRegistryFromPack(pack);
+    if (!registry) continue;
+    for (const [tagKey, raw] of Object.entries(registry)) {
+      const entry = normalizeRegistryEntry(pack.id, tagKey, raw);
+      const existing = aggregated.get(tagKey);
+      if (!existing) {
+        aggregated.set(tagKey, entry);
+      } else {
+        aggregated.set(tagKey, mergeRegistryEntry(tagKey, existing, entry, pack.id));
+      }
+    }
+  }
+  return aggregated;
+}
+
+function serializeAggregatedRegistry(
+  aggregated: Map<string, TagRegistryEntry>
+): string {
+  if (aggregated.size === 0) {
+    return normalizeText(
+      '# Auto-generated by tools/codegen/generate-prompt-pack-schemas.ts.\n' +
+        '# Do not edit by hand — declare tags in cue pack tag_registry blocks.\n\n' +
+        'tags: {}\n'
+    );
+  }
+  const tagsObject: Record<string, JsonObject> = {};
+  for (const tagKey of [...aggregated.keys()].sort()) {
+    const entry = aggregated.get(tagKey)!;
+    tagsObject[tagKey] = {
+      label: entry.label,
+      description: entry.description,
+      data_type: entry.data_type,
+      allowed_values: entry.allowed_values,
+      aliases: entry.aliases,
+      value_aliases: entry.value_aliases,
+      applies_to: entry.applies_to,
+      status: entry.status,
+    };
+  }
+  const yamlBody = stringifyYaml({ tags: tagsObject }, { lineWidth: 0 });
+  return normalizeText(
+    '# Auto-generated by tools/codegen/generate-prompt-pack-schemas.ts.\n' +
+      '# Do not edit by hand — declare tags in cue pack tag_registry blocks.\n' +
+      '# Sourced from: ' +
+      [...new Set([...aggregated.values()].flatMap((e) => e._packSources))]
+        .sort()
+        .join(', ') +
+      '\n\n' +
+      yamlBody
+  );
+}
+
+async function emitAggregatedTagRegistry(
+  aggregated: Map<string, TagRegistryEntry>
+): Promise<{ changed: boolean; stale: boolean }> {
+  const generated = serializeAggregatedRegistry(aggregated);
+  const existing = await readFileIfExists(CUE_PACKS_TAG_REGISTRY_FILE);
+  const existingNormalized = existing === null ? null : normalizeText(existing);
+
+  if (CHECK_MODE) {
+    const ok = existingNormalized === generated;
+    if (ok) {
+      console.log('[ok] cue-packs tag registry up-to-date');
+    } else {
+      console.error(
+        `[stale] cue-packs tag registry differs: ${CUE_PACKS_TAG_REGISTRY_FILE}`
+      );
+    }
+    return { changed: false, stale: !ok };
+  }
+
+  if (existingNormalized === generated) {
+    console.log('[skip] cue-packs tag registry already up-to-date');
+    return { changed: false, stale: false };
+  }
+
+  await fs.mkdir(CUE_PACKS_VOCAB_DIR, { recursive: true });
+  // Marker file so the plugin loader treats this as a real plugin dir even
+  // when only the vocab YAML exists.
+  const initFile = path.join(CUE_PACKS_PLUGIN_DIR, '__init__.py');
+  if (!fsSync.existsSync(initFile)) {
+    await fs.writeFile(initFile, '"""Auto-generated cue-pack vocab plugin."""\n', 'utf8');
+  }
+  await fs.writeFile(CUE_PACKS_TAG_REGISTRY_FILE, generated, 'utf8');
+  console.log(`[gen] cue-packs tag registry -> ${CUE_PACKS_TAG_REGISTRY_FILE}`);
+  return { changed: true, stale: false };
 }
 
 function collectCueFilesRecursively(root: string): string[] {
@@ -637,6 +903,20 @@ async function main(): Promise<void> {
     `Discovered ${packs.length} pack(s): ${packs.map((p) => p.id).join(', ')}`
   );
 
+  // Aggregate per-pack tag_registry blocks BEFORE lint so derived tag keys are
+  // visible to the matrix-preset reference check (avoids false-positive
+  // "unknown tag key" errors on cue-pack-derived tags).
+  const aggregatedTagRegistry = aggregateTagRegistries(packs);
+  for (const tagKey of aggregatedTagRegistry.keys()) {
+    CANONICAL_PROMPT_TAG_KEYS.add(tagKey);
+  }
+  if (aggregatedTagRegistry.size > 0) {
+    console.log(
+      `Aggregated ${aggregatedTagRegistry.size} tag(s) from cue pack registries: ` +
+        `${[...aggregatedTagRegistry.keys()].sort().join(', ')}`
+    );
+  }
+
   const lintState: LintState = {
     blockIdOrigins: new Map<string, string>(),
   };
@@ -721,6 +1001,11 @@ async function main(): Promise<void> {
     } else {
       console.log(`[skip] ${pack.id} manifest already up-to-date`);
     }
+  }
+
+  const tagRegistryResult = await emitAggregatedTagRegistry(aggregatedTagRegistry);
+  if (tagRegistryResult.stale) {
+    stale = true;
   }
 
   if (CHECK_MODE && stale) {
