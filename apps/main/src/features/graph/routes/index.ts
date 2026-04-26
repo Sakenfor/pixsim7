@@ -15,7 +15,6 @@ const openArcGraphAction: ActionDefinition = {
   description: 'Open the arc graph editor',
   icon: 'fileText',
   route: ROUTES.ARC_GRAPH,
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     navigateTo('/workspace?openPanel=arc-graph');

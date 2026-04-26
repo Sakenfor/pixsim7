@@ -21,7 +21,6 @@ const openAutomationAction: ActionDefinition = {
   description: 'Manage Android devices and automation loops',
   icon: 'bot',
   route: '/automation',
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     navigateTo('/workspace?openPanel=automation');

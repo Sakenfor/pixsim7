@@ -24,7 +24,6 @@ const openWorkspaceAction: ActionDefinition = {
   icon: "palette",
   shortcut: "Ctrl+Shift+W",
   route: ROUTES.WORKSPACE,
-  contexts: ["background"],
   category: "quick-add",
   execute: () => {
     navigateTo(ROUTES.WORKSPACE);

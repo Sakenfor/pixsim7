@@ -14,7 +14,6 @@ const openPluginManagerAction: ActionDefinition = {
   icon: 'settings',
   shortcut: 'Ctrl+Shift+P',
   route: '/plugins',
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     navigateTo('/plugins');

@@ -16,7 +16,6 @@ const openCodegenAction: ActionDefinition = {
   description: 'Code generation, database migrations, and other developer tasks',
   icon: 'code',
   route: '/dev/developer-tasks',
-  contexts: ['background'],
   category: 'quick-add',
 };
 

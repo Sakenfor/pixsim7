@@ -19,7 +19,6 @@ const openGalleryAction: ActionDefinition = {
   icon: 'image',
   shortcut: 'Ctrl+Shift+A',
   route: ROUTES.ASSETS,
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.ASSETS);

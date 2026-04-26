@@ -17,7 +17,6 @@ const quickGenerateAction: ActionDefinition = {
   description: 'Open quick generate in control center',
   icon: 'zap',
   shortcut: 'Ctrl+G',
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('quickGenerate');
@@ -31,7 +30,6 @@ const openPresetsAction: ActionDefinition = {
   title: 'Open Presets',
   description: 'Open generation presets',
   icon: 'palette',
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('presets');
@@ -45,7 +43,6 @@ const selectProviderAction: ActionDefinition = {
   title: 'Select Provider',
   description: 'Select generation provider',
   icon: 'globe',
-  contexts: ['background'],
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('providers');
