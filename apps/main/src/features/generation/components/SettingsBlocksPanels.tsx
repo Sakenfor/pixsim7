@@ -1,9 +1,8 @@
 /**
- * SettingsPanel and BlocksPanel for QuickGenerate.
+ * SettingsPanel for QuickGenerate.
  * Split from QuickGeneratePanels.tsx.
  */
 import { useDockviewId } from '@lib/dockview';
-import { PromptCompanionHost } from '@lib/ui';
 
 import {
   CAP_PROMPT_BOX,
@@ -127,28 +126,3 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   );
 }
 
-/**
- * Blocks Panel - Prompt companion with block analysis tools
- */
-export function BlocksPanel(props: QuickGenPanelProps) {
-  const ctx = props.context;
-  const controller = useQuickGenerateController();
-
-  const {
-    prompt = controller.prompt,
-    setPrompt = controller.setPrompt,
-    operationType = controller.operationType,
-    providerId = controller.providerId,
-  } = ctx || {};
-
-  return (
-    <div className="h-full w-full p-2 overflow-auto">
-      <PromptCompanionHost
-        surface="quick-generate"
-        promptValue={prompt}
-        setPromptValue={setPrompt}
-        metadata={{ operationType, providerId }}
-      />
-    </div>
-  );
-}

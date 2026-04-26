@@ -45,7 +45,7 @@ const PAGE_NAV_HINTS: Record<string, PageNavHints> = {
     featureTagHints: ['scene', 'workspace', 'editor'],
   },
   'generation-page': {
-    panelIds: ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks', 'providers'],
+    panelIds: ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'providers'],
     featureTagHints: ['generation', 'quickgen'],
   },
   automation: {

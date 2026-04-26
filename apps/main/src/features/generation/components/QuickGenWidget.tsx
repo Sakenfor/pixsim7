@@ -81,8 +81,6 @@ export interface QuickGenWidgetProps {
   isOpen: boolean;
   /** Open/close the widget host. */
   setOpen: (open: boolean) => void;
-  /** Include blocks panel in layout. */
-  showBlocks?: boolean;
   /** @deprecated Use contextExposure instead. */
   provideContext?: boolean;
   /**
@@ -167,7 +165,6 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       priority,
       isOpen,
       setOpen,
-      showBlocks = false,
       provideContext = true,
       contextExposure,
       contextPriority = 50,
@@ -204,7 +201,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
     });
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
-    const layout = useQuickGenPanelLayout({ showBlocks, panelIds });
+    const layout = useQuickGenPanelLayout({ panelIds });
     const panelHostResetKey = useMemo(() => {
       const layoutShape = layout.panels.join('|');
       const usesTransitionLayout = operationType === 'video_transition';

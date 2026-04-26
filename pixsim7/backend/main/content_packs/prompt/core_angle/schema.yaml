@@ -29,26 +29,26 @@ blocks:
             required: false
         params:
           - key: vertical_angle
-            tag_key: vertical_angle
             type: enum
+            default: eye
             enum:
               - high
               - eye
               - low
               - bird
               - worm
-            default: eye
+            tag_key: vertical_angle
           - key: roll
-            tag_key: camera_roll
             type: enum
+            default: level
             enum:
               - level
               - dutch_left
               - dutch_right
-            default: level
+            tag_key: camera_roll
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           vertical_angle: eye

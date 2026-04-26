@@ -29,43 +29,43 @@ blocks:
             required: true
         params:
           - key: beat_type
-            tag_key: beat_type
             type: enum
+            default: greet
             enum:
               - greet
               - brief_exchange
               - pass_item
               - hold
               - brief_acknowledge
-            default: greet
+            tag_key: beat_type
           - key: contact_stage
-            tag_key: contact_stage
             type: enum
+            default: none
             enum:
               - none
               - offered_hand
               - brief_contact
-            default: none
+            tag_key: contact_stage
           - key: response_mode
-            tag_key: response_mode
             type: enum
+            default: neutral
             enum:
               - neutral
               - receptive
               - hesitant
               - boundary
-            default: neutral
+            tag_key: response_mode
           - key: social_tone
-            tag_key: social_tone
             type: enum
+            default: neutral
             enum:
               - neutral
               - warm
               - playful
-            default: neutral
+            tag_key: social_tone
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           beat_type: greet

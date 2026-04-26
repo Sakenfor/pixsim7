@@ -11,6 +11,7 @@ import {
 
 import { getPromptRoleHex, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 import type { PromptBlockCandidate } from '../types';
 
 import { parsePrimitiveMatch } from './parsePrimitiveMatch';
@@ -20,6 +21,7 @@ import { parsePrimitiveMatch } from './parsePrimitiveMatch';
 export interface ShadowAnalysisConfig {
   candidates: PromptBlockCandidate[];
   roleColors?: Record<string, string>;
+  tokenLines?: PromptTokenLine[];
 }
 
 export interface ShadowAnalysisCallbacks {
@@ -105,6 +107,33 @@ function buildDecorations(
   return builder.finish();
 }
 
+// ── Header line decorations ────────────────────────────────────────────────
+
+const headerLineMark = Decoration.line({
+  attributes: { class: 'cm-shadow-header-line' },
+});
+
+function buildHeaderDecorations(
+  tokenLines: PromptTokenLine[] | undefined,
+  view: EditorView,
+): DecorationSet {
+  if (!tokenLines || tokenLines.length === 0) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  const docLen = view.state.doc.length;
+
+  const headerStarts = tokenLines
+    .filter((l) => l.kind === 'header')
+    .map((l) => l.start)
+    .filter((s) => s >= 0 && s < docLen)
+    .sort((a, b) => a - b);
+
+  for (const charPos of headerStarts) {
+    const line = view.state.doc.lineAt(charPos);
+    builder.add(line.from, line.from, headerLineMark);
+  }
+  return builder.finish();
+}
+
 // ── Decoration plugin ──────────────────────────────────────────────────────
 
 const shadowDecoPlugin = ViewPlugin.define(
@@ -130,6 +159,24 @@ const shadowDecoPlugin = ViewPlugin.define(
   {
     decorations: (plugin) => plugin.decorations,
   },
+);
+
+const shadowHeaderDecoPlugin = ViewPlugin.define(
+  (view) => {
+    let lastConfig = view.state.facet(shadowConfigFacet);
+    let decorations = buildHeaderDecorations(lastConfig?.tokenLines, view);
+    return {
+      get decorations() { return decorations; },
+      update(update: ViewUpdate) {
+        const newConfig = update.state.facet(shadowConfigFacet);
+        const configChanged = newConfig !== lastConfig;
+        if (!update.docChanged && !configChanged) return;
+        lastConfig = newConfig;
+        decorations = buildHeaderDecorations(newConfig?.tokenLines, update.view);
+      },
+    };
+  },
+  { decorations: (plugin) => plugin.decorations },
 );
 
 // ── Hover tooltip ──────────────────────────────────────────────────────────
@@ -264,6 +311,13 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
+const headerLineTheme = EditorView.baseTheme({
+  '.cm-shadow-header-line': {
+    borderTop: '1px solid rgba(148,163,184,0.25)',
+    marginTop: '1px',
+  },
+});
+
 export function shadowAnalysisExtension(
   config: ShadowAnalysisConfig | null,
   callbacks?: ShadowAnalysisCallbacks,
@@ -272,7 +326,11 @@ export function shadowAnalysisExtension(
     shadowConfigFacet.of(config),
     shadowDecoPlugin,
     shadowHoverTooltip(callbacks),
+    headerLineTheme,
   ];
+  if (config?.tokenLines?.length) {
+    parts.push(shadowHeaderDecoPlugin);
+  }
   if (callbacks?.onCandidateClick) {
     parts.push(shadowClickHandler(callbacks));
   }

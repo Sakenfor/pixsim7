@@ -29,28 +29,28 @@ blocks:
             required: false
         params:
           - key: perspective
-            tag_key: pov_perspective
             type: enum
+            default: first_person
             enum:
               - first_person
               - over_shoulder
               - third_person
               - observer
               - top_down
-            default: first_person
+            tag_key: pov_perspective
           - key: camera_height
-            tag_key: pov_height
             type: enum
+            default: eye_level
             enum:
               - ground
               - waist
               - chest
               - eye_level
               - overhead
-            default: eye_level
+            tag_key: pov_height
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           perspective: first_person

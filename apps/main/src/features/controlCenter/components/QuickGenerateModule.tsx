@@ -12,7 +12,7 @@ import {
 } from '@features/generation';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
-const CC_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
+const CC_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
@@ -55,7 +55,6 @@ export function QuickGenerateModule() {
       priority={50}
       isOpen={ccIsOpen}
       setOpen={ccSetOpen}
-      showBlocks
       contextPriority={60}
       storageKeyPrefix="quickgen"
       className="h-full flex flex-col"

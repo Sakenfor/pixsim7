@@ -9,8 +9,6 @@ import { registerProviderPlugins } from '@features/providers/lib/plugins';
 
 import { registerFrontendMiniGames } from '@/components/minigames/registry';
 import { registerIconSetsPlugin } from '@/plugins/ui/icon-sets';
-import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
-
 import { bootstrapExamplePlugins } from './bootstrap';
 import { discoverControlCenterRegistrations } from './bootstrapControlCenters';
 import { discoverOverlayWidgetRegistrations } from './bootstrapOverlayWidgets';
@@ -55,7 +53,6 @@ async function doInitialize(options: PluginKernelOptions): Promise<void> {
     await registerProviderPlugins();
 
     await registerBrainTools();
-    await registerPromptCompanion();
     await registerIconSetsPlugin();
 
     const [sourceControlCenters, sourceSceneViews, sourceOverlayWidgets, bundleRegistrations] = await Promise.all([

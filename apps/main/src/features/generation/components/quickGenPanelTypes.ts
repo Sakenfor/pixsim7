@@ -18,8 +18,7 @@ import type { OperationType } from '@/types/operations';
 export type QuickGenPanelId =
   | 'quickgen-asset'
   | 'quickgen-prompt'
-  | 'quickgen-settings'
-  | 'quickgen-blocks';
+  | 'quickgen-settings';
 
 // Shared context passed to all panels
 export interface QuickGenPanelContext {

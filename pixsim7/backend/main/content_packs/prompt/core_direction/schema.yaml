@@ -10,6 +10,15 @@ blocks:
       category: direction
       capabilities:
         - direction.axis
+      op:
+        op_id_template: direction.axis.{variant}
+        signature_id: direction.axis.v1
+        modalities:
+          - both
+        refs:
+          - key: subject
+            capability: subject
+            required: false
       text_template: 'Direction token: {variant}.'
       tags:
         modifier_family: direction
@@ -32,15 +41,6 @@ blocks:
           - rotating
           - spin
           - orbit
-      op:
-        op_id_template: direction.axis.{variant}
-        signature_id: direction.axis.v1
-        modalities:
-          - both
-        refs:
-          - key: subject
-            capability: subject
-            required: false
       variants:
         - key: in
           tags:

@@ -30,23 +30,23 @@ blocks:
         params:
           - key: shot_size
             type: enum
+            default: medium
             enum:
               - extreme_wide
               - wide
               - medium
               - close_up
               - extreme_close_up
-            default: medium
           - key: subject_count
             type: enum
+            default: single
             enum:
               - single
               - pair
               - group
-            default: single
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           shot_size: medium

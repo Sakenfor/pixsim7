@@ -30,25 +30,25 @@ blocks:
         params:
           - key: focus_target
             type: enum
+            default: subject
             enum:
               - subject
               - target
               - background
-            default: subject
           - key: depth_of_field
             type: enum
+            default: medium
             enum:
               - shallow
               - medium
               - deep
-            default: medium
           - key: rack
-            tag_key: rack_focus
             type: boolean
             default: false
+            tag_key: rack_focus
           - key: target_ref
-            required: false
             type: ref
+            required: false
             ref_capability: target
         default_args:
           focus_target: subject

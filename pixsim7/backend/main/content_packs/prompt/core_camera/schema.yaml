@@ -10,10 +10,6 @@ blocks:
       category: camera
       capabilities:
         - camera.motion
-      text_template: 'Camera motion token: {variant}.'
-      tags:
-        modifier_family: camera_motion
-        temporal: dynamic
       op:
         op_id_template: camera.motion.{variant}
         signature_id: camera.motion.v1
@@ -26,15 +22,14 @@ blocks:
             required: false
         params:
           - key: speed
-            tag_key: motion_speed
             type: enum
             enum:
               - slow
               - normal
               - fast
             default: normal
+            tag_key: motion_speed
           - key: direction
-            tag_key: motion_direction
             type: enum
             enum:
               - in
@@ -48,131 +43,136 @@ blocks:
               - around
               - none
             default: none
+            tag_key: motion_direction
         default_args:
           speed: normal
           direction: none
+      text_template: 'Camera motion token: {variant}.'
+      tags:
+        modifier_family: camera_motion
+        temporal: dynamic
       variants:
         - key: zoom
+          op_modalities:
+            - both
+          op_args:
+            direction: in
           tags:
             camera_motion: zoom
             modality_support: both
             image_surface: zoomed-in framing
             video_surface: camera zooms
+        - key: zoom_out
           op_modalities:
             - both
           op_args:
-            direction: in
-        - key: zoom_out
+            direction: out
           tags:
             camera_motion: zoom
             modality_support: both
             image_surface: zoomed-out framing
             video_surface: camera zooms out
-          op_modalities:
-            - both
-          op_args:
-            direction: out
         - key: pan
+          op_args:
+            direction: left
           tags:
             camera_motion: pan
             modality_support: video
             image_surface: lateral framing emphasis
             video_surface: camera pans
-          op_args:
-            direction: left
         - key: pan_right
+          op_args:
+            direction: right
           tags:
             camera_motion: pan
             modality_support: video
             image_surface: reverse lateral framing emphasis
             video_surface: camera pans right
-          op_args:
-            direction: right
         - key: tilt
+          op_args:
+            direction: up
           tags:
             camera_motion: tilt
             modality_support: video
             image_surface: vertical framing emphasis
             video_surface: camera tilts
-          op_args:
-            direction: up
         - key: tilt_down
+          op_args:
+            direction: down
           tags:
             camera_motion: tilt
             modality_support: video
             image_surface: downward framing emphasis
             video_surface: camera tilts down
-          op_args:
-            direction: down
         - key: dolly
+          op_args:
+            direction: forward
           tags:
             camera_motion: dolly
             modality_support: video
             image_surface: depth shift framing
             video_surface: camera dollies
-          op_args:
-            direction: forward
         - key: dolly_back
+          op_args:
+            direction: backward
           tags:
             camera_motion: dolly
             modality_support: video
             image_surface: pull-back depth framing
             video_surface: camera dollies backward
-          op_args:
-            direction: backward
         - key: truck
+          op_args:
+            direction: left
           tags:
             camera_motion: truck
             modality_support: video
             image_surface: lateral depth framing
             video_surface: camera trucks
-          op_args:
-            direction: left
         - key: truck_right
+          op_args:
+            direction: right
           tags:
             camera_motion: truck
             modality_support: video
             image_surface: reverse lateral depth framing
             video_surface: camera trucks right
-          op_args:
-            direction: right
         - key: orbit
+          op_args:
+            direction: around
           tags:
             camera_motion: orbit
             modality_support: video
             image_surface: circular composition emphasis
             video_surface: camera orbits
-          op_args:
-            direction: around
         - key: orbit_left
+          op_args:
+            direction: left
           tags:
             camera_motion: orbit
             modality_support: video
             image_surface: counterclockwise composition emphasis
             video_surface: camera orbits left
-          op_args:
-            direction: left
         - key: orbit_right
+          op_args:
+            direction: right
           tags:
             camera_motion: orbit
             modality_support: video
             image_surface: clockwise composition emphasis
             video_surface: camera orbits right
-          op_args:
-            direction: right
         - key: pedestal_up
+          op_args:
+            direction: up
           tags:
             camera_motion: pedestal
             modality_support: video
             image_surface: raised camera height framing
             video_surface: camera rises vertically
-          op_args:
-            direction: up
         - key: pedestal_down
+          op_args:
+            direction: down
           tags:
             camera_motion: pedestal
             modality_support: video
             image_surface: lowered camera height framing
             video_surface: camera drops vertically
-          op_args:
-            direction: down
