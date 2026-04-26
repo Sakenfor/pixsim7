@@ -533,6 +533,11 @@ export function LocalFoldersContent({
     [visibleItems, isHashableUnhashed],
   );
 
+  const pageUnhashedKeys = useMemo(
+    () => pageItems.filter(isHashableUnhashed).map((a) => a.key),
+    [pageItems, isHashableUnhashed],
+  );
+
   const { pendingUploadCount, failedUploadCount } = useMemo(() => {
     let pending = 0;
     let failed = 0;
@@ -558,6 +563,12 @@ export function LocalFoldersContent({
     }
     setToolsOpen(false);
   }, [controller, filterState.folder, showDrilledView, drilledItems, isHashableUnhashed]);
+
+  const handleHashCurrentPage = useCallback(() => {
+    if (pageUnhashedKeys.length === 0) return;
+    controller.hashAssets(pageUnhashedKeys);
+    setToolsOpen(false);
+  }, [controller, pageUnhashedKeys]);
 
   const batchUploadingRef = useRef(false);
 
@@ -833,6 +844,16 @@ export function LocalFoldersContent({
                       onClick={handleHashUnhashed}
                     >
                       Hash unhashed ({unhashedCount})
+                    </DropdownItem>
+                  )}
+                  {pageUnhashedKeys.length > 0
+                    && pageUnhashedKeys.length < unhashedCount
+                    && !controller.hashingProgress && (
+                    <DropdownItem
+                      icon={<Icons.hash size={12} />}
+                      onClick={handleHashCurrentPage}
+                    >
+                      Hash this page ({pageUnhashedKeys.length})
                     </DropdownItem>
                   )}
                   <DropdownItem
