@@ -331,50 +331,50 @@ export function ActivityBar() {
         className="fixed left-0 top-0 h-screen h-dvh w-12 z-30 flex flex-col items-center py-2 bg-neutral-900/90 border-r border-neutral-800/60 backdrop-blur-sm transition-transform duration-200 ease-in-out"
         style={{ transform: collapsed ? 'translateX(-100%)' : 'translateX(0)' }}
       >
-        {/* Home button */}
-        <div ref={homeRef} className="relative flex items-center justify-center" {...homeHandlers}>
-          {isHomeActive && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
-          )}
-          <button
-            onClick={() => navigate('/')}
-            className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
-              isHomeActive
-                ? 'text-accent bg-accent/15'
-                : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
-            }`}
-            aria-label="Home"
-          >
-            <NavIcon name="home" size={20} />
-          </button>
-          {homeHovered && <NavTooltip name="Home" triggerRef={homeRef} />}
+        {/* Scrollable middle — collapses to scroll on short screens, scrollbar hidden until hover */}
+        <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar flex flex-col items-center">
+          {/* Home button */}
+          <div ref={homeRef} className="relative flex items-center justify-center" {...homeHandlers}>
+            {isHomeActive && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
+            )}
+            <button
+              onClick={() => navigate('/')}
+              className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
+                isHomeActive
+                  ? 'text-accent bg-accent/15'
+                  : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
+              }`}
+              aria-label="Home"
+            >
+              <NavIcon name="home" size={20} />
+            </button>
+            {homeHovered && <NavTooltip name="Home" triggerRef={homeRef} />}
+          </div>
+
+          {/* Browse/search all panels — placed right under Home for discoverability */}
+          <MorePanelsFlyout />
+
+          <Separator />
+
+          {/* Pinned panel shortcuts + auto "recent" section */}
+          <PanelShortcuts />
+          <RecentShortcuts />
+
+          <Separator />
+
+          {/* Category groups */}
+          {CATEGORY_ORDER.map((cat, catIdx) => {
+            const group = groups[cat];
+            if (!group || group.length === 0) return null;
+            return (
+              <div key={cat} className="flex flex-col items-center gap-0.5">
+                {catIdx > 0 && <Separator />}
+                <CategoryGroup category={cat} pages={group} location={location} />
+              </div>
+            );
+          })}
         </div>
-
-        {/* Browse/search all panels — placed right under Home for discoverability */}
-        <MorePanelsFlyout />
-
-        <Separator />
-
-        {/* Pinned panel shortcuts + auto "recent" section */}
-        <PanelShortcuts />
-        <RecentShortcuts />
-
-        <Separator />
-
-        {/* Category groups */}
-        {CATEGORY_ORDER.map((cat, catIdx) => {
-          const group = groups[cat];
-          if (!group || group.length === 0) return null;
-          return (
-            <div key={cat} className="flex flex-col items-center gap-0.5">
-              {catIdx > 0 && <Separator />}
-              <CategoryGroup category={cat} pages={group} location={location} />
-            </div>
-          );
-        })}
-
-        {/* Spacer */}
-        <div className="flex-1" />
 
         {/* Activity bar widgets (contributed by modules) */}
         {activityBarWidgets.length > 0 && (
