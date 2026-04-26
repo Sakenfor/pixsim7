@@ -23,13 +23,16 @@ import {
   StatusPill,
   type StatusTone,
 } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { authService } from '@lib/auth';
+import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { authService } from '@lib/auth';
 import { Icon, type IconName } from '@lib/icons';
 
 import { DuplicatesRow } from './DuplicatesRow';
+import { DurationCohortTable } from './DurationCohortTable';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,19 +98,13 @@ interface ActionResult {
 // API helpers
 // ---------------------------------------------------------------------------
 
-function apiBase() {
-  // Empty = relative mode (proxy handles routing). Undefined = hardcoded fallback.
-  const url = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
-  return url.replace(/\/$/, '');
-}
-
 function authHeaders(): Record<string, string> {
   const token = authService.getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function apiFetch<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await fetch(`${BACKEND_BASE}${path}`, {
     method,
     headers: withCorrelationHeaders(authHeaders(), 'settings:maintenance-dashboard'),
   });
@@ -195,6 +192,14 @@ interface RowConfig<S> {
   };
   detailLines?: (s: S) => string[];
   resultMessage: (data: any) => string | null;
+  /**
+   * Optional custom node that fully replaces the default bulleted breakdown.
+   * When provided, `detailLines` is ignored. Use for tasks whose state is
+   * better visualised (e.g. a stacked health bar) than narrated as bullets.
+   */
+  renderBreakdown?: (s: S) => ReactNode;
+  /** Optional custom node rendered after the breakdown section. Receives loaded stats. */
+  renderExtra?: (s: S) => ReactNode;
 }
 
 const DEFAULT_BATCH_SIZES = [50, 100, 200, 500];
@@ -448,6 +453,108 @@ interface SignalScanStats {
   percentage: number;
 }
 
+// ── Signal scan breakdown — stacked health bar + triage CTA ──
+// Replaces the default bullet list with a single horizontal bar that shows
+// broken/borderline/clean/unscanned proportions at a glance, plus a direct
+// path into the triage UI when there's a flagged set worth validating.
+
+const SIGNAL_SEGMENTS = [
+  { key: 'broken',     label: 'Broken',     fill: 'bg-red-500',     text: 'text-red-700 dark:text-red-300',     dot: 'bg-red-500' },
+  { key: 'borderline', label: 'Borderline', fill: 'bg-amber-500',   text: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
+  { key: 'clean',      label: 'Clean',      fill: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500' },
+  { key: 'unscanned',  label: 'Unscanned',  fill: 'bg-neutral-400 dark:bg-neutral-600', text: 'text-muted-foreground', dot: 'bg-neutral-400 dark:bg-neutral-600' },
+] as const;
+
+function SignalBreakdown({ stats }: { stats: SignalScanStats }) {
+  const navigate = useNavigate();
+  const counts: Record<typeof SIGNAL_SEGMENTS[number]['key'], number> = {
+    broken: stats.broken,
+    borderline: stats.borderline,
+    clean: stats.clean,
+    unscanned: stats.unscanned,
+  };
+  const total = useMemo(
+    () => SIGNAL_SEGMENTS.reduce((acc, seg) => acc + (counts[seg.key] || 0), 0),
+    [counts.broken, counts.borderline, counts.clean, counts.unscanned],
+  );
+  const totalDenominator = total > 0 ? total : 1;
+  const visibleSegments = SIGNAL_SEGMENTS.filter((seg) => counts[seg.key] > 0);
+
+  return (
+    <section className="rounded-md border border-border/60 bg-muted/20 px-4 py-3 space-y-3">
+      <header className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Breakdown
+        </h3>
+        {stats.overridden > 0 && (
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {fmt(stats.overridden)} manually overridden
+          </span>
+        )}
+      </header>
+
+      {/* Stacked bar — segments sized by share of total. Tooltip exposes counts
+          for accessibility / quick inspection. */}
+      <div
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
+        role="img"
+        aria-label={visibleSegments
+          .map((seg) => `${counts[seg.key]} ${seg.label.toLowerCase()}`)
+          .join(', ')}
+      >
+        {visibleSegments.map((seg) => {
+          const count = counts[seg.key];
+          const pct = (count / totalDenominator) * 100;
+          return (
+            <div
+              key={seg.key}
+              className={`${seg.fill} h-full first:rounded-l-full last:rounded-r-full transition-[width]`}
+              style={{ width: `${pct}%` }}
+              title={`${seg.label}: ${fmt(count)} (${pct.toFixed(1)}%)`}
+            />
+          );
+        })}
+      </div>
+
+      {/* Legend — counts + share for each segment that has any items */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs tabular-nums">
+        {visibleSegments.map((seg) => {
+          const count = counts[seg.key];
+          const pct = (count / totalDenominator) * 100;
+          return (
+            <div key={seg.key} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${seg.dot}`} />
+              <span className={seg.text}>{seg.label}</span>
+              <span className="text-muted-foreground">
+                {fmt(count)}
+                <span className="text-muted-foreground/60"> · {pct.toFixed(0)}%</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* CTA — only when there's a flagged set worth validating. The triage
+          surface confirms/overrides the heuristic, which is the only path to
+          improving its accuracy over time. */}
+      {stats.broken > 0 && (
+        <div className="pt-1">
+          <Button
+            onClick={() => navigate('/assets/signal-triage')}
+            variant="outline"
+            size="sm"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              Open triage
+              <Icon name="arrowRight" size={12} />
+            </span>
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const signalScanConfig: RowConfig<SignalScanStats> = {
   statsEndpoint: '/api/v1/assets/signal-scan-stats',
   actionEndpoint: '/api/v1/assets/backfill-signal-scan?limit={limit}',
@@ -462,18 +569,7 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
     statsText: `${fmt(s.scanned)} / ${fmt(s.total_videos)} videos scanned`,
     actionVerb: 'Scan',
   }),
-  detailLines: (s) => {
-    const lines: string[] = [];
-    if (s.broken > 0)     lines.push(`${fmt(s.broken)} likely broken (score ≥ 3)`);
-    if (s.borderline > 0) lines.push(`${fmt(s.borderline)} borderline (score 1–2)`);
-    if (s.clean > 0)      lines.push(`${fmt(s.clean)} likely clean (score 0)`);
-    if (s.overridden > 0) lines.push(`${fmt(s.overridden)} manually overridden`);
-    if (s.unscanned > 0)
-      lines.push(`${fmt(s.unscanned)} unscanned — open /assets/signal-triage to validate broken set`);
-    if (s.unscanned === 0 && s.total_videos > 0)
-      lines.push('All videos scanned at current heuristic version');
-    return lines;
-  },
+  renderBreakdown: (s) => <SignalBreakdown stats={s} />,
   resultMessage: (d) => {
     const parts: string[] = [];
     if (d.scanned > 0) parts.push(`${d.scanned} scanned`);
@@ -482,6 +578,7 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
     if (d.errors > 0)  parts.push(`${d.errors} errors`);
     return parts.length > 0 ? parts.join(', ') : null;
   },
+  renderExtra: () => <DurationCohortTable />,
 };
 
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
@@ -602,7 +699,8 @@ function MaintenanceTaskDetail<S>({ task }: { task: MaintenanceTask<S> }) {
 
   const info = config.extract(stats);
   const busy = loading || acting;
-  const details = config.detailLines?.(stats) ?? [];
+  const customBreakdown = config.renderBreakdown?.(stats);
+  const details = customBreakdown ? [] : config.detailLines?.(stats) ?? [];
   const effectiveBatch = Math.min(batchSize, info.actionable);
 
   return (
@@ -630,8 +728,8 @@ function MaintenanceTaskDetail<S>({ task }: { task: MaintenanceTask<S> }) {
         />
       </div>
 
-      {/* Breakdown */}
-      {details.length > 0 && (
+      {/* Breakdown — custom takes precedence over default bullets */}
+      {customBreakdown ?? (details.length > 0 && (
         <section className="rounded-md border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5">
           <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Breakdown
@@ -643,7 +741,9 @@ function MaintenanceTaskDetail<S>({ task }: { task: MaintenanceTask<S> }) {
             </div>
           ))}
         </section>
-      )}
+      ))}
+
+      {config.renderExtra?.(stats)}
 
       {/* Action */}
       <section className="flex flex-col gap-2">
