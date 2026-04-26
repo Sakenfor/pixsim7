@@ -7,6 +7,7 @@
  * - OpenAPI info (type-only, metadata display)
  */
 
+import { SidebarContentLayout, type SidebarContentLayoutSection, useSidebarNav } from '@pixsim7/shared.ui';
 import { useState, useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -19,12 +20,6 @@ import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/concept
 // =============================================================================
 
 type TabId = 'roles' | 'labels' | 'openapi';
-
-interface TabConfig {
-  id: TabId;
-  label: string;
-  count?: number;
-}
 
 // =============================================================================
 // Composition Roles Tab
@@ -516,79 +511,96 @@ import type { MediaType } from '@pixsim7/shared.types';`}
 
 export function TypesExplorerPanel() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabId>('roles');
   const { roles } = useCompositionPackages();
   const { labels, isLoading: labelsLoading, error: labelsError } = useLabelsForAutocomplete();
 
-  const tabs: TabConfig[] = [
-    { id: 'roles', label: 'Composition Roles', count: roles.length },
-    { id: 'labels', label: 'Region Labels', count: labels.length },
-    { id: 'openapi', label: 'OpenAPI' },
-  ];
+  const sections = useMemo<SidebarContentLayoutSection[]>(
+    () => [
+      {
+        id: 'roles',
+        label: `Composition Roles (${roles.length})`,
+        icon: <Icon name="layers" size={14} className="flex-shrink-0" />,
+      },
+      {
+        id: 'labels',
+        label: `Region Labels (${labels.length})`,
+        icon: <Icon name="tag" size={14} className="flex-shrink-0" />,
+      },
+      {
+        id: 'openapi',
+        label: 'OpenAPI',
+        icon: <Icon name="fileCode" size={14} className="flex-shrink-0" />,
+      },
+    ],
+    [roles.length, labels.length],
+  );
+
+  const nav = useSidebarNav<TabId>({
+    sections,
+    initial: 'roles',
+    storageKey: 'types-explorer:nav',
+  });
+  const activeTab = nav.activeSectionId as TabId;
+
+  const handleSelectSection = (sectionId: string) => {
+    nav.selectSection(sectionId);
+    setSearchQuery('');
+  };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900 text-neutral-100">
-      {/* Header */}
-      <div className="border-b border-neutral-700 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-semibold">Types Explorer</h2>
-            <p className="text-xs text-neutral-400">
-              Browse generated types from @pixsim7/shared.types
-            </p>
+    <div className="h-full min-h-0 flex bg-neutral-900 text-neutral-100">
+      <SidebarContentLayout
+        sections={sections}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={handleSelectSection}
+        sidebarTitle="Types Explorer"
+        sidebarWidth="w-56"
+        variant="dark"
+        navClassName="space-y-1"
+        collapsible
+        expandedWidth={224}
+        persistKey="types-explorer-sidebar"
+        contentClassName="min-h-0 overflow-hidden"
+        autoHideTitle={false}
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="border-b border-neutral-700 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-lg font-semibold">Types Explorer</h2>
+                <p className="text-xs text-neutral-400">
+                  Browse generated types from @pixsim7/shared.types
+                </p>
+              </div>
+            </div>
+
+            {activeTab !== 'openapi' && (
+              <input
+                type="text"
+                placeholder={`Search ${activeTab === 'roles' ? 'roles' : 'labels'}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeTab === 'roles' && (
+              <CompositionRolesView searchQuery={searchQuery} />
+            )}
+            {activeTab === 'labels' && (
+              <RegionLabelsView
+                searchQuery={searchQuery}
+                labels={labels}
+                isLoading={labelsLoading}
+                error={labelsError}
+              />
+            )}
+            {activeTab === 'openapi' && <OpenAPIView />}
           </div>
         </div>
-
-        {/* Search (not for OpenAPI tab) */}
-        {activeTab !== 'openapi' && (
-          <input
-            type="text"
-            placeholder={`Search ${activeTab === 'roles' ? 'roles' : 'labels'}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        )}
-
-        {/* Tab Navigation */}
-        <div className="flex gap-2 mt-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setSearchQuery('');
-              }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-              }`}
-            >
-              {tab.label}
-              {tab.count !== undefined && (
-                <span className="ml-1.5 text-xs opacity-70">({tab.count})</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {activeTab === 'roles' && (
-          <CompositionRolesView searchQuery={searchQuery} />
-        )}
-        {activeTab === 'labels' && (
-          <RegionLabelsView
-            searchQuery={searchQuery}
-            labels={labels}
-            isLoading={labelsLoading}
-            error={labelsError}
-          />
-        )}
-        {activeTab === 'openapi' && <OpenAPIView />}
-      </div>
+      </SidebarContentLayout>
     </div>
   );
 }

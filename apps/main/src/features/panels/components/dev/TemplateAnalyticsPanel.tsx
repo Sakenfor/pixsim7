@@ -1,8 +1,15 @@
-import React, { useState, useMemo } from "react";
-import { Button } from "@pixsim7/shared.ui";
+import {
+  Button,
+  SidebarContentLayout,
+  type SidebarContentLayoutSection,
+  useSidebarNav,
+} from "@pixsim7/shared.ui";
+import React, { useMemo, useState } from "react";
+
+import { Icon } from "@lib/icons";
+
 import {
   useTemplateAnalyticsStore,
-  type TemplateUsageStats,
   type RefactoringHint,
 } from "@features/graph"; // templateAnalyticsStore';
 import { useTemplateStore } from "@features/graph"; // templatesStore';
@@ -16,10 +23,9 @@ import { useTemplateStore } from "@features/graph"; // templatesStore';
  * - Refactoring recommendations based on usage
  * - Template health metrics
  */
+type TemplateAnalyticsTabId = "overview" | "templates" | "hints" | "raw";
+
 export function TemplateAnalyticsPanel() {
-  const [activeTab, setActiveTab] = useState<
-    "overview" | "templates" | "hints" | "raw"
-  >("overview");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
@@ -92,6 +98,39 @@ export function TemplateAnalyticsPanel() {
       };
     });
   }, [getRefactoringHints, getTemplate]);
+
+  const sections = useMemo<SidebarContentLayoutSection[]>(
+    () => [
+      {
+        id: "overview",
+        label: "Overview",
+        icon: <Icon name="barChart" size={14} className="flex-shrink-0" />,
+      },
+      {
+        id: "templates",
+        label: `Templates (${enrichedStats.length})`,
+        icon: <Icon name="fileCode" size={14} className="flex-shrink-0" />,
+      },
+      {
+        id: "hints",
+        label: `Hints (${hints.length})`,
+        icon: <Icon name="lightbulb" size={14} className="flex-shrink-0" />,
+      },
+      {
+        id: "raw",
+        label: `Raw Data (${usageRecords.length})`,
+        icon: <Icon name="list" size={14} className="flex-shrink-0" />,
+      },
+    ],
+    [enrichedStats.length, hints.length, usageRecords.length],
+  );
+
+  const nav = useSidebarNav<TemplateAnalyticsTabId>({
+    sections,
+    initial: "overview",
+    storageKey: "template-analytics:nav",
+  });
+  const activeTab = nav.activeSectionId as TemplateAnalyticsTabId;
 
   // Calculate overview metrics
   const overviewMetrics = useMemo(() => {
@@ -180,69 +219,34 @@ export function TemplateAnalyticsPanel() {
     return icons[type] || "💡";
   };
 
-  // Selected template details
-  const selectedTemplate = selectedTemplateId
-    ? enrichedStats.find((s) => s.templateId === selectedTemplateId)
-    : null;
-
   const selectedTemplateRecords = selectedTemplateId
     ? getTemplateUsage(selectedTemplateId)
     : [];
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-700 px-6 py-3 bg-neutral-50 dark:bg-neutral-800">
-        <button
-          onClick={() => setActiveTab("overview")}
-          className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-            activeTab === "overview"
-              ? "bg-blue-600 text-white"
-              : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600"
-          }`}
-        >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab("templates")}
-          className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-            activeTab === "templates"
-              ? "bg-blue-600 text-white"
-              : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600"
-          }`}
-        >
-          Templates ({enrichedStats.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("hints")}
-          className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-            activeTab === "hints"
-              ? "bg-blue-600 text-white"
-              : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600"
-          }`}
-        >
-          Hints ({hints.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("raw")}
-          className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-            activeTab === "raw"
-              ? "bg-blue-600 text-white"
-              : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600"
-          }`}
-        >
-          Raw Data ({usageRecords.length})
-        </button>
+    <div className="h-full min-h-0 flex bg-white dark:bg-neutral-900">
+      <SidebarContentLayout
+        sections={sections}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        sidebarTitle="Template Analytics"
+        sidebarWidth="w-56"
+        variant="light"
+        navClassName="space-y-1"
+        collapsible
+        expandedWidth={224}
+        persistKey="template-analytics-sidebar"
+        contentClassName="min-h-0 overflow-hidden"
+        autoHideTitle={false}
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex items-center justify-end border-b border-neutral-200 dark:border-neutral-700 px-6 py-3 bg-neutral-50 dark:bg-neutral-800">
+            <Button size="sm" variant="secondary" onClick={handleClearAll}>
+              Clear All Analytics
+            </Button>
+          </div>
 
-        <div className="ml-auto">
-          <Button size="sm" variant="secondary" onClick={handleClearAll}>
-            Clear All Analytics
-          </Button>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6">
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <div className="space-y-6">
@@ -321,7 +325,7 @@ export function TemplateAnalyticsPanel() {
                       className="p-4 border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-750 cursor-pointer transition-colors"
                       onClick={() => {
                         setSelectedTemplateId(stat.templateId);
-                        setActiveTab("templates");
+                        nav.navigate("templates");
                       }}
                     >
                       <div className="flex items-start justify-between">
@@ -397,7 +401,7 @@ export function TemplateAnalyticsPanel() {
                   ))}
                 </div>
                 <button
-                  onClick={() => setActiveTab("hints")}
+                  onClick={() => nav.navigate("hints")}
                   className="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   View all {hints.length} hints →
@@ -708,7 +712,9 @@ export function TemplateAnalyticsPanel() {
             )}
           </div>
         )}
-      </div>
+          </div>
+        </div>
+      </SidebarContentLayout>
     </div>
   );
 }
