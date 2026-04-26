@@ -3,10 +3,12 @@ import { useToast } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import type { AssetSearchRequest } from '@lib/api/assets';
-import { BACKEND_BASE } from '@lib/api/client';
+import { getAsset } from '@lib/api/assets';
+import { BACKEND_BASE, pixsimClient } from '@lib/api/client';
 import { getGeneration } from '@lib/api/generations';
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
+import { hmrSingleton } from '@lib/utils';
 
 import { useMediaGenerationActions } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
@@ -33,6 +35,18 @@ import { useAssets, type AssetModel } from './useAssets';
 
 
 const SESSION_KEY = 'assets_filters';
+const AUTO_THUMB_REPAIR_SCAN_LIMIT = 9;
+const AUTO_THUMB_REPAIR_COOLDOWN_MS = 10 * 60 * 1000;
+const autoThumbRepairAttempts = hmrSingleton<Map<number, number>>(
+  'assets:autoThumbRepairAttempts',
+  () => new Map<number, number>(),
+);
+
+function hasMissingCardThumbnail(asset: AssetModel): boolean {
+  if (asset.mediaType !== 'video') return false;
+  const { thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
+  return !thumbnailUrl && !previewUrl;
+}
 
 function stripSeedFromValue(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -199,6 +213,50 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     preservePageOnFilterChange: options?.preservePageOnFilterChange,
     requestOverrides: options?.requestOverrides,
   });
+
+  // Light self-heal: when the newest cards have no usable thumbnail/preview
+  // (common after interrupted backend derivative runs), trigger the existing
+  // thumbnail regeneration endpoint once per asset on a cooldown.
+  useEffect(() => {
+    const isNewestSort = (filters.sort ?? 'new') === 'new';
+    if (!isNewestSort || currentPage !== 1 || items.length === 0) return;
+
+    const now = Date.now();
+    const candidateIds = items
+      .slice(0, AUTO_THUMB_REPAIR_SCAN_LIMIT)
+      .filter(hasMissingCardThumbnail)
+      .map((asset) => Number(asset.id))
+      .filter((id) => Number.isFinite(id))
+      .filter((id) => {
+        const lastAttempt = autoThumbRepairAttempts.get(id);
+        if (lastAttempt && (now - lastAttempt) < AUTO_THUMB_REPAIR_COOLDOWN_MS) {
+          return false;
+        }
+        autoThumbRepairAttempts.set(id, now);
+        return true;
+      });
+
+    if (candidateIds.length === 0) return;
+
+    void Promise.allSettled(
+      candidateIds.map(async (assetId) => {
+        try {
+          await pixsimClient.post(
+            `/media/ingestion/trigger/${assetId}`,
+            null,
+            { params: { regenerate_thumbnails: true } },
+          );
+          const refreshed = await getAsset(assetId);
+          assetEvents.emitAssetUpdated(refreshed);
+        } catch (err) {
+          console.warn('[useAssetsController] Auto thumbnail repair failed', {
+            assetId,
+            error: err,
+          });
+        }
+      }),
+    );
+  }, [items, currentPage, filters.sort]);
 
   // Viewer state
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);

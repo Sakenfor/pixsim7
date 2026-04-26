@@ -84,6 +84,43 @@ const useAssetsHmrCache = hmrSingleton(
   () => new Map<string, UseAssetsHmrSnapshot>(),
 );
 
+type RegistryFilterValue =
+  | string
+  | boolean
+  | number
+  | string[]
+  | boolean[]
+  | number[];
+
+function valuesOverlap(expected: RegistryFilterValue, actual: unknown): boolean {
+  if (Array.isArray(expected)) {
+    if (expected.length === 0) return true;
+    if (Array.isArray(actual)) {
+      const actualSet = new Set(actual.map((entry) => String(entry)));
+      return expected.some((entry) => actualSet.has(String(entry)));
+    }
+    return expected.some((entry) => String(entry) === String(actual));
+  }
+  return String(expected) === String(actual);
+}
+
+function matchesExtraRegistryFilters(
+  asset: AssetResponse,
+  extraFilters: Record<string, RegistryFilterValue>,
+): boolean {
+  const record = asset as unknown as Record<string, unknown>;
+  return Object.entries(extraFilters).every(([key, expected]) => {
+    const actual =
+      key === 'effective_provider_id'
+        ? (record[key] ?? record.provider_id)
+        : record[key];
+    if (actual === undefined || actual === null) {
+      return false;
+    }
+    return valuesOverlap(expected, actual);
+  });
+}
+
 export function useAssets(options?: {
   limit?: number;
   filters?: AssetFilters;
@@ -210,8 +247,8 @@ export function useAssets(options?: {
   // subscriber can skip when it can't validate the asset client-side.
   const hasRequestOverridesRef = useRef(!!requestOverrides && Object.keys(requestOverrides).length > 0);
   hasRequestOverridesRef.current = !!requestOverrides && Object.keys(requestOverrides).length > 0;
-  const hasExtraRegistryFiltersRef = useRef(Object.keys(extraRegistryFilters).length > 0);
-  hasExtraRegistryFiltersRef.current = Object.keys(extraRegistryFilters).length > 0;
+  const extraRegistryFiltersRef = useRef(extraRegistryFilters);
+  extraRegistryFiltersRef.current = extraRegistryFilters;
 
   // Use ref to always access current raw filters in loadMore without stale closures
   const filtersRef = useRef(filters);
@@ -530,13 +567,19 @@ export function useAssets(options?: {
       if (hasScopedFilter) return;
 
       // Skip when requestOverrides (group views, set filters) or extra registry
-      // filters (effective_provider_id, etc.) are active — the asset can't be
-      // validated against these server-side constraints from the client.
-      if (hasRequestOverridesRef.current || hasExtraRegistryFiltersRef.current) return;
+      // filters (group views, set filters, etc.) are active — those views rely
+      // on server-scoped constraints the client can't always validate.
+      if (hasRequestOverridesRef.current) return;
+
+      const matchesExtraFilters = matchesExtraRegistryFilters(
+        asset,
+        extraRegistryFiltersRef.current,
+      );
 
       const tags = (asset.tags || []).map((tag) => (typeof tag === 'string' ? tag : tag.name));
       // Only prepend if it matches current filters (or no filters)
       const matchesFilters =
+        matchesExtraFilters &&
         (!filterParams.media_type ||
           (Array.isArray(filterParams.media_type)
             ? filterParams.media_type.includes(asset.media_type)
