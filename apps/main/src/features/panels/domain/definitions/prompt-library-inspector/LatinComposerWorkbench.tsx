@@ -18,9 +18,19 @@ type IntensityChoice = 'subtle' | 'moderate' | 'firm' | 'absolute' | 'escalating
 const LENGTHS: LengthTier[] = ['brief', 'short', 'medium', 'long'];
 const REGISTERS: RegisterChoice[] = ['technical', 'poetic', 'mixed'];
 const INTENSITIES: IntensityChoice[] = ['subtle', 'moderate', 'firm', 'absolute', 'escalating'];
-// Hardcoded for now — these are the domain tags on our two existing latin
-// packs. Once we add more packs we should query the tag dictionary.
-const KNOWN_DOMAINS = ['touch', 'oral', 'gluteal', 'hand_contact', 'mouth', 'lips', 'kiss'];
+// Hardcoded for now — these are the domain tags on the shipped latin packs.
+// Grouped roughly by pack so the chip row reads as a topic map. Once we add
+// more packs we should query the tag dictionary.
+const KNOWN_DOMAINS = [
+  // touch_dynamics
+  'touch', 'gluteal', 'hand_contact',
+  // lips_mouth
+  'oral', 'mouth', 'lips', 'kiss',
+  // gaze_breath
+  'gaze', 'breath', 'voice', 'eyes',
+  // chest_torso
+  'chest', 'breast', 'torso', 'embrace',
+];
 
 interface ComposedVariant {
   block_id: string;
