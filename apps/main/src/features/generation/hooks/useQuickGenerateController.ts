@@ -21,7 +21,7 @@ import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
 
-import { isSetStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
+import { isLinkedSetStrategy, isSetStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
 import {
   executeTrackedEachBackendExecution,
   prepareEachBackendExecutionPayload,
@@ -30,6 +30,7 @@ import { prepareEachExecutionItems } from '../lib/eachExecutionItems';
 import { ensureInputsUploaded } from '../lib/ensureInputsUploaded';
 import { planFanoutGroups } from '../lib/fanoutPlanner';
 import {
+  expandGroupsByRepeat,
   normalizeFanoutRunOptions,
   type FanoutRunOptions,
 } from '../lib/fanoutPresets';
@@ -751,20 +752,61 @@ export function useQuickGenerateController() {
     return cache;
   }
 
+  interface TransientSetPickState {
+    pickIndex?: number;
+    recentPicks?: number[];
+  }
+
   /**
    * Replace assetSetRef on inputs with a concrete pre-picked asset using
    * the cached resolved sets. Returns new input array (does not mutate).
    */
-  function prePickSetRefs(inputs: any[], cache: Map<string, AssetModel[]>): any[] {
+  function prePickSetRefs(
+    inputs: any[],
+    cache: Map<string, AssetModel[]>,
+    transientPickStateByInputId?: Map<string, TransientSetPickState>,
+  ): any[] {
     if (cache.size === 0) return inputs;
     return inputs.map((item: any) => {
       const ref = item?.assetSetRef;
       if (!ref || ref.mode !== 'random_each') return item;
       const setAssets = cache.get(ref.setId);
       if (!setAssets || setAssets.length === 0) return item;
-      const { asset } = pickFromSet(setAssets, ref.pickStrategy, ref);
+      const priorState = transientPickStateByInputId?.get(item.id);
+      const effectiveRef = priorState ? { ...ref, ...priorState } : ref;
+      const { asset, updatedRef } = pickFromSet(setAssets, ref.pickStrategy, effectiveRef);
+      if (transientPickStateByInputId && (updatedRef.pickIndex !== undefined || updatedRef.recentPicks !== undefined)) {
+        transientPickStateByInputId.set(item.id, {
+          ...(updatedRef.pickIndex !== undefined ? { pickIndex: updatedRef.pickIndex } : {}),
+          ...(updatedRef.recentPicks !== undefined ? { recentPicks: updatedRef.recentPicks } : {}),
+        });
+      }
       return { ...item, asset, assetSetRef: undefined };
     });
+  }
+
+  async function resolveLinkedSetEachBaseRuns(
+    inputs: any[],
+    cache?: Map<string, AssetModel[]>,
+  ): Promise<number> {
+    const linkedSetIds = new Set<string>();
+    for (const item of inputs) {
+      const ref = item?.assetSetRef;
+      if (ref?.mode === 'random_each' && ref.setId) {
+        linkedSetIds.add(ref.setId);
+      }
+    }
+    if (linkedSetIds.size === 0) return 0;
+
+    const resolvedCache = cache ?? await preResolveSetRefs(inputs);
+    let maxSetSize = 0;
+    for (const setId of linkedSetIds) {
+      const size = resolvedCache.get(setId)?.length ?? 0;
+      if (size > maxSetSize) {
+        maxSetSize = size;
+      }
+    }
+    return maxSetSize;
   }
 
   function withServerTemplateRollRunContext(
@@ -840,6 +882,7 @@ export function useQuickGenerateController() {
     // re-resolve per group (avoids N×M sequential API calls during preparation).
     const allGroupItems = groups.flat();
     const setCache = await preResolveSetRefs(allGroupItems);
+    const transientPickStateByInputId = new Map<string, TransientSetPickState>();
 
     const itemPayloads = await prepareEachExecutionItems({
       groups,
@@ -848,7 +891,7 @@ export function useQuickGenerateController() {
       onError,
       emptyErrorMessage: `No valid items could be prepared for backend ${executionMode === 'sequential' ? 'sequential Each' : 'fanout'}`,
       prepareItem: async ({ index: i, total, group, primaryInput }) => {
-        const resolvedGroup = prePickSetRefs(group, setCache);
+        const resolvedGroup = prePickSetRefs(group, setCache, transientPickStateByInputId);
         const resolvedPrimary = resolvedGroup[0] ?? primaryInput;
         const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
         await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
@@ -1072,6 +1115,7 @@ export function useQuickGenerateController() {
         (item: any) => item.assetSetRef?.mode === 'random_each',
       );
       const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
+      const burstPickStateByInputId = new Map<string, TransientSetPickState>();
 
       // Build a base request for validation (and reuse when no random_each refs)
       const baseRequest = await buildRequest(
@@ -1092,7 +1136,7 @@ export function useQuickGenerateController() {
       for (let i = 0; i < burstCount; i++) {
         let request = baseRequest;
         if (hasRandomEachRef) {
-          const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
+          const pickedInputs = prePickSetRefs(effectiveInputs, setCache, burstPickStateByInputId);
           const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
           const freshRequest = await buildRequest(
             activeOperationType,
@@ -1261,6 +1305,7 @@ export function useQuickGenerateController() {
         (item: any) => item.assetSetRef?.mode === 'random_each',
       );
       const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<string, AssetModel[]>();
+      const sequentialBurstPickStateByInputId = new Map<string, TransientSetPickState>();
 
       const result = await executeSequentialSteps({
         steps: Array.from({ length: count }, (_, i) => ({
@@ -1287,7 +1332,7 @@ export function useQuickGenerateController() {
             currentInputForStep = undefined;
           } else if (hasRandomEachRef) {
             // Step 1: pre-pick from cached sets to avoid re-resolving
-            operationInputsForStep = prePickSetRefs(currentInputs, setCache);
+            operationInputsForStep = prePickSetRefs(currentInputs, setCache, sequentialBurstPickStateByInputId);
             currentInputForStep = operationInputsForStep.find((item: any) => item.id === currentInput?.id) ?? currentInput;
           }
 
@@ -1364,8 +1409,10 @@ export function useQuickGenerateController() {
    * when a combination strategy is selected).
    * Same prompt and settings, but one generation per group.
    *
-   * When a set strategy + setId is provided, resolves the asset set and
+   * When a global set strategy + setId is provided, resolves that set and
    * uses computeSetCombinations instead of computeCombinations.
+   * When the linked slot-set strategy is selected, expands run count from
+   * per-input linked set references (random_each mode).
    */
   const generateEach = useCallback(async (options?: {
     overrideDynamicParams?: Record<string, any>;
@@ -1396,6 +1443,53 @@ export function useQuickGenerateController() {
     });
 
     // ─── Set strategy path ───
+    if (isLinkedSetStrategy(strategy)) {
+      const linkedSetCache = await preResolveSetRefs(currentInputs);
+      const linkedBaseRuns = await resolveLinkedSetEachBaseRuns(currentInputs, linkedSetCache);
+      if (linkedBaseRuns <= 0) {
+        setError('No linked random-each set inputs found for this strategy');
+        return;
+      }
+
+      resetForGeneration();
+
+      try {
+        const groups = expandGroupsByRepeat(
+          Array.from({ length: linkedBaseRuns }, () => currentInputs),
+          fanout.repeatCount,
+        );
+        const total = groups.length;
+        if (total === 0) {
+          setError('No linked set runs were planned');
+          setGenerating(false);
+          return;
+        }
+        setQueueProgress({ queued: 0, total });
+
+        const overrideParams = options?.overrideDynamicParams || {};
+
+        const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+        const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
+        await submitEachViaBackendExecution({
+          groups,
+          total,
+          run,
+          strategy,
+          overrideParams,
+          rolledOnce,
+          onError: fanout.onError,
+          executionMode: fanout.executionMode,
+          reusePreviousOutputAsInput: fanout.reusePreviousOutputAsInput,
+        });
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to queue linked-set generations'));
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setQueueProgress(null), 2000);
+      }
+      return;
+    }
+
     if (isSetStrategy(strategy) && fanout.setId) {
       const assetSet = useAssetSetStore.getState().getSet(fanout.setId);
       if (!assetSet) {

@@ -188,6 +188,7 @@ vi.mock('@/utils/prompt/limits', () => ({
 vi.mock('../../lib/combinationStrategies', () => ({
   computeCombinations: vi.fn(() => []),
   computeSetCombinations: vi.fn(() => []),
+  isLinkedSetStrategy: vi.fn(() => false),
   isSetStrategy: vi.fn(() => false),
 }));
 

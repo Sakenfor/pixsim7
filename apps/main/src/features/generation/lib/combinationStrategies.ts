@@ -8,7 +8,9 @@ export type EachStrategy = 'each' | 'anchor_sweep' | 'sequential_pairs' | 'all_p
 
 export type SetStrategy = 'input_x_set_random' | 'input_x_set_sequential' | 'set_each';
 
-export type CombinationStrategy = EachStrategy | SetStrategy;
+export type LinkedSetStrategy = 'linked_set_each';
+
+export type CombinationStrategy = EachStrategy | SetStrategy | LinkedSetStrategy;
 
 export const EACH_STRATEGIES: { id: EachStrategy; label: string; shortLabel: string; description: string }[] = [
   { id: 'each',             label: 'Each',             shortLabel: 'Each',      description: 'One generation per asset' },
@@ -23,13 +25,27 @@ export const SET_STRATEGIES: { id: SetStrategy; label: string; shortLabel: strin
   { id: 'set_each',               label: 'Set Each',           shortLabel: 'Set Each', description: 'One generation per set item' },
 ];
 
+export const LINKED_SET_STRATEGIES: { id: LinkedSetStrategy; label: string; shortLabel: string; description: string }[] = [
+  {
+    id: 'linked_set_each',
+    label: 'Linked Sets Each',
+    shortLabel: 'Linked',
+    description: 'One generation per linked set step (uses slot set pick rules)',
+  },
+];
+
 export const ALL_STRATEGIES: { id: CombinationStrategy; label: string; shortLabel: string; description: string }[] = [
   ...EACH_STRATEGIES,
   ...SET_STRATEGIES,
+  ...LINKED_SET_STRATEGIES,
 ];
 
 export function isSetStrategy(s: string): s is SetStrategy {
   return s === 'input_x_set_random' || s === 'input_x_set_sequential' || s === 'set_each';
+}
+
+export function isLinkedSetStrategy(s: string): s is LinkedSetStrategy {
+  return s === 'linked_set_each';
 }
 
 /** Pick a random item from a non-empty array. */

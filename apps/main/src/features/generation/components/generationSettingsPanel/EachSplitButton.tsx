@@ -11,10 +11,10 @@ import { openWorkspacePanel } from '@features/workspace';
 
 import {
   EACH_STRATEGIES,
+  LINKED_SET_STRATEGIES,
   SET_STRATEGIES,
   isSetStrategy,
   type CombinationStrategy,
-  type EachStrategy,
 } from '../../lib/combinationStrategies';
 import {
   BUILTIN_FANOUT_PRESETS,
@@ -32,6 +32,7 @@ const STRATEGY_ICONS: Record<CombinationStrategy, IconName> = {
   input_x_set_random: 'shuffle',
   input_x_set_sequential: 'layers',
   set_each: 'layers',
+  linked_set_each: 'shuffle',
 };
 
 /** Short 2-character codes — readable at a glance, scroll-cycle friendly. */
@@ -43,6 +44,7 @@ const STRATEGY_CODES: Record<CombinationStrategy, string> = {
   input_x_set_random: 'Rn',
   input_x_set_sequential: 'Sq',
   set_each: 'SE',
+  linked_set_each: 'LS',
 };
 
 /** Split-button for "Each" (fanout) with strategy + preset controls. */
@@ -93,6 +95,10 @@ export function EachSplitButton({
       : false
     ),
     [selectedPresetNormalized, currentRunOptions],
+  );
+  const setRelatedStrategies = useMemo(
+    () => [...SET_STRATEGIES, ...LINKED_SET_STRATEGIES],
+    [],
   );
 
   const needsSet = isSetStrategy(selectedStrategy);
@@ -187,8 +193,8 @@ export function EachSplitButton({
   }
 
   const activeStrategyEntry = useMemo(
-    () => [...EACH_STRATEGIES, ...SET_STRATEGIES].find((s) => s.id === selectedStrategy) ?? EACH_STRATEGIES[0],
-    [selectedStrategy],
+    () => [...EACH_STRATEGIES, ...setRelatedStrategies].find((s) => s.id === selectedStrategy) ?? EACH_STRATEGIES[0],
+    [selectedStrategy, setRelatedStrategies],
   );
 
   return (
@@ -275,11 +281,14 @@ export function EachSplitButton({
           {/* Left column: Set strategies (input strategies are now button slices) */}
           <div className="flex-1 min-w-0">
             <DropdownSectionHeader first>Asset Set Strategies</DropdownSectionHeader>
-            {SET_STRATEGIES.map((s) => (
+            {setRelatedStrategies.map((s) => (
               <DropdownItem
                 key={s.id}
                 onClick={() => {
-                  setDraftPatch({ strategy: s.id });
+                  setDraftPatch({
+                    strategy: s.id,
+                    ...(!isSetStrategy(s.id) ? { setId: undefined } : {}),
+                  });
                 }}
                 className={clsx(selectedStrategy === s.id && 'font-semibold bg-violet-500/10')}
                 icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
@@ -571,10 +580,16 @@ function estimatePlannedGroupCount(args: {
         return n;
       case 'set_each':
         return 0; // resolved below
+      case 'linked_set_each':
+        return 0; // resolved from linked slot set sizes at execution time
       default:
         return n;
     }
   };
+
+  if (args.strategy === 'linked_set_each') {
+    return null;
+  }
 
   if (args.strategy !== 'set_each') {
     return baseFromEach(args.strategy) * repeat;
@@ -589,7 +604,7 @@ function estimatePlannedGroupCount(args: {
 }
 
 function buildStrategyTooltip(
-  strategy: EachStrategy,
+  strategy: CombinationStrategy,
   description: string,
   isActive: boolean,
   inputCount: number,
@@ -607,25 +622,34 @@ function buildStrategyTooltip(
 
   // Active: show what clicking will fire
   const breakdown = strategyBreakdown(strategy, n);
-  const repeatNote = r > 1 ? ` × ${r} repeats` : '';
+  const repeatNote = r > 1 ? ` x ${r} repeats` : '';
   const total = plannedGroupCount ?? '?';
   return `Click to run ${total} generation${plannedGroupCount === 1 ? '' : 's'}\n${breakdown}${repeatNote}\n\n${description}`;
 }
 
-function strategyBreakdown(strategy: EachStrategy, n: number): string {
+function strategyBreakdown(strategy: CombinationStrategy, n: number): string {
   switch (strategy) {
     case 'each':
-      return `${n} input${n !== 1 ? 's' : ''} → ${n} group${n !== 1 ? 's' : ''} (one per input)`;
+      return `${n} input${n !== 1 ? 's' : ''} -> ${n} group${n !== 1 ? 's' : ''} (one per input)`;
     case 'anchor_sweep':
-      if (n < 2) return `${n} input — need 2+ for anchor sweep`;
-      return `${n} inputs → ${n - 1} pairs (input #1 paired with each other)`;
+      if (n < 2) return `${n} input - need 2+ for anchor sweep`;
+      return `${n} inputs -> ${n - 1} pairs (input #1 paired with each other)`;
     case 'sequential_pairs':
-      if (n < 2) return `${n} input — need 2+ for pairs`;
-      return `${n} inputs → ${n - 1} pairs ([1,2], [2,3], …)`;
+      if (n < 2) return `${n} input - need 2+ for pairs`;
+      return `${n} inputs -> ${n - 1} pairs ([1,2], [2,3], ...)`;
     case 'all_pairs':
-      if (n < 2) return `${n} input — need 2+ for pairs`;
-      return `${n} inputs → ${(n * (n - 1)) / 2} unique pairs`;
+      if (n < 2) return `${n} input - need 2+ for pairs`;
+      return `${n} inputs -> ${(n * (n - 1)) / 2} unique pairs`;
+    case 'input_x_set_random':
+      return `${n} input${n !== 1 ? 's' : ''} -> ${n} group${n !== 1 ? 's' : ''} (paired with random from selected set)`;
+    case 'input_x_set_sequential':
+      return `${n} input${n !== 1 ? 's' : ''} -> ${n} group${n !== 1 ? 's' : ''} (paired with sequential from selected set)`;
+    case 'set_each':
+      return 'One group per asset from selected set (input queue ignored)';
+    case 'linked_set_each':
+      return 'One group per linked set step (uses per-slot set pick rules)';
     default:
       return `${n} input${n !== 1 ? 's' : ''}`;
   }
 }
+

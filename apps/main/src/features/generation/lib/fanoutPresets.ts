@@ -1,4 +1,4 @@
-import type { CombinationStrategy } from './combinationStrategies';
+import { isSetStrategy, type CombinationStrategy } from './combinationStrategies';
 
 export type FanoutDispatchMode = 'auto' | 'frontend' | 'backend_fanout';
 export type FanoutOnError = 'continue' | 'stop';
@@ -142,6 +142,9 @@ export function normalizeFanoutRunOptions(
     ...(input || {}),
     strategy: (input?.strategy ?? DEFAULT_FANOUT_RUN_OPTIONS.strategy) as CombinationStrategy,
   };
+  if (!isSetStrategy(merged.strategy)) {
+    merged.setId = undefined;
+  }
   const repeatCount = Number.isFinite(merged.repeatCount) ? Math.floor(merged.repeatCount) : 1;
   merged.repeatCount = Math.min(50, Math.max(1, repeatCount || 1));
 
