@@ -6,26 +6,14 @@
  * - Only shows panels registered in the panel catalog
  */
 
-import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
-
-import { registerActionsFromDefinitions } from '@lib/capabilities';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
-
-import { pinnedPanelIdsFrom } from '@/components/navigation/shortcutDrag';
 
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
-import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
-import { addPanelInCurrentDockview, isPanelOpenInCurrentDockview } from './panelOpenUtils';
-
-function getScopedPanelIds(ctx: MenuActionContext): string[] | undefined {
-  const scoped = ctx.scopedPanelIds;
-  return scoped && scoped.length > 0 ? scoped : undefined;
-}
+import { addPanelInCurrentDockview, isPanelOpenAnywhere, isPanelOpenInCurrentDockview } from './panelOpenUtils';
 
 function getAddPanelEquivalentIds(panelId: string): string[] {
   const panelDef = panelSelectors.get(panelId) as { addPanelEquivalentIds?: unknown } | undefined;
@@ -79,26 +67,30 @@ function getPanelAddDisabledReason(
     return 'Already represented';
   }
 
+  // Cross-dockview: panel lives in some other dockview host in the app.
+  // Mirrors the Quick Add logic so a panel open elsewhere is flagged here too,
+  // keeping both menu surfaces consistent.
+  if (isPanelOpenAnywhere(ctx, panelId)) {
+    return 'Already open elsewhere';
+  }
+
   return false;
 }
 
 /**
  * Get panels grouped by category from the panel catalog.
  *
- * Filtering rules (in order):
- *   1. Scope: if the host published `scopedPanelIds` (SmartDockview does this —
- *      it's the dock's configured panels + scope-discovered extras), restrict
- *      to that set. This is what makes "Add Panel" respect availability and
- *      capability gates without re-running `getCompatiblePanels` here.
- *   2. Self-exclusion: never offer the host dockview's own panel id. Prevents
- *      recursive "add Media Viewer inside Media Viewer" entries.
- *   3. Already-open single-instance panels are hidden outright (not greyed).
- *      The "Add Panel" menu is for adding; showing an entry you can't click
- *      just adds noise. Multi-instance panels stay — user may legitimately
- *      want another copy.
+ * Shows the full public catalog so users can browse every panel regardless of
+ * the dock they right-clicked in. Earlier iterations restricted Add Panel to
+ * `scopedPanelIds` (dock layout + scope-discovered extras) to "cut noise",
+ * but that made discovery too restrictive — workspace-scope docks only
+ * declare a handful of panels in `availableIn`, so the menu surfaced almost
+ * nothing. Add Panel is now purely a browsable catalog.
  *
- * When no scopedPanelIds are published (legacy docks that haven't opted in),
- * we fall back to the full public catalog to preserve old behavior.
+ * Filtering:
+ *   - Self-exclusion: never offer the host dockview's own panel id.
+ *   - Already-open single-instance panels are hidden outright; multi-instance
+ *     panels stay so a user can legitimately add another copy.
  */
 function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
   id: string;
@@ -118,15 +110,10 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
     ? ctx.panelRegistry.getPublicPanels()
     : ctx.panelRegistry.getAll();
 
-  const scopedPanelIds = ctx.scopedPanelIds;
-  const scopedSet =
-    scopedPanelIds && scopedPanelIds.length > 0 ? new Set(scopedPanelIds) : null;
   const hostPanelId = ctx.currentDockviewId;
-
   const defaultCategory = 'Other';
 
   for (const panel of allPanels) {
-    if (scopedSet && !scopedSet.has(panel.id)) continue;
     if (hostPanelId && panel.id === hostPanelId) continue;
 
     const allowMultiple = !!panel.supportsMultipleInstances;
@@ -156,58 +143,6 @@ function formatCategoryLabel(category: string): string {
   return category
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-function getPanelRegistryEntries(ctx: MenuActionContext) {
-  if (!ctx.panelRegistry) return [];
-  return ctx.panelRegistry.getPublicPanels
-    ? ctx.panelRegistry.getPublicPanels()
-    : ctx.panelRegistry.getAll();
-}
-
-export function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnType<typeof resolveCurrentDockview>["api"]): MenuAction | null {
-  if (!ctx.currentDockviewId || !ctx.panelRegistry) return null;
-
-  const dockWidget = getDockWidgetByDockviewId(ctx.currentDockviewId);
-  const scopeLabel = dockWidget?.label ?? ctx.currentDockviewId;
-
-  // Prefer scoped panel IDs from SmartDockview (actual host configuration),
-  // then fall back to dock zone registry defaults.
-  const dockZonePanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
-  const scopedPanelIds = getScopedPanelIds(ctx);
-  const scopedIds = scopedPanelIds && scopedPanelIds.length > 0
-    ? scopedPanelIds
-    : dockZonePanelIds;
-
-  if (!scopedIds?.length) return null;
-
-  const panelMap = new Map(getPanelRegistryEntries(ctx).map((p) => [p.id, p]));
-
-  const children = scopedIds
-    .map((panelId) => {
-      const panel = panelMap.get(panelId);
-      if (!panel) return null;
-      return {
-        id: `panel:add:default-scope:${panel.id}`,
-        label: panel.title,
-        icon: panel.icon,
-        availableIn: ['background', 'tab', 'panel-content'] as const,
-        disabled: () => getPanelAddDisabledReason(ctx, panel.id, !!panel.supportsMultipleInstances, !!api),
-        execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
-      } satisfies MenuAction;
-    })
-    .filter((item): item is MenuAction => item !== null);
-
-  if (!children.length) return null;
-
-  return {
-    id: `panel:add:defaults:${ctx.currentDockviewId}`,
-    label: `Default Panels (${scopeLabel})`,
-    icon: 'layout',
-    availableIn: ['background', 'tab', 'panel-content'],
-    children,
-    execute: () => {},
-  };
 }
 
 /**
@@ -297,39 +232,6 @@ export const addPanelAction: MenuAction = {
 };
 
 /**
- * Get quick-add actions dynamically from the user's pinned panels.
- */
-export function getQuickAddActions(ctx: MenuActionContext): MenuAction[] {
-  const pinnedIds = pinnedPanelIdsFrom(useWorkspaceStore.getState().pinnedShortcuts);
-  if (!pinnedIds.length || !ctx.panelRegistry) return [];
-
-  const allPanels = ctx.panelRegistry.getPublicPanels
-    ? ctx.panelRegistry.getPublicPanels()
-    : ctx.panelRegistry.getAll();
-
-  const panelMap = new Map(allPanels.map(p => [p.id, p]));
-
-  return pinnedIds
-    .map((panelId) => {
-      const panel = panelMap.get(panelId);
-      if (!panel) return null;
-      return {
-        id: `panel:quick-add:${panelId}`,
-        label: `Add ${panel.title}`,
-        icon: panel.icon,
-        category: 'quick-add',
-        availableIn: ['background'] as const,
-        visible: (c: MenuActionContext) => {
-          const { api } = resolveCurrentDockview(c);
-          return !!api && !isPanelOpenInCurrentDockview(c, panelId, false);
-        },
-        execute: (c: MenuActionContext) => addPanel(c, panelId, !!panel.supportsMultipleInstances),
-      } satisfies MenuAction;
-    })
-    .filter((a): a is MenuAction => a !== null);
-}
-
-/**
  * Get "Edit Quick Add" submenu with toggleable pin items.
  */
 export function getEditQuickAddActions(ctx: MenuActionContext): MenuAction {
@@ -356,59 +258,6 @@ export function getEditQuickAddActions(ctx: MenuActionContext): MenuAction {
     },
     execute: () => {},
   };
-}
-
-/**
- * Quick add common panels (shown at top level for convenience)
- * @deprecated Use getQuickAddActions() for dynamic pinned panels
- */
-export const quickAddActions: MenuAction[] = [
-  {
-    id: 'panel:quick-add:gallery',
-    label: 'Add Gallery',
-    icon: 'image',
-    category: 'quick-add',
-    availableIn: ['background'],
-    visible: (ctx) => {
-      const { api } = resolveCurrentDockview(ctx);
-      return !!api && !isPanelOpenInCurrentDockview(ctx, 'gallery', false);
-    },
-    execute: (ctx) => addPanel(ctx, 'gallery', false),
-  },
-  {
-    id: 'panel:quick-add:inspector',
-    label: 'Add Inspector',
-    icon: 'info',
-    category: 'quick-add',
-    availableIn: ['background'],
-    visible: (ctx) => {
-      const { api } = resolveCurrentDockview(ctx);
-      return !!api && !isPanelOpenInCurrentDockview(ctx, 'inspector', false);
-    },
-    execute: (ctx) => addPanel(ctx, 'inspector', false),
-  },
-];
-
-const quickAddDescriptions: Record<string, string> = {
-  'panel:quick-add:gallery': 'Add the Gallery panel to this dockview',
-  'panel:quick-add:inspector': 'Add the Inspector panel to this dockview',
-};
-
-const quickAddCapabilityMapping = menuActionsToCapabilityActions(quickAddActions, {
-  featureId: DOCKVIEW_ACTION_FEATURE_ID,
-  descriptions: quickAddDescriptions,
-});
-
-export const quickAddActionDefinitions = quickAddCapabilityMapping.actionDefinitions;
-
-let quickAddActionCapabilitiesRegistered = false;
-
-export function registerQuickAddActionCapabilities() {
-  if (quickAddActionCapabilitiesRegistered) return;
-  quickAddActionCapabilitiesRegistered = true;
-
-  ensureDockviewActionFeature();
-  registerActionsFromDefinitions(quickAddActionDefinitions);
 }
 
 /**

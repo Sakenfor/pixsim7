@@ -138,12 +138,22 @@ export function resolveScopeDiscoveredPanelIds(
     }
   }
 
-  return applyScopedFilters(source, extras, options);
+  // Scope-discovery surfaces panels *outside* the host's explicit layout
+  // allowlist, so `allowedPanels` must not gate the extras — the whole point
+  // is that `prompt-box` (or any capability-matched sibling) shows up in the
+  // Add Panel menu without being in the layout's `viewerPanelIds`.
+  // `excludePanels` and `allowedCategories` still apply.
+  return applyScopedFilters(source, extras, { ...options, allowedPanels: undefined });
 }
 
 /**
  * For scoped dock hosts, returns panel definition IDs that should never remain
  * in persisted layout payloads because they are out of scope for this host.
+ *
+ * Scope-discovered panels (capability- / settingScope-matched siblings) are
+ * NOT treated as out-of-layout — they are legitimately addable via the Add
+ * Panel context menu, and reconcile must not prune them after the user adds
+ * them.
  */
 export function resolveScopedOutOfLayoutPanelIds(
   source: PanelLookupSource,
@@ -157,5 +167,8 @@ export function resolveScopedOutOfLayoutPanelIds(
   }
 
   const allowedSet = new Set(resolveScopedPanelIds(source, options));
+  for (const id of resolveScopeDiscoveredPanelIds(source, options)) {
+    allowedSet.add(id);
+  }
   return source.getIds().filter((panelId) => !allowedSet.has(panelId));
 }

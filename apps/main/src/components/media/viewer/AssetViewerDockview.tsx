@@ -36,7 +36,7 @@ import {
 } from '@features/panels';
 import { PanelHostMobile } from '@features/panels/components/host/PanelHostMobile';
 import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
-import { DOCK_IDS } from '@features/panels/lib/panelIds';
+import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 import { useAppDockviewIntegration } from '@features/workspace';
 
 import type { ViewerSettings } from './types';
@@ -405,6 +405,7 @@ export function AssetViewerDockview({
       ref={panelHostRef}
       panels={useDockId ? undefined : viewerPanelIds}
       dockId={useDockId ? DOCK_IDS.assetViewer : undefined}
+      hostPanelId={PANEL_IDS.assetViewer}
       allowedPanels={useDockId ? viewerPanelIds : undefined}
       excludePanels={useDockId ? floatingViewerPanelIds : undefined}
       storageKey="dockview:asset-viewer:v6"

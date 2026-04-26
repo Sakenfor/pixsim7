@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveScopeDiscoveredPanelIds,
   resolveScopedOutOfLayoutPanelIds,
   resolveScopedPanelIds,
   type PanelLookupSource,
@@ -133,5 +134,108 @@ describe("resolveScopedPanelIds", () => {
   it("returns empty list when neither dockId nor panels are set", () => {
     const source = createSource();
     expect(resolveScopedPanelIds(source, {})).toEqual([]);
+  });
+});
+
+describe("resolveScopeDiscoveredPanelIds", () => {
+  function createCapabilitySource(): PanelLookupSource {
+    const allIds = [
+      "media-preview",
+      "quickGenerate",
+      "info",
+      "prompt-box",
+      "inspector",
+    ];
+    const scopeMap: Record<string, string[]> = {
+      "asset-viewer": ["media-preview", "quickGenerate", "info"],
+    };
+    const consumesMap: Record<string, string[] | undefined> = {
+      "prompt-box": ["assetSelection"],
+      inspector: ["assetSelection"],
+    };
+    const categoryMap: Record<string, string | undefined> = {
+      "media-preview": "tools",
+      quickGenerate: "generation",
+      info: "tools",
+      "prompt-box": "workspace",
+      inspector: "tools",
+    };
+
+    return {
+      getIdsForScope(scope: string): string[] {
+        return scopeMap[scope] ? [...scopeMap[scope]] : [];
+      },
+      getIds(): string[] {
+        return [...allIds];
+      },
+      get(id: string) {
+        return id in categoryMap ? { category: categoryMap[id] } : undefined;
+      },
+      getConsumedCapabilityKeys(id: string): string[] | undefined {
+        return consumesMap[id];
+      },
+    };
+  }
+
+  it("surfaces capability-matched panels even when not in layout allowedPanels", () => {
+    const source = createCapabilitySource();
+    // Mirrors the Media Viewer wiring: allowedPanels is the layout-only set,
+    // hostCapabilityKeys provides 'assetSelection'.
+    expect(
+      resolveScopeDiscoveredPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedPanels: ["media-preview", "quickGenerate", "info"],
+        hostCapabilityKeys: ["assetSelection"],
+      })
+    ).toEqual(["prompt-box", "inspector"]);
+  });
+
+  it("still honors excludePanels in discovery", () => {
+    const source = createCapabilitySource();
+    expect(
+      resolveScopeDiscoveredPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedPanels: ["media-preview"],
+        excludePanels: ["inspector"],
+        hostCapabilityKeys: ["assetSelection"],
+      })
+    ).toEqual(["prompt-box"]);
+  });
+
+  it("still honors allowedCategories in discovery", () => {
+    const source = createCapabilitySource();
+    expect(
+      resolveScopeDiscoveredPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedPanels: ["media-preview"],
+        allowedCategories: ["workspace"],
+        hostCapabilityKeys: ["assetSelection"],
+      })
+    ).toEqual(["prompt-box"]);
+  });
+
+  it("returns empty when host declares no scopes or capabilities", () => {
+    const source = createCapabilitySource();
+    expect(
+      resolveScopeDiscoveredPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedPanels: ["media-preview"],
+      })
+    ).toEqual([]);
+  });
+
+  it("scope-discovered panels are NOT pruned from layout", () => {
+    // The reconcile loop in PanelHostDockview removes panels whose id is in
+    // `resolveScopedOutOfLayoutPanelIds`. Scope-discovered panels (e.g. prompt-box
+    // for an assetSelection-providing host) must not appear in that set —
+    // otherwise clicking "Add Panel" removes them immediately after add.
+    const source = createCapabilitySource();
+    const outOfLayout = resolveScopedOutOfLayoutPanelIds(source, {
+      dockId: "asset-viewer",
+      allowedPanels: ["media-preview", "quickGenerate", "info"],
+      hostCapabilityKeys: ["assetSelection"],
+    });
+    expect(outOfLayout).not.toContain("prompt-box");
+    expect(outOfLayout).not.toContain("inspector");
   });
 });

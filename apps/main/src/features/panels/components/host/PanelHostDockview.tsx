@@ -90,6 +90,13 @@ export interface PanelHostDockviewProps {
    * provided and the host is in dockId mode.
    */
   hostCapabilityKeys?: string[];
+  /**
+   * Panel definition ID to read `settingScopes` / `providesCapabilities` from
+   * during auto-derivation. Defaults to `dockId`. Use when the host panel's
+   * registered id differs from its dockId (legacy camel/kebab mismatch — e.g.
+   * asset-viewer panel id is "assetViewer" but its dockId is "asset-viewer").
+   */
+  hostPanelId?: string;
   /** Panel IDs that should not exist in the persisted/embedded layout. */
   excludeFromLayout?: readonly string[];
   /** Storage key for persisting layout. */
@@ -161,6 +168,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       allowedCategories,
       hostSettingScopes: hostSettingScopesProp,
       hostCapabilityKeys: hostCapabilityKeysProp,
+      hostPanelId,
       excludeFromLayout,
       resolvePanelTitle,
       resolvePanelPosition,
@@ -187,27 +195,31 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const panelsReady = !bootstrapPanelIds
       || (bootstrap.catalogVersion >= 0 && bootstrapPanelIds.every((id) => panelSelectors.has(id)));
 
+    // Host definition lookup for auto-derivation. Prefer explicit hostPanelId
+    // (needed when panel-id and dockId disagree), else fall back to dockId.
+    const resolvedHostPanelId = hostPanelId ?? dockId;
+
     // Auto-derive hostSettingScopes from the parent panel definition when not explicit
     const hostSettingScopes = useMemo(() => {
       if (hostSettingScopesProp) return hostSettingScopesProp;
       // Explicit panels mode should stay deterministic and not auto-discover
       // scope siblings unless the caller opts in via hostSettingScopes prop.
       if (panels && panels.length > 0) return undefined;
-      if (!dockId) return undefined;
-      const hostDef = panelSelectors.get(dockId);
+      if (!resolvedHostPanelId) return undefined;
+      const hostDef = panelSelectors.get(resolvedHostPanelId);
       return (hostDef as any)?.settingScopes ?? undefined;
-    }, [hostSettingScopesProp, panels, dockId, bootstrap.catalogVersion]);
+    }, [hostSettingScopesProp, panels, resolvedHostPanelId, bootstrap.catalogVersion]);
 
     // Auto-derive hostCapabilityKeys from the parent panel definition when not explicit
     const hostCapabilityKeys = useMemo(() => {
       if (hostCapabilityKeysProp) return hostCapabilityKeysProp;
       if (panels && panels.length > 0) return undefined;
-      if (!dockId) return undefined;
-      const hostDef = panelSelectors.get(dockId);
+      if (!resolvedHostPanelId) return undefined;
+      const hostDef = panelSelectors.get(resolvedHostPanelId);
       const caps = (hostDef as any)?.providesCapabilities as Array<string | { key: string }> | undefined;
       if (!caps?.length) return undefined;
       return caps.map((d: string | { key: string }) => (typeof d === 'string' ? d : d.key));
-    }, [hostCapabilityKeysProp, panels, dockId, bootstrap.catalogVersion]);
+    }, [hostCapabilityKeysProp, panels, resolvedHostPanelId, bootstrap.catalogVersion]);
 
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
@@ -233,15 +245,14 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const scopeDiscoveredIds = useMemo(() => {
       return resolveScopeDiscoveredPanelIds(panelSelectors, scopeOptions);
     }, [scopeOptions]);
+    // Share the same scopeOptions as scoped/scope-discovery lookups so the
+    // union inside resolveScopedOutOfLayoutPanelIds sees the host's capabilities
+    // and setting scopes. Otherwise scope-discovered panels like `prompt-box`
+    // get classified as out-of-layout and the reconcile loop prunes them right
+    // after the user adds them via the context menu.
     const scopedOutOfLayoutPanelIds = useMemo(() => {
-      return resolveScopedOutOfLayoutPanelIds(panelSelectors, {
-        dockId,
-        panels,
-        excludePanels,
-        allowedPanels,
-        allowedCategories,
-      });
-    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories]);
+      return resolveScopedOutOfLayoutPanelIds(panelSelectors, scopeOptions);
+    }, [scopeOptions]);
     // Identity used to key "dismissed" panels in the workspace store.
     // Prefer explicit dockId, fall back to panelManagerId/storageKey.
     const dismissKey = dockId ?? panelManagerId ?? storageKey;

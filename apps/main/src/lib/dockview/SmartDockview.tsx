@@ -435,17 +435,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
   }, [panelsProp, scope, context, excludePanels, allowedPanels, allowedCategories, globalRegistryVersion]);
 
-  // Determine which panels are allowed to be added (context menu)
+  // Panel definitions available for this dockview's context menu AND for
+  // dockview's component map (so any registered panel can be rendered when
+  // the user adds it). We want the full public catalog here regardless of
+  // `allowedPanels` — that prop constrains the *default layout*, not what a
+  // user can add later via Add Panel. `allowedCategories` still narrows when
+  // explicitly set (used for category-specific docks).
   const availablePanelDefs = useMemo((): PanelDefinition[] => {
-    // Start with all public panels
     let panels = panelSelectors.getPublicPanels();
     panels = panels.filter((panel) => shouldShowPanelInDock(panel, context));
-
-    // If allowedPanels is provided (even if empty), strictly filter to those panels
-    if (allowedPanels !== undefined) {
-      const allowedSet = new Set(allowedPanels);
-      panels = panels.filter((p) => allowedSet.has(p.id));
-    }
 
     if (allowedCategories && allowedCategories.length > 0) {
       const allowedCat = new Set(allowedCategories);
@@ -454,7 +452,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     return panels;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
-  }, [context, allowedPanels, allowedCategories, globalRegistryVersion]);
+  }, [context, allowedCategories, globalRegistryVersion]);
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);

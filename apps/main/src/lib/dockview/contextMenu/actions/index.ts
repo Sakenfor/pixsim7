@@ -14,13 +14,10 @@
 import { useContextMenuHistoryStore } from '@features/workspace/stores/contextMenuHistoryStore';
 
 import { contextMenuRegistry } from '../ContextMenuRegistry';
-import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction } from '../types';
 
 import {
   addPanelAction,
-  getDefaultScopePanelSubmenu,
-  getQuickAddActions,
   getEditQuickAddActions,
 } from './addPanelActions';
 import { assetActions } from './assetActions';
@@ -87,13 +84,8 @@ export {
   presetActions,
 } from './presetActions';
 export {
-  getDefaultScopePanelSubmenu,
   addPanelAction,
-  getQuickAddActions,
   getEditQuickAddActions,
-  quickAddActions,
-  quickAddActionDefinitions,
-  registerQuickAddActionCapabilities,
   addPanelActions,
 } from './addPanelActions';
 export { assetActions } from './assetActions';
@@ -120,11 +112,13 @@ const panelsSubmenuAction: MenuAction = {
   children: (ctx) => {
     const items: MenuAction[] = [];
 
-    // Section 1: Quick add shortcuts (dynamic from pinned panels)
-    const dynamicQuickAdd = getQuickAddActions(ctx)
-      .filter(a => a.visible?.(ctx) !== false)
-      .map(a => ({ ...a, category: undefined }));
-    if (dynamicQuickAdd.length > 0) {
+    // Section 1: Quick Add — config submenu only.
+    // Pinned shortcuts used to be flattened below this entry as "Add <Panel>"
+    // rows, but they duplicated panels already reachable under Add Panel → its
+    // category and caused grayed/enabled inconsistencies between the two
+    // surfaces. Pins still power the sidebar shortcut bar (useWorkspaceStore
+    // .pinnedShortcuts); they just no longer appear in this context menu.
+    if (ctx.panelRegistry) {
       const editQuickAdd = getEditQuickAddActions(ctx);
       items.push({
         id: 'composite:panels:quick-add-header',
@@ -134,18 +128,14 @@ const panelsSubmenuAction: MenuAction = {
         children: editQuickAdd.children,
         execute: () => {},
       });
-      items.push(...dynamicQuickAdd);
     }
 
-    // Section 2: Default Panels + Add Panel
+    // Section 2: Add Panel (full categorized browser; this dock's default
+    // panels appear under their respective categories here, so a separate
+    // "Default Panels" shortcut was redundant with Quick Add).
     if (addPanelAction.visible?.(ctx) !== false) {
       if (items.length > 0) {
         items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Add' };
-      }
-      const { api } = resolveCurrentDockview(ctx);
-      const defaultScopeSubmenu = getDefaultScopePanelSubmenu(ctx, api);
-      if (defaultScopeSubmenu) {
-        items.push({ ...defaultScopeSubmenu, category: undefined });
       }
       items.push({ ...addPanelAction, category: undefined });
     }
@@ -158,14 +148,6 @@ const panelsSubmenuAction: MenuAction = {
         items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Layout' };
       }
       items.push(...layoutItems.map(a => ({ ...a, category: undefined })));
-    }
-
-    // Section 4: Edit Quick Add
-    if (ctx.panelRegistry && dynamicQuickAdd.length === 0) {
-      if (items.length > 0) {
-        items[items.length - 1] = { ...items[items.length - 1], divider: true };
-      }
-      items.push({ ...getEditQuickAddActions(ctx), category: undefined });
     }
 
     if (items.length === 0) {
