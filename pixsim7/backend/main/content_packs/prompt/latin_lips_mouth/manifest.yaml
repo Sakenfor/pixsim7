@@ -1,0 +1,16 @@
+id: latin-lips-mouth
+title: Latin Lips & Mouth
+description: Curated Latin phrase enhancers for oral / lip / mouth contact. Balanced technical/poetic register, tagged by intensity, motion type, and applies_to (lips, mouth, neck, ear, jawline, cheek).
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_lips_mouth
+      include_empty: true
+  - label: Motion Type by Applies To
+    query:
+      row_key: tag:motion_type
+      col_key: tag:applies_to
+      package_name: latin_lips_mouth
+      include_empty: true
