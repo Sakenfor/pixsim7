@@ -36,6 +36,9 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
         'inline-flex items-center justify-center p-0 shrink-0 transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
         'disabled:opacity-50 disabled:pointer-events-none',
+        // Touch-primary devices: enlarge tap target to 44px (icon stays the same
+        // visual size — extra space comes as padding via min-w/min-h).
+        'coarse:min-w-11 coarse:min-h-11',
         bg && 'shadow-sm',
         SIZES[size],
         ROUNDED[rounded],

@@ -13,6 +13,7 @@ import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@featur
 import { CubeHeaderChips } from "@features/cubes/components/CubeHeaderChips";
 import { useCubeSettingsStore } from "@features/cubes/stores/cubeSettingsStore";
 import { useCubeStore } from "@features/cubes/useCubeStore";
+import { useIsMobileViewport } from "@features/panels/components/host/useIsMobileViewport";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
 import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
@@ -280,6 +281,8 @@ interface FloatingPanelProps {
   activeProjectId: number | null;
   activeProjectName: string | null;
   activeProjectSource: "override" | "authoring-context" | "editor-runtime" | "fallback" | "none";
+  /** When true, render as a fullscreen sheet with drag/resize disabled. */
+  isMobile: boolean;
 }
 
 const FloatingPanel = memo(function FloatingPanel({
@@ -290,6 +293,7 @@ const FloatingPanel = memo(function FloatingPanel({
   activeProjectId,
   activeProjectName,
   activeProjectSource,
+  isMobile,
 }: FloatingPanelProps) {
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
@@ -569,12 +573,29 @@ const FloatingPanel = memo(function FloatingPanel({
     }
   };
 
+  // Mobile: pin to viewport as a fullscreen sheet so the close button is always
+  // reachable. Stored geometry (panel.x/y/width/height) is preserved for when
+  // the user returns to a desktop viewport.
+  const mobilePosition = isMobile ? { x: 0, y: 0 } : { x: panel.x, y: panel.y };
+  const mobileSize = isMobile
+    ? {
+        width: typeof window !== 'undefined' ? window.innerWidth : panel.width,
+        height: panel.minimized
+          ? 42
+          : typeof window !== 'undefined'
+            ? window.innerHeight
+            : panel.height,
+      }
+    : panel.minimized
+      ? { width: panel.width, height: 42 }
+      : { width: panel.width, height: panel.height };
+
   return (
     <Rnd
       ref={rndRef}
       key={panel.id}
-      position={{ x: panel.x, y: panel.y }}
-      size={panel.minimized ? { width: panel.width, height: 42 } : { width: panel.width, height: panel.height }}
+      position={mobilePosition}
+      size={mobileSize}
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
@@ -595,8 +616,8 @@ const FloatingPanel = memo(function FloatingPanel({
         updateFloatingPanelPosition(panel.id, position.x, position.y);
       }}
       onMouseDown={() => bringFloatingPanelToFront(panel.id)}
-      minWidth={200}
-      minHeight={panel.minimized ? 42 : 200}
+      minWidth={isMobile ? undefined : 200}
+      minHeight={panel.minimized ? 42 : isMobile ? undefined : 200}
       bounds="window"
       dragHandleClassName="floating-panel-header"
       style={{
@@ -606,10 +627,16 @@ const FloatingPanel = memo(function FloatingPanel({
         pointerEvents: dimmed ? 'none' : undefined,
       }}
       className="floating-panel"
-      disableDragging={flyingAway}
-      enableResizing={!flyingAway && !panel.minimized}
+      disableDragging={flyingAway || isMobile}
+      enableResizing={!flyingAway && !panel.minimized && !isMobile}
     >
-      <div className="h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg">
+      <div
+        className={
+          isMobile
+            ? 'h-full flex flex-col bg-white dark:bg-neutral-900 overflow-hidden'
+            : 'h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg'
+        }
+      >
         {/* Header — stays interactive when unfocused so users can re-focus */}
         <div
           className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
@@ -637,7 +664,15 @@ const FloatingPanel = memo(function FloatingPanel({
               </span>
             )}
           </div>
-          <div className="flex items-center shrink-0">
+          <div
+            className="flex items-center shrink-0"
+            // Stop Rnd drag detection from swallowing taps on header controls.
+            // On touch, react-rnd consumes touchstart on its drag handle, so the
+            // subsequent click on X/minimize never fires without this.
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <CubeHeaderChips onSendToCube={handleSendToCube} />
             <div className="w-px h-4 bg-neutral-300 dark:bg-neutral-600 mx-1" />
             <IconButton
@@ -712,6 +747,7 @@ export function FloatingPanelsManager() {
     selectedProjectSource: activeProjectSource,
   } = useSharedProjectSelection({ loadCatalog: false });
   const [catalogVersion, setCatalogVersion] = useState(0);
+  const isMobile = useIsMobileViewport();
 
   // Clear focused floating panel only when all floating panels are closed.
   // We intentionally do NOT blur on every outside click — that caused
@@ -792,6 +828,7 @@ export function FloatingPanelsManager() {
             activeProjectId={activeProjectId}
             activeProjectName={activeProjectName}
             activeProjectSource={activeProjectSource}
+            isMobile={isMobile}
           />
         ))}
       <DropZoneOverlay

@@ -106,6 +106,16 @@ const preset = {
     },
   },
   plugins: [
+    // Pointer-precision variants for touch-density passes.
+    //   coarse:    matches `(pointer: coarse)` — primary input is touch
+    //   fine:      matches `(pointer: fine)` — primary input is mouse/trackpad
+    //   hoverable: matches `(hover: hover)` — gate hover-reveal affordances so
+    //              they don't fire on tap-induced sticky-hover on touch devices
+    plugin(function ({ addVariant }) {
+      addVariant('coarse', '@media (pointer: coarse)')
+      addVariant('fine', '@media (pointer: fine)')
+      addVariant('hoverable', '@media (hover: hover)')
+    }),
     plugin(function ({ addBase }) {
       addBase({
         ':root': {

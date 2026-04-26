@@ -89,12 +89,12 @@ export function Tabs({ tabs, value, onChange, className }: TabsProps) {
             onClick={() => onChange(tab.id)}
             onKeyDown={e => handleKeyDown(e, index)}
             className={clsx(
-              'whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
+              'whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors coarse:min-h-11',
               'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2',
               'border-b-2 -mb-[1px]',
               isActive
                 ? 'border-accent text-accent'
-                : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-600'
+                : 'border-transparent text-neutral-600 dark:text-neutral-400 hoverable:hover:text-neutral-900 dark:hoverable:hover:text-neutral-200 hoverable:hover:border-neutral-300 dark:hoverable:hover:border-neutral-600'
             )}
           >
             <span className="flex items-center gap-2">

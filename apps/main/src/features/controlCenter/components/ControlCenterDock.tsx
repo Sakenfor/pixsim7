@@ -18,6 +18,7 @@ import type { DockPosition } from '@features/docks/stores';
 import { usePanelCatalogBootstrap } from '@features/panels';
 import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
 import type { PanelHostDockviewRef } from '@features/panels/components/host/PanelHostDockview';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 
 import { FLOATING_DEFAULTS, TOOLBAR_HEIGHT, Z_INDEX } from './constants';
@@ -88,6 +89,11 @@ export function ControlCenterDock() {
   const viewerMode = useAssetViewerStore((s) => s.mode);
   const viewerSettings = useAssetViewerStore((s) => s.settings);
 
+  // ControlCenter is a desktop-only surface. Its retract/peek/edge-dock model
+  // doesn't translate to phone viewports — disable entirely on mobile rather
+  // than try to retrofit it. Hooks above must still run for ordering stability.
+  const isMobile = useIsMobileViewport();
+
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
@@ -146,7 +152,7 @@ export function ControlCenterDock() {
     PANEL_IDS.controlCenter,
     isFloating ? 'bottom' : (dockPosition as Edge),
     peekRetracted ? TOOLBAR_HEIGHT : height,
-    !isFloating && (open || peekRetracted),
+    !isMobile && !isFloating && (open || peekRetracted),
     10, // after activity bar (0)
     layoutBehavior === 'push' || peekRetracted,
   );
@@ -299,6 +305,8 @@ export function ControlCenterDock() {
     </div>
     </OrientationProvider>
   );
+
+  if (isMobile) return null;
 
   // Floating mode: use react-rnd for draggable/resizable behavior
   if (isFloating) {

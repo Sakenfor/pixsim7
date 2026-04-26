@@ -24,6 +24,36 @@ export function clearThumbnailBlobCache(): void {
   _blobCache.clear();
 }
 
+// ── Concurrency cap for thumbnail fetches ───────────────────────────────
+// First-paint of a 20-card gallery used to fire 20 parallel HTTP requests,
+// saturating the TCP window on thin links (mobile / VPN). A tight semaphore
+// keeps the link from going head-of-line-blocked while still making forward
+// progress quickly.  The cap is intentionally small — image bodies are
+// already small, so the wall-clock saving is from queueing, not bandwidth.
+const MAX_CONCURRENT_THUMB_FETCHES = 4;
+let activeThumbFetches = 0;
+const thumbFetchQueue: Array<() => void> = [];
+
+function acquireThumbFetchSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    if (activeThumbFetches < MAX_CONCURRENT_THUMB_FETCHES) {
+      activeThumbFetches++;
+      resolve();
+    } else {
+      thumbFetchQueue.push(() => {
+        activeThumbFetches++;
+        resolve();
+      });
+    }
+  });
+}
+
+function releaseThumbFetchSlot(): void {
+  activeThumbFetches = Math.max(0, activeThumbFetches - 1);
+  const next = thumbFetchQueue.shift();
+  if (next) next();
+}
+
 
 export interface UseMediaThumbnailOptions {
   /**
@@ -211,6 +241,21 @@ export function useMediaThumbnailFull(
       : { mode: 'cors', cache: 'no-store', signal };
 
     const fetchWithRetry = async () => {
+      // Wait for a free slot before consuming network. Cancellation between
+      // queueing and acquiring is handled by the post-acquire `cancelled`
+      // checks below — release immediately if the caller already bailed.
+      await acquireThumbFetchSlot();
+      if (cancelled) {
+        releaseThumbFetchSlot();
+        return;
+      }
+      let slotReleased = false;
+      const releaseSlot = () => {
+        if (!slotReleased) {
+          slotReleased = true;
+          releaseThumbFetchSlot();
+        }
+      };
       try {
         const res = await fetch(fullUrl, fetchOpts);
 
@@ -219,6 +264,8 @@ export function useMediaThumbnailFull(
           if (retryCountRef.current < MAX_RETRIES) {
             retryCountRef.current++;
             console.log(`[useMediaThumbnail] 202 for ${fullUrl}, regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
+            // Release before sleeping — slot stays free during the backoff.
+            releaseSlot();
             setTimeout(() => { if (!cancelled) fetchWithRetry(); }, REGEN_RETRY_DELAY_MS);
             return;
           }
@@ -232,6 +279,7 @@ export function useMediaThumbnailFull(
           if (retryCountRef.current < MAX_RETRIES) {
             retryCountRef.current++;
             console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+            releaseSlot();
             setTimeout(() => { if (!cancelled) fetchWithRetry(); }, RETRY_DELAY_MS);
             return;
           }
@@ -287,6 +335,8 @@ export function useMediaThumbnailFull(
           console.warn(`[useMediaThumbnail] Error fetching ${fullUrl}`);
           markFailed(undefined);
         }
+      } finally {
+        releaseSlot();
       }
     };
     fetchWithRetry();

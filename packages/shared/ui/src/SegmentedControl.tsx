@@ -29,10 +29,10 @@ export function SegmentedControl<T extends string = string>({
             type="button"
             onClick={() => onChange(opt.value)}
             disabled={disabled}
-            className={`px-2 py-1 text-xs rounded border transition-colors ${
+            className={`px-2 py-1 text-xs rounded border transition-colors coarse:min-h-11 coarse:px-3 ${
               value === opt.value
                 ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
+                : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hoverable:hover:border-accent-muted'
             } disabled:opacity-50`}
           >
             {opt.label}

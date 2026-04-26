@@ -444,6 +444,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       return;
     }
 
+    // Coarse pointers (touch-primary) get a much smaller speculative window —
+    // 350px ahead of viewport triggers video range requests for cards that may
+    // never be scrolled to, which floods thin links (mobile/VPN). Desktop
+    // keeps the wider margin so prefetch hides latency before the card lands.
+    const isCoarsePointer =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches;
+    const rootMargin = isCoarsePointer ? '50px' : '350px';
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -452,7 +462,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           }
         }
       },
-      { rootMargin: '350px' },
+      { rootMargin },
     );
 
     observer.observe(element);
@@ -999,7 +1009,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       >
         <div
           ref={mediaContainerRef}
-          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md touch-none ${
+          // `touch-none` blocks the browser's native scroll pass-through. We
+          // only need it when card swipe gestures are enabled (desktop). When
+          // gestures are off (mobile), keep touch-action default so vertical
+          // page scroll works.
+          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md ${gesture.enabled ? 'touch-none' : ''} ${
             layout?.fillHeight
               ? 'h-full'
               : layout?.aspectSquare

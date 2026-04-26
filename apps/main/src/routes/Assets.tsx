@@ -244,7 +244,7 @@ export function AssetsRoute() {
     <div className="flex flex-col h-screen h-dvh overflow-hidden" style={layoutStyle}>
       {/* Selection banners (only rendered when active) */}
       {isSelectionMode && (
-        <div className="flex-shrink-0 px-6 pt-4">
+        <div className="flex-shrink-0 px-3 sm:px-6 pt-3 sm:pt-4">
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -264,8 +264,10 @@ export function AssetsRoute() {
         </div>
       )}
 
-      {/* Scrollable source component with asset viewer */}
-      <div className="flex-1 overflow-hidden px-6 pb-6 relative">
+      {/* Scrollable source component with asset viewer.
+          Mobile drops outer padding so card grid uses the full viewport width;
+          desktop keeps the breathing room around the gallery surface. */}
+      <div className="flex-1 overflow-hidden px-0 pb-0 sm:px-6 sm:pb-6 relative">
         {/* Loading overlay during transition */}
         {isTransitioning && (
           <div className="absolute inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 transition-opacity duration-150">

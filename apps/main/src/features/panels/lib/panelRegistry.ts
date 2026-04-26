@@ -57,6 +57,19 @@ export type CoreEditorRole = "game-view" | "flow-view" | "world-editor";
 
 export type PanelOrchestrationMetadata = Omit<PanelMetadata, "id" | "title">;
 
+/**
+ * Per-panel hints consulted by mobile shells (e.g. PanelHostMobile).
+ * Desktop hosts ignore these. Omit the field on panels that work fine on phone.
+ */
+export interface PanelMobileHints {
+  /** Hide this panel on mobile entirely (still shown on desktop). */
+  hidden?: boolean;
+  /** Lower values surface earlier in the bottom-tab nav. Falls back to `order`. */
+  priority?: number;
+  /** Hint to the panel that it should render in a denser/compact layout. */
+  compact?: boolean;
+}
+
 export interface PanelNavigationContribution {
   /** Sidebar module IDs this panel contributes to (e.g. "workspace"). */
   modules?: string[];
@@ -291,6 +304,11 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
    * is considered already represented and add actions should be disabled.
    */
   addPanelEquivalentIds?: string[];
+
+  /**
+   * Mobile shell hints — consumed by PanelHostMobile only. Desktop ignores.
+   */
+  mobile?: PanelMobileHints;
 }
 
 function resolveInstancePolicy(

@@ -42,6 +42,7 @@ import type {
   ContextLabelStrategy,
   CoreEditorRole,
   PanelDefinition,
+  PanelMobileHints,
   PanelNavigationContribution,
   PanelCategory,
   PanelSettingsFormSchema,
@@ -147,6 +148,13 @@ export interface DefinePanelOptions<TSettings = any> {
   /** Panel IDs considered equivalent for Add Panel "already represented" checks. */
   addPanelEquivalentIds?: string[];
 
+  /**
+   * Mobile shell hints. Consumed by PanelHostMobile, ignored on desktop.
+   * Use to opt panels out of mobile (`hidden`), reorder the bottom nav
+   * (`priority`), or signal the panel itself should render compactly.
+   */
+  mobile?: PanelMobileHints;
+
   // Optional sidebar navigation contribution metadata
   navigation?: PanelNavigationContribution;
 
@@ -235,6 +243,7 @@ export function definePanel<TSettings = any>(
     coreEditorRole,
     siblings,
     addPanelEquivalentIds,
+    mobile,
     navigation,
     internal = false,
     devTool,
@@ -256,13 +265,17 @@ export function definePanel<TSettings = any>(
   }
 
   // Auto-derive settingScopes from consumesCapabilities.
-  // Capability keys like "generation:scope" map to scope ID "generation".
+  // Convention: capability keys that follow "scopeId:detail" form map to
+  // scope ID `scopeId` (e.g. "generation:scope" → "generation"). Plain
+  // capability keys without a colon (e.g. "assetSelection") are pure
+  // capability negotiations and are NOT scopes — skipping them avoids
+  // emitting spurious "scope not registered" warnings.
   if (resolvedConsumes?.length) {
     resolvedSettingScopes = resolvedSettingScopes ? [...resolvedSettingScopes] : [];
     for (const cap of resolvedConsumes) {
       const key = typeof cap === 'string' ? cap : cap.key;
-      // Convention: "scopeId:detail" → extract scopeId before ":"
-      const scopeId = key.includes(':') ? key.split(':')[0] : key;
+      if (!key.includes(':')) continue;
+      const scopeId = key.split(':')[0];
       if (scopeId && !resolvedSettingScopes.includes(scopeId)) {
         resolvedSettingScopes.push(scopeId);
       }
@@ -341,6 +354,7 @@ export function definePanel<TSettings = any>(
     coreEditorRole,
     siblings,
     addPanelEquivalentIds,
+    mobile,
     navigation,
     onMount,
     onUnmount,

@@ -7,13 +7,15 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean
 }
 
-const base = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:pointer-events-none'
+// `coarse:min-h-11` enlarges the tap target to 44px (Apple HIG / WCAG min)
+// only on touch-primary devices; desktop sizing is unaffected.
+const base = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 disabled:pointer-events-none coarse:min-h-11'
 const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700',
-  secondary: 'bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700',
-  ghost: 'bg-transparent hover:bg-neutral-100 dark:hover:bg-neutral-800',
-  outline: 'border border-neutral-300 bg-transparent text-neutral-900 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800',
-  danger: 'bg-red-600 text-white hover:bg-red-700',
+  primary: 'bg-brand-600 text-white hoverable:hover:bg-brand-700',
+  secondary: 'bg-neutral-200 text-neutral-900 hoverable:hover:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-100 dark:hoverable:hover:bg-neutral-700',
+  ghost: 'bg-transparent hoverable:hover:bg-neutral-100 dark:hoverable:hover:bg-neutral-800',
+  outline: 'border border-neutral-300 bg-transparent text-neutral-900 hoverable:hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-100 dark:hoverable:hover:bg-neutral-800',
+  danger: 'bg-red-600 text-white hoverable:hover:bg-red-700',
 }
 const sizes: Record<NonNullable<ButtonProps['size']>, string> = {
   xs: 'h-6 px-2 text-xs',

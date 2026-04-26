@@ -23,6 +23,7 @@ import {
   type AssetSelection,
 } from '@features/contextHub';
 import { ensurePanelMetadataRegistered, panelManager, usePanel } from '@features/panels';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { PANEL_IDS } from '@features/panels/lib/panelIds';
 
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
@@ -57,6 +58,7 @@ export function AssetViewerPanel() {
   const toggleMetadata = useAssetViewerStore((s) => s.toggleMetadata);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isMobile = useIsMobileViewport();
 
   const assetSelectionValue = useMemo<AssetSelection>(
     () => {
@@ -162,35 +164,68 @@ export function AssetViewerPanel() {
   if (mode === 'side') {
     return (
       <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-700">
-        {/* Header */}
-        <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-neutral-200 dark:border-neutral-700">
-          <div className="flex items-center gap-2 min-w-0">
-            <Icon
-              name={currentAsset.type === 'video' ? 'video' : 'image'}
-              size={16}
-              className="text-neutral-500 flex-shrink-0"
-            />
-            <span className="text-sm font-medium truncate" title={currentAsset.name}>
-              {currentAsset.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={toggleFullscreen}
-              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
-              title="Fullscreen (F)"
-            >
-              <Icon name="maximize2" size={16} />
-            </button>
+        {/* Header — mobile gets a wide left-side back chevron as the primary
+            "return to gallery" affordance; desktop keeps the compact top-right
+            X (matches dockview density). */}
+        {isMobile ? (
+          <div className="flex-shrink-0 flex items-center h-12 border-b border-neutral-200 dark:border-neutral-700">
             <button
               onClick={closeViewer}
-              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
-              title="Close (Esc)"
+              className="h-12 min-w-11 px-3 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hoverable:hover:bg-neutral-100 dark:hoverable:hover:bg-neutral-800 transition-colors"
+              title="Back to gallery"
+              aria-label="Back to gallery"
             >
-              <Icon name="x" size={16} />
+              <Icon name="chevronLeft" size={22} />
+            </button>
+            <div className="flex-1 min-w-0 flex items-center gap-2 pr-2">
+              <Icon
+                name={currentAsset.type === 'video' ? 'video' : 'image'}
+                size={16}
+                className="text-neutral-500 flex-shrink-0"
+              />
+              <span className="text-sm font-medium truncate" title={currentAsset.name}>
+                {currentAsset.name}
+              </span>
+            </div>
+            <button
+              onClick={toggleFullscreen}
+              className="h-12 min-w-11 flex items-center justify-center text-neutral-500 hoverable:hover:bg-neutral-100 dark:hoverable:hover:bg-neutral-800 transition-colors"
+              title="Fullscreen"
+              aria-label="Fullscreen"
+            >
+              <Icon name="maximize2" size={18} />
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon
+                name={currentAsset.type === 'video' ? 'video' : 'image'}
+                size={16}
+                className="text-neutral-500 flex-shrink-0"
+              />
+              <span className="text-sm font-medium truncate" title={currentAsset.name}>
+                {currentAsset.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={toggleFullscreen}
+                className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
+                title="Fullscreen (F)"
+              >
+                <Icon name="maximize2" size={16} />
+              </button>
+              <button
+                onClick={closeViewer}
+                className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
+                title="Close (Esc)"
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Dockview panels */}
         <div className="flex-1 min-h-0">

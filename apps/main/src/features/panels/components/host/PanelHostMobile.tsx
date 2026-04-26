@@ -66,17 +66,12 @@ export interface PanelHostMobileProps {
   className?: string;
 }
 
-// Placeholder access for future `mobile` hints on PanelDefinition.
-// Once definePanel grows a `mobile?: { hidden?, priority?, compact? }` field,
-// these read it; for now they're always undefined → no-op.
 function getMobilePriority(def: PanelDefinition): number {
-  const hint = (def as unknown as { mobile?: { priority?: number } }).mobile;
-  return hint?.priority ?? def.order ?? 9999;
+  return def.mobile?.priority ?? def.order ?? 9999;
 }
 
 function isMobileHidden(def: PanelDefinition): boolean {
-  const hint = (def as unknown as { mobile?: { hidden?: boolean } }).mobile;
-  return hint?.hidden === true;
+  return def.mobile?.hidden === true;
 }
 
 export function PanelHostMobile({

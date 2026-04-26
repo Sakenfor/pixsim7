@@ -18,6 +18,7 @@ import {
   type PanelHostDockviewRef,
   type LayoutSpecEntry,
 } from '@features/panels';
+import { useIsMobileViewport } from '@features/panels/components/host/useIsMobileViewport';
 import { useAppDockviewIntegration } from '@features/workspace';
 
 type DockviewPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
@@ -122,6 +123,25 @@ function arePanelsRegistered(panelIds: readonly string[]): boolean {
   return panelIds.every((panelId) => panelSelectors.has(panelId));
 }
 
+// ── Mobile stacked-layout heights (px) ──
+// Asset is compact; prompt + settings get more vertical room since they hold
+// the primary inputs. Container scrolls when the sum exceeds viewport.
+const QUICKGEN_MOBILE_SECTION_HEIGHTS: Record<string, number> = {
+  [QUICKGEN_PANEL_IDS.asset]: 140,
+  [QUICKGEN_PANEL_IDS.prompt]: 260,
+  [QUICKGEN_PANEL_IDS.settings]: 320,
+  [QUICKGEN_PANEL_IDS.blocks]: 280,
+};
+
+// Dockview-API stubs for panels rendered outside a real dockview host.
+// Same pattern as PanelHostMobile — panels that drive the dockview API on
+// desktop will silently no-op on mobile, which is acceptable for read/edit
+// flows that don't reposition tabs themselves.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const NOOP_PANEL_API: any = new Proxy({}, { get: () => () => undefined });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const NOOP_CONTAINER_API: any = new Proxy({}, { get: () => () => undefined });
+
 /**
  * Shared quickgen panel host with workspace integration (bootstrap + floating panels).
  */
@@ -150,6 +170,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     });
     const panelsReady = arePanelsRegistered(panels);
     const showLoadingPlaceholder = !initializationComplete && !panelsReady;
+    const isMobile = useIsMobileViewport();
     const {
       capabilities: dockCapabilities,
       placementExclusions: floatingQuickGenPanelIds,
@@ -180,6 +201,47 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
 
     if (showLoadingPlaceholder) {
       return <div className={className ?? 'h-full w-full'} />;
+    }
+
+    if (isMobile) {
+      // Mobile: stack all included quickgen panels vertically in one scroll
+      // container — asset, prompt, and settings are visible simultaneously,
+      // each taking full viewport width. Avoids the desktop horizontal split
+      // (which collapses the prompt textbox to ~80px wide on a 375px screen)
+      // and avoids the extra tab strip a tabs-based mobile host would add.
+      const excluded = new Set(floatingQuickGenPanelIds);
+      const stackedPanels = panels.filter((id) => !excluded.has(id));
+      return (
+        <div className={className ?? 'h-full overflow-y-auto'}>
+          <div className="flex flex-col">
+            {stackedPanels.map((panelId) => {
+              const def = panelSelectors.get(panelId);
+              if (!def) return null;
+              const Component = def.component;
+              const sectionHeight = QUICKGEN_MOBILE_SECTION_HEIGHTS[panelId] ?? 240;
+              return (
+                <section
+                  key={panelId}
+                  className="flex-shrink-0 flex flex-col border-b border-neutral-200 dark:border-neutral-800 last:border-b-0"
+                  style={{ height: sectionHeight }}
+                >
+                  <header className="flex-none px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/40">
+                    {def.title}
+                  </header>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Component
+                      params={context}
+                      context={context}
+                      api={NOOP_PANEL_API}
+                      containerApi={NOOP_CONTAINER_API}
+                    />
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      );
     }
 
     return (
