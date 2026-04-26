@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   EACH_STRATEGIES,
+  LINKED_SET_STRATEGIES,
   SET_STRATEGIES,
   isSetStrategy,
   useFanoutPresetStore,
@@ -69,7 +70,10 @@ export function ExecutionPresetsPanel() {
     setDraftOptions(normalizeFanoutRunOptions(preset));
   }, [selectedPreset]);
 
-  const allStrategies = useMemo(() => [...EACH_STRATEGIES, ...SET_STRATEGIES], []);
+  const allStrategies = useMemo(
+    () => [...EACH_STRATEGIES, ...SET_STRATEGIES, ...LINKED_SET_STRATEGIES],
+    [],
+  );
   const isCustomSelected = selected?.source === 'custom' && !!selectedPreset;
   const needsSet = isSetStrategy(draftOptions.strategy);
   const selectedSet = assetSets.find((s) => s.id === (draftOptions.setId ?? ''));
@@ -253,7 +257,13 @@ export function ExecutionPresetsPanel() {
                   <LabeledField label="Strategy">
                     <select
                       value={draftOptions.strategy}
-                      onChange={(e) => setDraftPatch({ strategy: e.target.value as FanoutRunOptions['strategy'] })}
+                      onChange={(e) => {
+                        const nextStrategy = e.target.value as FanoutRunOptions['strategy'];
+                        setDraftPatch({
+                          strategy: nextStrategy,
+                          ...(!isSetStrategy(nextStrategy) ? { setId: undefined } : {}),
+                        });
+                      }}
                       className="w-full px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800"
                     >
                       {allStrategies.map((s) => (
