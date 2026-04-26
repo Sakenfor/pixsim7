@@ -264,6 +264,19 @@ function AssetSetChip({
                   </button>
                   <button
                     type="button"
+                    onClick={() => {
+                      if (s.assetIds.length === 0) return;
+                      onBrowseSet(s);
+                      chipState.closeChip(chipKey);
+                    }}
+                    disabled={s.assetIds.length === 0}
+                    title={s.assetIds.length > 0 ? 'Edit set in mini gallery' : 'Set is empty'}
+                    className="flex items-center justify-center w-4 h-4 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                  >
+                    <Icon name="image" size={10} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDelete(s)}
                     title="Delete set"
                     className="flex items-center justify-center w-4 h-4 rounded text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10"

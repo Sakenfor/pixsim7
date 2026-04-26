@@ -61,6 +61,8 @@ function discoverPeerPanels(excludeId?: string): GalleryVariant[] {
 export interface MiniGalleryProps {
   /** Initial filter state (user can change via UI) */
   initialFilters?: AssetFilters;
+  /** Optional source label when passed as direct props (floating context flattening). */
+  sourceLabel?: string;
   /** When true, re-apply `initialFilters`/`context.initialFilters` when they change. */
   syncInitialFilters?: boolean;
   /** Optional cap on total results shown in this gallery (across pages). */
@@ -325,6 +327,7 @@ const MAX_CARD_SIZE = 200;
 
 function MiniGalleryContent({
   initialFilters: propInitialFilters,
+  sourceLabel: propSourceLabel,
   syncInitialFilters = false,
   maxItems,
   showSearch = true,
@@ -367,8 +370,13 @@ function MiniGalleryContent({
   }, [variants, panelId]);
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(activeVariantId);
+  const resolvedSourceLabel = context?.sourceLabel ?? propSourceLabel;
   const activeVariant = allVariants.find((v) => v.id === selectedVariantId);
   const variantFilters = activeVariant?.filters;
+
+  useEffect(() => {
+    setSelectedVariantId(activeVariantId);
+  }, [activeVariantId]);
 
   // Resolve operation type: controller > prop > context
   const controller = useQuickGenerateController();
@@ -504,8 +512,8 @@ function MiniGalleryContent({
 
   // Register mini-gallery scope for viewer navigation (use allItems for full navigation)
   const viewerItems = useMemo(() => toViewerAssets(allItems), [allItems]);
-  const miniScopeLabel = context?.sourceLabel
-    ? `${context.sourceLabel} (${allItems.length})`
+  const miniScopeLabel = resolvedSourceLabel
+    ? `${resolvedSourceLabel} (${allItems.length})`
     : `Gallery (${allItems.length})`;
   useViewerScopeSync('mini-gallery', miniScopeLabel, viewerItems, isViewerOpen);
 
@@ -646,7 +654,7 @@ function MiniGalleryContent({
                 className="flex-1 min-w-0 text-xs bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-0.5 text-neutral-700 dark:text-neutral-300 truncate"
               >
                 {!selectedVariantId && (
-                  <option value="">{context?.sourceLabel ?? 'Select view...'}</option>
+                  <option value="">{resolvedSourceLabel ?? 'Select view...'}</option>
                 )}
                 {variantGroups.map((group) =>
                   group.label ? (

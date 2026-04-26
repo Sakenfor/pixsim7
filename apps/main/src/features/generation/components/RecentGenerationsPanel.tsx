@@ -6,6 +6,7 @@ export interface RecentGenerationsPanelProps {
   operationType?: OperationType;
   generationScopeId?: string;
   sourceLabel?: string;
+  _floatingPanelId?: string;
   context?: {
     operationType?: OperationType;
     generationScopeId?: string;
@@ -20,6 +21,7 @@ export function RecentGenerationsPanel(props: RecentGenerationsPanelProps) {
       operationType={props.operationType}
       generationScopeId={props.generationScopeId}
       context={props.context}
+      _floatingPanelId={props._floatingPanelId}
       paginationMode="page"
       pageSize={20}
       suppressHoverActions

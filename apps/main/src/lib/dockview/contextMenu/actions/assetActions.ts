@@ -905,6 +905,7 @@ function openRelatedGallery(asset: AssetModel, variantId: string) {
   useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
     context: {
       initialFilters: active.filters,
+      syncInitialFilters: true,
       sourceLabel: active.label,
       suppressHoverActions: true,
       variants,
