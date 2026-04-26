@@ -39,10 +39,11 @@ import {
 } from '../block-matrix/presets';
 
 
+import { LatinComposerWorkbench } from './LatinComposerWorkbench';
 import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
 import { PromptPackAuthoringWorkbench } from './PromptPackAuthoringWorkbench';
 
-type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'authoring' | 'prompt-authoring';
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'latin-composer' | 'authoring' | 'prompt-authoring';
 
 const NAV_SECTIONS = [
   {
@@ -71,6 +72,7 @@ const NAV_SECTIONS = [
     icon: <Icon name="sparkles" size={14} className="flex-shrink-0" />,
     children: [
       { id: 'interactions' as TabId, label: 'Interactions', icon: <Icon name="sparkles" size={12} className="flex-shrink-0" /> },
+      { id: 'latin-composer' as TabId, label: 'Latin Composer', icon: <Icon name="wand" size={12} className="flex-shrink-0" /> },
     ],
   },
 ];
@@ -135,7 +137,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const { roles: compositionRoles, packages: compositionPackages } = useCompositionPackages();
   const contextTab = ((): TabId | undefined => {
     const raw = props.context?.tab;
-    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions' || raw === 'authoring' || raw === 'prompt-authoring'
+    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions' || raw === 'latin-composer' || raw === 'authoring' || raw === 'prompt-authoring'
       ? raw
       : undefined;
   })();
@@ -1067,6 +1069,12 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
       {tab === 'interactions' && (
         <div className="flex-1 min-h-0">
           <PromptInteractionsWorkbench />
+        </div>
+      )}
+
+      {tab === 'latin-composer' && (
+        <div className="flex-1 min-h-0">
+          <LatinComposerWorkbench />
         </div>
       )}
 
