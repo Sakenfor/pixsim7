@@ -5,7 +5,7 @@ SHA hash management, storage sync, and backfill operations.
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, AssetSvc, DatabaseSession
 from pixsim_logging import get_logger
@@ -95,6 +95,42 @@ class BackfillSignalScanResponse(BaseModel):
     broken: int
     skipped: int
     errors: int
+
+
+class CohortBucket(BaseModel):
+    """Per-bucket duration distribution within one cohort."""
+    count: int
+    p10: Optional[float] = None
+    p50: Optional[float] = None
+    p90: Optional[float] = None
+
+
+class CohortRow(BaseModel):
+    """One generation cohort with per-bucket duration percentiles.
+
+    `separation` is `(clean.p10 - suspicious.p90) / clean.p50` clamped to [-1, 1].
+    Positive values = broken durations sit cleanly below clean ones (real signal).
+    Near zero or negative = distributions overlap (noise).
+    """
+    provider: str
+    operation_type: str
+    model: Optional[str] = None
+    quality: Optional[str] = None
+    requested_length_sec: Optional[float] = None
+    buckets: Dict[str, CohortBucket]
+    suggested_threshold_sec: Optional[float] = None
+    separation: Optional[float] = None
+    n_total: int
+
+
+class SignalScanCohortsResponse(BaseModel):
+    """Per-cohort duration breakdown for the broken-video heuristic."""
+    cohorts: List[CohortRow]
+    scanner_version: str
+    min_clean_count: int
+    min_suspicious_count: int
+    sample_size: int
+    sample_limit: int
 
 
 # ===== SHA STATS =====
@@ -1821,4 +1857,194 @@ async def backfill_signal_scan(
         broken=broken,
         skipped=skipped,
         errors=errors,
+    )
+
+
+@router.get("/signal-scan-cohorts", response_model=SignalScanCohortsResponse)
+async def get_signal_scan_cohorts(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    min_clean: int = Query(default=20, ge=0, le=10000),
+    min_suspicious: int = Query(default=5, ge=0, le=10000),
+    sample_limit: int = Query(default=3000, ge=100, le=20000),
+) -> SignalScanCohortsResponse:
+    """Per-cohort generation duration percentiles split by signal-scan score bucket.
+
+    Cohort key: (provider_id, operation_type, model, quality, requested duration).
+    Buckets: clean (score 0), borderline (1-2), suspicious (>=3), unscanned.
+
+    For each cohort, the response includes a suggested duration threshold
+    (the more conservative of `clean.p10` and `(clean.p10 + suspicious.p90)/2`)
+    and a `separation` score so the UI can rank cohorts by how cleanly the
+    duration signal actually distinguishes broken from clean clips.
+
+    Bounded to the `sample_limit` most recent matching assets so the JSON
+    extraction + percentile aggregation stays fast even on large libraries.
+    Sparse cohorts (both buckets below their min thresholds) are dropped.
+    """
+    from sqlalchemy import select, func, case, Integer
+    from sqlalchemy.dialects.postgresql import JSONB
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.domain.generation.models import Generation
+    from pixsim7.backend.main.services.asset.signal_analysis import (
+        SCANNER_VERSION,
+        SUSPICIOUS_THRESHOLD,
+    )
+
+    sm = func.cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")
+    score_text = sm.op("->>")("score")
+    score_int = score_text.cast(Integer)
+
+    bucket_expr = case(
+        (score_text.is_(None), "unscanned"),
+        (score_int >= SUSPICIOUS_THRESHOLD, "suspicious"),
+        (score_int == 0, "clean"),
+        else_="borderline",
+    )
+
+    cp = func.cast(Generation.canonical_params, JSONB)
+    model_text = cp.op("->>")("model")
+    quality_text = cp.op("->>")("quality")
+    duration_text = cp.op("->>")("duration")
+
+    # Wall-clock = our PENDING->PROCESSING transition to terminal completion.
+    # Includes provider queue + compute (see lifecycle.py:112). For a fixed
+    # cohort the bias is uniform, so within-cohort comparisons stay valid.
+    duration_sec_expr = func.extract(
+        "epoch", Generation.completed_at - Generation.started_at
+    )
+
+    # Inner: pull the latest N matching rows with cohort key + duration + bucket
+    # already extracted. Bounding here keeps JSON parsing + percentile_cont work
+    # proportional to sample_limit, not to the full library.
+    inner = (
+        select(
+            Generation.provider_id.label("provider"),
+            Generation.operation_type.label("operation_type"),
+            model_text.label("model"),
+            quality_text.label("quality"),
+            duration_text.label("req_duration"),
+            bucket_expr.label("bucket"),
+            duration_sec_expr.label("dur"),
+        )
+        .select_from(Asset)
+        .join(Generation, Generation.id == Asset.source_generation_id)
+        .where(
+            Asset.user_id == admin.id,
+            Asset.media_type == "VIDEO",
+            Asset.is_archived == False,  # noqa: E712
+            Generation.started_at.isnot(None),
+            Generation.completed_at.isnot(None),
+        )
+        .order_by(Asset.id.desc())
+        .limit(sample_limit)
+        .subquery()
+    )
+
+    p10 = func.percentile_cont(0.1).within_group(inner.c.dur.asc())
+    p50 = func.percentile_cont(0.5).within_group(inner.c.dur.asc())
+    p90 = func.percentile_cont(0.9).within_group(inner.c.dur.asc())
+
+    stmt = (
+        select(
+            inner.c.provider,
+            inner.c.operation_type,
+            inner.c.model,
+            inner.c.quality,
+            inner.c.req_duration,
+            inner.c.bucket,
+            func.count().label("n"),
+            p10.label("p10"),
+            p50.label("p50"),
+            p90.label("p90"),
+        )
+        .group_by(
+            inner.c.provider,
+            inner.c.operation_type,
+            inner.c.model,
+            inner.c.quality,
+            inner.c.req_duration,
+            inner.c.bucket,
+        )
+    )
+
+    rows = (await db.execute(stmt)).all()
+
+    # Pivot bucket-rows into per-cohort dicts
+    cohorts: dict[tuple, dict] = {}
+    for r in rows:
+        op_str = r.operation_type.value if hasattr(r.operation_type, "value") else str(r.operation_type)
+        key = (r.provider, op_str, r.model, r.quality, r.req_duration)
+        cohort = cohorts.setdefault(key, {"buckets": {}, "n_total": 0})
+        cohort["buckets"][r.bucket] = CohortBucket(
+            count=int(r.n or 0),
+            p10=float(r.p10) if r.p10 is not None else None,
+            p50=float(r.p50) if r.p50 is not None else None,
+            p90=float(r.p90) if r.p90 is not None else None,
+        )
+        cohort["n_total"] += int(r.n or 0)
+
+    out: List[CohortRow] = []
+    for (provider, op_str, model, quality, req_duration), data in cohorts.items():
+        buckets = data["buckets"]
+        clean = buckets.get("clean")
+        susp = buckets.get("suspicious")
+
+        # Drop cohorts where both relevant buckets are too sparse to read.
+        clean_n = clean.count if clean else 0
+        susp_n = susp.count if susp else 0
+        if clean_n < min_clean and susp_n < min_suspicious:
+            continue
+
+        suggested: Optional[float] = None
+        separation: Optional[float] = None
+        if (
+            clean and susp
+            and clean.p10 is not None
+            and susp.p90 is not None
+            and clean.p50 is not None
+            and clean.p50 > 0
+        ):
+            midpoint = (clean.p10 + susp.p90) / 2.0
+            suggested = round(min(clean.p10, midpoint), 2)
+            sep_raw = (clean.p10 - susp.p90) / clean.p50
+            separation = round(max(-1.0, min(1.0, sep_raw)), 3)
+
+        try:
+            req_len = float(req_duration) if req_duration is not None else None
+        except (TypeError, ValueError):
+            req_len = None
+
+        out.append(CohortRow(
+            provider=provider,
+            operation_type=op_str,
+            model=model,
+            quality=quality,
+            requested_length_sec=req_len,
+            buckets=buckets,
+            suggested_threshold_sec=suggested,
+            separation=separation,
+            n_total=int(data["n_total"]),
+        ))
+
+    # Best signal first; cohorts without a separation score sink to the bottom,
+    # ordered by total count desc within each tier.
+    out.sort(
+        key=lambda c: (
+            -(c.separation if c.separation is not None else -2.0),
+            -c.n_total,
+        )
+    )
+
+    sample_size = sum(
+        b.count for data in cohorts.values() for b in data["buckets"].values()
+    )
+
+    return SignalScanCohortsResponse(
+        cohorts=out,
+        scanner_version=SCANNER_VERSION,
+        min_clean_count=min_clean,
+        min_suspicious_count=min_suspicious,
+        sample_size=sample_size,
+        sample_limit=sample_limit,
     )
