@@ -56,6 +56,10 @@ export type { AssetsController } from './hooks/useAssetsController';
 
 export { useAssetViewer, useViewerScopeSync } from './hooks/useAssetViewer';
 
+export { useRecentScope } from './hooks/useRecentScope';
+
+export { useHistoryScope } from './hooks/useHistoryScope';
+
 export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
 
 export { useFilterMetadata } from './hooks/useFilterMetadata';

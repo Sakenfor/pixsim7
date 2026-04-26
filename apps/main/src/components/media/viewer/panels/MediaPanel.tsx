@@ -22,7 +22,7 @@ import { useMaskOverlayStore } from '../overlays/builtins/maskOverlayStore';
 import { ViewerLayersPanel } from '../overlays/shared/ViewerLayersPanel';
 import type { ViewerPanelContext } from '../types';
 
-import { useFrameCapture, useOverlayShortcuts, useRecentScope, useViewerContext } from './hooks';
+import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks';
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
@@ -213,9 +213,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
     })),
     [scopes, activeScopeId],
   );
-
-  // Recent scope — always-available session scope for recently created assets
-  useRecentScope();
 
   // Follow latest setting
   const followLatest = useAssetViewerStore((s) => s.settings.followLatest);

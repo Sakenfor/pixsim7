@@ -14,6 +14,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
 import { useApplyAppearance } from '@features/appearance';
+import { useHistoryScope, useRecentScope } from '@features/assets';
 import { ContextHubHost } from '@features/contextHub/components/ContextHubHost';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
@@ -140,6 +141,9 @@ function App() {
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
   useActionShortcuts(isAuthenticated);
+
+  useRecentScope();
+  useHistoryScope();
 
   useEffect(() => {
     // Initialize auth state

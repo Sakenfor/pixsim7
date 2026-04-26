@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { isAnyVideoPlaying } from '../lib/activeVideoRegistry';
+import { viewerOpenEvents } from '../lib/viewerOpenEvents';
 
 export type ViewerMode = 'side' | 'fullscreen' | 'closed';
 
@@ -190,6 +191,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
         const { settings, scopes: prevScopes, activeScopeId: prevActiveId } = get();
         const list = assetList || [asset];
 
+        viewerOpenEvents.emit(asset);
+
         // Lock-respecting branch: when scope is locked and we already have an
         // active scope, don't swap scope out from under the user. Register the
         // incoming scope so it's available in the picker, but keep navigation
@@ -213,11 +216,12 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           return;
         }
 
-        const initialScopes: Record<string, NavigationScope> = {};
-        let initialScopeId: string | null = null;
+        // Merge so app-level scopes (Recent, History) survive open-while-open.
+        const nextScopes: Record<string, NavigationScope> = { ...prevScopes };
+        let nextActiveId: string | null = prevActiveId;
         if (scopeId) {
-          initialScopes[scopeId] = { label: scopeId, assets: list };
-          initialScopeId = scopeId;
+          nextScopes[scopeId] = { label: nextScopes[scopeId]?.label ?? scopeId, assets: list };
+          nextActiveId = scopeId;
         }
 
         const index = list.findIndex((a) => a.id === asset.id);
@@ -227,8 +231,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           assetList: list,
           currentIndex: index >= 0 ? index : 0,
           showMetadata: settings.showMetadata,
-          scopes: initialScopes,
-          activeScopeId: initialScopeId,
+          scopes: nextScopes,
+          activeScopeId: nextActiveId,
         });
       },
 

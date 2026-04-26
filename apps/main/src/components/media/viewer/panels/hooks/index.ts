@@ -7,4 +7,3 @@
 export { useFrameCapture, type CaptureAction, type UseFrameCaptureOptions, type UseFrameCaptureResult } from './useFrameCapture';
 export { useOverlayShortcuts, type UseOverlayShortcutsOptions } from './useOverlayShortcuts';
 export { useViewerContext, type UseViewerContextOptions, type UseViewerContextResult } from './useViewerContext';
-export { useRecentScope } from './useRecentScope';

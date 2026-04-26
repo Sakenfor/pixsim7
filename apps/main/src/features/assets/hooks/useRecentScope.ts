@@ -4,17 +4,21 @@
  * Always-available "Recent" navigation scope for the media viewer.
  * Subscribes to asset creation/deletion events and maintains a session-scoped
  * list of recently created assets (generations, uploads, captures).
+ *
+ * Must be mounted exactly once at app level — `media-preview` panels support
+ * multiple instances, so registering from inside a panel would cause one
+ * instance's unmount cleanup to wipe the scope while siblings are still alive.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 
 import { hmrSingleton } from '@lib/utils';
 
-import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
-import { assetEvents } from '@features/assets/lib/assetEvents';
-import { fromAssetResponse } from '@features/assets/models/asset';
-import { toViewerAsset } from '@features/assets/models/asset';
-import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '@features/assets/stores/assetViewerStore';
+import { assetEvents } from '../lib/assetEvents';
+import { fromAssetResponse, toViewerAsset } from '../models/asset';
+import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
+
+import { useViewerScopeSync } from './useAssetViewer';
 
 const RECENT_CAP = 100;
 
@@ -47,15 +51,10 @@ function updateInCache(va: ViewerAsset): void {
   }
 }
 
-/**
- * Registers a "Recent" scope with the viewer that accumulates all newly
- * created assets during the session. Call once in MediaPanel.
- */
 export function useRecentScope(): void {
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
   const [cacheVersion, setCacheVersion] = useState(recentCache.version);
 
-  // Subscribe to asset events (independent of viewer open state so cache stays warm)
   useEffect(() => {
     const unsubCreate = assetEvents.subscribe((response) => {
       const model = fromAssetResponse(response);
@@ -83,7 +82,6 @@ export function useRecentScope(): void {
     };
   }, []);
 
-  // Stable snapshot that only changes when cache version bumps
   const snapshot = useMemo(() => [...recentCache.assets], [cacheVersion]);
 
   const label = `Recent (${snapshot.length})`;
