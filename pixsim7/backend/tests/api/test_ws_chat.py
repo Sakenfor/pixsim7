@@ -725,3 +725,177 @@ class TestDrainLateResult:
 
         bridge.get_completed_result.assert_not_called()
         store_mock.assert_not_awaited()
+
+
+# ── _handle_message TimeoutError → drain spawn wiring ─────────────
+
+
+class TestHandleMessageTimeout:
+    """End-to-end: dispatch TimeoutError sends WS error AND spawns drain."""
+
+    def _setup_bridge(self, fake_stream):
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+        mock_bridge.dispatch_task_streaming = fake_stream
+        return mock_bridge
+
+    def _patch_db(self):
+        # Profile resolution touches the DB; mock it out.
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        return patch(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            return_value=mock_db_session,
+        )
+
+    def test_timeout_after_task_created_spawns_drain(self):
+        """Dispatch yields task_created then raises TimeoutError → drain
+        scheduled with the captured task_id and the body's bridge_session_id."""
+        async def fake_stream(*args, **kwargs):
+            yield {"type": "task_created", "task_id": "task-T"}
+            raise TimeoutError("Remote agent did not respond within 900s")
+
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = self._setup_bridge(fake_stream)
+        drain_mock = AsyncMock(return_value=None)
+        patches = _debug_patches(user_id=1, token="tok")
+
+        with (
+            patches[0], patches[1], patches[2],
+            patch(_BRIDGE, mock_bridge),
+            self._patch_db(),
+            patch("pixsim7.backend.main.api.v1.ws_chat._drain_late_result", drain_mock),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "long-running question",
+                    "bridge_session_id": "sess-existing",
+                }))
+                # First frame: task_created heartbeat
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+                assert hb["task_id"] == "task-T"
+                # Second frame: timeout error result
+                err = json.loads(ws.receive_text())
+                assert err["type"] == "result"
+                assert err["ok"] is False
+                assert "did not respond" in err["error"].lower()
+
+        # Drain was scheduled with the right context.
+        drain_mock.assert_called_once()
+        kwargs = drain_mock.call_args.kwargs
+        assert kwargs["task_id"] == "task-T"
+        assert kwargs["session_id"] == "sess-existing"
+        assert kwargs["user_message"] == "long-running question"
+        assert kwargs["timeout_s"] == 900
+        assert kwargs["bridge"] is mock_bridge
+
+    def test_timeout_with_no_bridge_session_id_passes_none(self):
+        """First-message timeout (no prior session) — drain still spawned
+        but with session_id=None; drain itself decides to skip."""
+        async def fake_stream(*args, **kwargs):
+            yield {"type": "task_created", "task_id": "task-first"}
+            raise TimeoutError("Remote agent did not respond within 900s")
+
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = self._setup_bridge(fake_stream)
+        drain_mock = AsyncMock(return_value=None)
+        patches = _debug_patches(user_id=1, token="tok")
+
+        with (
+            patches[0], patches[1], patches[2],
+            patch(_BRIDGE, mock_bridge),
+            self._patch_db(),
+            patch("pixsim7.backend.main.api.v1.ws_chat._drain_late_result", drain_mock),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "first ever message",
+                }))
+                json.loads(ws.receive_text())  # task_created heartbeat
+                json.loads(ws.receive_text())  # timeout result
+
+        drain_mock.assert_called_once()
+        assert drain_mock.call_args.kwargs["session_id"] is None
+        assert drain_mock.call_args.kwargs["user_message"] == "first ever message"
+
+    def test_timeout_before_task_created_does_not_spawn_drain(self):
+        """Dispatch raises TimeoutError without ever yielding task_created
+        (e.g. agent send_json failed). Drain has nothing to monitor —
+        guard prevents the spawn."""
+        async def fake_stream(*args, **kwargs):
+            if False:
+                yield {}  # generator marker
+            raise TimeoutError("Remote agent did not respond within 900s")
+
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = self._setup_bridge(fake_stream)
+        drain_mock = AsyncMock(return_value=None)
+        patches = _debug_patches(user_id=1, token="tok")
+
+        with (
+            patches[0], patches[1], patches[2],
+            patch(_BRIDGE, mock_bridge),
+            self._patch_db(),
+            patch("pixsim7.backend.main.api.v1.ws_chat._drain_late_result", drain_mock),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "q",
+                    "bridge_session_id": "sess-x",
+                }))
+                err = json.loads(ws.receive_text())
+                assert err["type"] == "result"
+                assert err["ok"] is False
+
+        drain_mock.assert_not_called()
+
+    def test_non_timeout_error_does_not_spawn_drain(self):
+        """Regression guard: only TimeoutError takes the drain path. Other
+        dispatch errors flow through the generic handler unchanged."""
+        async def fake_stream(*args, **kwargs):
+            yield {"type": "task_created", "task_id": "task-fail"}
+            raise RuntimeError("agent crashed")
+
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = self._setup_bridge(fake_stream)
+        drain_mock = AsyncMock(return_value=None)
+        patches = _debug_patches(user_id=1, token="tok")
+
+        with (
+            patches[0], patches[1], patches[2],
+            patch(_BRIDGE, mock_bridge),
+            self._patch_db(),
+            patch("pixsim7.backend.main.api.v1.ws_chat._drain_late_result", drain_mock),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "q",
+                    "bridge_session_id": "sess-x",
+                }))
+                json.loads(ws.receive_text())  # task_created
+                err = json.loads(ws.receive_text())
+                assert err["type"] == "result"
+                assert err["ok"] is False
+                assert "agent crashed" in err["error"]
+
+        drain_mock.assert_not_called()
