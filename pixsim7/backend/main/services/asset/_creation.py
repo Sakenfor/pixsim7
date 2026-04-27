@@ -616,6 +616,16 @@ class AssetCreationMixin:
 
             logger.debug(f"Applied {len(tags_to_apply)} analyzer tags to asset {asset_id}")
 
+            # Harvest vocabulary candidates from unresolved parser keywords.
+            # Harvester opens its own session so a failure (missing table,
+            # lock contention, etc.) can't poison self.db and break the
+            # surrounding ASSET_CREATED publish.
+            from pixsim7.backend.main.services.prompt.vocabulary_harvester import (
+                harvest_from_candidates,
+            )
+            candidates = prompt_analysis.get("candidates") or []
+            await harvest_from_candidates(candidates)
+
         except Exception as e:
             logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
 
