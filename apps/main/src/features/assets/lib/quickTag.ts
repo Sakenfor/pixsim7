@@ -1,4 +1,5 @@
 import { parseNamespacedId, makeNamespacedId } from '@pixsim7/shared.helpers.core';
+import type { AssetId } from '@pixsim7/shared.types';
 
 import { assignTags } from './api';
 import { assetEvents } from './assetEvents';
@@ -42,7 +43,7 @@ export function normalizeTagInput(raw: string): string {
 /**
  * Apply the given tag(s) to an asset and record them in recent tags.
  */
-export async function applyQuickTag(assetId: number, tagSlugs: string[]): Promise<void> {
+export async function applyQuickTag(assetId: AssetId, tagSlugs: string[]): Promise<void> {
   // Normalize slugs in case old store data has bad format
   const normalized = tagSlugs.map(normalizeTagInput).filter(Boolean);
   if (normalized.length === 0) return;

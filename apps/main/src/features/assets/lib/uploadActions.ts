@@ -6,6 +6,8 @@
  * consistently.
  */
 
+import type { AssetId } from '@pixsim7/shared.types';
+
 import { getAsset } from './api';
 import { assetEvents } from './assetEvents';
 import { assertBackendAssetId } from './backendAssetId';
@@ -51,7 +53,7 @@ export function resolveProviderLabel(providerId: string): string {
  * Fetch a newly-created asset and emit `assetCreated` so gallery surfaces
  * pick it up without a full refresh.
  */
-export async function notifyGalleryOfNewAsset(assetId: number): Promise<void> {
+export async function notifyGalleryOfNewAsset(assetId: AssetId): Promise<void> {
   const asset = await getAsset(assetId);
   assetEvents.emitAssetCreated(asset);
 }
@@ -60,7 +62,7 @@ export async function notifyGalleryOfNewAsset(assetId: number): Promise<void> {
  * Fetch an updated asset and emit `assetUpdated` so gallery surfaces
  * refresh the card without a full refresh.
  */
-export async function notifyGalleryOfUpdatedAsset(assetId: number): Promise<void> {
+export async function notifyGalleryOfUpdatedAsset(assetId: AssetId): Promise<void> {
   assertBackendAssetId(assetId, 'notifyGalleryOfUpdatedAsset');
   const asset = await getAsset(assetId);
   assetEvents.emitAssetUpdated(asset);

@@ -10,6 +10,7 @@ import type { LocalFoldersController } from '@/types/localSources';
 
 import { resolveLocalUploadState } from '../../lib/localAssetState';
 import { extractUploadError, notifyGalleryOfUpdatedAsset, resolveProviderLabel } from '../../lib/uploadActions';
+import { AssetId } from '@pixsim7/shared.types';
 import type { AssetModel } from '../../models/asset';
 import type { LocalAssetModel } from '../../types/localFolderMeta';
 
@@ -210,7 +211,7 @@ export function useLocalFolderCallbacks({
         // Notify gallery so the updated asset reflects the new provider upload status
         if (assetId) {
           try {
-            await notifyGalleryOfUpdatedAsset(assetId);
+            await notifyGalleryOfUpdatedAsset(AssetId(assetId));
           } catch { /* best-effort */ }
         }
       } catch (e: unknown) {

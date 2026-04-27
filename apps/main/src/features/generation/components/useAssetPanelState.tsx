@@ -24,6 +24,7 @@ import {
 } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
+import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
@@ -166,7 +167,10 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       await uploadAssetToProvider(assetId, effectiveProviderId);
       setUploadedAssetIds((prev) => new Set(prev).add(assetId));
       // Notify gallery so the updated asset reflects the new upload status
-      try { await notifyGalleryOfUpdatedAsset(assetId); } catch { /* best-effort */ }
+      try {
+        assertBackendAssetId(assetId, 'handleUploadToProvider:notify');
+        await notifyGalleryOfUpdatedAsset(assetId);
+      } catch { /* best-effort */ }
     } finally {
       setUploadingAssetIds((prev) => {
         const next = new Set(prev);

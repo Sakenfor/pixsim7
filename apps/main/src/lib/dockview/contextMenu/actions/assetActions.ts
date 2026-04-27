@@ -19,6 +19,7 @@ import type { AssetModel } from '@features/assets';
 import { assetEvents, getAssetDisplayUrls, toViewerAsset, toViewerAssets, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
 import { applyQuickTag, useQuickTagStore } from '@features/assets';
 import { archiveAsset } from '@features/assets/lib/api';
+import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
@@ -970,7 +971,10 @@ const quickTagAction: MenuAction = {
     const defaults = useQuickTagStore.getState().defaultTags;
     if (defaults.length === 0) return;
     const results = await Promise.allSettled(
-      assets.map((asset) => applyQuickTag(asset.id, defaults)),
+      assets.map((asset) => {
+        assertBackendAssetId(asset.id, 'quickTag:bulk');
+        return applyQuickTag(asset.id, defaults);
+      }),
     );
     const successCount = results.filter((r) => r.status === 'fulfilled').length;
     const errorCount = results.length - successCount;

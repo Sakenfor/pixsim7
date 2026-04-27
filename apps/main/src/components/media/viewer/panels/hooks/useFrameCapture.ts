@@ -19,6 +19,7 @@ import { uploadAsset } from '@lib/api/upload';
 
 import type { ViewerAsset } from '@features/assets';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
+import { AssetId } from '@pixsim7/shared.types';
 import {
   useCaptureRegionStore,
   type AssetRegion,
@@ -310,7 +311,7 @@ export function useFrameCapture({
       // Notify gallery so the new asset appears without a full refresh
       if (newAssetId) {
         try {
-          await notifyGalleryOfNewAsset(newAssetId);
+          await notifyGalleryOfNewAsset(AssetId(newAssetId));
         } catch {
           // Non-critical: asset was created but won't auto-appear
         }

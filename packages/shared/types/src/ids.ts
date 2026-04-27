@@ -1,53 +1,50 @@
 /**
  * Canonical Entity ID Types
  *
- * This module provides type-safe, branded ID types for all entity references
- * in the system. It ensures compile-time safety when working with different
- * entity types while remaining compatible with plain primitives at runtime.
+ * Type-safe, branded ID types for entity references throughout the system.
+ * Compile-time only — no runtime overhead.
  *
- * ## Import Patterns
+ * ## Two sources, one re-export
+ *
+ *   - `ids.generated.ts` — auto-discovered int-keyed entities from
+ *     backend `entity_ref.py` (AssetId, NpcId, GenerationId, ...).
+ *     Regenerated via `pnpm branded:gen`.
+ *   - This file — UUID-keyed entities and the `ParsedRef` discriminated
+ *     union. Manual because UUID entities don't fit the `EntityRef`
+ *     int-id contract used by the backend declarations.
+ *
+ * Both files share the same `Brand` symbol via `_brand.ts`, so branded
+ * identity is consistent across the package.
+ *
+ * ## Import patterns
  *
  * ```typescript
- * // Branded ID types and constructors - from @pixsim7/shared.types
- * import { NpcId, LocationId } from '@pixsim7/shared.types';
+ * // Branded ID types and constructors
+ * import { NpcId, AssetId, CharacterId } from '@pixsim7/shared.types';
  * const npcId: NpcId = NpcId(123);
  *
- * // Ref types (NpcRef, SceneIdRef, etc.) - from @pixsim7/shared.types
- * import type { NpcRef, SceneIdRef } from '@pixsim7/shared.types';
+ * // Ref types
+ * import type { NpcRef, AssetRef } from '@pixsim7/shared.types';
  *
- * // Ref runtime functions (Ref builder, guards, parsers) - from @pixsim7/shared.ref.core
+ * // Ref runtime functions
  * import { Ref, isNpcRef, parseRef, extractNpcId } from '@pixsim7/shared.ref.core';
- * const ref = Ref.npc(123);  // "npc:123"
- * const id = extractNpcId(ref);  // number | null
- * const brandedId = id !== null ? NpcId(id) : null;  // NpcId | null
  * ```
- *
- * ## Design Principles
- *
- * 1. **Branded types are purely type-level** - No runtime overhead or instanceof checks.
- *    They're structural aliases that provide compile-time safety only.
- *
- * 2. **Use specific types in domain APIs** - Use NpcId/NpcRef explicitly in NPC-specific
- *    code. Reserve EntityRef for truly generic slots (logging, analytics).
- *
- * 3. **Aligned with backend** - String ref formats match backend conventions:
- *    - `character:{uuid}` (character_linkage.py)
- *    - `instance:{uuid}` (character_linkage.py)
- *    - `npc:{number}` (session storage)
- *    - `scene:{type}:{number}` (usage tracking)
- *
- * 4. **Location IDs are numeric** - Always map semantic slugs to numeric IDs in backend.
- *    If semantic slugs are needed, use a separate LocationSlug type.
  *
  * @module ids
  */
 
+import type { Brand } from './_brand';
+
+// ============================================================================
+// AUTO-DISCOVERED ENTITY TYPES (re-exported from generated file)
+// ============================================================================
+
+export * from './ids.generated';
+
 // ============================================================================
 // REF TYPES FROM REF-CORE
 // ============================================================================
-// Re-export ref types for convenience. For Ref builders/guards/parsers, import from
-// @pixsim7/shared.ref.core. Use branded type constructors (e.g., NpcId()) to cast
-// parsed numeric IDs to branded types.
+// For Ref builders/guards/parsers, import from @pixsim7/shared.ref.core directly.
 
 export type {
   NpcRef,
@@ -68,53 +65,47 @@ export type {
   RefParseResult,
 } from '@pixsim7/shared.ref.core';
 
-// Import for internal type use
 import type { SceneType } from '@pixsim7/shared.ref.core';
+import type {
+  NpcId,
+  LocationId,
+  SceneId,
+  AssetId,
+  GenerationId,
+  WorldId,
+  SessionId,
+} from './ids.generated';
 
 // ============================================================================
-// BRANDED BASE TYPES
+// FRONTEND-ONLY ASSET ID REFINEMENTS
 // ============================================================================
+// The auto-generated `AssetId` represents a backend asset ID (always
+// positive — backend EntityRef IDs come from a postgres sequence).
+// Local-only assets (not yet uploaded) carry synthetic *negative* IDs,
+// which are meaningful only client-side. Passing one to a backend route
+// will 404 silently.
 
 /**
- * Brand symbol for compile-time type safety.
- * This is purely a type-level construct with no runtime representation.
+ * Frontend-only synthetic asset ID for unuploaded local files.
+ * Always a negative integer. Produced by `hashStringToStableNegativeId`.
  */
-declare const __brand: unique symbol;
+export type LocalAssetId = Brand<number, 'LocalAssetId'>;
 
 /**
- * Creates a branded type from a base type.
- * The brand exists only at compile time for type checking.
+ * Either a backend asset ID (positive) or a local-only ID (negative).
+ * Use at boundaries that handle both kinds. Narrow via `isBackendAssetId`
+ * (or `assertBackendAssetId`) before passing to backend routes.
  */
-type Brand<T, B extends string> = T & { readonly [__brand]: B };
+export type AnyAssetId = import('./ids.generated').AssetId | LocalAssetId;
 
-// -----------------------------------------------------------------------------
-// Numeric IDs (Database Primary Keys)
-// -----------------------------------------------------------------------------
+/** Construct a LocalAssetId from a number (no sign check — callers ensure). */
+export const LocalAssetId = (n: number): LocalAssetId => n as LocalAssetId;
 
-/** NPC entity ID (game_npcs.id) */
-export type NpcId = Brand<number, 'NpcId'>;
-
-/** Location entity ID (game_locations.id) */
-export type LocationId = Brand<number, 'LocationId'>;
-
-/** World entity ID (game_worlds.id) */
-export type WorldId = Brand<number, 'WorldId'>;
-
-/** Session entity ID (game_sessions.id) */
-export type SessionId = Brand<number, 'SessionId'>;
-
-/** Scene entity ID (game_scenes.id) */
-export type SceneId = Brand<number, 'SceneId'>;
-
-/** Asset entity ID (assets.id) */
-export type AssetId = Brand<number, 'AssetId'>;
-
-/** Generation job ID (generations.id) */
-export type GenerationId = Brand<number, 'GenerationId'>;
-
-// -----------------------------------------------------------------------------
-// UUID-based IDs (Distributed Identity)
-// -----------------------------------------------------------------------------
+// ============================================================================
+// UUID-BASED IDS (Distributed Identity)
+// ============================================================================
+// These entities use UUIDs as primary keys, so they can't be auto-generated
+// from `entity_ref.py` (which assumes int IDs).
 
 /** Character template ID (characters.id - UUID) */
 export type CharacterId = Brand<string, 'CharacterId'>;
@@ -129,44 +120,8 @@ export type PromptVersionId = Brand<string, 'PromptVersionId'>;
 export type ActionBlockId = Brand<string, 'ActionBlockId'>;
 
 // ============================================================================
-// ID CONSTRUCTORS (Safe Creation)
+// ID CONSTRUCTORS for UUID types
 // ============================================================================
-
-/**
- * ID constructor functions.
- * These cast plain primitives to branded types at the boundary where IDs enter the system.
- *
- * @example
- * ```ts
- * // At API boundary
- * const npcId = NpcId(response.npc_id);
- *
- * // Type-safe usage
- * getNpcRelationship(npcId);  // OK
- * getLocation(npcId);          // Type error!
- * ```
- */
-
-/** Create a branded NpcId from a number */
-export const NpcId = (n: number): NpcId => n as NpcId;
-
-/** Create a branded LocationId from a number */
-export const LocationId = (n: number): LocationId => n as LocationId;
-
-/** Create a branded WorldId from a number */
-export const WorldId = (n: number): WorldId => n as WorldId;
-
-/** Create a branded SessionId from a number */
-export const SessionId = (n: number): SessionId => n as SessionId;
-
-/** Create a branded SceneId from a number */
-export const SceneId = (n: number): SceneId => n as SceneId;
-
-/** Create a branded AssetId from a number */
-export const AssetId = (n: number): AssetId => n as AssetId;
-
-/** Create a branded GenerationId from a number */
-export const GenerationId = (n: number): GenerationId => n as GenerationId;
 
 /** Create a branded CharacterId from a UUID string */
 export const CharacterId = (uuid: string): CharacterId => uuid as CharacterId;
@@ -181,7 +136,7 @@ export const PromptVersionId = (uuid: string): PromptVersionId => uuid as Prompt
 export const ActionBlockId = (uuid: string): ActionBlockId => uuid as ActionBlockId;
 
 // ============================================================================
-// PARSED REF (WITH BRANDED IDs)
+// PARSED REF (with branded IDs)
 // ============================================================================
 
 /**

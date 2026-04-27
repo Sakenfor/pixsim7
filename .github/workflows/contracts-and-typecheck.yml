@@ -72,6 +72,9 @@ jobs:
           python pixsim7/backend/main/scripts/check_import_boundaries.py
           python pixsim7/backend/main/scripts/check_cross_domain_fks.py
 
+      - name: Branded types freshness check
+        run: pnpm branded:check
+
       - name: Start backend for OpenAPI check
         run: |
           nohup python -m uvicorn pixsim7.backend.main.main:app --host 127.0.0.1 --port 8000 --lifespan off > /tmp/main-api.log 2>&1 &

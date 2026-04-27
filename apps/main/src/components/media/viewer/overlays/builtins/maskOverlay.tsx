@@ -22,6 +22,7 @@ import { Icon } from '@lib/icons';
 import { useAssets, useLocalFolders, type AssetModel, type ViewerAsset } from '@features/assets';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
+import { AssetId } from '@pixsim7/shared.types';
 import { useGenerationSettingsStore, getRegisteredSettingsStores } from '@features/generation';
 // import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
 
@@ -1132,7 +1133,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
           if (srcResult.asset_id) {
             sourceAssetIdForUpload = srcResult.asset_id;
             autoSavedSourceAssetIdRef.current = srcResult.asset_id;
-            await notifyGalleryOfNewAsset(srcResult.asset_id);
+            await notifyGalleryOfNewAsset(AssetId(srcResult.asset_id));
 
             // Update local folder store so the card reflects the library link
             if (asset.source === 'local') {
@@ -1192,7 +1193,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         try {
           // Add new asset to gallery first, then remove old parent if versioned.
           // Order matters: add before remove so gallery is never empty.
-          await notifyGalleryOfNewAsset(newAssetId);
+          await notifyGalleryOfNewAsset(AssetId(newAssetId));
           if (versionWasApplied && uploadContext.version_parent_id) {
             assetEvents.emitAssetDeleted(uploadContext.version_parent_id as number);
           }

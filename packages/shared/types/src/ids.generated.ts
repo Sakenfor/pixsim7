@@ -1,35 +1,41 @@
 /**
- * Auto-generated branded ID types from OpenAPI x-entity-type extensions.
+ * Auto-generated branded ID types from backend entity_ref.py declarations.
  * DO NOT EDIT MANUALLY - regenerate with: pnpm branded:gen
  *
- * This file complements ids.ts with auto-discovered entity types.
+ * Source: pixsim7/backend/main/shared/schemas/entity_ref.py
+ *
+ * Only emits branded numeric IDs + their constructors and the entity-type
+ * registry. String ref types and the `Ref` builder are owned by
+ * `@pixsim7/shared.ref.core`, which has richer support (UUIDs, scene
+ * subtypes, parsers).
  */
 
-// ============================================================================
-// BRAND SYMBOL (shared with ids.ts)
-// ============================================================================
-
-declare const __brand: unique symbol;
-type Brand<T, B extends string> = T & { readonly [__brand]: B };
+import type { Brand } from './_brand';
 
 // ============================================================================
-// AUTO-DISCOVERED ENTITY TYPES
-// These types were found via x-entity-type in the OpenAPI schema
+// BRANDED NUMERIC IDS
 // ============================================================================
 
-// Branded numeric IDs
 export type AccountId = Brand<number, 'AccountId'>;
 export type AssetId = Brand<number, 'AssetId'>;
+export type AssetBranchId = Brand<number, 'AssetBranchId'>;
+export type BranchId = Brand<number, 'BranchId'>;
+export type ClipId = Brand<number, 'ClipId'>;
 export type GenerationId = Brand<number, 'GenerationId'>;
+export type IntimacyId = Brand<number, 'IntimacyId'>;
+export type LineageId = Brand<number, 'LineageId'>;
+export type LocationId = Brand<number, 'LocationId'>;
+export type MoodId = Brand<number, 'MoodId'>;
+export type NpcId = Brand<number, 'NpcId'>;
+export type PoseId = Brand<number, 'PoseId'>;
+export type RatingId = Brand<number, 'RatingId'>;
+export type SceneId = Brand<number, 'SceneId'>;
+export type SessionId = Brand<number, 'SessionId'>;
+export type SubmissionId = Brand<number, 'SubmissionId'>;
+export type TagId = Brand<number, 'TagId'>;
 export type UserId = Brand<number, 'UserId'>;
 export type WorkspaceId = Brand<number, 'WorkspaceId'>;
-
-// String reference types
-export type AccountRef = `account:${number}`;
-export type AssetRef = `asset:${number}`;
-export type GenerationRef = `generation:${number}`;
-export type UserRef = `user:${number}`;
-export type WorkspaceRef = `workspace:${number}`;
+export type WorldId = Brand<number, 'WorldId'>;
 
 // ============================================================================
 // ID CONSTRUCTORS
@@ -37,33 +43,50 @@ export type WorkspaceRef = `workspace:${number}`;
 
 export const AccountId = (n: number): AccountId => n as AccountId;
 export const AssetId = (n: number): AssetId => n as AssetId;
+export const AssetBranchId = (n: number): AssetBranchId => n as AssetBranchId;
+export const BranchId = (n: number): BranchId => n as BranchId;
+export const ClipId = (n: number): ClipId => n as ClipId;
 export const GenerationId = (n: number): GenerationId => n as GenerationId;
+export const IntimacyId = (n: number): IntimacyId => n as IntimacyId;
+export const LineageId = (n: number): LineageId => n as LineageId;
+export const LocationId = (n: number): LocationId => n as LocationId;
+export const MoodId = (n: number): MoodId => n as MoodId;
+export const NpcId = (n: number): NpcId => n as NpcId;
+export const PoseId = (n: number): PoseId => n as PoseId;
+export const RatingId = (n: number): RatingId => n as RatingId;
+export const SceneId = (n: number): SceneId => n as SceneId;
+export const SessionId = (n: number): SessionId => n as SessionId;
+export const SubmissionId = (n: number): SubmissionId => n as SubmissionId;
+export const TagId = (n: number): TagId => n as TagId;
 export const UserId = (n: number): UserId => n as UserId;
 export const WorkspaceId = (n: number): WorkspaceId => n as WorkspaceId;
-
-// ============================================================================
-// REF BUILDERS
-// ============================================================================
-
-export const Ref = {
-  account: (id: AccountId | number): AccountRef => `account:${id}` as AccountRef,
-  asset: (id: AssetId | number): AssetRef => `asset:${id}` as AssetRef,
-  generation: (id: GenerationId | number): GenerationRef => `generation:${id}` as GenerationRef,
-  user: (id: UserId | number): UserRef => `user:${id}` as UserRef,
-  workspace: (id: WorkspaceId | number): WorkspaceRef => `workspace:${id}` as WorkspaceRef,
-} as const;
+export const WorldId = (n: number): WorldId => n as WorldId;
 
 // ============================================================================
 // ENTITY TYPE REGISTRY
-// List of all discovered entity types for runtime use
 // ============================================================================
 
 export const ENTITY_TYPES = [
   'account',
   'asset',
+  'asset_branch',
+  'branch',
+  'clip',
   'generation',
+  'intimacy',
+  'lineage',
+  'location',
+  'mood',
+  'npc',
+  'pose',
+  'rating',
+  'scene',
+  'session',
+  'submission',
+  'tag',
   'user',
   'workspace',
+  'world',
 ] as const;
 
 export type EntityType = (typeof ENTITY_TYPES)[number];

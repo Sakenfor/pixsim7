@@ -218,9 +218,9 @@ ClipRef = _make_entity_ref_type("clip")
 """Reference to an AssetClip (video segment with start/end times)"""
 
 # Prompt and generation refs
-PromptVersionRef = _make_entity_ref_type("prompt_version")
-"""Reference to a PromptVersion (immutable prompt snapshot)"""
-
+# Note: PromptVersion uses UUID primary keys, which doesn't fit EntityRef's
+# int-id contract. PromptVersionId is defined manually in the frontend
+# (packages/shared/types/src/ids.ts) as a UUID-string brand.
 SubmissionRef = _make_entity_ref_type("submission")
 """Reference to a ProviderSubmission (job submitted to AI provider)"""
 
@@ -433,7 +433,6 @@ __all__ = [
     "AssetBranchRef",
     "ClipRef",
     # Prompt and generation refs
-    "PromptVersionRef",
     "SubmissionRef",
     # Content organization refs
     "TagRef",

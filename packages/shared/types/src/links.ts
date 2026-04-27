@@ -11,8 +11,7 @@ import type { NpcId as CanonicalNpcId } from './ids';
 export type { NpcId } from './ids';
 
 // Additional branded ID types for links (not in ids.ts)
-declare const __brand: unique symbol;
-type Brand<T, B extends string> = T & { readonly [__brand]: B };
+import type { Brand } from './_brand';
 
 export type ItemId = Brand<number, 'ItemId'>;
 export type PropId = Brand<number, 'PropId'>;

@@ -9,6 +9,7 @@
  */
 
 import type { AssetModel } from '../models/asset';
+import { LocalAssetId } from '@pixsim7/shared.types';
 
 // ── LocalAssetModel ─────────────────────────────────────────────────
 // Extends AssetModel with local-folder identity fields.
@@ -92,14 +93,18 @@ export interface LocalFolderMeta {
 /**
  * Deterministic negative ID for unuploaded local files.
  * Stable across renders for the same asset key.
+ *
+ * Returns a branded `LocalAssetId` so callers passing it to backend-bound
+ * code paths get a compile-time error (in addition to the runtime guard
+ * in `assertBackendAssetId`).
  */
-export function hashStringToStableNegativeId(value: string): number {
+export function hashStringToStableNegativeId(value: string): LocalAssetId {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
     hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
   }
   const normalized = Math.abs(hash) || 1;
-  return -normalized;
+  return LocalAssetId(-normalized);
 }
 
 /**

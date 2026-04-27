@@ -1,127 +1,68 @@
 #!/usr/bin/env tsx
 /**
- * Generates branded ID types from OpenAPI schema x-entity-type extensions.
+ * Generates branded ID types from the backend entity_ref.py declarations.
  *
- * This script reads the OpenAPI JSON and finds all fields annotated with
- * x-entity-type, then generates:
- *   1. Branded type definitions (e.g., AssetId = Brand<number, 'AssetId'>)
- *   2. Ref builder functions (e.g., Ref.asset(id) -> "asset:123")
- *   3. Type mappings for replacing raw IDs with branded types
+ * Single source of truth: pixsim7/backend/main/shared/schemas/entity_ref.py
+ * Looks for `_make_entity_ref_type("xxx")` calls (and `entity_ref_field("xxx")`)
+ * to discover all registered entity types, then generates:
+ *   1. Branded ID types     (e.g., AssetId = Brand<number, 'AssetId'>)
+ *   2. String ref types     (e.g., AssetRef = `asset:${number}`)
+ *   3. ID constructors      (e.g., AssetId(123) -> branded number)
+ *   4. Ref builders         (e.g., Ref.asset(123) -> "asset:123")
+ *   5. Entity-type registry for runtime use
  *
- * Default input:  http://localhost:8000/openapi.json
+ * Why scan the source file instead of OpenAPI:
+ *   - Branded types should exist *before* the first DTO uses them, so
+ *     declaration is the right trigger, not API exposure.
+ *   - No backend-runtime dependency — `branded:check` runs in CI without
+ *     starting a server.
+ *
+ * The generated file complements (does not replace) the manual ids.ts file.
+ *
+ * Default source: pixsim7/backend/main/shared/schemas/entity_ref.py
  * Default output: packages/shared/types/src/ids.generated.ts
  *
  * Usage:
  *   pnpm branded:gen          # Generate branded types
- *   pnpm branded:check        # Check if types are up-to-date
- *
- * The generated file complements (not replaces) the manual ids.ts file.
- * ids.ts contains hand-written utilities; ids.generated.ts contains
- * auto-discovered entity types from the backend.
+ *   pnpm branded:check        # Check if types are up-to-date (CI)
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-interface OpenAPISchema {
-  components?: {
-    schemas?: Record<string, SchemaObject>;
-  };
-  paths?: Record<string, PathObject>;
-}
-
-interface SchemaObject {
-  type?: string;
-  properties?: Record<string, PropertyObject>;
-  allOf?: SchemaObject[];
-  anyOf?: SchemaObject[];
-  $ref?: string;
-}
-
-interface PropertyObject {
-  type?: string;
-  'x-entity-type'?: string;
-  anyOf?: Array<{ $ref?: string; type?: string; 'x-entity-type'?: string }>;
-  $ref?: string;
-}
-
-interface PathObject {
-  [method: string]: OperationObject | unknown;
-}
-
-interface OperationObject {
-  requestBody?: {
-    content?: {
-      'application/json'?: {
-        schema?: SchemaObject;
-      };
-    };
-  };
-  responses?: Record<string, ResponseObject>;
-}
-
-interface ResponseObject {
-  content?: {
-    'application/json'?: {
-      schema?: SchemaObject;
-    };
-  };
-}
+const DEFAULT_SOURCE = 'pixsim7/backend/main/shared/schemas/entity_ref.py';
+const DEFAULT_OUT = 'packages/shared/types/src/ids.generated.ts';
 
 /**
- * Recursively find all x-entity-type values in a schema
+ * Entity types that look like EntityRef declarations but cannot use the
+ * int-id branded shape generated here. They are defined manually in
+ * `packages/shared/types/src/ids.ts` instead.
+ *
+ * Currently:
+ *   - prompt_version: UUID primary key (PromptVersion.id), not int-keyed
  */
-function findEntityTypes(
-  schema: OpenAPISchema,
-  visited = new Set<string>()
-): Set<string> {
-  const entityTypes = new Set<string>();
-
-  function processSchema(obj: SchemaObject | PropertyObject | null | undefined) {
-    if (!obj || typeof obj !== 'object') return;
-
-    // Check for x-entity-type directly on the object
-    if ('x-entity-type' in obj && typeof obj['x-entity-type'] === 'string') {
-      entityTypes.add(obj['x-entity-type']);
-    }
-
-    // Check anyOf array (common pattern for Optional[EntityRef])
-    if ('anyOf' in obj && Array.isArray(obj.anyOf)) {
-      for (const item of obj.anyOf) {
-        if (item && typeof item === 'object' && 'x-entity-type' in item) {
-          entityTypes.add(item['x-entity-type'] as string);
-        }
-      }
-    }
-
-    // Recurse into properties
-    if ('properties' in obj && obj.properties) {
-      for (const prop of Object.values(obj.properties)) {
-        processSchema(prop);
-      }
-    }
-
-    // Recurse into allOf
-    if ('allOf' in obj && Array.isArray(obj.allOf)) {
-      for (const item of obj.allOf) {
-        processSchema(item);
-      }
-    }
-  }
-
-  // Process all schemas in components
-  if (schema.components?.schemas) {
-    for (const schemaObj of Object.values(schema.components.schemas)) {
-      processSchema(schemaObj);
-    }
-  }
-
-  return entityTypes;
-}
+const EXCLUDED_TYPES = new Set<string>(['prompt_version']);
 
 /**
- * Convert entity type to PascalCase for type names
+ * Scan entity_ref.py for _make_entity_ref_type("xxx") and entity_ref_field("xxx") calls.
+ * Returns the set of entity-type strings.
  */
+function extractEntityTypes(source: string): Set<string> {
+  // Strip triple-quoted Python docstrings to avoid matching example calls in docs.
+  const stripped = source.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g, '');
+
+  const types = new Set<string>();
+  // Matches: _make_entity_ref_type("xxx") or _make_entity_ref_type('xxx')
+  // Also: entity_ref_field("xxx") for ad-hoc declarations
+  const pattern = /(?:_make_entity_ref_type|entity_ref_field)\(\s*["']([a-z_][a-z0-9_]*)["']\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(stripped)) !== null) {
+    if (EXCLUDED_TYPES.has(match[1])) continue;
+    types.add(match[1]);
+  }
+  return types;
+}
+
 function toPascalCase(str: string): string {
   return str
     .split(/[_-]/)
@@ -129,46 +70,33 @@ function toPascalCase(str: string): string {
     .join('');
 }
 
-/**
- * Generate the branded types file content
- */
-function generateBrandedTypes(entityTypes: Set<string>): string {
+function generateBrandedTypes(entityTypes: Set<string>, sourceRel: string): string {
   const sorted = Array.from(entityTypes).sort();
 
   const lines: string[] = [
     '/**',
-    ' * Auto-generated branded ID types from OpenAPI x-entity-type extensions.',
+    ' * Auto-generated branded ID types from backend entity_ref.py declarations.',
     ' * DO NOT EDIT MANUALLY - regenerate with: pnpm branded:gen',
     ' *',
-    ' * This file complements ids.ts with auto-discovered entity types.',
+    ` * Source: ${sourceRel}`,
+    ' *',
+    ' * Only emits branded numeric IDs + their constructors and the entity-type',
+    ' * registry. String ref types and the `Ref` builder are owned by',
+    ' * `@pixsim7/shared.ref.core`, which has richer support (UUIDs, scene',
+    ' * subtypes, parsers).',
     ' */',
     '',
-    '// ============================================================================',
-    '// BRAND SYMBOL (shared with ids.ts)',
-    '// ============================================================================',
-    '',
-    'declare const __brand: unique symbol;',
-    'type Brand<T, B extends string> = T & { readonly [__brand]: B };',
+    "import type { Brand } from './_brand';",
     '',
     '// ============================================================================',
-    '// AUTO-DISCOVERED ENTITY TYPES',
-    '// These types were found via x-entity-type in the OpenAPI schema',
+    '// BRANDED NUMERIC IDS',
     '// ============================================================================',
     '',
   ];
 
-  // Generate branded ID types
-  lines.push('// Branded numeric IDs');
   for (const entityType of sorted) {
     const pascalName = toPascalCase(entityType);
     lines.push(`export type ${pascalName}Id = Brand<number, '${pascalName}Id'>;`);
-  }
-
-  lines.push('');
-  lines.push('// String reference types');
-  for (const entityType of sorted) {
-    const pascalName = toPascalCase(entityType);
-    lines.push(`export type ${pascalName}Ref = \`${entityType}:\${number}\`;`);
   }
 
   lines.push('');
@@ -186,24 +114,7 @@ function generateBrandedTypes(entityTypes: Set<string>): string {
 
   lines.push('');
   lines.push('// ============================================================================');
-  lines.push('// REF BUILDERS');
-  lines.push('// ============================================================================');
-  lines.push('');
-  lines.push('export const Ref = {');
-
-  for (const entityType of sorted) {
-    const pascalName = toPascalCase(entityType);
-    lines.push(
-      `  ${entityType}: (id: ${pascalName}Id | number): ${pascalName}Ref => \`${entityType}:\${id}\` as ${pascalName}Ref,`
-    );
-  }
-
-  lines.push('} as const;');
-
-  lines.push('');
-  lines.push('// ============================================================================');
   lines.push('// ENTITY TYPE REGISTRY');
-  lines.push('// List of all discovered entity types for runtime use');
   lines.push('// ============================================================================');
   lines.push('');
   lines.push('export const ENTITY_TYPES = [');
@@ -220,45 +131,44 @@ function generateBrandedTypes(entityTypes: Set<string>): string {
 
 async function main() {
   const isCheckMode = process.argv.includes('--check');
-  const openapiUrl = process.env.OPENAPI_URL || 'http://localhost:8000/openapi.json';
-  const outPath =
-    process.env.BRANDED_TYPES_OUT || 'packages/shared/types/src/ids.generated.ts';
+  const sourceRel = process.env.ENTITY_REF_SOURCE || DEFAULT_SOURCE;
+  const outRel = process.env.BRANDED_TYPES_OUT || DEFAULT_OUT;
 
-  const absOutPath = path.resolve(process.cwd(), outPath);
+  const sourceAbs = path.resolve(process.cwd(), sourceRel);
+  const outAbs = path.resolve(process.cwd(), outRel);
 
-  console.log(`Fetching OpenAPI schema from: ${openapiUrl}`);
-
-  let schema: OpenAPISchema;
+  let source: string;
   try {
-    const response = await fetch(openapiUrl);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    schema = (await response.json()) as OpenAPISchema;
+    source = await fs.readFile(sourceAbs, 'utf8');
   } catch (err) {
-    console.error(`Failed to fetch OpenAPI schema: ${err}`);
-    console.error('Make sure the backend is running at the specified URL.');
+    console.error(`Failed to read entity_ref source: ${sourceAbs}`);
+    console.error(err);
     process.exit(1);
   }
 
-  const entityTypes = findEntityTypes(schema);
+  const entityTypes = extractEntityTypes(source);
 
   if (entityTypes.size === 0) {
-    console.warn('Warning: No x-entity-type extensions found in OpenAPI schema.');
-    console.warn('Make sure EntityRef fields are properly annotated.');
-  } else {
-    console.log(`Found ${entityTypes.size} entity types: ${Array.from(entityTypes).join(', ')}`);
+    console.error(
+      `No entity-type declarations found in ${sourceRel}. ` +
+        `Expected calls like _make_entity_ref_type("foo") or entity_ref_field("foo").`
+    );
+    process.exit(1);
   }
 
-  const generated = generateBrandedTypes(entityTypes);
+  console.log(
+    `Found ${entityTypes.size} entity types: ${Array.from(entityTypes).sort().join(', ')}`
+  );
+
+  const generated = generateBrandedTypes(entityTypes, sourceRel);
 
   if (isCheckMode) {
     let existing = '';
     try {
-      existing = await fs.readFile(absOutPath, 'utf8');
+      existing = await fs.readFile(outAbs, 'utf8');
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        console.error(`✗ Branded types file does not exist: ${outPath}`);
+        console.error(`Branded types file does not exist: ${outRel}`);
         console.error('  Run `pnpm branded:gen` to generate it.');
         process.exit(1);
       }
@@ -266,17 +176,17 @@ async function main() {
     }
 
     if (existing === generated) {
-      console.log(`✓ Branded types are up-to-date: ${outPath}`);
+      console.log(`Branded types are up-to-date: ${outRel}`);
       process.exit(0);
     } else {
-      console.error(`✗ Branded types are STALE: ${outPath}`);
+      console.error(`Branded types are STALE: ${outRel}`);
       console.error('  Run `pnpm branded:gen` to update them.');
       process.exit(1);
     }
   } else {
-    await fs.mkdir(path.dirname(absOutPath), { recursive: true });
-    await fs.writeFile(absOutPath, generated, 'utf8');
-    console.log(`✓ Generated branded types: ${outPath}`);
+    await fs.mkdir(path.dirname(outAbs), { recursive: true });
+    await fs.writeFile(outAbs, generated, 'utf8');
+    console.log(`Generated branded types: ${outRel}`);
   }
 }
 

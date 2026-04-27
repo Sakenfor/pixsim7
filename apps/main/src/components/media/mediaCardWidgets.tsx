@@ -27,6 +27,7 @@ import {
 } from '@lib/widgets';
 
 import type { AssetWarning } from '@features/assets/lib/assetWarnings';
+import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
@@ -1050,6 +1051,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     if (missing.length === 0) return;
     setApplying(true);
     try {
+      assertBackendAssetId(data.id, 'mediaCardWidgets:applyQuickTag');
       await applyQuickTag(data.id, missing);
       setFlash('success');
       setTimeout(() => setFlash(null), 600);

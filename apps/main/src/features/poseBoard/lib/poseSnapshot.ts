@@ -7,6 +7,7 @@
 import { API_BASE_URL } from '@lib/api';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
+import { AssetId } from '@pixsim7/shared.types';
 
 
 export const POSE_SNAPSHOT_TAG = 'poseboard:snapshot';
@@ -64,7 +65,7 @@ export async function uploadPoseSnapshot({
   const assetId = coerceAssetId(data);
 
   if (assetId && tags.length > 0) {
-    await assignAssetTags(assetId, tags, token);
+    await assignAssetTags(AssetId(assetId), tags, token);
   }
 
   return { assetId, response: data };
@@ -86,7 +87,7 @@ function coerceAssetId(data: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-async function assignAssetTags(assetId: number, tags: string[], token: string | null) {
+async function assignAssetTags(assetId: AssetId, tags: string[], token: string | null) {
   const tagUrl = `${API_BASE_URL.replace(/\/$/, '')}/assets/${assetId}/tags/assign`;
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) {

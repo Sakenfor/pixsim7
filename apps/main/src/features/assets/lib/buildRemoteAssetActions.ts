@@ -33,6 +33,7 @@ const toast = {
 /** Refetch a single asset and patch it in the gallery via the event bus. */
 async function refreshSingleAsset(assetId: number, fullRefresh: () => void): Promise<void> {
   try {
+    assertBackendAssetId(assetId, 'refreshSingleAsset');
     await notifyGalleryOfUpdatedAsset(assetId);
   } catch {
     // Fallback to full refresh if single-asset fetch fails

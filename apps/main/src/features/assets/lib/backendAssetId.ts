@@ -5,14 +5,19 @@
  * ID to a backend route (`/api/v1/assets/{id}/...`) will 404 silently.
  *
  * Use `isBackendAssetId` for control flow and `assertBackendAssetId` at backend
- * call entry points to fail fast instead of producing a confusing 404.
+ * call entry points to fail fast instead of producing a confusing 404. After
+ * either, the value narrows to the branded `AssetId` type so further misuse
+ * (e.g. assigning a `LocalAssetId` back into a backend-bound slot) is caught
+ * by the type system as well.
  */
 
-export function isBackendAssetId(id: number | null | undefined): id is number {
+import type { AssetId } from '@pixsim7/shared.types';
+
+export function isBackendAssetId(id: number | null | undefined): id is AssetId {
   return typeof id === 'number' && Number.isFinite(id) && id > 0;
 }
 
-export function assertBackendAssetId(id: number | null | undefined, context?: string): asserts id is number {
+export function assertBackendAssetId(id: number | null | undefined, context?: string): asserts id is AssetId {
   if (!isBackendAssetId(id)) {
     const where = context ? ` (${context})` : '';
     throw new Error(
