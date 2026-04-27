@@ -447,11 +447,11 @@ export function useAssets(options?: {
   }, []);
 
   // Insert a new asset in sorted position (used when generation completes).
-  // Assets can arrive out of order because readiness polling
-  // (fetchCreatedAssetWhenReady / scheduleGeneratedVideoReadyPoll) introduces
-  // variable delays. Blindly prepending would place a delayed older asset on
-  // top of a newer one that was already inserted. Instead, we insert at the
-  // correct position to maintain the existing created_at DESC sort order.
+  // Assets can arrive out of order — backend events fire as each generation
+  // settles, and bursts can interleave. Blindly prepending would place a
+  // delayed older asset on top of a newer one that was already inserted.
+  // Instead, we insert at the correct position to maintain the existing
+  // created_at DESC sort order.
   // Cap the items array to prevent unbounded growth from live prepend.
   // Keep enough for the current page + scroll buffer, trim the oldest tail.
   const maxItems = limit * 4;

@@ -12,8 +12,6 @@ import { useSyncExternalStore } from 'react';
 
 import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
-import { authService } from '@lib/auth';
-import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { debugFlags, hmrSingleton } from '@lib/utils';
 
 import { assetEvents, fromAssetResponse, getAssetDisplayUrls, useMediaSettingsStore } from '@features/assets';
@@ -80,266 +78,18 @@ function computeWebSocketUrl(): string {
   return 'ws://localhost:8000/api/v1/ws/generations';
 }
 
+// Belt-and-suspenders polling for cards whose thumbnail/preview derivatives
+// arrive via a separate backend job after asset:created. The backend already
+// publishes asset:updated when derivatives complete, but this fallback covers
+// brief WS reconnect windows where an update event might be dropped.
 const THUMBNAIL_POLL_DELAYS_MS = [600, 1500, 3000, 5000, 8000, 12000, 18000];
 const pendingThumbnailPolls = new Map<number, ReturnType<typeof setTimeout>>();
 const lastThumbnailSignatures = new Map<number, string>();
-const ASSET_CREATED_READY_POLL_DELAYS_MS = [300, 1000, 2500, 5000];
-const VIDEO_CDN_PROBE_TIMEOUT_MS = 3000;
-const GENERATED_VIDEO_LOCAL_READY_DELAYS_MS = [4000, 7000, 12000, 18000, 25000];
-const pendingGeneratedVideoReadyPolls = new Map<number, ReturnType<typeof setTimeout>>();
 
 function isNonImageUrl(url: string): boolean {
   const lowered = url.toLowerCase();
   if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
   return /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/.test(lowered);
-}
-
-function appendCacheBust(url: string): string {
-  if (!url.startsWith('http')) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}cb=${Date.now()}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function probeVideoReadyViaFetch(url: string): Promise<boolean> {
-  const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
-  const probeUrl = appendCacheBust(fullUrl);
-  const token = isBackend ? authService.getStoredToken() : null;
-  if (isBackend && !token) {
-    return false;
-  }
-  const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), VIDEO_CDN_PROBE_TIMEOUT_MS);
-    try {
-      const head = await fetch(probeUrl, {
-        method: 'HEAD',
-        mode: 'cors',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: authHeaders,
-      });
-      if (head.ok) return true;
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch {
-    // Some CDNs block HEAD/CORS; fallback probes below.
-  }
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), VIDEO_CDN_PROBE_TIMEOUT_MS);
-    try {
-      const range = await fetch(probeUrl, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-store',
-        headers: {
-          ...(authHeaders ?? {}),
-          Range: 'bytes=0-1',
-        },
-        signal: controller.signal,
-      });
-      if (range.status === 200 || range.status === 206) return true;
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch {
-    // Ignore and fall back to media-element probe.
-  }
-
-  return false;
-}
-
-async function probeVideoReadyViaElement(url: string): Promise<boolean> {
-  if (typeof document === 'undefined') return false;
-  const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
-  if (isBackend) {
-    // <video src> probes cannot attach Authorization headers, so backend media
-    // endpoints would always 401 here and create noisy logs.
-    return false;
-  }
-
-  return new Promise<boolean>((resolve) => {
-    const video = document.createElement('video');
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) finish(false);
-    }, VIDEO_CDN_PROBE_TIMEOUT_MS);
-
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      video.onloadedmetadata = null;
-      video.oncanplay = null;
-      video.onerror = null;
-      video.removeAttribute('src');
-      video.load();
-      resolve(ok);
-    };
-
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-    video.onloadedmetadata = () => finish(true);
-    video.oncanplay = () => finish(true);
-    video.onerror = () => finish(false);
-    video.src = appendCacheBust(fullUrl);
-    video.load();
-  });
-}
-
-function pickVideoProbeUrl(asset: AssetResponse): string | null {
-  const candidates = [
-    asset.remote_url,
-    asset.file_url,
-    asset.preview_url,
-    asset.thumbnail_url,
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string' || !candidate.trim()) continue;
-    if (isNonImageUrl(candidate)) return candidate;
-  }
-  return null;
-}
-
-function isExternalHttpUrl(url: string): boolean {
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
-  if (typeof window === 'undefined') return true;
-  try {
-    return new URL(url).origin !== window.location.origin;
-  } catch {
-    return true;
-  }
-}
-
-/** @internal Exported for testing */
-export function isGeneratedVideoAsset(asset: AssetResponse): boolean {
-  return asset.media_type === 'video' && (
-    asset.upload_method === 'generated' ||
-    Boolean(asset.source_generation_id)
-  );
-}
-
-/** @internal Exported for testing */
-export function hasLocalVideoReady(asset: AssetResponse): boolean {
-  return asset.sync_status === 'downloaded' || Boolean(asset.stored_key);
-}
-
-/** @internal Exported for testing */
-export async function isAssetReadyForGallery(
-  asset: AssetResponse,
-  options?: { requireLocalGeneratedVideo?: boolean },
-): Promise<boolean> {
-  const requireLocalGeneratedVideo = options?.requireLocalGeneratedVideo ?? false;
-
-  if (hasLocalVideoReady(asset)) {
-    return true;
-  }
-
-  if (requireLocalGeneratedVideo && isGeneratedVideoAsset(asset)) {
-    return false;
-  }
-
-  if (asset.media_type !== 'video') {
-    return Boolean(asset.sync_status === 'remote' || asset.remote_url);
-  }
-
-  const probeUrl = pickVideoProbeUrl(asset);
-  if (!probeUrl) return false;
-
-  // Avoid eager CDN readiness probes for provider-hosted URLs.
-  // Those often return transient 404s while propagation catches up, creating
-  // noisy console errors and delaying gallery updates. MediaCard handles
-  // playback retries with backoff after the card is rendered.
-  if (isExternalHttpUrl(probeUrl)) {
-    // Generated videos should not surface in gallery until we at least have
-    // a usable preview/thumbnail. Otherwise cards appear as gray placeholders
-    // and hover can trigger repeated failing remote-play attempts.
-    if (isGeneratedVideoAsset(asset) && !hasUsableThumbnail(asset)) {
-      return false;
-    }
-    return true;
-  }
-
-  const fetchReady = await probeVideoReadyViaFetch(probeUrl);
-  if (fetchReady) return true;
-
-  return probeVideoReadyViaElement(probeUrl);
-}
-
-async function fetchCreatedAssetWhenReady(
-  assetId: number,
-  options?: { requireLocalGeneratedVideo?: boolean },
-): Promise<{ asset: AssetResponse | null; ready: boolean }> {
-  let latest: AssetResponse | null = null;
-
-  for (const delayMs of ASSET_CREATED_READY_POLL_DELAYS_MS) {
-    if (delayMs > 0) {
-      await sleep(delayMs);
-    }
-
-    try {
-      const asset = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
-      latest = asset;
-      const ready = await isAssetReadyForGallery(asset, options);
-      if (ready) {
-        return { asset, ready: true };
-      }
-    } catch (err) {
-      debugFlags.log('websocket', 'Asset readiness fetch failed:', assetId, err);
-    }
-  }
-
-  return { asset: latest, ready: false };
-}
-
-function clearGeneratedVideoReadyPoll(assetId: number): void {
-  const existing = pendingGeneratedVideoReadyPolls.get(assetId);
-  if (existing) {
-    clearTimeout(existing);
-    pendingGeneratedVideoReadyPolls.delete(assetId);
-  }
-}
-
-function scheduleGeneratedVideoReadyPoll(assetId: number, attempt = 0): void {
-  if (pendingGeneratedVideoReadyPolls.has(assetId) && attempt === 0) return;
-  if (attempt >= GENERATED_VIDEO_LOCAL_READY_DELAYS_MS.length) {
-    pendingGeneratedVideoReadyPolls.delete(assetId);
-    return;
-  }
-
-  const delay = GENERATED_VIDEO_LOCAL_READY_DELAYS_MS[attempt];
-  const timeout = setTimeout(async () => {
-    pendingGeneratedVideoReadyPolls.delete(assetId);
-    try {
-      const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
-      const downloadOnGenerate = useMediaSettingsStore.getState().serverSettings?.download_on_generate ?? false;
-      const requireLocalGeneratedVideo = downloadOnGenerate && isGeneratedVideoAsset(refreshed);
-      const ready = await isAssetReadyForGallery(refreshed, { requireLocalGeneratedVideo });
-      if (ready) {
-        debugFlags.log('websocket', 'Generated video is locally ready, emitting asset:created:', assetId);
-        assetEvents.emitAssetCreated(refreshed);
-        if (shouldContinueThumbnailPolling(refreshed)) {
-          scheduleThumbnailRefresh(assetId);
-        }
-        return;
-      }
-    } catch (err) {
-      debugFlags.log('websocket', 'Generated video local-ready poll failed:', assetId, err);
-    }
-
-    scheduleGeneratedVideoReadyPoll(assetId, attempt + 1);
-  }, delay);
-
-  pendingGeneratedVideoReadyPolls.set(assetId, timeout);
 }
 
 function hasUsableThumbnail(asset: AssetResponse): boolean {
@@ -650,15 +400,34 @@ class WebSocketManager {
 
           // Optimistic status update — patch the store immediately so the UI
           // reflects the new status without waiting for the API round-trip.
+          // If the gen isn't yet in the local store (e.g., resumed from a
+          // batch that wasn't in the panel's initial top-N fetch), patch is
+          // a no-op — fall back to a full fetch so the row appears.
           const optimisticStatus = WS_EVENT_TO_STATUS[message.type];
           if (optimisticStatus && numericGenId) {
             const errorMsg = message.type === 'job:failed'
               ? (String(dataRecord?.error ?? rawData.error ?? '') || null)
               : null;
-            patchGeneration(numericGenId, {
-              status: optimisticStatus,
-              ...(errorMsg ? { errorMessage: errorMsg } : {}),
-            });
+            const existing = useGenerationsStore.getState().generations.get(numericGenId);
+            if (existing) {
+              patchGeneration(numericGenId, {
+                status: optimisticStatus,
+                ...(errorMsg ? { errorMessage: errorMsg } : {}),
+              });
+            } else {
+              pixsimClient
+                .get<GenerationResponse>(`/generations/${generationId}`)
+                .then((data) => {
+                  addOrUpdateGeneration(fromGenerationResponse(data));
+                })
+                .catch((err) => {
+                  console.error(
+                    '[WebSocket] Failed to fetch missing generation on status event:',
+                    generationId,
+                    err,
+                  );
+                });
+            }
           }
 
           // Terminal events need a full fetch (asset refs, error details, cleanup).
@@ -735,55 +504,34 @@ class WebSocketManager {
             debugFlags.log('websocket', 'Status-only event, optimistic patch applied:', message.type);
           }
         } else if (message.type === 'asset:created') {
-          // Handle asset creation events (from any source: generation, upload, paused frame)
+          // Optimistic emit: fetch the asset once and surface it to the gallery
+          // immediately. The card renders with whatever thumbnail/preview state
+          // exists; subsequent asset:updated events (and the thumbnail poll
+          // safety net below) progressively paint over it as derivatives land.
           debugFlags.log('websocket', 'Asset created event received:', message);
           const rawData = message as WebSocketRecord;
           const dataRecord = asRecord(rawData.data);
           const assetId =
             getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
 
-          if (assetId) {
+          if (!assetId) {
+            console.warn('[WebSocket] No asset ID found in asset:created message');
+          } else {
             const numericAssetId =
               typeof assetId === 'string' ? Number(assetId) : assetId;
             if (!Number.isFinite(numericAssetId)) {
               console.warn('[WebSocket] Invalid asset ID in asset:created message:', assetId);
               return;
             }
-            const downloadOnGenerate = useMediaSettingsStore.getState().serverSettings?.download_on_generate ?? false;
-            const { asset: assetData, ready } = await fetchCreatedAssetWhenReady(numericAssetId, {
-              requireLocalGeneratedVideo: downloadOnGenerate,
-            });
-            if (!assetData) {
-              console.warn('[WebSocket] Asset fetch failed after readiness retries:', numericAssetId);
-              return;
+            try {
+              const assetData = await pixsimClient.get<AssetResponse>(`/assets/${numericAssetId}`);
+              assetEvents.emitAssetCreated(assetData);
+              if (shouldContinueThumbnailPolling(assetData)) {
+                scheduleThumbnailRefresh(numericAssetId);
+              }
+            } catch (err) {
+              console.warn('[WebSocket] Failed to fetch created asset:', numericAssetId, err);
             }
-            const isGeneratedVideo = isGeneratedVideoAsset(assetData);
-            if (isGeneratedVideo && !ready) {
-              debugFlags.log(
-                'websocket',
-                'Generated video created before preview readiness; deferring gallery emit:',
-                numericAssetId
-              );
-              scheduleGeneratedVideoReadyPoll(numericAssetId);
-              return;
-            }
-            clearGeneratedVideoReadyPoll(numericAssetId);
-            if (!ready) {
-              debugFlags.log(
-                'websocket',
-                'Asset still not confirmed ready after CDN checks; emitting latest payload anyway:',
-                numericAssetId
-              );
-            } else {
-              debugFlags.log('websocket', 'Asset ready, emitting asset:created event to gallery');
-            }
-
-            assetEvents.emitAssetCreated(assetData);
-            if (shouldContinueThumbnailPolling(assetData)) {
-              scheduleThumbnailRefresh(numericAssetId);
-            }
-          } else {
-            console.warn('[WebSocket] No asset ID found in asset:created message');
           }
         } else if (message.type === 'asset:updated') {
           // Handle asset update events (e.g., moderation flagging)
@@ -813,10 +561,6 @@ class WebSocketManager {
             getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
 
           if (assetId) {
-            const numericAssetId = typeof assetId === 'string' ? Number(assetId) : assetId;
-            if (Number.isFinite(numericAssetId)) {
-              clearGeneratedVideoReadyPoll(numericAssetId);
-            }
             debugFlags.log('websocket', 'Emitting asset:deleted event to gallery');
             assetEvents.emitAssetDeleted(assetId);
           }
