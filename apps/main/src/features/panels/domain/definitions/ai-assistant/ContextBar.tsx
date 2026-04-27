@@ -21,6 +21,8 @@ interface ContextBarProps {
   profile: UnifiedProfile | null;
   poolSession: PoolSessionInfo | null;
   sending?: boolean;
+  pendingServerMessages?: number;
+  serverTranscriptDiverged?: boolean;
 }
 
 function formatTokens(n: number): string {
@@ -35,7 +37,14 @@ function contextColor(pct: number): string {
   return 'text-emerald-400';
 }
 
-export function ContextBar({ tab, profile, poolSession, sending = false }: ContextBarProps) {
+export function ContextBar({
+  tab,
+  profile,
+  poolSession,
+  sending = false,
+  pendingServerMessages = 0,
+  serverTranscriptDiverged = false,
+}: ContextBarProps) {
   const chips: React.ReactNode[] = [];
   const resumeSessionId = poolSession?.cli_session_id?.trim() || null;
 
@@ -88,6 +97,31 @@ export function ContextBar({ tab, profile, poolSession, sending = false }: Conte
     chips.push(
       <span key="cost" className="inline-flex items-center gap-0.5 text-violet-400">
         <span>${poolSession.cost_usd.toFixed(4)}</span>
+      </span>,
+    );
+  }
+
+  // Server-local transcript gap
+  if (pendingServerMessages > 0) {
+    chips.push(
+      <span
+        key="server-gap"
+        className="inline-flex items-center gap-0.5 text-amber-400"
+        title={`${pendingServerMessages} assistant message${pendingServerMessages === 1 ? '' : 's'} exist on server but are not visible locally yet`}
+      >
+        <Icon name="alertTriangle" size={9} />
+        <span>{pendingServerMessages} server</span>
+      </span>,
+    );
+  } else if (serverTranscriptDiverged) {
+    chips.push(
+      <span
+        key="server-diverged"
+        className="inline-flex items-center gap-0.5 text-amber-400"
+        title="Local and server assistant transcript tails differ"
+      >
+        <Icon name="alertTriangle" size={9} />
+        <span>sync warning</span>
       </span>,
     );
   }

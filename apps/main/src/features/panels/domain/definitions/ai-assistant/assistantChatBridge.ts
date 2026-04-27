@@ -581,12 +581,17 @@ class AssistantChatBridge {
             appendHeartbeat(request.thinkingLog, action, detail);
             this._notify();
           } else if (event.type === 'result') {
+            if (typeof event.bridge_session_id === 'string' && event.bridge_session_id) {
+              request.bridgeSessionId = event.bridge_session_id;
+            }
             request.status = 'completed';
             request.activity = null;
             request.result = {
               ...(event as unknown as BridgeResult),
               thinkingLog: request.thinkingLog,
             };
+            saveCompletedResult(tabId, request.result);
+            this._persistInflight();
             this._notify();
           }
         }
@@ -595,6 +600,8 @@ class AssistantChatBridge {
       if (request.status === 'streaming') {
         request.status = 'error';
         request.result = { ok: false, error: 'Stream ended without result', thinkingLog: request.thinkingLog };
+        saveCompletedResult(tabId, request.result);
+        this._persistInflight();
         this._notify();
       }
     } catch (err) {
@@ -605,6 +612,10 @@ class AssistantChatBridge {
         request.status = 'error';
         request.result = { ok: false, error: err instanceof Error ? err.message : 'Request failed', thinkingLog: request.thinkingLog };
       }
+      if (request.result) {
+        saveCompletedResult(tabId, request.result);
+      }
+      this._persistInflight();
       this._notify();
     }
   }

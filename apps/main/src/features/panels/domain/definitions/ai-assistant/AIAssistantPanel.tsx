@@ -28,6 +28,9 @@ import {
   buildResumedTab,
   normalizeProfileId,
   createTabId,
+  findLatestUnansweredUserMessage,
+  findMissingAssistantTail,
+  getAssistantTailGap,
   type ChatTab,
   type AgentEngine,
 } from './assistantChatStore';
@@ -87,43 +90,101 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   // Reconcile with server on mount — recover assistant responses lost during
   // full page reload (e.g. Vite HMR fallback) where the bridge result arrived
   // but the panel effect hadn't consumed it into the store yet.
+  const [pendingServerMessages, setPendingServerMessages] = useState(0);
+  const [serverTranscriptDiverged, setServerTranscriptDiverged] = useState(false);
   useEffect(() => {
-    if (!tab.sessionId) return;
-    // Only reconcile if the last message is from the user (expecting a response)
+    if (!tab.sessionId) {
+      setPendingServerMessages(0);
+      setServerTranscriptDiverged(false);
+      return;
+    }
     const s = useAssistantChatStore.getState();
     const local = s.getMessages(tab.id);
-    if (local.length === 0) return;
-    const last = local[local.length - 1];
-    if (last.role !== 'user') return;
-    // Don't reconcile if bridge is actively handling this tab
-    if (chatBridge.get(tab.id)) return;
+    const unresolved = findLatestUnansweredUserMessage(local);
+    // Don't reconcile while this tab has an active in-flight request.
+    const req = chatBridge.get(tab.id);
+    if (req && (req.status === 'pending' || req.status === 'streaming')) {
+      setPendingServerMessages(0);
+      setServerTranscriptDiverged(false);
+      return;
+    }
 
-    // Small delay: give beforeunload keepalive flush time to land on the server
-    const timer = setTimeout(() => {
-      fetchServerMessages(tab.sessionId!).then((serverMsgs) => {
-        if (serverMsgs.length === 0) return;
-        // Find the matching user message on the server
-        const lastUserText = last.text;
-        let serverIdx = -1;
-        for (let i = serverMsgs.length - 1; i >= 0; i--) {
-          if (serverMsgs[i].role === 'user' && serverMsgs[i].text === lastUserText) {
-            serverIdx = i;
-            break;
-          }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const maxAttempts = 4;
+    const retryDelayMs = 1500;
+
+    const schedule = () => {
+      if (cancelled || attempts >= maxAttempts) return;
+      timer = setTimeout(run, retryDelayMs);
+    };
+
+    const run = () => {
+      if (cancelled || !tab.sessionId) return;
+      const activeReq = chatBridge.get(tab.id);
+      if (activeReq && (activeReq.status === 'pending' || activeReq.status === 'streaming')) return;
+      attempts += 1;
+      fetchServerMessages(tab.sessionId).then((serverMsgs) => {
+        if (cancelled) return;
+        if (serverMsgs.length === 0) {
+          setPendingServerMessages(0);
+          setServerTranscriptDiverged(false);
+          if (unresolved) schedule();
+          return;
         }
-        if (serverIdx < 0 || serverIdx >= serverMsgs.length - 1) return;
-        const recovered = serverMsgs.slice(serverIdx + 1).filter((m) => m.role === 'assistant');
-        if (recovered.length === 0) return;
+
         const st = useAssistantChatStore.getState();
-        // Re-check: another effect may have already appended
         const current = st.getMessages(tab.id);
-        const currentLast = current[current.length - 1];
-        if (currentLast?.role !== 'user') return;
-        st.setMessages(tab.id, [...current, ...recovered]);
-      }).catch(() => {});
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [tab.id, tab.sessionId]);  
+        if (current.length === 0) {
+          st.setMessages(tab.id, serverMsgs);
+          setPendingServerMessages(0);
+          setServerTranscriptDiverged(false);
+          return;
+        }
+
+        const recovered = findMissingAssistantTail(current, serverMsgs);
+        if (recovered.length > 0) {
+          st.setMessages(tab.id, [...current, ...recovered]);
+          setPendingServerMessages(0);
+          setServerTranscriptDiverged(false);
+          return;
+        }
+
+        const gap = getAssistantTailGap(current, serverMsgs);
+        setPendingServerMessages(gap.pendingCount);
+        setServerTranscriptDiverged(gap.diverged);
+
+        const currentUnresolved = findLatestUnansweredUserMessage(current);
+        const sameUnresolved =
+          unresolved &&
+          currentUnresolved &&
+          currentUnresolved.text === unresolved.text;
+        if (sameUnresolved) {
+          schedule();
+        }
+      }).catch(() => {
+        const current = useAssistantChatStore.getState().getMessages(tab.id);
+        const currentUnresolved = findLatestUnansweredUserMessage(current);
+        const sameUnresolved =
+          unresolved &&
+          currentUnresolved &&
+          currentUnresolved.text === unresolved.text;
+        if (sameUnresolved) {
+          schedule();
+        }
+      });
+    };
+
+    // Delay first fetch when waiting for a just-flushed in-flight response.
+    // Otherwise run immediately when simply visiting an existing chat tab.
+    if (unresolved) schedule();
+    else run();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [tab.id, tab.sessionId]);
 
   // Draft: local state for responsive typing, synced to store
   const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
@@ -542,7 +603,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         <ReferencePicker ref={pickerRef} query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
 
         {/* Context bar — shows active scope/session info above the textarea */}
-        <ContextBar tab={tab} profile={activeProfile ?? null} poolSession={findPoolSession(bridge, tab.sessionId)} sending={sending} />
+        <ContextBar
+          tab={tab}
+          profile={activeProfile ?? null}
+          poolSession={findPoolSession(bridge, tab.sessionId)}
+          sending={sending}
+          pendingServerMessages={pendingServerMessages}
+          serverTranscriptDiverged={serverTranscriptDiverged}
+        />
 
         {/* Textarea — above the toolbar for more space */}
         <div className="group/input mb-1.5">

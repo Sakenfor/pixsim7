@@ -88,6 +88,7 @@ describe('AssistantChatBridge', () => {
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     MockWebSocket.instances = [];
+    localStorage.clear();
 
     // Stub global WebSocket
     vi.stubGlobal('WebSocket', MockWebSocket);
@@ -184,6 +185,65 @@ describe('AssistantChatBridge', () => {
       const result = bridge.consume('tab-sse');
       expect(result?.ok).toBe(true);
       expect(result?.response).toBe('hi');
+    });
+
+    it('captures bridge_session_id from SSE result onto the request', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"result","ok":true,"response":"ok","bridge_session_id":"sess-sse-1"}\n',
+                ),
+              })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const sendPromise = bridge.send('tab-sse-bsid', { message: 'test' });
+      await vi.advanceTimersByTimeAsync(0);
+      MockWebSocket.instances[0].simulateError();
+      await sendPromise;
+
+      const req = bridge.get('tab-sse-bsid');
+      expect(req?.bridgeSessionId).toBe('sess-sse-1');
+      expect(req?.result?.bridge_session_id).toBe('sess-sse-1');
+    });
+
+    it('restores SSE-completed results after bridge recreation', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('data: {"type":"result","ok":true,"response":"persisted"}\n'),
+              })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const tabId = 'tab-sse-restore';
+      const sendPromise = bridge.send(tabId, { message: 'test' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws = MockWebSocket.instances[0];
+      ws.simulateError();
+      await sendPromise;
+
+      // New bridge instance (simulates full reload) should restore from localStorage.
+      createFreshBridge();
+      const mod = await import('../assistantChatBridge');
+      const restored = mod.chatBridge.consume(tabId);
+      expect(restored?.ok).toBe(true);
+      expect(restored?.response).toBe('persisted');
     });
   });
 
@@ -385,6 +445,41 @@ describe('AssistantChatBridge', () => {
         task_id: 'task-123',
         bridge_session_id: 'sess-abc',
       });
+    });
+
+    it('persists bridge_session_id across page reload and includes it in reconnect frame', async () => {
+      // Send + heartbeat so INFLIGHT_KEY captures both task_id and bridgeSessionId.
+      const sendPromise = bridge.send('tab-reload', { message: 'hi', bridge_session_id: 'sess-reload' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws1 = MockWebSocket.instances[0];
+      ws1.simulateOpen();
+      await sendPromise;
+      ws1.simulateMessage({ type: 'heartbeat', tab_id: 'tab-reload', action: 'working', detail: 'p', task_id: 'task-reload' });
+
+      // Simulate full page reload: drop the singleton and re-import.
+      createFreshBridge();
+      const mod = await import('../assistantChatBridge');
+      const restored = mod.chatBridge;
+
+      // Fresh bridge restores from INFLIGHT_KEY and opens a new WS to reconnect.
+      await vi.advanceTimersByTimeAsync(0);
+      const ws2 = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+      expect(ws2).toBeDefined();
+      expect(ws2).not.toBe(ws1);
+      ws2.simulateOpen();
+
+      await vi.advanceTimersByTimeAsync(0);
+      const reconnectMsg = ws2.sent.find((s) => JSON.parse(s).type === 'reconnect');
+      expect(reconnectMsg).toBeDefined();
+      expect(JSON.parse(reconnectMsg!)).toMatchObject({
+        type: 'reconnect',
+        tab_id: 'tab-reload',
+        task_id: 'task-reload',
+        bridge_session_id: 'sess-reload',
+      });
+
+      // Restored request should also expose bridgeSessionId on the in-memory entry.
+      expect(restored.get('tab-reload')?.bridgeSessionId).toBe('sess-reload');
     });
 
     it('does not reconnect when no pending requests', async () => {

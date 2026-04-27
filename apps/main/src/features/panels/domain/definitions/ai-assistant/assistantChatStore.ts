@@ -129,6 +129,113 @@ function loadTabs(): ChatTab[] {
   return [];
 }
 
+/**
+ * Returns the latest user message that has no assistant response after it yet.
+ * Trailing system/error messages are ignored so reconnect/disconnect banners
+ * don't block recovery checks.
+ */
+function findLatestUnansweredUserMessage(messages: ChatMessage[]): { index: number; text: string } | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const role = messages[i].role;
+    if (role === 'assistant') return null;
+    if (role === 'user') return { index: i, text: messages[i].text };
+  }
+  return null;
+}
+
+/**
+ * Returns assistant messages present on the server after the latest matched
+ * local user turn that are not yet present locally.
+ *
+ * The comparison is intentionally conservative:
+ * - match by last local user text
+ * - only append assistant-role tail
+ * - require local assistant tail to be a prefix of server assistant tail
+ */
+function findMissingAssistantTail(
+  localMessages: ChatMessage[],
+  serverMessages: ChatMessage[],
+): ChatMessage[] {
+  let localLastUserIdx = -1;
+  for (let i = localMessages.length - 1; i >= 0; i -= 1) {
+    if (localMessages[i].role === 'user') {
+      localLastUserIdx = i;
+      break;
+    }
+  }
+  if (localLastUserIdx < 0) return [];
+
+  const localLastUserText = localMessages[localLastUserIdx].text;
+  let serverLastUserIdx = -1;
+  for (let i = serverMessages.length - 1; i >= 0; i -= 1) {
+    if (serverMessages[i].role === 'user' && serverMessages[i].text === localLastUserText) {
+      serverLastUserIdx = i;
+      break;
+    }
+  }
+  if (serverLastUserIdx < 0 || serverLastUserIdx >= serverMessages.length - 1) return [];
+
+  const localAssistantTail = localMessages.slice(localLastUserIdx + 1).filter((m) => m.role === 'assistant');
+  const serverAssistantTail = serverMessages.slice(serverLastUserIdx + 1).filter((m) => m.role === 'assistant');
+  if (serverAssistantTail.length <= localAssistantTail.length) return [];
+
+  for (let i = 0; i < localAssistantTail.length; i += 1) {
+    const localMsg = localAssistantTail[i];
+    const serverMsg = serverAssistantTail[i];
+    if (!serverMsg || serverMsg.text !== localMsg.text) {
+      return [];
+    }
+  }
+
+  return serverAssistantTail.slice(localAssistantTail.length);
+}
+
+/**
+ * Compare assistant tails after the latest matched local user turn.
+ *
+ * - pendingCount: assistant messages present on server but not locally.
+ * - diverged: assistant tails differ in content/order (or local has extra),
+ *   indicating the client/server transcript may be out of sync.
+ */
+function getAssistantTailGap(
+  localMessages: ChatMessage[],
+  serverMessages: ChatMessage[],
+): { pendingCount: number; diverged: boolean } {
+  let localLastUserIdx = -1;
+  for (let i = localMessages.length - 1; i >= 0; i -= 1) {
+    if (localMessages[i].role === 'user') {
+      localLastUserIdx = i;
+      break;
+    }
+  }
+  if (localLastUserIdx < 0) return { pendingCount: 0, diverged: false };
+
+  const localLastUserText = localMessages[localLastUserIdx].text;
+  let serverLastUserIdx = -1;
+  for (let i = serverMessages.length - 1; i >= 0; i -= 1) {
+    if (serverMessages[i].role === 'user' && serverMessages[i].text === localLastUserText) {
+      serverLastUserIdx = i;
+      break;
+    }
+  }
+  if (serverLastUserIdx < 0) return { pendingCount: 0, diverged: false };
+
+  const localAssistantTail = localMessages.slice(localLastUserIdx + 1).filter((m) => m.role === 'assistant');
+  const serverAssistantTail = serverMessages.slice(serverLastUserIdx + 1).filter((m) => m.role === 'assistant');
+  const pendingCount = Math.max(0, serverAssistantTail.length - localAssistantTail.length);
+
+  let diverged = localAssistantTail.length > serverAssistantTail.length;
+  const minLen = Math.min(localAssistantTail.length, serverAssistantTail.length);
+  for (let i = 0; i < minLen; i += 1) {
+    if (localAssistantTail[i].text !== serverAssistantTail[i].text) {
+      diverged = true;
+      break;
+    }
+  }
+
+  return { pendingCount, diverged };
+}
+
 function persistTabs(tabs: ChatTab[]) {
   try {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20)));
@@ -650,5 +757,11 @@ export function buildResumedTab(session: {
 // Exports
 // =============================================================================
 
-export { normalizeProfileId, createTabId };
+export {
+  normalizeProfileId,
+  createTabId,
+  findLatestUnansweredUserMessage,
+  findMissingAssistantTail,
+  getAssistantTailGap,
+};
 export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };

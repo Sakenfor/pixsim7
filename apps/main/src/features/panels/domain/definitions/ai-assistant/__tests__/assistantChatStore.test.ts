@@ -17,7 +17,14 @@ export const TEST_SUITE = {
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { useAssistantChatStore, type ChatTab, type ChatMessage } from '../assistantChatStore';
+import {
+  useAssistantChatStore,
+  findLatestUnansweredUserMessage,
+  findMissingAssistantTail,
+  getAssistantTailGap,
+  type ChatTab,
+  type ChatMessage,
+} from '../assistantChatStore';
 
 // ── Helpers ──
 
@@ -210,6 +217,146 @@ describe('Assistant Chat Store', () => {
       const msgs = useAssistantChatStore.getState().getMessages('tab-1');
       expect(msgs).toHaveLength(3);
       expect(msgs[2].text).toBe('third');
+    });
+  });
+
+  describe('findLatestUnansweredUserMessage', () => {
+    it('returns latest user when only system/error messages follow it', () => {
+      const unresolved = findLatestUnansweredUserMessage([
+        makeMsg('user', 'prompt'),
+        makeMsg('system', 'Bridge disconnected'),
+        makeMsg('error', 'temporary network error'),
+      ]);
+      expect(unresolved).toEqual({ index: 0, text: 'prompt' });
+    });
+
+    it('returns null when the latest assistant already answered', () => {
+      const unresolved = findLatestUnansweredUserMessage([
+        makeMsg('user', 'prompt'),
+        makeMsg('assistant', 'answer'),
+        makeMsg('system', 'Reconnected'),
+      ]);
+      expect(unresolved).toBeNull();
+    });
+
+    it('finds the most recent unanswered user in multi-turn chats', () => {
+      const unresolved = findLatestUnansweredUserMessage([
+        makeMsg('user', 'first'),
+        makeMsg('assistant', 'first answer'),
+        makeMsg('user', 'second'),
+        makeMsg('system', 'Bridge disconnected'),
+      ]);
+      expect(unresolved).toEqual({ index: 2, text: 'second' });
+    });
+  });
+
+  describe('findMissingAssistantTail', () => {
+    it('returns missing assistant when local ends with system/error after user', () => {
+      const missing = findMissingAssistantTail(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'response'),
+        ],
+      );
+      expect(missing).toHaveLength(1);
+      expect(missing[0].role).toBe('assistant');
+      expect(missing[0].text).toBe('response');
+    });
+
+    it('returns only assistant tail beyond existing local assistant prefix', () => {
+      const missing = findMissingAssistantTail(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+          makeMsg('assistant', 'second'),
+        ],
+      );
+      expect(missing).toHaveLength(1);
+      expect(missing[0].text).toBe('second');
+    });
+
+    it('returns empty array when local assistant tail diverges from server', () => {
+      const missing = findMissingAssistantTail(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'local answer'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'server answer'),
+        ],
+      );
+      expect(missing).toEqual([]);
+    });
+
+    it('returns empty array when there is no local user turn', () => {
+      const missing = findMissingAssistantTail(
+        [makeMsg('system', 'note')],
+        [makeMsg('assistant', 'response')],
+      );
+      expect(missing).toEqual([]);
+    });
+  });
+
+  describe('getAssistantTailGap', () => {
+    it('reports pending assistant messages on server', () => {
+      const gap = getAssistantTailGap(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+          makeMsg('assistant', 'second'),
+        ],
+      );
+      expect(gap).toEqual({ pendingCount: 1, diverged: false });
+    });
+
+    it('reports diverged tails when assistant texts differ', () => {
+      const gap = getAssistantTailGap(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'local'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'server'),
+        ],
+      );
+      expect(gap).toEqual({ pendingCount: 0, diverged: true });
+    });
+
+    it('reports diverged tails when local has extra assistant entries', () => {
+      const gap = getAssistantTailGap(
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+          makeMsg('assistant', 'extra-local'),
+        ],
+        [
+          makeMsg('user', 'prompt'),
+          makeMsg('assistant', 'first'),
+        ],
+      );
+      expect(gap).toEqual({ pendingCount: 0, diverged: true });
+    });
+
+    it('returns no gap when user anchor is missing locally', () => {
+      const gap = getAssistantTailGap(
+        [makeMsg('system', 'note')],
+        [makeMsg('assistant', 'response')],
+      );
+      expect(gap).toEqual({ pendingCount: 0, diverged: false });
     });
   });
 
