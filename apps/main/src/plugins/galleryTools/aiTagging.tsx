@@ -10,6 +10,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
+import { useAsyncTask } from '@lib/asyncTask';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
@@ -19,39 +20,32 @@ import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/ty
  * AI tagging assistant component
  */
 function AITaggingTool({ context }: { context: GalleryToolContext }) {
-  const [analyzing, setAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   const selectedAsset = context.selectedAssets[0];
 
-  const handleAnalyze = async () => {
-    setAnalyzing(true);
-    setSuggestions([]);
-
-    try {
-      // Call tag suggestion endpoint
-      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/suggest`, {
-        headers: withCorrelationHeaders(undefined, 'gallery:ai-tagging:suggest'),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to analyze asset');
+  const { isRunning: analyzing, run: handleAnalyze } = useAsyncTask(
+    'gallery:ai-tagging:analyze',
+    async () => {
+      setSuggestions([]);
+      try {
+        const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/suggest`, {
+          headers: withCorrelationHeaders(undefined, 'gallery:ai-tagging:suggest'),
+        });
+        if (!response.ok) throw new Error('Failed to analyze asset');
+        const data = await response.json();
+        setSuggestions(data.suggested_tags || []);
+      } catch (error) {
+        console.error('Failed to analyze asset:', error);
+        const fallbackSuggestions = selectedAsset?.mediaType === 'image'
+          ? ['portrait', 'outdoor', 'daytime']
+          : ['video', 'cinematic', 'short'];
+        setSuggestions(fallbackSuggestions);
       }
-
-      const data = await response.json();
-      setSuggestions(data.suggested_tags || []);
-    } catch (error) {
-      console.error('Failed to analyze asset:', error);
-      // Fallback to basic suggestions on error
-      const fallbackSuggestions = selectedAsset?.mediaType === 'image'
-        ? ['portrait', 'outdoor', 'daytime']
-        : ['video', 'cinematic', 'short'];
-      setSuggestions(fallbackSuggestions);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+      return null;
+    },
+  );
 
   const toggleTag = (tag: string) => {
     const newSelected = new Set(selectedTags);

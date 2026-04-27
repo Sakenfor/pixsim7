@@ -9,6 +9,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
+import { useAsyncTask } from '@lib/asyncTask';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
@@ -58,13 +59,42 @@ function formatTagLabel(tag: { slug: string; label?: string; displayName?: strin
 function BulkTagToolUI({ context }: { context: GalleryToolContext }) {
   const [mode, setMode] = useState<'add' | 'remove' | 'replace'>('add');
   const [tagInput, setTagInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState<StatusState | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestedTags, setSuggestedTags] = useState<TagSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   const selectedCount = context.selectedAssets.length;
+
+  const { isRunning: isProcessing, result: applyResult, run: runApplyTags } = useAsyncTask(
+    'gallery:bulk-tag:apply',
+    async () => {
+      const tags = Array.from(new Set(parseTags(tagInput)));
+      if (tags.length === 0) throw new Error('Enter at least one tag.');
+      const assetIds = context.selectedAssets.map((asset) => asset.id);
+      const response = await fetch('/api/v1/assets/bulk/tags', {
+        method: 'POST',
+        headers: withCorrelationHeaders(
+          { 'Content-Type': 'application/json' },
+          'gallery:bulk-tag:apply',
+        ),
+        body: JSON.stringify(toSnakeCaseDeep({ assetIds, tags, mode })),
+      });
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null);
+        const detail = errorPayload?.detail || 'Failed to update tags.';
+        throw new Error(detail);
+      }
+      const data = await response.json().catch(() => null);
+      const updatedCount = data?.updated_count ?? assetIds.length;
+      setTagInput('');
+      context.refresh();
+      return `Updated ${updatedCount} asset${updatedCount === 1 ? '' : 's'}.`;
+    },
+  );
+
+  const status: StatusState | null = applyResult
+    ? { kind: applyResult.isError ? 'error' : 'success', message: applyResult.message }
+    : null;
 
   const { allTags, commonTags } = useMemo(() => {
     const counts = new Map<string, TagCount>();
@@ -100,62 +130,10 @@ function BulkTagToolUI({ context }: { context: GalleryToolContext }) {
     });
   };
 
-  const handleApplyTags = async () => {
+  const handleApplyTags = () => {
     if (selectedCount === 0) return;
-
-    const tags = Array.from(new Set(parseTags(tagInput)));
-    if (tags.length === 0) {
-      setStatus({ kind: 'error', message: 'Enter at least one tag.' });
-      return;
-    }
-
-    if (mode === 'replace') {
-      const confirmed = confirm('Replace all tags on selected assets?');
-      if (!confirmed) return;
-    }
-
-    setIsProcessing(true);
-    setStatus(null);
-
-    try {
-      const assetIds = context.selectedAssets.map((asset) => asset.id);
-      const response = await fetch('/api/v1/assets/bulk/tags', {
-        method: 'POST',
-        headers: withCorrelationHeaders(
-          { 'Content-Type': 'application/json' },
-          'gallery:bulk-tag:apply',
-        ),
-        body: JSON.stringify(
-          toSnakeCaseDeep({
-            assetIds,
-            tags,
-            mode,
-          })
-        ),
-      });
-
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        const detail = errorPayload?.detail || 'Failed to update tags.';
-        throw new Error(detail);
-      }
-
-      const data = await response.json().catch(() => null);
-      const updatedCount = data?.updated_count ?? assetIds.length;
-
-      setStatus({
-        kind: 'success',
-        message: `Updated ${updatedCount} asset${updatedCount === 1 ? '' : 's'}.`,
-      });
-      setTagInput('');
-      context.refresh();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to update tags.';
-      setStatus({ kind: 'error', message });
-    } finally {
-      setIsProcessing(false);
-    }
+    if (mode === 'replace' && !confirm('Replace all tags on selected assets?')) return;
+    void runApplyTags();
   };
 
   useEffect(() => {

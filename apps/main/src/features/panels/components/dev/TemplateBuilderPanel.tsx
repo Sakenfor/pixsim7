@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { BlockTemplateSummary, CharacterBindings, ListTemplatesQuery } from '@lib/api/blockTemplates';
 import { getTemplate, reloadContentPacks } from '@lib/api/blockTemplates';
+import { useAsyncTask } from '@lib/asyncTask';
 import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
@@ -93,8 +94,6 @@ export function TemplateBuilderPanel() {
   const [updatedTemplateIds, setUpdatedTemplateIds] = useState<Set<string>>(() => new Set());
   const templateUpdatedAtByIdRef = useRef<Map<string, string>>(new Map());
   const hasTemplateListBaselineRef = useRef(false);
-  const [reloadingPinnedPack, setReloadingPinnedPack] = useState(false);
-  const [reloadPinnedPackMessage, setReloadPinnedPackMessage] = useState<string | null>(null);
 
   const buildTemplateListQuery = useCallback(
     (scope: TemplateListScope): ListTemplatesQuery => {
@@ -212,41 +211,35 @@ export function TemplateBuilderPanel() {
     [activeTemplate?.template_metadata],
   );
 
-  const handleReloadPinnedPack = useCallback(async () => {
-    if (!canReloadContentPacks) {
-      setReloadPinnedPackMessage('Admin role is required to reload content packs.');
-      return;
+  const {
+    isRunning: reloadingPinnedPack,
+    result: reloadPinnedPackResult,
+    run: runReloadPinnedPack,
+  } = useAsyncTask('templates:reload-pinned-pack', async () => {
+    if (!pinnedTemplatePack) return null;
+    const response = await reloadContentPacks({ pack: pinnedTemplatePack, force: true });
+    const stats = response.results?.[pinnedTemplatePack];
+    if (stats?.error) throw new Error(`Reload failed: ${stats.error}`);
+    const updatedCount =
+      (stats?.blocks_updated ?? 0)
+      + (stats?.templates_updated ?? 0)
+      + (stats?.characters_updated ?? 0)
+      + (stats?.blocks_created ?? 0)
+      + (stats?.templates_created ?? 0)
+      + (stats?.characters_created ?? 0);
+    await fetchTemplates(templateListQuery);
+    if (pinnedTemplateId) {
+      await fetchTemplate(pinnedTemplateId);
     }
-    if (!pinnedTemplatePack || reloadingPinnedPack) return;
-    setReloadingPinnedPack(true);
-    setReloadPinnedPackMessage(null);
-    try {
-      const response = await reloadContentPacks({ pack: pinnedTemplatePack, force: true });
-      const stats = response.results?.[pinnedTemplatePack];
-      if (stats?.error) {
-        setReloadPinnedPackMessage(`Reload failed: ${stats.error}`);
-      } else {
-        const updatedCount =
-          (stats?.blocks_updated ?? 0)
-          + (stats?.templates_updated ?? 0)
-          + (stats?.characters_updated ?? 0)
-          + (stats?.blocks_created ?? 0)
-          + (stats?.templates_created ?? 0)
-          + (stats?.characters_created ?? 0);
-        setReloadPinnedPackMessage(
-          `Reloaded ${pinnedTemplatePack}${updatedCount ? ` (${updatedCount} rows touched)` : ''}`,
-        );
-        await fetchTemplates(templateListQuery);
-        if (pinnedTemplateId) {
-          await fetchTemplate(pinnedTemplateId);
-        }
-      }
-    } catch (err) {
-      setReloadPinnedPackMessage(err instanceof Error ? `Reload failed: ${err.message}` : 'Reload failed');
-    } finally {
-      setReloadingPinnedPack(false);
-    }
-  }, [canReloadContentPacks, fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack, templateListQuery]);
+    return `Reloaded ${pinnedTemplatePack}${updatedCount ? ` (${updatedCount} rows touched)` : ''}`;
+  });
+
+  const reloadPinnedPackMessage = reloadPinnedPackResult?.message ?? null;
+
+  const handleReloadPinnedPack = useCallback(() => {
+    if (!canReloadContentPacks || !pinnedTemplatePack || reloadingPinnedPack) return;
+    void runReloadPinnedPack();
+  }, [canReloadContentPacks, pinnedTemplatePack, reloadingPinnedPack, runReloadPinnedPack]);
 
   const handleNew = useCallback(() => {
     setActiveTemplate(null);

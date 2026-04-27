@@ -39,6 +39,7 @@ import {
   updatePreferenceKey,
   type AnalyzerPreferences,
 } from '@lib/api/userPreferences';
+import { useAsyncTask } from '@lib/asyncTask';
 import { isAdminUser } from '@lib/auth/userRoles';
 
 import { useMediaSettingsStore } from '@features/assets';
@@ -1476,7 +1477,6 @@ export function AnalyzersSettings() {
   const [backfillRuns, setBackfillRuns] = useState<AnalysisBackfillResponse[]>([]);
   const [backfillForm, setBackfillForm] = useState<BackfillFormState>(INITIAL_BACKFILL_FORM_STATE);
   const [isLoadingBackfills, setIsLoadingBackfills] = useState(false);
-  const [isCreatingBackfill, setIsCreatingBackfill] = useState(false);
   const [backfillError, setBackfillError] = useState<string | null>(null);
   const [activeBackfillActionId, setActiveBackfillActionId] = useState<number | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -1848,33 +1848,33 @@ export function AnalyzersSettings() {
     setBackfillForm((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  const handleCreateBackfill = useCallback(async () => {
-    try {
-      setIsCreatingBackfill(true);
+  const { isRunning: isCreatingBackfill, run: runCreateBackfill } = useAsyncTask(
+    'analyzers:create-backfill',
+    async () => {
       setBackfillError(null);
-
       const payload: CreateAnalysisBackfillRequest = {
         batch_size: Math.max(1, Math.min(1000, Math.trunc(backfillForm.batch_size || 100))),
         priority: Math.max(0, Math.min(10, Math.trunc(backfillForm.priority || 5))),
       };
-
       if (backfillForm.media_type) payload.media_type = backfillForm.media_type;
       if (backfillForm.analyzer_id.trim()) payload.analyzer_id = backfillForm.analyzer_id.trim();
       if (backfillForm.analyzer_intent) payload.analyzer_intent = backfillForm.analyzer_intent;
       if (backfillForm.analysis_point.trim()) payload.analysis_point = backfillForm.analysis_point.trim();
-
-      await createAnalysisBackfill(payload);
-      setBackfillForm((prev) => ({
-        ...prev,
-        analysis_point: '',
-      }));
+      try {
+        await createAnalysisBackfill(payload);
+      } catch (err) {
+        setBackfillError(err instanceof Error ? err.message : 'Failed to create backfill run');
+        return null;
+      }
+      setBackfillForm((prev) => ({ ...prev, analysis_point: '' }));
       await fetchBackfillRuns();
-    } catch (err) {
-      setBackfillError(err instanceof Error ? err.message : 'Failed to create backfill run');
-    } finally {
-      setIsCreatingBackfill(false);
-    }
-  }, [backfillForm, fetchBackfillRuns]);
+      return null;
+    },
+  );
+
+  const handleCreateBackfill = useCallback(() => {
+    void runCreateBackfill();
+  }, [runCreateBackfill]);
 
   const runBackfillAction = useCallback(
     async (runId: number, action: 'pause' | 'resume' | 'cancel') => {

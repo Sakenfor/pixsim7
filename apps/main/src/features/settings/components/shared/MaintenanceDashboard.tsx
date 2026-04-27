@@ -31,6 +31,8 @@ import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
 import { Icon, type IconName } from '@lib/icons';
 
+import { useAsyncTask, useAsyncTaskStore } from '@lib/asyncTask';
+
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
 
@@ -217,42 +219,42 @@ function resolveEndpoint(template: string, batchSize: number): string {
 }
 
 function useMaintenanceRow<S>(config: RowConfig<S>, batchSize: number) {
+  const taskId = `maintenance:${config.statsEndpoint}`;
   const [stats, setStats] = useState<S | null>(null);
   const [loading, setLoading] = useState(false);
-  const [acting, setActing] = useState(false);
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiFetch<S>(config.statsEndpoint);
       setStats(data);
-      setResult(null);
+      setFetchError(null);
     } catch (err: any) {
-      setResult({ message: err.message || 'Failed to load stats', isError: true });
+      setFetchError(err.message || 'Failed to load stats');
     } finally {
       setLoading(false);
     }
   }, [config.statsEndpoint]);
 
-  const runAction = useCallback(async () => {
-    setActing(true);
-    setResult(null);
-    try {
+  const { isRunning: acting, result: actionResult, run: runAction } = useAsyncTask(
+    taskId,
+    async () => {
       const endpoint = resolveEndpoint(config.actionEndpoint, batchSize);
       const data = await apiFetch<any>(endpoint, 'POST');
       const msg = config.resultMessage(data);
-      if (msg) setResult({ message: msg });
       const refreshed = await apiFetch<S>(config.statsEndpoint);
       setStats(refreshed);
-    } catch (err: any) {
-      setResult({ message: err.message || 'Action failed', isError: true });
-    } finally {
-      setActing(false);
-    }
-  }, [config.statsEndpoint, config.actionEndpoint, config.resultMessage, batchSize]);
+      return msg;
+    },
+  );
 
-  return { stats, loading, acting, result, fetchStats, runAction };
+  const result: ActionResult | null = useMemo(() => {
+    if (fetchError) return { message: fetchError, isError: true };
+    return actionResult;
+  }, [fetchError, actionResult]);
+
+  return { stats, loading, acting, result, fetchStats, runAction, taskId };
 }
 
 // ---------------------------------------------------------------------------
@@ -1285,7 +1287,7 @@ function StorageOverview({
           {data.media_types.map((mt) => {
             const isConvertible = mt.mime_type === 'image/png' || mt.mime_type === 'image/bmp';
             return (
-              <div key={mt.mime_type} className="flex items-center gap-2 text-[11px]">
+              <div key={`${mt.mime_type}::${mt.media_type}`} className="flex items-center gap-2 text-[11px]">
                 <span className={`w-2 h-2 rounded-sm shrink-0 ${mt.media_type === 'video' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
                 <span className="w-[100px] shrink-0 truncate text-muted-foreground">
                   {mt.mime_type.replace('image/', '').replace('video/', '')}
@@ -1459,9 +1461,12 @@ export function MaintenanceDashboard() {
 
   const refreshAll = async () => {
     setRefreshing(true);
+    useAsyncTaskStore.getState().clearAll('maintenance:');
     await Promise.allSettled(refreshCallbacks.current.map((cb) => cb()));
     setRefreshing(false);
   };
+
+  const byTask = useAsyncTaskStore((s) => s.byTask);
 
   const sections: SidebarContentLayoutSection[] = [
     {
@@ -1469,11 +1474,15 @@ export function MaintenanceDashboard() {
       label: 'Overview',
       icon: <Icon name="layers" size={14} />,
     },
-    ...STATS_TASK_NAV.map((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      icon: <Icon name={entry.icon} size={14} />,
-    })),
+    ...STATS_TASK_NAV.map((entry) => {
+      const taskEntry = taskMap[entry.id as keyof typeof taskMap];
+      const isRunning = byTask[taskEntry.taskId]?.status === 'running';
+      return {
+        id: entry.id,
+        label: entry.label,
+        icon: isRunning ? <LoadingSpinner size="xs" /> : <Icon name={entry.icon} size={14} />,
+      };
+    }),
     {
       id: 'duplicates',
       label: 'Duplicates',
