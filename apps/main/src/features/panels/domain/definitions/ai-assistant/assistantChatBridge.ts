@@ -49,6 +49,8 @@ export interface BridgeRequest {
   thinkingLog: ThinkingEntry[];
   result: BridgeResult | null;
   abort: AbortController;
+  /** Known bridge/CLI session id for this request (used for reconnect recovery). */
+  bridgeSessionId?: string;
   /** Server-assigned task ID — used for reconnect after page reload */
   taskId?: string;
   /** Monotonic timestamp of last activity (creation, heartbeat, or reconnect) */
@@ -138,6 +140,7 @@ interface InflightEntry {
   tabId: string;
   taskId: string;
   ts: number; // Date.now() when persisted
+  bridgeSessionId?: string;
   /** Thinking log snapshot — survives page reload so progress isn't lost */
   thinkingLog?: ThinkingEntry[];
 }
@@ -247,6 +250,7 @@ class AssistantChatBridge {
     for (const [, req] of this._requests) {
       if ((req.status === 'pending' || req.status === 'streaming') && req.taskId) {
         const entry: InflightEntry = { tabId: req.tabId, taskId: req.taskId, ts: Date.now() };
+        if (req.bridgeSessionId) entry.bridgeSessionId = req.bridgeSessionId;
         if (includeThinking && req.thinkingLog.length > 0) {
           // Keep last 50 to avoid blowing localStorage budget
           entry.thinkingLog = req.thinkingLog.slice(-50);
@@ -301,6 +305,7 @@ class AssistantChatBridge {
         thinkingLog: entry.thinkingLog ?? [],
         result: null,
         abort: new AbortController(),
+        bridgeSessionId: entry.bridgeSessionId,
         taskId: entry.taskId,
         _lastActivity: Date.now(),
       };
@@ -321,6 +326,7 @@ class AssistantChatBridge {
             type: 'reconnect',
             tab_id: entry.tabId,
             task_id: entry.taskId,
+            ...(entry.bridgeSessionId ? { bridge_session_id: entry.bridgeSessionId } : {}),
           }));
         }
       }
@@ -421,6 +427,7 @@ class AssistantChatBridge {
               type: 'reconnect',
               tab_id: req.tabId,
               task_id: req.taskId,
+              ...(req.bridgeSessionId ? { bridge_session_id: req.bridgeSessionId } : {}),
             }));
           }
         }
@@ -461,6 +468,9 @@ class AssistantChatBridge {
       appendHeartbeat(request.thinkingLog, action, detail);
       this._notify();
     } else if (type === 'result') {
+      if (typeof data.bridge_session_id === 'string' && data.bridge_session_id) {
+        request.bridgeSessionId = data.bridge_session_id;
+      }
       request.status = data.ok ? 'completed' : 'error';
       request.activity = null;
       request.result = {
@@ -607,7 +617,19 @@ class AssistantChatBridge {
     this._requests.get(tabId)?.abort.abort();
 
     const abort = new AbortController();
-    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort, _lastActivity: Date.now() };
+    const bridgeSessionId = typeof body.bridge_session_id === 'string' && body.bridge_session_id
+      ? body.bridge_session_id
+      : undefined;
+    const request: BridgeRequest = {
+      tabId,
+      status: 'pending',
+      activity: null,
+      thinkingLog: [],
+      result: null,
+      abort,
+      bridgeSessionId,
+      _lastActivity: Date.now(),
+    };
     this._requests.set(tabId, request);
     this._notify();
 

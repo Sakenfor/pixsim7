@@ -358,6 +358,35 @@ describe('AssistantChatBridge', () => {
       expect(parsed).toMatchObject({ type: 'reconnect', tab_id: 'tab-1', task_id: 'task-123' });
     });
 
+    it('includes bridge_session_id in reconnect payload when known', async () => {
+      const sendPromise = bridge.send('tab-1', { message: 'hi', bridge_session_id: 'sess-abc' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws1 = MockWebSocket.instances[0];
+      ws1.simulateOpen();
+      await sendPromise;
+
+      ws1.simulateMessage({ type: 'heartbeat', tab_id: 'tab-1', action: 'working', detail: 'Processing', task_id: 'task-123' });
+      ws1.simulateClose();
+
+      await vi.advanceTimersByTimeAsync(5000);
+      const ws2 = MockWebSocket.instances[1];
+      ws2.simulateOpen();
+
+      await vi.advanceTimersByTimeAsync(0);
+      const reconnectMsg = ws2.sent.find((s) => {
+        const parsed = JSON.parse(s);
+        return parsed.type === 'reconnect';
+      });
+      expect(reconnectMsg).toBeDefined();
+      const parsed = JSON.parse(reconnectMsg!);
+      expect(parsed).toMatchObject({
+        type: 'reconnect',
+        tab_id: 'tab-1',
+        task_id: 'task-123',
+        bridge_session_id: 'sess-abc',
+      });
+    });
+
     it('does not reconnect when no pending requests', async () => {
       // Connect and complete a request
       const sendPromise = bridge.send('tab-1', { message: 'hi' });

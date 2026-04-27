@@ -447,6 +447,73 @@ class TestWsChatReconnect:
                 assert "disconnected" in data.get("error", "").lower()
                 assert data["reconnected"] is True
 
+    def test_reconnect_waits_for_bridge_replay_after_restart(self):
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = MagicMock()
+        mock_bridge._active_tasks = {}
+        mock_bridge.connected_count = 1
+        mock_bridge.get_completed_result.side_effect = [
+            None,
+            {"response": "replayed answer", "bridge_session_id": "sess-777"},
+        ]
+        patches = _debug_patches(user_id=1)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_REPLAY_WAIT_S", 0.2),
+            patch("pixsim7.backend.main.api.v1.ws_chat._RECONNECT_REPLAY_POLL_S", 0.01),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "reconnect", "tab_id": "t1", "task_id": "task-replay",
+                }))
+                heartbeat = json.loads(ws.receive_text())
+                assert heartbeat["type"] == "heartbeat"
+                assert heartbeat["action"] == "recovering"
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is True
+                assert data["response"] == "replayed answer"
+                assert data["bridge_session_id"] == "sess-777"
+                assert data["reconnected"] is True
+
+    def test_reconnect_recovers_from_session_tail(self):
+        app = _app()
+        client = TestClient(app)
+        mock_bridge = MagicMock()
+        mock_bridge.get_completed_result.return_value = None
+        mock_bridge._active_tasks = {}
+        mock_bridge.connected_count = 0
+        recover = AsyncMock(return_value=("Recovered from session", "sess-tail"))
+        patches = _debug_patches(user_id=1)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat._recover_session_tail_response", recover),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "reconnect",
+                    "tab_id": "t1",
+                    "task_id": "task-gone",
+                    "bridge_session_id": "sess-tail",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is True
+                assert data["response"] == "Recovered from session"
+                assert data["bridge_session_id"] == "sess-tail"
+                assert data["reconnected"] is True
+
+        recover.assert_awaited_once_with("sess-tail", user_id=1)
+
 
 # ── Auth ─────────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ Protocol:
 
     Client -> Server:
         {"type": "message", "tab_id": "...", "message": "...", ...}
-        {"type": "reconnect", "tab_id": "...", "task_id": "..."}
+        {"type": "reconnect", "tab_id": "...", "task_id": "...", "bridge_session_id": "..."}
         "ping"
 
     Server -> Client:
@@ -36,6 +36,11 @@ from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_t
 logger = get_logger()
 
 router = APIRouter()
+
+# Give reconnect a short grace window to catch bridge-side buffered replay
+# after backend restarts.
+_RECONNECT_REPLAY_WAIT_S = 8.0
+_RECONNECT_REPLAY_POLL_S = 0.25
 
 
 async def _resolve_user_id(token: str | None) -> int | None:
@@ -83,6 +88,84 @@ def _error_payload_from_exception(exc: BaseException) -> dict:
     code = getattr(exc, "code", None) or getattr(exc, "error_code", None) or "dispatch_error"
     details = getattr(exc, "details", None) or getattr(exc, "error_details", None)
     return _error_payload(text, code=str(code), details=details if isinstance(details, dict) else None)
+
+
+async def _wait_for_replayed_result(
+    task_id: str,
+    *,
+    bridge: Any,
+) -> Dict[str, Any] | None:
+    """Wait briefly for a bridge replayed result to land in completed cache."""
+    wait_s = max(float(_RECONNECT_REPLAY_WAIT_S), 0.0)
+    if wait_s <= 0:
+        return None
+
+    poll_s = max(float(_RECONNECT_REPLAY_POLL_S), 0.05)
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + wait_s
+
+    while loop.time() < deadline:
+        cached = bridge.get_completed_result(task_id)
+        if cached:
+            return cached
+        await asyncio.sleep(poll_s)
+    return None
+
+
+async def _recover_session_tail_response(
+    session_hint: str | None,
+    *,
+    user_id: int | None,
+) -> tuple[str, str] | None:
+    """Recover a just-missed assistant response from persisted session tail."""
+    session_key = (session_hint or "").strip()
+    if not session_key:
+        return None
+
+    try:
+        from sqlalchemy import select
+
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            session = await db.get(ChatSession, session_key)
+            if not session:
+                rows = (await db.execute(
+                    select(ChatSession)
+                    .where(ChatSession.cli_session_id == session_key)
+                    .limit(1)
+                )).scalars().all()
+                session = rows[0] if rows else None
+
+            if not session:
+                return None
+
+            owner_id = int(getattr(session, "user_id", 0) or 0)
+            if user_id is not None and owner_id not in {0, int(user_id)}:
+                return None
+
+            messages = list(session.messages or [])
+            if not messages:
+                return None
+
+            last = messages[-1]
+            if not isinstance(last, dict):
+                return None
+            if str(last.get("role") or "").strip().lower() != "assistant":
+                return None
+
+            text = last.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return None
+
+            canonical_session_id = str(
+                getattr(session, "cli_session_id", None)
+                or getattr(session, "id", session_key)
+            )
+            return text, canonical_session_id
+    except Exception:
+        return None
 
 
 async def _handle_message(
@@ -375,6 +458,8 @@ async def _handle_reconnect(
 
     tab_id = data.get("tab_id", "")
     task_id = data.get("task_id", "")
+    session_hint_raw = data.get("bridge_session_id")
+    session_hint = session_hint_raw if isinstance(session_hint_raw, str) else ""
 
     if not task_id:
         await websocket.send_json({
@@ -477,6 +562,46 @@ async def _handle_reconnect(
                 })
             finally:
                 remote_cmd_bridge._heartbeat_queues.pop(task_id, None)
+        return
+
+    # Backend may have restarted while the bridge still has buffered result.
+    connected_count = getattr(remote_cmd_bridge, "connected_count", 0)
+    if isinstance(connected_count, int) and connected_count > 0:
+        await websocket.send_json({
+            "type": "heartbeat",
+            "tab_id": tab_id,
+            "task_id": task_id,
+            "action": "recovering",
+            "detail": "Waiting for bridge replay",
+        })
+        replayed = await _wait_for_replayed_result(task_id, bridge=remote_cmd_bridge)
+        if replayed:
+            response_text = extract_response_text(replayed)
+            await websocket.send_json({
+                "type": "result",
+                "tab_id": tab_id,
+                "ok": not replayed.get("error"),
+                "response": response_text,
+                "bridge_session_id": replayed.get("bridge_session_id"),
+                "error": replayed.get("error"),
+                "error_code": replayed.get("error_code"),
+                "error_details": replayed.get("error_details"),
+                "reconnected": True,
+            })
+            return
+
+    # Last-resort recovery from persisted ChatSession tail.
+    recovered = await _recover_session_tail_response(session_hint, user_id=user_id)
+    if recovered:
+        response_text, recovered_session_id = recovered
+        await websocket.send_json({
+            "type": "result",
+            "tab_id": tab_id,
+            "ok": True,
+            "response": response_text,
+            "bridge_session_id": recovered_session_id,
+            "reconnected": True,
+        })
         return
 
     # Task not found
