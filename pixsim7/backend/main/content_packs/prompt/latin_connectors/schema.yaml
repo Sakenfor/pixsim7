@@ -1,0 +1,143 @@
+version: 1.0.0
+package_name: latin_connectors
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: connectors
+    block_schema:
+      id_prefix: latin.connector
+      mode: surface
+      category: latin_enhancer
+      capabilities:
+        - latin.enhancer
+        - latin.connector
+      text_template: 'Latin connector: {variant}.'
+      tags:
+        modifier_family: latin_enhancer
+        modality_support: both
+        temporal: neutral
+        domain:
+          - connector
+          - rhetoric
+      variants:
+        - key: velut_arcus_tentus
+          text: velut arcus tentus
+          tags:
+            register: poetic
+            intensity: moderate
+            latin_form: connector
+            connector_type: simile
+            attaches: trailing
+        - key: velut_serpens_subito
+          text: velut serpens subito
+          tags:
+            register: poetic
+            intensity: firm
+            latin_form: connector
+            connector_type: simile
+            attaches: trailing
+        - key: velut_flamma_sub_cinere
+          text: velut flamma sub cinere
+          tags:
+            register: poetic
+            intensity: subtle
+            latin_form: connector
+            connector_type: simile
+            attaches: trailing
+        - key: velut_unda_recurrens
+          text: velut unda recurrens
+          tags:
+            register: poetic
+            intensity: moderate
+            latin_form: connector
+            connector_type: simile
+            attaches: trailing
+        - key: ut_aer_ante_tempestatem
+          text: ut aer ante tempestatem
+          tags:
+            register: poetic
+            intensity: subtle
+            latin_form: connector
+            connector_type: simile
+            attaches: trailing
+        - key: dum_silentium_extenditur
+          text: dum silentium extenditur
+          tags:
+            register: technical
+            intensity: subtle
+            latin_form: connector
+            connector_type: temporal
+            attaches: trailing
+        - key: dum_anhelitus_brevior_fit
+          text: dum anhelitus brevior fit
+          tags:
+            register: technical
+            intensity: moderate
+            latin_form: connector
+            connector_type: temporal
+            attaches: trailing
+        - key: dum_corpus_cedit
+          text: dum corpus cedit
+          tags:
+            register: technical
+            intensity: moderate
+            latin_form: connector
+            connector_type: temporal
+            attaches: trailing
+        - key: simul_animus_vacillat
+          text: simul animus vacillat
+          tags:
+            register: poetic
+            intensity: moderate
+            latin_form: connector
+            connector_type: temporal
+            attaches: trailing
+        - key: sic_omnia_consonant
+          text: sic omnia consonant
+          tags:
+            register: poetic
+            intensity: moderate
+            latin_form: connector
+            connector_type: consequence
+            attaches: leading
+        - key: sic_motus_perficitur
+          text: sic motus perficitur
+          tags:
+            register: technical
+            intensity: firm
+            latin_form: connector
+            connector_type: consequence
+            attaches: leading
+        - key: ita_omne_pondus_quiescit
+          text: ita omne pondus quiescit
+          tags:
+            register: poetic
+            intensity: subtle
+            latin_form: connector
+            connector_type: consequence
+            attaches: leading
+        - key: in_hac_tentione_invitanti
+          text: in hac tentione invitanti
+          tags:
+            register: poetic
+            intensity: moderate
+            latin_form: connector
+            connector_type: anaphor
+            attaches: leading
+        - key: in_hoc_silentio
+          text: in hoc silentio
+          tags:
+            register: poetic
+            intensity: subtle
+            latin_form: connector
+            connector_type: anaphor
+            attaches: leading
+        - key: inter_officium_et_desiderium
+          text: inter officium et desiderium
+          tags:
+            register: poetic
+            intensity: firm
+            latin_form: connector
+            connector_type: anaphor
+            attaches: leading

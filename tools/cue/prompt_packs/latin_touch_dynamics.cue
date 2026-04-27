@@ -47,7 +47,7 @@ tag_registry: #TagRegistryV1 & {
 	}
 	latin_form: {
 		label:          "Latin Form"
-		description:    "Grammatical form: predication (full clause) or noun_phrase (fragment)."
+		description:    "Grammatical form: predication (full clause), noun_phrase (fragment), or connector (glue)."
 		allowed_values: #LatinFormValues
 		applies_to: [{role: "modifier", category: "latin_enhancer"}]
 		status: "active"

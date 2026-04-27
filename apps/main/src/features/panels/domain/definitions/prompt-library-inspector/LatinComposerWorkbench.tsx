@@ -41,6 +41,8 @@ interface ComposedVariant {
   applies_to: string | null;
   latin_form: string | null;
   domains: string[];
+  connector_type: string | null;
+  attaches: string | null;
 }
 
 interface ComposeResponse {
@@ -148,6 +150,7 @@ export function LatinComposerWorkbench() {
   const [register, setRegister] = useState<RegisterChoice>('mixed');
   const [intensity, setIntensity] = useState<IntensityChoice>('moderate');
   const [domains, setDomains] = useState<string[]>([]);
+  const [includeConnectors, setIncludeConnectors] = useState(false);
   const [seed, setSeed] = useState<number | undefined>(undefined);
   const [result, setResult] = useState<ComposeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -166,6 +169,7 @@ export function LatinComposerWorkbench() {
       params.set('register', register);
       params.set('intensity', intensity);
       domains.forEach((d) => params.append('domains', d));
+      if (includeConnectors) params.set('include_connectors', 'true');
       if (seed !== undefined) params.set('seed', String(seed));
       const res = await api.get<ComposeResponse>(
         `/prompts/latin-enhancer/compose?${params.toString()}`,
@@ -177,7 +181,7 @@ export function LatinComposerWorkbench() {
     } finally {
       setLoading(false);
     }
-  }, [api, length, register, intensity, domains, seed]);
+  }, [api, length, register, intensity, domains, includeConnectors, seed]);
 
   useEffect(() => {
     compose();
@@ -231,6 +235,17 @@ export function LatinComposerWorkbench() {
           <PillRadio label="Intensity" options={INTENSITIES} value={intensity} onChange={setIntensity} />
           <DomainChips selected={domains} onToggle={toggleDomain} />
         </div>
+
+        <label className="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeConnectors}
+            onChange={(e) => setIncludeConnectors(e.target.checked)}
+            className="accent-accent"
+          />
+          <span>Interleave connectors</span>
+          <span className="text-[10px] text-neutral-500">(simile / temporal / anaphor glue between clauses)</span>
+        </label>
 
         {seed !== undefined && (
           <div className="text-[10px] text-neutral-400 font-mono">

@@ -37,6 +37,8 @@ class ComposedVariantResponse(BaseModel):
     applies_to: Optional[str] = None
     latin_form: Optional[str] = None
     domains: list[str] = Field(default_factory=list)
+    connector_type: Optional[str] = None
+    attaches: Optional[str] = None
 
 
 class ComposeResponseModel(BaseModel):
@@ -56,6 +58,8 @@ def _to_response(variant: ComposedVariant) -> ComposedVariantResponse:
         applies_to=variant.applies_to,
         latin_form=variant.latin_form,
         domains=list(variant.domains),
+        connector_type=variant.connector_type,
+        attaches=variant.attaches,
     )
 
 
@@ -81,6 +85,10 @@ async def compose_latin_enhancer(
         default=None,
         description="Deterministic re-roll seed; omit for fresh random pick",
     ),
+    include_connectors: bool = Query(
+        default=False,
+        description="Interleave latin_connectors variants between content clauses for simile/temporal/anaphor structural variety",
+    ),
 ) -> ComposeResponseModel:
     """Pick N Latin variants matching the criteria and return joined output."""
     req = ComposeRequest(
@@ -89,6 +97,7 @@ async def compose_latin_enhancer(
         intensity=intensity,
         domains=tuple(domains) if domains else None,
         seed=seed,
+        include_connectors=include_connectors,
     )
     async with get_async_blocks_session() as blocks_db:
         result = await compose(blocks_db, req)

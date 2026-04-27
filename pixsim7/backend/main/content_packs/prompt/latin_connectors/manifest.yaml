@@ -1,0 +1,16 @@
+id: latin-connectors
+title: Latin Connectors
+description: Generic Latin glue clauses (simile / temporal / consequence / anaphor) used by the composer to bridge content picks. Not standalone — interleaved into multi-clause output.
+matrix_presets:
+  - label: Connector Type by Attaches
+    query:
+      row_key: tag:connector_type
+      col_key: tag:attaches
+      package_name: latin_connectors
+      include_empty: true
+  - label: Connector Type by Register
+    query:
+      row_key: tag:connector_type
+      col_key: tag:register
+      package_name: latin_connectors
+      include_empty: true

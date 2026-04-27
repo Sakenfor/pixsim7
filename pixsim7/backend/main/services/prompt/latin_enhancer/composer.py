@@ -45,6 +45,11 @@ class ComposeRequest:
     intensity: IntensityChoice = "moderate"
     domains: Optional[tuple[str, ...]] = None  # tag.domain overlap; None = all
     seed: Optional[int] = None
+    # When True the composer interleaves picks from the latin_connectors pack
+    # (latin_form='connector') between content clauses to add structural
+    # variety (simile/temporal/consequence/anaphor). Default off so existing
+    # callers keep their flat-clause output.
+    include_connectors: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,8 @@ class ComposedVariant:
     applies_to: Optional[str]
     latin_form: Optional[str]
     domains: tuple[str, ...] = field(default_factory=tuple)
+    connector_type: Optional[str] = None
+    attaches: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,8 @@ def _row_to_variant(row: BlockPrimitive) -> ComposedVariant:
         applies_to=_string_tag(tags, "applies_to"),
         latin_form=_string_tag(tags, "latin_form"),
         domains=domains,
+        connector_type=_string_tag(tags, "connector_type"),
+        attaches=_string_tag(tags, "attaches"),
     )
 
 
@@ -148,14 +157,22 @@ def compose_pure(
     pool: Iterable[ComposedVariant],
     req: ComposeRequest,
 ) -> ComposeResponse:
-    """Pick N variants and join them. Pure — no IO, no globals beyond `random`."""
-    pool_list = [v for v in pool if v.text]
+    """Pick N variants and join them. Pure — no IO, no globals beyond `random`.
+
+    Connectors (latin_form='connector') are excluded from the content pick by
+    default. When req.include_connectors is True, they're picked separately
+    after content selection and woven into the output via paired rendering.
+    """
+    full_pool = [v for v in pool if v.text]
+    # Connectors never participate in content selection; they only serve as
+    # interleaved glue between content clauses.
+    content_pool = [v for v in full_pool if v.latin_form != "connector"]
     n = LENGTH_TIER_COUNTS.get(req.length, 0)
-    if n == 0 or not pool_list:
+    if n == 0 or not content_pool:
         return ComposeResponse(
             text="",
             variants=(),
-            pool_size=len(pool_list),
+            pool_size=len(content_pool),
             intensity_curve=(),
         )
 
@@ -167,13 +184,13 @@ def compose_pure(
     picks: list[ComposedVariant] = []
 
     for tier in target_curve:
-        candidates = _filter_strict(pool_list, tier, used_motion, used_target_history, chosen_ids)
+        candidates = _filter_strict(content_pool, tier, used_motion, used_target_history, chosen_ids)
         if not candidates:
-            candidates = _filter_relaxed_motion(pool_list, tier, used_target_history, chosen_ids)
+            candidates = _filter_relaxed_motion(content_pool, tier, used_target_history, chosen_ids)
         if not candidates:
-            candidates = _filter_relaxed_target(pool_list, tier, chosen_ids)
+            candidates = _filter_relaxed_target(content_pool, tier, chosen_ids)
         if not candidates:
-            candidates = [v for v in pool_list if v.block_id not in chosen_ids]
+            candidates = [v for v in content_pool if v.block_id not in chosen_ids]
         if not candidates:
             break
         chosen = rng.choice(candidates)
@@ -184,12 +201,101 @@ def compose_pure(
         if chosen.applies_to:
             used_target_history.append(chosen.applies_to)
 
+    connector_picks: list[ComposedVariant] = []
+    if req.include_connectors and len(picks) >= 2:
+        connector_pool = [v for v in full_pool if v.latin_form == "connector"]
+        connector_picks = pick_connectors(connector_pool, len(picks), rng)
+
+    text = join_with_connectors(picks, connector_picks) if connector_picks else join_picks(picks)
+
     return ComposeResponse(
-        text=join_picks(picks),
-        variants=tuple(picks),
-        pool_size=len(pool_list),
+        text=text,
+        variants=tuple([*picks, *connector_picks]),
+        pool_size=len(content_pool),
         intensity_curve=target_curve,
     )
+
+
+def pick_connectors(
+    connector_pool: list[ComposedVariant],
+    n_content_picks: int,
+    rng: random.Random,
+) -> list[ComposedVariant]:
+    """Pick floor(n/2) connectors with anti-repeat by connector_type.
+
+    Cap at floor(n/2) so output never has more glue than substance — at most
+    one connector per pair of content clauses.
+    """
+    target_count = n_content_picks // 2
+    if target_count == 0 or not connector_pool:
+        return []
+    used_types: deque[str] = deque(maxlen=2)
+    chosen_ids: set[str] = set()
+    picks: list[ComposedVariant] = []
+    for _ in range(target_count):
+        candidates = [
+            v
+            for v in connector_pool
+            if v.block_id not in chosen_ids
+            and (not v.connector_type or v.connector_type not in used_types)
+        ]
+        if not candidates:
+            candidates = [v for v in connector_pool if v.block_id not in chosen_ids]
+        if not candidates:
+            break
+        chosen = rng.choice(candidates)
+        picks.append(chosen)
+        chosen_ids.add(chosen.block_id)
+        if chosen.connector_type:
+            used_types.append(chosen.connector_type)
+    return picks
+
+
+def join_with_connectors(
+    content_picks: Sequence[ComposedVariant],
+    connector_picks: Sequence[ComposedVariant],
+) -> str:
+    """Render content + connector picks as interleaved sentences.
+
+    Pair each connector with a content clause (round-robin starting from
+    content[0]). Render the pair as a single sentence with `, ` separator
+    based on the connector's `attaches` field:
+      - leading:  `<Connector>, <content>.`
+      - trailing: `<Content>, <connector>.`
+
+    Unpaired content clauses render bare: `<Content>.`
+    """
+    if not content_picks:
+        return ""
+    pair_count = min(len(connector_picks), len(content_picks))
+    pairs: dict[int, ComposedVariant] = {
+        i: connector_picks[i] for i in range(pair_count)
+    }
+    sentences: list[str] = []
+    for i, content in enumerate(content_picks):
+        connector = pairs.get(i)
+        sentences.append(_render_pair(content, connector))
+    return " ".join(sentences)
+
+
+def _render_pair(content: ComposedVariant, connector: Optional[ComposedVariant]) -> str:
+    content_text = content.text.strip()
+    if not connector:
+        return _ensure_terminal_period(_capitalize(content_text))
+    connector_text = connector.text.strip()
+    if connector.attaches == "leading":
+        merged = f"{_capitalize(connector_text)}, {content_text}"
+    else:  # trailing (default for unspecified)
+        merged = f"{_capitalize(content_text)}, {connector_text}"
+    return _ensure_terminal_period(merged)
+
+
+def _capitalize(text: str) -> str:
+    return text[:1].upper() + text[1:] if text else text
+
+
+def _ensure_terminal_period(text: str) -> str:
+    return text if text.endswith(".") else text + "."
 
 
 def _filter_strict(
