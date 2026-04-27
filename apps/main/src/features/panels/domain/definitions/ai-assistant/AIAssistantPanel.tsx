@@ -97,6 +97,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   // — i.e. the response was lost (agent crash, backend restart between WS send
   // and DB write, or bridge buffer drop). Distinct from "still in flight".
   const [responseLost, setResponseLost] = useState(false);
+  // Bump to force the reconcile effect to re-run (manual "check server again").
+  const [reconcileNonce, setReconcileNonce] = useState(0);
   useEffect(() => {
     if (!tab.sessionId) {
       setPendingServerMessages(0);
@@ -204,7 +206,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [tab.id, tab.sessionId]);
+  }, [tab.id, tab.sessionId, reconcileNonce]);
 
   // Draft: local state for responsive typing, synced to store
   const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
@@ -631,7 +633,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           pendingServerMessages={pendingServerMessages}
           serverTranscriptDiverged={serverTranscriptDiverged}
           responseLost={responseLost}
-          onRetryLost={() => { setResponseLost(false); retryLast(); }}
+          onRecheck={() => setReconcileNonce((n) => n + 1)}
         />
 
         {/* Textarea — above the toolbar for more space */}

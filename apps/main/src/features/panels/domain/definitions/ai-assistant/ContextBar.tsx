@@ -24,7 +24,9 @@ interface ContextBarProps {
   pendingServerMessages?: number;
   serverTranscriptDiverged?: boolean;
   responseLost?: boolean;
-  onRetryLost?: () => void;
+  /** Re-fetch the server transcript (e.g. when "response lost" chip is clicked).
+   *  Distinct from re-asking the agent — that lives on error message bubbles. */
+  onRecheck?: () => void;
 }
 
 function formatTokens(n: number): string {
@@ -47,7 +49,7 @@ export function ContextBar({
   pendingServerMessages = 0,
   serverTranscriptDiverged = false,
   responseLost = false,
-  onRetryLost,
+  onRecheck,
 }: ContextBarProps) {
   const chips: React.ReactNode[] = [];
   const resumeSessionId = poolSession?.cli_session_id?.trim() || null;
@@ -111,17 +113,17 @@ export function ContextBar({
       <span
         key="response-lost"
         className="inline-flex items-center gap-0.5 text-rose-400"
-        title="Server has your message but no assistant response — likely lost during agent processing or backend restart. Click retry to resend."
+        title="Server has your message but no assistant response is recorded. The reply may have been lost during agent processing or backend restart. Click 'check again' to refetch the server transcript — to re-ask the agent, type the question again."
       >
         <Icon name="alertCircle" size={9} />
         <span>response lost</span>
-        {onRetryLost && (
+        {onRecheck && (
           <button
             type="button"
-            onClick={onRetryLost}
+            onClick={onRecheck}
             className="ml-1 underline hover:text-rose-300"
           >
-            retry
+            check again
           </button>
         )}
       </span>,
