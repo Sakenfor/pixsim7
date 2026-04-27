@@ -120,6 +120,7 @@ async def _recover_session_tail_response(
     """Recover a just-missed assistant response from persisted session tail."""
     session_key = (session_hint or "").strip()
     if not session_key:
+        logger.info("ws_chat_tier4_skip", reason="no_session_hint")
         return None
 
     try:
@@ -139,32 +140,57 @@ async def _recover_session_tail_response(
                 session = rows[0] if rows else None
 
             if not session:
+                logger.info("ws_chat_tier4_skip", session=session_key, reason="session_not_found")
                 return None
 
             owner_id = int(getattr(session, "user_id", 0) or 0)
             if user_id is not None and owner_id not in {0, int(user_id)}:
+                logger.info(
+                    "ws_chat_tier4_skip",
+                    session=session_key,
+                    reason="owner_mismatch",
+                    owner=owner_id,
+                    requester=user_id,
+                )
                 return None
 
             messages = list(session.messages or [])
             if not messages:
+                logger.info("ws_chat_tier4_skip", session=session_key, reason="empty_messages")
                 return None
 
             last = messages[-1]
             if not isinstance(last, dict):
+                logger.info("ws_chat_tier4_skip", session=session_key, reason="malformed_tail")
                 return None
             if str(last.get("role") or "").strip().lower() != "assistant":
+                logger.info(
+                    "ws_chat_tier4_skip",
+                    session=session_key,
+                    reason="tail_not_assistant",
+                    tail_role=last.get("role"),
+                    msg_count=len(messages),
+                )
                 return None
 
             text = last.get("text")
             if not isinstance(text, str) or not text.strip():
+                logger.info("ws_chat_tier4_skip", session=session_key, reason="empty_tail_text")
                 return None
 
             canonical_session_id = str(
                 getattr(session, "cli_session_id", None)
                 or getattr(session, "id", session_key)
             )
+            logger.info(
+                "ws_chat_tier4_recovered",
+                session=session_key,
+                tail_chars=len(text),
+                msg_count=len(messages),
+            )
             return text, canonical_session_id
-    except Exception:
+    except Exception as exc:
+        logger.warning("ws_chat_tier4_error", session=session_key, error=str(exc))
         return None
 
 
@@ -384,23 +410,55 @@ async def _handle_message(
                 response_text = extract_response_text(event)
                 cli_session_id = event.get("bridge_session_id")
 
-                # Fire-and-forget chat session upsert
                 if cli_session_id:
                     from pixsim7.backend.main.api.v1.meta_contracts import _upsert_chat_session
                     from pixsim7.common.scope_helpers import extract_scope
                     chat_scope_key, chat_plan_id, chat_contract_id = extract_scope(context, scope_key)
-                    asyncio.ensure_future(_upsert_chat_session(
-                        session_id=cli_session_id, user_id=user_id or 0,
-                        engine=engine, label=message[:60],
-                        profile_id=resolved_profile_id,
-                        scope_key=chat_scope_key,
-                        last_plan_id=chat_plan_id or "",
-                        last_contract_id=chat_contract_id or "",
-                        increment_messages=True,
-                        source="chat",
-                    ))
 
-                    # Link the original session (e.g. MCP hash) to the CLI UUID
+                    # Await the primary upsert so the row exists before the
+                    # response store call runs. Previously this was fire-and-
+                    # forget; if the response store won the race the message
+                    # was silently dropped on first turn.
+                    try:
+                        await _upsert_chat_session(
+                            session_id=cli_session_id, user_id=user_id or 0,
+                            engine=engine, label=message[:60],
+                            profile_id=resolved_profile_id,
+                            scope_key=chat_scope_key,
+                            last_plan_id=chat_plan_id or "",
+                            last_contract_id=chat_contract_id or "",
+                            increment_messages=True,
+                            source="chat",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "ws_chat_upsert_session_failed",
+                            session_id=cli_session_id,
+                            error=str(exc),
+                        )
+
+                    # Persist the response BEFORE sending the WS result so a
+                    # backend HMR/restart between WS-send and the DB write
+                    # cannot lose the assistant message. Frontend still gets
+                    # the result; we just guarantee durability first.
+                    if response_text:
+                        from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                        try:
+                            await _store_session_response(
+                                session_id=cli_session_id,
+                                user_message=message,
+                                assistant_response=response_text,
+                                duration_ms=duration_ms,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "ws_chat_store_response_failed",
+                                session_id=cli_session_id,
+                                error=str(exc),
+                            )
+
+                    # MCP-hash → CLI UUID alias row stays fire-and-forget;
+                    # it's a tracking row, not the durability path.
                     original_session_id = event.get("original_session_id")
                     if original_session_id and original_session_id != cli_session_id:
                         asyncio.ensure_future(_upsert_chat_session(
@@ -411,18 +469,6 @@ async def _handle_message(
                             profile_id=resolved_profile_id,
                             cli_session_id=cli_session_id,
                             source="chat",
-                        ))
-
-                    # Persist the response to the ChatSession DB record so
-                    # the frontend can recover it even if this WS is dead
-                    # (page refresh) or the in-memory cache is lost (restart).
-                    if response_text:
-                        from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
-                        asyncio.ensure_future(_store_session_response(
-                            session_id=cli_session_id,
-                            user_message=message,
-                            assistant_response=response_text,
-                            duration_ms=duration_ms,
                         ))
 
                 await websocket.send_json({

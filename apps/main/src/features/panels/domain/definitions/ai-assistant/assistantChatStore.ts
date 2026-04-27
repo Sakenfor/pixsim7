@@ -236,6 +236,27 @@ function getAssistantTailGap(
   return { pendingCount, diverged };
 }
 
+/**
+ * True when the server's transcript contains the given user text but no
+ * assistant message follows it. Indicates the assistant response was either
+ * never generated, never sent, or never persisted — i.e., genuinely lost,
+ * not merely "not yet synced".
+ */
+function serverHasUnansweredUserTurn(
+  userText: string,
+  serverMessages: ChatMessage[],
+): boolean {
+  for (let i = serverMessages.length - 1; i >= 0; i -= 1) {
+    if (serverMessages[i].role === 'user' && serverMessages[i].text === userText) {
+      for (let j = i + 1; j < serverMessages.length; j += 1) {
+        if (serverMessages[j].role === 'assistant') return false;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 function persistTabs(tabs: ChatTab[]) {
   try {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20)));
@@ -763,5 +784,6 @@ export {
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
   getAssistantTailGap,
+  serverHasUnansweredUserTurn,
 };
 export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };

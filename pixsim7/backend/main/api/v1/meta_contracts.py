@@ -2398,6 +2398,15 @@ async def send_message_to_agent_stream(
                             last_plan_id=chat_plan_id or "",
                             last_contract_id=chat_contract_id or "",
                         ))
+                        # Persist user+assistant pair server-side so recovery works
+                        # even if frontend reloads before syncing local state.
+                        if response_text:
+                            _asyncio.ensure_future(_store_session_response(
+                                session_id=cli_session_id,
+                                user_message=payload.message,
+                                assistant_response=response_text,
+                                duration_ms=duration_ms,
+                            ))
                     yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'bridge_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
             duration_ms = int((time.monotonic() - start) * 1000)
@@ -2505,7 +2514,15 @@ async def _store_session_response(
     Called server-side when the result arrives so the response is persisted
     even if the WebSocket to the client has already dropped (page refresh).
     This provides a recovery source for the frontend fallback.
+
+    Looks up by primary key first, then by ``cli_session_id`` so MCP-derived
+    sessions whose row is keyed by an alias still receive the append. If the
+    row is missing entirely (race with ``_upsert_chat_session``), logs a
+    warning so silent loss can be diagnosed instead of dropped.
     """
+    import logging
+    log = logging.getLogger(__name__)
+
     try:
         from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
         from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
@@ -2514,24 +2531,32 @@ async def _store_session_response(
         async with AsyncSessionLocal() as db:
             session = await db.get(ChatSession, session_id)
             if not session:
+                rows = (await db.execute(
+                    select(ChatSession)
+                    .where(ChatSession.cli_session_id == session_id)
+                    .limit(1)
+                )).scalars().all()
+                session = rows[0] if rows else None
+            if not session:
+                log.warning(
+                    "store_session_response_session_missing session_id=%s "
+                    "(upsert race or unknown id — assistant response not persisted)",
+                    session_id,
+                )
                 return
             msgs: list = list(session.messages or [])
             now = utcnow().isoformat()
-            # Append user message if not already the last user message
             if not msgs or msgs[-1].get("text") != user_message:
                 msgs.append({"role": "user", "text": user_message, "timestamp": now})
-            # Append assistant response
             entry: dict = {"role": "assistant", "text": assistant_response, "timestamp": now}
             if duration_ms is not None:
                 entry["duration_ms"] = duration_ms
             msgs.append(entry)
-            # Keep last 50
             session.messages = msgs[-50:]
             session.last_used_at = utcnow()
             await db.commit()
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("store_session_response_failed: %s", e)
+        log.warning("store_session_response_failed session_id=%s err=%s", session_id, e)
 
 
 # =============================================================================

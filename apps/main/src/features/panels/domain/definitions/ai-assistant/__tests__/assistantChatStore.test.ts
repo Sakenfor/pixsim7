@@ -22,6 +22,7 @@ import {
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
   getAssistantTailGap,
+  serverHasUnansweredUserTurn,
   type ChatTab,
   type ChatMessage,
 } from '../assistantChatStore';
@@ -357,6 +358,54 @@ describe('Assistant Chat Store', () => {
         [makeMsg('assistant', 'response')],
       );
       expect(gap).toEqual({ pendingCount: 0, diverged: false });
+    });
+  });
+
+  describe('serverHasUnansweredUserTurn', () => {
+    it('returns true when server tail ends with the matched user message', () => {
+      const result = serverHasUnansweredUserTurn(
+        'pending question',
+        [
+          makeMsg('user', 'old'),
+          makeMsg('assistant', 'old reply'),
+          makeMsg('user', 'pending question'),
+        ],
+      );
+      expect(result).toBe(true);
+    });
+
+    it('returns false when an assistant message follows the user turn on the server', () => {
+      const result = serverHasUnansweredUserTurn(
+        'pending question',
+        [
+          makeMsg('user', 'pending question'),
+          makeMsg('assistant', 'answered'),
+        ],
+      );
+      expect(result).toBe(false);
+    });
+
+    it('returns false when the user message is not present on the server', () => {
+      const result = serverHasUnansweredUserTurn(
+        'never sent',
+        [
+          makeMsg('user', 'something else'),
+          makeMsg('assistant', 'reply'),
+        ],
+      );
+      expect(result).toBe(false);
+    });
+
+    it('matches the most recent user turn when multiple identical user texts exist', () => {
+      const result = serverHasUnansweredUserTurn(
+        'repeat',
+        [
+          makeMsg('user', 'repeat'),
+          makeMsg('assistant', 'first reply'),
+          makeMsg('user', 'repeat'),
+        ],
+      );
+      expect(result).toBe(true);
     });
   });
 

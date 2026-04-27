@@ -23,6 +23,8 @@ interface ContextBarProps {
   sending?: boolean;
   pendingServerMessages?: number;
   serverTranscriptDiverged?: boolean;
+  responseLost?: boolean;
+  onRetryLost?: () => void;
 }
 
 function formatTokens(n: number): string {
@@ -44,6 +46,8 @@ export function ContextBar({
   sending = false,
   pendingServerMessages = 0,
   serverTranscriptDiverged = false,
+  responseLost = false,
+  onRetryLost,
 }: ContextBarProps) {
   const chips: React.ReactNode[] = [];
   const resumeSessionId = poolSession?.cli_session_id?.trim() || null;
@@ -102,7 +106,27 @@ export function ContextBar({
   }
 
   // Server-local transcript gap
-  if (pendingServerMessages > 0) {
+  if (responseLost) {
+    chips.push(
+      <span
+        key="response-lost"
+        className="inline-flex items-center gap-0.5 text-rose-400"
+        title="Server has your message but no assistant response — likely lost during agent processing or backend restart. Click retry to resend."
+      >
+        <Icon name="alertCircle" size={9} />
+        <span>response lost</span>
+        {onRetryLost && (
+          <button
+            type="button"
+            onClick={onRetryLost}
+            className="ml-1 underline hover:text-rose-300"
+          >
+            retry
+          </button>
+        )}
+      </span>,
+    );
+  } else if (pendingServerMessages > 0) {
     chips.push(
       <span
         key="server-gap"

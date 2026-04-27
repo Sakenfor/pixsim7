@@ -42,11 +42,31 @@ def _make_session(session_id: str = "sess-1", messages: list | None = None):
     )
 
 
-def _mock_db(session=None):
-    """Build a fake AsyncSessionLocal context manager returning a mock DB."""
+def _mock_db(session=None, alias_session=None):
+    """Build a fake AsyncSessionLocal context manager returning a mock DB.
+
+    ``session`` is returned by ``db.get`` (PK lookup).
+    ``alias_session`` is returned by ``db.execute(select).scalars().all()``
+    (the ``cli_session_id`` fallback). ``None`` for either means "no row".
+    """
     db = AsyncMock()
     db.get = AsyncMock(return_value=session)
     db.commit = AsyncMock()
+
+    class _ScalarResult:
+        def __init__(self, rows):
+            self._rows = rows
+        def all(self):
+            return self._rows
+
+    class _ExecuteResult:
+        def __init__(self, rows):
+            self._rows = rows
+        def scalars(self):
+            return _ScalarResult(self._rows)
+
+    rows = [alias_session] if alias_session is not None else []
+    db.execute = AsyncMock(return_value=_ExecuteResult(rows))
     return db
 
 
@@ -194,8 +214,8 @@ class TestErrorResilience:
 
     @pytest.mark.asyncio
     async def test_nonexistent_session_is_silent(self):
-        """No session found — should not raise."""
-        db = _mock_db(session=None)
+        """No session found by PK or alias — should not raise."""
+        db = _mock_db(session=None, alias_session=None)
         with _patch_db(db):
             await _store_session_response("nonexistent", "Hello", "Hi!")
         # No exception, no commit
@@ -209,6 +229,51 @@ class TestErrorResilience:
         with _patch_db(db):
             # Should not raise
             await _store_session_response("sess-1", "Hello", "Hi!")
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_when_session_missing(self, caplog):
+        """When no session row exists by PK or alias, log a warning so the
+        silent loss is diagnosable instead of dropped without trace."""
+        import logging
+        db = _mock_db(session=None, alias_session=None)
+        with _patch_db(db), caplog.at_level(logging.WARNING):
+            await _store_session_response("missing-id", "Hello", "Hi!")
+        # Warning recorded; commit not called
+        assert any("store_session_response_session_missing" in r.message for r in caplog.records)
+        db.commit.assert_not_awaited()
+
+
+# ── cli_session_id fallback ─────────────────────────────────────
+
+
+class TestCliSessionIdFallback:
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_cli_session_id_when_pk_miss(self):
+        """PK lookup misses, but a row with matching cli_session_id exists —
+        the response should land on that aliased row."""
+        alias = _make_session(session_id="real-pk", messages=[])
+        db = _mock_db(session=None, alias_session=alias)
+        with _patch_db(db):
+            await _store_session_response("alias-id", "Hello", "Hi!")
+
+        # Append happened on the aliased session
+        assert len(alias.messages) == 2
+        assert alias.messages[0]["text"] == "Hello"
+        assert alias.messages[1]["text"] == "Hi!"
+        db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_pk_match_skips_cli_session_id_lookup(self):
+        """When PK lookup hits, the alias query should not run."""
+        session = _make_session(messages=[])
+        db = _mock_db(session=session, alias_session=None)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi!")
+
+        # execute (the alias query) should NOT have been called
+        db.execute.assert_not_called()
+        assert len(session.messages) == 2
 
 
 # ── Timestamps ───────────────────────────────────────────────────

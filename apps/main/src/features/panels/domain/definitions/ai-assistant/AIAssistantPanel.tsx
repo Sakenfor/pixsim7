@@ -31,6 +31,7 @@ import {
   findLatestUnansweredUserMessage,
   findMissingAssistantTail,
   getAssistantTailGap,
+  serverHasUnansweredUserTurn,
   type ChatTab,
   type AgentEngine,
 } from './assistantChatStore';
@@ -92,10 +93,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   // but the panel effect hadn't consumed it into the store yet.
   const [pendingServerMessages, setPendingServerMessages] = useState(0);
   const [serverTranscriptDiverged, setServerTranscriptDiverged] = useState(false);
+  // True when the server has the user's last message but no assistant follow-up
+  // — i.e. the response was lost (agent crash, backend restart between WS send
+  // and DB write, or bridge buffer drop). Distinct from "still in flight".
+  const [responseLost, setResponseLost] = useState(false);
   useEffect(() => {
     if (!tab.sessionId) {
       setPendingServerMessages(0);
       setServerTranscriptDiverged(false);
+      setResponseLost(false);
       return;
     }
     const s = useAssistantChatStore.getState();
@@ -106,6 +112,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (req && (req.status === 'pending' || req.status === 'streaming')) {
       setPendingServerMessages(0);
       setServerTranscriptDiverged(false);
+      setResponseLost(false);
       return;
     }
 
@@ -130,6 +137,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         if (serverMsgs.length === 0) {
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
+          setResponseLost(false);
           if (unresolved) schedule();
           return;
         }
@@ -140,6 +148,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           st.setMessages(tab.id, serverMsgs);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
+          setResponseLost(false);
           return;
         }
 
@@ -148,6 +157,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           st.setMessages(tab.id, [...current, ...recovered]);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
+          setResponseLost(false);
           return;
         }
 
@@ -156,11 +166,21 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         setServerTranscriptDiverged(gap.diverged);
 
         const currentUnresolved = findLatestUnansweredUserMessage(current);
+        // Server confirms it has the user msg but no assistant follow-up:
+        // recovery isn't possible — flag so user can retry instead of waiting.
+        const lost = !!(currentUnresolved
+          && gap.pendingCount === 0
+          && !gap.diverged
+          && serverHasUnansweredUserTurn(currentUnresolved.text, serverMsgs));
+        setResponseLost(lost);
+
         const sameUnresolved =
           unresolved &&
           currentUnresolved &&
           currentUnresolved.text === unresolved.text;
-        if (sameUnresolved) {
+        // Keep retrying only if the server hasn't yet confirmed the loss —
+        // a confirmed-lost state won't change without user action.
+        if (sameUnresolved && !lost) {
           schedule();
         }
       }).catch(() => {
@@ -610,6 +630,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           sending={sending}
           pendingServerMessages={pendingServerMessages}
           serverTranscriptDiverged={serverTranscriptDiverged}
+          responseLost={responseLost}
+          onRetryLost={() => { setResponseLost(false); retryLast(); }}
         />
 
         {/* Textarea — above the toolbar for more space */}
