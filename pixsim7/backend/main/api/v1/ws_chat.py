@@ -194,6 +194,110 @@ async def _recover_session_tail_response(
         return None
 
 
+# How long to keep watching for a late agent result after the dispatch
+# has timed out. Bounded by the bridge's _COMPLETED_TTL_S (5 min) — anything
+# longer than that and the cache evicts before we'd see it anyway.
+_LATE_RESULT_DRAIN_S = 240.0
+_LATE_RESULT_POLL_S = 1.0
+
+
+async def _drain_late_result(
+    *,
+    task_id: str,
+    bridge: Any,
+    session_id: str | None,
+    user_message: str,
+    dispatch_started_at: float,
+    timeout_s: int,
+) -> None:
+    """Watch the bridge result cache for a late-arriving result after a
+    dispatch timeout, persist it via _store_session_response if it lands.
+    If the grace window expires with no result, persist a placeholder
+    system message so the timeline reflects the lost turn instead of
+    leaving a silent gap.
+    """
+    import time as _time  # local — keep module-level imports lean
+
+    if not session_id:
+        # Without a session id we have nowhere to persist; nothing to do.
+        logger.info("ws_chat_drain_skip", task_id=task_id, reason="no_session_id")
+        return
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + _LATE_RESULT_DRAIN_S
+
+    while loop.time() < deadline:
+        cached = None
+        try:
+            cached = bridge.get_completed_result(task_id)
+        except Exception:
+            cached = None
+        if cached:
+            response_text = extract_response_text(cached)
+            cli_session_id = cached.get("bridge_session_id") or session_id
+            if response_text and cli_session_id:
+                duration_ms = int((_time.monotonic() - dispatch_started_at) * 1000)
+                try:
+                    from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                    await _store_session_response(
+                        session_id=cli_session_id,
+                        user_message=user_message,
+                        assistant_response=response_text,
+                        duration_ms=duration_ms,
+                    )
+                    logger.info(
+                        "ws_chat_drain_persisted",
+                        task_id=task_id,
+                        session_id=cli_session_id,
+                        duration_ms=duration_ms,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "ws_chat_drain_persist_failed",
+                        task_id=task_id,
+                        error=str(exc),
+                    )
+            return
+        await asyncio.sleep(_LATE_RESULT_POLL_S)
+
+    # Drain expired with no late result — write a placeholder so the user
+    # can see the timeout in their timeline (and "check again" reflects it).
+    try:
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            session = await db.get(ChatSession, session_id)
+            if not session:
+                rows = (await db.execute(
+                    select(ChatSession)
+                    .where(ChatSession.cli_session_id == session_id)
+                    .limit(1)
+                )).scalars().all()
+                session = rows[0] if rows else None
+            if not session:
+                logger.info("ws_chat_drain_placeholder_skip", session_id=session_id, reason="not_found")
+                return
+
+            msgs = list(session.messages or [])
+            now = utcnow().isoformat()
+            if not msgs or msgs[-1].get("text") != user_message:
+                msgs.append({"role": "user", "text": user_message, "timestamp": now})
+            msgs.append({
+                "role": "system",
+                "text": f"Agent did not respond within {timeout_s}s — response abandoned.",
+                "timestamp": now,
+            })
+            session.messages = msgs[-50:]
+            session.last_used_at = utcnow()
+            await db.commit()
+            logger.info("ws_chat_drain_placeholder_written", task_id=task_id, session_id=session_id)
+    except Exception as exc:
+        logger.warning("ws_chat_drain_placeholder_failed", task_id=task_id, error=str(exc))
+
+
 async def _handle_message(
     websocket: WebSocket,
     data: Dict[str, Any],
@@ -253,7 +357,7 @@ async def _handle_message(
     session_policy = data.get("session_policy")
     scope_key = data.get("scope_key")
     context = data.get("context") or {}
-    timeout_val = min(max(int(data.get("timeout", 300)), 10), 900)
+    timeout_val = min(max(int(data.get("timeout", 900)), 10), 1800)
     user_token = data.get("user_token")
 
     # Resolve profile
@@ -356,6 +460,8 @@ async def _handle_message(
 
     bridge_client_id = agent.bridge_client_id
     start = time.monotonic()
+    # Capture the dispatch task_id so we can spawn a drain on TimeoutError.
+    dispatch_task_id: str | None = None
 
     try:
         task_id_sent = False
@@ -369,6 +475,7 @@ async def _handle_message(
                 # Send task_id to client immediately — before any agent
                 # heartbeats — so it can persist an inflight entry for
                 # reconnect even if the page refreshes right away.
+                dispatch_task_id = event["task_id"]
                 await websocket.send_json({
                     "type": "heartbeat",
                     "tab_id": tab_id,
@@ -379,6 +486,8 @@ async def _handle_message(
                 task_id_sent = True
             elif event.get("type") == "heartbeat":
                 task_id = event.get("task_id", "")
+                if task_id and not dispatch_task_id:
+                    dispatch_task_id = task_id
                 msg: dict = {
                     "type": "heartbeat",
                     "tab_id": tab_id,
@@ -480,6 +589,30 @@ async def _handle_message(
                     "bridge_client_id": bridge_client_id,
                     "duration_ms": duration_ms,
                 })
+    except TimeoutError as e:
+        # Dispatch timed out — agent went silent for the full window. Spawn
+        # a background drain to persist the answer if it still arrives, or
+        # write a placeholder so the user's timeline shows the lost turn.
+        if dispatch_task_id:
+            asyncio.ensure_future(_drain_late_result(
+                task_id=dispatch_task_id,
+                bridge=remote_cmd_bridge,
+                session_id=bridge_session_id,
+                user_message=message,
+                dispatch_started_at=start,
+                timeout_s=timeout_val,
+            ))
+        err = _error_payload_from_exception(e)
+        logger.warning(
+            "ws_chat_dispatch_timeout",
+            tab_id=tab_id,
+            task_id=dispatch_task_id,
+            timeout_s=timeout_val,
+        )
+        await websocket.send_json({
+            "type": "result", "tab_id": tab_id, "ok": False,
+            **err,
+        })
     except Exception as e:
         err = _error_payload_from_exception(e)
         logger.warning(

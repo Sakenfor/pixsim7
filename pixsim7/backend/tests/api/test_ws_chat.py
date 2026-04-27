@@ -617,3 +617,111 @@ class TestWsChatMultiplex:
 
                 assert "tab-A" in responses
                 assert "tab-B" in responses
+
+
+# ── Late-result drain ────────────────────────────────────────────
+
+
+class TestDrainLateResult:
+    """_drain_late_result: persist late agent results, fall back to placeholder."""
+
+    @pytest.mark.asyncio
+    async def test_persists_late_result_when_cache_hit(self):
+        from pixsim7.backend.main.api.v1.ws_chat import _drain_late_result
+
+        bridge = MagicMock()
+        # First poll returns nothing, second poll returns a result.
+        bridge.get_completed_result.side_effect = [
+            None,
+            {"response": "late answer", "bridge_session_id": "sess-late"},
+        ]
+        store_mock = AsyncMock()
+
+        with (
+            patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_DRAIN_S", 5.0),
+            patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_POLL_S", 0.01),
+            patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", store_mock),
+        ):
+            await _drain_late_result(
+                task_id="task-late",
+                bridge=bridge,
+                session_id="sess-late",
+                user_message="my question",
+                dispatch_started_at=0.0,
+                timeout_s=900,
+            )
+
+        store_mock.assert_awaited_once()
+        call = store_mock.await_args
+        assert call.kwargs["session_id"] == "sess-late"
+        assert call.kwargs["user_message"] == "my question"
+        assert call.kwargs["assistant_response"] == "late answer"
+
+    @pytest.mark.asyncio
+    async def test_writes_placeholder_when_grace_expires(self):
+        from pixsim7.backend.main.api.v1.ws_chat import _drain_late_result
+
+        bridge = MagicMock()
+        bridge.get_completed_result.return_value = None  # never lands
+        store_mock = AsyncMock()
+
+        # Capture commits to a fake DB.
+        fake_session = SimpleNamespace(messages=[], last_used_at=None)
+        fake_db = AsyncMock()
+        fake_db.get = AsyncMock(return_value=fake_session)
+        fake_db.commit = AsyncMock()
+
+        class _Ctx:
+            async def __aenter__(self):
+                return fake_db
+            async def __aexit__(self, *args):
+                pass
+
+        with (
+            patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_DRAIN_S", 0.05),
+            patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_POLL_S", 0.01),
+            patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", store_mock),
+            patch(
+                "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+                _Ctx,
+            ),
+        ):
+            await _drain_late_result(
+                task_id="task-noresult",
+                bridge=bridge,
+                session_id="sess-x",
+                user_message="lonely question",
+                dispatch_started_at=0.0,
+                timeout_s=900,
+            )
+
+        store_mock.assert_not_awaited()
+        # Placeholder appended: user msg + system "did not respond" msg.
+        assert len(fake_session.messages) == 2
+        assert fake_session.messages[0]["role"] == "user"
+        assert fake_session.messages[0]["text"] == "lonely question"
+        assert fake_session.messages[1]["role"] == "system"
+        assert "did not respond within 900s" in fake_session.messages[1]["text"]
+        fake_db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_session_id(self):
+        from pixsim7.backend.main.api.v1.ws_chat import _drain_late_result
+
+        bridge = MagicMock()
+        store_mock = AsyncMock()
+        with (
+            patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_DRAIN_S", 0.05),
+            patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", store_mock),
+        ):
+            await _drain_late_result(
+                task_id="task-x",
+                bridge=bridge,
+                session_id=None,
+                user_message="q",
+                dispatch_started_at=0.0,
+                timeout_s=900,
+            )
+
+        bridge.get_completed_result.assert_not_called()
+        store_mock.assert_not_awaited()

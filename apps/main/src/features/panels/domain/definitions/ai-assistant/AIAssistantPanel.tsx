@@ -390,7 +390,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Store handles persist to localStorage
     useAssistantChatStore.getState().appendMessage(tab.id, { role: 'user', text, timestamp: new Date() });
 
-    const timeout = tab.engine === 'codex' ? 600 : 300;
+    // Generous defaults — heartbeats reset the deadline server-side, so these
+    // only fire when the agent has been silent (no tool calls, no progress)
+    // for the full window. Codex is slower than Claude on average.
+    const timeout = tab.engine === 'codex' ? 1500 : 900;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
     const tabProfileId = normalizeProfileId(tab.profileId);
     const resolvedProfileId = tabProfileId || profiles.find((p) => p.is_default)?.id || profiles[0]?.id || null;
