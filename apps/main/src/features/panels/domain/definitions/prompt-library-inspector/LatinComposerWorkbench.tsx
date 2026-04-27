@@ -168,7 +168,7 @@ export function LatinComposerWorkbench() {
       domains.forEach((d) => params.append('domains', d));
       if (seed !== undefined) params.set('seed', String(seed));
       const res = await api.get<ComposeResponse>(
-        `/api/v1/prompts/latin-enhancer/compose?${params.toString()}`,
+        `/prompts/latin-enhancer/compose?${params.toString()}`,
       );
       setResult(res);
     } catch (e: any) {
