@@ -1,0 +1,390 @@
+/**
+ * Singleton WebSocket manager (lib layer).
+ *
+ * Owns the connection lifecycle, parses incoming JSON, and dispatches
+ * to type-filtered listeners. Routing-free: lib code must not know about
+ * feature stores. Feature-specific routing (e.g. job:* / asset:* →
+ * generation stores) is registered from the feature layer; see
+ * `features/generation/hooks/useGenerationWebSocket.ts`.
+ *
+ * Two subscriber flavours:
+ *   - `subscribe(callback)` — connection-state subscriber. Bumps the
+ *     refcount; the connection is opened on first subscriber and torn
+ *     down 100ms after the last one leaves (StrictMode-safe).
+ *   - `on(pattern, handler)` — message listener for a specific event
+ *     type. `pattern` is either an exact event type ('asset:created')
+ *     or a trailing-`:*` prefix ('job:*'). Does NOT bump the refcount on
+ *     its own; pair with `subscribe()` (or use
+ *     `subscribeToWebSocketMessages` which bundles both) when the
+ *     listener also needs to keep the connection alive.
+ */
+import { useSyncExternalStore } from 'react';
+
+import { BACKEND_BASE } from './client';
+
+import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
+
+import { debugFlags, hmrSingleton } from '@lib/utils';
+
+export type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
+
+export type WebSocketMessageHandler = (message: WebSocketRecord) => void;
+
+/**
+ * Event-type pattern.
+ *
+ * Either an exact event type (`'asset:created'`) or a prefix pattern
+ * ending in `':*'` that matches every event type sharing the prefix
+ * (`'job:*'` matches `'job:created'`, `'job:completed'`, ...).
+ */
+export type WebSocketPattern = string;
+
+function computeWebSocketUrl(): string {
+  const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
+  if (envUrl) {
+    return envUrl;
+  }
+
+  if (!BACKEND_BASE && typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/api/v1/ws/generations`;
+  }
+
+  try {
+    const base = new URL(BACKEND_BASE);
+    base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+    base.pathname = '/api/v1/ws/generations';
+    base.search = '';
+    base.hash = '';
+    return base.toString();
+  } catch (error) {
+    console.warn('[WebSocket] Failed to derive URL from BACKEND_BASE, falling back to localhost', error);
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${hostname}:8000/api/v1/ws/generations`;
+  }
+
+  return 'ws://localhost:8000/api/v1/ws/generations';
+}
+
+const WS_CANDIDATES = Array.from(
+  new Set(
+    [
+      import.meta.env.VITE_WS_URL as string | undefined,
+      computeWebSocketUrl(),
+      typeof window !== 'undefined'
+        ? (() => {
+            const { protocol, hostname } = window.location;
+            const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${wsProtocol}//${hostname}:8000/api/v1/ws/generations`;
+          })()
+        : undefined,
+      'ws://localhost:8000/api/v1/ws/generations',
+    ].filter(Boolean) as string[]
+  )
+);
+
+export class WebSocketManager {
+  private ws: WebSocket | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private disconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private candidateIndex = 0;
+  private subscribers = new Set<() => void>();
+  private exactListeners = new Map<string, Set<WebSocketMessageHandler>>();
+  private prefixListeners = new Map<string, Set<WebSocketMessageHandler>>();
+  private isConnected = false;
+  private refCount = 0;
+  private isConnecting = false;
+  private _lastError: string | null = null;
+  private _reconnectAttempts = 0;
+  private _currentUrl: string | null = null;
+
+  subscribe(callback: () => void) {
+    this.subscribers.add(callback);
+    this.refCount++;
+
+    if (this.refCount === 1) {
+      if (this.disconnectTimeout) {
+        debugFlags.log('websocket', 'Subscriber arrived, canceling pending disconnect');
+        clearTimeout(this.disconnectTimeout);
+        this.disconnectTimeout = null;
+      }
+
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+        debugFlags.log('websocket', 'First subscriber, initiating connection...');
+        this.connect();
+      } else {
+        debugFlags.log('websocket', 'First subscriber, reusing existing connection');
+      }
+    } else {
+      debugFlags.log('websocket', 'Subscriber added (count:', this.refCount, ')');
+    }
+
+    return () => {
+      this.subscribers.delete(callback);
+      this.refCount--;
+      debugFlags.log('websocket', 'Subscriber removed (count:', this.refCount, ')');
+
+      if (this.refCount === 0) {
+        debugFlags.log('websocket', 'Last subscriber removed, scheduling disconnect in 100ms...');
+        if (this.disconnectTimeout) {
+          clearTimeout(this.disconnectTimeout);
+        }
+        this.disconnectTimeout = setTimeout(() => {
+          if (this.refCount === 0) {
+            debugFlags.log('websocket', 'No subscribers after delay, disconnecting...');
+            this.disconnect();
+          } else {
+            debugFlags.log('websocket', 'Subscribers returned, keeping connection alive');
+          }
+        }, 100);
+      }
+    };
+  }
+
+  getSnapshot() {
+    return this.isConnected;
+  }
+
+  getDebugInfo() {
+    return {
+      url: this._currentUrl,
+      lastError: this._lastError,
+      reconnectAttempts: this._reconnectAttempts,
+      readyState: this.ws?.readyState ?? -1,
+      refCount: this.refCount,
+    };
+  }
+
+  forceReconnect() {
+    debugFlags.log('websocket', 'Force reconnect requested');
+    this._reconnectAttempts = 0;
+    this._lastError = null;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.isConnecting = false;
+    this.connect();
+  }
+
+  /**
+   * Register a type-filtered message handler. `pattern` is an exact
+   * event type or a `'foo:*'` prefix. Handler errors are isolated.
+   * Returns an unsubscribe handle.
+   *
+   * Does NOT bump the connection refcount — pair with `subscribe()` (or
+   * use `subscribeToWebSocketMessages`) if the handler also needs to
+   * keep the connection alive.
+   */
+  on(pattern: WebSocketPattern, handler: WebSocketMessageHandler): () => void {
+    const isPrefix = pattern.endsWith(':*');
+    const map = isPrefix ? this.prefixListeners : this.exactListeners;
+    const key = isPrefix ? pattern.slice(0, -1) : pattern;
+
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = new Set();
+      map.set(key, bucket);
+    }
+    bucket.add(handler);
+
+    return () => {
+      const set = map.get(key);
+      if (!set) return;
+      set.delete(handler);
+      if (set.size === 0) map.delete(key);
+    };
+  }
+
+  private notify() {
+    this.subscribers.forEach(callback => callback());
+  }
+
+  private connect = () => {
+    if (this.isConnecting) {
+      debugFlags.log('websocket', 'Already connecting, skipping...');
+      return;
+    }
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+      debugFlags.log('websocket', 'Already connected or connecting (state:', this.ws.readyState, '), skipping...');
+      return;
+    }
+
+    this.isConnecting = true;
+
+    try {
+      const currentIndex = this.candidateIndex % WS_CANDIDATES.length;
+      const targetUrl = WS_CANDIDATES[currentIndex];
+      this._currentUrl = targetUrl;
+      debugFlags.log('websocket', `Connecting to generation updates (${targetUrl})...`);
+      const ws = new WebSocket(targetUrl);
+
+      ws.onopen = () => {
+        debugFlags.log('websocket', 'Connected to generation updates via', targetUrl);
+        this.isConnecting = false;
+        this.isConnected = true;
+        this._lastError = null;
+        this._reconnectAttempts = 0;
+        this.notify();
+
+        const pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          } else {
+            clearInterval(pingInterval);
+          }
+        }, 30000);
+      };
+
+      ws.onmessage = (event) => {
+        this.handleMessage(event);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[WebSocket] Error on', targetUrl, error);
+        this.isConnecting = false;
+        this.isConnected = false;
+        this._lastError = `Connection error on ${targetUrl}`;
+        this.notify();
+      };
+
+      ws.onclose = (event) => {
+        debugFlags.log('websocket', 'Disconnected from', targetUrl, '- will attempt reconnect in 5s…');
+        this.isConnecting = false;
+        this.isConnected = false;
+        if (!this._lastError) {
+          this._lastError = `Closed (code ${event.code})`;
+        }
+        this.notify();
+
+        this.candidateIndex = (this.candidateIndex + 1) % WS_CANDIDATES.length;
+
+        if (this.refCount > 0) {
+          this._reconnectAttempts++;
+          if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+          }
+          this.reconnectTimeout = setTimeout(this.connect, 5000);
+        }
+      };
+
+      this.ws = ws;
+    } catch (err) {
+      console.error('[WebSocket] Connection failed:', err);
+      this.isConnecting = false;
+      this._lastError = err instanceof Error ? err.message : 'Connection failed';
+
+      if (this.refCount > 0) {
+        this._reconnectAttempts++;
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+        }
+        this.reconnectTimeout = setTimeout(this.connect, 5000);
+      }
+    }
+  };
+
+  private handleMessage(event: MessageEvent) {
+    try {
+      debugFlags.log('websocket', 'Raw message received:', event.data);
+      const message = parseWebSocketMessage(event.data);
+      debugFlags.log('websocket', 'Parsed message:', message);
+      if (!message) return;
+      this.dispatch(message as WebSocketRecord);
+    } catch (err) {
+      console.error('[WebSocket] Failed to parse message:', err);
+    }
+  }
+
+  private dispatch(message: WebSocketRecord) {
+    const type = typeof message.type === 'string' ? message.type : '';
+    if (!type) return;
+
+    const exact = this.exactListeners.get(type);
+    if (exact) {
+      exact.forEach((handler) => {
+        try { handler(message); } catch (err) {
+          console.error('[WebSocket] handler for', type, 'threw:', err);
+        }
+      });
+    }
+
+    if (this.prefixListeners.size > 0) {
+      this.prefixListeners.forEach((handlers, prefix) => {
+        if (!type.startsWith(prefix)) return;
+        handlers.forEach((handler) => {
+          try { handler(message); } catch (err) {
+            console.error('[WebSocket] handler for', prefix + '*', 'threw:', err);
+          }
+        });
+      });
+    }
+  }
+
+  private disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.disconnectTimeout) {
+      clearTimeout(this.disconnectTimeout);
+      this.disconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isConnected = false;
+    this.notify();
+  }
+}
+
+export const wsManager = hmrSingleton('wsManager', () => new WebSocketManager());
+
+/**
+ * Subscribe to a specific event pattern and bump the connection refcount.
+ * Returns an unsubscribe handle that drops the listener and decrements
+ * the refcount — composable inside a store's own subscribe lifecycle.
+ *
+ * Use this when a surface wants to react to a narrow event family and
+ * doesn't already hold a refcount via `useGenerationWebSocket()` or
+ * similar. For listeners that don't need to keep the connection alive,
+ * use `wsManager.on()` directly.
+ */
+export function subscribeToWebSocketMessages(
+  pattern: WebSocketPattern,
+  handler: WebSocketMessageHandler,
+): () => void {
+  const refcountUnsubscribe = wsManager.subscribe(() => {});
+  const listenerUnsubscribe = wsManager.on(pattern, handler);
+  return () => {
+    listenerUnsubscribe();
+    refcountUnsubscribe();
+  };
+}
+
+/**
+ * React hook returning the WS connection status and admin controls.
+ * Subscribing also keeps the connection alive (refcount).
+ */
+export function useWebSocketConnection() {
+  const isConnected = useSyncExternalStore(
+    (callback) => wsManager.subscribe(callback),
+    () => wsManager.getSnapshot(),
+    () => false,
+  );
+
+  return {
+    isConnected,
+    getDebugInfo: () => wsManager.getDebugInfo(),
+    forceReconnect: () => wsManager.forceReconnect(),
+  };
+}

@@ -22,19 +22,32 @@ vi.mock('@lib/api/client', () => ({
 }));
 
 // Stub the WS shim so tests don't transitively import generation stores or
-// the actual WebSocket manager. We don't exercise WS push behavior here —
-// that lives in its own integration test path.
-const wsListeners = new Set<(msg: unknown) => void>();
+// the actual WebSocket manager. The mock honors `subscribeToWebSocketMessages`
+// pattern semantics (exact match or trailing `:*` prefix) so tests exercise
+// the real filtering contract.
+type WsRegistration = { pattern: string; listener: (msg: { type: string }) => void };
+const wsRegistrations = new Set<WsRegistration>();
 let wsUnsubscribeCalls = 0;
-const wsSubscribe = vi.fn((listener: (msg: unknown) => void) => {
-  wsListeners.add(listener);
+const wsSubscribe = vi.fn((pattern: string, listener: (msg: { type: string }) => void) => {
+  const reg: WsRegistration = { pattern, listener };
+  wsRegistrations.add(reg);
   return () => {
-    wsListeners.delete(listener);
+    wsRegistrations.delete(reg);
     wsUnsubscribeCalls += 1;
   };
 });
-vi.mock('@features/generation/hooks/useGenerationWebSocket', () => ({
-  subscribeToWebSocketMessages: (listener: (msg: unknown) => void) => wsSubscribe(listener),
+function dispatchWsMessage(message: { type: string; data?: unknown }) {
+  wsRegistrations.forEach(({ pattern, listener }) => {
+    const isPrefix = pattern.endsWith(':*');
+    const matches = isPrefix
+      ? message.type.startsWith(pattern.slice(0, -1))
+      : message.type === pattern;
+    if (matches) listener(message);
+  });
+}
+vi.mock('@lib/api/wsManager', () => ({
+  subscribeToWebSocketMessages: (pattern: string, listener: (msg: { type: string }) => void) =>
+    wsSubscribe(pattern, listener),
 }));
 
 async function freshStore() {
@@ -49,7 +62,7 @@ async function freshStore() {
 beforeEach(() => {
   vi.useFakeTimers();
   pixsimGet.mockReset();
-  wsListeners.clear();
+  wsRegistrations.clear();
   wsUnsubscribeCalls = 0;
   wsSubscribe.mockClear();
 });
@@ -203,8 +216,8 @@ describe('bridgeStatusStore', () => {
     pixsimGet.mockClear();
 
     // Push a bridge:status_changed event through the mocked WS listener.
-    expect(wsListeners.size).toBe(1);
-    wsListeners.forEach((l) => l({ type: 'bridge:status_changed', data: { connected: 2, available: 2 } }));
+    expect(wsRegistrations.size).toBe(1);
+    dispatchWsMessage({ type: 'bridge:status_changed', data: { connected: 2, available: 2 } });
     await vi.advanceTimersByTimeAsync(0);
 
     // The push should have triggered an immediate refresh (not waited 15s).
@@ -219,8 +232,8 @@ describe('bridgeStatusStore', () => {
     await vi.advanceTimersByTimeAsync(0);
     pixsimGet.mockClear();
 
-    wsListeners.forEach((l) => l({ type: 'job:created', data: {} }));
-    wsListeners.forEach((l) => l({ type: 'asset:created', data: {} }));
+    dispatchWsMessage({ type: 'job:created', data: {} });
+    dispatchWsMessage({ type: 'asset:created', data: {} });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(pixsimGet).not.toHaveBeenCalled();

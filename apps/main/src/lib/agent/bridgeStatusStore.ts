@@ -20,8 +20,8 @@
  * know which transport delivered the snapshot.
  */
 import { pixsimClient } from '@lib/api/client';
+import { subscribeToWebSocketMessages } from '@lib/api/wsManager';
 
-import { subscribeToWebSocketMessages, type WebSocketRecord } from '@features/generation/hooks/useGenerationWebSocket';
 import type { BridgeStatus } from '@features/panels/domain/definitions/ai-assistant/assistantTypes';
 
 export interface AgentSessionsStatus {
@@ -124,7 +124,7 @@ class BridgeStatusStore {
     // for the case where the backend has restarted (no event was emitted)
     // or the WS is disconnected.
     if (this.wsUnsubscribe == null) {
-      this.wsUnsubscribe = subscribeToWebSocketMessages(this.onWsMessage);
+      this.wsUnsubscribe = subscribeToWebSocketMessages('bridge:*', this.onBridgeEvent);
     }
   }
 
@@ -143,14 +143,11 @@ class BridgeStatusStore {
     }
   }
 
-  private onWsMessage = (message: WebSocketRecord): void => {
-    const type = typeof message.type === 'string' ? message.type : '';
-    if (!type.startsWith('bridge:')) return;
-
-    // bridge:status_changed payload: { connected, available, reason }.
-    // Trust the WS push for the new connected/available counts; trigger a
-    // full refresh to also pull the agent sessions list and process_alive
-    // (which the bridge event payload doesn't carry).
+  // bridge:status_changed payload: { connected, available, reason }.
+  // Trust the WS push for the new connected/available counts; trigger a
+  // full refresh to also pull the agent sessions list and process_alive
+  // (which the bridge event payload doesn't carry).
+  private onBridgeEvent = (): void => {
     void this.refresh();
   };
 

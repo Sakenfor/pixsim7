@@ -11,6 +11,12 @@ import { pruneOrphans as pruneStoreOrphans } from '@lib/stores'
 // bootstrap sees them. Keep these modules tiny — no React / heavy deps.
 import '@features/generation/stores.registrations'
 
+// Side-effect import: registers the generation feature's WS routing
+// listener (job:* / asset:*) against the shared lib-level wsManager.
+// Must run before any subscriber opens the connection so messages are
+// not delivered into a routing-less manager.
+import '@features/generation/hooks/useGenerationWebSocket'
+
 import { configureKVStorage } from '@pixsim7/game.engine'
 
 import { registerModules, moduleRegistry } from '@app/modules'
