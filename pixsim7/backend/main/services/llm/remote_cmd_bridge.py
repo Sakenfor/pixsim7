@@ -26,7 +26,20 @@ from typing import Any, Dict, List, Optional
 from fastapi import WebSocket
 from pixsim_logging import get_logger
 
+from pixsim7.backend.main.infrastructure.events.bus import event_bus, register_event_type
+
 logger = get_logger()
+
+
+# Bridge connectivity events — consumed by the websocket_handler so the
+# frontend's bridgeStatusStore can react instantly instead of waiting for
+# its 15s heartbeat poll. Payload: {"connected": int, "available": int}.
+BRIDGE_STATUS_CHANGED = register_event_type(
+    "bridge:status_changed",
+    description="Emitted when the count of connected bridge agents changes (connect/disconnect).",
+    payload_schema={"connected": "int", "available": "int", "reason": "str"},
+    source="services/llm/remote_cmd_bridge",
+)
 
 
 class RemoteTaskError(RuntimeError):
@@ -146,6 +159,7 @@ class RemoteCommandBridge:
             metadata=metadata or {},
         )
         agent.tasks_completed = tasks_completed
+        was_present = old is not None
         self._agents[client_id] = agent
 
         if old:
@@ -163,6 +177,11 @@ class RemoteCommandBridge:
                 agent_type=agent_type,
                 user_id=user_id,
             )
+
+        # Notify subscribers (frontend bridgeStatusStore via WS broadcast)
+        # only on a real new connection — reconnects don't change the count.
+        if not was_present:
+            self._publish_status_change("agent_connected")
 
         # Build system prompt — always provide it so agents know the available APIs
         system_prompt = None
@@ -256,6 +275,7 @@ class RemoteCommandBridge:
                         future.set_exception(ConnectionError("Remote agent disconnected"))
                     self._active_tasks.pop(tid, None)
             self._gc_completed()
+            self._publish_status_change("agent_disconnected")
 
     # Grace period before failing in-flight tasks after bridge disconnect.
     # The bridge client buffers results and replays them on reconnect,
@@ -380,6 +400,26 @@ class RemoteCommandBridge:
     @property
     def connected_count(self) -> int:
         return len(self._agents)
+
+    def _publish_status_change(self, reason: str) -> None:
+        """Fire-and-forget bridge:status_changed event.
+
+        Called from sync code paths (disconnect) and async ones (connect).
+        We schedule via ensure_future so the publish never blocks the
+        connect/disconnect path even if the event handlers are slow.
+        """
+        available = sum(1 for a in self._agents.values() if not a.busy)
+        payload = {
+            "connected": len(self._agents),
+            "available": available,
+            "reason": reason,
+        }
+        try:
+            asyncio.ensure_future(event_bus.publish(BRIDGE_STATUS_CHANGED, payload))
+        except RuntimeError:
+            # No running loop (e.g. unit tests calling sync paths) — drop
+            # silently rather than crash. Polling fallback covers this.
+            pass
 
     def update_bridge_pool_status(self, bridge_client_id: str, status: Dict[str, Any]) -> None:
         """Update pool status for a connected bridge client."""

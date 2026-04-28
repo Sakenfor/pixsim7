@@ -45,6 +45,31 @@ async def broadcast_generation_event(event: Event):
     await connection_manager.broadcast(message)
 
 
+async def broadcast_bridge_event(event: Event):
+    """Broadcast bridge status changes to all connected WS clients.
+
+    The frontend bridgeStatusStore consumes this to skip its 15s polling
+    heartbeat when a fresh status arrives via WS.
+    """
+    event_data = event.data
+    message = {
+        "type": event.event_type,
+        "data": event_data,
+        "timestamp": event.timestamp.isoformat(),
+    }
+    logger.info(
+        "[WebSocket] Broadcasting bridge event to clients",
+        extra={
+            "event_type": event.event_type,
+            "connected": event_data.get("connected"),
+            "reason": event_data.get("reason"),
+            "client_count": len(connection_manager._all_connections),
+            "event_id": event.event_id,
+        },
+    )
+    await connection_manager.broadcast(message)
+
+
 async def broadcast_asset_event(event: Event):
     """
     Broadcast asset events to WebSocket clients
@@ -98,7 +123,11 @@ def register_websocket_handlers():
     event_bus.subscribe("asset:updated", broadcast_asset_event)
     event_bus.subscribe("asset:deleted", broadcast_asset_event)
 
-    logger.info("[WebSocket] Event handlers registered for: job:*, asset:*")
+    # Bridge connectivity events — push status changes to the frontend
+    # bridgeStatusStore so it doesn't have to wait for its 15s poll.
+    event_bus.subscribe("bridge:status_changed", broadcast_bridge_event)
+
+    logger.info("[WebSocket] Event handlers registered for: job:*, asset:*, bridge:*")
 
     # Log the event bus state
     logger.info(f"[WebSocket] Event bus has {len(event_bus._handlers)} event types with subscribers")

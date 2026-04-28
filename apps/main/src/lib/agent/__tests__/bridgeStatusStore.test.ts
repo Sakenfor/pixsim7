@@ -13,12 +13,28 @@ export const TEST_SUITE = {
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// pixsimClient is the only dependency we need to mock.
+// pixsimClient is the only network dependency we need.
 const pixsimGet = vi.fn();
 vi.mock('@lib/api/client', () => ({
   pixsimClient: {
     get: (...args: unknown[]) => pixsimGet(...args),
   },
+}));
+
+// Stub the WS shim so tests don't transitively import generation stores or
+// the actual WebSocket manager. We don't exercise WS push behavior here —
+// that lives in its own integration test path.
+const wsListeners = new Set<(msg: unknown) => void>();
+let wsUnsubscribeCalls = 0;
+const wsSubscribe = vi.fn((listener: (msg: unknown) => void) => {
+  wsListeners.add(listener);
+  return () => {
+    wsListeners.delete(listener);
+    wsUnsubscribeCalls += 1;
+  };
+});
+vi.mock('@features/generation/hooks/useGenerationWebSocket', () => ({
+  subscribeToWebSocketMessages: (listener: (msg: unknown) => void) => wsSubscribe(listener),
 }));
 
 async function freshStore() {
@@ -33,6 +49,9 @@ async function freshStore() {
 beforeEach(() => {
   vi.useFakeTimers();
   pixsimGet.mockReset();
+  wsListeners.clear();
+  wsUnsubscribeCalls = 0;
+  wsSubscribe.mockClear();
 });
 
 afterEach(() => {
@@ -158,6 +177,54 @@ describe('bridgeStatusStore', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     expect(listener.mock.calls.length).toBeGreaterThan(initialCalls);
     unsubscribe();
+  });
+
+  it('subscribes to WS messages on first subscriber, unsubscribes on stop', async () => {
+    pixsimGet.mockResolvedValue({ connected: 0 });
+    const store = await freshStore();
+
+    expect(wsSubscribe).not.toHaveBeenCalled();
+
+    const unsub = store.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wsSubscribe).toHaveBeenCalledTimes(1);
+    expect(wsUnsubscribeCalls).toBe(0);
+
+    unsub();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(wsUnsubscribeCalls).toBe(1);
+  });
+
+  it('refreshes immediately when a bridge:* WS event arrives', async () => {
+    pixsimGet.mockResolvedValue({ connected: 1 });
+    const store = await freshStore();
+    const unsub = store.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    pixsimGet.mockClear();
+
+    // Push a bridge:status_changed event through the mocked WS listener.
+    expect(wsListeners.size).toBe(1);
+    wsListeners.forEach((l) => l({ type: 'bridge:status_changed', data: { connected: 2, available: 2 } }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The push should have triggered an immediate refresh (not waited 15s).
+    expect(pixsimGet).toHaveBeenCalledTimes(2);
+    unsub();
+  });
+
+  it('ignores non-bridge WS events', async () => {
+    pixsimGet.mockResolvedValue({ connected: 0 });
+    const store = await freshStore();
+    const unsub = store.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    pixsimGet.mockClear();
+
+    wsListeners.forEach((l) => l({ type: 'job:created', data: {} }));
+    wsListeners.forEach((l) => l({ type: 'asset:created', data: {} }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(pixsimGet).not.toHaveBeenCalled();
+    unsub();
   });
 
   it('keeps polling if the disconnect window is interrupted by a new subscriber', async () => {

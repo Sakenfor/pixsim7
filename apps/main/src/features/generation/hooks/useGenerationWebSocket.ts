@@ -22,7 +22,7 @@ import { fromGenerationResponse, type GenerationStatus } from '../models';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 
-type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
+export type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
 
 /** Map websocket event types to generation statuses for optimistic updates. */
 const WS_EVENT_TO_STATUS: Record<string, GenerationStatus> = {
@@ -189,6 +189,7 @@ class WebSocketManager {
   private disconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private candidateIndex = 0;
   private subscribers = new Set<() => void>();
+  private messageListeners = new Set<(message: WebSocketRecord) => void>();
   private isConnected = false;
   private refCount = 0;
   private isConnecting = false;
@@ -367,12 +368,32 @@ class WebSocketManager {
     }
   };
 
+  /**
+   * Generic message listeners — invoked for every parsed message before
+   * the inline job/asset routing runs. Used by surfaces that want to
+   * subscribe to event types not handled inline (e.g. bridge:* in the
+   * shared bridgeStatusStore). Listener errors are isolated.
+   */
+  addMessageListener(listener: (message: WebSocketRecord) => void): () => void {
+    this.messageListeners.add(listener);
+    return () => { this.messageListeners.delete(listener); };
+  }
+
   private async handleMessage(event: MessageEvent) {
     try {
       debugFlags.log('websocket', 'Raw message received:', event.data);
       const message = parseWebSocketMessage(event.data);
       debugFlags.log('websocket', 'Parsed message:', message);
       if (message) {
+        // Generic listeners first — they're decoupled from the inline routing
+        // and may handle event types this module doesn't know about.
+        if (this.messageListeners.size > 0) {
+          this.messageListeners.forEach((l) => {
+            try { l(message as WebSocketRecord); } catch (err) {
+              console.error('[WebSocket] message listener threw:', err);
+            }
+          });
+        }
         // Handle job status updates (job:created, job:running, job:completed, etc.)
         if (message.type?.startsWith('job:')) {
           debugFlags.log('websocket', 'Job update received:', message.type);
@@ -604,6 +625,21 @@ class WebSocketManager {
 }
 
 const wsManager = hmrSingleton('wsManager', () => new WebSocketManager());
+
+// Exposed for consumers that want to attach a message listener and bump
+// the WS refcount (e.g. bridgeStatusStore subscribing to bridge:* events).
+// Returns an unsubscribe handle that removes the listener and decrements
+// the refcount — composable inside a store's own subscribe lifecycle.
+export function subscribeToWebSocketMessages(
+  listener: (message: WebSocketRecord) => void,
+): () => void {
+  const refcountUnsubscribe = wsManager.subscribe(() => {});
+  const listenerUnsubscribe = wsManager.addMessageListener(listener);
+  return () => {
+    listenerUnsubscribe();
+    refcountUnsubscribe();
+  };
+}
 
 export function useGenerationWebSocket() {
   // Subscribe to the singleton WebSocket manager

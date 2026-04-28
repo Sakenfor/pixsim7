@@ -21,6 +21,7 @@
  */
 import { pixsimClient } from '@lib/api/client';
 
+import { subscribeToWebSocketMessages, type WebSocketRecord } from '@features/generation/hooks/useGenerationWebSocket';
 import type { BridgeStatus } from '@features/panels/domain/definitions/ai-assistant/assistantTypes';
 
 export interface AgentSessionsStatus {
@@ -55,6 +56,7 @@ class BridgeStatusStore {
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private inflight: Promise<void> | null = null;
   private visibilityHandlerInstalled = false;
+  private wsUnsubscribe: (() => void) | null = null;
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -117,6 +119,13 @@ class BridgeStatusStore {
       document.addEventListener('visibilitychange', this.onVisibilityChange);
       this.visibilityHandlerInstalled = true;
     }
+    // Subscribe to the shared WS so bridge:status_changed events trigger an
+    // immediate refresh — the 15s interval becomes a heartbeat / safety net
+    // for the case where the backend has restarted (no event was emitted)
+    // or the WS is disconnected.
+    if (this.wsUnsubscribe == null) {
+      this.wsUnsubscribe = subscribeToWebSocketMessages(this.onWsMessage);
+    }
   }
 
   private stop(): void {
@@ -128,7 +137,22 @@ class BridgeStatusStore {
       document.removeEventListener('visibilitychange', this.onVisibilityChange);
       this.visibilityHandlerInstalled = false;
     }
+    if (this.wsUnsubscribe) {
+      this.wsUnsubscribe();
+      this.wsUnsubscribe = null;
+    }
   }
+
+  private onWsMessage = (message: WebSocketRecord): void => {
+    const type = typeof message.type === 'string' ? message.type : '';
+    if (!type.startsWith('bridge:')) return;
+
+    // bridge:status_changed payload: { connected, available, reason }.
+    // Trust the WS push for the new connected/available counts; trigger a
+    // full refresh to also pull the agent sessions list and process_alive
+    // (which the bridge event payload doesn't carry).
+    void this.refresh();
+  };
 
   private onVisibilityChange = (): void => {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') {

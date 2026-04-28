@@ -16,7 +16,7 @@ TEST_SUITE = {
 import asyncio
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -414,3 +414,69 @@ class TestBridgeTargeting:
 
         assert result["ok"] is True
         bridge._dispatch_to_agent.assert_awaited_once()
+
+
+# ── bridge:status_changed event publishing ───────────────────────
+
+
+class TestBridgeStatusEvents:
+    """connect/disconnect should publish bridge:status_changed so the
+    frontend bridgeStatusStore can skip its 15s polling heartbeat."""
+
+    @pytest.mark.asyncio
+    async def test_connect_publishes_status_changed_for_new_agent(self):
+        bridge = RemoteCommandBridge()
+        ws = AsyncMock()
+
+        with patch(
+            "pixsim7.backend.main.services.llm.remote_cmd_bridge.event_bus.publish",
+            new=AsyncMock(),
+        ) as publish:
+            await bridge.connect(ws, bridge_client_id="a1")
+            # ensure_future runs the publish on the event loop
+            await asyncio.sleep(0)
+
+        publish.assert_awaited()
+        call = publish.await_args
+        assert call.args[0] == "bridge:status_changed"
+        assert call.args[1]["connected"] == 1
+        assert call.args[1]["reason"] == "agent_connected"
+
+    @pytest.mark.asyncio
+    async def test_reconnect_of_existing_agent_does_not_republish(self):
+        """Reconnecting the same client_id doesn't change connected_count,
+        so we shouldn't fire the event again."""
+        bridge = RemoteCommandBridge()
+        ws1 = AsyncMock()
+        await bridge.connect(ws1, bridge_client_id="a1")
+        await asyncio.sleep(0)
+
+        with patch(
+            "pixsim7.backend.main.services.llm.remote_cmd_bridge.event_bus.publish",
+            new=AsyncMock(),
+        ) as publish:
+            ws2 = AsyncMock()
+            await bridge.connect(ws2, bridge_client_id="a1")  # reconnect
+            await asyncio.sleep(0)
+
+        publish.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_publishes_status_changed(self):
+        bridge = RemoteCommandBridge()
+        ws = AsyncMock()
+        await bridge.connect(ws, bridge_client_id="a1")
+        await asyncio.sleep(0)
+
+        with patch(
+            "pixsim7.backend.main.services.llm.remote_cmd_bridge.event_bus.publish",
+            new=AsyncMock(),
+        ) as publish:
+            bridge.disconnect("a1", grace=False)
+            await asyncio.sleep(0)
+
+        publish.assert_awaited()
+        call = publish.await_args
+        assert call.args[0] == "bridge:status_changed"
+        assert call.args[1]["connected"] == 0
+        assert call.args[1]["reason"] == "agent_disconnected"
