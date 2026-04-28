@@ -15,6 +15,8 @@ export interface SessionItemProps {
   profiles: readonly UnifiedProfile[];
   tabCount: number;
   isSending: boolean;
+  /** Tab has an unseen assistant reply (active tab is always read). */
+  hasUnread?: boolean;
   renamingTabId: string | null;
   renameValue: string;
   onSetActive: (id: string) => void;
@@ -32,6 +34,7 @@ export function SessionItem({
   profiles,
   tabCount,
   isSending,
+  hasUnread = false,
   renamingTabId,
   renameValue,
   onSetActive,
@@ -64,9 +67,14 @@ export function SessionItem({
     >
       <div className="relative shrink-0">
         <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
-        {isSending && (
+        {isSending ? (
           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        )}
+        ) : hasUnread ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 ring-1 ring-white dark:ring-neutral-950"
+            title="Unread reply"
+          />
+        ) : null}
       </div>
       <div className="flex-1 min-w-0">
         {isRenaming ? (
@@ -85,7 +93,7 @@ export function SessionItem({
           />
         ) : (
           <div
-            className="text-[11px] font-medium truncate"
+            className={`text-[11px] truncate ${hasUnread && !isActive ? 'font-semibold text-neutral-900 dark:text-neutral-100' : 'font-medium'}`}
             onDoubleClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
           >
             {tab.label}

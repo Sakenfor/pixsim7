@@ -843,6 +843,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 export function AIAssistantPanel() {
   const tabs = useAssistantChatStore((s) => s.tabs);
   const activeTabId = useAssistantChatStore((s) => s.activeTabId);
+  const unreadByTab = useAssistantChatStore((s) => s.unreadByTab);
   const store = useAssistantChatStore;
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
@@ -1046,6 +1047,7 @@ export function AIAssistantPanel() {
         profiles={profiles}
         tabCount={tabs.length}
         isSending={isSending}
+        hasUnread={!isActive && !!unreadByTab[tab.id]}
         renamingTabId={renamingTabId}
         renameValue={renameValue}
         onSetActive={setActiveTab}

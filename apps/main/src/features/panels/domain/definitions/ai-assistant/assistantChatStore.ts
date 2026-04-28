@@ -483,6 +483,9 @@ interface AssistantChatState {
   draftsByTab: Record<string, string>;
   /** Live thinking entries per tab — persisted so they survive full reload */
   thinkingByTab: Record<string, ThinkingEntry[]>;
+  /** Tabs that received an assistant message while not active — in-memory only.
+   *  Cleared on tab activation, addTab, closeTab, or markRead. */
+  unreadByTab: Record<string, true>;
 
   // Tab actions
   addTab: (tab: ChatTab) => void;
@@ -494,6 +497,7 @@ interface AssistantChatState {
   getMessages: (tabId: string) => ChatMessage[];
   appendMessage: (tabId: string, msg: ChatMessage) => void;
   setMessages: (tabId: string, msgs: ChatMessage[]) => void;
+  markRead: (tabId: string) => void;
 
   // Thinking actions (live streaming state)
   syncThinking: (tabId: string, entries: ThinkingEntry[]) => void;
@@ -523,6 +527,7 @@ export const useAssistantChatStore = hmrSingleton(
       messagesByTab: {},
       draftsByTab: {},
       thinkingByTab: {},
+      unreadByTab: {},
 
       // ----- Tab actions -----
 
@@ -573,17 +578,25 @@ export const useAssistantChatStore = hmrSingleton(
         const { [tabId]: _msgs, ...restMsgs } = get().messagesByTab; void _msgs;
         const { [tabId]: _draft, ...restDrafts } = get().draftsByTab; void _draft;
         const { [tabId]: _think, ...restThink } = get().thinkingByTab; void _think;
+        const { [tabId]: _unread, ...restUnread } = get().unreadByTab; void _unread;
         set({
           tabs: nextTabs,
           messagesByTab: restMsgs,
           draftsByTab: restDrafts,
           thinkingByTab: restThink,
+          unreadByTab: restUnread,
         });
       },
 
       setActiveTab: (tabId) => {
         setActiveTabIdLS(tabId);
-        set({ activeTabId: tabId });
+        set((s) => {
+          if (!tabId) return { activeTabId: tabId };
+          // Activating a tab clears its unread flag.
+          if (!s.unreadByTab[tabId]) return { activeTabId: tabId };
+          const { [tabId]: _cleared, ...rest } = s.unreadByTab; void _cleared;
+          return { activeTabId: tabId, unreadByTab: rest };
+        });
       },
 
       updateTab: (tabId, updates) => {
@@ -608,9 +621,19 @@ export const useAssistantChatStore = hmrSingleton(
         const current = get().getMessages(tabId);
         const next = [...current, msg];
         persistTabMessages(tabId, next);
-        set((s) => ({
-          messagesByTab: { ...s.messagesByTab, [tabId]: next },
-        }));
+        set((s) => {
+          // Mark unread when an assistant message arrives on a non-active tab.
+          // Other roles (user, system, error) don't count as "new content
+          // from the agent worth surfacing".
+          const shouldFlag =
+            msg.role === 'assistant' && s.activeTabId !== tabId;
+          return {
+            messagesByTab: { ...s.messagesByTab, [tabId]: next },
+            unreadByTab: shouldFlag
+              ? { ...s.unreadByTab, [tabId]: true }
+              : s.unreadByTab,
+          };
+        });
       },
 
       setMessages: (tabId, msgs) => {
@@ -618,6 +641,14 @@ export const useAssistantChatStore = hmrSingleton(
         set((s) => ({
           messagesByTab: { ...s.messagesByTab, [tabId]: msgs },
         }));
+      },
+
+      markRead: (tabId) => {
+        set((s) => {
+          if (!s.unreadByTab[tabId]) return {};
+          const { [tabId]: _cleared, ...rest } = s.unreadByTab; void _cleared;
+          return { unreadByTab: rest };
+        });
       },
 
       // ----- Thinking actions (live streaming state) -----

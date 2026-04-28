@@ -61,6 +61,7 @@ function resetStore() {
     messagesByTab: {},
     draftsByTab: {},
     thinkingByTab: {},
+    unreadByTab: {},
   });
   return s;
 }
@@ -406,6 +407,84 @@ describe('Assistant Chat Store', () => {
         ],
       );
       expect(result).toBe(true);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
+  // Unread tracking
+  // ────────────────────────────────────────────────────────
+
+  describe('unread tracking', () => {
+    it('appending an assistant message to a non-active tab marks unread', () => {
+      const a = makeTab({ id: 'tab-A' });
+      const b = makeTab({ id: 'tab-B' });
+      useAssistantChatStore.getState().addTab(a);
+      useAssistantChatStore.getState().addTab(b);
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('assistant', 'reply'));
+
+      const s = useAssistantChatStore.getState();
+      expect(s.unreadByTab['tab-B']).toBe(true);
+      expect(s.unreadByTab['tab-A']).toBeUndefined();
+    });
+
+    it('appending an assistant message to the ACTIVE tab does not mark unread', () => {
+      const a = makeTab({ id: 'tab-A' });
+      useAssistantChatStore.getState().addTab(a);
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+
+      useAssistantChatStore.getState().appendMessage('tab-A', makeMsg('assistant', 'reply'));
+
+      expect(useAssistantChatStore.getState().unreadByTab['tab-A']).toBeUndefined();
+    });
+
+    it('appending non-assistant roles never marks unread', () => {
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-A' }));
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-B' }));
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('user', 'q'));
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('system', 'reconnected'));
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('error', 'oops'));
+
+      expect(useAssistantChatStore.getState().unreadByTab['tab-B']).toBeUndefined();
+    });
+
+    it('activating a tab clears its unread flag', () => {
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-A' }));
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-B' }));
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('assistant', 'reply'));
+      expect(useAssistantChatStore.getState().unreadByTab['tab-B']).toBe(true);
+
+      useAssistantChatStore.getState().setActiveTab('tab-B');
+
+      expect(useAssistantChatStore.getState().unreadByTab['tab-B']).toBeUndefined();
+    });
+
+    it('markRead clears the flag without changing active tab', () => {
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-A' }));
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-B' }));
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('assistant', 'reply'));
+
+      useAssistantChatStore.getState().markRead('tab-B');
+
+      const s = useAssistantChatStore.getState();
+      expect(s.unreadByTab['tab-B']).toBeUndefined();
+      expect(s.activeTabId).toBe('tab-A');
+    });
+
+    it('closeTab cleans up the unread entry', () => {
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-A' }));
+      useAssistantChatStore.getState().addTab(makeTab({ id: 'tab-B' }));
+      useAssistantChatStore.getState().setActiveTab('tab-A');
+      useAssistantChatStore.getState().appendMessage('tab-B', makeMsg('assistant', 'reply'));
+
+      useAssistantChatStore.getState().closeTab('tab-B');
+
+      expect(useAssistantChatStore.getState().unreadByTab['tab-B']).toBeUndefined();
     });
   });
 
