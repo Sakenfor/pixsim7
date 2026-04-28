@@ -326,7 +326,9 @@ type GenerationHandlers = {
   connected: (m: WebSocketRecord) => void;
 };
 
-const noopHandler = (_m: WebSocketRecord) => { /* placeholder until first eval */ };
+const noopHandler: (m: WebSocketRecord) => void = () => {
+  /* placeholder until first module eval assigns the real handlers */
+};
 
 const handlersRef = hmrSingleton(
   'generationWsHandlersRef',
