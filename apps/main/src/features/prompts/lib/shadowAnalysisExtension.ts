@@ -5,6 +5,7 @@ import {
   EditorView,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
   hoverTooltip,
   type Tooltip,
 } from '@codemirror/view';
@@ -91,12 +92,16 @@ function buildDecorations(
 
     const mark = Decoration.mark({
       attributes: {
+        // Resting style: underline only. The bg color is exposed as a custom
+        // property so the hover rule in the theme can fade it in without us
+        // re-emitting per-role styles in CSS.
         style: [
-          `background-color: rgba(${r},${g},${b},${bgAlpha})`,
+          `--cm-shadow-bg: rgba(${r},${g},${b},${bgAlpha})`,
           `border-bottom: 2px solid ${hex}`,
           'border-radius: 2px',
           'cursor: pointer',
         ].join(';'),
+        class: 'cm-shadow-candidate',
         'data-role': candidate.role ?? '',
       },
     });
@@ -107,10 +112,61 @@ function buildDecorations(
   return builder.finish();
 }
 
-// ── Header line decorations ────────────────────────────────────────────────
+// ── Structural line decorations (header + relation) ────────────────────────
+
+const PATTERN_GLYPH: Record<string, string> = {
+  assignment_arrow: '→',
+  assignment_arrow_left: '←',
+  assignment: '=',
+  compound_assignment: '⇒',
+  colon: ':',
+  angle_bracket: '‹›',
+  freestanding: '¶',
+};
+
+class PatternBadgeWidget extends WidgetType {
+  constructor(readonly glyph: string, readonly kind: 'header' | 'relation') {
+    super();
+  }
+
+  eq(other: PatternBadgeWidget): boolean {
+    return other.glyph === this.glyph && other.kind === this.kind;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement('span');
+    span.className = `cm-shadow-line-badge cm-shadow-line-badge-${this.kind}`;
+    span.textContent = this.glyph;
+    span.style.cssText = [
+      'display: inline-block',
+      'min-width: 1em',
+      'padding: 0 4px',
+      'margin-right: 6px',
+      'border-radius: 3px',
+      'font-family: ui-monospace, monospace',
+      'font-size: 0.85em',
+      'text-align: center',
+      'opacity: 0.85',
+      'user-select: none',
+      'pointer-events: none',
+      this.kind === 'header'
+        ? 'background: rgba(56, 189, 248, 0.18); color: rgb(2, 132, 199);'
+        : 'background: rgba(245, 158, 11, 0.18); color: rgb(180, 83, 9);',
+    ].join(';');
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
 
 const headerLineMark = Decoration.line({
   attributes: { class: 'cm-shadow-header-line' },
+});
+
+const relationLineMark = Decoration.line({
+  attributes: { class: 'cm-shadow-relation-line' },
 });
 
 function buildHeaderDecorations(
@@ -118,18 +174,45 @@ function buildHeaderDecorations(
   view: EditorView,
 ): DecorationSet {
   if (!tokenLines || tokenLines.length === 0) return Decoration.none;
-  const builder = new RangeSetBuilder<Decoration>();
   const docLen = view.state.doc.length;
 
-  const headerStarts = tokenLines
-    .filter((l) => l.kind === 'header')
-    .map((l) => l.start)
-    .filter((s) => s >= 0 && s < docLen)
-    .sort((a, b) => a - b);
+  // Collect line decos + badge widgets, then sort by position so the
+  // RangeSetBuilder can insert them in order (it requires monotonic adds).
+  type Entry = { from: number; to: number; deco: Decoration; sortKey: number };
+  const entries: Entry[] = [];
 
-  for (const charPos of headerStarts) {
-    const line = view.state.doc.lineAt(charPos);
-    builder.add(line.from, line.from, headerLineMark);
+  for (const tokenLine of tokenLines) {
+    if (tokenLine.kind !== 'header' && tokenLine.kind !== 'relation') continue;
+    if (tokenLine.start < 0 || tokenLine.start >= docLen) continue;
+
+    const line = view.state.doc.lineAt(tokenLine.start);
+    const lineDeco = tokenLine.kind === 'header' ? headerLineMark : relationLineMark;
+    // Line decoration is added at line.from with from === to.
+    // Sort key: line.from with sub-priority 0 so it precedes the inline widget.
+    entries.push({
+      from: line.from,
+      to: line.from,
+      deco: lineDeco,
+      sortKey: line.from * 2,
+    });
+
+    const glyph = tokenLine.kind === 'header'
+      ? (PATTERN_GLYPH[tokenLine.pattern ?? ''] ?? '?')
+      : '↔'; // ↔ for relation
+    const widget = new PatternBadgeWidget(glyph, tokenLine.kind);
+    entries.push({
+      from: line.from,
+      to: line.from,
+      deco: Decoration.widget({ widget, side: -1 }),
+      sortKey: line.from * 2 + 1,
+    });
+  }
+
+  entries.sort((a, b) => a.sortKey - b.sortKey);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const e of entries) {
+    builder.add(e.from, e.to, e.deco);
   }
   return builder.finish();
 }
@@ -312,9 +395,42 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 const headerLineTheme = EditorView.baseTheme({
+  // ── Header lines ─────────────────────────────────────────────────────────
   '.cm-shadow-header-line': {
-    borderTop: '1px solid rgba(148,163,184,0.25)',
-    marginTop: '1px',
+    backgroundColor: 'rgba(56, 189, 248, 0.06)',
+    borderLeft: '2px solid rgba(56, 189, 248, 0.5)',
+    paddingLeft: '6px',
+    fontWeight: '500',
+    transition: 'background-color 120ms ease, border-left-color 120ms ease',
+  },
+  '.cm-shadow-header-line:hover': {
+    backgroundColor: 'rgba(56, 189, 248, 0.13)',
+    borderLeftColor: 'rgba(14, 165, 233, 0.85)',
+  },
+  '.cm-shadow-header-line:hover .cm-shadow-line-badge-header': {
+    background: 'rgba(56, 189, 248, 0.32)',
+    opacity: '1',
+  },
+  // ── Relation lines ───────────────────────────────────────────────────────
+  '.cm-shadow-relation-line': {
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    borderLeft: '2px solid rgba(245, 158, 11, 0.45)',
+    paddingLeft: '6px',
+    fontStyle: 'italic',
+    transition: 'background-color 120ms ease, border-left-color 120ms ease',
+  },
+  '.cm-shadow-relation-line:hover': {
+    backgroundColor: 'rgba(245, 158, 11, 0.13)',
+    borderLeftColor: 'rgba(217, 119, 6, 0.85)',
+  },
+  '.cm-shadow-relation-line:hover .cm-shadow-line-badge-relation': {
+    background: 'rgba(245, 158, 11, 0.32)',
+    opacity: '1',
+  },
+  // ── Candidate spans: underline at rest, bg wash on hover ────────────────
+  '.cm-shadow-candidate:hover': {
+    backgroundColor: 'var(--cm-shadow-bg)',
+    borderBottomWidth: '3px',
   },
 });
 

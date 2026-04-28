@@ -18,6 +18,7 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     resolve_prompt_default_analyzer_id,
 )
 from pixsim7.backend.main.services.prompt.parser import AnalyzerTarget
+from pixsim7.backend.main.services.prompt.parser.tokenizer import tokenize as _tokenize_prompt
 from pixsim7.backend.main.infrastructure.plugins.capabilities.locator import (
     get_analyzer_registry,
 )
@@ -625,11 +626,13 @@ class AnalyzePromptRequest(BaseModel):
 
 class PromptTokenHeaderLine(BaseModel):
     kind: Literal["header"] = "header"
-    pattern: str = Field(..., description="PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding")
+    pattern: str = Field(..., description="PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding | compound_assignment")
     label: str
     start: int
     end: int
     body_start: int
+    op_start: Optional[int] = Field(None, description="Char range start of the header operator (e.g. `=`, `:`, `>`); None for freestanding")
+    op_end: Optional[int] = None
 
 
 class PromptTokenRelationHop(BaseModel):
@@ -639,6 +642,8 @@ class PromptTokenRelationHop(BaseModel):
     leading_char: Optional[str] = None
     terminal_char: Optional[str] = None
     run: int = Field(..., description="Total operator length in characters")
+    op_start: int = Field(0, description="Char range start of this hop's operator run in the document")
+    op_end: int = 0
 
 
 class PromptTokenRelationLine(BaseModel):
@@ -828,6 +833,14 @@ async def analyze_prompt(
     analysis["sequence_context"] = sequence_context
 
     raw_tokens = analysis.get("tokens")
+    # Fallback: not every analyzer (e.g. LLM analyzer) emits structural tokens.
+    # Always run the deterministic tokenizer so the side panel + editor get
+    # consistent header/relation/prose classification regardless of analyzer.
+    if not isinstance(raw_tokens, dict):
+        try:
+            raw_tokens = _tokenize_prompt(request.text)
+        except Exception:
+            raw_tokens = None
     tokens_payload = PromptTokensPayload(**raw_tokens) if isinstance(raw_tokens, dict) else None
 
     return AnalyzePromptResponse(

@@ -29,6 +29,21 @@ _HEADER_PATTERNS: dict[str, dict] = {
 }
 _RELATION_OP_CHARS: frozenset[str] = frozenset(_GRAMMAR_RULES["relation"]["op_chars"])
 
+
+def get_operator_vocabulary() -> dict:
+    """Return the operator vocabulary block from grammar_rules.json.
+
+    Shape: {"swap_targets": ["=","<",...], "max_run_length": 12}
+    Defaults are returned if the field is missing.
+    """
+    raw = _GRAMMAR_RULES.get("operator_vocabulary") or {}
+    swap_targets = raw.get("swap_targets")
+    max_run = raw.get("max_run_length")
+    return {
+        "swap_targets": list(swap_targets) if isinstance(swap_targets, list) else ["=", "<", ">"],
+        "max_run_length": int(max_run) if isinstance(max_run, int) else 12,
+    }
+
 # ── token kinds ────────────────────────────────────────────────────────────
 
 TokenKind = Literal[
@@ -185,11 +200,16 @@ def _split_lines(tokens: List[Token], source: str) -> List[_LineSlice]:
 @dataclass(slots=True)
 class HeaderLine:
     kind: str = "header"
-    pattern: str = ""        # PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding
+    pattern: str = ""        # PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding | compound_assignment
     label: str = ""
     start: int = 0
     end: int = 0
     body_start: int = 0
+    # Absolute char range of the operator token (e.g. `=`, `:`, `>`, `<`).
+    # None for `freestanding` headers (no operator). Used by the editor's
+    # operator click-to-edit popover.
+    op_start: Optional[int] = None
+    op_end: Optional[int] = None
 
 
 @dataclass(slots=True)
@@ -201,6 +221,9 @@ class RelationHop:
     leading_char: Optional[str]
     terminal_char: Optional[str]
     run: int
+    # Absolute char range of this hop's operator run in the document.
+    op_start: int = 0
+    op_end: int = 0
 
 
 @dataclass(slots=True)
@@ -327,7 +350,10 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
                 lf, lt = _trim_ws(tokens, i, k)
                 label = _try_assemble_mixed_label(tokens, lf, lt)
                 if label and p["label_min"] <= len(label) <= p["label_max"]:
-                    return HeaderLine("header", "colon", label, line.start, line.end, line.next)
+                    return HeaderLine(
+                        "header", "colon", label, line.start, line.end, line.next,
+                        op_start=tokens[k].start, op_end=tokens[k].end,
+                    )
             break
 
     if not _is_upper_ident(first.text):
@@ -354,23 +380,96 @@ def _parse_line(line: _LineSlice, tokens: List[Token]) -> LineNode:
                 while after < end and tokens[after].kind == "WS":
                     after += 1
                 body_start = tokens[after].start if after < end else line.next
-                return HeaderLine("header", "assignment", label, line.start, line.end, body_start)
+                return HeaderLine(
+                    "header", "assignment", label, line.start, line.end, body_start,
+                    op_start=tokens[k].start, op_end=tokens[k].end,
+                )
 
-    # ── assignment_arrow: LABEL > ... (WS before > mandatory, single > only)
-    # Multi-char runs like >>> are relation operators, not assignment arrows.
-    p = _pat("assignment_arrow")
-    k = i + 1
-    if k < end and tokens[k].kind == "WS":
+    # ── assignment_arrow / assignment_arrow_left ──────────────────────────
+    # LABEL > body  (assignment_arrow,      run_char='>')
+    # LABEL < body  (assignment_arrow_left, run_char='<')
+    # Both: WS before the arrow mandatory, single-char run only. Multi-char
+    # runs like >>> / <<< are relation operators, not assignment arrows.
+    for pattern_id, run_char in (("assignment_arrow", ">"), ("assignment_arrow_left", "<")):
+        p_arrow = _pat(pattern_id) if pattern_id in _HEADER_PATTERNS else None
+        if p_arrow is None:
+            continue
+        k = i + 1
+        if k >= end or tokens[k].kind != "WS":
+            continue
         k += 1
-        if (k < end and tokens[k].kind == "RUN"
-                and tokens[k].run_char == ">" and tokens[k].run_n == 1):
-            label = first.text
-            if p["label_min"] <= len(label) <= p["label_max"]:
-                after = k + 1
+        if not (k < end and tokens[k].kind == "RUN"
+                and tokens[k].run_char == run_char and tokens[k].run_n == 1):
+            continue
+        label = first.text
+        if not (p_arrow["label_min"] <= len(label) <= p_arrow["label_max"]):
+            continue
+        after = k + 1
+        while after < end and tokens[after].kind == "WS":
+            after += 1
+        body_start = tokens[after].start if after < end else line.next
+        return HeaderLine(
+            "header", pattern_id, label, line.start, line.end, body_start,
+            op_start=tokens[k].start, op_end=tokens[k].end,
+        )
+
+    # ── compound_assignment: IDENT (chain of <>op IDENT/PHRASE)+ = body ───
+    # Recognises labels like `ACTOR2<REPOSE<STANDING LEANED ONTO X = body`,
+    # `ACTOR1_TOOLS < MUZZLE = body`, `ACTOR2>ATTRACTING<ACTOR1 = body`.
+    # The LHS is an UPPERCASE_IDENT chained with `<` / `>` runs, optionally
+    # interspersed with whitespace and additional uppercase IDENT tokens
+    # (phrase form). Apostrophe and a few other punctuation chars are
+    # accepted as TEXT inside the chain to handle `BEHIND_ACTOR2'S_BACK`.
+    # The single `=` (not part of a compound `==>` / `<==`) terminates the
+    # LHS. Body is everything after `=`.
+    p = _pat("compound_assignment")
+    if p is not None:
+        eq_idx = -1
+        saw_chain_op = False
+        j = i + 1
+        while j < end:
+            t = tokens[j]
+            if t.kind == "IDENT" and _is_upper(t.text[0]):
+                j += 1
+                continue
+            if t.kind == "WS":
+                j += 1
+                continue
+            if t.kind == "RUN" and t.run_char in ("<", ">"):
+                saw_chain_op = True
+                j += 1
+                continue
+            if t.kind == "TEXT" and t.text in ("'", "-", "&", "/"):
+                j += 1
+                continue
+            if t.kind == "RUN" and t.run_char == "=" and t.run_n == 1:
+                next_j = j + 1
+                is_compound_op = (
+                    next_j < end
+                    and tokens[next_j].kind == "RUN"
+                    and tokens[next_j].run_char in ("<", ">")
+                )
+                if not is_compound_op:
+                    eq_idx = j
+                break
+            # Anything else breaks the chain
+            break
+
+        if eq_idx >= 0 and saw_chain_op:
+            label_to = eq_idx
+            while label_to > i and tokens[label_to - 1].kind == "WS":
+                label_to -= 1
+            label_str = "".join(t.text for t in tokens[i:label_to]).strip()
+            if p["label_min"] <= len(label_str) <= p["label_max"]:
+                after = eq_idx + 1
                 while after < end and tokens[after].kind == "WS":
                     after += 1
                 body_start = tokens[after].start if after < end else line.next
-                return HeaderLine("header", "assignment_arrow", label, line.start, line.end, body_start)
+                return HeaderLine(
+                    "header", "compound_assignment", label_str,
+                    line.start, line.end, body_start,
+                    op_start=tokens[eq_idx].start, op_end=tokens[eq_idx].end,
+                )
 
     # ── freestanding: LABEL (line-terminal) ──────────────────────────────
     p = _pat("freestanding")
@@ -416,15 +515,17 @@ def _try_relation(
             break
 
         # Collect all contiguous op-char RUN tokens as one operator
-        op_start = k
+        op_start_tok = k
         while k < end and tokens[k].kind == "RUN" and tokens[k].run_char in _RELATION_OP_CHARS:
             k += 1
 
-        raw_op = "".join(t.text for t in tokens[op_start:k])
-        run_total = sum(t.run_n or 0 for t in tokens[op_start:k])
-        op_toks = tokens[op_start:k]
+        raw_op = "".join(t.text for t in tokens[op_start_tok:k])
+        run_total = sum(t.run_n or 0 for t in tokens[op_start_tok:k])
+        op_toks = tokens[op_start_tok:k]
         terminal_char: Optional[str] = op_toks[-1].run_char if op_toks[-1].run_char in ("<", ">") else None
         leading_char: Optional[str] = op_toks[0].run_char if len(op_toks) > 1 else None
+        op_char_start = op_toks[0].start
+        op_char_end = op_toks[-1].end
 
         # Optional WS + rhs IDENT
         if k < end and tokens[k].kind == "WS":
@@ -441,6 +542,8 @@ def _try_relation(
             leading_char=leading_char,
             terminal_char=terminal_char,
             run=run_total,
+            op_start=op_char_start,
+            op_end=op_char_end,
         ))
 
         # Skip inter-hop whitespace; rhs becomes lhs of the next hop
@@ -489,7 +592,7 @@ def tokenize(text: str) -> dict:
 
 def _node_to_dict(n: LineNode) -> dict:
     if isinstance(n, HeaderLine):
-        return {
+        out: dict = {
             "kind": "header",
             "pattern": n.pattern,
             "label": n.label,
@@ -497,6 +600,10 @@ def _node_to_dict(n: LineNode) -> dict:
             "end": n.end,
             "body_start": n.body_start,
         }
+        if n.op_start is not None and n.op_end is not None:
+            out["op_start"] = n.op_start
+            out["op_end"] = n.op_end
+        return out
     if isinstance(n, RelationLine):
         return {
             "kind": "relation",
@@ -508,6 +615,8 @@ def _node_to_dict(n: LineNode) -> dict:
                     "leading_char": h.leading_char,
                     "terminal_char": h.terminal_char,
                     "run": h.run,
+                    "op_start": h.op_start,
+                    "op_end": h.op_end,
                 }
                 for h in n.hops
             ],

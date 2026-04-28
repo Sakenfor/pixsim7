@@ -51,6 +51,26 @@
       "angle_wrap": false
     },
     {
+      "id": "assignment_arrow_left",
+      "op_style": "run_lt",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 59,
+      "terminal": false,
+      "ws_before_op": true,
+      "angle_wrap": false
+    },
+    {
+      "id": "compound_assignment",
+      "op_style": "compound",
+      "label_upper_only": true,
+      "label_min": 3,
+      "label_max": 200,
+      "terminal": false,
+      "ws_before_op": false,
+      "angle_wrap": false
+    },
+    {
       "id": "angle_bracket",
       "op_style": "run_angle",
       "label_upper_only": true,
@@ -83,5 +103,9 @@
     "lhs_optional": true,
     "rhs_optional": true,
     "allow_standalone": true
+  },
+  "operator_vocabulary": {
+    "swap_targets": ["=", "<", ">", ":", "?"],
+    "max_run_length": 12
   }
 }

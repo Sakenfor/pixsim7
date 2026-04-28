@@ -3,11 +3,15 @@ import clsx from 'clsx';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
   EditorView,
+  crosshairCursor,
+  dropCursor,
   keymap,
   placeholder as placeholderExt,
   type ViewUpdate,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { bracketMatching } from '@codemirror/language';
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 
 const DEFAULT_PROMPT_MAX_CHARS = 800;
 
@@ -59,6 +63,21 @@ const baseTheme = EditorView.baseTheme({
     border: 'none',
     background: 'transparent',
   },
+  // Bracket match: subtle outline on the matched pair
+  '.cm-matchingBracket, .cm-nonmatchingBracket': {
+    backgroundColor: 'rgba(168, 85, 247, 0.18)',
+    outline: '1px solid rgba(168, 85, 247, 0.5)',
+    borderRadius: '2px',
+  },
+  '.cm-nonmatchingBracket': {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    outline: '1px solid rgba(239, 68, 68, 0.5)',
+  },
+  // Selection match highlight: same color as text selection but lighter
+  '.cm-selectionMatch': {
+    backgroundColor: 'rgba(59, 130, 246, 0.18)',
+    borderRadius: '2px',
+  },
 });
 
 export const PromptEditor: React.FC<PromptEditorProps> = ({
@@ -86,6 +105,10 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   const onKeyDownRef = useRef(onKeyDown);
   onKeyDownRef.current = onKeyDown;
   const suppressNextUpdate = useRef(false);
+  /** Last value emitted by CM via onChange — when prop value matches this,
+   *  we know the user typed it and CM already has it, so the sync effect
+   *  can skip the expensive doc.toString() comparison. */
+  const lastEmittedRef = useRef<string>(value);
 
   // Compartments for dynamic reconfiguration
   const disabledComp = useRef(new Compartment());
@@ -105,6 +128,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       return;
     }
     const next = enforceLimit && val.length > maxChars ? val.slice(0, maxChars) : val;
+    lastEmittedRef.current = next;
     onChangeRef.current(next);
   }, [enforceLimit, maxChars]);
 
@@ -122,7 +146,11 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         baseTheme,
         EditorView.lineWrapping,
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        bracketMatching(),
+        highlightSelectionMatches(),
+        dropCursor(),
+        crosshairCursor(),
+        keymap.of([...defaultKeymap, ...searchKeymap, ...historyKeymap]),
         EditorView.updateListener.of((update: ViewUpdate) => {
           if (update.docChanged) {
             stableOnChange(update.state.doc.toString());
@@ -212,14 +240,22 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     });
   }, [hostExtensions]);
 
-  // Sync external value -> editor
+  // Sync external value -> editor.
+  // Fast path: when prop value matches the last value CM emitted, the user
+  // just typed and CM already has it — skip the rope traversal entirely.
   useEffect(() => {
+    if (value === lastEmittedRef.current) return;
+
     const view = viewRef.current;
     if (!view) return;
     const currentDoc = view.state.doc.toString();
-    if (currentDoc === value) return;
+    if (currentDoc === value) {
+      lastEmittedRef.current = value;
+      return;
+    }
 
     suppressNextUpdate.current = true;
+    lastEmittedRef.current = value;
     view.dispatch({
       changes: { from: 0, to: currentDoc.length, insert: value },
     });

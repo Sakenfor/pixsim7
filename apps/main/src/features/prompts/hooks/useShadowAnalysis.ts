@@ -28,6 +28,9 @@ export interface PromptTokenRelationHop {
   leading_char?: string | null;
   terminal_char?: string | null;
   run: number;
+  /** Char range of this hop's operator run in the document. */
+  op_start: number;
+  op_end: number;
 }
 
 // Token-level line nodes returned by the Python tokenizer.
@@ -37,6 +40,9 @@ export interface PromptTokenLine {
   pattern?: string;
   label?: string;
   body_start?: number;
+  /** Header op char range (e.g. `=`, `:`, `>`). Undefined for freestanding. */
+  op_start?: number;
+  op_end?: number;
   // relation fields — one or more hops, e.g. A===>B<===C → 2 hops
   hops?: PromptTokenRelationHop[];
   // shared

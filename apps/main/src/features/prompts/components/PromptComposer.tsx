@@ -40,6 +40,8 @@ import { useWorkspaceStore } from '@features/workspace';
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
+import { useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
+import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -50,7 +52,9 @@ import {
   type AnalysisResult,
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
+import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
+import { tagPillExtension } from '../lib/tagPillExtension';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
@@ -62,6 +66,7 @@ import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
+import { OperatorEditPopover } from './OperatorEditPopover';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowSidePanel } from './ShadowSidePanel';
 import { ShadowTextarea } from './ShadowTextarea';
@@ -307,6 +312,7 @@ export function PromptComposer({
   const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
   const editorEngine = usePromptSettingsStore((state) => state.editorEngine);
+  const setEditorEngine = usePromptSettingsStore((state) => state.setEditorEngine);
   const useCodemirror = editorEngine === 'codemirror';
   const [mode, setMode] = useState<PromptComposerMode>('text');
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -332,6 +338,14 @@ export function PromptComposer({
     anchor: HTMLElement;
     candidate: PromptBlockCandidate;
   } | null>(null);
+
+  // --- Operator edit popover (CM path) ---
+  const [cmOperatorPopover, setCmOperatorPopover] = useState<{
+    anchor: HTMLElement;
+    operator: OperatorRange;
+  } | null>(null);
+  const operatorVocabulary = useOperatorVocabulary();
+  const relationRecipes = useRelationRecipes();
 
   // --- Ghost diff (inline comparison backdrop) ---
   const [ghostSource, setGhostSource] = useState<GhostDiffSource | null>(null);
@@ -788,18 +802,32 @@ export function PromptComposer({
         precision: ghostDiffPrecision,
       }
     : null;
+  // Freshness guard: candidates/tokens are character-positioned against the
+  // analyzed prompt. While the user is typing, the doc has shifted but the
+  // analysis hasn't re-run yet — positions are stale and drift compounds
+  // further down the doc. Clear them when the analyzed prompt doesn't match.
+  //
+  // The hook trims the prompt before sending (`analyzedPrompt = value.trim()`),
+  // and candidate positions are relative to the trimmed text. So the guard
+  // compares the trimmed forms — and additionally requires no leading
+  // whitespace, because leading whitespace would shift positions and they'd
+  // mis-align in the editor (positions are relative to trim-start).
+  const shadowResultIsFresh =
+    !!shadowAnalysis.result &&
+    value === value.trimStart() &&
+    shadowAnalysis.result.analyzedPrompt === value.trimEnd();
   const cmShadowCandidates = useMemo(
     () =>
-      useCodemirror && showShadow && autoAnalyze
+      useCodemirror && showShadow && autoAnalyze && shadowResultIsFresh
         ? (shadowAnalysis.result?.candidates ?? EMPTY_SHADOW_CANDIDATES)
         : EMPTY_SHADOW_CANDIDATES,
-    [useCodemirror, showShadow, autoAnalyze, shadowAnalysis.result?.candidates],
+    [useCodemirror, showShadow, autoAnalyze, shadowResultIsFresh, shadowAnalysis.result?.candidates],
   );
   const cmShadowTokenLines = useMemo(
-    () => useCodemirror && showShadow && autoAnalyze
+    () => useCodemirror && showShadow && autoAnalyze && shadowResultIsFresh
       ? shadowAnalysis.result?.tokens?.lines
       : undefined,
-    [useCodemirror, showShadow, autoAnalyze, shadowAnalysis.result?.tokens],
+    [useCodemirror, showShadow, autoAnalyze, shadowResultIsFresh, shadowAnalysis.result?.tokens],
   );
   const cmExtensions = useMemo(
     () => {
@@ -809,8 +837,17 @@ export function PromptComposer({
           onRemovedSegments: setGhostRemoved,
         }),
         cmRefInput.extension,
+        tagPillExtension(),
+        operatorEditExtension(cmShadowTokenLines, {
+          onOperatorClick: (operator, anchor) => {
+            setCmOperatorPopover({ operator, anchor });
+          },
+        }),
       ];
-      if (cmShadowCandidates.length > 0) {
+      // Install when either role candidates or structural token lines are
+      // present — token lines alone (no role matches) still give us
+      // header/relation line decorations.
+      if (cmShadowCandidates.length > 0 || (cmShadowTokenLines && cmShadowTokenLines.length > 0)) {
         exts.push(shadowAnalysisExtension(
           { candidates: cmShadowCandidates, roleColors: promptRoleColors, tokenLines: cmShadowTokenLines },
           {
@@ -1115,13 +1152,10 @@ export function PromptComposer({
             type="button"
             disabled={disabled}
             onClick={() => setShowLayoutMenu((prev) => !prev)}
-            title={mode === 'text' ? 'Text mode' : `Blocks — ${blocksLayout}`}
+            title="Composer settings"
             className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
-            <Icon
-              name={mode === 'text' ? 'fileText' : blocksLayout === 'stacked' ? 'rows' : 'columns'}
-              size={14}
-            />
+            <Icon name="settings" size={14} />
             <Icon name="chevronDown" size={10} />
           </button>
           <Popover
@@ -1132,8 +1166,11 @@ export function PromptComposer({
             align="start"
             offset={4}
             triggerRef={layoutTriggerRef}
-            className="min-w-[140px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
+            className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
           >
+            <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+              View
+            </div>
             <DropdownItem
               icon={<Icon name="fileText" size={14} />}
               rightSlot={mode === 'text' ? <Icon name="check" size={12} /> : undefined}
@@ -1165,6 +1202,30 @@ export function PromptComposer({
               }}
             >
               Blocks — Inline
+            </DropdownItem>
+            <DropdownDivider />
+            <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+              Editor
+            </div>
+            <DropdownItem
+              icon={<Icon name="sparkles" size={14} />}
+              rightSlot={editorEngine === 'codemirror' ? <Icon name="check" size={12} /> : undefined}
+              onClick={() => {
+                setEditorEngine('codemirror');
+                setShowLayoutMenu(false);
+              }}
+            >
+              CodeMirror
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icon name="fileText" size={14} />}
+              rightSlot={editorEngine === 'textarea' ? <Icon name="check" size={12} /> : undefined}
+              onClick={() => {
+                setEditorEngine('textarea');
+                setShowLayoutMenu(false);
+              }}
+            >
+              Classic textarea
             </DropdownItem>
             <DropdownDivider />
             <DropdownItem
@@ -1480,6 +1541,48 @@ export function PromptComposer({
                     roleColors={promptRoleColors}
                   />
                 )}
+              </Popover>
+              <Popover
+                anchor={cmOperatorPopover?.anchor ?? null}
+                placement="bottom"
+                align="start"
+                offset={6}
+                open={!!cmOperatorPopover}
+                onClose={() => setCmOperatorPopover(null)}
+              >
+                {cmOperatorPopover && (() => {
+                  const op = cmOperatorPopover.operator;
+                  const recipe = matchRecipe(relationRecipes.recipes, {
+                    line_kind: op.context,
+                    pattern: op.pattern,
+                  });
+                  // Match by raw op so `===>` finds the `>` entry via the
+                  // last-char fallback inside matchOperator.
+                  const recipeOp = matchOperator(recipe, op.raw);
+                  return (
+                    <OperatorEditPopover
+                      operator={op}
+                      swapTargets={operatorVocabulary.swapTargets}
+                      maxRunLength={operatorVocabulary.maxRunLength}
+                      recipe={recipe}
+                      recipeOp={recipeOp}
+                      onCancel={() => setCmOperatorPopover(null)}
+                      onApply={(newOp, newRun) => {
+                        const view = promptEditorRef.current;
+                        if (view) {
+                          view.dispatch({
+                            changes: {
+                              from: op.from,
+                              to: op.to,
+                              insert: newOp.repeat(newRun),
+                            },
+                          });
+                        }
+                        setCmOperatorPopover(null);
+                      }}
+                    />
+                  );
+                })()}
               </Popover>
             </div>
             {showShadow && autoAnalyze && (

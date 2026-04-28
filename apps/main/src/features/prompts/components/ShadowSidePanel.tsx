@@ -111,7 +111,9 @@ function SectionLabel({
 
 const PATTERN_BADGE: Record<string, string> = {
   assignment_arrow: '→',
+  assignment_arrow_left: '←',
   assignment: '=',
+  compound_assignment: '⇒',
   colon: ':',
   angle_bracket: '‹›',
   freestanding: '¶',

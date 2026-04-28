@@ -40,20 +40,26 @@ export function useCmReferenceInput(
       if (!update.docChanged && !update.selectionSet) return;
 
       const cursor = update.state.selection.main.head;
-      // Avoid materializing the whole doc on every keystroke.
-      const before = update.state.sliceDoc(0, cursor);
-      const atIdx = before.lastIndexOf('@');
+      // Cap the search window — query must be < 40 chars without spaces, so
+      // the @ can't be more than ~40 chars before cursor. 50 gives margin.
+      const windowStart = Math.max(0, cursor - 50);
+      const window = update.state.sliceDoc(windowStart, cursor);
+      const atIdxInWindow = window.lastIndexOf('@');
 
-      if (
-        atIdx >= 0 &&
-        (atIdx === 0 || before[atIdx - 1] === ' ' || before[atIdx - 1] === '\n')
-      ) {
-        const q = before.slice(atIdx + 1);
-        if (!q.includes(' ') && q.length < 40) {
-          loaderRef.current.load();
-          setQuery(q);
-          setTriggerPos(atIdx);
-          return;
+      if (atIdxInWindow >= 0) {
+        const atIdx = windowStart + atIdxInWindow;
+        const charBefore =
+          atIdx === 0
+            ? null
+            : update.state.sliceDoc(atIdx - 1, atIdx);
+        if (atIdx === 0 || charBefore === ' ' || charBefore === '\n') {
+          const q = window.slice(atIdxInWindow + 1);
+          if (!q.includes(' ') && q.length < 40) {
+            loaderRef.current.load();
+            setQuery(q);
+            setTriggerPos(atIdx);
+            return;
+          }
         }
       }
       setQuery(null);

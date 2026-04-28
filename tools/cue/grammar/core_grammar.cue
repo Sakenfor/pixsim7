@@ -67,6 +67,20 @@ grammar_rules: #GrammarRules & {
             angle_wrap:       false
         },
         {
+            // Mirror of assignment_arrow for the '<' direction:
+            //   ACTOR1_TOOLS_TONGUE < Lingua ūmida flōrem...
+            // Same constraints (single < only; ws before op) so multi-char
+            // runs like '<<<' stay as relation operators.
+            id:               "assignment_arrow_left"
+            op_style:         "run_lt"
+            label_upper_only: true
+            label_min:        2
+            label_max:        59
+            terminal:         false
+            ws_before_op:     true
+            angle_wrap:       false
+        },
+        {
             id:               "angle_bracket"
             op_style:         "run_angle"
             label_upper_only: true    // uppercase only, spaces allowed: >SCENE SETTING<
@@ -86,6 +100,24 @@ grammar_rules: #GrammarRules & {
             ws_before_op:     false
             angle_wrap:       false
         },
+        {
+            // Chain-prefixed assignment — label is multiple IDENTs joined by
+            // '<' / '>' chars (and optional spaces / phrase IDENTs / a few
+            // punctuation chars). Terminator is a single '=' (not part of a
+            // compound '==>' / '<==').
+            //
+            //   ACTOR2<REPOSE<STANDING LEANED ONTO RECEPTION DESK = body
+            //   ACTOR2>ATTRACTING<ACTOR1 = body
+            //   ACTOR1_TOOLS < MUZZLE = body
+            id:               "compound_assignment"
+            op_style:         "compound"
+            label_upper_only: true
+            label_min:        3
+            label_max:        200     // long compound labels are intended
+            terminal:         false
+            ws_before_op:     false
+            angle_wrap:       false
+        },
     ]
 
     // ── relation pattern ────────────────────────────────────────────────
@@ -98,5 +130,15 @@ grammar_rules: #GrammarRules & {
         lhs_optional:     true      // "=====>  ACTOR" (no lhs) is valid
         rhs_optional:     true      // "ACTOR1>>>>>>>" (no rhs) is valid
         allow_standalone: true      // bare "=====>" with no operands is a valid relation node
+    }
+
+    // ── operator vocabulary ─────────────────────────────────────────────
+    // Surfaced via /api/v1/prompts/meta/operator-vocabulary; drives the
+    // editor's click-to-edit popover. Permissive: the user can still type
+    // any operator; this list only seeds the type-swap UI.
+
+    operator_vocabulary: {
+        swap_targets:   ["=", "<", ">", ":", "?"]
+        max_run_length: 12
     }
 }

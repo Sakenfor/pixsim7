@@ -60,7 +60,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
-  editorEngine: 'textarea',
+  editorEngine: 'codemirror',
   blocksLayout: 'stacked',
   semanticEnabled: false,
   semanticThreshold: 0.65,

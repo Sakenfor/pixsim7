@@ -27,6 +27,12 @@ from pixsim7.backend.main.services.prompt.authoring_mode_registry import (
 from pixsim7.backend.main.services.prompt.authoring_workflow_registry import (
     authoring_workflow_registry,
 )
+from pixsim7.backend.main.services.prompt.parser.tokenizer import (
+    get_operator_vocabulary,
+)
+from pixsim7.backend.main.services.prompt.parser.relation_recipes import (
+    get_relation_recipes,
+)
 
 from .operations import (
     AnalyzePromptRequest,
@@ -295,6 +301,88 @@ def _normalize_authoring_audience(audience: Optional[str]) -> Optional[str]:
             detail=f"Invalid audience '{audience}'. Expected one of: {allowed}.",
         )
     return normalized
+
+
+class OperatorVocabularyResponse(BaseModel):
+    """Operator vocabulary surfaced to the editor's click-to-edit popover.
+
+    Sourced from `grammar_rules.json` so the backend stays authoritative on
+    which operator types are swap-eligible and the cap on run length.
+    """
+    swap_targets: List[str] = Field(
+        ...,
+        description="Allowed operator characters the user can swap to (e.g. '=', '<', '>', ':').",
+    )
+    max_run_length: int = Field(
+        ...,
+        description="Cap on consecutive operator chars in a run (e.g. 12 → up to '============').",
+    )
+
+
+@router.get("/meta/operator-vocabulary", response_model=OperatorVocabularyResponse)
+async def get_prompt_operator_vocabulary():
+    """Return the operator vocabulary block from the prompt grammar rules.
+
+    Used by the prompt editor's operator-edit popover to populate type-swap
+    choices and bound the run-length stepper. Pure data, no auth needed.
+    """
+    return OperatorVocabularyResponse(**get_operator_vocabulary())
+
+
+# ── relation recipes (semantic enrichment) ─────────────────────────────
+
+
+class RelationRecipeNote(BaseModel):
+    text: str
+    model: Optional[str] = None
+    author: Optional[str] = None
+    date: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+
+
+class RelationRecipeOperator(BaseModel):
+    op: str
+    meaning: Optional[str] = None
+    run_semantics: Optional[Dict[str, str]] = None
+    swap_targets: List[str] = Field(default_factory=list)
+    notes: List[RelationRecipeNote] = Field(default_factory=list)
+
+
+class RelationRecipeContext(BaseModel):
+    line_kind: Optional[str] = None
+    pattern: Optional[str] = None
+    lhs_kind: Optional[str] = None
+    rhs_kind: Optional[str] = None
+
+
+class RelationRecipe(BaseModel):
+    id: str
+    label: Optional[str] = None
+    context: RelationRecipeContext
+    operators: List[RelationRecipeOperator] = Field(default_factory=list)
+    notes: List[RelationRecipeNote] = Field(default_factory=list)
+
+
+class RelationRecipesResponse(BaseModel):
+    version: str
+    recipes: List[RelationRecipe] = Field(default_factory=list)
+
+
+@router.get("/meta/relation-recipes", response_model=RelationRecipesResponse)
+async def get_prompt_relation_recipes():
+    """Return the full set of relation recipes.
+
+    Recipes describe what the system *knows about* — they enrich the
+    operator-edit popover with meaning, run-length semantics, recommended
+    swap targets, and free-form notes (e.g. findings while testing a
+    specific i2v model). Recipes are suggestions, not validation rules:
+    the grammar accepts any operator combination, recipes only add
+    labels for recognised contexts.
+
+    Source of truth: `tools/cue/recipes/*.cue`. Runtime data:
+    `pixsim7/backend/main/services/prompt/parser/relation_recipes.json`.
+    """
+    return RelationRecipesResponse(**get_relation_recipes())
 
 
 @router.get("/meta/analysis-contract", response_model=PromptAnalysisContractResponse)
