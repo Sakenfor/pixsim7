@@ -378,3 +378,66 @@ class TestCreateGenerationTemplateRollViaRunContext:
         assert composition_assets[1]["asset"]["id"] == 202
         assert composition_assets[1]["role"] == "mask"
         assert composition_assets[1]["influence_type"] == "mask"
+
+    @pytest.mark.asyncio
+    async def test_artificial_extend_marker_is_promoted_to_canonical_params(self, monkeypatch):
+        user_id = 42
+
+        local_service = SimpleNamespace(
+            db=SimpleNamespace(),
+            create_generation=AsyncMock(return_value=_fake_generation_response(user_id=user_id)),
+        )
+        gateway = SimpleNamespace(
+            proxy=AsyncMock(return_value=SimpleNamespace(called=False, data=None)),
+            local=local_service,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_current_user] = lambda: _mock_user(user_id)
+        app.dependency_overrides[get_generation_gateway] = lambda: gateway
+
+        monkeypatch.setattr(generations_api, "get_client_identifier", AsyncMock(return_value="test-client"))
+        monkeypatch.setattr(generations_api.job_create_limiter, "check", AsyncMock())
+
+        marker = {
+            "source_video_id": 777,
+            "source_frame_asset_id": 888,
+            "method": "i2v_extracted_frame",
+            "frame": {"mode": "last"},
+        }
+
+        request_payload = {
+            "config": {
+                "generationType": "image_to_video",
+                "purpose": "gap_fill",
+                "style": {},
+                "duration": {},
+                "constraints": {},
+                "strategy": "once",
+                "fallback": {"mode": "skip"},
+                "enabled": True,
+                "version": 1,
+                "prompt": "continue from last frame",
+                "artificial_extend": marker,
+                "composition_assets": [
+                    {
+                        "asset": "asset:888",
+                        "role": "source_image",
+                        "media_type": "image",
+                    }
+                ],
+            },
+            "provider_id": "pixverse",
+            "priority": 5,
+        }
+
+        async with _client(app) as c:
+            response = await c.post("/api/v1/generations", json=request_payload)
+
+        assert response.status_code == 201, response.text
+
+        create_call = local_service.create_generation.await_args
+        params = create_call.kwargs["params"]
+        assert params["artificial_extend"] == marker
+        assert params["generation_config"]["artificial_extend"] == marker

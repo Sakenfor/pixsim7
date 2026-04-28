@@ -355,6 +355,13 @@ def canonicalize_params(
         if context_key in params:
             canonical[context_key] = params[context_key]
 
+    # Backward-compatible fallback: some callers may still pass the marker
+    # only inside generation_config extras.
+    if "artificial_extend" not in canonical:
+        ae_from_config = gen_config.get("artificial_extend")
+        if isinstance(ae_from_config, dict):
+            canonical["artificial_extend"] = ae_from_config
+
     # Warn when legacy URL params are present alongside asset IDs
     # This indicates incomplete frontend migration to the asset ID pattern
     warn_legacy_asset_params(canonical, operation_type)

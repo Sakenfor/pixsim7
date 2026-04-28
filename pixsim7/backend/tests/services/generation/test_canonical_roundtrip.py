@@ -93,6 +93,26 @@ def test_roundtrip_preserves_artificial_extend():
     assert result == canonical
 
 
+def test_canonicalize_reads_artificial_extend_from_generation_config_extra():
+    params = {
+        "generation_config": {
+            "prompt": "continue",
+            "artificial_extend": {"source_video_id": 9, "frame": {"mode": "last"}},
+        }
+    }
+
+    result = canonicalize_params(
+        params,
+        OperationType.IMAGE_TO_VIDEO,
+        "pixverse",
+    )
+
+    assert result["artificial_extend"] == {
+        "source_video_id": 9,
+        "frame": {"mode": "last"},
+    }
+
+
 def test_roundtrip_video_transition_prompts():
     canonical = {
         "model": "v3.5",

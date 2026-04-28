@@ -425,6 +425,11 @@ async def create_generation(
             request.config.__pydantic_extra__["run_context"] = updated_run_context
 
         # Build canonical params from generation config after any server-side mutations
+        config_extra = request.config.model_extra if request.config and isinstance(request.config.model_extra, dict) else {}
+        artificial_extend = config_extra.get("artificial_extend")
+        if artificial_extend is None:
+            artificial_extend = config_extra.get("artificialExtend")
+
         canonical_params = {
             "generation_config": request.config.model_dump() if request.config else {},
             "scene_context": {
@@ -434,6 +439,8 @@ async def create_generation(
             "player_context": request.player_context.model_dump() if request.player_context else None,
             "social_context": social_context_dict,
         }
+        if isinstance(artificial_extend, dict):
+            canonical_params["artificial_extend"] = artificial_extend
 
         # Build prompt config if template_id or prompt_version_id provided
         prompt_config = None

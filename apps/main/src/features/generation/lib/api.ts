@@ -76,6 +76,8 @@ const CANONICAL_CONFIG_KEYS = new Set([
   // These should NOT go into style.pixverse - they're handled at the top level
   'operation_type',
   'operationType',
+  'artificial_extend',
+  'artificialExtend',
 ]);
 
 function buildGenerationConfig(
@@ -85,6 +87,7 @@ function buildGenerationConfig(
   runContext?: GenerationRunContext,
 ): GenerationNodeConfigSchema {
   const merged = { ...params };
+  const artificialExtend = merged.artificial_extend ?? merged.artificialExtend;
 
   // Extract duration settings (only if explicitly provided)
   const durationTarget = merged.duration;
@@ -169,6 +172,7 @@ function buildGenerationConfig(
     ...(sourceAssetIds ? { sourceAssetIds } : {}),
     ...(merged.composition_assets ? { composition_assets: merged.composition_assets } : {}),
     ...(merged.mask_url ? { mask_url: merged.mask_url } : {}),
+    ...(artificialExtend !== undefined ? { artificial_extend: artificialExtend } : {}),
   };
 
   if (runContext && typeof runContext === 'object') {
