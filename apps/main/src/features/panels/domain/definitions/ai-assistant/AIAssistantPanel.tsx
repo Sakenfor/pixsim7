@@ -15,6 +15,7 @@ import {
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
+import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
@@ -862,29 +863,28 @@ export function AIAssistantPanel() {
 
   useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
-  // Poll bridge — auto-reconnect if it drops unexpectedly (e.g. backend restart)
+  // Bridge state from the shared store (one poller for the whole app).
+  // Auto-reconnect logic stays here — chat is the only surface that wants to
+  // restart the bridge process when it drops; observability/widgets just observe.
+  const sharedStatus = useBridgeStatus();
   const bridgeWasConnectedRef = useRef(false);
   const bridgeManualStopRef = useRef(false);
   useEffect(() => {
-    const pollHeaders = { 'X-Client-Surface': 'panel:ai-assistant' };
-    const poll = () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      pixsimClient.get<BridgeStatus>('/meta/agents/bridge', { headers: pollHeaders }).then((status) => {
-        const wasConnected = bridgeWasConnectedRef.current;
-        const isConnected = status.connected > 0;
-        bridgeWasConnectedRef.current = isConnected;
+    const status = sharedStatus.bridge;
+    if (!status) {
+      setBridge(null);
+      return;
+    }
+    const wasConnected = bridgeWasConnectedRef.current;
+    const isConnected = status.connected > 0;
+    bridgeWasConnectedRef.current = isConnected;
 
-        if (wasConnected && !isConnected && !bridgeManualStopRef.current && !status.process_alive) {
-          pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {});
-        }
-        if (isConnected) bridgeManualStopRef.current = false;
-        setBridge(status);
-      }).catch(() => setBridge(null));
-    };
-    poll();
-    const interval = setInterval(poll, 8_000);
-    return () => clearInterval(interval);
-  }, []);
+    if (wasConnected && !isConnected && !bridgeManualStopRef.current && !status.process_alive) {
+      pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {});
+    }
+    if (isConnected) bridgeManualStopRef.current = false;
+    setBridge(status);
+  }, [sharedStatus]);
 
   const setActiveTab = useCallback((id: string | null) => {
     store.getState().setActiveTab(id);

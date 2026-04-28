@@ -6,61 +6,19 @@
  * Click opens the AI Agents floating panel.
  */
 import { useHoverExpand } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-import { pixsimClient } from '@lib/api/client';
+import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
-interface AgentBridgeStatus {
-  connected: number;
-  available: number;
-}
-
-interface AgentSessionsStatus {
-  total_active: number;
-}
-
-const AGENT_ACTIVITY_POLL_HEADERS = { 'X-Client-Surface': 'widget:agent-activity-bar' } as const;
-
-function useAgentStatus() {
-  const [activeAgents, setActiveAgents] = useState(0);
-  const [bridgeConnected, setBridgeConnected] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const poll = async () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      try {
-        const [sessions, bridge] = await Promise.all([
-          pixsimClient.get<AgentSessionsStatus>('/meta/agents', { headers: AGENT_ACTIVITY_POLL_HEADERS }).catch(() => null),
-          pixsimClient.get<AgentBridgeStatus>('/meta/agents/bridge', { headers: AGENT_ACTIVITY_POLL_HEADERS }).catch(() => null),
-        ]);
-        if (cancelled) return;
-        setActiveAgents(sessions?.total_active ?? 0);
-        setBridgeConnected(bridge?.connected ?? 0);
-      } catch {
-        // ignore
-      }
-    };
-
-    void poll();
-    const interval = setInterval(poll, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  return { activeAgents, bridgeConnected };
-}
-
 export function AgentActivityBarWidget() {
-  const { activeAgents, bridgeConnected } = useAgentStatus();
+  const { bridge, agents } = useBridgeStatus();
+  const activeAgents = (agents?.total_active as number | undefined) ?? 0;
+  const bridgeConnected = bridge?.connected ?? 0;
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 

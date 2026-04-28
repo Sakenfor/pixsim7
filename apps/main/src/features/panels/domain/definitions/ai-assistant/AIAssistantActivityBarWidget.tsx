@@ -5,39 +5,18 @@
  * Shows connection status and opens the AI Assistant chat panel on click.
  */
 import { useHoverExpand } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-import { pixsimClient } from '@lib/api/client';
+import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
-const AI_ASSISTANT_WIDGET_POLL_HEADERS = { 'X-Client-Surface': 'widget:ai-assistant-activity-bar' } as const;
-
-function useBridgeStatus() {
-  const [connected, setConnected] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    const poll = () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      pixsimClient
-        .get<{ connected: number }>('/meta/agents/bridge', { headers: AI_ASSISTANT_WIDGET_POLL_HEADERS })
-        .then((res) => { if (!cancelled) setConnected(res.connected); })
-        .catch(() => { if (!cancelled) setConnected(0); });
-    };
-    poll();
-    const interval = setInterval(poll, 10_000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
-
-  return connected;
-}
-
 export function AIAssistantActivityBarWidget() {
-  const connected = useBridgeStatus();
+  const { bridge } = useBridgeStatus();
+  const connected = bridge?.connected ?? 0;
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const triggerRef = useRef<HTMLDivElement>(null);
 
