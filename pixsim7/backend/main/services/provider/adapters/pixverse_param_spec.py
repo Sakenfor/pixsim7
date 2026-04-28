@@ -21,6 +21,19 @@ except ImportError:
     VideoModel = ImageModel = CameraMovement = None  # type: ignore
     get_video_operation_fields = None  # type: ignore
 
+# Backend-level compatibility overrides for partner/early-access models.
+# Keep these small and explicit so UI capabilities can surface new models
+# even when the deployed pixverse-py SDK lags behind.
+_FORCED_VIDEO_MODEL_QUALITIES: dict[str, list[str]] = {
+    "grok-imagine": ["480p", "720p"],
+}
+_FORCED_VIDEO_MODEL_MAX_DURATION: dict[str, int] = {
+    "grok-imagine": 15,
+}
+_FORCED_VIDEO_MODEL_AUDIO: set[str] = {
+    "grok-imagine",
+}
+
 
 def build_operation_parameter_spec() -> dict:
     """
@@ -48,6 +61,11 @@ def build_operation_parameter_spec() -> dict:
     else:
         video_model_enum = ["v5"]
         default_video_model = "v5"
+
+    # Force-append compatibility models if missing from the runtime SDK.
+    for forced_model in _FORCED_VIDEO_MODEL_QUALITIES.keys():
+        if forced_model not in video_model_enum:
+            video_model_enum.append(forced_model)
 
     # Video extend models (derived from SDK capability)
     video_extend_model_enum = (
@@ -101,13 +119,58 @@ def build_operation_parameter_spec() -> dict:
 
     # Video quality presets – derive from pricing tables when possible
     video_quality_enum: list[str] = []
+    video_quality_per_model: dict[str, list[str]] = {}
+    base_video_qualities: list[str] = ["360p", "540p", "720p", "1080p"]
+    model_quality_overrides: dict[str, dict[str, int]] = {}
     try:
-        from pixverse.pricing import WEBAPI_BASE_COSTS  # type: ignore
+        from pixverse.pricing import (  # type: ignore
+            WEBAPI_BASE_COSTS,
+            WEBAPI_MODEL_BASE_COSTS,
+        )
 
-        video_quality_enum = list(WEBAPI_BASE_COSTS.keys())
+        base_video_qualities = list(WEBAPI_BASE_COSTS.keys())
+        model_quality_overrides = dict(WEBAPI_MODEL_BASE_COSTS or {})
     except Exception:
-        # Conservative default; SDK docs list 360p/540p/720p/1080p
-        video_quality_enum = ["360p", "540p", "720p", "1080p"]
+        # Conservative fallback if pricing module isn't available.
+        pass
+
+    video_quality_enum = list(base_video_qualities)
+    if VideoModel is not None and getattr(VideoModel, "ALL", None):
+        for spec in VideoModel.ALL:
+            model_id = str(spec)
+            spec_qualities = [
+                str(q).lower()
+                for q in getattr(spec, "qualities", ()) or ()
+                if isinstance(q, str) and q
+            ]
+            if not spec_qualities:
+                spec_qualities = list(base_video_qualities)
+
+            override = model_quality_overrides.get(model_id) or model_quality_overrides.get(model_id.lower())
+            if isinstance(override, dict) and override:
+                spec_qualities = [str(q).lower() for q in override.keys()]
+
+            if not spec_qualities:
+                continue
+
+            video_quality_per_model[model_id] = spec_qualities
+            for quality_id in spec_qualities:
+                if quality_id not in video_quality_enum:
+                    video_quality_enum.append(quality_id)
+
+    # Force per-model quality support for compatibility models.
+    for model_id, forced_qualities in _FORCED_VIDEO_MODEL_QUALITIES.items():
+        normalized = [
+            str(q).lower()
+            for q in forced_qualities
+            if isinstance(q, str) and q
+        ]
+        if not normalized:
+            continue
+        video_quality_per_model[model_id] = normalized
+        for quality_id in normalized:
+            if quality_id not in video_quality_enum:
+                video_quality_enum.append(quality_id)
 
     # ==== Common field specs ====
     # Per-model prompt limits (currently all image models use the default 5000)
@@ -128,15 +191,28 @@ def build_operation_parameter_spec() -> dict:
         },
     }
     quality = {
-        "name": "quality", "type": "enum", "required": False, "default": "720p",
-        "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
+        "name": "quality",
+        "type": "enum",
+        "required": False,
+        "default": "720p",
+        "enum": video_quality_enum,
+        "description": "Output resolution preset",
+        "group": "render",
+        "metadata": {
+            "per_model_options": video_quality_per_model,
+        } if video_quality_per_model else None,
     }
     # Derive duration presets per model directly from specs — no hardcoded defaults.
     per_model_duration_presets: dict[str, list[int]] = {}
     if VideoModel is not None:
         for spec in VideoModel.ALL:
             per_model_duration_presets[str(spec)] = list(range(1, spec.max_duration + 1))
+    for model_id, max_duration in _FORCED_VIDEO_MODEL_MAX_DURATION.items():
+        if model_id not in per_model_duration_presets and isinstance(max_duration, int) and max_duration > 0:
+            per_model_duration_presets[model_id] = list(range(1, max_duration + 1))
     global_max_duration = max((spec.max_duration for spec in VideoModel.ALL), default=10) if VideoModel is not None else 10
+    if _FORCED_VIDEO_MODEL_MAX_DURATION:
+        global_max_duration = max(global_max_duration, max(_FORCED_VIDEO_MODEL_MAX_DURATION.values()))
     default_model_max = VideoModel.DEFAULT.max_duration if VideoModel is not None else 10
 
     duration_metadata: dict[str, Any] = {
@@ -338,6 +414,9 @@ def build_operation_parameter_spec() -> dict:
         if VideoModel is not None
         else ["v5.5", "v5.6", "v6"]
     )
+    for model_id in _FORCED_VIDEO_MODEL_AUDIO:
+        if model_id not in audio_models:
+            audio_models.append(model_id)
 
     multi_shot = {
         "name": "multi_shot",
@@ -401,7 +480,7 @@ def build_operation_parameter_spec() -> dict:
         included if present, even if the SDK doesn't return them.
         """
         # Fields we always want if they're in the fallback, regardless of SDK
-        always_include = {"aspect_ratio", "audio", "off_peak"}
+        always_include = {"model", "quality", "duration", "aspect_ratio", "audio", "off_peak"}
 
         field_names: list[str] = fallback
         if get_video_operation_fields is not None:

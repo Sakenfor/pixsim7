@@ -31,6 +31,17 @@ WEBAPI_BASE_COSTS: Dict[str, int] = {
     "1080p": 80
 }
 
+# Model-specific WebAPI base costs for 5-second videos.
+# Only define overrides where pricing differs from WEBAPI_BASE_COSTS.
+WEBAPI_MODEL_BASE_COSTS: Dict[str, Dict[str, int]] = {
+    # Pixverse Grok Imagine partner model.
+    # Source: PixVerse announcement/blog pricing table (480p=10cr/s, 720p=15cr/s).
+    "grok-imagine": {
+        "480p": 50,
+        "720p": 75,
+    },
+}
+
 # ============================================================================
 # OpenAPI Pricing (API Key-based)
 # OpenAPI uses separate credits from WebAPI
@@ -43,7 +54,8 @@ OPENAPI_BASE_COSTS: Dict[str, Dict[str, int]] = {
 
 # Per-second base costs (derived from 5s pricing)
 # Cost = per_second_rate * duration
-# WebAPI: 360p=4, 540p=6, 720p=8, 1080p=16 credits/sec
+# WebAPI defaults: 360p=4, 540p=6, 720p=8, 1080p=16 credits/sec
+# Some models (e.g. grok-imagine) can override specific quality rates.
 # Duration range: 1-10 seconds
 
 # ============================================================================
@@ -133,10 +145,10 @@ def calculate_cost(
     Calculate estimated cost for Pixverse video generation.
 
     Args:
-        quality: Quality level (360p, 540p, 720p, 1080p)
+        quality: Quality level (e.g. 360p, 540p, 720p, 1080p, 480p for grok-imagine)
         duration: Duration in seconds (1-15 depending on model)
         api_method: API method ("web-api", "open-api", or "auto")
-        model: Model version (v5, v5-fast, v5.5, v5.6, v6)
+        model: Model version (v5, v5-fast, v5.5, v5.6, v6, pixverse-c1, grok-imagine)
         multi_shot: Enable multi-shot (v5.5+ only, +10 for 5s, +20 for 8s/10s)
         audio: Enable native audio (v5.5+ only, +10 flat)
         discounts: Optional model->multiplier map for active promotions,
@@ -163,12 +175,20 @@ def calculate_cost(
 
     # Resolve model spec for pricing tier lookup
     spec = VideoModel.get(model) if model else None
+    model_key = str(model).strip().lower() if model else None
 
     # Get base cost based on API method
     if api_method == "web-api":
-        base_cost = WEBAPI_BASE_COSTS.get(quality)
-        if base_cost is None:
-            base_cost = WEBAPI_BASE_COSTS["360p"]
+        model_costs = WEBAPI_MODEL_BASE_COSTS.get(model_key, {}) if model_key else {}
+        if model_costs:
+            # Model-specific override table (e.g. grok-imagine: 480p/720p).
+            base_cost = model_costs.get(quality)
+            if base_cost is None:
+                base_cost = model_costs.get("480p") or next(iter(model_costs.values()))
+        else:
+            base_cost = WEBAPI_BASE_COSTS.get(quality)
+            if base_cost is None:
+                base_cost = WEBAPI_BASE_COSTS["360p"]
 
     elif api_method == "open-api":
         tier = spec.pricing_tier if spec else "v5"
@@ -184,7 +204,7 @@ def calculate_cost(
     # Apply promotional discount if active for this model
     multiplier = 1.0
     if discounts and model:
-        multiplier = discounts.get(model, 1.0)
+        multiplier = discounts.get(model, discounts.get(model_key or "", 1.0))
 
     # Apply linear duration scaling (base costs are for 5 seconds)
     cost = int(base_cost * multiplier * duration / 5)

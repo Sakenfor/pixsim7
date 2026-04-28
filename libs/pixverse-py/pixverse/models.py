@@ -9,6 +9,9 @@ from typing import Optional, Dict, Any, Literal, List, Union, Tuple
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
+DEFAULT_VIDEO_QUALITIES: tuple[str, ...] = ("360p", "540p", "720p", "1080p")
+
+
 # =============================================================================
 # Model Specifications
 # =============================================================================
@@ -33,6 +36,7 @@ class VideoModelSpec:
     max_duration: int = 10  # max video length in seconds
     pricing_tier: str = "v5"  # "v5" (default) — extensible for future tiers
     badge: str = ""  # short display label for UI badges (e.g. "5", "5F", "C1")
+    qualities: tuple[str, ...] = DEFAULT_VIDEO_QUALITIES
 
     @property
     def capabilities(self) -> Dict[str, bool]:
@@ -101,9 +105,16 @@ class VideoModel:
     V5_6 = VideoModelSpec("v5.6", camera_movement=False, audio=True, fusion=True, badge="5.6")
     V6 = VideoModelSpec("v6", camera_movement=False, audio=True, multi_shot=True, max_duration=15, badge="6")
     C1 = VideoModelSpec("pixverse-c1", camera_movement=False, audio=True, fusion=True, max_duration=15, badge="C1")
+    GROK_IMAGINE = VideoModelSpec(
+        "grok-imagine",
+        audio=True,
+        max_duration=15,
+        badge="GI",
+        qualities=("480p", "720p"),
+    )
 
     # All models (order matters for UI)
-    ALL: List[VideoModelSpec] = [V5, V5_FAST, V5_5, V5_6, V6, C1]
+    ALL: List[VideoModelSpec] = [V5, V5_FAST, V5_5, V5_6, V6, C1, GROK_IMAGINE]
     DEFAULT: VideoModelSpec = V5
 
     @classmethod
@@ -308,12 +319,12 @@ class BaseVideoOptions(BaseModel):
 
     model: str = Field(
         default="v5",
-        description="Model version (v5, v5-fast, v5.5, v5.6, v6, c1)",
+        description="Model version (v5, v5-fast, v5.5, v5.6, v6, pixverse-c1, grok-imagine)",
         json_schema_extra={"ops": _ALL_VIDEO_OPS, "api_modes": _BOTH_MODES},
     )
     quality: str = Field(
         default="360p",
-        description="Video quality (360p, 540p, 720p, 1080p)",
+        description="Video quality (360p, 540p, 720p, 1080p; grok-imagine also supports 480p)",
         json_schema_extra={"ops": _ALL_VIDEO_OPS, "api_modes": _BOTH_MODES},
     )
     seed: Optional[int] = Field(

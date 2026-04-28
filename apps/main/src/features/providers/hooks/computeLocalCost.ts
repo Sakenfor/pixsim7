@@ -54,20 +54,40 @@ export function computeLocalCost(
 
   const normalizedQuality = normalizeQuality(table, quality);
   const apiMethod = (params.api_method ?? 'web-api').toLowerCase();
+  const modelKey = typeof model === 'string' ? model.toLowerCase() : undefined;
 
   let baseCost: number | undefined;
   if (apiMethod === 'open-api') {
     const tier = model && table.openapi_base_costs[model] ? model : 'v5';
     baseCost = table.openapi_base_costs[tier]?.[normalizedQuality];
   } else {
-    baseCost = table.webapi_base_costs[normalizedQuality];
+    const modelCosts =
+      (model && table.webapi_model_base_costs?.[model]) ||
+      (modelKey ? table.webapi_model_base_costs?.[modelKey] : undefined);
+
+    if (modelCosts) {
+      baseCost =
+        modelCosts[normalizedQuality] ??
+        modelCosts[quality.toLowerCase()] ??
+        modelCosts['480p'] ??
+        Object.values(modelCosts)[0];
+    }
+    if (baseCost == null) {
+      baseCost = table.webapi_base_costs[normalizedQuality];
+    }
   }
   if (baseCost == null) return null;
 
-  const multiplier =
-    params.discounts && model && typeof params.discounts[model] === 'number'
-      ? params.discounts[model]
-      : 1;
+  const multiplier = (() => {
+    if (!params.discounts || !model) return 1;
+    const direct = params.discounts[model];
+    if (typeof direct === 'number') return direct;
+    if (modelKey) {
+      const normalized = params.discounts[modelKey];
+      if (typeof normalized === 'number') return normalized;
+    }
+    return 1;
+  })();
 
   let cost = Math.floor((baseCost * multiplier * duration) / table.base_duration_seconds);
 

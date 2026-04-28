@@ -52,7 +52,10 @@ _FALLBACK_VIDEO_MODEL_MAX_DURATION = {
     "v5.5": 10,
     "v5.6": 10,
     "v6": 15,
+    "pixverse-c1": 15,
+    "grok-imagine": 15,
 }
+_FORCED_VIDEO_MODELS = {"grok-imagine"}
 
 
 def normalize_quality(quality: str) -> str:
@@ -159,7 +162,8 @@ def map_parameters(
     if VideoModel is not None:
         video_models = set(VideoModel.ids()) if hasattr(VideoModel, "ids") else {str(m) for m in getattr(VideoModel, "ALL", [])}
     else:
-        video_models = {"v5", "v5-fast", "v5.5", "v5.6", "v6"}
+        video_models = {"v5", "v5-fast", "v5.5", "v5.6", "v6", "pixverse-c1", "grok-imagine"}
+    video_models.update(_FORCED_VIDEO_MODELS)
 
     if ImageModel is not None:
         image_models = set(ImageModel.ids()) if hasattr(ImageModel, "ids") else {str(m) for m in getattr(ImageModel, "ALL", [])}
@@ -196,7 +200,10 @@ def map_parameters(
     if "quality" in params and params["quality"] is not None:
         mapped["quality"] = normalize_quality(params["quality"])
     else:
-        mapped["quality"] = "360p" if is_video_op else "720p"
+        if is_video_op and str(mapped.get("model", "")).strip().lower() == "grok-imagine":
+            mapped["quality"] = "480p"
+        else:
+            mapped["quality"] = "360p" if is_video_op else "720p"
 
     # === Aspect ratio (both, but not for IMAGE_TO_VIDEO or VIDEO_EXTEND) ===
     # VIDEO_EXTEND inherits aspect ratio from source video

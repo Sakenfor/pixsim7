@@ -16,6 +16,7 @@ try:  # pragma: no cover - optional dependency
         IMAGE_CREDITS as _SDK_IMAGE_CREDITS,
         normalize_quality as pixverse_normalize_quality,
         WEBAPI_BASE_COSTS as _SDK_WEBAPI_BASE_COSTS,
+        WEBAPI_MODEL_BASE_COSTS as _SDK_WEBAPI_MODEL_BASE_COSTS,
         OPENAPI_BASE_COSTS as _SDK_OPENAPI_BASE_COSTS,
         MULTI_SHOT_COST_SHORT as _SDK_MULTI_SHOT_SHORT,
         MULTI_SHOT_COST_LONG as _SDK_MULTI_SHOT_LONG,
@@ -27,6 +28,7 @@ except Exception:  # pragma: no cover
     _SDK_IMAGE_CREDITS = None  # type: ignore
     pixverse_normalize_quality = None  # type: ignore
     _SDK_WEBAPI_BASE_COSTS = None  # type: ignore
+    _SDK_WEBAPI_MODEL_BASE_COSTS = None  # type: ignore
     _SDK_OPENAPI_BASE_COSTS = None  # type: ignore
     _SDK_MULTI_SHOT_SHORT = 10  # type: ignore
     _SDK_MULTI_SHOT_LONG = 20  # type: ignore
@@ -40,6 +42,18 @@ _FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
     "gemini-2.5-flash": {"1080p": 15},
     "seedream-4.0": {"1080p": 10, "1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
     "seedream-4.5": {"1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
+}
+_FALLBACK_WEBAPI_BASE_COSTS: dict[str, int] = {
+    "360p": 20,
+    "540p": 30,
+    "720p": 40,
+    "1080p": 80,
+}
+_FALLBACK_WEBAPI_MODEL_BASE_COSTS: dict[str, dict[str, int]] = {
+    "grok-imagine": {
+        "480p": 50,
+        "720p": 75,
+    },
 }
 
 
@@ -87,22 +101,68 @@ def estimate_video_credit_change(
     Returns:
         Integer credit delta or None if the helper is unavailable.
     """
-    if pixverse_calculate_cost is None:
-        return None
+    model_key = str(model or "").strip().lower()
+    normalized_quality = str(quality or "").strip().lower()
+    if normalized_quality == "2k":
+        normalized_quality = "1440p"
+    elif normalized_quality == "4k":
+        normalized_quality = "2160p"
 
-    try:
-        credits = pixverse_calculate_cost(
-            quality=quality,
-            duration=int(duration),
-            api_method="web-api",
-            model=model,
-            multi_shot=multi_shot,
-            audio=audio,
-            discounts=discounts,
-        )
+    # Runtime SDK lag guard: force known partner-model pricing locally.
+    if model_key in _FALLBACK_WEBAPI_MODEL_BASE_COSTS:
+        model_costs = _FALLBACK_WEBAPI_MODEL_BASE_COSTS[model_key]
+        base_cost = model_costs.get(normalized_quality)
+        if base_cost is None:
+            base_cost = model_costs.get("480p") or next(iter(model_costs.values()))
+        multiplier = 1.0
+        if discounts:
+            direct = discounts.get(model) if isinstance(model, str) else None
+            normalized = discounts.get(model_key)
+            multiplier = (
+                float(direct) if isinstance(direct, (int, float))
+                else float(normalized) if isinstance(normalized, (int, float))
+                else 1.0
+            )
+        credits = int(base_cost * multiplier * int(duration) / 5)
+        if multi_shot:
+            credits += int(_SDK_MULTI_SHOT_LONG if int(duration) > 5 else _SDK_MULTI_SHOT_SHORT)
+        if audio:
+            credits += int(_SDK_NATIVE_AUDIO)
         return int(credits)
-    except Exception:  # pragma: no cover - defensive
-        return None
+
+    if pixverse_calculate_cost is not None:
+        try:
+            credits = pixverse_calculate_cost(
+                quality=quality,
+                duration=int(duration),
+                api_method="web-api",
+                model=model,
+                multi_shot=multi_shot,
+                audio=audio,
+                discounts=discounts,
+            )
+            return int(credits)
+        except Exception:
+            pass
+
+    # Generic fallback when SDK helper is unavailable.
+    base_table = dict(_SDK_WEBAPI_BASE_COSTS or _FALLBACK_WEBAPI_BASE_COSTS)
+    base_cost = base_table.get(normalized_quality, base_table.get("360p", 20))
+    multiplier = 1.0
+    if discounts and isinstance(model, str):
+        direct = discounts.get(model)
+        normalized = discounts.get(model_key)
+        multiplier = (
+            float(direct) if isinstance(direct, (int, float))
+            else float(normalized) if isinstance(normalized, (int, float))
+            else 1.0
+        )
+    credits = int(base_cost * multiplier * int(duration) / 5)
+    if multi_shot:
+        credits += int(_SDK_MULTI_SHOT_LONG if int(duration) > 5 else _SDK_MULTI_SHOT_SHORT)
+    if audio:
+        credits += int(_SDK_NATIVE_AUDIO)
+    return int(credits)
 
 
 def get_client_pricing_payload() -> Optional[dict[str, Any]]:
@@ -112,8 +172,14 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
     so the client can render credit estimates synchronously. Server estimates
     remain authoritative and reconcile async.
     """
-    if _SDK_WEBAPI_BASE_COSTS is None:
-        return None
+    webapi_base_costs = dict(_SDK_WEBAPI_BASE_COSTS or _FALLBACK_WEBAPI_BASE_COSTS)
+    webapi_model_base_costs: dict[str, dict[str, int]] = {
+        model_id: dict(qualities)
+        for model_id, qualities in _FALLBACK_WEBAPI_MODEL_BASE_COSTS.items()
+    }
+    for model_id, qualities in (_SDK_WEBAPI_MODEL_BASE_COSTS or {}).items():
+        existing = webapi_model_base_costs.setdefault(model_id, {})
+        existing.update(dict(qualities))
 
     image_credits: dict[str, dict[str, int]] = {}
     if _SDK_IMAGE_CREDITS:
@@ -126,7 +192,8 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
     return {
         "provider": "pixverse",
         "base_duration_seconds": 5,
-        "webapi_base_costs": dict(_SDK_WEBAPI_BASE_COSTS),
+        "webapi_base_costs": webapi_base_costs,
+        "webapi_model_base_costs": webapi_model_base_costs,
         "openapi_base_costs": {
             tier: dict(qualities)
             for tier, qualities in (_SDK_OPENAPI_BASE_COSTS or {}).items()

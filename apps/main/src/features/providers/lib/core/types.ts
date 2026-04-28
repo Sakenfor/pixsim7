@@ -45,6 +45,7 @@ export interface CostEstimatorPricingTable {
   provider: string;
   base_duration_seconds: number;
   webapi_base_costs: Record<string, number>;
+  webapi_model_base_costs?: Record<string, Record<string, number>>;
   openapi_base_costs: Record<string, Record<string, number>>;
   multi_shot_short: number;
   multi_shot_long: number;
