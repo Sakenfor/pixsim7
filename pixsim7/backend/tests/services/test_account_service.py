@@ -260,7 +260,9 @@ async def test_select_and_reserve_picks_lowest_credits_at_equal_priority(
     # the Python re-sort is what enforces the contract.
     rows = [(rich, 5000), (cheap, 25)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    # 1st execute = candidate scan (read-only).
+    # 2nd execute = atomic per-row reserve on the chosen winner.
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(cheap,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -283,7 +285,7 @@ async def test_select_and_reserve_priority_beats_credits(
     low_priority_cheap = _make_account(account_id=2, priority=0)
     rows = [(low_priority_cheap, 10), (high_priority, 9000)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(high_priority,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -308,7 +310,7 @@ async def test_select_and_reserve_priority_override_promotes_account(
     )
     rows = [(base, 0), (boosted, 9999)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(boosted,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -333,7 +335,7 @@ async def test_select_and_reserve_alias_override_penalizes_canonical_model(
     neutral = _make_account(account_id=2, priority=0)
     rows = [(penalized, 100), (neutral, 100)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(neutral,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -356,7 +358,8 @@ async def test_select_and_reserve_high_cost_inverts_to_prefer_high_credits(
     rows = [(near_empty, 60), (well_funded, 5000)]
 
     # First execute = pre-filter query (rows that pass min_credits filter).
-    db = _FakeDb(results=[_FakeResult(rows)])
+    # Second execute = atomic reserve on the winner.
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(well_funded,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -383,7 +386,7 @@ async def test_select_and_reserve_filters_routing_mismatches(
     eligible = _make_account(account_id=2, priority=0)
     rows = [(blocked, 0), (eligible, 100)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(eligible,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -405,7 +408,7 @@ async def test_select_and_reserve_breaks_ties_by_least_recently_used(
     fresh = _make_account(account_id=2, priority=0, last_used=now)
     rows = [(fresh, 100), (stale, 100)]
 
-    db = _FakeDb(results=[_FakeResult(rows)])
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(stale,)])])
     service = _service(db, monkeypatch)
 
     selected = await service.select_and_reserve_account(
@@ -423,16 +426,18 @@ async def test_select_and_reserve_falls_back_when_credit_prefilter_excludes_all(
 ) -> None:
     """If the SQL pre-filter (DB credits >= min_credits) yields nothing — likely
     a stale credit snapshot — retry without the filter and probe high-credit
-    candidates first. Pinned by the comment at line 712-737."""
+    candidates first."""
     high = _make_account(account_id=1, priority=0)
     low = _make_account(account_id=2, priority=0)
 
-    # 1st execute (pre-filter) → empty.
-    # 2nd execute (fallback, prefer_high_credits=True) → both rows.
+    # 1st execute (pre-filter scan) → empty.
+    # 2nd execute (fallback scan, prefer_high_credits=True) → both rows.
+    # 3rd execute (atomic reserve on winner) → high.
     db = _FakeDb(
         results=[
             _FakeResult([]),
             _FakeResult([(low, 5), (high, 9000)]),
+            _FakeResult([(high,)]),
         ]
     )
     service = _service(db, monkeypatch)
@@ -446,14 +451,46 @@ async def test_select_and_reserve_falls_back_when_credit_prefilter_excludes_all(
 
     # Fallback flips to high-credits-first regardless of the original hint.
     assert selected.id == high.id
-    assert db.execute_calls == 2
+    assert db.execute_calls == 3
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_walks_to_next_candidate_on_race_loss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the top-ranked candidate is locked by a concurrent worker (atomic
+    reserve returns None), the picker falls through to the next candidate
+    rather than giving up."""
+    winner = _make_account(account_id=1, priority=0)
+    runner_up = _make_account(account_id=2, priority=0)
+    rows = [(winner, 25), (runner_up, 50)]  # winner is cheaper → top of sort
+
+    # 1st execute = scan (returns both).
+    # 2nd execute = reserve on winner → empty (lock contention, skipped).
+    # 3rd execute = reserve on runner_up → success.
+    db = _FakeDb(
+        results=[
+            _FakeResult(rows),
+            _FakeResult([]),
+            _FakeResult([(runner_up,)]),
+        ]
+    )
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type=OP,
+        model=MODEL,
+    )
+
+    assert selected.id == runner_up.id
 
 
 @pytest.mark.asyncio
 async def test_select_and_reserve_raises_when_no_candidates_and_no_accountless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # 1st execute (selection) → empty
+    # 1st execute (selection scan) → empty
     # 2nd execute (debug all-accounts query) → empty
     db = _FakeDb(results=[_FakeResult([]), _FakeResult([])])
     service = _service(db, monkeypatch)
@@ -465,4 +502,5 @@ async def test_select_and_reserve_raises_when_no_candidates_and_no_accountless(
             model=MODEL,
         )
 
-    assert db.rollbacks == 1  # locks released before fallback path
+    # No FOR UPDATE in the scan path anymore, so no rollback before fallback.
+    assert db.rollbacks == 0

@@ -284,6 +284,30 @@ def _account_priority_delta(account: ProviderAccount, *, operation_type: str | N
     return delta
 
 
+def _total_credits_subquery():
+    """Correlated subquery yielding sum(amount) of all credits for the
+    outer ProviderAccount row, coalesced to 0 when no credit rows exist."""
+    return (
+        select(func.coalesce(func.sum(ProviderCredit.amount), 0))
+        .where(ProviderCredit.account_id == ProviderAccount.id)
+        .correlate(ProviderAccount)
+        .scalar_subquery()
+        .label("total_credits")
+    )
+
+
+def _apply_user_visibility_filter(query, user_id: Optional[int]):
+    """Restrict an account query to the rows visible to ``user_id``: their
+    own private accounts plus any shared (non-private) accounts. With no
+    user, only shared accounts are visible."""
+    if user_id:
+        return query.where(
+            (ProviderAccount.user_id == user_id)
+            | (ProviderAccount.is_private == False)  # noqa: E712
+        )
+    return query.where(ProviderAccount.is_private == False)  # noqa: E712
+
+
 class AccountService:
     """
     Provider account management service
@@ -483,16 +507,7 @@ class AccountService:
             ProviderAccount.provider_id == provider_id,
             ProviderAccount.status == AccountStatus.ACTIVE,
         )
-
-        # Add user filter (private + shared accounts)
-        if user_id:
-            query = query.where(
-                (ProviderAccount.user_id == user_id) |  # User's private accounts
-                (ProviderAccount.is_private == False)    # Shared accounts
-            )
-        else:
-            # No user - only shared accounts
-            query = query.where(ProviderAccount.is_private == False)
+        query = _apply_user_visibility_filter(query, user_id)
 
         if not ignore_availability:
             # Filter out accounts in cooldown
@@ -509,13 +524,7 @@ class AccountService:
 
         # Sort by priority, then lowest credits first (drain cheap accounts),
         # then least recently used as tiebreaker.
-        _total_credits = (
-            select(func.coalesce(func.sum(ProviderCredit.amount), 0))
-            .where(ProviderCredit.account_id == ProviderAccount.id)
-            .correlate(ProviderAccount)
-            .scalar_subquery()
-            .label("total_credits")
-        )
+        _total_credits = _total_credits_subquery()
         query = query.order_by(
             ProviderAccount.priority.desc(),
             _total_credits.asc(),
@@ -600,16 +609,14 @@ class AccountService:
         Raises:
             ResourceNotFoundError: Account not found
         """
-        from sqlalchemy import select
-        
         # Lock row for update to prevent race conditions
         query = select(ProviderAccount).where(
             ProviderAccount.id == account_id
         ).with_for_update()
-        
+
         result = await self.db.execute(query)
         account = result.scalar_one_or_none()
-        
+
         if not account:
             raise ResourceNotFoundError("ProviderAccount", account_id)
 
@@ -621,17 +628,51 @@ class AccountService:
 
         return account
 
-    async def reserve_account_if_available(self, account_id: int) -> ProviderAccount | None:
+    async def reserve_account_if_available(
+        self,
+        account_id: int,
+        *,
+        require_active: bool = False,
+        include_exhausted: bool = False,
+        now: datetime | None = None,
+        skip_locked: bool = False,
+    ) -> ProviderAccount | None:
         """
         Reserve account only if it has capacity. Returns None if at limit.
 
         Uses SELECT FOR UPDATE with a capacity filter to atomically check
         and reserve in one query, preventing race conditions.
+
+        When ``require_active`` is set, the row is also filtered on status and
+        cooldown — used by the routing path to atomically lock-and-verify the
+        full eligibility of a candidate that was chosen from an unlocked scan.
+        ``skip_locked`` returns None immediately if another transaction holds
+        the row lock; the caller should try the next candidate rather than
+        wait.
         """
-        query = select(ProviderAccount).where(
+        clauses = [
             ProviderAccount.id == account_id,
             ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs,
-        ).with_for_update()
+        ]
+        if require_active:
+            allowed_statuses = (
+                [AccountStatus.ACTIVE, AccountStatus.EXHAUSTED]
+                if include_exhausted
+                else [AccountStatus.ACTIVE]
+            )
+            clauses.append(ProviderAccount.status.in_(allowed_statuses))
+            cutoff = now or datetime.now(timezone.utc)
+            clauses.append(
+                (ProviderAccount.cooldown_until == None)  # noqa: E711
+                | (ProviderAccount.cooldown_until < cutoff)
+            )
+
+        query = (
+            select(ProviderAccount)
+            .where(*clauses)
+            .with_for_update(skip_locked=skip_locked)
+            .execution_options(populate_existing=True)
+        )
 
         result = await self.db.execute(query)
         account = result.scalar_one_or_none()
@@ -640,7 +681,7 @@ class AccountService:
             return None
 
         account.current_processing_jobs += 1
-        account.last_used = datetime.now(timezone.utc)
+        account.last_used = now or datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(account)
         return account
@@ -698,14 +739,7 @@ class AccountService:
             ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs,
             (ProviderAccount.cooldown_until == None) | (ProviderAccount.cooldown_until < now),
         )
-
-        # Add user filter
-        if user_id:
-            query = query.where(
-                (ProviderAccount.user_id == user_id) | (ProviderAccount.is_private == False)
-            )
-        else:
-            query = query.where(ProviderAccount.is_private == False)
+        query = _apply_user_visibility_filter(query, user_id)
 
         # Skip accounts reserved for pinned generations
         if exclude_account_ids:
@@ -741,13 +775,7 @@ class AccountService:
 
         # Sort by priority, then lowest credits first (drain cheap accounts
         # before touching high-credit ones), then least recently used.
-        _total_credits = (
-            select(func.coalesce(func.sum(ProviderCredit.amount), 0))
-            .where(ProviderCredit.account_id == ProviderAccount.id)
-            .correlate(ProviderAccount)
-            .scalar_subquery()
-            .label("total_credits")
-        )
+        _total_credits = _total_credits_subquery()
 
         def _finalize_query(q, *, prefer_high_credits: bool = False):
             credits_sort_expr = _total_credits.desc() if prefer_high_credits else _total_credits.asc()
@@ -763,24 +791,35 @@ class AccountService:
                     credits_sort_expr,
                     ProviderAccount.last_used.asc().nullsfirst(),
                 )
+            # Read-only scan — locking removed in 2026-04 to fix self-DOS.
+            # Locking up to 200 rows here held those locks until commit, so
+            # any other concurrent worker hitting the routing query during
+            # that window saw 0 rows via SKIP LOCKED. Atomic reserve happens
+            # later, per chosen candidate, via reserve_account_if_available.
             return (
                 q.add_columns(_total_credits).order_by(*order_by_expr)
-                .with_for_update(skip_locked=True)
                 .limit(_ROUTING_CANDIDATE_SCAN_LIMIT)
             )
 
         routing_enabled = operation_type is not None or model is not None
 
-        async def _pick_account(candidate_query, *, prefer_high_credits: bool = False):
+        async def _rank_candidates(candidate_query, *, prefer_high_credits: bool = False):
+            """Run the candidate scan and return a routing-filtered, sorted list
+            of candidates (best first) plus the routing-filtered count.
+
+            The scan is read-only — atomic reservation happens per-candidate
+            in the caller via reserve_account_if_available.
+            """
             result = await self.db.execute(
                 _finalize_query(candidate_query, prefer_high_credits=prefer_high_credits)
             )
             rows = list(result.all())
             if not rows:
-                return None, 0
+                return [], 0
 
             if not routing_enabled:
-                return rows[0][0], 0
+                # SQL ORDER BY already enforces the contract; return as-is.
+                return [row[0] for row in rows], 0
 
             scored: list[tuple[int, int, datetime, ProviderAccount]] = []
             filtered_out = 0
@@ -804,15 +843,33 @@ class AccountService:
                 scored.append((effective_priority, credits_value, last_used, candidate))
 
             if not scored:
-                return None, filtered_out
+                return [], filtered_out
 
             if prefer_high_credits:
                 scored.sort(key=lambda item: (-item[1], -item[0], item[2]))
             else:
                 scored.sort(key=lambda item: (-item[0], item[1], item[2]))
-            return scored[0][3], filtered_out
+            return [item[3] for item in scored], filtered_out
+
+        async def _try_reserve(candidates):
+            """Walk ranked candidates, atomically reserving the first one that
+            still meets all eligibility predicates. Returns None if every
+            candidate lost the race or had its state change between scan and
+            lock."""
+            for candidate in candidates:
+                reserved = await self.reserve_account_if_available(
+                    candidate.id,
+                    require_active=True,
+                    include_exhausted=include_exhausted,
+                    now=now,
+                    skip_locked=True,
+                )
+                if reserved is not None:
+                    return reserved
+            return None
 
         routing_filtered_count = 0
+        candidates_scanned = 0
 
         # First attempt: with credit pre-filter (if applicable).  The primary
         # path always drains cheapest-first — ``prefer_high_credits`` is only
@@ -822,13 +879,16 @@ class AccountService:
         # low-credit accounts had plenty for the job, defeating the
         # deprioritization that ``priority`` exists for.)
         if _applied_credit_filter:
-            account, routing_filtered_count = await _pick_account(
+            candidates, routing_filtered_count = await _rank_candidates(
                 query.where(_credit_filter),
             )
+            candidates_scanned = len(candidates)
+            account = await _try_reserve(candidates)
             if not account:
-                # Credit pre-filter excluded everyone - DB credits may be
-                # stale.  Retry without the filter; live verify_credits
-                # will catch genuinely-empty accounts.
+                # Credit pre-filter excluded everyone (or all candidates lost
+                # the race) - DB credits may be stale.  Retry without the
+                # filter; live verify_credits will catch genuinely-empty
+                # accounts.
                 logger.info(
                     "credit_prefilter_fallback",
                     provider_id=provider_id,
@@ -837,18 +897,22 @@ class AccountService:
                     prefer_high_credits=prefer_high_credits,
                     msg="credit pre-filter excluded all candidates, retrying without it",
                     routing_filtered_count=routing_filtered_count,
+                    candidates_scanned=candidates_scanned,
                 )
                 # When the DB pre-filter returns no rows (possibly stale credit
                 # snapshots), probe high-credit accounts first for expensive
                 # generations so we don't re-pick a low-credit account whose
                 # stale DB reading is what caused the pre-filter to drop it.
-                account, routing_filtered_count = await _pick_account(
+                candidates, routing_filtered_count = await _rank_candidates(
                     query,
                     prefer_high_credits=prefer_high_credits,
                 )
+                candidates_scanned = len(candidates)
+                account = await _try_reserve(candidates)
         else:
-            # Lock and skip already-locked rows (concurrent jobs will get different accounts)
-            account, routing_filtered_count = await _pick_account(query)
+            candidates, routing_filtered_count = await _rank_candidates(query)
+            candidates_scanned = len(candidates)
+            account = await _try_reserve(candidates)
 
         if not account:
             if routing_enabled:
@@ -858,9 +922,8 @@ class AccountService:
                     operation_type=operation_type,
                     model=model,
                     routing_filtered_count=routing_filtered_count,
+                    candidates_scanned=candidates_scanned,
                 )
-            # Release row locks acquired during candidate scan before fallback/debug queries.
-            await self.db.rollback()
             accountless_reserved = await self.reserve_or_create_accountless_account(provider_id)
             if accountless_reserved is not None:
                 logger.info(
@@ -871,15 +934,12 @@ class AccountService:
                 return accountless_reserved
 
             # Log why we couldn't find an account for debugging
-            all_accounts_query = select(ProviderAccount).where(
-                ProviderAccount.provider_id == provider_id,
+            all_accounts_query = _apply_user_visibility_filter(
+                select(ProviderAccount).where(
+                    ProviderAccount.provider_id == provider_id,
+                ),
+                user_id,
             )
-            if user_id:
-                all_accounts_query = all_accounts_query.where(
-                    (ProviderAccount.user_id == user_id) | (ProviderAccount.is_private == False)
-                )
-            else:
-                all_accounts_query = all_accounts_query.where(ProviderAccount.is_private == False)
 
             all_result = await self.db.execute(all_accounts_query)
             all_accounts = list(all_result.scalars().all())
@@ -912,13 +972,6 @@ class AccountService:
             status=account.status.value if account.status else None,
         )
 
-        # Reserve the account
-        account.current_processing_jobs += 1
-        account.last_used = now
-
-        await self.db.commit()
-        await self.db.refresh(account)
-
         return account
 
     async def release_account(self, account_id: int, *, skip_wake: bool = False) -> ProviderAccount:
@@ -941,16 +994,14 @@ class AccountService:
         Raises:
             ResourceNotFoundError: Account not found
         """
-        from sqlalchemy import select
-        
         # Lock row for update
         query = select(ProviderAccount).where(
             ProviderAccount.id == account_id
         ).with_for_update()
-        
+
         result = await self.db.execute(query)
         account = result.scalar_one_or_none()
-        
+
         if not account:
             raise ResourceNotFoundError("ProviderAccount", account_id)
 
