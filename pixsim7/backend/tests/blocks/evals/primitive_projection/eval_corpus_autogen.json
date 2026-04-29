@@ -3,7 +3,7 @@
     "description": "Auto-generated corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
     "generated_from": "tools/cue/prompt_packs",
-    "total_entries": 295,
+    "total_entries": 315,
     "category_counts": {
       "camera": 41,
       "color": 13,
@@ -14,7 +14,7 @@
       "location": 7,
       "continuity": 7,
       "interaction_beat": 5,
-      "latin_enhancer": 141
+      "latin_enhancer": 161
     }
   },
   "corpus": [
@@ -2377,6 +2377,166 @@
       "expected_block_prefix": "latin.touch.hand_gluteal.natium_forma_sub_palma_fluit",
       "expected_category": "latin_enhancer",
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:natium_forma_sub_palma_fluit"
+    },
+    {
+      "id": "auto_0296",
+      "text": "gemitus interruptus.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.gemitus_interruptus",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:gemitus_interruptus"
+    },
+    {
+      "id": "auto_0297",
+      "text": "vox fracta.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_fracta",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_fracta"
+    },
+    {
+      "id": "auto_0298",
+      "text": "singultus vocis.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.singultus_vocis",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:singultus_vocis"
+    },
+    {
+      "id": "auto_0299",
+      "text": "gemitus suppressus.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.gemitus_suppressus",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:gemitus_suppressus"
+    },
+    {
+      "id": "auto_0300",
+      "text": "vox suspensa ante emissionem.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_suspensa_ante_emissionem",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_suspensa_ante_emissionem"
+    },
+    {
+      "id": "auto_0301",
+      "text": "suspirium incompletum.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.suspirium_incompletum",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:suspirium_incompletum"
+    },
+    {
+      "id": "auto_0302",
+      "text": "gemitus geminatus iteratusque.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.gemitus_geminatus_iteratusque",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:gemitus_geminatus_iteratusque"
+    },
+    {
+      "id": "auto_0303",
+      "text": "vox invita emittitur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_invita_emittitur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_invita_emittitur"
+    },
+    {
+      "id": "auto_0304",
+      "text": "fremitus continuus.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.fremitus_continuus",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:fremitus_continuus"
+    },
+    {
+      "id": "auto_0305",
+      "text": "vox semel, bis, ter erumpere tentat vox semel bis ter erumpere tentat.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_semel_bis_ter_erumpere_tentat",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_semel_bis_ter_erumpere_tentat"
+    },
+    {
+      "id": "auto_0306",
+      "text": "gemitus qui verba non habet.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.gemitus_qui_verba_non_habet",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:gemitus_qui_verba_non_habet"
+    },
+    {
+      "id": "auto_0307",
+      "text": "vox corporis non mentis.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_corporis_non_mentis",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_corporis_non_mentis"
+    },
+    {
+      "id": "auto_0308",
+      "text": "gemitus gaudium prodit.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.gemitus_gaudium_prodit",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:gemitus_gaudium_prodit"
+    },
+    {
+      "id": "auto_0309",
+      "text": "silentium victum est.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.silentium_victum_est",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:silentium_victum_est"
+    },
+    {
+      "id": "auto_0310",
+      "text": "vox retenta tandem cedit.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_retenta_tandem_cedit",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_retenta_tandem_cedit"
+    },
+    {
+      "id": "auto_0311",
+      "text": "murmur quod audiri non debet.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.murmur_quod_audiri_non_debet",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:murmur_quod_audiri_non_debet"
+    },
+    {
+      "id": "auto_0312",
+      "text": "sonus qui ex intimis erumpit.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.sonus_qui_ex_intimis_erumpit",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:sonus_qui_ex_intimis_erumpit"
+    },
+    {
+      "id": "auto_0313",
+      "text": "sonitus antiquior pudore.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.sonitus_antiquior_pudore",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:sonitus_antiquior_pudore"
+    },
+    {
+      "id": "auto_0314",
+      "text": "duae voces in unam confluunt.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.duae_voces_in_unam_confluunt",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:duae_voces_in_unam_confluunt"
+    },
+    {
+      "id": "auto_0315",
+      "text": "vox sine voluntate.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.voice.pattern.vox_sine_voluntate",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_voice_pattern/pattern:vox_sine_voluntate"
     }
   ]
 }
