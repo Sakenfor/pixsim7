@@ -1,0 +1,16 @@
+id: latin-breath-proximity
+title: Latin Breath Proximity
+description: 'Latin phrase enhancers for breath near the ear. Multi-sensory: thermal (vapor warming skin), auditory (breath filling the ear canal), tactile (air pressure on neck and pinna). Tagged by sense, proximity, and breath_type.'
+matrix_presets:
+  - label: Sense by Register
+    query:
+      row_key: tag:sense
+      col_key: tag:register
+      package_name: latin_breath_proximity
+      include_empty: true
+  - label: Proximity by Sense
+    query:
+      row_key: tag:proximity
+      col_key: tag:sense
+      package_name: latin_breath_proximity
+      include_empty: true
