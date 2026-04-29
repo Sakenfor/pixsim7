@@ -12,7 +12,7 @@
 
 2. **Python Environment**
    ```bash
-   cd G:\code\pixverse-py
+   cd G:\code\pixsim7\libs\pixverse-py
    pip install -e .  # Install in development mode
    ```
 

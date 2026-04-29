@@ -34,8 +34,9 @@ except Exception:  # pragma: no cover
     _SDK_MULTI_SHOT_LONG = 20  # type: ignore
     _SDK_NATIVE_AUDIO = 10  # type: ignore
 
-# Fallback credit table (only used if SDK not available)
-# Uses both *p format (1440p, 2160p) and legacy labels (2k, 4k) for compatibility
+# Last-resort fallbacks (only used if the SDK import fails entirely).
+# Per-model overrides live on VideoModelSpec.pricing in the SDK — they are
+# not duplicated here.
 _FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
     "qwen-image": {"720p": 5, "1080p": 10},
     "gemini-3.0": {"1080p": 50, "1440p": 50, "2160p": 90, "2k": 50, "4k": 90},
@@ -44,16 +45,10 @@ _FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
     "seedream-4.5": {"1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
 }
 _FALLBACK_WEBAPI_BASE_COSTS: dict[str, int] = {
-    "360p": 20,
-    "540p": 30,
-    "720p": 40,
-    "1080p": 80,
-}
-_FALLBACK_WEBAPI_MODEL_BASE_COSTS: dict[str, dict[str, int]] = {
-    "grok-imagine": {
-        "480p": 50,
-        "720p": 75,
-    },
+    "360p": 4,
+    "540p": 6,
+    "720p": 8,
+    "1080p": 16,
 }
 
 
@@ -94,6 +89,10 @@ def estimate_video_credit_change(
     """
     Estimate Pixverse video credits using pixverse-py helper when available.
 
+    Per-model pricing overrides live on ``VideoModelSpec.pricing`` in the
+    SDK; this wrapper just delegates to ``calculate_cost`` and provides a
+    minimal default-table fallback if the SDK import failed.
+
     Args:
         discounts: Optional model->multiplier map for active promotions,
                    e.g. {"v6": 0.7}. Passed through to SDK calculate_cost.
@@ -101,38 +100,9 @@ def estimate_video_credit_change(
     Returns:
         Integer credit delta or None if the helper is unavailable.
     """
-    model_key = str(model or "").strip().lower()
-    normalized_quality = str(quality or "").strip().lower()
-    if normalized_quality == "2k":
-        normalized_quality = "1440p"
-    elif normalized_quality == "4k":
-        normalized_quality = "2160p"
-
-    # Runtime SDK lag guard: force known partner-model pricing locally.
-    if model_key in _FALLBACK_WEBAPI_MODEL_BASE_COSTS:
-        model_costs = _FALLBACK_WEBAPI_MODEL_BASE_COSTS[model_key]
-        base_cost = model_costs.get(normalized_quality)
-        if base_cost is None:
-            base_cost = model_costs.get("480p") or next(iter(model_costs.values()))
-        multiplier = 1.0
-        if discounts:
-            direct = discounts.get(model) if isinstance(model, str) else None
-            normalized = discounts.get(model_key)
-            multiplier = (
-                float(direct) if isinstance(direct, (int, float))
-                else float(normalized) if isinstance(normalized, (int, float))
-                else 1.0
-            )
-        credits = int(base_cost * multiplier * int(duration) / 5)
-        if multi_shot:
-            credits += int(_SDK_MULTI_SHOT_LONG if int(duration) > 5 else _SDK_MULTI_SHOT_SHORT)
-        if audio:
-            credits += int(_SDK_NATIVE_AUDIO)
-        return int(credits)
-
     if pixverse_calculate_cost is not None:
         try:
-            credits = pixverse_calculate_cost(
+            return int(pixverse_calculate_cost(
                 quality=quality,
                 duration=int(duration),
                 api_method="web-api",
@@ -140,24 +110,31 @@ def estimate_video_credit_change(
                 multi_shot=multi_shot,
                 audio=audio,
                 discounts=discounts,
-            )
-            return int(credits)
+            ))
         except Exception:
             pass
 
-    # Generic fallback when SDK helper is unavailable.
+    # Last-resort fallback: SDK unavailable. Use the default table only;
+    # per-model overrides are not reachable here by design.
+    normalized_quality = str(quality or "").strip().lower()
+    if normalized_quality == "2k":
+        normalized_quality = "1440p"
+    elif normalized_quality == "4k":
+        normalized_quality = "2160p"
     base_table = dict(_SDK_WEBAPI_BASE_COSTS or _FALLBACK_WEBAPI_BASE_COSTS)
-    base_cost = base_table.get(normalized_quality, base_table.get("360p", 20))
+    base_cost = base_table.get(normalized_quality, base_table.get("360p", 4))
+
     multiplier = 1.0
     if discounts and isinstance(model, str):
         direct = discounts.get(model)
-        normalized = discounts.get(model_key)
-        multiplier = (
-            float(direct) if isinstance(direct, (int, float))
-            else float(normalized) if isinstance(normalized, (int, float))
-            else 1.0
-        )
-    credits = int(base_cost * multiplier * int(duration) / 5)
+        if isinstance(direct, (int, float)):
+            multiplier = float(direct)
+        else:
+            normalized = discounts.get(model.strip().lower())
+            if isinstance(normalized, (int, float)):
+                multiplier = float(normalized)
+
+    credits = int(base_cost * multiplier * int(duration))
     if multi_shot:
         credits += int(_SDK_MULTI_SHOT_LONG if int(duration) > 5 else _SDK_MULTI_SHOT_SHORT)
     if audio:
@@ -165,20 +142,40 @@ def estimate_video_credit_change(
     return int(credits)
 
 
+_DEFAULT_PRICING_KEY = "__default__"
+
+
 def get_client_pricing_payload() -> Optional[dict[str, Any]]:
     """Serialize pricing constants for the frontend optimistic estimator.
 
-    Mirrors the small deterministic formula in pixverse.pricing.calculate_cost
-    so the client can render credit estimates synchronously. Server estimates
-    remain authoritative and reconcile async.
+    Pre-resolves a single ``model_pricing`` map (model -> quality ->
+    credits-per-second) so the client doesn't need to overlay defaults
+    against per-model overrides. The synthetic ``__default__`` entry is
+    used when the model isn't recognized.
+
+    Server estimates remain authoritative and reconcile async.
     """
-    webapi_base_costs = dict(_SDK_WEBAPI_BASE_COSTS or _FALLBACK_WEBAPI_BASE_COSTS)
-    webapi_model_base_costs: dict[str, dict[str, int]] = {
-        model_id: dict(qualities)
-        for model_id, qualities in _FALLBACK_WEBAPI_MODEL_BASE_COSTS.items()
-    }
-    for model_id, qualities in (_SDK_WEBAPI_MODEL_BASE_COSTS or {}).items():
-        existing = webapi_model_base_costs.setdefault(model_id, {})
+    webapi_defaults = dict(_SDK_WEBAPI_BASE_COSTS or _FALLBACK_WEBAPI_BASE_COSTS)
+    overrides = dict(_SDK_WEBAPI_MODEL_BASE_COSTS or {})
+
+    model_pricing: dict[str, dict[str, int]] = {_DEFAULT_PRICING_KEY: dict(webapi_defaults)}
+    try:
+        from pixverse.models import VideoModel  # type: ignore
+
+        for spec in VideoModel.ALL:
+            model_id = str(spec)
+            if spec.pricing:
+                model_pricing[model_id] = dict(spec.pricing)
+            else:
+                model_pricing[model_id] = dict(webapi_defaults)
+    except Exception:
+        # SDK unavailable — fall back to overrides dict directly.
+        for model_id, qualities in overrides.items():
+            model_pricing[model_id] = dict(qualities)
+
+    # Merge any overrides not represented by a spec (defensive).
+    for model_id, qualities in overrides.items():
+        existing = model_pricing.setdefault(model_id, dict(webapi_defaults))
         existing.update(dict(qualities))
 
     image_credits: dict[str, dict[str, int]] = {}
@@ -191,9 +188,8 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
 
     return {
         "provider": "pixverse",
-        "base_duration_seconds": 5,
-        "webapi_base_costs": webapi_base_costs,
-        "webapi_model_base_costs": webapi_model_base_costs,
+        "base_duration_seconds": 1,
+        "model_pricing": model_pricing,
         "openapi_base_costs": {
             tier: dict(qualities)
             for tier, qualities in (_SDK_OPENAPI_BASE_COSTS or {}).items()

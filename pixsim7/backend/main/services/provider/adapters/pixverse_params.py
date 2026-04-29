@@ -46,6 +46,8 @@ _QUALITY_NORMALIZATION = {
     "4k": "2160p",
 }
 
+# Last-resort fallback only — used when the SDK import fails. Source of
+# truth lives on VideoModelSpec.max_duration.
 _FALLBACK_VIDEO_MODEL_MAX_DURATION = {
     "v5": 10,
     "v5-fast": 10,
@@ -53,9 +55,7 @@ _FALLBACK_VIDEO_MODEL_MAX_DURATION = {
     "v5.6": 10,
     "v6": 15,
     "pixverse-c1": 15,
-    "grok-imagine": 15,
 }
-_FORCED_VIDEO_MODELS = {"grok-imagine"}
 
 
 def normalize_quality(quality: str) -> str:
@@ -110,23 +110,29 @@ def normalize_transition_durations(
     return sanitized
 
 
-def resolve_model_max_duration(model: Any) -> int:
-    """Resolve max duration for a video model (seconds)."""
+def resolve_model_duration_range(model: Any) -> tuple[int, int]:
+    """Resolve (min, max) duration in seconds for a video model."""
     model_key = str(model or "").strip().lower()
     if model_key and VideoModel is not None:
         specs = getattr(VideoModel, "ALL", None)
         if specs:
             for spec in specs:
                 if str(spec).strip().lower() == model_key:
-                    max_duration = getattr(spec, "max_duration", None)
-                    if isinstance(max_duration, int) and max_duration > 0:
-                        return max_duration
+                    min_d = max(1, int(getattr(spec, "min_duration", 1) or 1))
+                    max_d = int(getattr(spec, "max_duration", 10) or 10)
+                    return min_d, max_d
         default_spec = getattr(VideoModel, "DEFAULT", None)
-        default_max = getattr(default_spec, "max_duration", None) if default_spec is not None else None
-        if isinstance(default_max, int) and default_max > 0:
-            return default_max
+        if default_spec is not None:
+            min_d = max(1, int(getattr(default_spec, "min_duration", 1) or 1))
+            max_d = int(getattr(default_spec, "max_duration", 10) or 10)
+            return min_d, max_d
 
-    return _FALLBACK_VIDEO_MODEL_MAX_DURATION.get(model_key, 10)
+    return 1, _FALLBACK_VIDEO_MODEL_MAX_DURATION.get(model_key, 10)
+
+
+def resolve_model_max_duration(model: Any) -> int:
+    """Resolve max duration for a video model (seconds). Back-compat shim."""
+    return resolve_model_duration_range(model)[1]
 
 
 def normalize_video_duration(value: Any, model: Any, *, default: int = 5) -> int:
@@ -135,8 +141,24 @@ def normalize_video_duration(value: Any, model: Any, *, default: int = 5) -> int
         duration = int(round(float(value)))
     except (TypeError, ValueError):
         duration = default
-    max_duration = resolve_model_max_duration(model)
-    return max(1, min(max_duration, duration))
+    min_duration, max_duration = resolve_model_duration_range(model)
+    return max(min_duration, min(max_duration, duration))
+
+
+def _default_quality_for(model: Any, is_video_op: bool) -> str:
+    """Pick a sensible default quality for ``model``.
+
+    For video ops, prefer the first quality declared on the VideoModelSpec
+    (e.g. grok-imagine starts at 480p, v5 at 360p). Falls back to legacy
+    defaults when the SDK is unavailable or the model is unknown.
+    """
+    if is_video_op and VideoModel is not None and isinstance(model, str):
+        spec = VideoModel.get(model)
+        if spec is not None:
+            qualities = getattr(spec, "qualities", ()) or ()
+            if qualities:
+                return str(qualities[0]).lower()
+    return "360p" if is_video_op else "720p"
 
 
 def map_parameters(
@@ -162,8 +184,7 @@ def map_parameters(
     if VideoModel is not None:
         video_models = set(VideoModel.ids()) if hasattr(VideoModel, "ids") else {str(m) for m in getattr(VideoModel, "ALL", [])}
     else:
-        video_models = {"v5", "v5-fast", "v5.5", "v5.6", "v6", "pixverse-c1", "grok-imagine"}
-    video_models.update(_FORCED_VIDEO_MODELS)
+        video_models = {"v5", "v5-fast", "v5.5", "v5.6", "v6", "pixverse-c1"}
 
     if ImageModel is not None:
         image_models = set(ImageModel.ids()) if hasattr(ImageModel, "ids") else {str(m) for m in getattr(ImageModel, "ALL", [])}
@@ -200,10 +221,7 @@ def map_parameters(
     if "quality" in params and params["quality"] is not None:
         mapped["quality"] = normalize_quality(params["quality"])
     else:
-        if is_video_op and str(mapped.get("model", "")).strip().lower() == "grok-imagine":
-            mapped["quality"] = "480p"
-        else:
-            mapped["quality"] = "360p" if is_video_op else "720p"
+        mapped["quality"] = _default_quality_for(mapped.get("model"), is_video_op)
 
     # === Aspect ratio (both, but not for IMAGE_TO_VIDEO or VIDEO_EXTEND) ===
     # VIDEO_EXTEND inherits aspect ratio from source video

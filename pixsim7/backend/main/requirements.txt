@@ -29,7 +29,7 @@ aiofiles==25.1.0  # Async file operations
 
 # ===== Video Generation Providers =====
 # Install from local path or GitHub
-# Local: pip install -e G:/code/pixverse-py
+# Local (in-tree, source of truth): pip install -e ./libs/pixverse-py
 # GitHub: pip install git+https://github.com/user/pixverse-py.git
 pixverse-py  # Pixverse AI SDK
 

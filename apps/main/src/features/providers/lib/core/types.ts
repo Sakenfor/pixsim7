@@ -44,8 +44,11 @@ export interface CostHints {
 export interface CostEstimatorPricingTable {
   provider: string;
   base_duration_seconds: number;
-  webapi_base_costs: Record<string, number>;
-  webapi_model_base_costs?: Record<string, Record<string, number>>;
+  /**
+   * Per-model 5-second WebAPI base cost map. The synthetic `__default__`
+   * key holds the fallback table for models without per-spec pricing.
+   */
+  model_pricing: Record<string, Record<string, number>>;
   openapi_base_costs: Record<string, Record<string, number>>;
   multi_shot_short: number;
   multi_shot_long: number;

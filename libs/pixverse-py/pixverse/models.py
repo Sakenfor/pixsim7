@@ -33,10 +33,14 @@ class VideoModelSpec:
     multi_shot: bool = False
     video_extend: bool = False
     fusion: bool = False
+    min_duration: int = 1   # min video length in seconds
     max_duration: int = 10  # max video length in seconds
-    pricing_tier: str = "v5"  # "v5" (default) — extensible for future tiers
+    pricing_tier: str = "v5"  # OpenAPI tier key — extensible for future tiers
     badge: str = ""  # short display label for UI badges (e.g. "5", "5F", "C1")
     qualities: tuple[str, ...] = DEFAULT_VIDEO_QUALITIES
+    # Per-second WebAPI cost overrides as ((quality, credits_per_second), ...).
+    # Empty = inherit the provider-wide default WEBAPI_BASE_COSTS table.
+    pricing: tuple[tuple[str, int], ...] = ()
 
     @property
     def capabilities(self) -> Dict[str, bool]:
@@ -46,6 +50,22 @@ class VideoModelSpec:
             for f in dataclass_fields(self)
             if isinstance(getattr(self, f.name), bool)
         }
+
+    def webapi_base_cost(self, quality: str, default_table: Dict[str, int]) -> Optional[int]:
+        """Resolve per-second WebAPI base cost for a quality.
+
+        Prefers spec-level overrides; falls back to ``default_table``.
+        If the spec defines pricing but doesn't list ``quality``, returns
+        the first listed price (so unsupported pairs don't crash but also
+        don't silently inherit a default that may be wrong for this model).
+        """
+        q = (quality or "").lower()
+        if self.pricing:
+            for pq, credits in self.pricing:
+                if pq.lower() == q:
+                    return credits
+            return self.pricing[0][1]
+        return default_table.get(q)
 
     def __str__(self) -> str:
         return self.id
@@ -75,7 +95,8 @@ class VideoModelSpec:
             if k not in caps or caps[k]
         }
         if "duration" in result and isinstance(result["duration"], (int, float)):
-            result["duration"] = min(int(result["duration"]), self.max_duration)
+            d = int(result["duration"])
+            result["duration"] = max(self.min_duration, min(d, self.max_duration))
         return result
 
 
@@ -111,10 +132,36 @@ class VideoModel:
         max_duration=15,
         badge="GI",
         qualities=("480p", "720p"),
+        # PixVerse partner pricing — credits per second.
+        pricing=(("480p", 10), ("720p", 15)),
+    )
+    SEEDANCE_2_STANDARD = VideoModelSpec(
+        "seedance-2.0-standard",
+        audio=True,
+        badge="S2",
+        qualities=("480p", "720p", "1080p"),
+        min_duration=4,
+        max_duration=15,
+        # Credits per second.
+        pricing=(("480p", 15), ("720p", 30), ("1080p", 60)),
+    )
+    SEEDANCE_2_FAST = VideoModelSpec(
+        "seedance-2.0-fast",
+        audio=True,
+        badge="S2F",
+        qualities=("480p", "720p"),
+        min_duration=4,
+        max_duration=15,
+        # Credits per second.
+        pricing=(("480p", 10), ("720p", 20)),
     )
 
     # All models (order matters for UI)
-    ALL: List[VideoModelSpec] = [V5, V5_FAST, V5_5, V5_6, V6, C1, GROK_IMAGINE]
+    ALL: List[VideoModelSpec] = [
+        V5, V5_FAST, V5_5, V5_6, V6, C1,
+        GROK_IMAGINE,
+        SEEDANCE_2_STANDARD, SEEDANCE_2_FAST,
+    ]
     DEFAULT: VideoModelSpec = V5
 
     @classmethod

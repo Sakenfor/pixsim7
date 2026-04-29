@@ -61,19 +61,19 @@ export function computeLocalCost(
     const tier = model && table.openapi_base_costs[model] ? model : 'v5';
     baseCost = table.openapi_base_costs[tier]?.[normalizedQuality];
   } else {
-    const modelCosts =
-      (model && table.webapi_model_base_costs?.[model]) ||
-      (modelKey ? table.webapi_model_base_costs?.[modelKey] : undefined);
+    // Single lookup: the server has already merged per-model overrides with
+    // defaults under model_pricing[modelId], with __default__ as fallback.
+    const modelTable =
+      (model && table.model_pricing[model]) ||
+      (modelKey ? table.model_pricing[modelKey] : undefined) ||
+      table.model_pricing.__default__;
 
-    if (modelCosts) {
-      baseCost =
-        modelCosts[normalizedQuality] ??
-        modelCosts[quality.toLowerCase()] ??
-        modelCosts['480p'] ??
-        Object.values(modelCosts)[0];
-    }
-    if (baseCost == null) {
-      baseCost = table.webapi_base_costs[normalizedQuality];
+    if (modelTable) {
+      baseCost = modelTable[normalizedQuality] ?? modelTable[quality.toLowerCase()];
+      if (baseCost == null) {
+        // Quality not supported by this model — fall back to its first listed price.
+        baseCost = Object.values(modelTable)[0];
+      }
     }
   }
   if (baseCost == null) return null;
