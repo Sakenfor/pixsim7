@@ -1,0 +1,16 @@
+id: latin-repro-organ
+title: Latin Reproductive Organ
+description: Creature-agnostic Latin phrase enhancers for reproductive anatomy. Covers receptive, insertive, and neutral organ classes in both technical (meatus, rima, processus) and poetic (Lucretian semina vitae, porta vitae) registers.
+matrix_presets:
+  - label: Organ Class by Register
+    query:
+      row_key: tag:organ_class
+      col_key: tag:register
+      package_name: latin_repro_organ
+      include_empty: true
+  - label: Descriptor Type by Organ Class
+    query:
+      row_key: tag:descriptor_type
+      col_key: tag:organ_class
+      package_name: latin_repro_organ
+      include_empty: true
