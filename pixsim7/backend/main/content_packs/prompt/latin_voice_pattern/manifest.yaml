@@ -1,0 +1,16 @@
+id: latin-voice-pattern
+title: Latin Voice Pattern
+description: 'Latin phrase enhancers for vocalization patterns: interrupted, suppressed, held, consecutive, involuntary, released, synchronised. Companion to latin_breath_pattern — reuses pattern_type, rhythm_quality, and intensity axes. New voice_type axis (moan/sigh/gasp/murmur/cry).'
+matrix_presets:
+  - label: Pattern Type by Voice Type
+    query:
+      row_key: tag:pattern_type
+      col_key: tag:voice_type
+      package_name: latin_voice_pattern
+      include_empty: true
+  - label: Intensity by Register
+    query:
+      row_key: tag:intensity
+      col_key: tag:register
+      package_name: latin_voice_pattern
+      include_empty: true

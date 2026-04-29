@@ -1,0 +1,204 @@
+version: 1.0.0
+package_name: latin_voice_pattern
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: pattern
+    block_schema:
+      id_prefix: latin.voice.pattern
+      mode: surface
+      category: latin_enhancer
+      capabilities:
+        - latin.enhancer
+        - voice.pattern
+      text_template: 'Latin enhancer: {variant}.'
+      tags:
+        modifier_family: latin_enhancer
+        modality_support: both
+        temporal: dynamic
+        domain:
+          - voice
+          - sound
+          - pattern
+      variants:
+        - key: gemitus_interruptus
+          text: gemitus interruptus
+          tags:
+            register: technical
+            pattern_type: interrupted
+            rhythm_quality: irregular
+            voice_type: moan
+            intensity: moderate
+            latin_form: noun_phrase
+        - key: vox_fracta
+          text: vox fracta
+          tags:
+            register: technical
+            pattern_type: interrupted
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: firm
+            latin_form: noun_phrase
+        - key: singultus_vocis
+          text: singultus vocis
+          tags:
+            register: technical
+            pattern_type: interrupted
+            rhythm_quality: irregular
+            voice_type: gasp
+            intensity: moderate
+            latin_form: noun_phrase
+        - key: gemitus_suppressus
+          text: gemitus suppressus
+          tags:
+            register: technical
+            pattern_type: suppressed
+            rhythm_quality: suspended
+            voice_type: moan
+            intensity: firm
+            latin_form: noun_phrase
+        - key: vox_suspensa_ante_emissionem
+          text: vox suspensa ante emissionem
+          tags:
+            register: technical
+            pattern_type: held
+            rhythm_quality: suspended
+            voice_type: cry
+            intensity: absolute
+            latin_form: noun_phrase
+        - key: suspirium_incompletum
+          text: suspirium incompletum
+          tags:
+            register: technical
+            pattern_type: held
+            rhythm_quality: suspended
+            voice_type: sigh
+            intensity: subtle
+            latin_form: noun_phrase
+        - key: gemitus_geminatus_iteratusque
+          text: gemitus geminatus iteratusque
+          tags:
+            register: technical
+            pattern_type: consecutive
+            rhythm_quality: rapid
+            voice_type: moan
+            intensity: firm
+            latin_form: noun_phrase
+        - key: vox_invita_emittitur
+          text: vox invita emittitur
+          tags:
+            register: technical
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: moderate
+            latin_form: predication
+        - key: fremitus_continuus
+          text: fremitus continuus
+          tags:
+            register: technical
+            pattern_type: consecutive
+            rhythm_quality: rhythmic
+            voice_type: murmur
+            intensity: subtle
+            latin_form: noun_phrase
+        - key: vox_semel_bis_ter_erumpere_tentat
+          text: vox semel, bis, ter erumpere tentat
+          tags:
+            register: technical
+            pattern_type: consecutive
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: absolute
+            latin_form: predication
+        - key: gemitus_qui_verba_non_habet
+          text: gemitus qui verba non habet
+          tags:
+            register: poetic
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: moan
+            intensity: moderate
+            latin_form: predication
+        - key: vox_corporis_non_mentis
+          text: vox corporis non mentis
+          tags:
+            register: poetic
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: moan
+            intensity: firm
+            latin_form: noun_phrase
+        - key: gemitus_gaudium_prodit
+          text: gemitus gaudium prodit
+          tags:
+            register: poetic
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: moan
+            intensity: moderate
+            latin_form: predication
+        - key: silentium_victum_est
+          text: silentium victum est
+          tags:
+            register: poetic
+            pattern_type: released
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: absolute
+            latin_form: predication
+        - key: vox_retenta_tandem_cedit
+          text: vox retenta tandem cedit
+          tags:
+            register: poetic
+            pattern_type: released
+            rhythm_quality: suspended
+            voice_type: cry
+            intensity: absolute
+            latin_form: predication
+        - key: murmur_quod_audiri_non_debet
+          text: murmur quod audiri non debet
+          tags:
+            register: poetic
+            pattern_type: suppressed
+            rhythm_quality: suspended
+            voice_type: murmur
+            intensity: subtle
+            latin_form: predication
+        - key: sonus_qui_ex_intimis_erumpit
+          text: sonus qui ex intimis erumpit
+          tags:
+            register: poetic
+            pattern_type: released
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: firm
+            latin_form: predication
+        - key: sonitus_antiquior_pudore
+          text: sonitus antiquior pudore
+          tags:
+            register: poetic
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: moan
+            intensity: absolute
+            latin_form: noun_phrase
+        - key: duae_voces_in_unam_confluunt
+          text: duae voces in unam confluunt
+          tags:
+            register: poetic
+            pattern_type: synchronize
+            rhythm_quality: rhythmic
+            voice_type: moan
+            intensity: moderate
+            latin_form: predication
+        - key: vox_sine_voluntate
+          text: vox sine voluntate
+          tags:
+            register: poetic
+            pattern_type: involuntary
+            rhythm_quality: irregular
+            voice_type: cry
+            intensity: firm
+            latin_form: noun_phrase
