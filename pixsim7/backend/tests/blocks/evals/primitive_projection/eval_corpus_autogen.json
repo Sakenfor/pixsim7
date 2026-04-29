@@ -3,7 +3,7 @@
     "description": "Auto-generated corpus for primitive_projection shadow-mode evaluation",
     "version": "1.0.0",
     "generated_from": "tools/cue/prompt_packs",
-    "total_entries": 235,
+    "total_entries": 255,
     "category_counts": {
       "camera": 41,
       "color": 13,
@@ -14,7 +14,7 @@
       "location": 7,
       "continuity": 7,
       "interaction_beat": 5,
-      "latin_enhancer": 81
+      "latin_enhancer": 101
     }
   },
   "corpus": [
@@ -1412,6 +1412,166 @@
     },
     {
       "id": "auto_0175",
+      "text": "pelvis lateraliter flectitur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_lateraliter_flectitur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_lateraliter_flectitur"
+    },
+    {
+      "id": "auto_0176",
+      "text": "pondus inter coxas transit.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pondus_inter_coxas_transit",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pondus_inter_coxas_transit"
+    },
+    {
+      "id": "auto_0177",
+      "text": "coxae alternae descendunt.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.coxae_alternae_descendunt",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:coxae_alternae_descendunt"
+    },
+    {
+      "id": "auto_0178",
+      "text": "motus coxarum asymmetricus.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.motus_coxarum_asymmetricus",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:motus_coxarum_asymmetricus"
+    },
+    {
+      "id": "auto_0179",
+      "text": "pelvis in circulum volvitur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_in_circulum_volvitur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_in_circulum_volvitur"
+    },
+    {
+      "id": "auto_0180",
+      "text": "articulatio coxae gyrat.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.articulatio_coxae_gyrat",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:articulatio_coxae_gyrat"
+    },
+    {
+      "id": "auto_0181",
+      "text": "oscillatio coxarum libera.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.oscillatio_coxarum_libera",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:oscillatio_coxarum_libera"
+    },
+    {
+      "id": "auto_0182",
+      "text": "pelvis undulat sine pausa.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_undulat_sine_pausa",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_undulat_sine_pausa"
+    },
+    {
+      "id": "auto_0183",
+      "text": "pelvis ante et retro inclinatur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_ante_et_retro_inclinatur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_ante_et_retro_inclinatur"
+    },
+    {
+      "id": "auto_0184",
+      "text": "femora impellunt coxas.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.femora_impellunt_coxas",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:femora_impellunt_coxas"
+    },
+    {
+      "id": "auto_0185",
+      "text": "coxae ut fluctus maris moventur coxae ut fluctus maris.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.coxae_ut_fluctus_maris",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:coxae_ut_fluctus_maris"
+    },
+    {
+      "id": "auto_0186",
+      "text": "undulatio sine initio sine fine.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.undulatio_sine_initio_sine_fine",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:undulatio_sine_initio_sine_fine"
+    },
+    {
+      "id": "auto_0187",
+      "text": "corpus in rhythmum cedit.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.corpus_in_rhythmum_cedit",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:corpus_in_rhythmum_cedit"
+    },
+    {
+      "id": "auto_0188",
+      "text": "motus serpentinus carnis.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.motus_serpentinus_carnis",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:motus_serpentinus_carnis"
+    },
+    {
+      "id": "auto_0189",
+      "text": "gyrus lunaris in corpore.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.gyrus_lunaris_in_corpore",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:gyrus_lunaris_in_corpore"
+    },
+    {
+      "id": "auto_0190",
+      "text": "coxae orbem imitantur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.coxae_orbem_imitantur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:coxae_orbem_imitantur"
+    },
+    {
+      "id": "auto_0191",
+      "text": "pelvis terrae nutum sequitur.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_terrae_nutum_sequitur",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_terrae_nutum_sequitur"
+    },
+    {
+      "id": "auto_0192",
+      "text": "coxae libere regnant.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.coxae_libere_regnant",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:coxae_libere_regnant"
+    },
+    {
+      "id": "auto_0193",
+      "text": "pelvis loquitur quod vox non potest.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.pelvis_loquitur_quod_vox_non_potest",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:pelvis_loquitur_quod_vox_non_potest"
+    },
+    {
+      "id": "auto_0194",
+      "text": "motus antiquior verbis.",
+      "category": "latin_enhancer",
+      "expected_block_prefix": "latin.hip.mechanics.motus_antiquior_verbis",
+      "expected_category": "latin_enhancer",
+      "notes": "autogen from latin_hip_motion/mechanics:motus_antiquior_verbis"
+    },
+    {
+      "id": "auto_0195",
       "text": "corpus in terram premitur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.corpus_in_terram_premitur",
@@ -1419,7 +1579,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:corpus_in_terram_premitur"
     },
     {
-      "id": "auto_0176",
+      "id": "auto_0196",
       "text": "manus scapulas premit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.manus_scapulas_premit",
@@ -1427,7 +1587,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:manus_scapulas_premit"
     },
     {
-      "id": "auto_0177",
+      "id": "auto_0197",
       "text": "pondus victoris victum tenet.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.pondus_victoris_victum_tenet",
@@ -1435,7 +1595,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:pondus_victoris_victum_tenet"
     },
     {
-      "id": "auto_0178",
+      "id": "auto_0198",
       "text": "artus in vincula coguntur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.artus_in_vincula_coguntur",
@@ -1443,7 +1603,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:artus_in_vincula_coguntur"
     },
     {
-      "id": "auto_0179",
+      "id": "auto_0199",
       "text": "resistentia sub pondere frangitur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.resistentia_sub_pondere_frangitur",
@@ -1451,7 +1611,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:resistentia_sub_pondere_frangitur"
     },
     {
-      "id": "auto_0180",
+      "id": "auto_0200",
       "text": "bracchia retro torquentur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.bracchia_retro_torquentur",
@@ -1459,7 +1619,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:bracchia_retro_torquentur"
     },
     {
-      "id": "auto_0181",
+      "id": "auto_0201",
       "text": "collum sub palma fixum.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.collum_sub_palma_fixum",
@@ -1467,7 +1627,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:collum_sub_palma_fixum"
     },
     {
-      "id": "auto_0182",
+      "id": "auto_0202",
       "text": "femora vincta non moventur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.femora_vincta_non_moventur",
@@ -1475,7 +1635,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:femora_vincta_non_moventur"
     },
     {
-      "id": "auto_0183",
+      "id": "auto_0203",
       "text": "corpus sub vincente immobile haeret.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.corpus_sub_vincente_immobile_haeret",
@@ -1483,7 +1643,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:corpus_sub_vincente_immobile_haeret"
     },
     {
-      "id": "auto_0184",
+      "id": "auto_0204",
       "text": "dorsum terrae donatur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.dorsum_terrae_donatur",
@@ -1491,7 +1651,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:dorsum_terrae_donatur"
     },
     {
-      "id": "auto_0185",
+      "id": "auto_0205",
       "text": "praeda sub ungue quiescit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.praeda_sub_ungue_quiescit",
@@ -1499,7 +1659,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:praeda_sub_ungue_quiescit"
     },
     {
-      "id": "auto_0186",
+      "id": "auto_0206",
       "text": "victor premit victum.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.victor_premit_victum",
@@ -1507,7 +1667,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:victor_premit_victum"
     },
     {
-      "id": "auto_0187",
+      "id": "auto_0207",
       "text": "terra victum recipit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.terra_victum_recipit",
@@ -1515,7 +1675,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:terra_victum_recipit"
     },
     {
-      "id": "auto_0188",
+      "id": "auto_0208",
       "text": "immobilitas eloquentior voce.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.immobilitas_eloquentior_voce",
@@ -1523,7 +1683,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:immobilitas_eloquentior_voce"
     },
     {
-      "id": "auto_0189",
+      "id": "auto_0209",
       "text": "sub mole vinctoris anima clausa.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.sub_mole_vinctoris_anima_clausa",
@@ -1531,7 +1691,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:sub_mole_vinctoris_anima_clausa"
     },
     {
-      "id": "auto_0190",
+      "id": "auto_0210",
       "text": "vincti membra terrae mandantur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.vincti_membra_terrae_mandantur",
@@ -1539,7 +1699,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:vincti_membra_terrae_mandantur"
     },
     {
-      "id": "auto_0191",
+      "id": "auto_0211",
       "text": "pondus regnat; corpus cedit pondus regnat corpus cedit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.pondus_regnat_corpus_cedit",
@@ -1547,7 +1707,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:pondus_regnat_corpus_cedit"
     },
     {
-      "id": "auto_0192",
+      "id": "auto_0212",
       "text": "ales praedam pennis stravit ales pradam pennis stravit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.ales_pradam_pennis_stravit",
@@ -1555,7 +1715,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:ales_pradam_pennis_stravit"
     },
     {
-      "id": "auto_0193",
+      "id": "auto_0213",
       "text": "leo victum ungue tenet.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.leo_victum_ungue_tenet",
@@ -1563,7 +1723,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:leo_victum_ungue_tenet"
     },
     {
-      "id": "auto_0194",
+      "id": "auto_0214",
       "text": "immota victrix gravitas.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.pin.body.immota_victrix_gravitas",
@@ -1571,7 +1731,7 @@
       "notes": "autogen from latin_pin_dynamics/body_pin:immota_victrix_gravitas"
     },
     {
-      "id": "auto_0195",
+      "id": "auto_0215",
       "text": "rima generatrix.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.rima_generatrix",
@@ -1579,7 +1739,7 @@
       "notes": "autogen from latin_repro_organ/organ:rima_generatrix"
     },
     {
-      "id": "auto_0196",
+      "id": "auto_0216",
       "text": "meatus receptivus.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.meatus_receptivus",
@@ -1587,7 +1747,7 @@
       "notes": "autogen from latin_repro_organ/organ:meatus_receptivus"
     },
     {
-      "id": "auto_0197",
+      "id": "auto_0217",
       "text": "ostium copulae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.ostium_copulae",
@@ -1595,7 +1755,7 @@
       "notes": "autogen from latin_repro_organ/organ:ostium_copulae"
     },
     {
-      "id": "auto_0198",
+      "id": "auto_0218",
       "text": "cavum natale.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.cavum_natale",
@@ -1603,7 +1763,7 @@
       "notes": "autogen from latin_repro_organ/organ:cavum_natale"
     },
     {
-      "id": "auto_0199",
+      "id": "auto_0219",
       "text": "fovea genitalis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.fovea_genitalis",
@@ -1611,7 +1771,7 @@
       "notes": "autogen from latin_repro_organ/organ:fovea_genitalis"
     },
     {
-      "id": "auto_0200",
+      "id": "auto_0220",
       "text": "processus copulans.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.processus_copulans",
@@ -1619,7 +1779,7 @@
       "notes": "autogen from latin_repro_organ/organ:processus_copulans"
     },
     {
-      "id": "auto_0201",
+      "id": "auto_0221",
       "text": "virga generationis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.virga_generationis",
@@ -1627,7 +1787,7 @@
       "notes": "autogen from latin_repro_organ/organ:virga_generationis"
     },
     {
-      "id": "auto_0202",
+      "id": "auto_0222",
       "text": "apex genitalis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.apex_genitalis",
@@ -1635,7 +1795,7 @@
       "notes": "autogen from latin_repro_organ/organ:apex_genitalis"
     },
     {
-      "id": "auto_0203",
+      "id": "auto_0223",
       "text": "membra genitalia.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.membra_genitalia",
@@ -1643,7 +1803,7 @@
       "notes": "autogen from latin_repro_organ/organ:membra_genitalia"
     },
     {
-      "id": "auto_0204",
+      "id": "auto_0224",
       "text": "natura genitalis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.natura_genitalis",
@@ -1651,7 +1811,7 @@
       "notes": "autogen from latin_repro_organ/organ:natura_genitalis"
     },
     {
-      "id": "auto_0205",
+      "id": "auto_0225",
       "text": "partes generationis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.partes_generationis",
@@ -1659,7 +1819,7 @@
       "notes": "autogen from latin_repro_organ/organ:partes_generationis"
     },
     {
-      "id": "auto_0206",
+      "id": "auto_0226",
       "text": "porta vitae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.porta_vitae",
@@ -1667,7 +1827,7 @@
       "notes": "autogen from latin_repro_organ/organ:porta_vitae"
     },
     {
-      "id": "auto_0207",
+      "id": "auto_0227",
       "text": "arcanum natale.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.arcanum_natale",
@@ -1675,7 +1835,7 @@
       "notes": "autogen from latin_repro_organ/organ:arcanum_natale"
     },
     {
-      "id": "auto_0208",
+      "id": "auto_0228",
       "text": "thalamus vitae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.thalamus_vitae",
@@ -1683,7 +1843,7 @@
       "notes": "autogen from latin_repro_organ/organ:thalamus_vitae"
     },
     {
-      "id": "auto_0209",
+      "id": "auto_0229",
       "text": "fons originis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.fons_originis",
@@ -1691,7 +1851,7 @@
       "notes": "autogen from latin_repro_organ/organ:fons_originis"
     },
     {
-      "id": "auto_0210",
+      "id": "auto_0230",
       "text": "hasta seminis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.hasta_seminis",
@@ -1699,7 +1859,7 @@
       "notes": "autogen from latin_repro_organ/organ:hasta_seminis"
     },
     {
-      "id": "auto_0211",
+      "id": "auto_0231",
       "text": "fomes generationis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.fomes_generationis",
@@ -1707,7 +1867,7 @@
       "notes": "autogen from latin_repro_organ/organ:fomes_generationis"
     },
     {
-      "id": "auto_0212",
+      "id": "auto_0232",
       "text": "nervus propagationis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.nervus_propagationis",
@@ -1715,7 +1875,7 @@
       "notes": "autogen from latin_repro_organ/organ:nervus_propagationis"
     },
     {
-      "id": "auto_0213",
+      "id": "auto_0233",
       "text": "semina vitae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.semina_vitae",
@@ -1723,7 +1883,7 @@
       "notes": "autogen from latin_repro_organ/organ:semina_vitae"
     },
     {
-      "id": "auto_0214",
+      "id": "auto_0234",
       "text": "copula naturae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.copula_naturae",
@@ -1731,7 +1891,7 @@
       "notes": "autogen from latin_repro_organ/organ:copula_naturae"
     },
     {
-      "id": "auto_0215",
+      "id": "auto_0235",
       "text": "nexus vitae.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.repro.organ.nexus_vitae",
@@ -1739,7 +1899,7 @@
       "notes": "autogen from latin_repro_organ/organ:nexus_vitae"
     },
     {
-      "id": "auto_0216",
+      "id": "auto_0236",
       "text": "palma premit nates.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.palma_premit_nates",
@@ -1747,7 +1907,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:palma_premit_nates"
     },
     {
-      "id": "auto_0217",
+      "id": "auto_0237",
       "text": "digiti in gluteos imprimuntur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.digiti_in_gluteos_imprimuntur",
@@ -1755,7 +1915,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:digiti_in_gluteos_imprimuntur"
     },
     {
-      "id": "auto_0218",
+      "id": "auto_0238",
       "text": "manus curva super nates vertitur manus curva super nates.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.manus_curva_super_nates",
@@ -1763,7 +1923,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:manus_curva_super_nates"
     },
     {
-      "id": "auto_0219",
+      "id": "auto_0239",
       "text": "palmae pressura in gluteis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.palmae_pressura_in_gluteis",
@@ -1771,7 +1931,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:palmae_pressura_in_gluteis"
     },
     {
-      "id": "auto_0220",
+      "id": "auto_0240",
       "text": "pollicis apex in natium sulco quiescit pollicis apex in natium sulco.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.pollicis_apex_in_natium_sulco",
@@ -1779,7 +1939,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:pollicis_apex_in_natium_sulco"
     },
     {
-      "id": "auto_0221",
+      "id": "auto_0241",
       "text": "resistentia carnis sub digitis palpatur resistentia carnis sub digitis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.resistentia_carnis_sub_digitis",
@@ -1787,7 +1947,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:resistentia_carnis_sub_digitis"
     },
     {
-      "id": "auto_0222",
+      "id": "auto_0242",
       "text": "adipis massa sub manu cedit et deflectitur adipis massa cedit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.adipis_massa_cedit",
@@ -1795,7 +1955,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:adipis_massa_cedit"
     },
     {
-      "id": "auto_0223",
+      "id": "auto_0243",
       "text": "musculi clunium sub pressione cedunt musculi clunium cedunt.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.musculi_clunium_cedunt",
@@ -1803,7 +1963,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:musculi_clunium_cedunt"
     },
     {
-      "id": "auto_0224",
+      "id": "auto_0244",
       "text": "digitus in natium carnem insinuatur digitus in carnem insinuatur.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.digitus_in_carnem_insinuatur",
@@ -1811,7 +1971,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:digitus_in_carnem_insinuatur"
     },
     {
-      "id": "auto_0225",
+      "id": "auto_0245",
       "text": "tremor carnis sub ictu palmae tremor carnis sub ictu.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.tremor_carnis_sub_ictu",
@@ -1819,7 +1979,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:tremor_carnis_sub_ictu"
     },
     {
-      "id": "auto_0226",
+      "id": "auto_0246",
       "text": "nates plenae sub tactu velut fluctus cedunt nates plenae cedunt.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.nates_plenae_cedunt",
@@ -1827,7 +1987,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:nates_plenae_cedunt"
     },
     {
-      "id": "auto_0227",
+      "id": "auto_0247",
       "text": "caro docilis digitorum nutui servit caro docilis servit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.caro_docilis_servit",
@@ -1835,7 +1995,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:caro_docilis_servit"
     },
     {
-      "id": "auto_0228",
+      "id": "auto_0248",
       "text": "carnis vellus sub digitis tremit carnis vellus tremit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.carnis_vellus_tremit",
@@ -1843,7 +2003,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:carnis_vellus_tremit"
     },
     {
-      "id": "auto_0229",
+      "id": "auto_0249",
       "text": "nates rosarum pleniores sub palma murmurant nates rosarum pleniores.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.nates_rosarum_pleniores",
@@ -1851,7 +2011,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:nates_rosarum_pleniores"
     },
     {
-      "id": "auto_0230",
+      "id": "auto_0250",
       "text": "pulchri corporis pondus in manu capitur corporis pondus in manu.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.corporis_pondus_in_manu",
@@ -1859,7 +2019,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:corporis_pondus_in_manu"
     },
     {
-      "id": "auto_0231",
+      "id": "auto_0251",
       "text": "manus terrae similis, nates argillae manus terrae similis.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.manus_terrae_similis",
@@ -1867,7 +2027,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:manus_terrae_similis"
     },
     {
-      "id": "auto_0232",
+      "id": "auto_0252",
       "text": "globi carnis manum invitant globi carnis invitant.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.globi_carnis_invitant",
@@ -1875,7 +2035,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:globi_carnis_invitant"
     },
     {
-      "id": "auto_0233",
+      "id": "auto_0253",
       "text": "pressura formam absconditam revelat pressura formam revelat.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.pressura_formam_revelat",
@@ -1883,7 +2043,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:pressura_formam_revelat"
     },
     {
-      "id": "auto_0234",
+      "id": "auto_0254",
       "text": "corpus cedit; manus regnat corpus cedit manus regnat.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.corpus_cedit_manus_regnat",
@@ -1891,7 +2051,7 @@
       "notes": "autogen from latin_touch_dynamics/hand_gluteal:corpus_cedit_manus_regnat"
     },
     {
-      "id": "auto_0235",
+      "id": "auto_0255",
       "text": "natium forma sub palma fluit.",
       "category": "latin_enhancer",
       "expected_block_prefix": "latin.touch.hand_gluteal.natium_forma_sub_palma_fluit",
