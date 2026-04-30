@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from pixsim7.backend.main.services.prompt.block import content_pack_loader as loader
+from pixsim7.backend.main.services.prompt.block import ontology_derivation
 
 
 def _write(path: Path, content: str) -> None:
@@ -153,6 +154,106 @@ blocks:
         assert parsed[0]["text"] == "Direction token: in."
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_populate_block_ontology_ids_explicit_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit ontology_ids are kept, even when the registry returns nothing."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return []
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags = {"ontology_ids": ["pose:walking_neutral", "mood:tender"]}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="x")
+    assert out["ontology_ids"] == ["pose:walking_neutral", "mood:tender"]
+
+
+def test_populate_block_ontology_ids_auto_merges_with_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-derived IDs are appended after explicit, deduped."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return ["mood:tender", "light:golden_hour"]
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags = {"ontology_ids": ["pose:walking_neutral", "mood:tender"]}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="x")
+    assert out["ontology_ids"] == [
+        "pose:walking_neutral",
+        "mood:tender",
+        "light:golden_hour",
+    ]
+
+
+def test_populate_block_ontology_ids_exclude_suppresses_and_is_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ontology_ids_exclude removes IDs from the merged result and is dropped from tags."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return ["mood:tender", "light:golden_hour", "pose:walking_neutral"]
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags = {
+        "ontology_ids": ["pose:walking_neutral"],
+        "ontology_ids_exclude": ["light:golden_hour", "pose:walking_neutral"],
+    }
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="x")
+    assert out["ontology_ids"] == ["mood:tender"]
+    assert "ontology_ids_exclude" not in out
+
+
+def test_populate_block_ontology_ids_drops_key_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If nothing survives merging, ontology_ids is not added to keep tags tidy."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return []
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags: dict = {}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="")
+    assert "ontology_ids" not in out
+
+
+def test_populate_block_ontology_ids_handles_registry_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registry import/match failures should not break loading."""
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("vocab unavailable")
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        _raise,
+    )
+
+    tags = {"ontology_ids": ["mood:tender"]}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="some text")
+    assert out["ontology_ids"] == ["mood:tender"]
 
 
 def test_project_block_to_primitive_preserves_block_metadata_and_sets_composition_role() -> None:

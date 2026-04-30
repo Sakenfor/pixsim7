@@ -35,6 +35,13 @@ def derive_analysis_from_blocks(
         category = block_metadata.get("category") or _read_block_value(block, "category", None)
         if category:
             analysis_candidate["category"] = category
+
+        # Lift block ontology_ids into candidate metadata so the modern
+        # tag-derivation path (derive_flat_tags) sees them.
+        ontology_ids = _extract_block_ontology_ids(block)
+        if ontology_ids:
+            analysis_candidate["metadata"] = {"ontology_ids": ontology_ids}
+
         analysis_candidates.append(analysis_candidate)
 
     return {
@@ -43,6 +50,26 @@ def derive_analysis_from_blocks(
         "tags": _derive_tags_from_composition_blocks(blocks),
         "source": "composition",
     }
+
+
+def _extract_block_ontology_ids(block: Any) -> List[str]:
+    """Pull ontology_ids out of a block's tags dict, deduped and order-preserving."""
+    block_tags = _read_block_value(block, "tags", None) or {}
+    if not isinstance(block_tags, dict):
+        return []
+    raw = block_tags.get("ontology_ids")
+    if not isinstance(raw, list):
+        return []
+    seen: Set[str] = set()
+    result: List[str] = []
+    for oid in raw:
+        if not isinstance(oid, str) or not oid:
+            continue
+        if oid in seen:
+            continue
+        seen.add(oid)
+        result.append(oid)
+    return result
 
 
 def _infer_role_from_block(block: Any) -> str:
@@ -73,7 +100,17 @@ def _infer_role_from_block(block: Any) -> str:
 
 
 def _derive_tags_from_composition_blocks(blocks: List[Any]) -> List[str]:
-    """Derive flat role and keyword tags from composition blocks."""
+    """Derive flat role and keyword tags from composition blocks.
+
+    Emits:
+      - has:{role} for each non-"other" role.
+      - {key}:{value} for string-valued tag entries (e.g. mood:playful).
+      - Each ontology_id verbatim, plus any sub-tags derived from them.
+
+    Bare boolean flags (e.g. tags: { character: true }) are intentionally
+    skipped — they describe role categories, not asset content, and just add
+    noise that's identical across most generated assets.
+    """
     role_tags: Set[str] = set()
     keyword_tags: Set[str] = set()
 
@@ -85,18 +122,14 @@ def _derive_tags_from_composition_blocks(blocks: List[Any]) -> List[str]:
             role_tags.add(f"has:{role}")
 
         block_tags = _read_block_value(block, "tags", None) or {}
-        ontology_ids: List[str] = []
         if isinstance(block_tags, dict):
             for key, value in block_tags.items():
-                if value is True:
-                    keyword_tags.add(key)
-                elif isinstance(value, str):
+                if isinstance(value, str) and value:
                     keyword_tags.add(f"{key}:{value}")
-                elif key == "ontology_ids" and isinstance(value, list):
-                    ontology_ids = [oid for oid in value if isinstance(oid, str) and oid]
-                    for oid in ontology_ids:
-                        keyword_tags.add(oid)
+
+        ontology_ids = _extract_block_ontology_ids(block)
         if ontology_ids:
+            keyword_tags.update(ontology_ids)
             keyword_tags.update(derive_sub_tags_from_ontology_ids(ontology_ids))
 
     return sorted(role_tags) + sorted(keyword_tags)

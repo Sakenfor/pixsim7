@@ -27,6 +27,9 @@ from pixsim7.backend.main.services.prompt.block.capabilities import (
     derive_block_capabilities,
     normalize_capability_ids,
 )
+from pixsim7.backend.main.services.prompt.block.ontology_derivation import (
+    populate_block_ontology_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +78,20 @@ def _parse_blocks_from_yaml(yaml_path: Path) -> List[Dict[str, Any]]:
         if not isinstance(tags, dict):
             raise ValueError(f"Block '{block_id}' has invalid 'tags' (expected mapping)")
 
-        # Normalize tag values to strings (YAML may parse as int/bool)
-        normalized_tags = {str(k): str(v) for k, v in tags.items()}
+        # Normalize tag values: scalars → str (YAML may parse as int/bool),
+        # but preserve list-valued tags (e.g. ontology_ids).
+        normalized_tags: Dict[str, Any] = {}
+        for k, v in tags.items():
+            key = str(k)
+            if isinstance(v, list):
+                normalized_tags[key] = list(v)
+            else:
+                normalized_tags[key] = str(v)
+
+        normalized_tags = populate_block_ontology_ids(
+            block_tags=normalized_tags,
+            text=text,
+        )
 
         declared_capabilities = normalize_capability_ids(block.get("capabilities"))
         capabilities = derive_block_capabilities(

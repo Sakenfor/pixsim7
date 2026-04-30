@@ -48,6 +48,9 @@ from pixsim7.backend.main.services.prompt.block.template_features import (
 from pixsim7.backend.main.services.prompt.block.capabilities import (
     normalize_capability_ids,
 )
+from pixsim7.backend.main.services.prompt.block.ontology_derivation import (
+    populate_block_ontology_ids,
+)
 from pixsim7.backend.main.services.prompt.block.content_pack_manifests import (
     MANIFEST_QUERY_BOOL_FIELDS,
     MANIFEST_QUERY_INT_FIELDS,
@@ -566,6 +569,11 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
             duration_value = block.get("duration_sec")
             if duration_value is not None:
                 block_tags.setdefault("duration_sec", duration_value)
+
+            block_tags = populate_block_ontology_ids(
+                block_tags=block_tags,
+                text=block.get("text") if isinstance(block.get("text"), str) else "",
+            )
 
             block_tags[CONTENT_PACK_SOURCE_KEY] = content_dir.name
             block["tags"] = block_tags
