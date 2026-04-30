@@ -857,13 +857,16 @@ class PixverseAPI:
         # Status code mapping:
         # 1, 10 = completed
         # 5 = processing
-        # 7 = filtered
+        # 7  = filtered (v5/v6 native)
+        # 17 = filtered (grok-imagine; fal-proxied — empirically observed
+        #      with dims=0, last_frame='', url swapped to /default.mp4 on
+        #      moderation-bait prompts. Same response shape as 7.)
         # 8, 9 = failed
         if status_code in [1, 10]:
             status = "completed"
         elif status_code == 5:
             status = "processing"
-        elif status_code == 7:
+        elif status_code in [7, 17]:
             status = "filtered"
         elif status_code in [8, 9]:
             status = "failed"

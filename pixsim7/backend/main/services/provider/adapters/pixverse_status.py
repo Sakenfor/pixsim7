@@ -41,6 +41,7 @@ def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus
           2  │ processing     │ processing
           3  │ filtered       │ (not documented — treat as processing)
           7  │ filtered       │ filtered
+         17  │ filtered (grok)│ (not observed for images)
           4  │ failed         │ (not documented — treat as processing)
          -1  │ failed         │ (not documented — treat as processing)
           8  │ failed         │ failed
@@ -107,7 +108,9 @@ def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus
             # Cross-reference: pixverse-py api/client.py get_video() inline mapping.
             # SDK documents 1,10=completed; 5=processing; 7=filtered; 8,9=failed.
             # We additionally handle -1,4→FAILED and 3→FILTERED (observed in prod,
-            # not in SDK docs) and 2→PROCESSING (same reason).
+            # not in SDK docs) and 2→PROCESSING (same reason).  17→FILTERED is
+            # grok-imagine's terminal code (fal-proxied jobs); response shape is
+            # identical to 7 (default.mp4 swap, dims=0, last_frame='').
             if raw == 1:
                 return ProviderStatus.COMPLETED
             if raw == 10:
@@ -126,7 +129,7 @@ def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus
                 return ProviderStatus.PROCESSING
             if raw in (-1, 4, 8, 9):
                 return ProviderStatus.FAILED
-            if raw in (3, 7):
+            if raw in (3, 7, 17):
                 return ProviderStatus.FILTERED
 
     return ProviderStatus.PROCESSING

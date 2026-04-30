@@ -295,6 +295,7 @@ class TestParseVideoResponse:
             10: "completed",
             5: "processing",
             7: "filtered",
+            17: "filtered",
             8: "failed",
             9: "failed"
         }

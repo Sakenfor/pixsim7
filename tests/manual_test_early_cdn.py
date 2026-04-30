@@ -42,6 +42,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import httpx
 from pixverse import PixverseClient
+from pixverse.models import VideoModel
 from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
@@ -58,6 +59,24 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
 _PRETTY = "--pretty" in sys.argv
 if _PRETTY:
     sys.argv.remove("--pretty")
+
+# ``--model=``, ``--prompt=``, ``--duration=`` overrides — strip them from
+# argv before creds parsing so they don't collide with positional args.
+# Quality is auto-derived from the model spec's first declared quality so
+# each model picks a value Pixverse will accept (grok-imagine starts at
+# 480p, v6 at 360p).
+def _pop_kv_flag(prefix: str) -> Optional[str]:
+    for _i, _arg in enumerate(list(sys.argv[1:]), start=1):
+        if _arg.startswith(prefix):
+            value = _arg.split("=", 1)[1].strip() or None
+            sys.argv.pop(_i)
+            return value
+    return None
+
+
+_MODEL_OVERRIDE = _pop_kv_flag("--model=")
+_PROMPT_OVERRIDE = _pop_kv_flag("--prompt=")
+_DURATION_OVERRIDE_RAW = _pop_kv_flag("--duration=")
 
 _console = Console()
 
@@ -159,6 +178,25 @@ else:
     MODEL = "v6"
     DURATION = 1
 
+if _MODEL_OVERRIDE is not None:
+    MODEL = _MODEL_OVERRIDE
+if _PROMPT_OVERRIDE is not None:
+    PROMPT = _PROMPT_OVERRIDE
+if _DURATION_OVERRIDE_RAW is not None:
+    try:
+        DURATION = int(_DURATION_OVERRIDE_RAW)
+    except ValueError:
+        sys.exit(f"--duration must be an integer, got {_DURATION_OVERRIDE_RAW!r}")
+
+# Pull quality from the model's declared spec — the first entry in
+# ``qualities`` is the lowest/default for that model.  Falls back to "360p"
+# when the SDK doesn't know the model id.
+_spec = VideoModel.get(MODEL)
+QUALITY = _spec.qualities[0] if _spec else "360p"
+# Clamp duration to the model's max (grok-imagine = 15s, v6 = 15s, v5 = 10s).
+if _spec and DURATION > _spec.max_duration:
+    DURATION = _spec.max_duration
+
 POLL_INTERVAL_SEC = 0.25          # fast polling to resolve sub-second window
 HEAD_PROBE_INTERVAL_SEC = 0.5     # parallel HEAD probe cadence
 MAX_POLL_MINUTES = 6
@@ -197,6 +235,13 @@ class _Timeline:
     t_first_thumbnail_list: Optional[float] = None
     last_real_url: Optional[str] = None
     unique_thumbnails: list[str] = field(default_factory=list)
+    # webp_url surfaced by grok-imagine (and possibly other models) — the
+    # video itself never lands on Pixverse's CDN for fal-proxied models, but
+    # a per-seed webp may still leak.  Probed once on first sighting.
+    first_webp_url: Optional[str] = None
+    t_first_webp: Optional[float] = None
+    webp_head_status: Optional[int] = None
+    t_webp_head: Optional[float] = None
 
     def record(self, ob: _Observation) -> None:
         self.observations.append(ob)
@@ -268,6 +313,7 @@ def _build_renderable() -> Group:
         f"[bold cyan]Pixverse Early-CDN Probe[/]   "
         f"[bold]Job:[/] {job_id}   "
         f"[bold]Mode:[/] {TEST_MODE}   "
+        f"[bold]Model:[/] {MODEL} ({QUALITY})   "
         f"[bold]Elapsed:[/] {_elapsed():5.1f}s",
         border_style="cyan",
     )
@@ -358,6 +404,18 @@ def _render_summary(
     tbl.add_row("t_placeholder_list",  f(timeline.t_placeholder_list))
     tbl.add_row("t_404 (HEAD)",        f(timeline.t_404))
     tbl.add_section()
+    if timeline.first_webp_url is not None:
+        webp_status = timeline.webp_head_status
+        if webp_status is None:
+            webp_cell = "[dim]probe failed (network error)[/]"
+        elif webp_status < 400:
+            webp_cell = f"[green]{webp_status} (live)[/]"
+        else:
+            webp_cell = f"[red]{webp_status}[/]"
+        tbl.add_row("webp_url first seen", f(timeline.t_first_webp))
+        tbl.add_row("webp HEAD",           webp_cell)
+        tbl.add_row("webp_url",            timeline.first_webp_url)
+        tbl.add_section()
     if timeline.t_first_real_get is not None and timeline.t_placeholder_get is not None:
         tbl.add_row(
             "get_video window",
@@ -455,18 +513,21 @@ def _extract_fields(v: Any) -> dict:
         thumb = v.get("first_frame") or v.get("thumbnail") or v.get("thumbnail_url")
         width = v.get("output_width") or v.get("width")
         height = v.get("output_height") or v.get("height")
+        webp = v.get("webp_url")
     else:
         raw_status = getattr(v, "video_status", None) or getattr(v, "status", None)
         url = getattr(v, "url", None) or getattr(v, "video_url", None)
         thumb = getattr(v, "first_frame", None) or getattr(v, "thumbnail", None)
         width = getattr(v, "output_width", None) or getattr(v, "width", None)
         height = getattr(v, "output_height", None) or getattr(v, "height", None)
+        webp = getattr(v, "webp_url", None)
     return {
         "raw_status": raw_status,
         "url": url,
         "thumb": thumb,
         "width": width,
         "height": height,
+        "webp": webp,
     }
 
 
@@ -520,14 +581,17 @@ async def _head_probe_monitor(
 
 async def main() -> tuple[_Timeline, str, list[str], list[str]]:
     client = await _build_client()
-    _log(f"[{_ts()}] Logged in. Submitting i2v job ({TEST_MODE} mode)...")
+    _log(
+        f"[{_ts()}] Logged in. Submitting i2v job "
+        f"({TEST_MODE} mode, model={MODEL}, quality={QUALITY}, dur={DURATION}s)..."
+    )
 
     video = await client.create(
         prompt=PROMPT,
         image_url=SOURCE_IMAGE_URL,
         model=MODEL,
         duration=DURATION,
-        quality="360p",
+        quality=QUALITY,
         audio=False,
     )
     job_id = str(video.id)
@@ -628,6 +692,30 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
                     f"thumb={thumb_tag}"
                 )
 
+                # One-shot webp_url probe — fired the first time a non-empty
+                # webp_url appears on EITHER source.  Models like grok-imagine
+                # surface a /web/<uuid>_seed0.webp distinct from the video,
+                # which may be live even when the video itself never is.
+                webp = fields.get("webp")
+                if webp and timeline.first_webp_url is None:
+                    timeline.first_webp_url = webp
+                    timeline.t_first_webp = t_rel
+                    _log(
+                        f"[{_ts()}] +{t_rel:6.2f}s  {source:11s}  "
+                        f"first webp_url seen — probing: {webp[:100]}"
+                    )
+                    webp_result = await _head_probe(webp, http_client)
+                    timeline.webp_head_status = webp_result.get("status")
+                    timeline.t_webp_head = time.monotonic() - t0
+                    marker = (
+                        "✓" if timeline.webp_head_status and timeline.webp_head_status < 400
+                        else "✗"
+                    )
+                    _log(
+                        f"[{_ts()}] +{timeline.t_webp_head:6.2f}s  "
+                        f"webp HEAD {marker} status={timeline.webp_head_status}"
+                    )
+
             # Terminal detection uses get_video (prod path)
             gv_fields = _extract_fields(gv_result)
             gv_status = gv_fields.get("raw_status")
@@ -639,7 +727,7 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
                 ):
                     _log(f"[{_ts()}] === get_video COMPLETED (raw={gv_status}) ===")
                     terminal = True
-                elif gv_status in (3, 7):
+                elif gv_status in (3, 7, 17):
                     _log(f"[{_ts()}] === get_video FILTERED (raw={gv_status}) ===")
                     terminal = True
                 elif gv_status in (-1, 4, 8, 9):
@@ -654,7 +742,7 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
         # nothing to wait for.  (Filter codes per Pixverse SDK: 7 = filtered,
         # 3 = legacy filter that the SDK doesn't currently emit.)
         was_filtered = any(
-            isinstance(r, int) and r in (3, 7)
+            isinstance(r, int) and r in (3, 7, 17)
             for r in (
                 [int(s) for s in seen_get_statuses if str(s).lstrip('-').isdigit()]
                 + [int(s) for s in seen_list_statuses if str(s).lstrip('-').isdigit()]

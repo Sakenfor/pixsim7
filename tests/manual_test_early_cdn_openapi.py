@@ -720,8 +720,9 @@ async def main() -> None:
                 ):
                     print(f"[{_ts()}] === COMPLETED (raw={raw_status}) ===")
                     terminal = True
-                elif raw_status == 7:
-                    # Pixverse SDK maps 7 = filtered (see pixverse/api/client.py).
+                elif raw_status in (7, 17):
+                    # Pixverse SDK maps 7 = filtered (v5/v6) and 17 = filtered
+                    # (grok-imagine, fal-proxied) — see pixverse/api/client.py.
                     # '3' was a legacy/erroneous code — not in current docs.
                     print(f"[{_ts()}] === FILTERED (raw={raw_status}) ===")
                     terminal = True
