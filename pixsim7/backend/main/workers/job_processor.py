@@ -352,9 +352,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             generation = await generation_service.get_generation(generation_id)
 
-            # Per-user debug logger once we have the user
             user = await user_service.get_user(generation.user_id)
-            debug = DebugLogger(user)
+            debug = DebugLogger()
             debug.worker("loaded_generation", generation_id=generation.id, status=str(generation.status))
 
             if generation.status != "pending":

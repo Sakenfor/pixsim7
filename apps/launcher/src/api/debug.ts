@@ -1,8 +1,11 @@
 /**
- * Debug API client — runtime log level / domain control per service.
+ * Debug API client.
  *
- * Talks to the launcher API proxy at /debug/{serviceKey}/logging,
- * which forwards to each service's /_debug/logging endpoint.
+ * - Global logging config (R/W) — proxied through the launcher API to the
+ *   backend's /api/v1/admin/logging/config (canonical persisted config).
+ * - Per-service effective state (R) — proxied through the launcher API to
+ *   each service's /_debug/logging (live in-memory state).
+ * - Domain catalog (R) — static metadata.
  */
 
 export interface LoggingState {
@@ -21,6 +24,15 @@ export interface DomainCatalog {
   domains: string[]
   groups: DomainGroup[]
 }
+
+export interface LoggingConfig {
+  log_level: string
+  log_db_min_level: string
+  log_retention_days: number
+  log_domain_levels: Record<string, string>
+}
+
+export type LoggingConfigPatch = Partial<LoggingConfig>
 
 let _domainCatalog: DomainCatalog | null = null
 
@@ -42,13 +54,9 @@ export async function getServiceLogging(serviceKey: string): Promise<LoggingStat
   }
 }
 
-export async function setServiceLevel(serviceKey: string, level: string): Promise<LoggingState | null> {
+export async function getLoggingConfig(): Promise<LoggingConfig | null> {
   try {
-    const res = await fetch(`/debug/${serviceKey}/logging/level`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level }),
-    })
+    const res = await fetch('/debug/logging/config')
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -56,12 +64,12 @@ export async function setServiceLevel(serviceKey: string, level: string): Promis
   }
 }
 
-export async function setServiceDomains(serviceKey: string, domains: Record<string, string>): Promise<LoggingState | null> {
+export async function patchLoggingConfig(patch: LoggingConfigPatch): Promise<LoggingConfig | null> {
   try {
-    const res = await fetch(`/debug/${serviceKey}/logging/domains`, {
-      method: 'PUT',
+    const res = await fetch('/debug/logging/config', {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domains }),
+      body: JSON.stringify(patch),
     })
     if (!res.ok) return null
     return res.json()

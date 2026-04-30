@@ -40,6 +40,7 @@ class ServiceDefinition:
     env_overrides: Optional[Dict[str, str]] = None
     url: Optional[str] = None
     health_url: Optional[str] = None
+    debug_port_file: Optional[str] = None  # Path to file containing the port for /_debug/logging (for ephemeral-port services)
     required_tool: Optional[str] = None  # Tool that must be in PATH
     health_grace_attempts: int = 5       # Attempts before marking unhealthy
     depends_on: Optional[List[str]] = None  # Service keys that must be running first

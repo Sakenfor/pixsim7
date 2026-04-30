@@ -348,8 +348,7 @@ class GenerationCreationService:
         )
 
         # === PHASE 6: Caching & Deduplication ===
-        # Initialize debug logger from user preferences
-        debug = DebugLogger(user)
+        debug = DebugLogger()
 
         # Skip dedup if force_new is True (for creating variations/versions)
         if not force_new:

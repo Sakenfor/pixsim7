@@ -89,14 +89,12 @@ async def fetch_user_preferences(
             "mature_implied"  # Default if not set
         )
 
-        # Dev/debug preferences (nested under 'debug' key to match frontend pattern)
-        # Falls back to env setting if not set
-        from pixsim7.backend.main.shared.config import settings
-        debug_prefs = preferences.get("debug", {}) or {}
-        validate_composition_vocabs = debug_prefs.get(
-            "validateCompositionVocabs",
-            settings.validate_composition_vocabs
+        # validate_composition_vocabs is a global dev/debug toggle
+        # (admin-controlled via /admin/generation/config)
+        from pixsim7.backend.main.services.generation.generation_settings import (
+            get_generation_settings,
         )
+        validate_composition_vocabs = get_generation_settings().validate_composition_vocabs
 
         return {
             "maxContentRating": max_content_rating,

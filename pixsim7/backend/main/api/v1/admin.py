@@ -700,6 +700,7 @@ class GenerationConfigResponse(BaseModel):
     auto_retry_max_attempts: int
     max_jobs_per_user: int
     max_accounts_per_user: int
+    validate_composition_vocabs: bool
 
 
 class GenerationConfigUpdate(BaseModel):
@@ -712,6 +713,7 @@ class GenerationConfigUpdate(BaseModel):
     auto_retry_max_attempts: int | None = Field(None, ge=1, le=50)
     max_jobs_per_user: int | None = Field(None, ge=1, le=100)
     max_accounts_per_user: int | None = Field(None, ge=1, le=50)
+    validate_composition_vocabs: bool | None = None
 
 
 @router.get("/admin/generation/config", response_model=GenerationConfigResponse)
@@ -730,6 +732,7 @@ async def get_generation_config(user: CurrentUser):
         auto_retry_max_attempts=gs.auto_retry_max_attempts,
         max_jobs_per_user=gs.max_jobs_per_user,
         max_accounts_per_user=gs.max_accounts_per_user,
+        validate_composition_vocabs=gs.validate_composition_vocabs,
     )
 
 
@@ -775,6 +778,7 @@ async def update_generation_config(
         auto_retry_max_attempts=gs.auto_retry_max_attempts,
         max_jobs_per_user=gs.max_jobs_per_user,
         max_accounts_per_user=gs.max_accounts_per_user,
+        validate_composition_vocabs=gs.validate_composition_vocabs,
     )
 
 
@@ -930,6 +934,25 @@ async def update_logging_config(
 
         row = await patch_config(db, "logging", patch_data, admin.id)
         apply_namespace("logging", row.data)
+
+        # Push to other processes (workers) so they reload sub-second
+        # instead of waiting for their periodic poll.
+        try:
+            from pixsim7.backend.main.infrastructure.events.bus import event_bus, register_event_type
+            register_event_type(
+                "system_config:reloaded",
+                description="A persisted system_config namespace was patched and should be reloaded by other processes.",
+                payload_schema={"namespace": "str — namespace key (e.g. 'logging')"},
+                source="backend.api.v1.admin",
+            )
+            await event_bus.publish(
+                "system_config:reloaded",
+                {"namespace": "logging"},
+                wait=False,
+                strict=False,
+            )
+        except Exception as e:
+            logger.warning("logging_config_event_publish_failed: %s", e)
 
     active = get_domain_config_display()
     persisted = row.data if patch_data else (await get_config(db, "logging") or {})

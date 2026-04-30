@@ -51,6 +51,13 @@ class GenerationSettings(SettingsBase):
         5, ge=1, le=100,
         description="Max provider accounts per user",
     )
+    validate_composition_vocabs: bool = Field(
+        False,
+        description=(
+            "Validate composition asset vocab fields (role, pose_id, location_id, etc.) "
+            "against the vocabulary registry. Logs warnings for unknown values."
+        ),
+    )
 
 
 def get_generation_settings() -> GenerationSettings:

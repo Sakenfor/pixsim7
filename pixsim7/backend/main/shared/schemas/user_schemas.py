@@ -6,30 +6,6 @@ from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 
-class DebugPreferences(BaseModel):
-    """Debug flag preferences — categories aligned with pixsim_logging.spec.DOMAINS."""
-
-    model_config = ConfigDict(extra="allow")
-
-    # Canonical domains (sync with pixsim_logging.spec.DOMAINS)
-    account: bool | None = None
-    audit: bool | None = None
-    cron: bool | None = None
-    generation: bool | None = None
-    localFolders: bool | None = None
-    overlay: bool | None = None
-    persistence: bool | None = None
-    provider: bool | None = None
-    stores: bool | None = None
-    system: bool | None = None
-    websocket: bool | None = None
-    worker: bool | None = None
-    validateCompositionVocabs: bool | None = Field(
-        default=None,
-        description="Validate composition vocab fields against registry",
-    )
-
-
 DevToolSettingValue = bool | int | float | str
 DevToolsPreferences = Dict[str, Dict[str, DevToolSettingValue]]
 
@@ -156,7 +132,6 @@ class UserPreferences(BaseModel):
     notifications: Dict[str, NotificationCategoryPref] | None = None
 
     # Structured sections
-    debug: DebugPreferences | None = None
     devtools: DevToolsPreferences | None = None
     tags: TagDisplayPreferences | None = None
     auto_tags: AutoTagsPreferences | None = None

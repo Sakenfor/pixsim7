@@ -41,6 +41,20 @@ ConfirmationCallback = Callable[
 StatusCallback = Optional[Callable[[], dict]]
 
 
+def _build_logging_state() -> dict:
+    """Snapshot of pixsim_logging state for the launcher's status panel."""
+    from pixsim_logging.domains import (
+        get_active_domains,
+        get_domain_config_display,
+        get_global_level_display,
+    )
+    return {
+        "level": get_global_level_display(),
+        "domains": get_domain_config_display(),
+        "active_domains": get_active_domains(),
+    }
+
+
 class HookServer:
     """Minimal asyncio HTTP server for Claude Code PreToolUse hooks."""
 
@@ -118,6 +132,8 @@ class HookServer:
             elif path == "/status" and method == "GET":
                 status = self._status_fn() if self._status_fn else {"status": "ok"}
                 self._send_json(writer, 200, status)
+            elif path == "/_debug/logging" and method == "GET":
+                self._send_json(writer, 200, _build_logging_state())
             elif path == "/confirm" and method == "POST":
                 await self._handle_confirm(writer, body)
             else:

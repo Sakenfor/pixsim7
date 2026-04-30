@@ -87,9 +87,8 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
 
             analysis = await analysis_service.get_analysis(analysis_id)
 
-            # Per-user debug logger
             user = await user_service.get_user(analysis.user_id)
-            debug = DebugLogger(user)
+            debug = DebugLogger()
             debug.worker("loaded_analysis", analysis_id=analysis.id, status=str(analysis.status))
 
             # Normalize status comparison

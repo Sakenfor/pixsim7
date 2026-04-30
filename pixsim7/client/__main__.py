@@ -80,11 +80,18 @@ def _cmd_bridge(args, extra_args: list[str]) -> None:
             print("  No agent sessions started. Check that agent CLIs are installed.", file=sys.stderr)
             return
 
+        # Pull global logging config from backend so this client respects
+        # operator-level toggles (Settings → Debug / launcher Debug panel).
+        from pixsim7.client.logging_refresher import LoggingRefresher
+        refresher = LoggingRefresher(ws_url=args.url, get_token=Bridge._get_valid_token)
+        await refresher.start()
+
         try:
             await bridge.run()
         except KeyboardInterrupt:
             print("\n  Shutting down...")
         finally:
+            await refresher.stop()
             await pool.stop()
 
     asyncio.run(run())

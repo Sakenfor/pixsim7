@@ -1,10 +1,11 @@
 /**
  * Debug Settings Module
  *
- * Unified debug logging toggles stored in backend user preferences.
- * Controls both frontend (browser console) and backend (server logs) debug output.
- *
- * Also renders settings exposed by dev tools from the DevTools registry.
+ * Unified surface for global logging config (LoggingSettings.log_domain_levels)
+ * and dev-tool settings. Per-domain debug toggles live in the Domain Level
+ * Overrides section — set a domain to DEBUG to enable verbose logging for it
+ * (both backend structlog filtering and frontend `debugFlags.debug()` gate
+ * read from this same global config).
  *
  * NOTE: Only visible in development mode.
  */
@@ -12,119 +13,18 @@ import type { DevToolSetting, DevToolSettingSelect, DevToolSettingNumber } from 
 import { useState, useEffect, useCallback } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
-import { getUserPreferences, updatePreferenceKey, type DebugPreferences, type DevToolsPreferences, type DevToolSettingValue } from '@lib/api/userPreferences';
+import { getUserPreferences, updatePreferenceKey, type DevToolsPreferences, type DevToolSettingValue } from '@lib/api/userPreferences';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
 import { debugFlags } from '@lib/utils/debugFlags';
+
+interface GenerationConfig {
+  validate_composition_vocabs: boolean;
+}
 
 import { settingsRegistry } from '../../lib/core/registry';
 
 
-interface DebugCategoryMeta {
-  id: string;
-  description: string;
-  enabled: boolean;
-  default: boolean;
-  group: string;
-}
-
-interface DebugGroupMeta {
-  id: string;
-  label: string;
-}
-
-interface DebugCategory {
-  id: keyof DebugPreferences;
-  label: string;
-  description: string;
-  group: string;
-}
-
-interface DebugCategoriesData {
-  categories: DebugCategory[];
-  groups: DebugGroupMeta[];
-  loading: boolean;
-}
-
-function useDebugCategories(): DebugCategoriesData {
-  const [categories, setCategories] = useState<DebugCategory[]>([]);
-  const [groups, setGroups] = useState<DebugGroupMeta[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    pixsimClient
-      .get<{ categories: DebugCategoryMeta[]; groups: DebugGroupMeta[] }>('/users/me/debug/categories')
-      .then((data) => {
-        setCategories(
-          data.categories.map((c) => ({
-            id: c.id as keyof DebugPreferences,
-            label: c.id.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()),
-            description: c.description,
-            group: c.group,
-          })),
-        );
-        setGroups(data.groups ?? []);
-      })
-      .catch(() => {
-        setCategories([]);
-        setGroups([]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  return { categories, groups, loading };
-}
-
-/** Shared hook for debug state management */
-function useDebugState() {
-  const [debugStates, setDebugStates] = useState<DebugPreferences>({});
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    getUserPreferences()
-      .then(prefs => {
-        const debug = prefs.debug || {};
-        setDebugStates(debug);
-        debugFlags.updateFromPreferences(debug);
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load debug preferences:', err);
-        setIsLoading(false);
-      });
-  }, []);
-
-  const handleToggle = async (categoryId: keyof DebugPreferences) => {
-    let previousStates: DebugPreferences | null = null;
-    let nextStates: DebugPreferences | null = null;
-
-    setDebugStates(prev => {
-      previousStates = prev;
-      const newValue = !prev[categoryId];
-      nextStates = { ...prev, [categoryId]: newValue };
-      return nextStates;
-    });
-
-    if (nextStates) {
-      debugFlags.updateFromPreferences(nextStates);
-    }
-
-    try {
-      if (nextStates) {
-        await updatePreferenceKey('debug', nextStates);
-      }
-    } catch (err) {
-      console.error('Failed to save debug preference:', err);
-      if (previousStates) {
-        setDebugStates(previousStates);
-        debugFlags.updateFromPreferences(previousStates);
-      }
-    }
-  };
-
-  return { debugStates, isLoading, handleToggle };
-}
-
-/** Hook for managing dev tools preferences */
+/** Hook for managing dev tools preferences (per-user). */
 function useDevToolsSettings() {
   const [devtoolsStates, setDevtoolsStates] = useState<DevToolsPreferences>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -179,132 +79,80 @@ function useDevToolsSettings() {
   return { devtoolsStates, isLoading, getSettingValue, updateSetting };
 }
 
-/** Single category toggle row — compact inline layout */
-function DebugCategoryRow({
-  category,
-  enabled,
-  onToggle,
-}: {
-  category: DebugCategory;
-  enabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-1.5 px-1 group">
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
-          {category.label}
-        </span>
-        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 ml-2">
-          {category.description}
-        </span>
-      </div>
-      <label className="flex items-center cursor-pointer ml-3 shrink-0">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={onToggle}
-          className="sr-only peer"
-        />
-        <div className="w-8 h-[18px] bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-3.5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-[14px] after:w-[14px] after:transition-all relative"></div>
-      </label>
-    </div>
-  );
-}
+/** Global generation dev toggles (admin endpoint). */
+function GenerationDevToggles() {
+  const [validateVocabs, setValidateVocabs] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
 
-/** Grouped debug category toggle list */
-function DebugCategoryList({
-  categories,
-  groups,
-  debugStates,
-  onToggle,
-}: {
-  categories: DebugCategory[];
-  groups: DebugGroupMeta[];
-  debugStates: DebugPreferences;
-  onToggle: (id: keyof DebugPreferences) => void;
-}) {
-  // Build ordered groups; fall back to ungrouped if backend doesn't send groups
-  const groupOrder = groups.length > 0 ? groups : [{ id: '__all__', label: '' }];
-  const grouped = new Map<string, DebugCategory[]>();
-  for (const g of groupOrder) grouped.set(g.id, []);
-  for (const cat of categories) {
-    const key = groups.length > 0 ? cat.group : '__all__';
-    const bucket = grouped.get(key);
-    if (bucket) bucket.push(cat);
-    else {
-      // Unknown group — append to an "Other" bucket
-      if (!grouped.has('other')) {
-        grouped.set('other', []);
-        groupOrder.push({ id: 'other', label: 'Other' });
-      }
-      grouped.get('other')!.push(cat);
+  useEffect(() => {
+    pixsimClient
+      .get<GenerationConfig>('/admin/generation/config')
+      .then(cfg => setValidateVocabs(Boolean(cfg.validate_composition_vocabs)))
+      .catch(() => setValidateVocabs(false));
+  }, []);
+
+  if (validateVocabs === null) return null;
+
+  const toggle = async () => {
+    const next = !validateVocabs;
+    setValidateVocabs(next);
+    setSaving(true);
+    try {
+      const cfg = await pixsimClient.patch<GenerationConfig>('/admin/generation/config', {
+        validate_composition_vocabs: next,
+      });
+      setValidateVocabs(Boolean(cfg.validate_composition_vocabs));
+    } catch (err) {
+      console.error('Failed to save validate_composition_vocabs:', err);
+      setValidateVocabs(!next);
+    } finally {
+      setSaving(false);
     }
-  }
+  };
 
   return (
-    <div className="space-y-4">
-      {groupOrder.map((group) => {
-        const items = grouped.get(group.id);
-        if (!items || items.length === 0) return null;
-        const enabledCount = items.filter((c) => debugStates[c.id]).length;
-        return (
-          <div
-            key={group.id}
-            className="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-          >
-            {group.label && (
-              <div className="flex items-center justify-between px-3 py-2 bg-neutral-100/80 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                  {group.label}
-                </span>
-                <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
-                  {enabledCount}/{items.length}
-                </span>
-              </div>
-            )}
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 px-2 py-1">
-              {items.map((cat) => (
-                <DebugCategoryRow
-                  key={cat.id}
-                  category={cat}
-                  enabled={debugStates[cat.id] ?? false}
-                  onToggle={() => onToggle(cat.id)}
-                />
-              ))}
-            </div>
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+      <div className="px-3 py-2 bg-neutral-100/80 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Generation
+        </span>
+      </div>
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between py-1.5">
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-medium text-neutral-800 dark:text-neutral-100">
+              Validate Composition Vocabs
+            </span>
+            <span className="text-[10px] text-neutral-500 dark:text-neutral-400 ml-2">
+              Warn on unknown role / pose_id / location_id values during generation
+            </span>
           </div>
-        );
-      })}
+          <label className="flex items-center cursor-pointer ml-3 shrink-0">
+            <input
+              type="checkbox"
+              checked={validateVocabs}
+              disabled={saving}
+              onChange={toggle}
+              className="sr-only peer"
+            />
+            <div className="w-8 h-[18px] bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-3.5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-[14px] after:w-[14px] after:transition-all relative"></div>
+          </label>
+        </div>
+      </div>
     </div>
   );
 }
 
-/** Debug log categories — fetched from backend DebugSettings */
+/** Top-level debug log settings — global config + per-domain overrides. */
 function DebugLogCategories() {
-  const { debugStates, isLoading: prefsLoading, handleToggle } = useDebugState();
-  const { categories, groups, loading: catsLoading } = useDebugCategories();
-
-  if (prefsLoading || catsLoading) {
-    return (
-      <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
-        Loading debug preferences...
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
       <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-        Toggle debug categories. Backend categories write to server logs; frontend categories output to browser console.
+        Logging is gated by the global config below. Set a domain to DEBUG to enable verbose
+        logs for it — applies to both server logs and browser-console output.
       </p>
-      <DebugCategoryList
-        categories={categories}
-        groups={groups}
-        debugStates={debugStates}
-        onToggle={handleToggle}
-      />
       <LogDatabaseSettings />
+      <GenerationDevToggles />
     </div>
   );
 }
@@ -354,7 +202,10 @@ function useLoggingConfig() {
     // Fetch editable config from admin endpoint
     pixsimClient
       .get<LoggingConfig>('/admin/logging/config')
-      .then(setConfig)
+      .then((cfg) => {
+        setConfig(cfg);
+        debugFlags.updateFromConfig(cfg.log_domain_levels);
+      })
       .catch(() => {});
   }, []);
 
@@ -363,6 +214,7 @@ function useLoggingConfig() {
     try {
       const updated = await pixsimClient.patch<LoggingConfig>('/admin/logging/config', patch);
       setConfig(updated);
+      debugFlags.updateFromConfig(updated.log_domain_levels);
     } catch (err) {
       console.error('Failed to update logging config:', err);
     } finally {
@@ -415,7 +267,7 @@ function RetentionSlider({
     <div className="flex items-center justify-between">
       <div>
         <div className="text-[11px] font-medium text-neutral-800 dark:text-neutral-100">Retention</div>
-        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Days to keep log entries (1\u2013365)</div>
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Days to keep log entries (1–365)</div>
       </div>
       <div className="flex items-center gap-2">
         <input
@@ -444,7 +296,7 @@ function LogDatabaseSettings() {
   if (!config) return null;
 
   const fmt = (iso: string | null) => {
-    if (!iso) return '\u2014';
+    if (!iso) return '—';
     const d = new Date(iso);
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -452,11 +304,7 @@ function LogDatabaseSettings() {
   const domainLevels = config.log_domain_levels ?? {};
 
   return (
-    <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 space-y-3">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-        Log Database
-      </div>
-
+    <div className="space-y-3">
       {/* ── Settings row ── */}
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
         <div className="px-3 py-2 bg-neutral-100/80 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700">
@@ -643,7 +491,7 @@ function LogPurgeControls({
   );
 }
 
-/** Per-domain log level overrides — collapsible list with level dropdowns */
+/** Per-domain log level overrides — collapsible list with level dropdowns. */
 function DomainLevelOverrides({
   domainLevels,
   saving,
@@ -653,10 +501,11 @@ function DomainLevelOverrides({
   saving: boolean;
   onUpdate: (levels: Record<string, string>) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const activeCount = Object.values(domainLevels).filter((v) => v && v !== 'INFO').length;
+  const [expanded, setExpanded] = useState(true);
+  const debugCount = Object.values(domainLevels).filter((v) => v.toUpperCase() === 'DEBUG').length;
+  const overrideCount = Object.values(domainLevels).filter((v) => v && v.toUpperCase() !== 'INFO').length;
 
-  // Use DOMAINS from the backend response (keys), but we know them from spec
+  // Canonical domains — keep in sync with pixsim_logging.spec.DOMAINS
   const allDomains = [
     'account', 'audit', 'cron', 'generation', 'localFolders',
     'overlay', 'persistence', 'provider', 'sql', 'stores',
@@ -665,7 +514,7 @@ function DomainLevelOverrides({
 
   const handleChange = (domain: string, level: string) => {
     const next = { ...domainLevels };
-    if (level === '' || level === 'INFO') {
+    if (level === '' || level.toUpperCase() === 'INFO') {
       delete next[domain];
     } else {
       next[domain] = level;
@@ -681,22 +530,28 @@ function DomainLevelOverrides({
         className="w-full flex items-center justify-between px-3 py-2 bg-neutral-100/80 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200/60 dark:hover:bg-neutral-700/60 transition-colors"
       >
         <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Domain Level Overrides
+          Domain Levels (set DEBUG to enable per-category logging)
         </span>
         <span className="flex items-center gap-2">
-          {activeCount > 0 && (
+          {debugCount > 0 && (
             <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-              {activeCount} active
+              {debugCount} DEBUG
             </span>
           )}
-          <span className="text-[10px] text-neutral-400">{expanded ? '\u25B2' : '\u25BC'}</span>
+          {overrideCount > debugCount && (
+            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
+              {overrideCount - debugCount} other
+            </span>
+          )}
+          <span className="text-[10px] text-neutral-400">{expanded ? '▲' : '▼'}</span>
         </span>
       </button>
       {expanded && (
         <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {allDomains.map((domain) => {
             const current = domainLevels[domain] ?? '';
-            const isOverridden = current && current !== 'INFO';
+            const isDebug = current.toUpperCase() === 'DEBUG';
+            const isOverridden = current && current.toUpperCase() !== 'INFO';
             return (
               <div key={domain} className="flex items-center justify-between px-3 py-1.5">
                 <span className={`text-[11px] ${isOverridden ? 'font-medium text-neutral-800 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400'}`}>
@@ -707,9 +562,11 @@ function DomainLevelOverrides({
                   disabled={saving}
                   onChange={(e) => handleChange(domain, e.target.value)}
                   className={`px-1.5 py-0.5 text-[10px] rounded border bg-white dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 ${
-                    isOverridden
-                      ? 'border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400'
-                      : 'border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-400'
+                    isDebug
+                      ? 'border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-400 font-medium'
+                      : isOverridden
+                        ? 'border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300'
+                        : 'border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-400'
                   }`}
                 >
                   <option value="">default</option>

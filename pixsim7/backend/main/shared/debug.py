@@ -1,51 +1,39 @@
 """
 Debug logging utilities
 
-Provides conditional debug logging based on user preferences.
-Debug flags are stored in user.preferences['debug'] dict.
-
-Uses pixsim_logging for consistent log formatting.
+Thin wrapper over ``pixsim_logging`` domain config. A category is "enabled"
+iff its domain is configured at DEBUG (or absent and global level is DEBUG).
+There is no per-user state — log gating is global, set via the system
+``LoggingSettings`` config (admin endpoint) or the ``PIXSIM_LOG_DOMAINS`` /
+``PIXSIM_WORKER_DEBUG`` env vars at boot.
 """
 import os
-from typing import Optional, Any, Dict
+from typing import Dict, Optional
 
 from pixsim_logging import get_logger
+from pixsim_logging.domains import update_domain_config, get_domain_config_display
 
 logger = get_logger()
 
 
 class DebugLogger:
-    """
-    Conditional debug logger that checks user preferences.
+    """Conditional debug logger keyed by domain category.
+
+    Enabled iff the domain is explicitly set to DEBUG in the global logging
+    config. (Unconfigured domains are *not* treated as enabled — that mirrors
+    the frontend ``debugFlags`` semantics and prevents accidental log floods
+    when the global level is DEBUG.)
 
     Usage:
-        debug = DebugLogger(user)
+        debug = DebugLogger()
         debug.log('generation', 'Dedup hash:', hash_value)
-        debug.log('provider', 'API response:', response)
     """
 
-    def __init__(self, user: Optional[Any] = None, preferences: Optional[dict] = None):
-        """
-        Initialize with user or preferences dict.
-
-        Args:
-            user: User object with preferences attribute
-            preferences: Direct preferences dict (alternative to user)
-        """
-        self._debug_flags: dict = {}
-
-        if preferences:
-            self._debug_flags = preferences.get("debug", {})
-        elif user and hasattr(user, "preferences"):
-            prefs = user.preferences or {}
-            self._debug_flags = prefs.get("debug", {})
-
     def is_enabled(self, category: str) -> bool:
-        """Check if debug is enabled for a category."""
-        return bool(self._debug_flags.get(category, False))
+        levels = get_domain_config_display()
+        return levels.get(category, "").upper() == "DEBUG"
 
     def log(self, category: str, *args, **kwargs):
-        """Log if category is enabled."""
         if self.is_enabled(category):
             message = " ".join(str(arg) for arg in args)
             logger.debug(
@@ -56,66 +44,37 @@ class DebugLogger:
             )
 
     def generation(self, *args, **kwargs):
-        """Shortcut for generation debug logs."""
         self.log("generation", *args, **kwargs)
 
     def provider(self, *args, **kwargs):
-        """Shortcut for provider debug logs."""
         self.log("provider", *args, **kwargs)
 
     def worker(self, *args, **kwargs):
-        """Shortcut for worker debug logs."""
         self.log("worker", *args, **kwargs)
 
 
-# Global debug logger for cases where user context isn't available
-# Can be updated via set_global_debug_flags()
-_global_debug_flags: dict = {}
-
-
-def set_global_debug_flags(flags: Dict[str, bool]) -> None:
-    """Set global debug flags (for worker processes without user context)."""
-    global _global_debug_flags
-    _global_debug_flags = dict(flags or {})
+_SHARED = DebugLogger()
 
 
 def get_global_debug_logger() -> DebugLogger:
-    """Get a debug logger using global flags."""
-    return DebugLogger(preferences={"debug": _global_debug_flags})
+    """Return the shared debug logger (singleton)."""
+    return _SHARED
 
 
-def debug_log(category: str, *args, user: Optional[Any] = None, **kwargs) -> None:
-    """
-    Convenience function for debug logging.
-
-    Uses user preferences if provided, otherwise falls back to global flags.
-
-    Args:
-        category: Debug category ('generation', 'provider', 'worker')
-        *args: Message parts
-        user: Optional user object for per-user debug settings
-        **kwargs: Additional key-value pairs to log
-    """
-    if user:
-        debug = DebugLogger(user)
-    else:
-        debug = get_global_debug_logger()
-
-    debug.log(category, *args, **kwargs)
+def debug_log(category: str, *args, **kwargs) -> None:
+    """Convenience function for debug logging."""
+    _SHARED.log(category, *args, **kwargs)
 
 
 def load_global_debug_from_env(env_value: Optional[str] = None) -> Dict[str, bool]:
-    """
-    Load global debug flags from environment.
+    """Merge ``PIXSIM_WORKER_DEBUG`` categories into the domain config.
 
-    Expected format (comma-separated categories):
+    Format (comma-separated):
         PIXSIM_WORKER_DEBUG=generation,provider,worker
 
-    Also routes enabled categories into pixsim_logging's domain filter
-    via ``update_domain_config()`` so that structlog domain filtering
-    and the DebugLogger category checks stay in sync.
-
-    Returns the parsed flags dict for further inspection.
+    Each listed category is set to DEBUG level in the in-memory domain config
+    if not already configured. Returns the parsed flags dict for callers that
+    want to log what was set.
     """
     value = env_value if env_value is not None else os.getenv("PIXSIM_WORKER_DEBUG", "")
     flags: Dict[str, bool] = {}
@@ -126,13 +85,7 @@ def load_global_debug_from_env(env_value: Optional[str] = None) -> Dict[str, boo
             if key:
                 flags[key] = True
 
-    set_global_debug_flags(flags)
-
-    # Route into pixsim_logging domain filter so structlog processors
-    # respect the same categories (set enabled domains to DEBUG).
     if flags:
-        from pixsim_logging.domains import update_domain_config, get_domain_config_display
-
         current = get_domain_config_display()
         merged = {**current}
         for category in flags:

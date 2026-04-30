@@ -9,6 +9,7 @@
   "depends_on": ["main-api"],
   "auto_start": false,
   "enabled": true,
+  "debug_port_file": "~/.pixsim/hook_port",
   "exclude_base_settings": ["max_jobs", "job_timeout"],
   "settings": [
     {

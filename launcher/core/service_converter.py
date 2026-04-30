@@ -153,6 +153,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         env_overrides=service_def.env_overrides,
         url=service_def.url,
         health_url=service_def.health_url,
+        debug_port_file=service_def.debug_port_file,
         required_tool=service_def.required_tool,
         health_grace_attempts=service_def.health_grace_attempts,
         depends_on=service_def.depends_on,

@@ -35,6 +35,8 @@ from pixsim7.backend.main.workers.status_poller_maintenance import (
 )
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
+from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
+from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.automation.services.device_sync_service import poll_device_ads
 from pixsim7.backend.main.workers.health import (
@@ -119,7 +121,12 @@ async def _load_persisted_system_config_for_worker() -> None:
 
 
 async def reload_logging_config(ctx: dict) -> None:
-    """Periodic reload of logging config from DB so UI changes take effect in worker."""
+    """Reload logging config from DB.
+
+    Two callers in this worker:
+    - Periodic cron (fallback / catches missed events).
+    - Event-bus subscriber below (sub-second push from backend admin patch).
+    """
     try:
         from pixsim7.backend.main.infrastructure.database.session import get_async_session
         from pixsim7.backend.main.services.system_config import get_config, apply_namespace
@@ -131,6 +138,36 @@ async def reload_logging_config(ctx: dict) -> None:
             apply_namespace("logging", data)
     except Exception:
         pass  # Best-effort; next cycle will retry
+
+
+# Module-level event subscription: react to backend logging-config patches
+# in sub-second time instead of waiting for the periodic cron. The Redis
+# event bridge (started during worker startup) routes the published event
+# from the backend into the local event_bus, which fires this handler.
+def _register_system_config_subscriber() -> None:
+    from pixsim7.backend.main.infrastructure.events.bus import event_bus, register_event_type
+
+    register_event_type(
+        "system_config:reloaded",
+        description="A persisted system_config namespace was patched and should be reloaded by other processes.",
+        payload_schema={"namespace": "str — namespace key (e.g. 'logging')"},
+        source="backend.api.v1.admin",
+    )
+
+    async def _on_system_config_reloaded(event) -> None:
+        namespace = (event.data or {}).get("namespace")
+        if namespace != "logging":
+            return
+        try:
+            await reload_logging_config({})
+            logger.info("worker_logging_config_reloaded_via_event")
+        except Exception as e:
+            logger.warning("worker_logging_config_reload_failed", error=str(e))
+
+    event_bus.subscribe("system_config:reloaded", _on_system_config_reloaded)
+
+
+_register_system_config_subscriber()
 
 
 def _normalize_arq_logger_handlers() -> None:
@@ -198,6 +235,8 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_analysis")
     logger.info("worker_component_registered", component="process_derivatives")
+    logger.info("worker_component_registered", component="process_ingestion")
+    logger.info("worker_component_registered", component="process_prompt_tagging")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
@@ -447,6 +486,8 @@ class WorkerSettings:
         process_generation,
         process_analysis,
         process_derivatives,
+        process_ingestion,
+        process_prompt_tagging,
         run_analysis_backfill_batch,
         poll_job_statuses,
         poll_generation_once,

@@ -199,24 +199,45 @@ async def update_user_preferences(
 # ===== DEBUG SETTINGS META =====
 
 
+_DOMAIN_DESCRIPTIONS = {
+    "account": "Account and auth operations",
+    "audit": "Audit trail events",
+    "cron": "Scheduled tasks and background jobs",
+    "generation": "Generation pipeline, dedup, params",
+    "localFolders": "Local folder hashing, sync, and backend checks",
+    "overlay": "Media card overlay and badge system",
+    "persistence": "Store persistence and rehydration",
+    "provider": "Provider SDK calls and responses",
+    "sql": "SQL query echo logging (verbose)",
+    "stores": "Store initialization and creation",
+    "system": "System, registry, and API sync",
+    "websocket": "WebSocket connection and messages",
+    "worker": "Job processing and status polling",
+}
+
+
 @router.get("/users/me/debug/categories")
 async def get_debug_categories(principal: CurrentUser):
-    """Return available debug categories with descriptions, groups, and current state."""
-    from pixsim_logging.spec import DOMAIN_GROUPS, DOMAIN_TO_GROUP
-    from pixsim7.backend.main.services.debug import DebugSettings
+    """Return debug categories with descriptions, groups, and current global state.
 
-    current = DebugSettings.from_dict(
-        (principal.preferences or {}).get("debug", {})
-    )
-    categories = []
-    for name, field_info in DebugSettings.model_fields.items():
-        categories.append({
-            "id": name,
-            "description": field_info.description or "",
-            "enabled": getattr(current, name, False),
-            "default": field_info.default,
-            "group": DOMAIN_TO_GROUP.get(name, "other"),
-        })
+    "Enabled" mirrors the global ``LoggingSettings.log_domain_levels`` config:
+    a category is enabled when its domain level is DEBUG.
+    """
+    from pixsim_logging.spec import DOMAINS, DOMAIN_GROUPS, DOMAIN_TO_GROUP
+    from pixsim_logging.domains import get_domain_config_display
+
+    _ = principal  # endpoint requires auth, but state is global
+    levels = get_domain_config_display()
+    categories = [
+        {
+            "id": domain,
+            "description": _DOMAIN_DESCRIPTIONS.get(domain, ""),
+            "enabled": levels.get(domain, "").upper() == "DEBUG",
+            "default": False,
+            "group": DOMAIN_TO_GROUP.get(domain, "other"),
+        }
+        for domain in DOMAINS
+    ]
     groups = [
         {"id": gid, "label": label} for gid, label, _domains in DOMAIN_GROUPS
     ]
