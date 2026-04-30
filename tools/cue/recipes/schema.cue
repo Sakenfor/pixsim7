@@ -56,11 +56,6 @@ package recipes
     rhs_kind?:   string
 }
 
-// Backwards-compat alias: older code imported `#RelationContext`. The
-// unified-chain schema renames it but keeps the old name as an alias
-// during the migration so any imports we missed keep validating.
-#RelationContext: #RecipeContext
-
 // ── recipe ──────────────────────────────────────────────────────────────
 
 #RelationRecipe: {
