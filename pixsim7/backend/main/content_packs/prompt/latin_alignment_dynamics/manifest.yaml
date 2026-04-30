@@ -1,0 +1,16 @@
+id: latin-alignment-dynamics
+title: Latin Alignment Dynamics
+description: 'Curated Latin phrase enhancers for body positioning and pre-contact alignment. Covers the preparatory phase before coupling: axis orientation, angular approach, closing distance, mutual seeking.'
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_alignment_dynamics
+      include_empty: true
+  - label: Motion Type by Register
+    query:
+      row_key: tag:motion_type
+      col_key: tag:register
+      package_name: latin_alignment_dynamics
+      include_empty: true

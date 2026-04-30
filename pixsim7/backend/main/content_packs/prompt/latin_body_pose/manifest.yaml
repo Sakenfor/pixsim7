@@ -1,0 +1,16 @@
+id: latin-body-pose
+title: Latin Body Pose
+description: 'Latin phrase enhancers for held body positions: lumbar arch, forward/back lean, lateral weight shift (contrapposto), open chest, pelvic presentation, reclining. Companion to latin_hip_motion — hip_motion describes the movement, body_pose describes the held result.'
+matrix_presets:
+  - label: Pose Type by Register
+    query:
+      row_key: tag:pose_type
+      col_key: tag:register
+      package_name: latin_body_pose
+      include_empty: true
+  - label: Stance Quality by Pose Type
+    query:
+      row_key: tag:stance_quality
+      col_key: tag:pose_type
+      package_name: latin_body_pose
+      include_empty: true

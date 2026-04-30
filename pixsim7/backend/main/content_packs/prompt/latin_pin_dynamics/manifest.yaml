@@ -1,0 +1,16 @@
+id: latin-pin-dynamics
+title: Latin Pin Dynamics
+description: Curated Latin phrase enhancers for pinning and physical restraint. 50/50 technical/poetic, drawing on the classical predator-prey register.
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_pin_dynamics
+      include_empty: true
+  - label: Motion Type by Register
+    query:
+      row_key: tag:motion_type
+      col_key: tag:register
+      package_name: latin_pin_dynamics
+      include_empty: true
