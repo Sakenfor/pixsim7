@@ -626,31 +626,42 @@ class AnalyzePromptRequest(BaseModel):
 
 class PromptTokenHeaderLine(BaseModel):
     kind: Literal["header"] = "header"
-    pattern: str = Field(..., description="PatternId: colon | assignment | assignment_arrow | angle_bracket | freestanding | compound_assignment")
+    pattern: str = Field(..., description="PatternId: colon | angle_bracket | freestanding")
     label: str
     start: int
     end: int
     body_start: int
-    op_start: Optional[int] = Field(None, description="Char range start of the header operator (e.g. `=`, `:`, `>`); None for freestanding")
+    op_start: Optional[int] = Field(None, description="Char range start of the colon header operator; None for angle_bracket / freestanding")
     op_end: Optional[int] = None
 
 
-class PromptTokenRelationHop(BaseModel):
-    lhs: Optional[str] = None
-    rhs: Optional[str] = None
-    raw: str = Field(..., description="Operator string, e.g. '===>' or '<'")
-    leading_char: Optional[str] = None
-    terminal_char: Optional[str] = None
-    run: int = Field(..., description="Total operator length in characters")
-    op_start: int = Field(0, description="Char range start of this hop's operator run in the document")
-    op_end: int = 0
+class PromptTokenChainElement(BaseModel):
+    kind: Literal["var", "prose"] = Field(..., description="`var` if exactly one UPPER_IDENT after WS-trim, else `prose`")
+    text: str = Field(..., description="Element text after WS-trim; empty string when this slot is empty")
+    start: int
+    end: int
 
 
-class PromptTokenRelationLine(BaseModel):
-    kind: Literal["relation"] = "relation"
-    hops: List[PromptTokenRelationHop] = Field(
+class PromptTokenChainOperator(BaseModel):
+    op: str = Field(..., description="Raw operator text, e.g. '===>', '<', '=', ':'")
+    run: int = Field(..., description="Total operator length in characters (== op_end - op_start)")
+    op_start: int = Field(..., description="Char range start of this operator run in the document")
+    op_end: int
+
+
+class PromptTokenChainLine(BaseModel):
+    kind: Literal["chain"] = "chain"
+    elements: List[PromptTokenChainElement] = Field(
         ...,
-        description="One or more (lhs? op rhs?) hops; e.g. A===>B<===C gives two hops",
+        description=(
+            "Elements between operators. Invariant: len(elements) == "
+            "len(operators) + 1. Either end may be empty (start == end) "
+            "for bare leading/trailing operator runs."
+        ),
+    )
+    operators: List[PromptTokenChainOperator] = Field(
+        ...,
+        description="One or more operator runs that separate elements (left-to-right order).",
     )
     start: int
     end: int
@@ -664,7 +675,7 @@ class PromptTokenProseLine(BaseModel):
 
 
 PromptTokenLine = Annotated[
-    Union[PromptTokenHeaderLine, PromptTokenRelationLine, PromptTokenProseLine],
+    Union[PromptTokenHeaderLine, PromptTokenChainLine, PromptTokenProseLine],
     Field(discriminator="kind"),
 ]
 
@@ -712,7 +723,7 @@ class AnalyzePromptResponse(BaseModel):
     )
     tokens: Optional[PromptTokensPayload] = Field(
         None,
-        description="Line-level DSL token parse tree (header / relation / prose nodes).",
+        description="Line-level DSL token parse tree (header / chain / prose nodes).",
     )
 
 

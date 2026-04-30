@@ -21,30 +21,44 @@ import type { PromptBlockCandidate } from '../types';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface PromptTokenRelationHop {
-  lhs?: string | null;
-  rhs?: string | null;
-  raw: string;
-  leading_char?: string | null;
-  terminal_char?: string | null;
+/** One element in a chain line. */
+export interface PromptTokenChainElement {
+  /** `var` iff exactly one UPPER_IDENT after WS-trim; else `prose`. */
+  kind: 'var' | 'prose';
+  /** Element text after WS-trim; empty string when this slot is empty. */
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** One operator run between two chain elements. */
+export interface PromptTokenChainOperator {
+  /** Raw operator text, e.g. `===>`, `<`, `=`, `:`. */
+  op: string;
+  /** Total operator length in characters (== op_end - op_start). */
   run: number;
-  /** Char range of this hop's operator run in the document. */
   op_start: number;
   op_end: number;
 }
 
 // Token-level line nodes returned by the Python tokenizer.
+//
+// Three kinds:
+//   - header: line-terminal section header (colon | angle_bracket | freestanding)
+//   - chain:  var|prose elements separated by operator runs
+//   - prose:  free-form text (no recognised structure)
 export interface PromptTokenLine {
-  kind: 'header' | 'relation' | 'prose';
-  // header fields
+  kind: 'header' | 'chain' | 'prose';
+  // header fields (colon | angle_bracket | freestanding)
   pattern?: string;
   label?: string;
   body_start?: number;
-  /** Header op char range (e.g. `=`, `:`, `>`). Undefined for freestanding. */
+  /** Header op char range — colon `:` only; undefined for angle_bracket / freestanding. */
   op_start?: number;
   op_end?: number;
-  // relation fields — one or more hops, e.g. A===>B<===C → 2 hops
-  hops?: PromptTokenRelationHop[];
+  // chain fields. Invariant: elements.length === operators.length + 1.
+  elements?: PromptTokenChainElement[];
+  operators?: PromptTokenChainOperator[];
   // shared
   start: number;
   end: number;

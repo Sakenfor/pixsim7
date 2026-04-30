@@ -8,20 +8,22 @@ package grammar
 // Semantic interpretation is left entirely to the recipe layer.
 #RunChar: "=" | "<" | ">" | "_"
 
-#LineNodeKind: "header" | "relation" | "prose"
+#LineNodeKind: "header" | "chain" | "prose"
 
-// Mirrors PatternId in sections.ts / SimplePromptParser.BUILTIN_SECTION_PATTERNS.
-#PatternId: "colon" | "assignment" | "assignment_arrow" | "assignment_arrow_left" | "angle_bracket" | "freestanding" | "compound_assignment"
+// Line-terminal section header shapes only. Other patterns
+// (`assignment` / `assignment_arrow` / `assignment_arrow_left` /
+// `compound_assignment`) collapsed into the chain parser; legacy
+// pattern_ids no longer appear in tokenizer output.
+#PatternId: "colon" | "angle_bracket" | "freestanding"
 
 // How a header pattern terminates its label with an operator.
 #OpStyle:
     "colon"     |   // label followed by ':'
-    "run_eq"    |   // label followed by RUN('=', n>=1)
-    "run_gt"    |   // label followed by RUN('>', n>=1)  [ws_before_op required]
-    "run_lt"    |   // label followed by RUN('<', n>=1)  [ws_before_op required]
     "run_angle" |   // wrapped: RUN('>',1) label RUN('<',1)
-    "none"      |   // no operator — label is the whole line (freestanding)
-    "compound"      // chain of IDENTs joined by <> ops, terminated by '='
+    "none"          // no operator — label is the whole line (freestanding)
+
+// Operator chars recognised by the chain parser (mid-line).
+#ChainOpChar: "=" | "<" | ">" | ":"
 
 // ── header pattern definition ───────────────────────────────────────────────
 
@@ -41,20 +43,18 @@ package grammar
     angle_wrap:   bool  // true  → operator wraps label: >LABEL<
 }
 
-// ── relation definition ─────────────────────────────────────────────────────
+// ── chain definition ────────────────────────────────────────────────────────
+// The chain parser walks a line as a sequence of (var | prose) elements
+// separated by operator runs. Cardinality (run length) is preserved;
+// semantic meaning is a recipe-layer concern.
 
-#RelationDef: {
-    // RUN chars that act as relation operators.
-    // Cardinality (run length) is preserved; semantic meaning is recipe-layer concern.
-    op_chars: [...#RunChar]
+#ChainDef: {
+    // RUN/COLON chars that act as chain operators.
+    op_chars: [...#ChainOpChar]
 
     // RUN chars explicitly excluded from operator sequences.
-    // '_' stays as part of IDENT when adjacent to letters, so it is excluded here.
+    // '_' stays as part of IDENT when adjacent to letters.
     op_excludes: [...#RunChar]
-
-    lhs_optional:     bool  // left-hand IDENT may be absent
-    rhs_optional:     bool  // right-hand IDENT may be absent
-    allow_standalone: bool  // bare operator (no lhs AND no rhs) is a valid relation node
 }
 
 // ── operator vocabulary ─────────────────────────────────────────────────────
@@ -75,6 +75,6 @@ package grammar
     token_kinds:         [...#TokenKind]
     run_chars:           [...#RunChar]
     header_patterns:     [...#HeaderPatternDef]
-    relation:            #RelationDef
+    chain:               #ChainDef
     operator_vocabulary: #OperatorVocabularyDef
 }

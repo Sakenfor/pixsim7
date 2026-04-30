@@ -7,8 +7,8 @@ package grammar
 // generated grammar_rules.json.  Neither runtime hard-codes these
 // values — they load the JSON at startup.
 //
-// Semantic interpretation of RUN token cardinality (e.g. what >>>>>>>
-// means vs. >) belongs to the recipe layer, not here.
+// Semantic interpretation of operator runs (e.g. what >>>>>>> means
+// vs. >) belongs to the recipe layer, not here.
 
 grammar_rules: #GrammarRules & {
     version: "1.0.0"
@@ -32,8 +32,10 @@ grammar_rules: #GrammarRules & {
     run_chars: ["=", "<", ">", "_"]
 
     // ── section header patterns ─────────────────────────────────────────
-    // Ordered from most- to least-specific for documentation clarity;
-    // the parser tries all active patterns per line independently.
+    // Only the three line-terminal shapes remain here. Lines like
+    // `LABEL = body`, `LABEL > body`, `A<B<C = body`, and relation-style
+    // `A ===> B` are now classified by the chain parser (see chain block
+    // below), not as headers.
 
     header_patterns: [
         {
@@ -44,40 +46,6 @@ grammar_rules: #GrammarRules & {
             label_max:        39
             terminal:         true    // colon must end the line
             ws_before_op:     false
-            angle_wrap:       false
-        },
-        {
-            id:               "assignment"
-            op_style:         "run_eq"
-            label_upper_only: true    // ACTOR1, SCENE_TWO — uppercase+digits+underscore
-            label_min:        2
-            label_max:        59
-            terminal:         false   // body follows on same line
-            ws_before_op:     false   // "LABEL=body" and "LABEL = body" both valid
-            angle_wrap:       false
-        },
-        {
-            id:               "assignment_arrow"
-            op_style:         "run_gt"
-            label_upper_only: true
-            label_min:        2
-            label_max:        59
-            terminal:         false
-            ws_before_op:     true    // mandatory WS prevents "ACTOR1>ACTOR2" from matching
-            angle_wrap:       false
-        },
-        {
-            // Mirror of assignment_arrow for the '<' direction:
-            //   ACTOR1_TOOLS_TONGUE < Lingua ūmida flōrem...
-            // Same constraints (single < only; ws before op) so multi-char
-            // runs like '<<<' stay as relation operators.
-            id:               "assignment_arrow_left"
-            op_style:         "run_lt"
-            label_upper_only: true
-            label_min:        2
-            label_max:        59
-            terminal:         false
-            ws_before_op:     true
             angle_wrap:       false
         },
         {
@@ -100,36 +68,19 @@ grammar_rules: #GrammarRules & {
             ws_before_op:     false
             angle_wrap:       false
         },
-        {
-            // Chain-prefixed assignment — label is multiple IDENTs joined by
-            // '<' / '>' chars (and optional spaces / phrase IDENTs / a few
-            // punctuation chars). Terminator is a single '=' (not part of a
-            // compound '==>' / '<==').
-            //
-            //   ACTOR2<REPOSE<STANDING LEANED ONTO RECEPTION DESK = body
-            //   ACTOR2>ATTRACTING<ACTOR1 = body
-            //   ACTOR1_TOOLS < MUZZLE = body
-            id:               "compound_assignment"
-            op_style:         "compound"
-            label_upper_only: true
-            label_min:        3
-            label_max:        200     // long compound labels are intended
-            terminal:         false
-            ws_before_op:     false
-            angle_wrap:       false
-        },
     ]
 
-    // ── relation pattern ────────────────────────────────────────────────
-    // Structural definition only.  Cardinality semantics (what run=7
-    // means for >) are recipe-layer concerns confirmed through testing.
+    // ── chain pattern ───────────────────────────────────────────────────
+    // A chain is a sequence of elements (var | prose) separated by
+    // operator runs. Element classification happens after WS-trim:
+    // exactly one UPPER_IDENT → var; anything else → prose. Operator
+    // runs collapse contiguous op-char tokens into one operator;
+    // whitespace breaks an operator. Cardinality semantics belong to
+    // the recipe layer.
 
-    relation: {
-        op_chars:         ["=", "<", ">"]
-        op_excludes:      ["_"]     // _ stays inside IDENT runs; not a relation op
-        lhs_optional:     true      // "=====>  ACTOR" (no lhs) is valid
-        rhs_optional:     true      // "ACTOR1>>>>>>>" (no rhs) is valid
-        allow_standalone: true      // bare "=====>" with no operands is a valid relation node
+    chain: {
+        op_chars:    ["=", "<", ">", ":"]
+        op_excludes: ["_"]   // _ stays inside IDENT runs; not a chain op
     }
 
     // ── operator vocabulary ─────────────────────────────────────────────
