@@ -23,7 +23,7 @@ from .branching import AssetBranchingService
 from .lineage import AssetLineageService
 from .ingestion import AssetIngestionService
 from pixsim7.backend.main.services.media.settings import get_media_settings
-from .tags import tag_asset_from_metadata, extract_ontology_ids_from_asset_tags
+from .tags import tag_asset_from_metadata
 from .dedup import (
     find_existing_asset,
     find_existing_by_candidate_ids,
@@ -47,7 +47,6 @@ __all__ = [
     "get_media_settings",
     # Tags
     "tag_asset_from_metadata",
-    "extract_ontology_ids_from_asset_tags",
     # Dedup helpers
     "find_existing_asset",
     "find_existing_by_candidate_ids",

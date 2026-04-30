@@ -5,7 +5,6 @@ Template composition, fit scoring, and dynamic slot planning utilities.
 """
 
 from .fit_scoring import compute_block_asset_fit
-from .tagging import normalize_tags
 from .template_service import BlockTemplateService
 from .character_expander import CharacterBindingExpander
 from .dynamic_slot_planner import (
@@ -19,7 +18,6 @@ from .dynamic_slot_planner import (
 
 __all__ = [
     "compute_block_asset_fit",
-    "normalize_tags",
     "BlockTemplateService",
     "CharacterBindingExpander",
     "ComposerContextInput",
