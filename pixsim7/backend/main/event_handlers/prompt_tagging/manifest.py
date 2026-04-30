@@ -1,18 +1,16 @@
 """
 Prompt Tagging Event Handler
 
-Listens for prompt:version_created events and runs AI-assisted tag suggestion
-for the parent PromptFamily.
+Listens for prompt:version_created events and enqueues an AI-assisted
+tag-suggestion job for the parent PromptFamily.
 
-Behaviour:
-- Calls suggest_family_tags() with the new prompt text + family category
-- Deletes existing AI-source tags for the family
-- Inserts new AI tags, skipping any that are already manually tagged
-  (manual tags are never overwritten by AI)
+The actual work runs in the ARQ worker via ``process_prompt_tagging``.
+Routing through ARQ (with a unique job_id keyed on ``family_id``) gives us
+deduplication: rapid successive ``prompt:version_created`` events for the
+same family collapse to a single in-flight job.  Retry/backoff comes from
+the worker's ``max_tries`` + ``retry_jobs`` settings — important because the
+LLM call inside ``suggest_family_tags`` is the most failure-prone step.
 """
-import asyncio
-from uuid import UUID
-
 from pydantic import BaseModel
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
@@ -37,8 +35,8 @@ class EventHandlerManifest(BaseModel):
 manifest = EventHandlerManifest(
     id="prompt_tagging",
     name="Prompt AI Tagger",
-    version="1.0.0",
-    description="Auto-suggests library tags for a PromptFamily when a new version is saved",
+    version="1.1.0",
+    description="Enqueues an AI tag-suggestion job (ARQ) when a new prompt version is saved",
     author="PixSim Team",
     enabled=True,
     subscribe_to=PROMPT_VERSION_CREATED,
@@ -60,94 +58,24 @@ async def handle_event(event: Event) -> None:
         logger.warning("prompt_tagging_skipped_missing_data", event_data=event.data)
         return
 
-    asyncio.create_task(
-        _suggest_and_apply(
-            family_id=UUID(family_id_str),
-            prompt_text=prompt_text,
+    try:
+        from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
+
+        await queue_task(
+            "process_prompt_tagging",
+            family_id_str,
+            prompt_text,
             category=mode_id,
             ai_tags=event.data.get("ai_tags"),
+            _job_id=f"prompt-tag:{family_id_str}",
         )
-    )
-
-
-async def _suggest_and_apply(
-    family_id: UUID,
-    prompt_text: str,
-    category: str | None,
-    ai_tags: list[str] | None = None,
-) -> None:
-    try:
-        from pixsim7.backend.main.infrastructure.database.session import get_async_session
-        from pixsim7.backend.main.services.prompt.tag_suggester import suggest_family_tags
-        from pixsim7.backend.main.services.tag import TagRegistry
-        from pixsim7.backend.main.domain.prompt.tag import PromptFamilyTag
-        from sqlalchemy import delete, select
-
-        async with get_async_session() as db:
-            if ai_tags is not None:
-                # Agent provided tags directly — skip LLM call
-                suggested = ai_tags
-                logger.info(
-                    "prompt_tagging_using_agent_tags",
-                    family_id=str(family_id),
-                    tag_count=len(suggested),
-                )
-            else:
-                suggested = await suggest_family_tags(
-                    prompt_text=prompt_text,
-                    mode_id=category,
-                    db=db,
-                )
-            if not suggested:
-                logger.info("prompt_tagging_no_suggestions", family_id=str(family_id))
-                return
-
-            registry = TagRegistry(db)
-
-            # Resolve/create tag records for each suggested slug
-            tag_records = []
-            for slug in suggested:
-                tag = await registry.get_or_create_tag(slug)
-                tag_records.append(tag)
-
-            # Load existing manual + derived tag_ids — neither is overwritten by ai
-            protected_result = await db.execute(
-                select(PromptFamilyTag).where(
-                    PromptFamilyTag.family_id == family_id,
-                    PromptFamilyTag.source.in_(["manual", "derived"]),
-                )
-            )
-            protected_tag_ids = {row.tag_id for row in protected_result.scalars().all()}
-
-            # Replace all existing AI tags
-            await db.execute(
-                delete(PromptFamilyTag).where(
-                    PromptFamilyTag.family_id == family_id,
-                    PromptFamilyTag.source == "ai",
-                )
-            )
-
-            # Insert new AI tags (skip any already held as manual or derived)
-            for tag in tag_records:
-                if tag.id in protected_tag_ids:
-                    continue
-                db.add(PromptFamilyTag(
-                    family_id=family_id,
-                    tag_id=tag.id,
-                    source="ai",
-                ))
-
-            await db.commit()
-
-            logger.info(
-                "prompt_tagging_applied",
-                family_id=str(family_id),
-                tags=suggested,
-                skipped_manual=len([t for t in tag_records if t.id in manual_tag_ids]),
-            )
-
+        logger.debug("prompt_tagging_queued", family_id=family_id_str)
     except Exception:
-        logger.error("prompt_tagging_failed", family_id=str(family_id), exc_info=True)
+        logger.error(
+            "prompt_tagging_enqueue_failed",
+            family_id=family_id_str,
+            exc_info=True,
+        )
 
 
 # ===== LIFECYCLE =====

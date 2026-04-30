@@ -23,6 +23,7 @@ import type { OperationType } from '@/types/operations';
 
 import { deleteAsset, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
+import { isAssetIngesting } from '../lib/assetUrlResolver';
 import { extractUploadError } from '../lib/uploadActions';
 import { getAssetDisplayUrls, toSelectedAsset } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
@@ -44,6 +45,11 @@ const autoThumbRepairAttempts = hmrSingleton<Map<number, number>>(
 
 function hasMissingCardThumbnail(asset: AssetModel): boolean {
   if (asset.mediaType !== 'video') return false;
+  // Skip assets that are still being ingested — the backend job will set
+  // the thumbnail when it's done. Triggering a repair here races the
+  // in-flight ingestion and used to cause a Windows file-lock collision
+  // on the same content-addressed file.
+  if (isAssetIngesting(asset)) return false;
   const { thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
   return !thumbnailUrl && !previewUrl;
 }

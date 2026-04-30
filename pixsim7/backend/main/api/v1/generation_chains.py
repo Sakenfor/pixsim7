@@ -9,27 +9,20 @@ REST API for managing and executing generation chains:
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
 from pixsim7.backend.main.domain.generation.chain import ChainExecution, GenerationChain
 from pixsim7.backend.main.domain.user import User
-from pixsim7.backend.main.services.generation.chain_executor import ChainExecutor
 from pixsim7.backend.main.services.generation.execution_policy import (
     ExecutionPolicyV1,
     normalize_chain_execution_policy,
-    normalize_fanout_execution_policy,
     normalize_item_execution_policy,
 )
-from pixsim7.backend.main.services.generation.fanout_executor import FanoutExecutor
-from pixsim7.backend.main.services.generation.creation import GenerationCreationService
-from pixsim7.backend.main.services.generation.query import GenerationQueryService
-from pixsim7.backend.main.services.generation.step_executor import GenerationStepExecutor
-from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
-from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/generation-chains", tags=["generation-chains"])
@@ -139,6 +132,16 @@ class ExecuteEphemeralChainRequest(ExecuteChainRequest):
     name: Optional[str] = Field(
         None, description="Optional display name for execution tracking/debugging"
     )
+    description: Optional[str] = Field(
+        None, description="Optional description for the ephemeral chain"
+    )
+    steps: List[ChainStepInput] = Field(
+        ..., min_length=1, description="Chain steps to execute (ad hoc, not persisted)"
+    )
+    chain_metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional metadata snapshot for the ephemeral chain payload",
+    )
 
 
 class FanoutItemInput(BaseModel):
@@ -235,22 +238,6 @@ class ExecuteChainResponse(BaseModel):
 
 
 # ===== Helper: build services =====
-
-
-def _build_chain_executor(db: AsyncSession) -> ChainExecutor:
-    user_service = UserService(db)
-    creation = GenerationCreationService(db, user_service)
-    query = GenerationQueryService(db)
-    step_exec = GenerationStepExecutor(db, creation, query)
-    template_svc = BlockTemplateService(db)
-    return ChainExecutor(db, step_exec, template_svc)
-
-
-def _build_fanout_executor(db: AsyncSession) -> FanoutExecutor:
-    user_service = UserService(db)
-    creation = GenerationCreationService(db, user_service)
-    query = GenerationQueryService(db)
-    return FanoutExecutor(db, creation, query)
 
 
 def _chain_policy_from_request(request: ExecuteChainRequest) -> ExecutionPolicyV1:
@@ -385,7 +372,6 @@ async def list_chains(
 @router.post("/execute-ephemeral", response_model=ExecuteChainResponse)
 async def execute_ephemeral_chain(
     request: ExecuteEphemeralChainRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -433,12 +419,13 @@ async def execute_ephemeral_chain(
     await db.commit()
     await db.refresh(execution)
 
-    background_tasks.add_task(
-        _run_ephemeral_chain_background,
-        synthetic_chain_id=synthetic_chain_id,
-        execution_id=execution.id,
-        user_id=user.id,
-        request=request,
+    await queue_task(
+        "process_ephemeral_chain_execution",
+        str(synthetic_chain_id),
+        str(execution.id),
+        user.id,
+        request.model_dump(exclude_none=True, mode="json"),
+        _job_id=f"chain-exec:{execution.id}",
     )
 
     return ExecuteChainResponse(
@@ -451,7 +438,6 @@ async def execute_ephemeral_chain(
 @router.post("/execute-fanout-ephemeral", response_model=ExecuteChainResponse)
 async def execute_ephemeral_fanout(
     request: ExecuteEphemeralFanoutRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -497,11 +483,12 @@ async def execute_ephemeral_fanout(
     await db.commit()
     await db.refresh(execution)
 
-    background_tasks.add_task(
-        _run_ephemeral_fanout_background,
-        execution_id=execution.id,
-        user_id=user.id,
-        request=request,
+    await queue_task(
+        "process_ephemeral_fanout_execution",
+        str(execution.id),
+        user.id,
+        request.model_dump(exclude_none=True, mode="json"),
+        _job_id=f"chain-exec:{execution.id}",
     )
 
     return ExecuteChainResponse(
@@ -593,7 +580,6 @@ async def delete_chain(
 async def execute_chain(
     chain_id: UUID,
     request: ExecuteChainRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -633,13 +619,16 @@ async def execute_chain(
     await db.commit()
     await db.refresh(execution)
 
-    # Schedule background execution
-    background_tasks.add_task(
-        _run_chain_background,
-        chain_id=chain.id,
-        execution_id=execution.id,
-        user_id=user.id,
-        request=request,
+    # Schedule worker execution (ARQ).  Dedup keyed on execution_id; the
+    # request creates a fresh execution row so collisions are impossible
+    # in the normal flow — the _job_id is just a safety net.
+    await queue_task(
+        "process_chain_execution",
+        str(chain.id),
+        str(execution.id),
+        user.id,
+        request.model_dump(exclude_none=True, mode="json"),
+        _job_id=f"chain-exec:{execution.id}",
     )
 
     return ExecuteChainResponse(
@@ -690,162 +679,11 @@ async def list_chain_executions(
     return [_execution_to_response(e) for e in executions]
 
 
-# ===== Background execution =====
-
-
-async def _run_chain_background(
-    chain_id: UUID,
-    execution_id: UUID,
-    user_id: int,
-    request: ExecuteChainRequest,
-) -> None:
-    """
-    Run chain execution in background.
-
-    Creates its own DB session since background tasks outlive the request.
-    Delegates to ChainExecutor.execute() which owns the full orchestration
-    loop (template rolling, guidance compilation, step submission, asset piping).
-    """
-    from pixsim7.backend.main.infrastructure.database.session import get_async_session
-
-    async with get_async_session() as db:
-        # Load chain and pre-created execution
-        chain = await db.get(GenerationChain, chain_id)
-        execution = await db.get(ChainExecution, execution_id)
-        if not chain or not execution:
-            return
-
-        # Load user
-        user_svc = UserService(db)
-        user = await user_svc.get_user(user_id)
-        if not user:
-            execution.status = "failed"
-            execution.error_message = "User not found"
-            await db.commit()
-            return
-
-        # Delegate to ChainExecutor with the pre-created execution
-        # so the caller's execution_id remains valid for progress polling.
-        executor = _build_chain_executor(db)
-        policy = normalize_chain_execution_policy(
-            request.execution_policy,
-            legacy_step_timeout=request.step_timeout,
-        )
-
-        await executor.execute(
-            chain,
-            user,
-            provider_id=request.provider_id,
-            initial_asset_id=request.initial_asset_id,
-            default_operation=request.default_operation,
-            workspace_id=request.workspace_id,
-            preferred_account_id=request.preferred_account_id,
-            step_timeout=policy.step_timeout_seconds or request.step_timeout,
-            execution_metadata=execution.execution_metadata or {},
-            existing_execution=execution,
-        )
-
-
-async def _run_ephemeral_chain_background(
-    synthetic_chain_id: UUID,
-    execution_id: UUID,
-    user_id: int,
-    request: ExecuteEphemeralChainRequest,
-) -> None:
-    """
-    Run an ephemeral chain payload in background without a persisted chain row.
-
-    A synthetic GenerationChain object is created in-memory and passed to
-    ChainExecutor while reusing the pre-created ChainExecution record.
-    """
-    from pixsim7.backend.main.infrastructure.database.session import get_async_session
-
-    async with get_async_session() as db:
-        execution = await db.get(ChainExecution, execution_id)
-        if not execution:
-            return
-
-        user_svc = UserService(db)
-        user = await user_svc.get_user(user_id)
-        if not user:
-            execution.status = "failed"
-            execution.error_message = "User not found"
-            await db.commit()
-            return
-
-        chain = GenerationChain(
-            id=synthetic_chain_id,
-            name=request.name or "Ephemeral Chain",
-            description=request.description,
-            steps=[s.model_dump(exclude_none=True) for s in request.steps],
-            tags=[],
-            chain_metadata=request.chain_metadata or {},
-            is_public=False,
-            created_by=str(user.id),
-            execution_count=0,
-        )
-
-        policy = normalize_chain_execution_policy(
-            request.execution_policy,
-            legacy_step_timeout=request.step_timeout,
-        )
-        execution_metadata = dict(execution.execution_metadata or {})
-        executor = _build_chain_executor(db)
-        await executor.execute(
-            chain,
-            user,
-            provider_id=request.provider_id,
-            initial_asset_id=request.initial_asset_id,
-            default_operation=request.default_operation,
-            workspace_id=request.workspace_id,
-            preferred_account_id=request.preferred_account_id,
-            step_timeout=policy.step_timeout_seconds or request.step_timeout,
-            execution_metadata=execution_metadata,
-            existing_execution=execution,
-        )
-
-
-async def _run_ephemeral_fanout_background(
-    execution_id: UUID,
-    user_id: int,
-    request: ExecuteEphemeralFanoutRequest,
-) -> None:
-    """
-    Run an ephemeral fanout payload in background.
-    """
-    from pixsim7.backend.main.infrastructure.database.session import get_async_session
-
-    async with get_async_session() as db:
-        execution = await db.get(ChainExecution, execution_id)
-        if not execution:
-            return
-
-        user_svc = UserService(db)
-        user = await user_svc.get_user(user_id)
-        if not user:
-            execution.status = "failed"
-            execution.error_message = "User not found"
-            await db.commit()
-            return
-
-        policy = normalize_item_execution_policy(
-            request.execution_policy,
-            legacy_continue_on_error=request.continue_on_error,
-            legacy_force_new=request.force_new,
-        )
-        fanout_executor = _build_fanout_executor(db)
-        await fanout_executor.execute(
-            items=[item.model_dump(exclude_none=True) for item in request.items],
-            user=user,
-            default_provider_id=request.provider_id,
-            default_operation=request.default_operation,
-            workspace_id=request.workspace_id,
-            preferred_account_id=request.preferred_account_id,
-            continue_on_error=(policy.failure_policy == "continue"),
-            force_new=bool(policy.force_new if policy.force_new is not None else request.force_new),
-            execution_policy=policy,
-            execution=execution,
-        )
+# Note: chain execution work runs in the ARQ worker — see
+# ``workers/chain_execution_processor.py`` (process_chain_execution,
+# process_ephemeral_chain_execution, process_ephemeral_fanout_execution).
+# The endpoints above enqueue via ``queue_task`` with
+# ``_job_id=f"chain-exec:{execution_id}"``.
 
 
 # ===== Response helpers =====

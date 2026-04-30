@@ -2,7 +2,7 @@
 Queue infrastructure package
 """
 
-from .tasks import queue_task
+from .tasks import queue_and_wait, queue_task
 from .queue_names import (
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
@@ -20,6 +20,7 @@ from .generation_jobs import (
 )
 
 __all__ = [
+    "queue_and_wait",
     "queue_task",
     "GENERATION_FRESH_QUEUE_NAME",
     "GENERATION_RETRY_QUEUE_NAME",

@@ -6,17 +6,19 @@ Handles:
 - Media settings management
 - Ingestion control
 """
+import asyncio
 import os
 import mimetypes
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.infrastructure.queue.tasks import queue_and_wait
 from pixsim7.backend.main.services.asset import AssetIngestionService
 from pixsim7.backend.main.services.media import get_media_settings
 from pixsim7.backend.main.services.media.settings import MediaSettings
@@ -100,12 +102,14 @@ async def get_ingestion_stats(
     return IngestionStatsResponse(**stats)
 
 
+_TRIGGER_INGESTION_TIMEOUT_SECONDS = 180.0
+
+
 @router.post("/media/ingestion/trigger/{asset_id}")
 async def trigger_ingestion(
     asset_id: int,
     user: CurrentUser,
     db: DatabaseSession,
-    background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Re-ingest even if already completed"),
     regenerate_thumbnails: bool = Query(False, description="Force regenerate thumbnails only"),
     regenerate_previews: bool = Query(False, description="Force regenerate previews only"),
@@ -117,79 +121,78 @@ async def trigger_ingestion(
     Downloads the asset from provider, stores locally, extracts metadata,
     and generates thumbnails and previews.
 
+    Runs as an ARQ ``process_ingestion`` job, deduplicated against any other
+    in-flight ingestion for the same asset (job_id ``ingest:{asset_id}``).
+    A concurrent ``asset:created`` event handler enqueue, or a second API
+    trigger, attaches to the same job rather than racing on the asset's
+    content-addressed file.
+
     Selective regeneration:
     - regenerate_thumbnails: Only regenerate thumbnails
     - regenerate_previews: Only regenerate previews
     - regenerate_metadata: Only extract metadata
     - force: Full re-ingestion (all steps)
     """
-    service = AssetIngestionService(db)
+    selective = regenerate_thumbnails or regenerate_previews or regenerate_metadata
 
-    # Determine which steps to run
-    if regenerate_thumbnails or regenerate_previews or regenerate_metadata:
-        # Selective regeneration - don't re-download/store
-        generate_thumbnails = regenerate_thumbnails or force
-        generate_previews = regenerate_previews or force
-        extract_metadata = regenerate_metadata or force
-
-        try:
-            asset = await service.ingest_asset(
-                asset_id,
-                force=True,  # Allow regeneration even if marked complete
-                store_for_serving=False,  # Don't re-store
-                extract_metadata=extract_metadata,
-                generate_thumbnails=generate_thumbnails,
-                generate_previews=generate_previews,
-                # Manual endpoint — run derivatives inline so the response
-                # body reflects the final thumbnail/preview keys.
-                derivatives_mode="inline",
-            )
-            return {
-                "success": True,
-                "asset_id": asset.id,
-                "ingest_status": asset.ingest_status,
-                "regenerated": {
-                    "thumbnails": regenerate_thumbnails,
-                    "previews": regenerate_previews,
-                    "metadata": regenerate_metadata,
-                }
-            }
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except Exception as e:
-            logger.error(
-                "regeneration_failed",
-                asset_id=asset_id,
-                error=str(e),
-                exc_info=True
-            )
-            raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
+    if selective:
+        job_kwargs = dict(
+            force=True,  # Allow regeneration even if marked complete
+            store_for_serving=False,  # Don't re-store
+            extract_metadata=regenerate_metadata or force,
+            generate_thumbnails=regenerate_thumbnails or force,
+            generate_previews=regenerate_previews or force,
+            # Run derivatives inline so the worker's return value carries
+            # the final thumbnail/preview keys for this response.
+            derivatives_mode="inline",
+        )
     else:
-        # Full ingestion
-        try:
-            asset = await service.ingest_asset(
-                asset_id,
-                force=force,
-                derivatives_mode="inline",
-            )
-            return {
-                "success": True,
-                "asset_id": asset.id,
-                "ingest_status": asset.ingest_status,
-                "stored_key": asset.stored_key,
-                "thumbnail_key": asset.thumbnail_key,
-                "preview_key": asset.preview_key,
-            }
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except Exception as e:
-            logger.error(
-                "ingestion_trigger_failed",
-                asset_id=asset_id,
-                error=str(e),
-                exc_info=True
-            )
-            raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+        job_kwargs = dict(
+            force=force,
+            derivatives_mode="inline",
+        )
+
+    try:
+        result = await queue_and_wait(
+            "process_ingestion",
+            asset_id,
+            job_id=f"ingest:{asset_id}",
+            timeout=_TRIGGER_INGESTION_TIMEOUT_SECONDS,
+            **job_kwargs,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Ingestion did not complete within {_TRIGGER_INGESTION_TIMEOUT_SECONDS:.0f}s",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        log_event = "regeneration_failed" if selective else "ingestion_trigger_failed"
+        logger.error(
+            log_event,
+            asset_id=asset_id,
+            error=str(e),
+            exc_info=True,
+        )
+        prefix = "Regeneration" if selective else "Ingestion"
+        raise HTTPException(status_code=500, detail=f"{prefix} failed: {str(e)}")
+
+    response = {
+        "success": result.get("status") == "ok",
+        "asset_id": asset_id,
+        "ingest_status": result.get("ingest_status"),
+        "stored_key": result.get("stored_key"),
+        "thumbnail_key": result.get("thumbnail_key"),
+        "preview_key": result.get("preview_key"),
+    }
+    if selective:
+        response["regenerated"] = {
+            "thumbnails": regenerate_thumbnails,
+            "previews": regenerate_previews,
+            "metadata": regenerate_metadata,
+        }
+    return response
 
 
 @router.post("/media/ingestion/retry/{asset_id}")
@@ -244,30 +247,24 @@ async def process_pending_batch(
 
 # ===== MEDIA SERVING =====
 
-# Track in-flight regenerations to avoid duplicate work
-_regeneration_in_progress: set[str] = set()
-
 
 async def _try_regenerate_derivative(
     db,
-    background_tasks: BackgroundTasks,
     user_id: int,
     key: str,
 ) -> bool:
     """
     Try to regenerate a missing thumbnail or preview.
 
-    Looks up the asset by thumbnail_key or preview_key and queues
-    regeneration if the source file exists.
+    Looks up the asset by thumbnail_key or preview_key and enqueues a
+    ``process_derivatives`` ARQ job if the source file exists.  Concurrent
+    requests for the same asset's missing derivatives collapse to one job
+    via ARQ's ``_job_id`` dedup.
 
     Returns True if regeneration was queued, False otherwise.
     """
-    from sqlalchemy import select, or_
+    from sqlalchemy import select
     from pixsim7.backend.main.domain.assets.models import Asset
-
-    # Avoid duplicate regeneration requests
-    if key in _regeneration_in_progress:
-        return True  # Already in progress
 
     try:
         # Find asset by thumbnail_key or preview_key
@@ -309,38 +306,16 @@ async def _try_regenerate_derivative(
             )
             return False
 
-        # Mark as in-progress
-        _regeneration_in_progress.add(key)
+        from pixsim7.backend.main.infrastructure.queue.tasks import queue_task
 
-        # Queue background regeneration
-        async def regenerate():
-            try:
-                service = AssetIngestionService(db)
-                await service.ingest_asset(
-                    asset.id,
-                    force=True,
-                    store_for_serving=False,
-                    extract_metadata=False,
-                    generate_thumbnails=is_thumbnail,
-                    generate_previews=is_preview,
-                )
-                logger.info(
-                    "derivative_regenerated",
-                    asset_id=asset.id,
-                    key=key,
-                    type="thumbnail" if is_thumbnail else "preview",
-                )
-            except Exception as e:
-                logger.warning(
-                    "derivative_regeneration_failed",
-                    asset_id=asset.id,
-                    key=key,
-                    error=str(e),
-                )
-            finally:
-                _regeneration_in_progress.discard(key)
-
-        background_tasks.add_task(regenerate)
+        await queue_task(
+            "process_derivatives",
+            asset.id,
+            force=True,
+            generate_thumbnails=is_thumbnail,
+            generate_previews=is_preview,
+            _job_id=f"derivatives:{asset.id}",
+        )
 
         logger.info(
             "derivative_regeneration_queued",
@@ -364,7 +339,6 @@ async def serve_media(
     key: str,
     user: CurrentUser,
     db: DatabaseSession,
-    background_tasks: BackgroundTasks,
     response: Response,
 ):
     """
@@ -395,7 +369,7 @@ async def serve_media(
         # Auto-regenerate missing thumbnails/previews
         if "/thumbnails/" in key or "/previews/" in key:
             regenerated = await _try_regenerate_derivative(
-                db, background_tasks, user.id, key
+                db, user.id, key
             )
             if regenerated:
                 # Return 202 Accepted - client should retry

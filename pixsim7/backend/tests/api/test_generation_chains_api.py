@@ -178,13 +178,19 @@ class TestGenerationChainsExecuteDefaults:
 
         captured = {}
 
-        async def _background_stub(chain_id, execution_id, user_id, request):
-            captured["chain_id"] = chain_id
-            captured["execution_id"] = execution_id
-            captured["user_id"] = user_id
-            captured["default_operation"] = request.default_operation
+        async def _queue_task_stub(function_name, *args, **kwargs):
+            # /execute enqueues:
+            #   ("process_chain_execution", chain_id_str, execution_id_str,
+            #    user_id, request_dict, _job_id=...)
+            captured["function_name"] = function_name
+            captured["chain_id"] = args[0]
+            captured["execution_id"] = args[1]
+            captured["user_id"] = args[2]
+            captured["request_payload"] = args[3]
+            captured["job_id"] = kwargs.get("_job_id")
+            return "stub-task-id"
 
-        monkeypatch.setattr(generation_chains_api, "_run_chain_background", _background_stub)
+        monkeypatch.setattr(generation_chains_api, "queue_task", _queue_task_stub)
 
         async with _client(app) as c:
             response = await c.post(
@@ -195,9 +201,11 @@ class TestGenerationChainsExecuteDefaults:
         assert response.status_code == 200, response.text
         payload = response.json()
         assert payload["status"] == "pending"
-        assert captured["chain_id"] == chain.id
+        assert captured["function_name"] == "process_chain_execution"
+        assert captured["chain_id"] == str(chain.id)
         assert captured["user_id"] == 42
-        assert captured["default_operation"] == "text_to_image"
+        assert captured["request_payload"]["default_operation"] == "text_to_image"
+        assert captured["job_id"] == f"chain-exec:{captured['execution_id']}"
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")

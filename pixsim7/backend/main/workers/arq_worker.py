@@ -34,6 +34,11 @@ from pixsim7.backend.main.workers.status_poller_maintenance import (
     refresh_stale_account_credits,
 )
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
+from pixsim7.backend.main.workers.chain_execution_processor import (
+    process_chain_execution,
+    process_ephemeral_chain_execution,
+    process_ephemeral_fanout_execution,
+)
 from pixsim7.backend.main.workers.derivatives_processor import process_derivatives
 from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
@@ -237,6 +242,9 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_derivatives")
     logger.info("worker_component_registered", component="process_ingestion")
     logger.info("worker_component_registered", component="process_prompt_tagging")
+    logger.info("worker_component_registered", component="process_chain_execution")
+    logger.info("worker_component_registered", component="process_ephemeral_chain_execution")
+    logger.info("worker_component_registered", component="process_ephemeral_fanout_execution")
     logger.info("worker_component_registered", component="run_analysis_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/2s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
@@ -488,6 +496,9 @@ class WorkerSettings:
         process_derivatives,
         process_ingestion,
         process_prompt_tagging,
+        process_chain_execution,
+        process_ephemeral_chain_execution,
+        process_ephemeral_fanout_execution,
         run_analysis_backfill_batch,
         poll_job_statuses,
         poll_generation_once,
