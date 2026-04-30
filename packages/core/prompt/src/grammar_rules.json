@@ -31,6 +31,26 @@
       "angle_wrap": false
     },
     {
+      "id": "assignment",
+      "op_style": "run_eq",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 59,
+      "terminal": false,
+      "ws_before_op": false,
+      "angle_wrap": false
+    },
+    {
+      "id": "assignment_arrow",
+      "op_style": "run_gt",
+      "label_upper_only": true,
+      "label_min": 2,
+      "label_max": 59,
+      "terminal": false,
+      "ws_before_op": true,
+      "angle_wrap": false
+    },
+    {
       "id": "angle_bracket",
       "op_style": "run_angle",
       "label_upper_only": true,
@@ -50,16 +70,5 @@
       "ws_before_op": false,
       "angle_wrap": false
     }
-  ],
-  "chain": {
-    "op_chars": [
-      "=",
-      "<",
-      ">",
-      ":"
-    ],
-    "op_excludes": [
-      "_"
-    ]
-  }
+  ]
 }

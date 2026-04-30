@@ -20,7 +20,6 @@ type HeaderPatternDef = (typeof GRAMMAR_RULES.header_patterns)[number];
 const _PAT: Record<string, HeaderPatternDef> = Object.fromEntries(
   GRAMMAR_RULES.header_patterns.map((p) => [p.id, p]),
 );
-const _RELATION_OP_CHARS = new Set<string>(GRAMMAR_RULES.relation.op_chars);
 
 // ── tokens ────────────────────────────────────────────────────────────────
 
