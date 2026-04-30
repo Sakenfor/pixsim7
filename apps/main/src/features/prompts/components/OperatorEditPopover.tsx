@@ -3,11 +3,11 @@ import { useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
-import type { OperatorRange } from '../lib/operatorEditExtension';
 import type {
   RelationRecipe,
   RelationRecipeOperator,
 } from '../hooks/useRelationRecipes';
+import type { OperatorRange } from '../lib/operatorEditExtension';
 
 export interface OperatorEditPopoverProps {
   operator: OperatorRange;
@@ -71,7 +71,7 @@ export function OperatorEditPopover({
               ? recipe.label
               : operator.context === 'header'
                 ? `Header (${operator.pattern ?? '?'})`
-                : 'Relation'}
+                : 'Chain'}
           </span>
           <span className="font-mono text-neutral-600 dark:text-neutral-300 normal-case tracking-normal">
             {operator.raw}

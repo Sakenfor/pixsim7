@@ -112,30 +112,28 @@ function buildDecorations(
   return builder.finish();
 }
 
-// ── Structural line decorations (header + relation) ────────────────────────
+// ── Structural line decorations (header + chain) ──────────────────────────
 
-const PATTERN_GLYPH: Record<string, string> = {
-  assignment_arrow: '→',
-  assignment_arrow_left: '←',
-  assignment: '=',
-  compound_assignment: '⇒',
+// Glyph per surviving header pattern. Chain lines don't get a glyph badge;
+// inline element marks + line tinting carry the visual signal instead.
+const HEADER_PATTERN_GLYPH: Record<string, string> = {
   colon: ':',
   angle_bracket: '‹›',
   freestanding: '¶',
 };
 
-class PatternBadgeWidget extends WidgetType {
-  constructor(readonly glyph: string, readonly kind: 'header' | 'relation') {
+class HeaderBadgeWidget extends WidgetType {
+  constructor(readonly glyph: string) {
     super();
   }
 
-  eq(other: PatternBadgeWidget): boolean {
-    return other.glyph === this.glyph && other.kind === this.kind;
+  eq(other: HeaderBadgeWidget): boolean {
+    return other.glyph === this.glyph;
   }
 
   toDOM(): HTMLElement {
     const span = document.createElement('span');
-    span.className = `cm-shadow-line-badge cm-shadow-line-badge-${this.kind}`;
+    span.className = 'cm-shadow-line-badge cm-shadow-line-badge-header';
     span.textContent = this.glyph;
     span.style.cssText = [
       'display: inline-block',
@@ -149,9 +147,7 @@ class PatternBadgeWidget extends WidgetType {
       'opacity: 0.85',
       'user-select: none',
       'pointer-events: none',
-      this.kind === 'header'
-        ? 'background: rgba(56, 189, 248, 0.18); color: rgb(2, 132, 199);'
-        : 'background: rgba(245, 158, 11, 0.18); color: rgb(180, 83, 9);',
+      'background: rgba(56, 189, 248, 0.18); color: rgb(2, 132, 199);',
     ].join(';');
     return span;
   }
@@ -165,47 +161,86 @@ const headerLineMark = Decoration.line({
   attributes: { class: 'cm-shadow-header-line' },
 });
 
-const relationLineMark = Decoration.line({
-  attributes: { class: 'cm-shadow-relation-line' },
+const chainLineWithBodyMark = Decoration.line({
+  attributes: { class: 'cm-shadow-chain-line cm-shadow-chain-line-with-body' },
 });
 
-function buildHeaderDecorations(
+const chainLinePureMark = Decoration.line({
+  attributes: { class: 'cm-shadow-chain-line cm-shadow-chain-line-pure' },
+});
+
+const chainElementVarMark = Decoration.mark({
+  attributes: { class: 'cm-shadow-chain-elem cm-shadow-chain-elem-var', 'data-elem-kind': 'var' },
+});
+
+const chainElementProseMark = Decoration.mark({
+  attributes: { class: 'cm-shadow-chain-elem cm-shadow-chain-elem-prose', 'data-elem-kind': 'prose' },
+});
+
+function buildChainDecorations(
   tokenLines: PromptTokenLine[] | undefined,
   view: EditorView,
 ): DecorationSet {
   if (!tokenLines || tokenLines.length === 0) return Decoration.none;
   const docLen = view.state.doc.length;
 
-  // Collect line decos + badge widgets, then sort by position so the
-  // RangeSetBuilder can insert them in order (it requires monotonic adds).
+  // Collect line decos + badge widgets + per-element inline marks, then
+  // sort by position so the RangeSetBuilder can insert them in order
+  // (it requires monotonic adds).
   type Entry = { from: number; to: number; deco: Decoration; sortKey: number };
   const entries: Entry[] = [];
 
   for (const tokenLine of tokenLines) {
-    if (tokenLine.kind !== 'header' && tokenLine.kind !== 'relation') continue;
-    if (tokenLine.start < 0 || tokenLine.start >= docLen) continue;
+    if (tokenLine.kind === 'header') {
+      if (tokenLine.start < 0 || tokenLine.start >= docLen) continue;
+      const line = view.state.doc.lineAt(tokenLine.start);
 
-    const line = view.state.doc.lineAt(tokenLine.start);
-    const lineDeco = tokenLine.kind === 'header' ? headerLineMark : relationLineMark;
-    // Line decoration is added at line.from with from === to.
-    // Sort key: line.from with sub-priority 0 so it precedes the inline widget.
-    entries.push({
-      from: line.from,
-      to: line.from,
-      deco: lineDeco,
-      sortKey: line.from * 2,
-    });
+      entries.push({
+        from: line.from,
+        to: line.from,
+        deco: headerLineMark,
+        sortKey: line.from * 4,
+      });
 
-    const glyph = tokenLine.kind === 'header'
-      ? (PATTERN_GLYPH[tokenLine.pattern ?? ''] ?? '?')
-      : '↔'; // ↔ for relation
-    const widget = new PatternBadgeWidget(glyph, tokenLine.kind);
-    entries.push({
-      from: line.from,
-      to: line.from,
-      deco: Decoration.widget({ widget, side: -1 }),
-      sortKey: line.from * 2 + 1,
-    });
+      const glyph = HEADER_PATTERN_GLYPH[tokenLine.pattern ?? ''] ?? '?';
+      entries.push({
+        from: line.from,
+        to: line.from,
+        deco: Decoration.widget({ widget: new HeaderBadgeWidget(glyph), side: -1 }),
+        sortKey: line.from * 4 + 1,
+      });
+      continue;
+    }
+
+    if (tokenLine.kind === 'chain' && Array.isArray(tokenLine.elements)) {
+      if (tokenLine.start < 0 || tokenLine.start >= docLen) continue;
+      const line = view.state.doc.lineAt(tokenLine.start);
+
+      const hasProse = tokenLine.elements.some(
+        (e) => e.kind === 'prose' && e.text.length > 0,
+      );
+      const lineDeco = hasProse ? chainLineWithBodyMark : chainLinePureMark;
+      entries.push({
+        from: line.from,
+        to: line.from,
+        deco: lineDeco,
+        sortKey: line.from * 4,
+      });
+
+      // Inline element marks — non-empty spans only; RangeSetBuilder
+      // chokes on zero-length mark decorations.
+      for (const el of tokenLine.elements) {
+        if (el.start >= el.end) continue;
+        if (el.start < 0 || el.end > docLen) continue;
+        const mark = el.kind === 'var' ? chainElementVarMark : chainElementProseMark;
+        entries.push({
+          from: el.start,
+          to: el.end,
+          deco: mark,
+          sortKey: el.start * 4 + 2,
+        });
+      }
+    }
   }
 
   entries.sort((a, b) => a.sortKey - b.sortKey);
@@ -244,10 +279,10 @@ const shadowDecoPlugin = ViewPlugin.define(
   },
 );
 
-const shadowHeaderDecoPlugin = ViewPlugin.define(
+const shadowChainDecoPlugin = ViewPlugin.define(
   (view) => {
     let lastConfig = view.state.facet(shadowConfigFacet);
-    let decorations = buildHeaderDecorations(lastConfig?.tokenLines, view);
+    let decorations = buildChainDecorations(lastConfig?.tokenLines, view);
     return {
       get decorations() { return decorations; },
       update(update: ViewUpdate) {
@@ -255,7 +290,7 @@ const shadowHeaderDecoPlugin = ViewPlugin.define(
         const configChanged = newConfig !== lastConfig;
         if (!update.docChanged && !configChanged) return;
         lastConfig = newConfig;
-        decorations = buildHeaderDecorations(newConfig?.tokenLines, update.view);
+        decorations = buildChainDecorations(newConfig?.tokenLines, update.view);
       },
     };
   },
@@ -395,7 +430,7 @@ function shadowClickHandler(callbacks: ShadowAnalysisCallbacks) {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 const headerLineTheme = EditorView.baseTheme({
-  // ── Header lines ─────────────────────────────────────────────────────────
+  // ── Header lines (colon, angle_bracket, freestanding) ───────────────────
   '.cm-shadow-header-line': {
     backgroundColor: 'rgba(56, 189, 248, 0.06)',
     borderLeft: '2px solid rgba(56, 189, 248, 0.5)',
@@ -411,21 +446,35 @@ const headerLineTheme = EditorView.baseTheme({
     background: 'rgba(56, 189, 248, 0.32)',
     opacity: '1',
   },
-  // ── Relation lines ───────────────────────────────────────────────────────
-  '.cm-shadow-relation-line': {
+  // ── Chain lines containing prose (header-style blue tint) ───────────────
+  '.cm-shadow-chain-line-with-body': {
+    backgroundColor: 'rgba(56, 189, 248, 0.06)',
+    borderLeft: '2px solid rgba(56, 189, 248, 0.45)',
+    paddingLeft: '6px',
+    transition: 'background-color 120ms ease, border-left-color 120ms ease',
+  },
+  '.cm-shadow-chain-line-with-body:hover': {
+    backgroundColor: 'rgba(56, 189, 248, 0.13)',
+    borderLeftColor: 'rgba(14, 165, 233, 0.85)',
+  },
+  // ── Chain lines all-var (relation-style amber tint) ─────────────────────
+  '.cm-shadow-chain-line-pure': {
     backgroundColor: 'rgba(245, 158, 11, 0.06)',
     borderLeft: '2px solid rgba(245, 158, 11, 0.45)',
     paddingLeft: '6px',
-    fontStyle: 'italic',
     transition: 'background-color 120ms ease, border-left-color 120ms ease',
   },
-  '.cm-shadow-relation-line:hover': {
+  '.cm-shadow-chain-line-pure:hover': {
     backgroundColor: 'rgba(245, 158, 11, 0.13)',
     borderLeftColor: 'rgba(217, 119, 6, 0.85)',
   },
-  '.cm-shadow-relation-line:hover .cm-shadow-line-badge-relation': {
-    background: 'rgba(245, 158, 11, 0.32)',
-    opacity: '1',
+  // ── Per-element inline styling within chains ────────────────────────────
+  '.cm-shadow-chain-elem-var': {
+    fontFamily: 'ui-monospace, monospace',
+    color: 'rgb(2, 132, 199)',
+  },
+  '.cm-shadow-chain-elem-prose': {
+    fontStyle: 'italic',
   },
   // ── Candidate spans: underline at rest, bg wash on hover ────────────────
   '.cm-shadow-candidate:hover': {
@@ -445,7 +494,7 @@ export function shadowAnalysisExtension(
     headerLineTheme,
   ];
   if (config?.tokenLines?.length) {
-    parts.push(shadowHeaderDecoPlugin);
+    parts.push(shadowChainDecoPlugin);
   }
   if (callbacks?.onCandidateClick) {
     parts.push(shadowClickHandler(callbacks));

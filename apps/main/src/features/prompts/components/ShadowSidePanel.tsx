@@ -7,7 +7,7 @@
  */
 import { DisclosureSection } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -109,11 +109,7 @@ function SectionLabel({
 // Structure view helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PATTERN_BADGE: Record<string, string> = {
-  assignment_arrow: '→',
-  assignment_arrow_left: '←',
-  assignment: '=',
-  compound_assignment: '⇒',
+const HEADER_PATTERN_BADGE: Record<string, string> = {
   colon: ':',
   angle_bracket: '‹›',
   freestanding: '¶',
@@ -121,7 +117,7 @@ const PATTERN_BADGE: Record<string, string> = {
 
 function StructureLine({ line }: { line: PromptTokenLine }) {
   if (line.kind === 'header') {
-    const badge = PATTERN_BADGE[line.pattern ?? ''] ?? '?';
+    const badge = HEADER_PATTERN_BADGE[line.pattern ?? ''] ?? '?';
     return (
       <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-white/60 dark:bg-neutral-800/40">
         <span className="flex-shrink-0 font-mono text-sky-600 dark:text-sky-400 w-4 text-center">{badge}</span>
@@ -130,21 +126,52 @@ function StructureLine({ line }: { line: PromptTokenLine }) {
     );
   }
 
-  if (line.kind === 'relation' && line.hops && line.hops.length > 0) {
+  if (line.kind === 'chain' && line.elements && line.operators) {
+    // Visual rule: any non-empty prose element → header-style (sky); else amber.
+    const hasProse = line.elements.some((e) => e.kind === 'prose' && e.text.length > 0);
+    const accentClass = hasProse
+      ? 'text-sky-600 dark:text-sky-400'
+      : 'text-amber-600 dark:text-amber-400';
+
+    // Interleave elements and operators: e[0] op[0] e[1] op[1] ... e[n].
+    const parts: ReactNode[] = [];
+    line.elements.forEach((el, i) => {
+      if (el.text.length > 0) {
+        parts.push(
+          el.kind === 'var' ? (
+            <span
+              key={`e${i}`}
+              className="font-mono text-neutral-700 dark:text-neutral-300 truncate max-w-[64px]"
+            >
+              {el.text}
+            </span>
+          ) : (
+            <span
+              key={`e${i}`}
+              className="italic text-neutral-500 dark:text-neutral-400 truncate max-w-[80px]"
+              title={el.text}
+            >
+              {el.text}
+            </span>
+          ),
+        );
+      }
+      const op = line.operators?.[i];
+      if (op) {
+        parts.push(
+          <span key={`o${i}`} className={clsx('font-mono flex-shrink-0', accentClass)}>
+            {op.op}
+            {op.run > 1 && (
+              <span className="text-neutral-400 dark:text-neutral-500">({op.run})</span>
+            )}
+          </span>,
+        );
+      }
+    });
+
     return (
       <div className="flex flex-wrap items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-white/60 dark:bg-neutral-800/40">
-        {line.hops.map((hop, i) => (
-          <span key={i} className="flex items-center gap-0.5">
-            {hop.lhs && <span className="font-mono text-neutral-700 dark:text-neutral-300 truncate max-w-[48px]">{hop.lhs}</span>}
-            <span className="font-mono text-amber-600 dark:text-amber-400 flex-shrink-0">
-              {hop.raw}
-              {hop.run > 1 && <span className="text-neutral-400 dark:text-neutral-500">({hop.run})</span>}
-            </span>
-            {hop.rhs && i === (line.hops?.length ?? 1) - 1 && (
-              <span className="font-mono text-neutral-700 dark:text-neutral-300 truncate max-w-[48px]">{hop.rhs}</span>
-            )}
-          </span>
-        ))}
+        {parts}
       </div>
     );
   }
@@ -189,7 +216,7 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
 
   const tokenLines = result?.tokens?.lines;
   const structureLines = useMemo(
-    () => (tokenLines ?? []).filter((l) => l.kind === 'header' || l.kind === 'relation'),
+    () => (tokenLines ?? []).filter((l) => l.kind === 'header' || l.kind === 'chain'),
     [tokenLines],
   );
 

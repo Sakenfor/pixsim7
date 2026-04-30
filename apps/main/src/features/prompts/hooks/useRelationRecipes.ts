@@ -30,7 +30,10 @@ export interface RelationRecipeOperator {
 }
 
 export interface RelationRecipeContext {
-  line_kind?: 'header' | 'relation';
+  // 'relation' kept for back-compat with any persisted recipes; new recipes
+  // should use 'chain'. Phase 3 will rewrite the recipe schema to use
+  // (line_kind: 'chain', operator + prev_kind/next_kind) keys.
+  line_kind?: 'header' | 'chain' | 'relation';
   pattern?: string;
   lhs_kind?: string;
   rhs_kind?: string;
@@ -102,7 +105,7 @@ export function useRelationRecipes(): RelationRecipesPayload {
  */
 export function matchRecipe(
   recipes: RelationRecipe[],
-  context: { line_kind: 'header' | 'relation'; pattern?: string },
+  context: { line_kind: 'header' | 'chain' | 'relation'; pattern?: string },
 ): RelationRecipe | null {
   if (context.pattern) {
     const exact = recipes.find(

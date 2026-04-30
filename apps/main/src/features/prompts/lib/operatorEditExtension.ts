@@ -10,14 +10,14 @@ import {
 import type { PromptTokenLine } from '../hooks/useShadowAnalysis';
 
 /**
- * Operator edit extension — decorates the operator runs (`=`, `<`, `>`,
- * `:` etc.) emitted by the backend tokenizer for header/relation lines.
- * Click an operator to surface a popover for type-swap + run-length
- * adjustment. Document text isn't modified by this extension; the host
- * applies edits via `view.dispatch({ changes })` from the popover.
+ * Operator edit extension — decorates operator runs (`=`, `<`, `>`, `:`)
+ * emitted by the backend tokenizer. Click an operator to surface a
+ * popover for type-swap + run-length adjustment. Document text isn't
+ * modified by this extension; the host applies edits via
+ * `view.dispatch({ changes })` from the popover.
  *
  * Position source: backend `tokens.lines` already provides absolute
- * char ranges (`op_start`/`op_end`) for every operator. We don't scan
+ * char ranges (`op_start` / `op_end`) for every operator. We don't scan
  * the doc — backend is authoritative.
  */
 
@@ -30,10 +30,14 @@ export interface OperatorRange {
   raw: string;
   /** Run length (count of operator chars). */
   run: number;
-  /** Owning line kind — informs the popover's allowed swap targets. */
-  context: 'header' | 'relation';
-  /** Header pattern id (e.g. `assignment`, `colon`); undefined for relation. */
+  /** Owning line kind — informs the popover label and recipe matching. */
+  context: 'header' | 'chain';
+  /** Header pattern id (e.g. `colon`); undefined for chain operators. */
   pattern?: string;
+  /** Element kind immediately before this operator (chain only). */
+  prevKind?: 'var' | 'prose';
+  /** Element kind immediately after this operator (chain only). */
+  nextKind?: 'var' | 'prose';
 }
 
 export interface OperatorEditCallbacks {
@@ -66,16 +70,20 @@ function collectOperatorRanges(
           });
         }
       }
-    } else if (line.kind === 'relation' && Array.isArray(line.hops)) {
-      for (const hop of line.hops) {
-        const from = hop.op_start;
-        const to = hop.op_end;
+    } else if (line.kind === 'chain' && Array.isArray(line.operators) && Array.isArray(line.elements)) {
+      // Invariant: elements.length === operators.length + 1
+      for (let i = 0; i < line.operators.length; i++) {
+        const op = line.operators[i];
+        const from = op.op_start;
+        const to = op.op_end;
         if (from < to && from >= 0 && to <= docLength) {
           out.push({
             from, to,
-            raw: hop.raw,
-            run: hop.run,
-            context: 'relation',
+            raw: op.op,
+            run: op.run,
+            context: 'chain',
+            prevKind: line.elements[i]?.kind,
+            nextKind: line.elements[i + 1]?.kind,
           });
         }
       }
