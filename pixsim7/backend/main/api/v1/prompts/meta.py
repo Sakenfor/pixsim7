@@ -349,8 +349,16 @@ class RelationRecipeOperator(BaseModel):
 
 
 class RelationRecipeContext(BaseModel):
+    # `line_kind` values follow tokenizer line node kinds:
+    # "chain" | "colon" | "angle_bracket" | "freestanding".
     line_kind: Optional[str] = None
-    pattern: Optional[str] = None
+    # Element kinds surrounding the clicked operator. Only meaningful
+    # for chain lines; "var" or "prose".
+    prev_kind: Optional[str] = None
+    next_kind: Optional[str] = None
+    # Reserved freeform semantic-kind tags ("ACTOR", "SCENE", etc.) for
+    # future richer matching. Declared but not consumed by current
+    # recipes — kept as headroom.
     lhs_kind: Optional[str] = None
     rhs_kind: Optional[str] = None
 

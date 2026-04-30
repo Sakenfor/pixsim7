@@ -597,9 +597,9 @@ export function PromptComposer({
   }, [ghostSource]);
 
   const handleGhostPrecisionEnter = useCallback(() => {
-    if (!ghostSource) return;
+    if (!ghostSource || compareAgainstMedia) return;
     setGhostPrecisionHover(true);
-  }, [ghostSource]);
+  }, [ghostSource, compareAgainstMedia]);
 
   const handleGhostPrecisionLeave = useCallback(() => {
     setGhostPrecisionHover(false);
@@ -794,7 +794,10 @@ export function PromptComposer({
   });
 
   // --- CM extensions for CodeMirror mode ---
-  const ghostDiffPrecision: 'coarse' | 'fine' = ghostPrecisionHover ? 'fine' : 'coarse';
+  // Keep media-compare stable: hovering the prompt should not switch diff granularity.
+  // Fine precision remains available for history diff inspection.
+  const ghostDiffPrecision: 'coarse' | 'fine' =
+    ghostPrecisionHover && !compareAgainstMedia ? 'fine' : 'coarse';
   const cmGhostConfig: GhostDiffConfig | null = ghostSource
     ? {
         comparisonText: ghostSource.comparisonText,
@@ -1345,8 +1348,8 @@ export function PromptComposer({
                   ? 'Peeking hovered asset (release Shift to return to pinned/selection target)'
                   : activeAssetPrompt
                     ? hasPinnedCompareTarget
-                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin, hover prompt for exact diff'
-                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered, hover prompt for exact diff`
+                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin'
+                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered`
                     : 'Compare mode on - waiting for a target (hold Shift + hover, or Shift+click a media card)'
               : 'Compare prompt vs viewer media (Shift+hover peeks, Shift+click pins a media card)'
           }
@@ -1554,7 +1557,8 @@ export function PromptComposer({
                   const op = cmOperatorPopover.operator;
                   const recipe = matchRecipe(relationRecipes.recipes, {
                     line_kind: op.context,
-                    pattern: op.pattern,
+                    prev_kind: op.prevKind,
+                    next_kind: op.nextKind,
                   });
                   // Match by raw op so `===>` finds the `>` entry via the
                   // last-char fallback inside matchOperator.

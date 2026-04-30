@@ -1,72 +1,40 @@
 {
-  "version": "1.0.0",
-  "_generated_from": "tools/cue/recipes/*.cue (when CUE codegen is wired up; hand-maintained until then)",
+  "version": "2.0.0",
+  "_generated_from": "tools/cue/recipes/relation_recipes.cue (when CUE codegen is wired up; hand-maintained until then)",
   "recipes": [
     {
-      "id": "simple_assignment",
-      "label": "Simple assignment",
+      "id": "chain_var_to_prose",
+      "label": "Label with body",
       "context": {
-        "line_kind": "header",
-        "pattern": "assignment"
+        "line_kind": "chain",
+        "prev_kind": "var",
+        "next_kind": "prose"
       },
       "operators": [
         {
           "op": "=",
           "meaning": "definition / identity assignment",
-          "swap_targets": ["=", ":"]
-        }
-      ]
-    },
-    {
-      "id": "compound_assignment",
-      "label": "Compound key assignment",
-      "context": {
-        "line_kind": "header",
-        "pattern": "compound_assignment"
-      },
-      "operators": [
-        {
-          "op": "=",
-          "meaning": "compound-key body definition",
-          "swap_targets": ["=", ":"]
-        }
-      ]
-    },
-    {
-      "id": "arrow_assignment",
-      "label": "Arrow assignment",
-      "context": {
-        "line_kind": "header",
-        "pattern": "assignment_arrow"
-      },
-      "operators": [
+          "swap_targets": ["=", ":", ">", "<"]
+        },
         {
           "op": ">",
           "meaning": "directional / scoped assignment",
-          "swap_targets": [">", "<", "="]
-        }
-      ]
-    },
-    {
-      "id": "arrow_assignment_left",
-      "label": "Arrow assignment (left)",
-      "context": {
-        "line_kind": "header",
-        "pattern": "assignment_arrow_left"
-      },
-      "operators": [
+          "swap_targets": [">", "<", "=", ":"]
+        },
         {
           "op": "<",
           "meaning": "reverse-directional / scoped assignment",
-          "swap_targets": ["<", ">", "="]
+          "swap_targets": ["<", ">", "=", ":"]
         }
       ]
     },
     {
-      "id": "relation_general",
+      "id": "chain_var_to_var",
       "label": "Relation chain",
       "context": {
-        "line_kind": "relation"
+        "line_kind": "chain",
+        "prev_kind": "var",
+        "next_kind": "var"
       },
       "operators": [
         {
@@ -102,10 +70,24 @@
       ],
       "notes": [
         {
-          "text": "Initial recipe seeded for pixverse i2v v6 exploration. Run-length semantics are placeholder hypotheses — refine with testing.",
+          "text": "Run-length semantics seeded for pixverse i2v v6 exploration. Refine with testing.",
           "model": "pixverse-i2v-v6",
           "date": "2026-04-27",
           "tags": ["seed", "i2v"]
+        }
+      ]
+    },
+    {
+      "id": "header_colon",
+      "label": "Section header",
+      "context": {
+        "line_kind": "colon"
+      },
+      "operators": [
+        {
+          "op": ":",
+          "meaning": "section label",
+          "swap_targets": [":", "=", ">"]
         }
       ]
     }

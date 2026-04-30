@@ -30,10 +30,13 @@ export interface OperatorRange {
   raw: string;
   /** Run length (count of operator chars). */
   run: number;
-  /** Owning line kind — informs the popover label and recipe matching. */
-  context: 'header' | 'chain';
-  /** Header pattern id (e.g. `colon`); undefined for chain operators. */
-  pattern?: string;
+  /**
+   * Owning line kind — feeds straight into recipe matching's `line_kind`.
+   * Today only `colon` headers and `chain` lines surface clickable
+   * operators (angle_bracket / freestanding have no operator runs to
+   * click), but the union is widened for forward-compat.
+   */
+  context: 'chain' | 'colon' | 'angle_bracket' | 'freestanding';
   /** Element kind immediately before this operator (chain only). */
   prevKind?: 'var' | 'prose';
   /** Element kind immediately after this operator (chain only). */
@@ -61,12 +64,21 @@ function collectOperatorRanges(
         const from = line.op_start;
         const to = line.op_end;
         if (from < to && from >= 0 && to <= docLength) {
+          // Tokenizer only emits op_start/op_end for the colon header
+          // today; angle_bracket / freestanding have none. Keep the
+          // wider union for safety, fall back to 'colon' if `pattern`
+          // is missing.
+          const headerCtx =
+            line.pattern === 'colon' ||
+            line.pattern === 'angle_bracket' ||
+            line.pattern === 'freestanding'
+              ? line.pattern
+              : 'colon';
           out.push({
             from, to,
             raw: '',  // host can recover via doc.sliceString
             run: to - from,
-            context: 'header',
-            pattern: line.pattern,
+            context: headerCtx,
           });
         }
       }

@@ -34,20 +34,39 @@ package recipes
 }
 
 // ── context — when this recipe applies ──────────────────────────────────
+//
+// `line_kind` aligns with tokenizer line node kinds. Headers carry their
+// pattern_id directly as the line_kind value (collapsing the old
+// `line_kind: "header", pattern: "..."` two-level shape). For chains,
+// the relevant axis is the kind of element on either side of the
+// operator click.
 
-#RelationContext: {
-    line_kind?:  "header" | "relation"   // which kind of line
-    pattern?:    string                  // header pattern id (assignment, compound_assignment, etc.)
-    lhs_kind?:   string                  // freeform kind tag (ACTOR, SCENE, ANY, ...)
+#ChainElementKind: "var" | "prose"
+
+#RecipeContext: {
+    line_kind?:  "chain" | "colon" | "angle_bracket" | "freestanding"
+    // Element kinds immediately surrounding the clicked operator.
+    // Only meaningful for `line_kind: "chain"`.
+    prev_kind?:  #ChainElementKind
+    next_kind?:  #ChainElementKind
+    // Reserved freeform semantic-kind tags ("ACTOR", "SCENE", etc.) for
+    // future richer matching. Declared but not consumed by current
+    // recipes — leave them in the schema as headroom.
+    lhs_kind?:   string
     rhs_kind?:   string
 }
+
+// Backwards-compat alias: older code imported `#RelationContext`. The
+// unified-chain schema renames it but keeps the old name as an alias
+// during the migration so any imports we missed keep validating.
+#RelationContext: #RecipeContext
 
 // ── recipe ──────────────────────────────────────────────────────────────
 
 #RelationRecipe: {
     id:        string                 // unique kebab-id
     label?:    string                 // human-readable name
-    context:   #RelationContext
+    context:   #RecipeContext
     operators: [...#OperatorEntry]
     notes?:    [...#RecipeNote]       // recipe-level notes (apply to whole recipe)
 }

@@ -29,12 +29,17 @@ export interface RelationRecipeOperator {
   notes?: RelationRecipeNote[];
 }
 
+export type RecipeLineKind = 'chain' | 'colon' | 'angle_bracket' | 'freestanding';
+export type ChainElementKind = 'var' | 'prose';
+
 export interface RelationRecipeContext {
-  // 'relation' kept for back-compat with any persisted recipes; new recipes
-  // should use 'chain'. Phase 3 will rewrite the recipe schema to use
-  // (line_kind: 'chain', operator + prev_kind/next_kind) keys.
-  line_kind?: 'header' | 'chain' | 'relation';
-  pattern?: string;
+  /** Tokenizer line node kind. */
+  line_kind?: RecipeLineKind;
+  /** Element kind immediately before the clicked operator (chain only). */
+  prev_kind?: ChainElementKind;
+  /** Element kind immediately after the clicked operator (chain only). */
+  next_kind?: ChainElementKind;
+  /** Reserved freeform semantic-kind tags — declared but not consumed today. */
   lhs_kind?: string;
   rhs_kind?: string;
 }
@@ -99,23 +104,33 @@ export function useRelationRecipes(): RelationRecipesPayload {
 
 /**
  * Find the best-matching recipe for a given context. Resolution:
- *   1. Exact (line_kind, pattern) match
- *   2. line_kind match without pattern constraint
+ *   1. (line_kind, prev_kind, next_kind) exact
+ *   2. line_kind alone (no prev/next constraints)
  *   3. null (caller falls back to grammar's universal swap_targets)
  */
 export function matchRecipe(
   recipes: RelationRecipe[],
-  context: { line_kind: 'header' | 'chain' | 'relation'; pattern?: string },
+  context: {
+    line_kind: RecipeLineKind;
+    prev_kind?: ChainElementKind;
+    next_kind?: ChainElementKind;
+  },
 ): RelationRecipe | null {
-  if (context.pattern) {
+  if (context.prev_kind && context.next_kind) {
     const exact = recipes.find(
-      (r) => r.context.line_kind === context.line_kind && r.context.pattern === context.pattern,
+      (r) =>
+        r.context.line_kind === context.line_kind &&
+        r.context.prev_kind === context.prev_kind &&
+        r.context.next_kind === context.next_kind,
     );
     if (exact) return exact;
   }
   return (
     recipes.find(
-      (r) => r.context.line_kind === context.line_kind && !r.context.pattern,
+      (r) =>
+        r.context.line_kind === context.line_kind &&
+        !r.context.prev_kind &&
+        !r.context.next_kind,
     ) ?? null
   );
 }

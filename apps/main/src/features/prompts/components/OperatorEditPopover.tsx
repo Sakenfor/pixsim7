@@ -32,6 +32,13 @@ function inferBaseChar(raw: string): string {
   return first;
 }
 
+const CONTEXT_LABEL: Record<OperatorRange['context'], string> = {
+  chain: 'Chain',
+  colon: 'Section header',
+  angle_bracket: 'Bracket header',
+  freestanding: 'Freestanding header',
+};
+
 export function OperatorEditPopover({
   operator,
   swapTargets,
@@ -67,11 +74,7 @@ export function OperatorEditPopover({
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
         <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400">
           <span>
-            {recipe?.label
-              ? recipe.label
-              : operator.context === 'header'
-                ? `Header (${operator.pattern ?? '?'})`
-                : 'Chain'}
+            {recipe?.label ?? CONTEXT_LABEL[operator.context]}
           </span>
           <span className="font-mono text-neutral-600 dark:text-neutral-300 normal-case tracking-normal">
             {operator.raw}

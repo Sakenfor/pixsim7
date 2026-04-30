@@ -22,20 +22,25 @@ _RECIPES_PATH = pathlib.Path(__file__).parent / "relation_recipes.json"
 try:
     _RAW: Dict[str, Any] = json.loads(_RECIPES_PATH.read_text(encoding="utf-8"))
 except FileNotFoundError:
-    _RAW = {"version": "1.0.0", "recipes": []}
+    _RAW = {"version": "2.0.0", "recipes": []}
 
 
 def get_relation_recipes() -> Dict[str, Any]:
     """Return the full relation_recipes payload (version + recipes list).
 
-    Returned dict shape:
+    Returned dict shape::
+
         {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "recipes": [
                 {
                     "id": "...",
                     "label": "...",
-                    "context": {"line_kind": "header"|"relation", "pattern": "..."},
+                    "context": {
+                        "line_kind": "chain"|"colon"|"angle_bracket"|"freestanding",
+                        "prev_kind": "var"|"prose"|null,    # chain only
+                        "next_kind": "var"|"prose"|null,    # chain only
+                    },
                     "operators": [
                         {"op": "<", "meaning": "...", "run_semantics": {...},
                          "swap_targets": [...], "notes": [...]},
@@ -48,30 +53,49 @@ def get_relation_recipes() -> Dict[str, Any]:
         }
     """
     return {
-        "version": _RAW.get("version", "1.0.0"),
+        "version": _RAW.get("version", "2.0.0"),
         "recipes": list(_RAW.get("recipes", [])),
     }
 
 
-def find_recipe(line_kind: str, pattern: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def find_recipe(
+    line_kind: str,
+    *,
+    prev_kind: Optional[str] = None,
+    next_kind: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Match a recipe to the given context.
 
-    Resolution order:
-      1. Exact (line_kind, pattern) match
-      2. line_kind match without pattern constraint
+    Resolution order (most-specific first):
+      1. (line_kind, prev_kind, next_kind) exact
+      2. line_kind only (no prev/next constraints)
       3. None (caller falls back to grammar.operator_vocabulary)
+
+    `line_kind` values follow tokenizer line node kinds:
+      - "chain"          — chain line (var|prose elements + operators)
+      - "colon"          — colon header
+      - "angle_bracket"  — >LABEL< header (no clickable operator today)
+      - "freestanding"   — bare UPPER_IDENT line (no operator)
     """
     recipes: List[Dict[str, Any]] = _RAW.get("recipes", []) or []
 
-    if pattern:
+    if prev_kind is not None and next_kind is not None:
         for r in recipes:
             ctx = r.get("context") or {}
-            if ctx.get("line_kind") == line_kind and ctx.get("pattern") == pattern:
+            if (
+                ctx.get("line_kind") == line_kind
+                and ctx.get("prev_kind") == prev_kind
+                and ctx.get("next_kind") == next_kind
+            ):
                 return r
 
     for r in recipes:
         ctx = r.get("context") or {}
-        if ctx.get("line_kind") == line_kind and not ctx.get("pattern"):
+        if (
+            ctx.get("line_kind") == line_kind
+            and not ctx.get("prev_kind")
+            and not ctx.get("next_kind")
+        ):
             return r
 
     return None
