@@ -63,10 +63,11 @@ import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPa
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 import { useSharedWorldSelection } from '@/hooks';
 import { useGameLocations } from '@/hooks/useGameLocations';
+import { useGameNotifications } from '@/hooks/useGameNotifications';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
-import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
+import { GameNotifications } from '../components/game/GameNotification';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import {
   getGameLocation,
@@ -430,7 +431,7 @@ export function Game2D() {
   const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
-  const [notifications, setNotifications] = useState<GameNotification[]>([]);
+  const { notifications, addNotification, dismissNotification } = useGameNotifications();
   const [showHudEditor, setShowHudEditor] = useState(false);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
   const [showUserPreferences, setShowUserPreferences] = useState(false);
@@ -780,21 +781,6 @@ export function Game2D() {
     advanceTurn().catch((e) => {
       console.error('Failed to advance time', e);
     });
-  };
-
-  const addNotification = (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string, duration?: number) => {
-    const notification: GameNotification = {
-      id: `${Date.now()}-${Math.random()}`,
-      type,
-      title,
-      message,
-      duration,
-    };
-    setNotifications((prev) => [...prev, notification]);
-  };
-
-  const dismissNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   // Memoize SessionAPI to prevent recreating on every render
