@@ -5,15 +5,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@lib/icons';
 
 import { useAccentButtonClasses } from '@features/appearance';
-import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import { useFanoutPresetStore, usePersistedScopeState } from '@features/generation';
 import { openWorkspacePanel } from '@features/workspace';
 
 import {
   EACH_STRATEGIES,
-  LINKED_SET_STRATEGIES,
-  SET_STRATEGIES,
-  isSetStrategy,
   type CombinationStrategy,
 } from '../../lib/combinationStrategies';
 import {
@@ -29,10 +25,6 @@ const STRATEGY_ICONS: Record<CombinationStrategy, IconName> = {
   anchor_sweep: 'target',
   sequential_pairs: 'link',
   all_pairs: 'grid',
-  input_x_set_random: 'shuffle',
-  input_x_set_sequential: 'layers',
-  set_each: 'layers',
-  linked_set_each: 'shuffle',
 };
 
 /** Short 2-character codes — readable at a glance, scroll-cycle friendly. */
@@ -41,10 +33,6 @@ const STRATEGY_CODES: Record<CombinationStrategy, string> = {
   anchor_sweep: 'An',
   sequential_pairs: 'Pr',
   all_pairs: 'AP',
-  input_x_set_random: 'Rn',
-  input_x_set_sequential: 'Sq',
-  set_each: 'SE',
-  linked_set_each: 'LS',
 };
 
 /** Split-button for "Each" (fanout) with strategy + preset controls. */
@@ -54,12 +42,16 @@ export function EachSplitButton({
   generating,
   queueProgress,
   inputCount,
+  iterateSetSizes,
 }: {
   onGenerateEach: (options?: FanoutRunOptions) => void;
   disabled: boolean;
   generating: boolean;
   queueProgress?: { queued: number; total: number } | null;
   inputCount: number;
+  /** Set sizes for slots in iterate mode (manual sets only). When non-empty,
+   * the iterate dimension drives plan count instead of `inputCount`. */
+  iterateSetSizes?: number[];
 }) {
   const btn = useAccentButtonClasses();
   const [selectedPresetId, setSelectedPresetId] = usePersistedScopeState<string | null>('eachSelectedPresetId', 'each-default');
@@ -75,11 +67,8 @@ export function EachSplitButton({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const strategyWheelRef = useRef<HTMLButtonElement>(null);
 
-  const sets = useAssetSetStore((s) => s.sets);
   const currentRunOptions = normalizeFanoutRunOptions(draftRunOptions);
   const selectedStrategy = currentRunOptions.strategy;
-  const selectedSetId = currentRunOptions.setId ?? null;
-  const selectedSet = sets.find((s) => s.id === selectedSetId) ?? null;
   const selectedPreset = useMemo(
     () => [...BUILTIN_FANOUT_PRESETS, ...(customPresets || [])].find((p) => p.id === selectedPresetId) ?? null,
     [customPresets, selectedPresetId],
@@ -96,27 +85,25 @@ export function EachSplitButton({
     ),
     [selectedPresetNormalized, currentRunOptions],
   );
-  const setRelatedStrategies = useMemo(
-    () => [...SET_STRATEGIES, ...LINKED_SET_STRATEGIES],
-    [],
-  );
 
-  const needsSet = isSetStrategy(selectedStrategy);
-  const canRun = !needsSet || !!selectedSetId;
+  const canRun = true;
   const showProgress = generating && queueProgress;
 
   function setDraftPatch(patch: Partial<FanoutRunOptions>) {
     setDraftRunOptions((prev) => normalizeFanoutRunOptions({ ...prev, ...patch }));
   }
-  const plannedGroupCount = estimatePlannedGroupCount({
-    inputCount,
-    strategy: selectedStrategy,
-    repeatCount: currentRunOptions.repeatCount,
-    setKind: needsSet ? (selectedSet?.kind ?? null) : null,
-    setCount: needsSet && selectedSet && selectedSet.kind === 'manual' ? selectedSet.assetIds.length : null,
-    setPickMode: currentRunOptions.setPickMode,
-    setPickCount: currentRunOptions.setPickCount,
-  });
+  const plannedGroupCount = (iterateSetSizes && iterateSetSizes.length > 0)
+    ? estimateIterateGroupCount({
+        iterateSetSizes,
+        slotCount: inputCount,
+        strategy: selectedStrategy,
+        repeatCount: currentRunOptions.repeatCount,
+      })
+    : estimatePlannedGroupCount({
+        inputCount,
+        strategy: selectedStrategy,
+        repeatCount: currentRunOptions.repeatCount,
+      });
 
   const builtinBasicPresets = useMemo(
     () =>
@@ -153,7 +140,7 @@ export function EachSplitButton({
       const next = e.deltaY < 0
         ? (baseIdx + 1) % list.length
         : (baseIdx - 1 + list.length) % list.length;
-      patch({ strategy: list[next].id, setId: undefined });
+      patch({ strategy: list[next].id });
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
@@ -193,8 +180,8 @@ export function EachSplitButton({
   }
 
   const activeStrategyEntry = useMemo(
-    () => [...EACH_STRATEGIES, ...setRelatedStrategies].find((s) => s.id === selectedStrategy) ?? EACH_STRATEGIES[0],
-    [selectedStrategy, setRelatedStrategies],
+    () => EACH_STRATEGIES.find((s) => s.id === selectedStrategy) ?? EACH_STRATEGIES[0],
+    [selectedStrategy],
   );
 
   return (
@@ -217,7 +204,9 @@ export function EachSplitButton({
           title={
             buildStrategyTooltip(activeStrategyEntry.id, activeStrategyEntry.description, true, inputCount, currentRunOptions.repeatCount, plannedGroupCount)
             + '\n\nScroll to cycle strategies'
-            + (!canRun ? '\n\nPick an asset set below before running.' : '')
+            + (iterateSetSizes && iterateSetSizes.length > 0
+              ? `\n\nIterate-mode slots: ${iterateSetSizes.join(' × ')}${selectedStrategy === 'all_pairs' && iterateSetSizes.length >= 2 ? ' (cartesian)' : ' (zip)'}`
+              : '')
           }
         >
           {canRun && !showProgress && <Icon name="play" size={9} color="#fff" />}
@@ -278,20 +267,15 @@ export function EachSplitButton({
           <div className="flex-1 min-h-0 overflow-y-auto">
             {/* Two-column layout: Set Strategies | Presets */}
             <div className="flex divide-x divide-neutral-200 dark:divide-neutral-700">
-          {/* Left column: Set strategies (input strategies are now button slices) */}
+          {/* Left column: input combination strategies (also cycle-able via wheel on the pill) */}
           <div className="flex-1 min-w-0">
-            <DropdownSectionHeader first>Asset Set Strategies</DropdownSectionHeader>
-            {setRelatedStrategies.map((s) => (
+            <DropdownSectionHeader first>Combination Strategy</DropdownSectionHeader>
+            {EACH_STRATEGIES.map((s) => (
               <DropdownItem
                 key={s.id}
-                onClick={() => {
-                  setDraftPatch({
-                    strategy: s.id,
-                    ...(!isSetStrategy(s.id) ? { setId: undefined } : {}),
-                  });
-                }}
+                onClick={() => setDraftPatch({ strategy: s.id })}
                 className={clsx(selectedStrategy === s.id && 'font-semibold bg-violet-500/10')}
-                icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
+                icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : <Icon name={STRATEGY_ICONS[s.id]} size={10} />}
               >
                 <div className="flex flex-col items-start">
                   <span>{s.label}</span>
@@ -299,6 +283,9 @@ export function EachSplitButton({
                 </div>
               </DropdownItem>
             ))}
+            <div className="px-2 py-1.5 mt-1 mx-1 rounded text-[9px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+              Iterate over an asset set by linking it to a slot — hover the slot, click the shuffle badge, pick <span className="font-semibold">Iterate</span>. The slot drives run count.
+            </div>
           </div>
 
           {/* Right column: Presets */}
@@ -416,7 +403,6 @@ export function EachSplitButton({
               <span className="text-neutral-300 dark:text-neutral-600">|</span>
               <span>
                 Planned: <span className="font-semibold text-neutral-700 dark:text-neutral-200">{plannedGroupCount ?? '?'}</span>
-                {needsSet && selectedSet?.kind === 'smart' ? ' (smart)' : ''}
               </span>
             </div>
           </div>
@@ -495,69 +481,58 @@ export function EachSplitButton({
               onChange={(e) => setDraftPatch({ seed: Math.trunc(Number(e.target.value || 0)) || undefined })}
               className="px-1.5 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
               placeholder="0 = random"
-              title="Used for reproducible random set picking / random set pairing"
+              title="Used for reproducible iterate-mode shuffle order"
             />
           </label>
-
-          {needsSet && (
-            <>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-neutral-500">Set pick</span>
-                <select
-                  value={currentRunOptions.setPickMode}
-                  onChange={(e) => setDraftPatch({ setPickMode: e.target.value as 'all' | 'first_n' | 'random_n' })}
-                  className="px-1.5 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
-                >
-                  <option value="all">All</option>
-                  <option value="first_n">First N</option>
-                  <option value="random_n">Random N</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-neutral-500">Set count</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  disabled={currentRunOptions.setPickMode === 'all'}
-                  value={currentRunOptions.setPickCount ?? 8}
-                  onChange={(e) => setDraftPatch({ setPickCount: Math.max(1, Math.min(500, Number(e.target.value || 1))) })}
-                  className="px-1.5 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 disabled:opacity-50"
-                />
-              </label>
-            </>
-          )}
           </div>
         </div>
       </Popover>
-
-      {needsSet && (
-        <select
-          value={selectedSetId ?? ''}
-          onChange={(e) => setDraftPatch({ setId: e.target.value || undefined })}
-          className="mt-1 w-full px-1.5 py-1 text-[10px] rounded-md bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200"
-          title="Select asset set"
-        >
-          <option value="">Pick a set...</option>
-          {sets.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} ({s.kind === 'manual' ? `${s.assetIds.length} assets` : 'smart'})
-            </option>
-          ))}
-        </select>
-      )}
     </div>
   );
+}
+
+// Mirrors useQuickGenerateController#buildIterateGroups planning rules so the
+// `×N` badge stays accurate when iterate slots drive the run.
+function estimateIterateGroupCount(args: {
+  iterateSetSizes: number[];
+  slotCount: number;
+  strategy: CombinationStrategy;
+  repeatCount: number;
+}): number | null {
+  const sizes = args.iterateSetSizes.filter((s) => s > 0);
+  if (sizes.length === 0) return null;
+  const repeat = Math.max(1, Math.floor(args.repeatCount || 1));
+  const useCartesian = args.strategy === 'all_pairs' && sizes.length >= 2;
+
+  const iterDim = useCartesian
+    ? sizes.reduce((a, b) => a * b, 1)
+    : Math.max(...sizes);
+
+  let perIter: number;
+  if (args.strategy === 'each' || useCartesian) {
+    perIter = 1;
+  } else {
+    const n = Math.max(0, Math.floor(args.slotCount || 0));
+    switch (args.strategy) {
+      case 'anchor_sweep':
+      case 'sequential_pairs':
+        perIter = n < 2 ? 1 : n - 1;
+        break;
+      case 'all_pairs':
+        perIter = n < 2 ? 1 : (n * (n - 1)) / 2;
+        break;
+      default:
+        perIter = 1;
+    }
+  }
+
+  return iterDim * perIter * repeat;
 }
 
 function estimatePlannedGroupCount(args: {
   inputCount: number;
   strategy: CombinationStrategy;
   repeatCount: number;
-  setKind: 'manual' | 'smart' | null;
-  setCount: number | null;
-  setPickMode: 'all' | 'first_n' | 'random_n';
-  setPickCount?: number;
 }): number | null {
   const n = Math.max(0, Math.floor(args.inputCount || 0));
   const repeat = Math.max(1, Math.floor(args.repeatCount || 1));
@@ -575,32 +550,12 @@ function estimatePlannedGroupCount(args: {
       case 'all_pairs':
         if (n === 0) return 0;
         return n < 2 ? 1 : (n * (n - 1)) / 2;
-      case 'input_x_set_random':
-      case 'input_x_set_sequential':
-        return n;
-      case 'set_each':
-        return 0; // resolved below
-      case 'linked_set_each':
-        return 0; // resolved from linked slot set sizes at execution time
       default:
         return n;
     }
   };
 
-  if (args.strategy === 'linked_set_each') {
-    return null;
-  }
-
-  if (args.strategy !== 'set_each') {
-    return baseFromEach(args.strategy) * repeat;
-  }
-
-  if (args.setKind !== 'manual' || args.setCount == null) return null;
-  let effectiveSetCount = Math.max(0, args.setCount);
-  if (args.setPickMode !== 'all' && args.setPickCount != null) {
-    effectiveSetCount = Math.min(effectiveSetCount, Math.max(0, args.setPickCount));
-  }
-  return effectiveSetCount * repeat;
+  return baseFromEach(args.strategy) * repeat;
 }
 
 function buildStrategyTooltip(
@@ -640,14 +595,6 @@ function strategyBreakdown(strategy: CombinationStrategy, n: number): string {
     case 'all_pairs':
       if (n < 2) return `${n} input - need 2+ for pairs`;
       return `${n} inputs -> ${(n * (n - 1)) / 2} unique pairs`;
-    case 'input_x_set_random':
-      return `${n} input${n !== 1 ? 's' : ''} -> ${n} group${n !== 1 ? 's' : ''} (paired with random from selected set)`;
-    case 'input_x_set_sequential':
-      return `${n} input${n !== 1 ? 's' : ''} -> ${n} group${n !== 1 ? 's' : ''} (paired with sequential from selected set)`;
-    case 'set_each':
-      return 'One group per asset from selected set (input queue ignored)';
-    case 'linked_set_each':
-      return 'One group per linked set step (uses per-slot set pick rules)';
     default:
       return `${n} input${n !== 1 ? 's' : ''}`;
   }

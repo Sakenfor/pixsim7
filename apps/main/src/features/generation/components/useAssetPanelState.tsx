@@ -23,8 +23,8 @@ import {
   type AssetModel,
 } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
-import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
+import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
@@ -880,18 +880,20 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSetBadgeWidget = useCallback(
     (item: InputItem, slotIdx: number) => {
       if (!item.assetSetRef) return null;
-      const isRandom = item.assetSetRef.mode === 'random_each';
+      const mode = item.assetSetRef.mode;
       const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
+      const icon = mode === 'random_each' ? 'shuffle' : mode === 'iterate' ? 'list' : 'lock';
+      const modeLabel = mode === 'random_each' ? 'random each' : mode === 'iterate' ? 'iterate' : 'locked';
       return createBadgeWidget({
         id: 'asset-set-ref',
         ...BADGE_SLOT.topLeft,
         variant: 'icon',
-        icon: isRandom ? 'shuffle' : 'lock',
+        icon,
         color: 'purple',
         shape: 'circle',
-        tooltip: `Set: ${set?.name ?? 'Unknown'} (${isRandom ? 'random each' : 'locked'})`,
+        tooltip: `Set: ${set?.name ?? 'Unknown'} (${modeLabel})`,
         priority: 21,
-        className: isRandom ? 'animate-pulse-badge' : '',
+        className: mode === 'random_each' ? 'animate-pulse-badge' : '',
         onClick: (_data: any, e?: any) => {
           const target = e?.currentTarget ?? e?.target;
           if (target) {
@@ -909,14 +911,13 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     (slotIdx: number) => createBadgeWidget({
       id: 'asset-set-link',
       ...BADGE_SLOT.topLeft,
-      visibility: { trigger: 'hover-container', transition: 'fade' },
       variant: 'icon',
       icon: 'shuffle',
       color: 'gray',
       shape: 'circle',
       tooltip: 'Link asset set',
       priority: 21,
-      className: 'opacity-50 hover:opacity-100',
+      className: 'opacity-60 hover:opacity-100',
       onClick: (_data: any, e?: any) => {
         const target = e?.currentTarget ?? e?.target;
         if (target) {

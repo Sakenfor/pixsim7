@@ -5,7 +5,7 @@ import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
 import { extractFrame, fromAssetResponse, getAssetDisplayUrls, toSelectedAsset, type AssetModel } from '@features/assets';
-import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/assetSetResolver';
+import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import type { GenerateOverrides } from '@features/contextHub';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
@@ -21,7 +21,7 @@ import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
 
-import { isLinkedSetStrategy, isSetStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
+import { computeCombinations, type CombinationStrategy, type EachStrategy } from '../lib/combinationStrategies';
 import {
   executeTrackedEachBackendExecution,
   prepareEachBackendExecutionPayload,
@@ -32,6 +32,7 @@ import { planFanoutGroups } from '../lib/fanoutPlanner';
 import {
   expandGroupsByRepeat,
   normalizeFanoutRunOptions,
+  randomForFanoutSeed,
   type FanoutRunOptions,
 } from '../lib/fanoutPresets';
 import { pickFromSet } from '../lib/pickFromSet';
@@ -785,28 +786,106 @@ export function useQuickGenerateController() {
     });
   }
 
-  async function resolveLinkedSetEachBaseRuns(
+  // Resolves iterate-mode slots into concrete assets per iteration, and applies
+  // the selected strategy on top.
+  //
+  // Iteration dimension:
+  //  - default: zip with max-wrap across iterate slots
+  //  - all_pairs + ≥2 iterate slots: cartesian product across iterate slots
+  //
+  // Per-iteration cross-slot dimension (applied to resolved slots):
+  //  - each: keep all slots in a single group (iterate-natural meaning)
+  //  - cartesian path: also keep all slots in a single group (cartesian already provides fanout)
+  //  - anchor_sweep / sequential_pairs / all_pairs (non-cartesian): apply normally
+  //
+  // Other slots (concrete, locked, random_each) pass through unchanged —
+  // random_each gets resolved per-group later by prePickSetRefs.
+  function buildIterateGroups(
     inputs: any[],
-    cache?: Map<string, AssetModel[]>,
-  ): Promise<number> {
-    const linkedSetIds = new Set<string>();
-    for (const item of inputs) {
+    cache: Map<string, AssetModel[]>,
+    strategy: CombinationStrategy,
+    seed?: number,
+  ): any[][] {
+    const iterateRefs = inputs.flatMap((item: any) => {
       const ref = item?.assetSetRef;
-      if (ref?.mode === 'random_each' && ref.setId) {
-        linkedSetIds.add(ref.setId);
-      }
-    }
-    if (linkedSetIds.size === 0) return 0;
+      return ref?.mode === 'iterate' && ref.setId ? [{ item, ref }] : [];
+    });
+    if (iterateRefs.length === 0) return [];
 
-    const resolvedCache = cache ?? await preResolveSetRefs(inputs);
-    let maxSetSize = 0;
-    for (const setId of linkedSetIds) {
-      const size = resolvedCache.get(setId)?.length ?? 0;
-      if (size > maxSetSize) {
-        maxSetSize = size;
+    const rng = randomForFanoutSeed(seed);
+    const useCartesian = strategy === 'all_pairs' && iterateRefs.length >= 2;
+
+    // Per-slot index ordering (random or sequential)
+    const ordersByInputId = new Map<string, number[]>();
+    for (const { item, ref } of iterateRefs) {
+      const size = cache.get(ref.setId)?.length ?? 0;
+      if (size === 0) continue;
+      const order = Array.from({ length: size }, (_, k) => k);
+      if ((ref.pickStrategy ?? 'sequential') === 'random') {
+        for (let i = size - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+      }
+      ordersByInputId.set(item.id, order);
+    }
+
+    // Build iteration plans: list of `inputId → setIndex` maps, one per iteration.
+    const plans: Array<Map<string, number>> = [];
+
+    if (useCartesian) {
+      const dims = iterateRefs.map(({ item }) => ({
+        inputId: item.id,
+        order: ordersByInputId.get(item.id) ?? [],
+      }));
+      const sizes = dims.map((d) => Math.max(1, d.order.length));
+      const total = sizes.reduce((a, b) => a * b, 1);
+      for (let n = 0; n < total; n++) {
+        const plan = new Map<string, number>();
+        let rem = n;
+        for (let d = dims.length - 1; d >= 0; d--) {
+          const size = sizes[d];
+          const local = size > 0 ? rem % size : 0;
+          rem = size > 0 ? Math.floor(rem / size) : rem;
+          plan.set(dims[d].inputId, dims[d].order[local] ?? 0);
+        }
+        plans.push(plan);
+      }
+    } else {
+      const baseRuns = Math.max(0, ...iterateRefs.map(({ ref }) => cache.get(ref.setId)?.length ?? 0));
+      for (let i = 0; i < baseRuns; i++) {
+        const plan = new Map<string, number>();
+        for (const { item } of iterateRefs) {
+          const order = ordersByInputId.get(item.id);
+          const size = order?.length ?? 0;
+          if (size === 0) continue;
+          plan.set(item.id, order![i % size]);
+        }
+        plans.push(plan);
       }
     }
-    return maxSetSize;
+
+    // Apply per-iteration strategy
+    const out: any[][] = [];
+    for (const plan of plans) {
+      const resolvedSlots = inputs.map((item: any) => {
+        const ref = item?.assetSetRef;
+        if (ref?.mode !== 'iterate' || !ref.setId || !plan.has(item.id)) return item;
+        const setAssets = cache.get(ref.setId);
+        const setIndex = plan.get(item.id)!;
+        if (!setAssets || setAssets.length === 0) return item;
+        return { ...item, asset: setAssets[setIndex], assetSetRef: undefined };
+      });
+
+      if (strategy === 'each' || useCartesian) {
+        out.push(resolvedSlots);
+      } else {
+        const subGroups = computeCombinations(resolvedSlots, strategy as EachStrategy);
+        for (const g of subGroups) out.push(g);
+      }
+    }
+
+    return out;
   }
 
   function withServerTemplateRollRunContext(
@@ -859,7 +938,6 @@ export function useQuickGenerateController() {
     total: number;
     run: any;
     strategy: CombinationStrategy;
-    setId?: string;
     overrideParams: Record<string, any>;
     rolledOnce: string | null;
     onError: 'continue' | 'stop';
@@ -871,7 +949,6 @@ export function useQuickGenerateController() {
       total,
       run,
       strategy,
-      setId,
       overrideParams,
       rolledOnce,
       onError,
@@ -956,7 +1033,6 @@ export function useQuickGenerateController() {
     const request = prepareEachBackendExecutionPayload({
       providerId: providerId || 'pixverse',
       strategy,
-      setId,
       onError,
       executionMode,
       reusePreviousOutputAsInput,
@@ -1406,18 +1482,15 @@ export function useQuickGenerateController() {
 
   /**
    * Generate individually for each queued input asset (or group of assets
-   * when a combination strategy is selected).
-   * Same prompt and settings, but one generation per group.
+   * when a combination strategy is selected). Same prompt and settings, but
+   * one generation per group.
    *
-   * When a global set strategy + setId is provided, resolves that set and
-   * uses computeSetCombinations instead of computeCombinations.
-   * When the linked slot-set strategy is selected, expands run count from
-   * per-input linked set references (random_each mode).
+   * Asset-set iteration is driven by per-slot `assetSetRef.mode === 'iterate'`
+   * — the strategy here only describes how multiple input slots zip together.
    */
   const generateEach = useCallback(async (options?: {
     overrideDynamicParams?: Record<string, any>;
     strategy?: CombinationStrategy;
-    setId?: string;
     fanoutOptions?: Partial<FanoutRunOptions>;
   }) => {
     let { currentInputs } = getInputState();
@@ -1425,14 +1498,12 @@ export function useQuickGenerateController() {
     currentInputs = await ensureInputsUploaded(currentInputs);
     const fanout = normalizeFanoutRunOptions({
       strategy: options?.strategy,
-      setId: options?.setId,
       ...(options?.fanoutOptions || {}),
     });
     const strategy = fanout.strategy;
     const run = createGenerationRunDescriptor({
       mode: 'quickgen_each',
       strategy,
-      setId: fanout.setId,
       metadata: {
         repeat_count: fanout.repeatCount,
         dispatch: fanout.dispatch,
@@ -1442,32 +1513,43 @@ export function useQuickGenerateController() {
       },
     });
 
-    // ─── Set strategy path ───
-    if (isLinkedSetStrategy(strategy)) {
-      const linkedSetCache = await preResolveSetRefs(currentInputs);
-      const linkedBaseRuns = await resolveLinkedSetEachBaseRuns(currentInputs, linkedSetCache);
-      if (linkedBaseRuns <= 0) {
-        setError('No linked random-each set inputs found for this strategy');
-        return;
-      }
-
+    // ─── Iterate-mode slot path ───
+    // Any slot configured with `mode: 'iterate'` becomes a driver: each
+    // iteration consumes one item from its linked set. Multiple iterate slots
+    // zip by index up to max(setSize), with shorter sets wrapping — except
+    // when strategy = `all_pairs` and ≥2 iterate slots exist, in which case
+    // the iterate dimension becomes a cartesian product. The selected strategy
+    // is also applied across resolved slots within each iteration (e.g.
+    // anchor_sweep produces N-1 sub-groups per iteration).
+    const hasIterateSlots = currentInputs.some(
+      (i: any) => i?.assetSetRef?.mode === 'iterate' && i?.assetSetRef?.setId,
+    );
+    if (hasIterateSlots) {
+      const iterateCache = await preResolveSetRefs(currentInputs);
       resetForGeneration();
 
       try {
-        const groups = expandGroupsByRepeat(
-          Array.from({ length: linkedBaseRuns }, () => currentInputs),
-          fanout.repeatCount,
+        const baseGroups = buildIterateGroups(
+          currentInputs,
+          iterateCache,
+          strategy,
+          fanout.seed,
         );
+        if (baseGroups.length === 0) {
+          setError('Iterate-mode slots have empty sets');
+          setGenerating(false);
+          return;
+        }
+        const groups = expandGroupsByRepeat(baseGroups, fanout.repeatCount);
         const total = groups.length;
         if (total === 0) {
-          setError('No linked set runs were planned');
+          setError('No iterate runs were planned');
           setGenerating(false);
           return;
         }
         setQueueProgress({ queued: 0, total });
 
         const overrideParams = options?.overrideDynamicParams || {};
-
         const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
         await submitEachViaBackendExecution({
@@ -1482,67 +1564,7 @@ export function useQuickGenerateController() {
           reusePreviousOutputAsInput: fanout.reusePreviousOutputAsInput,
         });
       } catch (err) {
-        setError(extractErrorMessage(err, 'Failed to queue linked-set generations'));
-      } finally {
-        setGenerating(false);
-        setTimeout(() => setQueueProgress(null), 2000);
-      }
-      return;
-    }
-
-    if (isSetStrategy(strategy) && fanout.setId) {
-      const assetSet = useAssetSetStore.getState().getSet(fanout.setId);
-      if (!assetSet) {
-        setError('Asset set not found');
-        return;
-      }
-
-      resetForGeneration();
-
-      try {
-        const resolvedAssets = await resolveAssetSet(assetSet);
-        if (resolvedAssets.length === 0) {
-          setError('Asset set is empty — no assets could be resolved');
-          setGenerating(false);
-          return;
-        }
-
-        const planning = planFanoutGroups({
-          inputs: currentInputs,
-          options: fanout,
-          setItems: assetModelsToInputItems(resolvedAssets),
-        });
-        const groups = planning.groups;
-
-        const total = groups.length;
-        if (total === 0) {
-          setError('No valid combinations for selected set strategy');
-          setGenerating(false);
-          return;
-        }
-        setQueueProgress({ queued: 0, total });
-
-        const overrideParams = options?.overrideDynamicParams || {};
-
-        // Template handling:
-        // - 'each' mode: backend rolls per request using run_context
-        // - 'once' mode: roll once client-side, pass prompt override for all items
-        const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
-        const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-        await submitEachViaBackendExecution({
-          groups,
-          total,
-          run,
-          strategy,
-          setId: fanout.setId,
-          overrideParams,
-          rolledOnce,
-          onError: fanout.onError,
-          executionMode: fanout.executionMode,
-          reusePreviousOutputAsInput: fanout.reusePreviousOutputAsInput,
-        });
-      } catch (err) {
-        setError(extractErrorMessage(err, 'Failed to queue set generations'));
+        setError(extractErrorMessage(err, 'Failed to queue iterate-mode generations'));
       } finally {
         setGenerating(false);
         setTimeout(() => setQueueProgress(null), 2000);

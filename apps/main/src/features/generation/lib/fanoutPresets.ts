@@ -1,16 +1,12 @@
-import { isSetStrategy, type CombinationStrategy } from './combinationStrategies';
+import { type CombinationStrategy } from './combinationStrategies';
 
 export type FanoutDispatchMode = 'auto' | 'frontend' | 'backend_fanout';
 export type FanoutOnError = 'continue' | 'stop';
-export type FanoutSetPickMode = 'all' | 'first_n' | 'random_n';
 export type FanoutExecutionMode = 'fanout' | 'sequential';
 
 export interface FanoutRunOptions {
   strategy: CombinationStrategy;
-  setId?: string;
   repeatCount: number;
-  setPickMode: FanoutSetPickMode;
-  setPickCount?: number;
   seed?: number;
   onError: FanoutOnError;
   dispatch: FanoutDispatchMode;
@@ -27,8 +23,6 @@ export interface FanoutPreset extends FanoutRunOptions {
 export const DEFAULT_FANOUT_RUN_OPTIONS: FanoutRunOptions = {
   strategy: 'each',
   repeatCount: 1,
-  setPickMode: 'all',
-  setPickCount: undefined,
   seed: undefined,
   onError: 'continue',
   dispatch: 'auto',
@@ -49,15 +43,6 @@ export const BUILTIN_FANOUT_PRESETS: FanoutPreset[] = [
     description: 'Repeat each generated group 4 times',
     ...DEFAULT_FANOUT_RUN_OPTIONS,
     repeatCount: 4,
-  },
-  {
-    id: 'set-first-8',
-    label: 'Set First 8',
-    description: 'Use the first 8 items from the selected set',
-    ...DEFAULT_FANOUT_RUN_OPTIONS,
-    strategy: 'set_each',
-    setPickMode: 'first_n',
-    setPickCount: 8,
   },
   {
     id: 'backend-fanout',
@@ -102,28 +87,6 @@ export const BUILTIN_FANOUT_PRESETS: FanoutPreset[] = [
     onError: 'continue',
   },
   {
-    id: 'overnight-set-random-16',
-    label: 'Overnight Set Random 16',
-    description: 'Use a selected set strategy and sample 16 set items randomly (seed optional)',
-    ...DEFAULT_FANOUT_RUN_OPTIONS,
-    strategy: 'set_each',
-    setPickMode: 'random_n',
-    setPickCount: 16,
-    dispatch: 'backend_fanout',
-    onError: 'continue',
-  },
-  {
-    id: 'overnight-set-first-32',
-    label: 'Overnight Set First 32',
-    description: 'Use the first 32 items from a selected set for a predictable overnight batch',
-    ...DEFAULT_FANOUT_RUN_OPTIONS,
-    strategy: 'set_each',
-    setPickMode: 'first_n',
-    setPickCount: 32,
-    dispatch: 'backend_fanout',
-    onError: 'continue',
-  },
-  {
     id: 'progression-scan-backend-x6',
     label: 'Progression Scan x6',
     description: 'Backend fanout progression scan preset for template/beat exploration',
@@ -142,21 +105,8 @@ export function normalizeFanoutRunOptions(
     ...(input || {}),
     strategy: (input?.strategy ?? DEFAULT_FANOUT_RUN_OPTIONS.strategy) as CombinationStrategy,
   };
-  if (!isSetStrategy(merged.strategy)) {
-    merged.setId = undefined;
-  }
   const repeatCount = Number.isFinite(merged.repeatCount) ? Math.floor(merged.repeatCount) : 1;
   merged.repeatCount = Math.min(50, Math.max(1, repeatCount || 1));
-
-  const setPickCount =
-    merged.setPickCount == null || merged.setPickCount === 0
-      ? undefined
-      : Math.min(500, Math.max(1, Math.floor(merged.setPickCount)));
-  merged.setPickCount = setPickCount;
-
-  if (merged.setPickMode === 'all') {
-    merged.setPickCount = undefined;
-  }
 
   if (merged.seed == null || merged.seed === 0 || !Number.isFinite(merged.seed)) {
     merged.seed = undefined;
@@ -182,33 +132,6 @@ export function expandGroupsByRepeat<T>(groups: T[][], repeatCount: number): T[]
     for (let i = 0; i < count; i++) out.push(group);
   }
   return out;
-}
-
-export function applySetPickPolicy<T>(
-  items: T[],
-  mode: FanoutSetPickMode,
-  count?: number,
-  seed?: number,
-): T[] {
-  if (mode === 'all') return items;
-  if (!count || count <= 0) return items;
-  if (items.length <= count) return items;
-
-  if (mode === 'first_n') {
-    return items.slice(0, count);
-  }
-
-  if (mode === 'random_n') {
-    const pool = [...items];
-    const rand = createSeededRng(seed);
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, count);
-  }
-
-  return items;
 }
 
 function createSeededRng(seed?: number): () => number {

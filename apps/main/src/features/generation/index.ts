@@ -141,15 +141,10 @@ export {
 // Lib - Combination Strategies
 export {
   EACH_STRATEGIES,
-  SET_STRATEGIES,
-  LINKED_SET_STRATEGIES,
   ALL_STRATEGIES,
   computeCombinations,
-  computeSetCombinations,
-  isSetStrategy,
-  isLinkedSetStrategy,
 } from './lib/combinationStrategies';
-export type { EachStrategy, SetStrategy, LinkedSetStrategy, CombinationStrategy } from './lib/combinationStrategies';
+export type { EachStrategy, CombinationStrategy } from './lib/combinationStrategies';
 
 // Lib - Canonical run-context contract
 export {

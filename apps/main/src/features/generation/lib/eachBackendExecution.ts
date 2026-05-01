@@ -18,7 +18,6 @@ type EachOnError = FanoutRunOptions['onError'];
 export interface PrepareEachBackendExecutionPayloadArgs {
   providerId: string;
   strategy: CombinationStrategy;
-  setId?: string;
   onError: EachOnError;
   executionMode: EachExecutionMode;
   reusePreviousOutputAsInput: boolean;
@@ -31,7 +30,6 @@ export function prepareEachBackendExecutionPayload(
   const {
     providerId,
     strategy,
-    setId,
     onError,
     executionMode,
     reusePreviousOutputAsInput,
@@ -55,7 +53,6 @@ export function prepareEachBackendExecutionPayload(
       strategy,
       execution_mode: executionMode,
       reuse_previous_output_as_input: reusePreviousOutputAsInput,
-      ...(setId ? { set_id: setId } : {}),
     },
   };
 }

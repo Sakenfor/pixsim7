@@ -313,6 +313,27 @@ export function GenerationSettingsPanel({
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
   const currentIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
   const isOnEmptySlot = inputCount === 0 || (inputCount > 0 && currentIndex > inputCount);
+
+  // Iterate-mode set sizes per driver slot (manual sets only; smart sets resolve
+  // async and are reflected post-launch via the queue progress).
+  const inputItems = useInputStore(s => s.inputsByOperation[operationType]?.items);
+  const assetSets = useAssetSetStore(s => s.sets);
+  const iterateSetSizes = useMemo(() => {
+    if (!inputItems || inputItems.length === 0) return [];
+    const sizes: number[] = [];
+    for (const item of inputItems) {
+      const ref = item?.assetSetRef;
+      if (ref?.mode !== 'iterate' || !ref.setId) continue;
+      const set = assetSets.find(s => s.id === ref.setId);
+      if (!set || set.kind !== 'manual') continue;
+      sizes.push(set.assetIds.length);
+    }
+    return sizes;
+  }, [inputItems, assetSets]);
+  const hasAnyLinkedSet = useMemo(
+    () => Boolean(inputItems?.some(i => i?.assetSetRef?.setId)),
+    [inputItems],
+  );
   // Read preferred provider directly from state slice for reliable reactivity
   // (getPreferredProviderId uses get() internally which can cause stale selector reads)
   const preferredProviderId = useContextHubOverridesStore(
@@ -722,7 +743,7 @@ export function GenerationSettingsPanel({
         {/* Action area: Each row + Go row */}
         <div className="gen-panel-action-group quickgen-actions-no-motion flex flex-col gap-1 min-w-0 rounded-xl bg-white/70 dark:bg-neutral-800/60 p-1 shadow-sm ring-1 ring-neutral-200/70 dark:ring-neutral-700/70">
           {/* Generate Each split-button — full width row */}
-          {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
+          {onGenerateEach && (inputCount > 1 || hasAnyLinkedSet) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <div className="min-w-0">
               <EachSplitButton
                 onGenerateEach={onGenerateEach}
@@ -730,6 +751,7 @@ export function GenerationSettingsPanel({
                 generating={generating}
                 queueProgress={queueProgress}
                 inputCount={inputCount}
+                iterateSetSizes={iterateSetSizes}
               />
             </div>
           )}

@@ -2,15 +2,17 @@
  * Combination strategies for "Dynamic Each" generation mode.
  *
  * Pure functions — no React, no side-effects.
+ *
+ * Asset-set iteration is now driven entirely by per-slot `assetSetRef.mode`:
+ *  - 'iterate': slot drives run count (exhausts its set)
+ *  - 'random_each': slot picks one per run
+ *  - 'locked': slot uses a fixed pick
+ * The strategies below describe how multiple input slots zip together.
  */
 
 export type EachStrategy = 'each' | 'anchor_sweep' | 'sequential_pairs' | 'all_pairs';
 
-export type SetStrategy = 'input_x_set_random' | 'input_x_set_sequential' | 'set_each';
-
-export type LinkedSetStrategy = 'linked_set_each';
-
-export type CombinationStrategy = EachStrategy | SetStrategy | LinkedSetStrategy;
+export type CombinationStrategy = EachStrategy;
 
 export const EACH_STRATEGIES: { id: EachStrategy; label: string; shortLabel: string; description: string }[] = [
   { id: 'each',             label: 'Each',             shortLabel: 'Each',      description: 'One generation per asset' },
@@ -19,34 +21,8 @@ export const EACH_STRATEGIES: { id: EachStrategy; label: string; shortLabel: str
   { id: 'all_pairs',        label: 'All Pairs',        shortLabel: 'All Pairs', description: 'Every unique pair' },
 ];
 
-export const SET_STRATEGIES: { id: SetStrategy; label: string; shortLabel: string; description: string }[] = [
-  { id: 'input_x_set_random',     label: 'Input × Random',     shortLabel: '× Random', description: 'Each input + random from set' },
-  { id: 'input_x_set_sequential', label: 'Input × Sequential', shortLabel: '× Seq',    description: 'Each input + sequential from set' },
-  { id: 'set_each',               label: 'Set Each',           shortLabel: 'Set Each', description: 'One generation per set item' },
-];
-
-export const LINKED_SET_STRATEGIES: { id: LinkedSetStrategy; label: string; shortLabel: string; description: string }[] = [
-  {
-    id: 'linked_set_each',
-    label: 'Linked Sets Each',
-    shortLabel: 'Linked',
-    description: 'One generation per linked set step (uses slot set pick rules)',
-  },
-];
-
-export const ALL_STRATEGIES: { id: CombinationStrategy; label: string; shortLabel: string; description: string }[] = [
-  ...EACH_STRATEGIES,
-  ...SET_STRATEGIES,
-  ...LINKED_SET_STRATEGIES,
-];
-
-export function isSetStrategy(s: string): s is SetStrategy {
-  return s === 'input_x_set_random' || s === 'input_x_set_sequential' || s === 'set_each';
-}
-
-export function isLinkedSetStrategy(s: string): s is LinkedSetStrategy {
-  return s === 'linked_set_each';
-}
+export const ALL_STRATEGIES: { id: CombinationStrategy; label: string; shortLabel: string; description: string }[] =
+  [...EACH_STRATEGIES];
 
 /** Pick a random item from a non-empty array. */
 export function pickRandom<T>(items: T[]): T {
@@ -97,30 +73,5 @@ export function computeCombinations<T>(items: T[], strategy: EachStrategy): T[][
 
     default:
       return items.map(item => [item]);
-  }
-}
-
-/**
- * Given input items and set items, compute combinations using a set strategy.
- *
- * - input_x_set_random:     Each input paired with a random item from the set.
- * - input_x_set_sequential: Each input paired with the set item at the same index (wrapping).
- * - set_each:               One generation per set item (inputs ignored).
- */
-export function computeSetCombinations<T>(inputs: T[], setItems: T[], strategy: SetStrategy): T[][] {
-  if (setItems.length === 0) return [];
-
-  switch (strategy) {
-    case 'input_x_set_random':
-      return inputs.map(item => [item, pickRandom(setItems)]);
-
-    case 'input_x_set_sequential':
-      return inputs.map((item, idx) => [item, pickSequential(setItems, idx)]);
-
-    case 'set_each':
-      return setItems.map(s => [s]);
-
-    default:
-      return setItems.map(s => [s]);
   }
 }

@@ -18,13 +18,13 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 export type PickStrategy = 'random' | 'sequential' | 'no_repeat';
 
 export interface AssetSetSlotRef {
-  setId: string;                        // references AssetSet.id
-  mode: 'random_each' | 'locked';       // pick timing
-  lockedAssetId?: number;               // for 'locked' mode — the pinned pick
-  originalAssetId?: number;             // asset that was in the slot before linking
-  pickStrategy?: PickStrategy;          // how to pick from set (default: random)
-  pickIndex?: number;                   // sequential counter
-  recentPicks?: number[];               // no_repeat history
+  setId: string;                                  // references AssetSet.id
+  mode: 'random_each' | 'locked' | 'iterate';     // pick timing / iteration role
+  lockedAssetId?: number;                         // for 'locked' mode — the pinned pick
+  originalAssetId?: number;                       // asset that was in the slot before linking
+  pickStrategy?: PickStrategy;                    // random_each: per-run pick; iterate: traversal order
+  pickIndex?: number;                             // sequential counter (random_each)
+  recentPicks?: number[];                         // no_repeat history (random_each)
 }
 
 export interface InputMaskLayer {

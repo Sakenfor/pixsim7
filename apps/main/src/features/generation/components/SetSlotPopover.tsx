@@ -135,31 +135,30 @@ export function SetSlotPopover({
         {/* Mode toggle (when linked) */}
         {currentRef && currentSet && (
           <div className="px-2 py-1.5 space-y-2 border-b border-neutral-100 dark:border-neutral-800 mb-1">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
-                  currentRef.mode === 'random_each'
-                    ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-                onClick={() => onSetModeChange(operationType, inputItem.id, 'random_each')}
-              >
-                <Icon name="shuffle" size={12} />
-                Random
-              </button>
-              <button
-                type="button"
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
-                  currentRef.mode === 'locked'
-                    ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-                onClick={() => onSetModeChange(operationType, inputItem.id, 'locked')}
-              >
-                <Icon name="lock" size={12} />
-                Locked
-              </button>
+            <div className="flex items-center gap-1">
+              {([
+                { key: 'random_each' as const, label: 'Random', icon: 'shuffle' as const, hint: 'Pick once per run' },
+                { key: 'iterate' as const, label: 'Iterate', icon: 'list' as const, hint: 'Drive iteration — exhaust the set' },
+                { key: 'locked' as const, label: 'Locked', icon: 'lock' as const, hint: 'Pin a single pick' },
+              ]).map(({ key, label, icon, hint }) => {
+                const active = currentRef.mode === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    title={hint}
+                    className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                      active
+                        ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    }`}
+                    onClick={() => onSetModeChange(operationType, inputItem.id, key)}
+                  >
+                    <Icon name={icon} size={12} />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
             {currentRef.mode === 'random_each' && (
               <div className="flex items-center gap-1">
@@ -173,6 +172,31 @@ export function SetSlotPopover({
                     <button
                       key={key}
                       type="button"
+                      className={`flex-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                        active
+                          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                      onClick={() => onPickStrategyChange(operationType, inputItem.id, key)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {currentRef.mode === 'iterate' && (
+              <div className="flex items-center gap-1">
+                {([
+                  { key: 'sequential' as const, label: 'In order' },
+                  { key: 'random' as const, label: 'Shuffled' },
+                ] as const).map(({ key, label }) => {
+                  const active = (currentRef.pickStrategy ?? 'sequential') === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      title={key === 'sequential' ? 'Iterate set in stored order' : 'Iterate set in shuffled order (uses fanout seed)'}
                       className={`flex-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
                         active
                           ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'

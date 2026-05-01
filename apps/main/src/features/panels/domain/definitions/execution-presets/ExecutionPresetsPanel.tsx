@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   EACH_STRATEGIES,
-  LINKED_SET_STRATEGIES,
-  SET_STRATEGIES,
-  isSetStrategy,
   useFanoutPresetStore,
 } from '@features/generation';
 import {
@@ -27,8 +23,6 @@ export function ExecutionPresetsPanel() {
   const deletePreset = useFanoutPresetStore((s) => s.deletePreset);
   const duplicatePreset = useFanoutPresetStore((s) => s.duplicatePreset);
   const resetCustomPresets = useFanoutPresetStore((s) => s.reset);
-
-  const assetSets = useAssetSetStore((s) => s.sets);
 
   const [selected, setSelected] = useState<PresetSelection>(null);
   const [draftLabel, setDraftLabel] = useState('');
@@ -70,13 +64,8 @@ export function ExecutionPresetsPanel() {
     setDraftOptions(normalizeFanoutRunOptions(preset));
   }, [selectedPreset]);
 
-  const allStrategies = useMemo(
-    () => [...EACH_STRATEGIES, ...SET_STRATEGIES, ...LINKED_SET_STRATEGIES],
-    [],
-  );
+  const allStrategies = useMemo(() => [...EACH_STRATEGIES], []);
   const isCustomSelected = selected?.source === 'custom' && !!selectedPreset;
-  const needsSet = isSetStrategy(draftOptions.strategy);
-  const selectedSet = assetSets.find((s) => s.id === (draftOptions.setId ?? ''));
 
   function setDraftPatch(patch: Partial<FanoutRunOptions>) {
     setDraftOptions((prev) => normalizeFanoutRunOptions({ ...prev, ...patch }));
@@ -257,13 +246,7 @@ export function ExecutionPresetsPanel() {
                   <LabeledField label="Strategy">
                     <select
                       value={draftOptions.strategy}
-                      onChange={(e) => {
-                        const nextStrategy = e.target.value as FanoutRunOptions['strategy'];
-                        setDraftPatch({
-                          strategy: nextStrategy,
-                          ...(!isSetStrategy(nextStrategy) ? { setId: undefined } : {}),
-                        });
-                      }}
+                      onChange={(e) => setDraftPatch({ strategy: e.target.value as FanoutRunOptions['strategy'] })}
                       className="w-full px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800"
                     >
                       {allStrategies.map((s) => (
@@ -348,58 +331,12 @@ export function ExecutionPresetsPanel() {
                   </label>
                 )}
 
-                {needsSet && (
-                  <div className="rounded border border-neutral-200 dark:border-neutral-800 p-2 space-y-2">
-                    <div className="text-xs font-semibold">Asset Set Strategy</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <LabeledField label="Set">
-                        <select
-                          value={draftOptions.setId ?? ''}
-                          onChange={(e) => setDraftPatch({ setId: e.target.value || undefined })}
-                          className="w-full px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800"
-                        >
-                          <option value="">Select set...</option>
-                          {assetSets.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name} ({s.kind === 'manual' ? `${s.assetIds.length}` : 'smart'})
-                            </option>
-                          ))}
-                        </select>
-                      </LabeledField>
-                      <LabeledField label="Set Pick Mode">
-                        <select
-                          value={draftOptions.setPickMode}
-                          onChange={(e) => setDraftPatch({ setPickMode: e.target.value as FanoutRunOptions['setPickMode'] })}
-                          className="w-full px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800"
-                        >
-                          <option value="all">all</option>
-                          <option value="first_n">first_n</option>
-                          <option value="random_n">random_n</option>
-                        </select>
-                      </LabeledField>
-                      <LabeledField label="Set Pick Count">
-                        <input
-                          type="number"
-                          min={1}
-                          max={500}
-                          disabled={draftOptions.setPickMode === 'all'}
-                          value={draftOptions.setPickCount ?? 8}
-                          onChange={(e) => setDraftPatch({ setPickCount: Number(e.target.value || 1) })}
-                          className="w-full px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 disabled:opacity-60"
-                        />
-                      </LabeledField>
-                      <div className="text-xs text-neutral-500 dark:text-neutral-400 flex items-end">
-                        {selectedSet ? (
-                          <span>
-                            Selected set: <strong>{selectedSet.name}</strong> ({selectedSet.kind})
-                          </span>
-                        ) : (
-                          <span>No set selected</span>
-                        )}
-                      </div>
-                    </div>
+                <div className="rounded border border-dashed border-neutral-300 dark:border-neutral-700 p-2 text-xs">
+                  <div className="font-semibold mb-1">Asset Set Iteration</div>
+                  <div className="text-neutral-600 dark:text-neutral-300">
+                    Asset sets are now driven per-input-slot via the slot popover (Random / Iterate / Locked) — no preset-level set picker.
                   </div>
-                )}
+                </div>
 
                 <div className="rounded border border-dashed border-neutral-300 dark:border-neutral-700 p-2 text-xs">
                   <div className="font-semibold mb-1">Execution Mapping</div>
