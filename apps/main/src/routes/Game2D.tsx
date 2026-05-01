@@ -1176,22 +1176,6 @@ export function Game2D() {
           </Button>
           {selectedWorldId && worldDetail && (
             <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowHudEditor(true)}
-                title="Configure HUD layout for this world"
-              >
-                🎨 HUD Layout
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowPresetEditor(true)}
-                title="Manage interaction presets for this world"
-              >
-                📦 Presets
-              </Button>
               <HudCustomizationButton
                 worldDetail={worldDetail}
                 availableTools={visibleWorldTools}
@@ -1223,14 +1207,6 @@ export function Game2D() {
               onToggle={setUseNewHudSystem}
             />
           )}
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowUserPreferences(true)}
-            title="Manage user accessibility and UI preferences"
-          >
-            ⚙️ Preferences
-          </Button>
         </div>
       </div>
 
@@ -1584,7 +1560,64 @@ export function Game2D() {
         </div>
       )}
 
-      {/* Dialogue UI */}
+    </div>
+  );
+
+  const settingsContent = (
+    <div className="p-6 space-y-6 h-full overflow-auto">
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+          Game Settings
+        </h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          Modal triggers moved here from the Play header.
+        </p>
+      </div>
+
+      {selectedWorldId && worldDetail && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            World
+          </h3>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowHudEditor(true)}
+            title="Configure HUD layout for this world"
+          >
+            🎨 HUD Layout
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowPresetEditor(true)}
+            title="Manage interaction presets for this world"
+          >
+            📦 Presets
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          User
+        </h3>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setShowUserPreferences(true)}
+          title="Manage user accessibility and UI preferences"
+        >
+          ⚙️ Preferences
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Fixed-position overlays — rendered at the outer level so they remain
+  // mounted regardless of which sidebar section is active.
+  const overlays = (
+    <>
       {showDialogue && dialogueNpcId && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <SimpleDialogue
@@ -1612,8 +1645,6 @@ export function Game2D() {
             }}
             onClose={() => {
               setShowDialogue(false);
-
-              // Return to room mode when closing dialogue (Task 22)
               if (selectedLocationId) {
                 enterRoom(selectedLocationId);
               }
@@ -1622,10 +1653,8 @@ export function Game2D() {
         </div>
       )}
 
-      {/* Game Notifications */}
       <GameNotifications notifications={notifications} onDismiss={dismissNotification} />
 
-      {/* HUD Layout Editor */}
       {showHudEditor && worldDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
@@ -1641,7 +1670,6 @@ export function Game2D() {
         </div>
       )}
 
-      {/* Interaction Preset Editor */}
       {showPresetEditor && worldDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
@@ -1656,7 +1684,6 @@ export function Game2D() {
         </div>
       )}
 
-      {/* User Preferences Panel */}
       {showUserPreferences && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-2xl max-h-[90vh] overflow-auto">
@@ -1666,7 +1693,7 @@ export function Game2D() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 
   return (
@@ -1687,6 +1714,8 @@ export function Game2D() {
       >
         {nav.activeId === 'play' ? (
           playContent
+        ) : nav.activeId === 'settings' ? (
+          settingsContent
         ) : (
           <div className="p-6 text-sm text-neutral-500 dark:text-neutral-400 h-full overflow-auto">
             <p>
@@ -1696,6 +1725,7 @@ export function Game2D() {
           </div>
         )}
       </SidebarContentLayout>
+      {overlays}
     </div>
   );
 }
