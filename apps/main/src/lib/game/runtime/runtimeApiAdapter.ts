@@ -252,10 +252,16 @@ export const gameRuntimeApiClient: GameApiClient = {
     try {
       return await createGameSession(toSceneId(sceneId), flags, worldId);
     } catch (error: unknown) {
-      const detail =
-        (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      if (typeof detail === 'string' && detail.trim().length > 0) {
-        throw new Error(`createSession failed: ${detail}`);
+      // Backend uses an ErrorResponse envelope: { code, message, detail?, request_id, trace_id }.
+      // Fall back to `detail` for endpoints that don't go through the envelope handler.
+      const data = (error as { response?: { data?: { message?: unknown; detail?: unknown } } })
+        ?.response?.data;
+      const reason =
+        (typeof data?.message === 'string' && data.message.trim().length > 0 && data.message) ||
+        (typeof data?.detail === 'string' && data.detail.trim().length > 0 && data.detail) ||
+        null;
+      if (reason) {
+        throw new Error(`createSession failed: ${reason}`);
       }
       throw error;
     }

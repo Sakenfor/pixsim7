@@ -5,7 +5,7 @@
  * It uses the environment-neutral @pixsim7/shared.api.client package with browser-specific
  * token storage and redirect handling.
  */
-import { createApiClient, type PixSimApiClient } from '@pixsim7/shared.api.client';
+import { createApiClient } from '@pixsim7/shared.api.client';
 import {
   computeBackendUrl,
 } from '@pixsim7/shared.api.client/browser';
