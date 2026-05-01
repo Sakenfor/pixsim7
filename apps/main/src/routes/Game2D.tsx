@@ -35,11 +35,12 @@ import {
 } from '@pixsim7/game.engine';
 import { saveWorldSession } from '@pixsim7/game.engine';
 import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
-import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
+import { Button, Panel, Badge, Select, SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { buildWorldLabelMap } from '@lib/game/worldLabels';
+import { Icon } from '@lib/icons';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
 import { resolveGameLocations } from '@lib/resolvers';
@@ -202,8 +203,40 @@ function selectNpcExpressionForPhase(
   );
 }
 
+const NAV_SECTIONS = [
+  {
+    id: 'play',
+    label: 'Play',
+    icon: <Icon name="play" size={14} className="flex-shrink-0" />,
+  },
+  {
+    id: 'world',
+    label: 'World',
+    icon: <Icon name="globe" size={14} className="flex-shrink-0" />,
+  },
+  {
+    id: 'locations',
+    label: 'Locations',
+    icon: <Icon name="map" size={14} className="flex-shrink-0" />,
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: <Icon name="settings" size={14} className="flex-shrink-0" />,
+  },
+];
+
 export function Game2D() {
   const [searchParams] = useSearchParams();
+
+  // Sidebar navigation — thin first-cut migration to the shared SidebarContentLayout.
+  // Only the Play section currently renders content; other sections will receive chips
+  // and panes peeled out of the Play view in follow-up commits.
+  const nav = useSidebarNav<string, string>({
+    sections: NAV_SECTIONS,
+    initial: 'play',
+    storageKey: 'game-panel:sidebar',
+  });
 
   // ========================================
   // Game Runtime (unified world/session/time management)
@@ -1073,8 +1106,8 @@ export function Game2D() {
     })();
   }, [currentScene, isSceneOpen, scenePhase, npcExpressions, npcPortraitAssetId, npcPortraitAsset]);
 
-  return (
-    <div className="p-6 space-y-4 min-h-screen">
+  const playContent = (
+    <div className="p-6 space-y-4 h-full overflow-auto min-h-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">PixSim7 2D Game</h1>
@@ -1633,6 +1666,36 @@ export function Game2D() {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div className="h-full min-h-0 flex bg-neutral-50 dark:bg-neutral-900">
+      <SidebarContentLayout
+        sections={NAV_SECTIONS}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        activeChildId={nav.activeChildId}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
+        sidebarTitle={<span className="truncate text-sm">Game</span>}
+        collapsible
+        resizable
+        persistKey="game-panel:sidebar"
+        autoHideTitle
+      >
+        {nav.activeId === 'play' ? (
+          playContent
+        ) : (
+          <div className="p-6 text-sm text-neutral-500 dark:text-neutral-400 h-full overflow-auto">
+            <p>
+              This section is part of the in-progress sidebar migration — chips
+              and panes from the Play view will move here as the rework proceeds.
+            </p>
+          </div>
+        )}
+      </SidebarContentLayout>
     </div>
   );
 }
