@@ -18,6 +18,7 @@ export function isManualRefreshEnabled(): boolean {
 
 export function useHasManualRefreshUpdate() {
   const [hasUpdate, setHasUpdate] = useState(false);
+  const [lastFile, setLastFile] = useState<string | undefined>(undefined);
   const enabled = isManualRefreshEnabled();
 
   useEffect(() => {
@@ -25,8 +26,9 @@ export function useHasManualRefreshUpdate() {
       return;
     }
 
-    const onUpdate = (_payload: UpdatePayload) => {
+    const onUpdate = (payload: UpdatePayload) => {
       setHasUpdate(true);
+      if (payload.file) setLastFile(payload.file);
     };
 
     import.meta.hot.on(UPDATE_EVENT, onUpdate);
@@ -35,5 +37,5 @@ export function useHasManualRefreshUpdate() {
     };
   }, [enabled]);
 
-  return { enabled, hasUpdate };
+  return { enabled, hasUpdate, lastFile };
 }

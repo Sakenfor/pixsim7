@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { getBaseIcon } from '@lib/icons';
 import { useHasManualRefreshUpdate } from '@lib/dev/manualRefreshStatus';
+import { getBaseIcon } from '@lib/icons';
 import { useEdgeInset } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
 
 import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
@@ -18,6 +19,7 @@ import { moduleRegistry } from '@app/modules';
 import type { PageCategory } from '@app/modules/contracts';
 
 import { MorePanelsFlyout } from './MorePanelsFlyout';
+import { NavBadge } from './NavBadge';
 import { PanelShortcuts } from './PanelShortcuts';
 import { RecentShortcuts } from './RecentShortcuts';
 import { SettingsFlyout } from './SettingsFlyout';
@@ -109,13 +111,17 @@ export function NavIcon({ name, size }: { name: string; size: number }) {
 function GearButton({ panelId }: { panelId: string }) {
   return (
     <SettingsFlyout panelId={panelId}>
-      <button
+      <NavBadge
+        position="tr"
+        size="md"
+        shape="square"
+        tone="neutral"
+        icon="settings"
+        iconSize={10}
+        hoverGated
         onClick={(e) => e.stopPropagation()}
-        className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-sm bg-neutral-700/80 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600 transition-colors"
-        aria-label="Panel settings"
-      >
-        <NavIcon name="settings" size={10} />
-      </button>
+        ariaLabel="Panel settings"
+      />
     </SettingsFlyout>
   );
 }
@@ -139,11 +145,9 @@ function NavTooltip({ name, triggerRef }: { name: string; triggerRef: React.RefO
 function NavButton({
   page,
   active,
-  showRefreshBadge = false,
 }: {
   page: PageEntry;
   active: boolean;
-  showRefreshBadge?: boolean;
 }) {
   const navigate = useNavigate();
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -202,20 +206,8 @@ function NavButton({
       >
         <NavIcon name={page.icon} size={20} />
       </button>
-      {showRefreshBadge && (
-        <div
-          className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 text-emerald-950 border border-neutral-900/80 flex items-center justify-center"
-          title="Frontend update available. Refresh page to apply."
-        >
-          <NavIcon name="refreshCw" size={9} />
-        </div>
-      )}
       {/* Gear icon — visible on hover when page has settingsPanelId */}
-      {hasGear && (
-        <div className="opacity-0 group-hover/navbtn:opacity-100 transition-opacity">
-          <GearButton panelId={page.settingsPanelId!} />
-        </div>
-      )}
+      {hasGear && <GearButton panelId={page.settingsPanelId!} />}
     </div>
   );
 
@@ -246,12 +238,12 @@ function CategoryGroup({
   category,
   pages,
   location,
-  showRefreshBadge,
+  refreshBadgeTitle,
 }: {
   category: string;
   pages: PageEntry[];
   location: { pathname: string };
-  showRefreshBadge: boolean;
+  refreshBadgeTitle?: string;
 }) {
   const isCollapsed = useActivityBarStore((s) => s.collapsedCategories.includes(category));
   const toggleCategory = useActivityBarStore((s) => s.toggleCategory);
@@ -267,13 +259,14 @@ function CategoryGroup({
         >
           <span className="inline-flex items-center gap-1">
             {CATEGORY_LABELS[category] ?? category.toUpperCase()}
-            {showRefreshBadge && category === 'development' && (
-              <span
-                className="inline-flex w-2.5 h-2.5 items-center justify-center rounded-full bg-emerald-500 text-emerald-950"
-                title="Frontend update available. Refresh page to apply."
-              >
-                <NavIcon name="refreshCw" size={7} />
-              </span>
+            {refreshBadgeTitle && (
+              <NavBadge
+                size="xs"
+                shape="circle"
+                tone="success"
+                icon="refreshCw"
+                title={refreshBadgeTitle}
+              />
             )}
           </span>
         </button>
@@ -284,12 +277,13 @@ function CategoryGroup({
             key={page.id}
             page={page}
             active={location.pathname.startsWith(page.route)}
-            showRefreshBadge={showRefreshBadge}
           />
         ))}
     </div>
   );
 }
+
+const DEV_REFRESH_BADGE_CATEGORY = 'development';
 
 export function ActivityBar() {
   const collapsed = useActivityBarStore((s) => s.collapsed);
@@ -342,8 +336,17 @@ export function ActivityBar() {
   const toggleRef = useRef<HTMLDivElement>(null);
 
   const activityBarWidgets = useActivityBarWidgets();
-  const { enabled: manualRefreshEnabled, hasUpdate: manualRefreshHasUpdate } = useHasManualRefreshUpdate();
-  const showDevRefreshBadge = manualRefreshEnabled && manualRefreshHasUpdate;
+  const {
+    enabled: manualRefreshEnabled,
+    hasUpdate: manualRefreshHasUpdate,
+    lastFile: manualRefreshLastFile,
+  } = useHasManualRefreshUpdate();
+  const devRefreshBadgeTitle =
+    manualRefreshEnabled && manualRefreshHasUpdate
+      ? manualRefreshLastFile
+        ? `Frontend update available (${manualRefreshLastFile}). Refresh page to apply.`
+        : 'Frontend update available. Refresh page to apply.'
+      : undefined;
 
   const { isExpanded: homeHovered, handlers: homeHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
   const { isExpanded: toggleHovered, handlers: toggleHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
@@ -400,7 +403,7 @@ export function ActivityBar() {
                   category={cat}
                   pages={group}
                   location={location}
-                  showRefreshBadge={cat === 'development' ? showDevRefreshBadge : false}
+                  refreshBadgeTitle={cat === DEV_REFRESH_BADGE_CATEGORY ? devRefreshBadgeTitle : undefined}
                 />
               </div>
             );

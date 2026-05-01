@@ -152,7 +152,7 @@
           "key": "manual_refresh",
           "type": "boolean",
           "label": "Manual Refresh Mode",
-          "description": "Disable automatic HMR apply and show a DEV refresh indicator instead.",
+          "description": "Disable automatic HMR apply and show a DEV refresh indicator instead. Restart dev server to apply.",
           "default": false,
           "env_map": "VITE_MANUAL_REFRESH",
           "section": "Dev"
