@@ -43,7 +43,6 @@ import { buildWorldLabelMap } from '@lib/game/worldLabels';
 import { Icon } from '@lib/icons';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
-import { resolveGameLocations } from '@lib/resolvers';
 
 
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
@@ -63,6 +62,7 @@ import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferen
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 import { useSharedWorldSelection } from '@/hooks';
+import { useGameLocations } from '@/hooks/useGameLocations';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
@@ -82,7 +82,6 @@ import {
   attemptPickpocket,
   attemptSensualTouch,
   type SessionUpdatePayload,
-  type GameLocationSummary,
   type GameLocationDetail,
   type GameHotspotDTO,
   type NpcExpressionDTO,
@@ -307,8 +306,22 @@ export function Game2D() {
   // ========================================
   // Local UI state (location, scene, NPC details)
   // ========================================
-  const [locations, setLocations] = useState<GameLocationSummary[]>([]);
-  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+  const initialLocationIdFromUrl = (() => {
+    const raw = searchParams.get('locationId');
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  })();
+  const {
+    locations,
+    selectedLocationId,
+    setSelectedLocationId,
+    error: locationsError,
+  } = useGameLocations({
+    worldId: selectedWorldId,
+    initialLocationIdFromUrl,
+    consumerId: 'Game2D.loadLocations',
+  });
   const [locationDetail, setLocationDetail] = useState<GameLocationDetail | null>(null);
   const [currentScene, setCurrentScene] = useState<Scene | null>(null);
   const [isSceneOpen, setIsSceneOpen] = useState(false);
@@ -485,35 +498,8 @@ export function Game2D() {
   }, [sharedSelectedWorldId, runtimeState.worldId, detachSession, ensureSession]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const locs = await resolveGameLocations(
-          selectedWorldId != null ? { worldId: selectedWorldId } : {},
-          {
-            consumerId: 'Game2D.loadLocations',
-          },
-        );
-        setLocations(locs);
-        const locationIdParam = searchParams.get('locationId');
-        const locFromParam = locationIdParam ? Number(locationIdParam) : null;
-        setSelectedLocationId((previousId) => {
-          if (
-            locFromParam &&
-            Number.isFinite(locFromParam) &&
-            locs.some((loc) => loc.id === locFromParam)
-          ) {
-            return locFromParam;
-          }
-          if (previousId != null && locs.some((loc) => loc.id === previousId)) {
-            return previousId;
-          }
-          return locs[0]?.id ?? null;
-        });
-      } catch (e: unknown) {
-        setError(String((e as Error)?.message ?? e));
-      }
-    })();
-  }, [selectedWorldId, searchParams]);
+    if (locationsError) setError(locationsError);
+  }, [locationsError]);
 
   const handleSelectWorld = useCallback(
     async (worldId: number | null) => {
