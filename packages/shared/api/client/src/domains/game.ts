@@ -147,7 +147,9 @@ export function createGameApi(client: PixSimApiClient) {
     // ===== Worlds =====
 
     async listWorlds(): Promise<GameWorldSummary[]> {
-      const response = await client.get<PaginatedWorldsResponse>('/game/worlds');
+      // Use canonical trailing-slash collection routes to avoid proxy redirects
+      // that can strip auth headers in dev environments.
+      const response = await client.get<PaginatedWorldsResponse>('/game/worlds/');
       return [...response.worlds];
     },
 
@@ -157,7 +159,7 @@ export function createGameApi(client: PixSimApiClient) {
 
     async createWorld(name: string, meta?: Record<string, unknown>): Promise<GameWorldDetail> {
       const request: CreateWorldRequest = { name, meta };
-      return client.post<GameWorldDetail>('/game/worlds', request);
+      return client.post<GameWorldDetail>('/game/worlds/', request);
     },
 
     async updateWorldMeta(worldId: number, meta: Record<string, unknown>): Promise<GameWorldDetail> {
@@ -186,7 +188,7 @@ export function createGameApi(client: PixSimApiClient) {
         world_id: worldId,
         flags,
       };
-      return client.post<GameSessionDTO>('/game/sessions', request);
+      return client.post<GameSessionDTO>('/game/sessions/', request);
     },
 
     async getSession(sessionId: number): Promise<GameSessionDTO> {
@@ -205,7 +207,7 @@ export function createGameApi(client: PixSimApiClient) {
         params.set('world_id', String(opts.worldId));
       }
       const query = params.toString();
-      const url = query ? `/game/locations?${query}` : '/game/locations';
+      const url = query ? `/game/locations/?${query}` : '/game/locations/';
       const response = await client.get<readonly GameLocationSummary[]>(url);
       return [...response];
     },
@@ -225,7 +227,7 @@ export function createGameApi(client: PixSimApiClient) {
     // ===== NPCs =====
 
     async listNpcs(): Promise<GameNpcSummary[]> {
-      const response = await client.get<readonly GameNpcSummary[]>('/game/npcs');
+      const response = await client.get<readonly GameNpcSummary[]>('/game/npcs/');
       return [...response];
     },
 
@@ -378,4 +380,3 @@ export function createGameApi(client: PixSimApiClient) {
     },
   };
 }
-

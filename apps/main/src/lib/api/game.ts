@@ -508,7 +508,7 @@ export async function listGameObjects(opts?: {
 }): Promise<GameObjectSummary[]> {
   const query = _buildWorldScopeQuery(opts?.worldId ?? null);
   return pixsimClient.get<GameObjectSummary[]>(
-    query ? `/game/objects${query}` : '/game/objects'
+    query ? `/game/objects/${query}` : '/game/objects/'
   );
 }
 
@@ -532,7 +532,7 @@ export async function createGameObject(
 ): Promise<GameObjectDetail> {
   const query = _buildWorldScopeQuery(opts?.worldId ?? null);
   return pixsimClient.post<GameObjectDetail>(
-    query ? `/game/objects${query}` : '/game/objects',
+    query ? `/game/objects/${query}` : '/game/objects/',
     payload
   );
 }
