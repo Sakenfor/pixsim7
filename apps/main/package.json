@@ -147,6 +147,15 @@
         {
           "key": "base_url",
           "env_export": "FRONTEND_BASE_URL"
+        },
+        {
+          "key": "manual_refresh",
+          "type": "boolean",
+          "label": "Manual Refresh Mode",
+          "description": "Disable automatic HMR apply and show a DEV refresh indicator instead.",
+          "default": false,
+          "env_map": "VITE_MANUAL_REFRESH",
+          "section": "Dev"
         }
       ]
     }

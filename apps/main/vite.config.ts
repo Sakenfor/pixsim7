@@ -25,6 +25,10 @@ const PROBE_TIMEOUT_MS = 1_500;
 // Applied both to the initial "unknown → assume down" state and to any
 // request-time error that beats the probe cycle.
 const DOWN_COOLDOWN_MS = 8_000;
+const MANUAL_REFRESH_FLAG = (process.env.VITE_MANUAL_REFRESH ?? '').toLowerCase();
+const MANUAL_REFRESH_ENABLED =
+  MANUAL_REFRESH_FLAG === '1' ||
+  MANUAL_REFRESH_FLAG === 'true';
 
 type ProbeState = { downUntil: number };
 const probeStates = new Map<string, ProbeState>();
@@ -156,6 +160,25 @@ function failoverProxyPlugin(routes: FailoverRoute[]): Plugin {
   };
 }
 
+function manualRefreshPlugin(enabled: boolean): Plugin {
+  return {
+    name: 'pixsim-manual-refresh',
+    apply: 'serve',
+    handleHotUpdate(ctx) {
+      if (!enabled) {
+        return;
+      }
+
+      const relativeFile = path.relative(ctx.server.config.root, ctx.file).replace(/\\/g, '/');
+      ctx.server.ws.send('pixsim:manual-refresh:update-available', {
+        file: relativeFile,
+        timestamp: ctx.timestamp,
+      });
+      return [];
+    },
+  };
+}
+
 // Dev-server resilience: swallow socket-level errors that would otherwise
 // kill the node process. Real bugs still print; the server keeps running.
 if (!(process as unknown as { _pixsimProxyHandler?: boolean })._pixsimProxyHandler) {
@@ -192,6 +215,7 @@ export default defineConfig({
       projects: [path.resolve(__dirname, './tsconfig.app.json')],
     }),
     failoverProxyPlugin(FAILOVER_ROUTES),
+    manualRefreshPlugin(MANUAL_REFRESH_ENABLED),
   ],
   resolve: {
     dedupe: ['react', 'react-dom'],
