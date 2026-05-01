@@ -1224,31 +1224,7 @@ export function Game2D() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Panel className="space-y-3">
-          <h2 className="text-sm font-semibold">Locations</h2>
-          {locations.length === 0 && <p className="text-xs text-neutral-500">No locations yet.</p>}
-          <div className="space-y-1">
-            {locations.map((loc) => (
-              <button
-                key={loc.id}
-                className={`w-full text-left px-2 py-1 rounded text-xs border ${
-                  selectedLocationId === loc.id
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'
-                }`}
-                onClick={() => setSelectedLocationId(loc.id)}
-              >
-                <span className="font-medium">{loc.name}</span>
-                {loc.asset?.id != null && (
-                  <span className="ml-2 text-[10px] text-neutral-400">asset #{loc.asset.id}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel className="space-y-3 lg:col-span-2">
+      <Panel className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Current Location</h2>
             {isLoadingLocation && (
@@ -1509,8 +1485,7 @@ export function Game2D() {
               Select a location to see interactions.
             </p>
           )}
-        </Panel>
-      </div>
+      </Panel>
 
       {isSceneOpen && currentScene && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
@@ -1611,6 +1586,47 @@ export function Game2D() {
           ⚙️ Preferences
         </Button>
       </div>
+    </div>
+  );
+
+  const locationsContent = (
+    <div className="p-6 space-y-4 h-full overflow-auto">
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+          Locations
+        </h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          Choose where to play. Selection drives the Current Location pane in
+          the Play view.
+        </p>
+      </div>
+
+      {locations.length === 0 ? (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          No locations yet.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {locations.map((loc) => (
+            <button
+              key={loc.id}
+              className={`w-full text-left px-2 py-1 rounded text-xs border ${
+                selectedLocationId === loc.id
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'
+              }`}
+              onClick={() => setSelectedLocationId(loc.id)}
+            >
+              <span className="font-medium">{loc.name}</span>
+              {loc.asset?.id != null && (
+                <span className="ml-2 text-[10px] text-neutral-400">
+                  asset #{loc.asset.id}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -1716,6 +1732,8 @@ export function Game2D() {
           playContent
         ) : nav.activeId === 'settings' ? (
           settingsContent
+        ) : nav.activeId === 'locations' ? (
+          locationsContent
         ) : (
           <div className="p-6 text-sm text-neutral-500 dark:text-neutral-400 h-full overflow-auto">
             <p>
