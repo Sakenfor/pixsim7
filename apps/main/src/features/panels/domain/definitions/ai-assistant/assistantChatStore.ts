@@ -257,6 +257,42 @@ function serverHasUnansweredUserTurn(
   return false;
 }
 
+interface TranscriptRecoveryStatus {
+  unresolvedUser: { index: number; text: string } | null;
+  recoveredAssistantTail: ChatMessage[];
+  pendingServerMessages: number;
+  diverged: boolean;
+  responseLost: boolean;
+}
+
+/**
+ * Classifies client/server transcript state for unresolved user turns.
+ *
+ * Used by the panel reconcile flow to decide whether to append recovered
+ * assistant messages, keep waiting, or surface "response lost".
+ */
+function evaluateTranscriptRecovery(
+  localMessages: ChatMessage[],
+  serverMessages: ChatMessage[],
+): TranscriptRecoveryStatus {
+  const unresolvedUser = findLatestUnansweredUserMessage(localMessages);
+  const recoveredAssistantTail = findMissingAssistantTail(localMessages, serverMessages);
+  const gap = getAssistantTailGap(localMessages, serverMessages);
+  const responseLost = !!(
+    unresolvedUser
+    && gap.pendingCount === 0
+    && !gap.diverged
+    && serverHasUnansweredUserTurn(unresolvedUser.text, serverMessages)
+  );
+  return {
+    unresolvedUser,
+    recoveredAssistantTail,
+    pendingServerMessages: gap.pendingCount,
+    diverged: gap.diverged,
+    responseLost,
+  };
+}
+
 function persistTabs(tabs: ChatTab[]) {
   try {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20)));
@@ -816,5 +852,6 @@ export {
   findMissingAssistantTail,
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
+  evaluateTranscriptRecovery,
 };
 export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };

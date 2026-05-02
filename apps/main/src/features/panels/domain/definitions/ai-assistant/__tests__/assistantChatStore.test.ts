@@ -23,6 +23,7 @@ import {
   findMissingAssistantTail,
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
+  evaluateTranscriptRecovery,
   type ChatTab,
   type ChatMessage,
 } from '../assistantChatStore';
@@ -413,6 +414,56 @@ describe('Assistant Chat Store', () => {
   // ────────────────────────────────────────────────────────
   // Unread tracking
   // ────────────────────────────────────────────────────────
+
+  describe('evaluateTranscriptRecovery', () => {
+    it('marks responseLost when server has the user turn but no assistant reply', () => {
+      const status = evaluateTranscriptRecovery(
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Agent did not respond within 900s'),
+        ],
+      );
+      expect(status.unresolvedUser).toEqual({ index: 0, text: 'why did this fail?' });
+      expect(status.recoveredAssistantTail).toEqual([]);
+      expect(status.pendingServerMessages).toBe(0);
+      expect(status.diverged).toBe(false);
+      expect(status.responseLost).toBe(true);
+    });
+
+    it('returns recoverable assistant tail when server has unseen assistant messages', () => {
+      const status = evaluateTranscriptRecovery(
+        [makeMsg('user', 'continue')],
+        [
+          makeMsg('user', 'continue'),
+          makeMsg('assistant', 'Here is the continuation'),
+        ],
+      );
+      expect(status.recoveredAssistantTail).toHaveLength(1);
+      expect(status.recoveredAssistantTail[0].text).toBe('Here is the continuation');
+      expect(status.pendingServerMessages).toBe(1);
+      expect(status.diverged).toBe(false);
+      expect(status.responseLost).toBe(false);
+    });
+
+    it('does not mark responseLost when server lacks the unresolved user turn', () => {
+      const status = evaluateTranscriptRecovery(
+        [makeMsg('user', 'never reached server')],
+        [
+          makeMsg('user', 'different message'),
+          makeMsg('assistant', 'done'),
+        ],
+      );
+      expect(status.unresolvedUser).toEqual({ index: 0, text: 'never reached server' });
+      expect(status.recoveredAssistantTail).toEqual([]);
+      expect(status.pendingServerMessages).toBe(0);
+      expect(status.diverged).toBe(false);
+      expect(status.responseLost).toBe(false);
+    });
+  });
 
   describe('unread tracking', () => {
     it('appending an assistant message to a non-active tab marks unread', () => {

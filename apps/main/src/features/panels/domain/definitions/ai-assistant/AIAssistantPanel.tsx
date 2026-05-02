@@ -30,9 +30,7 @@ import {
   normalizeProfileId,
   createTabId,
   findLatestUnansweredUserMessage,
-  findMissingAssistantTail,
-  getAssistantTailGap,
-  serverHasUnansweredUserTurn,
+  evaluateTranscriptRecovery,
   type ChatTab,
   type AgentEngine,
 } from './assistantChatStore';
@@ -100,6 +98,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const [responseLost, setResponseLost] = useState(false);
   // Bump to force the reconcile effect to re-run (manual "check server again").
   const [reconcileNonce, setReconcileNonce] = useState(0);
+  // Sending state derived from the bridge singleton (survives unmount)
+  const bridgeVersion = useSyncExternalStore(
+    chatBridge.subscribe.bind(chatBridge),
+    chatBridge.getSnapshot.bind(chatBridge),
+  );
+  const bridgeReq = chatBridge.get(tab.id);
+  const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+  const activity = bridgeReq?.activity ?? null;
+
   useEffect(() => {
     if (!tab.sessionId) {
       setPendingServerMessages(0);
@@ -111,8 +118,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     const local = s.getMessages(tab.id);
     const unresolved = findLatestUnansweredUserMessage(local);
     // Don't reconcile while this tab has an active in-flight request.
-    const req = chatBridge.get(tab.id);
-    if (req && (req.status === 'pending' || req.status === 'streaming')) {
+    if (sending) {
       setPendingServerMessages(0);
       setServerTranscriptDiverged(false);
       setResponseLost(false);
@@ -155,35 +161,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           return;
         }
 
-        const recovered = findMissingAssistantTail(current, serverMsgs);
-        if (recovered.length > 0) {
-          st.setMessages(tab.id, [...current, ...recovered]);
+        const recovery = evaluateTranscriptRecovery(current, serverMsgs);
+        if (recovery.recoveredAssistantTail.length > 0) {
+          st.setMessages(tab.id, [...current, ...recovery.recoveredAssistantTail]);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
           setResponseLost(false);
           return;
         }
 
-        const gap = getAssistantTailGap(current, serverMsgs);
-        setPendingServerMessages(gap.pendingCount);
-        setServerTranscriptDiverged(gap.diverged);
+        setPendingServerMessages(recovery.pendingServerMessages);
+        setServerTranscriptDiverged(recovery.diverged);
+        setResponseLost(recovery.responseLost);
 
-        const currentUnresolved = findLatestUnansweredUserMessage(current);
-        // Server confirms it has the user msg but no assistant follow-up:
-        // recovery isn't possible — flag so user can retry instead of waiting.
-        const lost = !!(currentUnresolved
-          && gap.pendingCount === 0
-          && !gap.diverged
-          && serverHasUnansweredUserTurn(currentUnresolved.text, serverMsgs));
-        setResponseLost(lost);
-
+        const currentUnresolved = recovery.unresolvedUser;
         const sameUnresolved =
           unresolved &&
           currentUnresolved &&
           currentUnresolved.text === unresolved.text;
         // Keep retrying only if the server hasn't yet confirmed the loss —
         // a confirmed-lost state won't change without user action.
-        if (sameUnresolved && !lost) {
+        if (sameUnresolved && !recovery.responseLost) {
           schedule();
         }
       }).catch(() => {
@@ -201,13 +199,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     // Delay first fetch when waiting for a just-flushed in-flight response.
     // Otherwise run immediately when simply visiting an existing chat tab.
-    if (unresolved) schedule();
+    // Manual "check again" should run immediately (no debounce wait).
+    if (unresolved && reconcileNonce === 0) schedule();
     else run();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [tab.id, tab.sessionId, reconcileNonce]);
+  }, [tab.id, tab.sessionId, reconcileNonce, sending]);
 
   // Draft: local state for responsive typing, synced to store
   const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
@@ -215,15 +214,6 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
-
-  // Sending state derived from the bridge singleton (survives unmount)
-  const bridgeVersion = useSyncExternalStore(
-    chatBridge.subscribe.bind(chatBridge),
-    chatBridge.getSnapshot.bind(chatBridge),
-  );
-  const bridgeReq = chatBridge.get(tab.id);
-  const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
-  const activity = bridgeReq?.activity ?? null;
 
   // Sync thinking entries from bridge to store (persists across HMR + full reload).
   // The bridge's thinkingLog is in-memory only — mirror it to the store so it survives.
