@@ -22,7 +22,6 @@
 
 import { ScenePlayer } from '@pixsim7/game.components';
 import {
-  assignNpcsToSlots,
   createSessionHelpers,
   hasEnabledInteractions,
   parseHotspotAction,
@@ -64,6 +63,7 @@ import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 import { useSharedWorldSelection } from '@/hooks';
 import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
+import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
@@ -77,9 +77,7 @@ import {
   getGameSession,
   updateGameSession,
   createGameWorld,
-  getNpcSlots,
   getRoomNavigation,
-  getWorldNpcRoles,
   attemptPickpocket,
   attemptSensualTouch,
   type SessionUpdatePayload,
@@ -428,7 +426,7 @@ export function Game2D() {
     session: gameSession,
     enabled: !!selectedLocationId,
   });
-  const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
+  const npcSlotAssignments = useNpcSlotAssignments(locationDetail, locationNpcs, worldDetail);
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const { notifications, addNotification, dismissNotification } = useGameNotifications();
@@ -757,24 +755,6 @@ export function Game2D() {
       setActiveNpcId(locationNpcs[0].npc_id);
     }
   }, [locationNpcs]);
-
-  // Assign NPCs to slots when location, NPCs, or world changes.
-  useEffect(() => {
-    if (!locationDetail) {
-      setNpcSlotAssignments([]);
-      return;
-    }
-
-    const slots = getNpcSlots(locationDetail);
-    if (slots.length === 0) {
-      setNpcSlotAssignments([]);
-      return;
-    }
-
-    const npcRoles = worldDetail ? getWorldNpcRoles(worldDetail) : {};
-    const assignments = assignNpcsToSlots(slots, locationNpcs, npcRoles);
-    setNpcSlotAssignments(assignments);
-  }, [locationDetail, locationNpcs, worldDetail]);
 
   // Advance time using the runtime (handles turn-based and real-time modes)
   const advanceTime = () => {
