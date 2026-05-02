@@ -31,7 +31,7 @@ import {
   type HotspotAction,
 } from '@pixsim7/game.engine';
 import { saveWorldSession } from '@pixsim7/game.engine';
-import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
+import { SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
 import { Button, Panel, Badge, Select, SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -62,6 +62,7 @@ import { useDialogueController } from '@/hooks/useDialogueController';
 import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
 import { useLocationBackground } from '@/hooks/useLocationBackground';
+import { useLocationDetail } from '@/hooks/useLocationDetail';
 import { useNpcExpressions } from '@/hooks/useNpcExpressions';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
 import { useRoomNavigation } from '@/hooks/useRoomNavigation';
@@ -71,7 +72,6 @@ import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications } from '../components/game/GameNotification';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import {
-  getGameLocation,
   getGameScene,
   createGameSession,
   getGameSession,
@@ -225,7 +225,12 @@ export function Game2D() {
     initialLocationIdFromUrl,
     consumerId: 'Game2D.loadLocations',
   });
-  const [locationDetail, setLocationDetail] = useState<GameLocationDetail | null>(null);
+  const {
+    locationDetail,
+    setLocationDetail,
+    isLoadingLocation,
+    error: locationLoadError,
+  } = useLocationDetail({ locationId: selectedLocationId });
   const {
     currentScene,
     isSceneOpen,
@@ -237,7 +242,6 @@ export function Game2D() {
     closeScene,
   } = useScenePlayback();
   const [error, setError] = useState<string | null>(null);
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const {
     roomNavigation,
     activeRoomCheckpoint,
@@ -456,34 +460,28 @@ export function Game2D() {
     sharedSelectedWorldId,
   ]);
 
+  // Mirror location-load errors into the global Game2D error banner.
   useEffect(() => {
-    if (!selectedLocationId) {
-      setLocationDetail(null);
+    if (locationLoadError) setError(locationLoadError);
+  }, [locationLoadError]);
+
+  // Fire downstream side effects ONLY when the loaded location's id changes,
+  // not on in-place mutations from room-nav transitions (which share the id).
+  useEffect(() => {
+    if (!locationDetail) {
       syncRoomNavFromLocation(null);
       return;
     }
-    setIsLoadingLocation(true);
-    setError(null);
-    (async () => {
-      try {
-        const detail = await getGameLocation(toLocationId(selectedLocationId));
-        setLocationDetail(detail);
-        syncRoomNavFromLocation(detail);
+    syncRoomNavFromLocation(locationDetail);
 
-        // Determine active NPC for this location (simple convention).
-        const primaryNpcId = detail.meta && (detail.meta as any).primary_npc_id;
-        const npcIdNumber =
-          typeof primaryNpcId === 'string' || typeof primaryNpcId === 'number'
-            ? Number(primaryNpcId)
-            : null;
-        setActiveNpcId(Number.isFinite(npcIdNumber) ? npcIdNumber : null);
-      } catch (e: any) {
-        setError(String(e?.message ?? e));
-      } finally {
-        setIsLoadingLocation(false);
-      }
-    })();
-  }, [selectedLocationId]);
+    const primaryNpcId = (locationDetail.meta as { primary_npc_id?: number | string } | null)?.primary_npc_id;
+    const npcIdNumber =
+      typeof primaryNpcId === 'string' || typeof primaryNpcId === 'number'
+        ? Number(primaryNpcId)
+        : null;
+    setActiveNpcId(Number.isFinite(npcIdNumber) ? npcIdNumber : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally key on id only; in-place updates from room-nav must not retrigger the reset
+  }, [locationDetail?.id]);
 
   // Advance time using the runtime (handles turn-based and real-time modes)
   const advanceTime = () => {
