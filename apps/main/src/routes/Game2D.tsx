@@ -80,7 +80,6 @@ import {
   attemptPickpocket,
   attemptSensualTouch,
   type SessionUpdatePayload,
-  type GameLocationDetail,
   type GameHotspotDTO,
 } from '../lib/api/game';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
