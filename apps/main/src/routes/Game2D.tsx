@@ -61,6 +61,7 @@ import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferen
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 import { useSharedWorldSelection } from '@/hooks';
+import { useDialogueController } from '@/hooks/useDialogueController';
 import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
@@ -427,8 +428,7 @@ export function Game2D() {
     enabled: !!selectedLocationId,
   });
   const npcSlotAssignments = useNpcSlotAssignments(locationDetail, locationNpcs, worldDetail);
-  const [showDialogue, setShowDialogue] = useState(false);
-  const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
+  const { showDialogue, dialogueNpcId, openDialogue, closeDialogue } = useDialogueController();
   const { notifications, addNotification, dismissNotification } = useGameNotifications();
   const [showHudEditor, setShowHudEditor] = useState(false);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
@@ -876,9 +876,7 @@ export function Game2D() {
     // Execute all enabled interactions using the executor
     await executeSlotInteractions(assignment, context, {
       onDialogue: (npcId) => {
-        setDialogueNpcId(npcId);
-        setShowDialogue(true);
-
+        openDialogue(npcId);
         // Update game context to conversation mode (Task 22)
         enterConversation(npcId);
       },
@@ -1591,7 +1589,7 @@ export function Game2D() {
           <SimpleDialogue
             npcId={dialogueNpcId}
             onStartScene={async (sceneId) => {
-              setShowDialogue(false);
+              closeDialogue();
               setIsLoadingScene(true);
               try {
                 if (!gameSession) {
@@ -1612,7 +1610,7 @@ export function Game2D() {
               }
             }}
             onClose={() => {
-              setShowDialogue(false);
+              closeDialogue();
               if (selectedLocationId) {
                 enterRoom(selectedLocationId);
               }
