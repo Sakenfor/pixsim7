@@ -43,7 +43,6 @@ import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
 
 
-import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 import {
   RegionalHudLayout,
   HudEditor,
@@ -63,9 +62,9 @@ import { useSharedWorldSelection } from '@/hooks';
 import { useDialogueController } from '@/hooks/useDialogueController';
 import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
+import { useLocationBackground } from '@/hooks/useLocationBackground';
 import { useNpcExpressions } from '@/hooks/useNpcExpressions';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import { useRoomNavigation } from '@/hooks/useRoomNavigation';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
@@ -233,7 +232,6 @@ export function Game2D() {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
-  const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const {
     roomNavigation,
     activeRoomCheckpoint,
@@ -260,26 +258,11 @@ export function Game2D() {
     },
   });
   const worldLabelsById = useMemo(() => buildWorldLabelMap(worlds), [worlds]);
-  const effectiveBackgroundAsset = roomNavBackgroundAsset ?? backgroundAsset;
-  const backgroundUrls = useMemo(
-    () => (effectiveBackgroundAsset ? getAssetDisplayUrls(effectiveBackgroundAsset) : null),
-    [effectiveBackgroundAsset],
-  );
-  const backgroundCandidate =
-    roomNavBackgroundUrl || backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
-  const { mediaSrc: resolvedBackgroundSrc } = useResolvedAssetMedia({
-    mediaUrl: backgroundCandidate,
+  const { activeBackgroundSrc, isBackgroundVideo } = useLocationBackground({
+    locationDetail,
+    overrideAsset: roomNavBackgroundAsset,
+    overrideUrl: roomNavBackgroundUrl,
   });
-  const activeBackgroundSrc = resolvedBackgroundSrc || backgroundCandidate || null;
-  const isBackgroundVideo = useMemo(() => {
-    if (effectiveBackgroundAsset) {
-      return effectiveBackgroundAsset.mediaType === 'video';
-    }
-    if (!backgroundCandidate) {
-      return false;
-    }
-    return /\.(mp4|webm|mov|m4v)(?:\?.*)?$/i.test(backgroundCandidate);
-  }, [effectiveBackgroundAsset, backgroundCandidate]);
 
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
@@ -472,7 +455,6 @@ export function Game2D() {
   useEffect(() => {
     if (!selectedLocationId) {
       setLocationDetail(null);
-      setBackgroundAsset(null);
       syncRoomNavFromLocation(null);
       return;
     }
@@ -483,18 +465,6 @@ export function Game2D() {
         const detail = await getGameLocation(toLocationId(selectedLocationId));
         setLocationDetail(detail);
         syncRoomNavFromLocation(detail);
-
-        // Try to load a background asset for 2D rendering:
-        // prefer meta.background_asset_id, else fall back to asset_id if it is image/video.
-        setBackgroundAsset(null);
-        const bgId = (detail.meta && (detail.meta as any).background_asset_id) ?? detail.asset?.id;
-        if (bgId) {
-          const response = await getAsset(bgId);
-          const asset = fromAssetResponse(response);
-          if (asset.mediaType === 'image' || asset.mediaType === 'video') {
-            setBackgroundAsset(asset);
-          }
-        }
 
         // Determine active NPC for this location (simple convention).
         const primaryNpcId = detail.meta && (detail.meta as any).primary_npc_id;
