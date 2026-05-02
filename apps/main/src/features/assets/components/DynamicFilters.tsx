@@ -284,7 +284,7 @@ export function DynamicFilters({
       const initialFilters: AssetFilters = { [filterKey]: value } as AssetFilters;
       const rect = anchor?.getBoundingClientRect();
       useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-        context: { initialFilters, sourceLabel },
+        context: { initialFilters, sourceLabel, suppressHoverActions: true },
         x: rect ? rect.right + 8 : undefined,
         y: rect ? rect.top : undefined,
       });
@@ -785,6 +785,7 @@ function GroupedEnumFilter({
                         context: {
                           initialFilters: { [filterKey]: groupValues } as AssetFilters,
                           sourceLabel: groupLabel,
+                          suppressHoverActions: true,
                         },
                         x: rect ? rect.right + 8 : undefined,
                         y: rect ? rect.top : undefined,
@@ -1134,7 +1135,9 @@ function FilterControl({
   };
 
   switch (type) {
-    case 'search':
+    case 'search': {
+      const searchValue = typeof value === 'string' ? value.trim() : '';
+      const canBrowseSearch = searchValue.length > 0;
       return (
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -1158,9 +1161,40 @@ function FilterControl({
               `}
             />
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              if (!canBrowseSearch) return;
+              e.stopPropagation();
+              e.preventDefault();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                context: {
+                  initialFilters: { [key]: searchValue } as AssetFilters,
+                  sourceLabel: `"${searchValue}"`,
+                  suppressHoverActions: true,
+                },
+                x: rect.right + 8,
+                y: rect.top,
+              });
+            }}
+            disabled={!canBrowseSearch}
+            title={
+              canBrowseSearch
+                ? `Open "${searchValue}" in Mini Gallery`
+                : 'Type something first'
+            }
+            aria-label={`Open search "${searchValue}" in Mini Gallery`}
+            className={`flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color,opacity] duration-150 ${
+              canBrowseSearch ? 'opacity-100' : 'opacity-40 cursor-not-allowed'
+            }`}
+          >
+            <Icon name="externalLink" size={12} className="w-3 h-3" />
+          </button>
           {renderMatchModeToggle()}
         </div>
       );
+    }
 
     case 'enum': {
       const groupCfg = GROUPED_FILTER_CONFIG[key];
@@ -1221,6 +1255,7 @@ function FilterControl({
                   context: {
                     initialFilters: { [key]: [optValue] } as AssetFilters,
                     sourceLabel: displayLabel,
+                    suppressHoverActions: true,
                   },
                   x: rect.right + 8,
                   y: rect.top,

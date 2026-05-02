@@ -236,7 +236,11 @@ export function FilterChip(props: FilterChipProps) {
       if (!assetFilters) return;
       const rect = internalButtonRef.current?.getBoundingClientRect();
       useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-        context: { initialFilters: assetFilters, sourceLabel: sourceLabel ?? label },
+        context: {
+          initialFilters: assetFilters,
+          sourceLabel: sourceLabel ?? label,
+          suppressHoverActions: true,
+        },
         x: rect ? rect.right + 8 : undefined,
         y: rect ? rect.top : undefined,
       });
@@ -532,7 +536,12 @@ export function FilterContent<T>({
   }, [value]);
 
   switch (filter.type) {
-    case 'search':
+    case 'search': {
+      const searchValue = typeof value === 'string' ? value.trim() : '';
+      const searchAssetFilters =
+        searchValue.length > 0 ? filter.toAssetFilters?.(searchValue) : undefined;
+      const searchHasAssetFilters =
+        searchAssetFilters !== undefined && Object.keys(searchAssetFilters).length > 0;
       return (
         <div className="flex items-center gap-2">
           <div className="relative w-full">
@@ -550,8 +559,33 @@ export function FilterContent<T>({
               className={`w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent ${filter.icon ? 'pl-8' : ''}`}
             />
           </div>
+          {searchHasAssetFilters && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                  context: {
+                    initialFilters: searchAssetFilters,
+                    sourceLabel: `"${searchValue}"`,
+                    suppressHoverActions: true,
+                  },
+                  x: rect.right + 8,
+                  y: rect.top,
+                });
+              }}
+              title={`Open "${searchValue}" in Mini Gallery`}
+              aria-label={`Open search "${searchValue}" in Mini Gallery`}
+              className="flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color] duration-150"
+            >
+              <Icon name="externalLink" size={12} className="w-3 h-3" />
+            </button>
+          )}
         </div>
       );
+    }
 
     case 'enum': {
       const cols = filter.columns ?? 1;
@@ -622,7 +656,11 @@ export function FilterContent<T>({
                   e.preventDefault();
                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-                    context: { initialFilters: optAssetFilters, sourceLabel: optDisplayLabel },
+                    context: {
+                      initialFilters: optAssetFilters,
+                      sourceLabel: optDisplayLabel,
+                      suppressHoverActions: true,
+                    },
                     x: rect.right + 8,
                     y: rect.top,
                   });
@@ -681,6 +719,7 @@ export function FilterContent<T>({
                               context: {
                                 initialFilters: groupAssetFilters,
                                 sourceLabel: group.label,
+                                suppressHoverActions: true,
                               },
                               x: rect.right + 8,
                               y: rect.top,
