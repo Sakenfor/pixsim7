@@ -26,7 +26,6 @@ import {
   hasEnabledInteractions,
   parseHotspotAction,
   deriveScenePlaybackPhase,
-  isPlayingPhase,
   getTurnDeltaLabel,
   type NpcSlotAssignment,
   type HotspotAction,
@@ -64,6 +63,7 @@ import { useSharedWorldSelection } from '@/hooks';
 import { useDialogueController } from '@/hooks/useDialogueController';
 import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
+import { useNpcExpressions } from '@/hooks/useNpcExpressions';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import { useRoomNavigation } from '@/hooks/useRoomNavigation';
@@ -74,7 +74,6 @@ import { InteractionPresetEditor } from '../components/game/InteractionPresetEdi
 import {
   getGameLocation,
   getGameScene,
-  getNpcExpressions,
   createGameSession,
   getGameSession,
   updateGameSession,
@@ -84,7 +83,6 @@ import {
   type SessionUpdatePayload,
   type GameLocationDetail,
   type GameHotspotDTO,
-  type NpcExpressionDTO,
 } from '../lib/api/game';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
@@ -106,57 +104,6 @@ import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/themin
 interface WorldTime {
   day: number;
   hour: number;
-}
-
-function readNpcExpressionSurfaceType(expression: NpcExpressionDTO): string | null {
-  const meta = expression.meta;
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
-    return null;
-  }
-  const value = (meta as Record<string, unknown>).surfaceType;
-  if (typeof value !== 'string' || !value.trim()) {
-    return null;
-  }
-  return value.trim();
-}
-
-function selectNpcExpressionForPhase(
-  expressions: NpcExpressionDTO[],
-  phase: ScenePlaybackPhase,
-): NpcExpressionDTO | null {
-  if (expressions.length === 0) return null;
-
-  const desiredState =
-    phase === 'awaiting_input'
-      ? 'waiting_for_player'
-      : isPlayingPhase(phase)
-        ? 'talking'
-        : 'idle';
-
-  const desiredSurfaceType = isPlayingPhase(phase) ? 'dialogue' : 'portrait';
-
-  return (
-    expressions.find(
-      (entry) =>
-        entry.state === desiredState &&
-        readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
-    ) ||
-    expressions.find((entry) => entry.state === desiredState) ||
-    expressions.find(
-      (entry) => readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
-    ) ||
-    expressions.find(
-      (entry) =>
-        entry.state === 'idle' &&
-        readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
-    ) ||
-    expressions.find((entry) => entry.state === 'idle') ||
-    expressions.find(
-      (entry) => readNpcExpressionSurfaceType(entry) === 'portrait',
-    ) ||
-    expressions[0] ||
-    null
-  );
 }
 
 const NAV_SECTIONS = [
@@ -312,10 +259,6 @@ export function Game2D() {
       );
     },
   });
-  const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
-  const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
-  const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
-  const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
   const worldLabelsById = useMemo(() => buildWorldLabelMap(worlds), [worlds]);
   const effectiveBackgroundAsset = roomNavBackgroundAsset ?? backgroundAsset;
   const backgroundUrls = useMemo(
@@ -338,14 +281,6 @@ export function Game2D() {
     return /\.(mp4|webm|mov|m4v)(?:\?.*)?$/i.test(backgroundCandidate);
   }, [effectiveBackgroundAsset, backgroundCandidate]);
 
-  const npcPortraitUrls = useMemo(
-    () => (npcPortraitAsset ? getAssetDisplayUrls(npcPortraitAsset) : null),
-    [npcPortraitAsset],
-  );
-  const npcPortraitCandidate = npcPortraitUrls?.previewUrl || npcPortraitUrls?.mainUrl;
-  const { mediaSrc: resolvedNpcPortraitSrc } = useResolvedAssetMedia({
-    mediaUrl: npcPortraitCandidate,
-  });
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
     worldId: selectedWorldId,
@@ -356,6 +291,17 @@ export function Game2D() {
     enabled: !!selectedLocationId,
   });
   const npcSlotAssignments = useNpcSlotAssignments(locationDetail, locationNpcs, worldDetail);
+  const {
+    activeNpcId,
+    setActiveNpcId,
+    npcPortraitAsset,
+    resolvedNpcPortraitSrc,
+  } = useNpcExpressions({
+    currentScene,
+    isSceneOpen,
+    scenePhase,
+    locationNpcs,
+  });
   const { showDialogue, dialogueNpcId, openDialogue, closeDialogue } = useDialogueController();
   const { notifications, addNotification, dismissNotification } = useGameNotifications();
   const [showHudEditor, setShowHudEditor] = useState(false);
@@ -565,32 +511,6 @@ export function Game2D() {
     })();
   }, [selectedLocationId]);
 
-  // Fetch expressions for the active NPC (once per location / NPC change).
-  useEffect(() => {
-    if (!activeNpcId) {
-      setNpcExpressions([]);
-      setNpcPortraitAsset(null);
-      setNpcPortraitAssetId(null);
-      return;
-    }
-    (async () => {
-      try {
-        const expressions = await getNpcExpressions(activeNpcId);
-        setNpcExpressions(expressions);
-      } catch (e: any) {
-        console.error('Failed to load NPC expressions', e);
-      }
-    })();
-  }, [activeNpcId]);
-
-  // Set active NPC when presence changes
-  useEffect(() => {
-    if (locationNpcs.length > 0) {
-      // Prefer the first present NPC over the static primary_npc_id.
-      setActiveNpcId(locationNpcs[0].npc_id);
-    }
-  }, [locationNpcs]);
-
   // Advance time using the runtime (handles turn-based and real-time modes)
   const advanceTime = () => {
     advanceTurn().catch((e) => {
@@ -775,45 +695,6 @@ export function Game2D() {
       setIsLoadingScene(false);
     }
   };
-
-  // Derive NPC expression state from scene phase and load portrait asset.
-  useEffect(() => {
-    if (!currentScene || !isSceneOpen || npcExpressions.length === 0) {
-      setNpcPortraitAsset(null);
-      setNpcPortraitAssetId(null);
-      return;
-    }
-
-    const match = selectNpcExpressionForPhase(npcExpressions, scenePhase);
-
-    if (!match) {
-      setNpcPortraitAsset(null);
-      setNpcPortraitAssetId(null);
-      return;
-    }
-
-    if (npcPortraitAssetId === match.asset_id && npcPortraitAsset) {
-      return;
-    }
-
-    (async () => {
-      try {
-        const response = await getAsset(match.asset_id);
-        const asset = fromAssetResponse(response);
-        if (asset.mediaType === 'image' || asset.mediaType === 'video') {
-          setNpcPortraitAsset(asset);
-          setNpcPortraitAssetId(match.asset_id);
-        } else {
-          setNpcPortraitAsset(null);
-          setNpcPortraitAssetId(null);
-        }
-      } catch (e: any) {
-        console.error('Failed to load NPC portrait asset', e);
-        setNpcPortraitAsset(null);
-        setNpcPortraitAssetId(null);
-      }
-    })();
-  }, [currentScene, isSceneOpen, scenePhase, npcExpressions, npcPortraitAssetId, npcPortraitAsset]);
 
   const playContent = (
     <div className="p-6 space-y-4 h-full overflow-auto min-h-0">
