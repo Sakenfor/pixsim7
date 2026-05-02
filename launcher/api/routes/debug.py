@@ -117,12 +117,43 @@ async def get_logging_config(request: Request):
     return LoggingConfig(**data)
 
 
+def _apply_local_logging_config(data: dict) -> None:
+    """Apply persisted logging config to the launcher-api process in-memory state.
+
+    Other services pick up config changes via their own refresh paths
+    (backend owns the write, worker subscribes to Redis events, ai-client
+    polls). The launcher-api process has none — without this self-apply
+    it would never pick up Debug-panel edits until launcher restart, so
+    its propagation badge would stay drifted forever after any change.
+    Best-effort — failure here doesn't fail the PATCH proxy.
+    """
+    try:
+        from pixsim_logging.domains import update_domain_config, update_global_level
+        from pixsim_logging.config import set_db_min_level
+    except ImportError:
+        return
+
+    try:
+        if data.get("log_level"):
+            update_global_level(data["log_level"])
+        if "log_domain_levels" in data:
+            update_domain_config(data.get("log_domain_levels") or {})
+        if data.get("log_db_min_level"):
+            set_db_min_level(data["log_db_min_level"])
+    except Exception:
+        pass
+
+
 @router.patch("/logging/config", response_model=LoggingConfig)
 async def patch_logging_config(
     request: Request,
     body: LoggingConfigPatch = Body(...),
 ):
-    """Patch the canonical persisted logging config via the backend admin endpoint."""
+    """Patch the canonical persisted logging config via the backend admin endpoint.
+
+    On success, the change is also applied to the local launcher-api process
+    so its propagation badge reflects reality without waiting for a restart.
+    """
     payload = body.model_dump(exclude_none=True)
     data = await _backend_request(
         "PATCH",
@@ -130,6 +161,7 @@ async def patch_logging_config(
         "/api/v1/admin/logging/config",
         json_body=payload,
     )
+    _apply_local_logging_config(data)
     return LoggingConfig(**data)
 
 
@@ -179,18 +211,23 @@ def _service_debug_url(service_key: str, process_mgr: ProcessManager) -> Optiona
     return None
 
 
-def _proxy_get(url: str, timeout: float = 3) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 @router.get("/{service_key}/logging", response_model=LoggingState)
 async def get_service_logging(
     service_key: str,
     process_mgr: ProcessManager = Depends(get_process_manager),
 ):
-    """Get current effective logging state for a service (read-only)."""
+    """Get current effective logging state for a service (read-only).
+
+    Returns 404 in two cases:
+    1. The service definition exposes no /_debug surface at all.
+    2. The resolved endpoint responds but doesn't speak pixsim_logging
+       (4xx, non-JSON body, or JSON that doesn't shape into LoggingState).
+       This is what hides Vite's frontend dev server from the propagation
+       row — it has a health_url but no /_debug/logging route.
+
+    Returns 502 only for genuine reachability failures (connection refused,
+    timeout, 5xx) so the propagation row can render an ✕ for hung processes.
+    """
     if service_key == "launcher-api":
         from pixsim_logging.domains import (
             get_global_level_display,
@@ -206,7 +243,25 @@ async def get_service_logging(
     base = _service_debug_url(service_key, process_mgr)
     if not base:
         raise HTTPException(404, f"Service '{service_key}' has no debug endpoint")
+
+    url = f"{base}/logging"
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        return LoggingState(**_proxy_get(f"{base}/logging"))
-    except Exception as e:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            body_bytes = resp.read()
+    except urllib.error.HTTPError as e:
+        if 400 <= e.code < 500:
+            raise HTTPException(404, f"Service '{service_key}' has no /_debug/logging route")
         raise HTTPException(502, f"Failed to reach {service_key} debug endpoint: {e}")
+    except (urllib.error.URLError, OSError) as e:
+        raise HTTPException(502, f"Failed to reach {service_key} debug endpoint: {e}")
+
+    try:
+        body = json.loads(body_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(404, f"Service '{service_key}' is not a pixsim_logging endpoint")
+
+    try:
+        return LoggingState(**body)
+    except (TypeError, ValueError):
+        raise HTTPException(404, f"Service '{service_key}' returned non-LoggingState JSON")

@@ -168,7 +168,12 @@ class RequestPrincipal(BaseModel):
         ptype = payload.get("principal_type", "user")
 
         # ── Agent token ──
-        if purpose in ("agent", "launcher") or ptype == "agent":
+        # Launcher tokens (purpose="launcher") fall through to the user branch
+        # below: they're RS256-signed by the local launcher key, carry the
+        # local human's identity, and their is_admin claim should be honored
+        # so admin endpoints (e.g. /admin/logging/config from the launcher
+        # Debug panel) work. Threat-equivalent to local OS access.
+        if purpose == "agent" or ptype == "agent":
             resolved_profile_id = payload.get("profile_id") or payload.get("agent_id") or x_agent_id or "unknown"
             delegated_user_id = payload.get("on_behalf_of")
             try:

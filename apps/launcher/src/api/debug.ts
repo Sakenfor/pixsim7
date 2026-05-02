@@ -44,13 +44,27 @@ export async function getDomainCatalog(): Promise<DomainCatalog> {
   return _domainCatalog!
 }
 
-export async function getServiceLogging(serviceKey: string): Promise<LoggingState | null> {
+/**
+ * Per-service logging fetch result.
+ *
+ * `no-endpoint` = backend reported the service has no /_debug/logging surface
+ * (no health_url and no debug_port_file). Render nothing in this case.
+ * `unreachable` = service should have an endpoint but the proxy fetch failed
+ * (process down, hung, network blip). Render an error badge.
+ */
+export type ServiceLoggingResult =
+  | { kind: 'state'; state: LoggingState }
+  | { kind: 'no-endpoint' }
+  | { kind: 'unreachable' }
+
+export async function getServiceLogging(serviceKey: string): Promise<ServiceLoggingResult> {
   try {
     const res = await fetch(`/debug/${serviceKey}/logging`)
-    if (!res.ok) return null
-    return res.json()
+    if (res.status === 404) return { kind: 'no-endpoint' }
+    if (!res.ok) return { kind: 'unreachable' }
+    return { kind: 'state', state: await res.json() }
   } catch {
-    return null
+    return { kind: 'unreachable' }
   }
 }
 
@@ -64,16 +78,29 @@ export async function getLoggingConfig(): Promise<LoggingConfig | null> {
   }
 }
 
-export async function patchLoggingConfig(patch: LoggingConfigPatch): Promise<LoggingConfig | null> {
+export type PatchLoggingConfigResult =
+  | { ok: true; config: LoggingConfig }
+  | { ok: false; reason: string }
+
+export async function patchLoggingConfig(patch: LoggingConfigPatch): Promise<PatchLoggingConfigResult> {
   try {
     const res = await fetch('/debug/logging/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     })
-    if (!res.ok) return null
-    return res.json()
-  } catch {
-    return null
+    if (!res.ok) {
+      let reason = `HTTP ${res.status}`
+      try {
+        const body = await res.json()
+        if (body?.detail) reason = String(body.detail)
+      } catch {
+        // body wasn't JSON; keep status code as reason
+      }
+      return { ok: false, reason }
+    }
+    return { ok: true, config: await res.json() }
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : 'Network error' }
   }
 }

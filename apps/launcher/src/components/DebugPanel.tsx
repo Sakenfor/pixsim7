@@ -1,16 +1,17 @@
 /**
- * Debug panel — global logging config (editable) + per-service effective state (read-only).
+ * Debug panel — global logging config (editable) + inline propagation badges.
  *
- * Top section: edits the canonical persisted config via the launcher API
+ * Top section edits the canonical persisted config via the launcher API
  * proxy → backend's /api/v1/admin/logging/config. Changes apply to the
  * backend instantly and propagate to the worker on its next reload.
  *
- * Bottom section: shows the live in-memory state for the currently
- * selected service (read-only). Useful to confirm propagation. Workers
- * have no HTTP endpoint and won't appear here.
+ * Inline propagation row shows one badge per running service that exposes
+ * a /_debug/logging endpoint, indicating whether each picked up the latest
+ * global config. Services without an endpoint (frontend, db, headless
+ * workers) are hidden — workers reload from persisted config on a cron.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useServicesStore } from '../stores/services'
 import {
   getDomainCatalog,
@@ -21,25 +22,27 @@ import {
   type LoggingConfig,
   type LoggingConfigPatch,
   type LoggingState,
+  type ServiceLoggingResult,
 } from '../api/debug'
 
 const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR'] as const
 const DOMAIN_LEVEL_OPTIONS = [...LOG_LEVELS, 'OFF'] as const
 
 export function DebugPanel() {
-  const selectedKey = useServicesStore((s) => s.selectedKey)
   const services = useServicesStore((s) => s.services)
-  const service = services.find((s) => s.key === selectedKey)
+  const runningKeys = useMemo(
+    () => services.filter((s) => s.status === 'running').map((s) => s.key),
+    [services],
+  )
+  const runningKeysJoined = runningKeys.join(',')
 
   const [catalog, setCatalog] = useState<DomainCatalog | null>(null)
   const [config, setConfig] = useState<LoggingConfig | null>(null)
   const [configError, setConfigError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Per-service status
-  const [serviceState, setServiceState] = useState<LoggingState | null>(null)
-  const [serviceLoading, setServiceLoading] = useState(false)
-  const [serviceError, setServiceError] = useState<string | null>(null)
+  const [propagation, setPropagation] = useState<Map<string, ServiceLoggingResult>>(new Map())
+  const propagationVersion = useRef(0)
 
   // Load domain catalog + global config once
   useEffect(() => {
@@ -52,44 +55,75 @@ export function DebugPanel() {
       .catch(() => setConfigError('Failed to fetch logging config'))
   }, [])
 
-  // Load selected service state when selection changes
-  useEffect(() => {
-    if (!selectedKey) { setServiceState(null); setServiceError(null); return }
-    setServiceLoading(true)
-    setServiceError(null)
-    getServiceLogging(selectedKey)
-      .then((s) => {
-        setServiceState(s)
-        if (!s) setServiceError('No /_debug/logging endpoint on this service')
-      })
-      .catch(() => setServiceError('Failed to reach service'))
-      .finally(() => setServiceLoading(false))
-  }, [selectedKey])
-
-  const applyPatch = useCallback(async (patch: LoggingConfigPatch) => {
-    setSaving(true)
-    try {
-      const updated = await patchLoggingConfig(patch)
-      if (updated) setConfig(updated)
-      else setConfigError('Patch failed — see launcher logs')
-    } finally {
-      setSaving(false)
+  // Refetch propagation whenever the running-services set changes, and
+  // post-PATCH (scheduled by applyPatch). Uses a version ref to drop stale
+  // responses if the running set churns mid-flight.
+  const refetchPropagation = useCallback(async () => {
+    const myVersion = ++propagationVersion.current
+    const keys = runningKeysJoined ? runningKeysJoined.split(',') : []
+    const entries = await Promise.all(
+      keys.map(async (k) => [k, await getServiceLogging(k)] as const),
+    )
+    if (myVersion !== propagationVersion.current) return
+    const next = new Map<string, ServiceLoggingResult>()
+    for (const [k, r] of entries) {
+      if (r.kind !== 'no-endpoint') next.set(k, r)
     }
-  }, [])
+    setPropagation(next)
+  }, [runningKeysJoined])
+
+  useEffect(() => {
+    refetchPropagation()
+  }, [refetchPropagation])
+
+  // Latest-refetch ref so post-PATCH setTimeouts always pick up the current
+  // running-services set. Without this, stopping a service within 5s of a
+  // PATCH causes the stale closure to re-fetch and re-add the just-stopped
+  // service as ✕ (visible as "frontend propagation is wrong").
+  const refetchRef = useRef(refetchPropagation)
+  useEffect(() => {
+    refetchRef.current = refetchPropagation
+  }, [refetchPropagation])
+
+  const applyPatch = useCallback(
+    async (patch: LoggingConfigPatch) => {
+      setSaving(true)
+      setConfigError(null)
+      try {
+        const result = await patchLoggingConfig(patch)
+        if (result.ok) {
+          setConfig(result.config)
+        } else {
+          setConfigError(`Patch failed: ${result.reason}`)
+        }
+        // Catch the worker's Redis push (sub-second) and any slower reload.
+        setTimeout(() => refetchRef.current(), 1000)
+        setTimeout(() => refetchRef.current(), 5000)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [],
+  )
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0">
         <span className="text-[11px] font-bold text-gray-300">Logging</span>
-        <span className="text-[10px] text-gray-500">global config + per-service status</span>
+        <span className="text-[10px] text-gray-500">global config + propagation</span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* ── Global config (editable) ── */}
-        {!config && configError && (
-          <div className="text-[11px] text-red-400 bg-surface-secondary rounded border border-border p-3">
-            {configError}
+        {configError && (
+          <div className="text-[11px] text-red-400 bg-surface-secondary rounded border border-border p-3 flex items-start gap-2">
+            <span className="flex-1">{configError}</span>
+            <button
+              onClick={() => setConfigError(null)}
+              className="text-gray-500 hover:text-gray-300 text-[10px] leading-none"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -102,19 +136,10 @@ export function DebugPanel() {
             config={config}
             catalog={catalog}
             saving={saving}
+            propagation={propagation}
             onPatch={applyPatch}
           />
         )}
-
-        {/* ── Per-service effective state (read-only) ── */}
-        <ServiceStatusSection
-          selectedKey={selectedKey}
-          serviceTitle={service?.title}
-          state={serviceState}
-          catalog={catalog}
-          loading={serviceLoading}
-          error={serviceError}
-        />
       </div>
     </div>
   )
@@ -124,13 +149,32 @@ export function DebugPanel() {
 // ── Global config section (editable) ──
 
 function GlobalConfigSection({
-  config, catalog, saving, onPatch,
+  config, catalog, saving, propagation, onPatch,
 }: {
   config: LoggingConfig
   catalog: DomainCatalog | null
   saving: boolean
+  propagation: Map<string, ServiceLoggingResult>
   onPatch: (patch: LoggingConfigPatch) => void
 }) {
+  // Lifted from PropagationRow so DomainOverridesEdit can highlight rows
+  // that drift on the currently-selected service.
+  const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null)
+
+  const driftedDomains = useMemo(() => {
+    if (!selectedServiceKey) return EMPTY_SET
+    const result = propagation.get(selectedServiceKey)
+    if (result?.kind !== 'state') return EMPTY_SET
+    const sd = result.state.domains
+    const cd = config.log_domain_levels
+    const all = new Set([...Object.keys(sd), ...Object.keys(cd)])
+    const drifted = new Set<string>()
+    for (const d of all) {
+      if ((sd[d] ?? '').toUpperCase() !== (cd[d] ?? '').toUpperCase()) drifted.add(d)
+    }
+    return drifted
+  }, [selectedServiceKey, propagation, config])
+
   return (
     <div className="space-y-2">
       <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1">
@@ -170,18 +214,28 @@ function GlobalConfigSection({
         </Row>
       </div>
 
+      <PropagationRow
+        config={config}
+        propagation={propagation}
+        selectedKey={selectedServiceKey}
+        onSelect={setSelectedServiceKey}
+      />
+
       {/* Domain overrides */}
       {catalog && catalog.groups.length > 0 && (
         <DomainOverridesEdit
           catalog={catalog}
           domainLevels={config.log_domain_levels}
           saving={saving}
+          driftedDomains={driftedDomains}
           onUpdate={(levels) => onPatch({ log_domain_levels: levels })}
         />
       )}
     </div>
   )
 }
+
+const EMPTY_SET: ReadonlySet<string> = new Set()
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -223,11 +277,12 @@ function RetentionInput({
 }
 
 function DomainOverridesEdit({
-  catalog, domainLevels, saving, onUpdate,
+  catalog, domainLevels, saving, driftedDomains, onUpdate,
 }: {
   catalog: DomainCatalog
   domainLevels: Record<string, string>
   saving: boolean
+  driftedDomains: ReadonlySet<string>
   onUpdate: (levels: Record<string, string>) => void
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -279,10 +334,17 @@ function DomainOverridesEdit({
                 const current = domainLevels[domain] ?? ''
                 const isDebug = current.toUpperCase() === 'DEBUG'
                 const isOverridden = !!current
+                const isDrifted = driftedDomains.has(domain)
                 return (
-                  <div key={domain} className="flex items-center justify-between px-3 py-1 border-t border-border/50">
+                  <div
+                    key={domain}
+                    className={`flex items-center justify-between px-3 py-1 border-t border-border/50 ${
+                      isDrifted ? 'bg-amber-900/15' : ''
+                    }`}
+                  >
                     <span className={`text-[11px] ${isOverridden ? 'font-medium text-gray-200' : 'text-gray-500'}`}>
                       {domain}
+                      {isDrifted && <span className="text-[9px] text-amber-400 ml-1">drift</span>}
                     </span>
                     <select
                       value={current}
@@ -315,6 +377,10 @@ function DomainOverridesEdit({
               </button>
             </div>
           )}
+          <div className="px-3 py-1.5 border-t border-border/50 bg-surface/30 text-[9px] text-gray-600 leading-relaxed">
+            Not all consumers expose live state. <span className="text-gray-500">Worker</span> reloads via Redis push (~1s) or 60s cron.
+            {' '}<span className="text-gray-500">Browser</span> picks up changes on next reload.
+          </div>
         </>
       )}
     </div>
@@ -322,135 +388,211 @@ function DomainOverridesEdit({
 }
 
 
-// ── Per-service status section (read-only) ──
+// ── Propagation row + per-service expanded view ──
 
-function ServiceStatusSection({
-  selectedKey, serviceTitle, state, catalog, loading, error,
+type PropagationStatus = 'match' | 'mismatch' | 'unreachable'
+
+function computeStatus(result: ServiceLoggingResult, config: LoggingConfig): PropagationStatus {
+  if (result.kind !== 'state') return 'unreachable'
+  const state = result.state
+  if (state.level.toUpperCase() !== config.log_level.toUpperCase()) return 'mismatch'
+  const sd = state.domains
+  const cd = config.log_domain_levels
+  const sk = Object.keys(sd)
+  const ck = Object.keys(cd)
+  if (sk.length !== ck.length) return 'mismatch'
+  for (const k of sk) {
+    if ((sd[k] ?? '').toUpperCase() !== (cd[k] ?? '').toUpperCase()) return 'mismatch'
+  }
+  return 'match'
+}
+
+function PropagationRow({
+  config, propagation, selectedKey, onSelect,
 }: {
+  config: LoggingConfig
+  propagation: Map<string, ServiceLoggingResult>
   selectedKey: string | null
-  serviceTitle?: string
-  state: LoggingState | null
-  catalog: DomainCatalog | null
-  loading: boolean
-  error: string | null
+  onSelect: (key: string | null) => void
 }) {
-  const [showAll, setShowAll] = useState(false)
+  const entries = Array.from(propagation.entries())
+
+  if (entries.length === 0) return null
+
+  const expandedResult = selectedKey ? propagation.get(selectedKey) : null
+  const expandedState = expandedResult?.kind === 'state' ? expandedResult.state : null
 
   return (
-    <div className="space-y-2 pt-1">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1">
-        Service Status
-        <span className="ml-1 font-normal lowercase text-gray-600">
-          ({selectedKey ? `live state of ${serviceTitle ?? selectedKey}` : 'select a service'})
-        </span>
+    <div className="bg-surface-secondary rounded border border-border overflow-hidden">
+      <div className="px-3 py-2 space-y-1.5">
+        <div className="text-[10px] text-gray-500">
+          <span className="font-semibold uppercase tracking-wide">Propagation</span>
+          <span className="ml-1 font-normal lowercase text-gray-600">
+            global level applied to each running process — there is no per-service knob
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {entries.map(([key, result]) => (
+            <PropagationBadge
+              key={key}
+              serviceKey={key}
+              result={result}
+              config={config}
+              expanded={selectedKey === key}
+              onToggle={() => onSelect(selectedKey === key ? null : key)}
+            />
+          ))}
+        </div>
       </div>
-
-      {!selectedKey && (
-        <div className="text-[10px] text-gray-600 bg-surface-secondary/50 rounded border border-border/60 px-3 py-2">
-          Click a service in the Services panel to inspect its live logging state.
-        </div>
+      {selectedKey && expandedState && (
+        <ServiceDiffView state={expandedState} config={config} />
       )}
-
-      {selectedKey && loading && (
-        <div className="text-[11px] text-gray-500 px-1">Loading...</div>
-      )}
-
-      {selectedKey && error && !state && (
-        <div className="text-[11px] text-gray-500 bg-surface-secondary rounded border border-border p-3">
-          <div className="text-gray-400 mb-1 select-text whitespace-pre-wrap break-words">{error}</div>
-          <div className="text-[10px] text-gray-600">
-            Workers don't expose an HTTP endpoint and won't show live state here. They reload from
-            the persisted config periodically (check worker logs for the next reload tick).
-          </div>
-        </div>
-      )}
-
-      {state && (
-        <div className="bg-surface-secondary rounded border border-border overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <div>
-              <span className="text-[11px] font-medium text-gray-200">Effective in this process</span>
-              <span className="text-[10px] text-gray-500 ml-2">
-                level <span className="text-gray-300">{state.level}</span>
-                {' · '}
-                {Object.keys(state.domains).length} override{Object.keys(state.domains).length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className={`text-[10px] px-1.5 py-0.5 rounded ${showAll ? 'bg-blue-900/30 text-blue-400' : 'bg-surface text-gray-500 hover:text-gray-300'}`}
-            >
-              {showAll ? 'Active' : 'All'}
-            </button>
-          </div>
-          <ServiceDomainList state={state} catalog={catalog} showAll={showAll} />
+      {selectedKey && !expandedState && (
+        <div className="border-t border-border px-3 py-2 text-[10px] text-gray-500">
+          Service unreachable — process may be down or hung. Check launcher logs.
         </div>
       )}
     </div>
   )
 }
 
-function ServiceDomainList({
-  state, catalog, showAll,
+function PropagationBadge({
+  serviceKey, result, config, expanded, onToggle,
 }: {
-  state: LoggingState
-  catalog: DomainCatalog | null
-  showAll: boolean
+  serviceKey: string
+  result: ServiceLoggingResult
+  config: LoggingConfig
+  expanded: boolean
+  onToggle: () => void
 }) {
-  const activeSet = new Set(state.active_domains ?? [])
+  const status = computeStatus(result, config)
+  const level = result.kind === 'state' ? result.state.level : '—'
 
-  if (!catalog || catalog.groups.length === 0) {
-    return (
-      <div className="px-3 py-2 text-[10px] text-gray-500">
-        Domain catalog unavailable.
-      </div>
-    )
-  }
-
-  const filteredGroups = catalog.groups
-    .map((group) => ({
-      ...group,
-      domains: showAll ? group.domains : group.domains.filter((d) => activeSet.has(d) || state.domains[d]),
-    }))
-    .filter((group) => group.domains.length > 0)
-
-  if (filteredGroups.length === 0) {
-    return (
-      <div className="px-3 py-2 text-[10px] text-gray-500">
-        No domain activity yet. Toggle "All" to see all available domains.
-      </div>
-    )
-  }
+  const colors =
+    status === 'match'
+      ? 'border-emerald-700/60 text-emerald-400'
+      : status === 'unreachable'
+        ? 'border-red-700/60 text-red-400'
+        : 'border-amber-700/60 text-amber-400'
+  const icon = status === 'match' ? '✓' : status === 'unreachable' ? '✕' : '⏱'
+  const tooltip =
+    status === 'match'
+      ? `${serviceKey}: in sync at ${level}`
+      : status === 'unreachable'
+        ? `${serviceKey}: unreachable`
+        : `${serviceKey}: out of sync (service ${level} vs global ${config.log_level})`
 
   return (
-    <>
-      {filteredGroups.map((group) => (
-        <div key={group.id}>
-          <div className="px-3 py-1 bg-surface/40 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-            {group.label}
+    <button
+      type="button"
+      onClick={onToggle}
+      title={tooltip}
+      className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border bg-surface tabular-nums ${colors} ${expanded ? 'ring-1 ring-blue-500' : 'hover:brightness-125'}`}
+    >
+      <span className="font-medium">{serviceKey}</span>
+      <span>{icon}</span>
+      <span className="text-gray-400">{level}</span>
+    </button>
+  )
+}
+
+/**
+ * Service-specific expanded view for a propagation badge.
+ *
+ * Only shows what's actually relevant to *this* service:
+ *   - Level diff vs global config (if any).
+ *   - Per-domain drift: domains where this service's effective level
+ *     differs from the global config's value. In-sync domains are hidden
+ *     (they'd just mirror the Domain Levels section above).
+ *   - Active domains: which categories this service has actually emitted
+ *     log lines on. Useful sanity-check that domains are wired correctly
+ *     even when fully in sync.
+ */
+function ServiceDiffView({
+  state, config,
+}: {
+  state: LoggingState
+  config: LoggingConfig
+}) {
+  const stateLevel = state.level.toUpperCase()
+  const globalLevel = config.log_level.toUpperCase()
+  const levelDrift = stateLevel !== globalLevel
+
+  const sd = state.domains
+  const cd = config.log_domain_levels
+  const allDomains = new Set([...Object.keys(sd), ...Object.keys(cd)])
+  const drift: { domain: string; service: string; global: string }[] = []
+  for (const d of allDomains) {
+    const sv = (sd[d] ?? '').toUpperCase()
+    const gv = (cd[d] ?? '').toUpperCase()
+    if (sv !== gv) {
+      drift.push({ domain: d, service: sd[d] || 'default', global: cd[d] || 'default' })
+    }
+  }
+
+  const active = state.active_domains ?? []
+  const inSync = !levelDrift && drift.length === 0
+
+  return (
+    <div className="border-t border-border px-3 py-2 space-y-2 text-[10px]">
+      <div className="flex items-center gap-2">
+        <span className="text-gray-500 uppercase tracking-wide font-semibold">Level</span>
+        <span className={levelDrift ? 'text-amber-400 font-medium' : 'text-emerald-400'}>{state.level}</span>
+        {levelDrift ? (
+          <span className="text-gray-500">
+            ≠ <span className="text-gray-300">{config.log_level}</span> global — not yet propagated
+          </span>
+        ) : (
+          <span className="text-gray-600">inherited from global</span>
+        )}
+      </div>
+
+      {drift.length > 0 && (
+        <div>
+          <div className="text-gray-500 uppercase tracking-wide font-semibold mb-0.5">
+            Domain drift ({drift.length})
           </div>
-          {group.domains.map((domain) => {
-            const current = state.domains[domain] ?? ''
-            const isOverridden = !!current
-            const isActive = activeSet.has(domain)
-            return (
-              <div key={domain} className="flex items-center justify-between px-3 py-1 border-t border-border/50">
-                <span className={`text-[11px] ${isOverridden ? 'font-medium text-gray-200' : isActive ? 'text-gray-300' : 'text-gray-500'}`}>
-                  {domain}
-                  {!isActive && <span className="text-[9px] text-gray-600 ml-1">(unused)</span>}
-                </span>
-                <span
-                  className={`px-1.5 py-0.5 text-[10px] rounded border bg-surface ${
-                    isOverridden ? 'border-blue-700 text-blue-400' : 'border-border text-gray-500'
-                  }`}
-                >
-                  {current || 'default'}
+          <div className="space-y-0.5">
+            {drift.map((d) => (
+              <div
+                key={d.domain}
+                className="flex items-center justify-between rounded bg-amber-900/10 border border-amber-700/30 px-2 py-0.5"
+              >
+                <span className="text-gray-300">{d.domain}</span>
+                <span className="tabular-nums">
+                  <span className="text-amber-400">{d.service}</span>
+                  <span className="text-gray-500"> ≠ </span>
+                  <span className="text-gray-400">{d.global}</span>
                 </span>
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
-      ))}
-    </>
+      )}
+
+      <div>
+        <div className="text-gray-500 uppercase tracking-wide font-semibold mb-0.5">
+          Active domains ({active.length})
+        </div>
+        {active.length === 0 ? (
+          <div className="text-gray-600">No domain activity yet on this service.</div>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {active.map((d) => (
+              <span
+                key={d}
+                className="px-1.5 py-0.5 rounded bg-surface border border-border/50 text-gray-300 tabular-nums"
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {inSync && active.length === 0 && (
+        <div className="text-gray-600">In sync with global config.</div>
+      )}
+    </div>
   )
 }
