@@ -289,7 +289,6 @@ export function Game2D() {
   const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const {
     roomNavigation,
-    activeRoomCheckpointId,
     activeRoomCheckpoint,
     roomCheckpointNameById,
     roomTraversalOptions,
