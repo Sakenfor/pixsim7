@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { fromAssetResponse, getAsset, type AssetModel } from '@features/assets';
-import {
-  getRoomNavigation,
-  type GameLocationDetail,
-} from '@lib/api';
+import type { GameLocationDetail } from '@lib/api';
+import { getRoomNavigation } from '@lib/api/game';
 import {
   buildRoomNavigationGizmoConfig,
   createRoomNavigationTraversalOptions,
@@ -13,6 +10,8 @@ import {
   type ResolveRoomNavigationTransitionResult,
   type RoomNavigationTraversalOption,
 } from '@lib/game/runtime';
+
+import { fromAssetResponse, getAsset, type AssetModel } from '@features/assets';
 
 export type RoomNavigationData = NonNullable<ReturnType<typeof getRoomNavigation>>;
 export type RoomNavigationCheckpoint = RoomNavigationData['checkpoints'][number];
