@@ -18,6 +18,9 @@ import { useFilterMetadata } from '../hooks/useFilterMetadata';
 import type { FilterDefinition, FilterMetadataResponse, FilterOptionValue } from '../lib/api';
 import { useCollapsedGroupsStore } from '../stores/collapsedGroupsStore';
 import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
+import { useRecordSearchHistory } from '../stores/searchHistoryStore';
+
+import { SearchHistoryList } from './SearchHistoryList';
 
 /**
  * UI-specific metadata for filter keys.
@@ -1136,63 +1139,16 @@ function FilterControl({
 
   switch (type) {
     case 'search': {
-      const searchValue = typeof value === 'string' ? value.trim() : '';
-      const canBrowseSearch = searchValue.length > 0;
       return (
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            {uiConfig.icon && (
-              <Icon
-                name={uiConfig.icon}
-                className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"
-              />
-            )}
-            <input
-              type="text"
-              placeholder={compact ? '' : displayLabel}
-              value={(value as string) || ''}
-              onChange={(e) => onChange(e.target.value || undefined)}
-              className={`
-                bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm
-                text-neutral-800 dark:text-neutral-200
-                focus:outline-none focus:border-accent
-                ${uiConfig.icon ? 'pl-8' : ''}
-                ${compact ? 'w-32' : 'w-48'}
-              `}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              if (!canBrowseSearch) return;
-              e.stopPropagation();
-              e.preventDefault();
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-                context: {
-                  initialFilters: { [key]: searchValue } as AssetFilters,
-                  sourceLabel: `"${searchValue}"`,
-                  suppressHoverActions: true,
-                },
-                x: rect.right + 8,
-                y: rect.top,
-              });
-            }}
-            disabled={!canBrowseSearch}
-            title={
-              canBrowseSearch
-                ? `Open "${searchValue}" in Mini Gallery`
-                : 'Type something first'
-            }
-            aria-label={`Open search "${searchValue}" in Mini Gallery`}
-            className={`flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color,opacity] duration-150 ${
-              canBrowseSearch ? 'opacity-100' : 'opacity-40 cursor-not-allowed'
-            }`}
-          >
-            <Icon name="externalLink" size={12} className="w-3 h-3" />
-          </button>
-          {renderMatchModeToggle()}
-        </div>
+        <SearchFilterControl
+          filterKey={key}
+          value={typeof value === 'string' ? value : undefined}
+          icon={uiConfig.icon}
+          displayLabel={displayLabel}
+          compact={compact}
+          onChange={onChange}
+          renderMatchModeToggle={renderMatchModeToggle}
+        />
       );
     }
 
@@ -1336,4 +1292,98 @@ function FilterControl({
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// SearchFilterControl — search input + mini-gallery shortcut + history list
+// ---------------------------------------------------------------------------
+
+interface SearchFilterControlProps {
+  filterKey: string;
+  value: string | undefined;
+  icon?: string;
+  displayLabel: string;
+  compact?: boolean;
+  onChange: (value: string | boolean | number | string[] | undefined) => void;
+  renderMatchModeToggle: () => ReactNode;
+}
+
+function SearchFilterControl({
+  filterKey,
+  value,
+  icon,
+  displayLabel,
+  compact,
+  onChange,
+  renderMatchModeToggle,
+}: SearchFilterControlProps) {
+  const trimmed = (value ?? '').trim();
+  const canBrowseSearch = trimmed.length > 0;
+
+  useRecordSearchHistory(filterKey, value);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          {icon && (
+            <Icon
+              name={icon}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"
+            />
+          )}
+          <input
+            type="text"
+            placeholder={compact ? '' : displayLabel}
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value || undefined)}
+            className={`
+              bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm
+              text-neutral-800 dark:text-neutral-200
+              focus:outline-none focus:border-accent
+              ${icon ? 'pl-8' : ''}
+              ${compact ? 'w-32' : 'w-48'}
+            `}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            if (!canBrowseSearch) return;
+            e.stopPropagation();
+            e.preventDefault();
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+              context: {
+                initialFilters: { [filterKey]: trimmed } as AssetFilters,
+                sourceLabel: `"${trimmed}"`,
+                suppressHoverActions: true,
+              },
+              x: rect.right + 8,
+              y: rect.top,
+            });
+          }}
+          disabled={!canBrowseSearch}
+          title={
+            canBrowseSearch
+              ? `Open "${trimmed}" in Mini Gallery`
+              : 'Type something first'
+          }
+          aria-label={`Open search "${trimmed}" in Mini Gallery`}
+          className={`flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color,opacity] duration-150 ${
+            canBrowseSearch ? 'opacity-100' : 'opacity-40 cursor-not-allowed'
+          }`}
+        >
+          <Icon name="externalLink" size={12} className="w-3 h-3" />
+        </button>
+        {renderMatchModeToggle()}
+      </div>
+      <SearchHistoryList
+        filterKey={filterKey}
+        currentValue={value}
+        onPick={(query) => onChange(query)}
+        toFilters={(query) => ({ [filterKey]: query }) as AssetFilters}
+      />
+    </div>
+  );
 }

@@ -13,7 +13,9 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import type { IconName } from '@lib/icons';
 
+import { SearchHistoryList } from '@features/assets/components/SearchHistoryList';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
+import { useRecordSearchHistory } from '@features/assets/stores/searchHistoryStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import type {
@@ -537,53 +539,15 @@ export function FilterContent<T>({
 
   switch (filter.type) {
     case 'search': {
-      const searchValue = typeof value === 'string' ? value.trim() : '';
-      const searchAssetFilters =
-        searchValue.length > 0 ? filter.toAssetFilters?.(searchValue) : undefined;
-      const searchHasAssetFilters =
-        searchAssetFilters !== undefined && Object.keys(searchAssetFilters).length > 0;
       return (
-        <div className="flex items-center gap-2">
-          <div className="relative w-full">
-            {filter.icon && (
-              <Icon
-                name={filter.icon}
-                className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"
-              />
-            )}
-            <input
-              type="text"
-              placeholder={filter.label}
-              value={(value as string) || ''}
-              onChange={(e) => onChange(e.target.value || undefined)}
-              className={`w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent ${filter.icon ? 'pl-8' : ''}`}
-            />
-          </div>
-          {searchHasAssetFilters && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
-                  context: {
-                    initialFilters: searchAssetFilters,
-                    sourceLabel: `"${searchValue}"`,
-                    suppressHoverActions: true,
-                  },
-                  x: rect.right + 8,
-                  y: rect.top,
-                });
-              }}
-              title={`Open "${searchValue}" in Mini Gallery`}
-              aria-label={`Open search "${searchValue}" in Mini Gallery`}
-              className="flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color] duration-150"
-            >
-              <Icon name="externalLink" size={12} className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        <SearchFilterContent
+          filterKey={filter.key}
+          label={filter.label}
+          icon={filter.icon}
+          value={typeof value === 'string' ? value : undefined}
+          toAssetFilters={filter.toAssetFilters}
+          onChange={onChange}
+        />
       );
     }
 
@@ -758,6 +722,96 @@ export function FilterContent<T>({
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// SearchFilterContent — search input + mini-gallery shortcut + history list
+// ---------------------------------------------------------------------------
+
+interface SearchFilterContentProps {
+  filterKey: string;
+  label: string;
+  icon?: IconName;
+  value: string | undefined;
+  toAssetFilters?: (value: ClientFilterValue) => AssetFilters | undefined;
+  onChange: (value: ClientFilterValue) => void;
+}
+
+function SearchFilterContent({
+  filterKey,
+  label,
+  icon,
+  value,
+  toAssetFilters,
+  onChange,
+}: SearchFilterContentProps) {
+  const trimmed = (value ?? '').trim();
+  const searchAssetFilters =
+    trimmed.length > 0 ? toAssetFilters?.(trimmed) : undefined;
+  const searchHasAssetFilters =
+    searchAssetFilters !== undefined &&
+    Object.keys(searchAssetFilters).length > 0;
+
+  // History only meaningfully composes with toAssetFilters: without a
+  // translator, recents have no mini-gallery shortcut and we can't place
+  // them — so opt-in via the same gate as the live-query icon.
+  const historyEnabled = toAssetFilters !== undefined;
+
+  useRecordSearchHistory(historyEnabled ? filterKey : null, value);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative w-full">
+          {icon && (
+            <Icon
+              name={icon}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"
+            />
+          )}
+          <input
+            type="text"
+            placeholder={label}
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value || undefined)}
+            className={`w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent ${icon ? 'pl-8' : ''}`}
+          />
+        </div>
+        {searchHasAssetFilters && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                context: {
+                  initialFilters: searchAssetFilters,
+                  sourceLabel: `"${trimmed}"`,
+                  suppressHoverActions: true,
+                },
+                x: rect.right + 8,
+                y: rect.top,
+              });
+            }}
+            title={`Open "${trimmed}" in Mini Gallery`}
+            aria-label={`Open search "${trimmed}" in Mini Gallery`}
+            className="flex-shrink-0 inline-flex items-center justify-center h-7 w-7 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 transition-[transform,background-color] duration-150"
+          >
+            <Icon name="externalLink" size={12} className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {historyEnabled && (
+        <SearchHistoryList
+          filterKey={filterKey}
+          currentValue={value}
+          onPick={(query) => onChange(query)}
+          toFilters={(query) => toAssetFilters?.(query)}
+        />
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
