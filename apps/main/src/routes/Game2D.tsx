@@ -66,6 +66,7 @@ import { useLocationBackground } from '@/hooks/useLocationBackground';
 import { useNpcExpressions } from '@/hooks/useNpcExpressions';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
 import { useRoomNavigation } from '@/hooks/useRoomNavigation';
+import { useScenePlayback } from '@/hooks/useScenePlayback';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications } from '../components/game/GameNotification';
@@ -226,12 +227,18 @@ export function Game2D() {
     consumerId: 'Game2D.loadLocations',
   });
   const [locationDetail, setLocationDetail] = useState<GameLocationDetail | null>(null);
-  const [currentScene, setCurrentScene] = useState<Scene | null>(null);
-  const [isSceneOpen, setIsSceneOpen] = useState(false);
-  const [scenePhase, setScenePhase] = useState<ScenePlaybackPhase | null>(null);
+  const {
+    currentScene,
+    isSceneOpen,
+    scenePhase,
+    isLoadingScene,
+    setIsLoadingScene,
+    setScenePhase,
+    openScene,
+    closeScene,
+  } = useScenePlayback();
   const [error, setError] = useState<string | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [isLoadingScene, setIsLoadingScene] = useState(false);
   const {
     roomNavigation,
     activeRoomCheckpoint,
@@ -428,9 +435,7 @@ export function Game2D() {
         }
 
         const scene = await getGameScene(toSceneId(sceneId));
-        setCurrentScene(scene);
-        setIsSceneOpen(true);
-        setScenePhase('playing');
+        openScene(scene);
         runtimeEnterScene(sceneId);
         console.info('Auto-playing scene from URL params', { sceneId, worldId: selectedWorldId, locationId: selectedLocationId });
       } catch (e: unknown) {
@@ -582,9 +587,7 @@ export function Game2D() {
             updateGameSession(toSessionId(created.id), { world_time: worldTimeSeconds }).catch(() => {});
           }
           const scene = await getGameScene(toSceneId(sceneId));
-          setCurrentScene(scene);
-          setIsSceneOpen(true);
-          setScenePhase('playing');
+          openScene(scene);
           setActiveNpcId(npcId);
 
           // Update game context to scene mode (Task 22)
@@ -656,9 +659,7 @@ export function Game2D() {
       }
 
       const scene = await getGameScene(toSceneId(Number(sceneId)));
-      setCurrentScene(scene);
-      setIsSceneOpen(true);
-      setScenePhase('playing');
+      openScene(scene);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -1071,8 +1072,7 @@ export function Game2D() {
               </Panel>
             )}
             <Button size="sm" variant="secondary" onClick={() => {
-              setIsSceneOpen(false);
-              setScenePhase(null);
+              closeScene();
 
               // Return to room mode when closing scene (Task 22)
               if (selectedLocationId) {
@@ -1210,9 +1210,7 @@ export function Game2D() {
                   updateGameSession(toSessionId(created.id), { world_time: worldTimeSeconds }).catch(() => {});
                 }
                 const scene = await getGameScene(toSceneId(sceneId));
-                setCurrentScene(scene);
-                setIsSceneOpen(true);
-                setScenePhase('playing');
+                openScene(scene);
               } catch (e: any) {
                 addNotification('error', 'Scene Error', String(e?.message ?? e));
               } finally {
