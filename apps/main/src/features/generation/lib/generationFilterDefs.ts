@@ -21,6 +21,7 @@ const ALL_TERMINAL = '__all_terminal__';
 const ACTIVE_STATUSES: GranularStatus[] = [
   'starting', 'submitting', 'polling',
   'queued', 'submitted', 'accepted', 'cooldown', 'yielding', 'retrying',
+  'cancelling', 'pausing',
 ];
 const TERMINAL_STATUSES: GranularStatus[] = ['completed', 'failed', 'cancelled'];
 
@@ -46,6 +47,9 @@ const GRANULAR_STATUS_OPTIONS: StatusOption[] = [
   { value: 'cooldown', label: 'Cooldown', group: 'active', groupLabel: 'Active' },
   { value: 'yielding', label: 'Yielding', group: 'active', groupLabel: 'Active' },
   { value: 'retrying', label: 'Retrying', group: 'active', groupLabel: 'Active' },
+  // Active — deferred action in flight
+  { value: 'cancelling', label: 'Cancelling', group: 'active', groupLabel: 'Active' },
+  { value: 'pausing', label: 'Pausing', group: 'active', groupLabel: 'Active' },
   // Paused
   { value: 'paused', label: 'Paused', group: 'paused', groupLabel: 'Paused' },
   // Terminal
@@ -162,6 +166,11 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
       if (!selected || selected.length === 0) return true;
       return selected.includes(item.providerId);
     },
+    toAssetFilters: (value) => {
+      const selected = value as string[] | undefined;
+      if (!selected || selected.length === 0) return undefined;
+      return { effective_provider_id: selected };
+    },
   },
 
   {
@@ -227,6 +236,14 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
       const selected = value as string[] | undefined;
       if (!selected || selected.length === 0) return true;
       return selected.includes(item.operationType);
+    },
+    // operation_type on AssetSearchRequest is single-valued; if multi-selected,
+    // mini-gallery scopes to the first operation. Multi-op browsing belongs on
+    // the main gallery surface.
+    toAssetFilters: (value) => {
+      const selected = value as string[] | undefined;
+      if (!selected || selected.length === 0) return undefined;
+      return { operation_type: selected[0] };
     },
   },
 

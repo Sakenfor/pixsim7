@@ -11,6 +11,8 @@ import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
 import type { FilterDefinition, FilterMetadataResponse, FilterOptionValue } from '../lib/api';
@@ -274,6 +276,22 @@ export function DynamicFilters({
     }, 120);
   }, []);
 
+  const openMiniGalleryForChip = useCallback(
+    (filterKey: string, anchor: HTMLElement | null, sourceLabel: string) => {
+      const value = readFilterValue(filterKey);
+      if (value === undefined || value === null || value === '' || value === false) return;
+      if (Array.isArray(value) && value.length === 0) return;
+      const initialFilters: AssetFilters = { [filterKey]: value } as AssetFilters;
+      const rect = anchor?.getBoundingClientRect();
+      useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+        context: { initialFilters, sourceLabel },
+        x: rect ? rect.right + 8 : undefined,
+        y: rect ? rect.top : undefined,
+      });
+    },
+    [readFilterValue],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
@@ -394,6 +412,29 @@ export function DynamicFilters({
                 </span>
               )}
             </button>
+            {hasSelection && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openMiniGalleryForChip(
+                    filter.key,
+                    triggerRefs.current.get(filter.key) ?? null,
+                    displayLabel,
+                  );
+                }}
+                title={`Open ${displayLabel} in Mini Gallery`}
+                aria-label={`Open ${displayLabel} in Mini Gallery`}
+                tabIndex={isVisible ? 0 : -1}
+                className={`relative z-20 inline-flex items-center justify-center h-7 rounded border text-xs overflow-hidden transition-[width,opacity,margin,border-color,background-color] duration-200 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900/60 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-accent ${
+                  isVisible
+                    ? 'w-7 ml-1 opacity-100'
+                    : 'w-0 ml-0 opacity-0 pointer-events-none border-transparent'
+                }`}
+              >
+                <Icon name="externalLink" size={12} className="w-3 h-3" />
+              </button>
+            )}
             {/* Floating label — pointer-events-none so the mouse passes through to neighbors */}
             {!isInFlow && (
               <span
@@ -553,6 +594,7 @@ function CollapsibleGroup({
   selectedCount,
   totalCount,
   onToggleAll,
+  onBrowseAll,
   children,
 }: {
   filterKey: string;
@@ -562,6 +604,7 @@ function CollapsibleGroup({
   selectedCount: number;
   totalCount: number;
   onToggleAll?: () => void;
+  onBrowseAll?: (anchor: HTMLElement | null) => void;
   children: ReactNode;
 }) {
   const collapsed = useCollapsedGroupsStore((s) => s.isCollapsed(filterKey, groupKey));
@@ -585,7 +628,7 @@ function CollapsibleGroup({
 
   return (
     <div>
-      <div className="flex items-center gap-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95">
+      <div className="group/header flex items-center gap-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95">
         {onToggleAll && (
           <input
             ref={checkboxRef}
@@ -612,6 +655,21 @@ function CollapsibleGroup({
             </span>
           )}
         </button>
+        {onBrowseAll && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onBrowseAll(e.currentTarget as HTMLElement);
+            }}
+            title={`Open all of "${label}" in Mini Gallery`}
+            aria-label={`Open all of "${label}" in Mini Gallery`}
+            className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 mr-0.5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/header:opacity-100 transition-[opacity,transform,background-color] duration-150"
+          >
+            <Icon name="externalLink" size={12} className="w-3 h-3" />
+          </button>
+        )}
       </div>
       {!collapsed && (
         <div className="flex flex-col gap-1 pl-1">
@@ -708,16 +766,32 @@ function GroupedEnumFilter({
           const selectedInGroup = nsOptions.filter((o) =>
             selectedValues.includes(String(o.value)),
           ).length;
+          const groupLabel = formatGroupLabel(namespace);
           return (
             <CollapsibleGroup
               key={namespace}
               filterKey={filterKey}
               groupKey={namespace}
-              label={formatGroupLabel(namespace)}
+              label={groupLabel}
               showHeader={showHeaders}
               selectedCount={selectedInGroup}
               totalCount={nsOptions.length}
               onToggleAll={showHeaders ? () => toggleGroup(groupValues) : undefined}
+              onBrowseAll={
+                showHeaders
+                  ? (anchor) => {
+                      const rect = anchor?.getBoundingClientRect();
+                      useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                        context: {
+                          initialFilters: { [filterKey]: groupValues } as AssetFilters,
+                          sourceLabel: groupLabel,
+                        },
+                        x: rect ? rect.right + 8 : undefined,
+                        y: rect ? rect.top : undefined,
+                      });
+                    }
+                  : undefined
+              }
             >
               {nsOptions.map((opt) => renderOption(opt, showHeaders))}
             </CollapsibleGroup>
@@ -1111,29 +1185,54 @@ function FilterControl({
           displayLabel = getOptionDisplayLabel(opt);
         }
         return (
-          <label
+          <div
             key={opt.value}
-            className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
+            className="group/opt flex items-center gap-1"
           >
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => {
-                const next = new Set(selectedValues);
-                if (next.has(optValue)) {
-                  next.delete(optValue);
-                } else {
-                  next.add(optValue);
-                }
-                onChange(Array.from(next));
+            <label
+              className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => {
+                  const next = new Set(selectedValues);
+                  if (next.has(optValue)) {
+                    next.delete(optValue);
+                  } else {
+                    next.add(optValue);
+                  }
+                  onChange(Array.from(next));
+                }}
+                className="accent-accent flex-shrink-0"
+              />
+              <span className="truncate">
+                {displayLabel}
+                {opt.count !== undefined ? ` (${opt.count})` : ''}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                  context: {
+                    initialFilters: { [key]: [optValue] } as AssetFilters,
+                    sourceLabel: displayLabel,
+                  },
+                  x: rect.right + 8,
+                  y: rect.top,
+                });
               }}
-              className="accent-accent"
-            />
-            <span>
-              {displayLabel}
-              {opt.count !== undefined ? ` (${opt.count})` : ''}
-            </span>
-          </label>
+              title={`Open "${displayLabel}" in Mini Gallery`}
+              aria-label={`Open "${displayLabel}" in Mini Gallery`}
+              className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/opt:opacity-100 transition-[opacity,transform,background-color] duration-150"
+            >
+              <Icon name="externalLink" size={12} className="w-3 h-3" />
+            </button>
+          </div>
         );
       };
 

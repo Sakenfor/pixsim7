@@ -1,5 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 
+import type { AssetFilters } from '@features/assets/hooks/useAssets';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -34,6 +36,13 @@ export interface ClientFilterDef<T> {
   renderOptionExtra?: (optionValue: string) => ReactNode;
   /** Number of columns for enum option layout (default 1). */
   columns?: number;
+  /**
+   * Translate the chip's current value into an `AssetFilters` slice. When provided
+   * (and the slice is non-empty), the chip exposes an "open in mini gallery" hover
+   * action that spawns a floating Mini Gallery scoped to this filter value.
+   * Return `undefined` to suppress the action for the current value.
+   */
+  toAssetFilters?: (value: ClientFilterValue) => AssetFilters | undefined;
 }
 
 export interface UseClientFiltersResult<T> {

@@ -95,6 +95,14 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
         if (!Array.isArray(value) || value.length === 0) return true;
         return value.includes(asset.folderId);
       },
+      // Mini-gallery jump: scope library Assets by their `source_folder_id`,
+      // i.e. the folder the asset was originally imported from. Useful to
+      // peek "what made it into the library from this local folder?".
+      toAssetFilters: (value) => {
+        const arr = Array.isArray(value) ? value : value ? [String(value)] : [];
+        if (arr.length === 0) return undefined;
+        return { source_folder_id: arr };
+      },
       renderOptionExtra: renderFolderOptionExtra,
       deriveOptionsWithCounts: (items) => {
         const counts = new Map<string, number>();

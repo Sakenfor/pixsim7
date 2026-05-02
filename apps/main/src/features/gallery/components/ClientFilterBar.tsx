@@ -13,6 +13,9 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import type { IconName } from '@lib/icons';
 
+import type { AssetFilters } from '@features/assets/hooks/useAssets';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
 import type {
   ClientEnumFilterOption,
   ClientFilterDef,
@@ -105,6 +108,10 @@ export function ClientFilterBar<T>({
           : selectedValue
             ? 1
             : 0;
+        const assetFilters =
+          selectedCount > 0 ? filter.toAssetFilters?.(selectedValue) : undefined;
+        const hasAssetFilters =
+          assetFilters !== undefined && Object.keys(assetFilters).length > 0;
 
         return (
           <FilterChip
@@ -124,6 +131,8 @@ export function ClientFilterBar<T>({
             triggerRef={setTriggerRef(filter.key)}
             anchorEl={triggerRefs.current.get(filter.key) || null}
             triggerElRef={{ current: triggerRefs.current.get(filter.key) || null }}
+            assetFilters={hasAssetFilters ? assetFilters : undefined}
+            sourceLabel={filter.label}
           >
             <FilterContent
               filter={filter}
@@ -185,6 +194,13 @@ export interface FilterChipProps {
   anchorEl?: HTMLElement | null;
   /** Ref object to the trigger element for Dropdown's triggerRef (used internally). */
   triggerElRef?: React.RefObject<HTMLElement | null>;
+  /**
+   * When provided, a hover-revealed action button appears next to the chip that
+   * opens a floating Mini Gallery panel scoped to this filter slice.
+   */
+  assetFilters?: AssetFilters;
+  /** Human-readable label passed to the Mini Gallery as `sourceLabel`. */
+  sourceLabel?: string;
 }
 
 export function FilterChip(props: FilterChipProps) {
@@ -205,9 +221,28 @@ export function FilterChip(props: FilterChipProps) {
     triggerRef: externalTriggerRef,
     anchorEl: externalAnchorEl,
     triggerElRef: externalTriggerElRef,
+    assetFilters,
+    sourceLabel,
   } = props;
   const internalButtonRef = useRef<HTMLButtonElement>(null);
   const [isInteracting, setIsInteracting] = useState(false);
+
+  const showMiniGalleryAction = assetFilters !== undefined;
+  const miniGalleryActionVisible = showMiniGalleryAction && (isHovered || isOpen);
+
+  const handleOpenMiniGallery = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!assetFilters) return;
+      const rect = internalButtonRef.current?.getBoundingClientRect();
+      useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+        context: { initialFilters: assetFilters, sourceLabel: sourceLabel ?? label },
+        x: rect ? rect.right + 8 : undefined,
+        y: rect ? rect.top : undefined,
+      });
+    },
+    [assetFilters, sourceLabel, label],
+  );
 
   const hasSelection = count > 0;
   const isVisible = isOpen || isHovered || (holdOpenOnFocus ? isInteracting : false);
@@ -301,6 +336,22 @@ export function FilterChip(props: FilterChipProps) {
           </span>
         </span>
       </button>
+      {showMiniGalleryAction && (
+        <button
+          type="button"
+          onClick={handleOpenMiniGallery}
+          title={`Open ${sourceLabel ?? label} in Mini Gallery`}
+          aria-label={`Open ${sourceLabel ?? label} in Mini Gallery`}
+          tabIndex={miniGalleryActionVisible ? 0 : -1}
+          className={`relative z-20 inline-flex items-center justify-center h-7 rounded border text-xs overflow-hidden transition-[width,opacity,margin,border-color,background-color] duration-200 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900/60 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-accent ${
+            miniGalleryActionVisible
+              ? 'w-7 ml-1 opacity-100'
+              : 'w-0 ml-0 opacity-0 pointer-events-none border-transparent'
+          }`}
+        >
+          <Icon name="externalLink" size={12} className="w-3 h-3" />
+        </button>
+      )}
       <FilterDropdown
         anchorEl={anchorEl}
         triggerRef={triggerElRef}
@@ -532,6 +583,12 @@ export function FilterContent<T>({
       const renderOption = (opt: ClientEnumFilterOption) => {
         const isSelected = selectedValues.includes(opt.value);
         const extra = filter.renderOptionExtra?.(opt.value);
+        const optDisplayLabel = getOptionDisplayLabel(opt);
+        const optAssetFilters = filter.toAssetFilters?.(
+          selectionMode === 'single' ? opt.value : [opt.value],
+        );
+        const optHasAssetFilters =
+          optAssetFilters !== undefined && Object.keys(optAssetFilters).length > 0;
         return (
           <div key={opt.value} className="group/opt flex items-center gap-1">
             <label
@@ -553,10 +610,30 @@ export function FilterContent<T>({
                 className="accent-accent flex-shrink-0"
               />
               <span className="truncate">
-                {getOptionDisplayLabel(opt)}
+                {optDisplayLabel}
                 {opt.count !== undefined ? ` (${opt.count})` : ''}
               </span>
             </label>
+            {optHasAssetFilters && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                    context: { initialFilters: optAssetFilters, sourceLabel: optDisplayLabel },
+                    x: rect.right + 8,
+                    y: rect.top,
+                  });
+                }}
+                title={`Open "${optDisplayLabel}" in Mini Gallery`}
+                aria-label={`Open "${optDisplayLabel}" in Mini Gallery`}
+                className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/opt:opacity-100 transition-[opacity,transform,background-color] duration-150"
+              >
+                <Icon name="externalLink" size={12} className="w-3 h-3" />
+              </button>
+            )}
             {extra && (
               <span className="flex-shrink-0 flex items-center opacity-0 group-hover/opt:opacity-100 transition-opacity">
                 {extra}
@@ -580,16 +657,48 @@ export function FilterContent<T>({
           {!hasOptionGroups &&
             options.map((opt) => renderOption(opt))}
           {hasOptionGroups &&
-            groupedOptions.map((group) => (
-              <div key={group.key} className="space-y-1">
-                {shouldRenderGroupHeaders && (
-                  <div className="pt-1 first:pt-0 text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold">
-                    {group.label}
-                  </div>
-                )}
-                {group.options.map((opt) => renderOption(opt))}
-              </div>
-            ))}
+            groupedOptions.map((group) => {
+              const groupValues = group.options.map((o) => o.value);
+              const groupAssetFilters = filter.toAssetFilters?.(groupValues);
+              const groupHasAssetFilters =
+                groupAssetFilters !== undefined &&
+                Object.keys(groupAssetFilters).length > 0;
+              return (
+                <div key={group.key} className="space-y-1">
+                  {shouldRenderGroupHeaders && (
+                    <div className="group/header pt-1 first:pt-0 flex items-center gap-1">
+                      <div className="flex-1 min-w-0 text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold truncate">
+                        {group.label}
+                      </div>
+                      {groupHasAssetFilters && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            useWorkspaceStore.getState().openFloatingPanel('mini-gallery', {
+                              context: {
+                                initialFilters: groupAssetFilters,
+                                sourceLabel: group.label,
+                              },
+                              x: rect.right + 8,
+                              y: rect.top,
+                            });
+                          }}
+                          title={`Open all of "${group.label}" in Mini Gallery`}
+                          aria-label={`Open all of "${group.label}" in Mini Gallery`}
+                          className="flex-shrink-0 inline-flex items-center justify-center h-5 w-5 rounded text-accent bg-accent/10 hover:bg-accent/25 hover:scale-110 opacity-0 group-hover/header:opacity-100 transition-[opacity,transform,background-color] duration-150"
+                        >
+                          <Icon name="externalLink" size={12} className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {group.options.map((opt) => renderOption(opt))}
+                </div>
+              );
+            })}
         </div>
       );
     }
