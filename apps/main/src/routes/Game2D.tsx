@@ -66,6 +66,7 @@ import { useGameLocations } from '@/hooks/useGameLocations';
 import { useGameNotifications } from '@/hooks/useGameNotifications';
 import { useNpcSlotAssignments } from '@/hooks/useNpcSlotAssignments';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { useRoomNavigation } from '@/hooks/useRoomNavigation';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications } from '../components/game/GameNotification';
@@ -78,7 +79,6 @@ import {
   getGameSession,
   updateGameSession,
   createGameWorld,
-  getRoomNavigation,
   attemptPickpocket,
   attemptSensualTouch,
   type SessionUpdatePayload,
@@ -92,12 +92,6 @@ import {
   useGameRuntime,
   useActorPresence,
   isTurnBasedMode,
-  createRoomNavigationTraversalOptions,
-  buildRoomNavigationGizmoConfig,
-  resolveRoomNavigationTransition,
-  resolveRoomNavigationOptionFromGizmoResult,
-  type ResolveRoomNavigationTransitionResult,
-  type RoomNavigationTraversalOption,
   getTurnDelta,
   worldTimeToSeconds,
   registerBuiltinGamePlugins,
@@ -112,43 +106,6 @@ import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/themin
 interface WorldTime {
   day: number;
   hour: number;
-}
-
-type RoomNavigationData = NonNullable<ReturnType<typeof getRoomNavigation>>;
-
-function getCheckpointPrimaryAssetRef(
-  checkpoint: RoomNavigationData['checkpoints'][number],
-): string | undefined {
-  if (checkpoint.view.kind === 'cylindrical_pano') {
-    return checkpoint.view.pano_asset_id;
-  }
-  return (
-    checkpoint.view.north_asset_id ||
-    checkpoint.view.east_asset_id ||
-    checkpoint.view.south_asset_id ||
-    checkpoint.view.west_asset_id
-  );
-}
-
-function parseCheckpointAssetRef(
-  value: string | undefined,
-): { assetId?: number; url?: string } | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^\d+$/.test(trimmed)) {
-    return { assetId: Number(trimmed) };
-  }
-  if (/^asset:\d+$/i.test(trimmed)) {
-    const parsed = Number(trimmed.split(':')[1]);
-    if (Number.isFinite(parsed)) {
-      return { assetId: parsed };
-    }
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return { url: trimmed };
-  }
-  return null;
 }
 
 function readNpcExpressionSurfaceType(expression: NpcExpressionDTO): string | null {
@@ -330,19 +287,32 @@ export function Game2D() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
-  const [roomNavigation, setRoomNavigation] = useState<RoomNavigationData | null>(null);
-  const [activeRoomCheckpointId, setActiveRoomCheckpointId] = useState<string | null>(null);
-  const [roomNavBackgroundAsset, setRoomNavBackgroundAsset] = useState<AssetModel | null>(null);
-  const [roomNavBackgroundUrl, setRoomNavBackgroundUrl] = useState<string | null>(null);
-  const [isLoadingRoomNavAsset, setIsLoadingRoomNavAsset] = useState(false);
-  const [roomNavMoveLog, setRoomNavMoveLog] = useState<string[]>([]);
-  const [roomNavControlMode, setRoomNavControlMode] =
-    useState<'buttons' | 'gizmo'>('buttons');
-  const [lastRoomNavGizmoSegmentId, setLastRoomNavGizmoSegmentId] =
-    useState<string | null>(null);
-  const [isResolvingRoomNavTransition, setIsResolvingRoomNavTransition] = useState(false);
-  const [lastRoomNavTransitionResult, setLastRoomNavTransitionResult] =
-    useState<ResolveRoomNavigationTransitionResult | null>(null);
+  const {
+    roomNavigation,
+    activeRoomCheckpointId,
+    activeRoomCheckpoint,
+    roomCheckpointNameById,
+    roomTraversalOptions,
+    roomTraversalGizmoConfig,
+    roomNavBackgroundAsset,
+    roomNavBackgroundUrl,
+    isLoadingRoomNavAsset,
+    roomNavMoveLog,
+    isResolvingRoomNavTransition,
+    roomNavControlMode,
+    setRoomNavControlMode,
+    syncFromLocation: syncRoomNavFromLocation,
+    handleRoomTraversalMove,
+    handleRoomTraversalGizmoResult,
+  } = useRoomNavigation({
+    locationDetail,
+    isLoadingScene,
+    onLocationUpdate: (updatedLocation) => {
+      setLocationDetail((current) =>
+        current && current.id === updatedLocation.id ? updatedLocation : current,
+      );
+    },
+  });
   const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
   const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
@@ -377,47 +347,6 @@ export function Game2D() {
   const { mediaSrc: resolvedNpcPortraitSrc } = useResolvedAssetMedia({
     mediaUrl: npcPortraitCandidate,
   });
-  const roomCheckpointNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    if (!roomNavigation) {
-      return map;
-    }
-    roomNavigation.checkpoints.forEach((checkpoint) => {
-      map.set(checkpoint.id, checkpoint.label || checkpoint.id);
-    });
-    return map;
-  }, [roomNavigation]);
-  const activeRoomCheckpoint = useMemo(() => {
-    if (!roomNavigation || !activeRoomCheckpointId) {
-      return null;
-    }
-    return (
-      roomNavigation.checkpoints.find(
-        (checkpoint) => checkpoint.id === activeRoomCheckpointId,
-      ) ?? null
-    );
-  }, [roomNavigation, activeRoomCheckpointId]);
-  const roomTraversalOptions = useMemo(() => {
-    if (!roomNavigation) {
-      return [];
-    }
-    return createRoomNavigationTraversalOptions({
-      navigation: roomNavigation,
-      activeCheckpointId: activeRoomCheckpointId,
-    });
-  }, [roomNavigation, activeRoomCheckpointId]);
-  const roomTraversalGizmoConfig = useMemo(
-    () =>
-      buildRoomNavigationGizmoConfig(roomTraversalOptions, {
-        style: 'orb',
-      }),
-    [roomTraversalOptions],
-  );
-
-  useEffect(() => {
-    setLastRoomNavGizmoSegmentId(null);
-  }, [activeRoomCheckpointId]);
-
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
     worldId: selectedWorldId,
@@ -599,15 +528,7 @@ export function Game2D() {
     if (!selectedLocationId) {
       setLocationDetail(null);
       setBackgroundAsset(null);
-      setRoomNavigation(null);
-      setActiveRoomCheckpointId(null);
-      setRoomNavBackgroundAsset(null);
-      setRoomNavBackgroundUrl(null);
-      setRoomNavMoveLog([]);
-      setRoomNavControlMode('buttons');
-      setLastRoomNavGizmoSegmentId(null);
-      setIsResolvingRoomNavTransition(false);
-      setLastRoomNavTransitionResult(null);
+      syncRoomNavFromLocation(null);
       return;
     }
     setIsLoadingLocation(true);
@@ -616,20 +537,7 @@ export function Game2D() {
       try {
         const detail = await getGameLocation(toLocationId(selectedLocationId));
         setLocationDetail(detail);
-        const nextRoomNavigation = getRoomNavigation(detail);
-        setRoomNavigation(nextRoomNavigation);
-        const initialCheckpointId =
-          nextRoomNavigation?.start_checkpoint_id ??
-          nextRoomNavigation?.checkpoints[0]?.id ??
-          null;
-        setActiveRoomCheckpointId(initialCheckpointId);
-        setRoomNavBackgroundAsset(null);
-        setRoomNavBackgroundUrl(null);
-        setRoomNavMoveLog([]);
-        setRoomNavControlMode('buttons');
-        setLastRoomNavGizmoSegmentId(null);
-        setIsResolvingRoomNavTransition(false);
-        setLastRoomNavTransitionResult(null);
+        syncRoomNavFromLocation(detail);
 
         // Try to load a background asset for 2D rendering:
         // prefer meta.background_asset_id, else fall back to asset_id if it is image/video.
@@ -657,78 +565,6 @@ export function Game2D() {
       }
     })();
   }, [selectedLocationId]);
-
-  useEffect(() => {
-    if (!roomNavigation || !activeRoomCheckpointId) {
-      setRoomNavBackgroundAsset(null);
-      setRoomNavBackgroundUrl(null);
-      setIsLoadingRoomNavAsset(false);
-      return;
-    }
-
-    const checkpoint = roomNavigation.checkpoints.find(
-      (row) => row.id === activeRoomCheckpointId,
-    );
-    if (!checkpoint) {
-      setRoomNavBackgroundAsset(null);
-      setRoomNavBackgroundUrl(null);
-      setIsLoadingRoomNavAsset(false);
-      return;
-    }
-
-    const source = parseCheckpointAssetRef(getCheckpointPrimaryAssetRef(checkpoint));
-    if (!source) {
-      setRoomNavBackgroundAsset(null);
-      setRoomNavBackgroundUrl(null);
-      setIsLoadingRoomNavAsset(false);
-      return;
-    }
-
-    if (source.url) {
-      setRoomNavBackgroundUrl(source.url);
-      setRoomNavBackgroundAsset(null);
-      setIsLoadingRoomNavAsset(false);
-      return;
-    }
-
-    if (typeof source.assetId !== 'number') {
-      setRoomNavBackgroundAsset(null);
-      setRoomNavBackgroundUrl(null);
-      setIsLoadingRoomNavAsset(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingRoomNavAsset(true);
-    setRoomNavBackgroundUrl(null);
-    setRoomNavBackgroundAsset(null);
-    (async () => {
-      try {
-        const response = await getAsset(source.assetId);
-        if (cancelled) {
-          return;
-        }
-        const asset = fromAssetResponse(response);
-        if (asset.mediaType === 'image' || asset.mediaType === 'video') {
-          setRoomNavBackgroundAsset(asset);
-        } else {
-          setRoomNavBackgroundAsset(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setRoomNavBackgroundAsset(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingRoomNavAsset(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [roomNavigation, activeRoomCheckpointId]);
 
   // Fetch expressions for the active NPC (once per location / NPC change).
   useEffect(() => {
@@ -884,82 +720,6 @@ export function Game2D() {
         addNotification(type, title, message);
       },
     });
-  };
-
-  const handleRoomTraversalMove = async (option: RoomNavigationTraversalOption) => {
-    if (!locationDetail || !roomNavigation || !activeRoomCheckpointId) {
-      return;
-    }
-
-    const fromCheckpointId = activeRoomCheckpointId;
-    let transitionStatusLabel = '';
-    setIsResolvingRoomNavTransition(true);
-    try {
-      const transitionResult = await resolveRoomNavigationTransition({
-        location: locationDetail,
-        navigation: roomNavigation,
-        fromCheckpointId,
-        toCheckpointId: option.toCheckpointId,
-        moveKind: option.moveKind,
-        transitionProfile: option.transitionProfile,
-        providerId: 'pixverse',
-        onLocationUpdate: (updatedLocation) => {
-          setLocationDetail((current) =>
-            current && current.id === updatedLocation.id ? updatedLocation : current,
-          );
-          const updatedNavigation = getRoomNavigation(updatedLocation);
-          if (updatedNavigation) {
-            setRoomNavigation(updatedNavigation);
-          }
-        },
-      });
-      setLastRoomNavTransitionResult(transitionResult);
-      transitionStatusLabel = ` [${transitionResult.status}]`;
-    } catch (transitionError: unknown) {
-      const message =
-        transitionError instanceof Error
-          ? transitionError.message
-          : String(transitionError);
-      setLastRoomNavTransitionResult({
-        status: 'degraded_failed',
-        cacheKey: '',
-        message: `runtime transition resolver failed: ${message}`,
-      });
-      transitionStatusLabel = ' [degraded_failed]';
-    } finally {
-      setIsResolvingRoomNavTransition(false);
-    }
-
-    setActiveRoomCheckpointId(option.toCheckpointId);
-    setRoomNavMoveLog((prev) => [
-      `${option.source}: ${fromCheckpointId} -> ${option.toCheckpointId}${transitionStatusLabel}`,
-      ...prev,
-    ].slice(0, 6));
-  };
-
-  const handleRoomTraversalGizmoResult = (
-    segmentId: string | null | undefined,
-  ) => {
-    if (
-      !segmentId ||
-      segmentId === lastRoomNavGizmoSegmentId ||
-      isResolvingRoomNavTransition ||
-      isLoadingScene ||
-      isLoadingRoomNavAsset
-    ) {
-      return;
-    }
-
-    const selectedOption = resolveRoomNavigationOptionFromGizmoResult(
-      { segmentId },
-      roomTraversalOptions,
-    );
-    if (!selectedOption) {
-      return;
-    }
-
-    setLastRoomNavGizmoSegmentId(segmentId);
-    void handleRoomTraversalMove(selectedOption);
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
