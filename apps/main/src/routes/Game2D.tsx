@@ -29,7 +29,6 @@ import {
   getTurnDeltaLabel,
   type NpcSlotAssignment,
   type HotspotAction,
-  type ScenePlaybackPhase,
 } from '@pixsim7/game.engine';
 import { saveWorldSession } from '@pixsim7/game.engine';
 import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
@@ -40,7 +39,7 @@ import { useSearchParams } from 'react-router-dom';
 import { buildWorldLabelMap } from '@lib/game/worldLabels';
 import { Icon } from '@lib/icons';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
-import type { Scene, SessionFlags } from '@lib/registries';
+import type { SessionFlags } from '@lib/registries';
 
 
 import {
