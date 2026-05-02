@@ -174,6 +174,7 @@ export function AccountRow({
           {promotionCount > 0 && (
             <PromotionDetailsPopover
               promotions={promotions}
+              promotionDiscounts={account.promotion_discounts as Record<string, number> | undefined}
               knownModelIds={knownModelIds}
               title={`Promotions • ${account.nickname || account.email}`}
               triggerClassName="w-fit px-1.5 py-0.5"

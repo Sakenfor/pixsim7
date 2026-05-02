@@ -611,6 +611,7 @@ class Provider(ABC):
     def compute_actual_credits(
         self,
         generation: Generation,
+        account: Optional[ProviderAccount] = None,
         actual_duration: Optional[float] = None,
     ) -> Optional[int]:
         """
@@ -621,6 +622,11 @@ class Provider(ABC):
 
         Args:
             generation: The completed generation
+            account: The account being charged. Adapters that apply per-account
+                pricing (e.g. promotion discounts from provider_metadata)
+                should read it from here. May be None if the caller can't
+                resolve the account; adapters should fall back to undiscounted
+                pricing in that case.
             actual_duration: Actual duration from provider (for videos)
 
         Returns:

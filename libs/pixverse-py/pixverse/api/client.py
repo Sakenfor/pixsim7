@@ -8,7 +8,7 @@ import os
 import httpx
 import uuid
 from typing import Optional, List, Dict, Any, Union
-from ..models import Video, GenerationOptions, TransitionOptions, Account, ImageModel
+from ..models import Video, GenerationOptions, TransitionOptions, Account, ImageModel, VideoModel
 from ..exceptions import RateLimitError, APIError, ContentModerationError
 
 # Import operation modules
@@ -854,24 +854,48 @@ class PixverseAPI:
         # Try both "video_status" (used in personal video list) and "status" (used in other endpoints)
         status_code = data.get("video_status") or data.get("status", 0)
 
-        # Status code mapping:
+        # Fal-proxied models (grok-imagine, happyhorse-1.0) reuse the same
+        # video_status integers as native models but with different semantics:
+        #   - 9 = queued at fal (NOT failed; native 9 IS failed)
+        #   - 10 = processing at fal (NOT completed; native 10 IS completed)
+        #   - 8 = interrupted (partner refused mid-stream — Pixverse UI labels
+        #         this "generation interrupted"; functionally equivalent to a
+        #         filter from the user's perspective but distinct lifecycle)
+        # See VideoModelSpec.fal_proxied.
+        model_id = data.get("model")
+        spec = VideoModel.get(model_id) if model_id else None
+        is_fal_proxied = bool(spec and spec.fal_proxied)
+
+        # Status code mapping (native v5/v6/etc.):
         # 1, 10 = completed
         # 5 = processing
-        # 7  = filtered (v5/v6 native)
-        # 17 = filtered (grok-imagine; fal-proxied — empirically observed
-        #      with dims=0, last_frame='', url swapped to /default.mp4 on
+        # 7  = filtered (Pixverse-side moderation)
+        # 17 = filtered (grok-imagine fal-side pre-execution refusal — empirically
+        #      observed with dims=0, last_frame='', url swapped to /default.mp4 on
         #      moderation-bait prompts. Same response shape as 7.)
         # 8, 9 = failed
-        if status_code in [1, 10]:
-            status = "completed"
-        elif status_code == 5:
-            status = "processing"
-        elif status_code in [7, 17]:
-            status = "filtered"
-        elif status_code in [8, 9]:
-            status = "failed"
+        if is_fal_proxied:
+            if status_code == 1:
+                status = "completed"
+            elif status_code in [5, 9, 10]:
+                status = "processing"
+            elif status_code in [7, 17]:
+                status = "filtered"
+            elif status_code == 8:
+                status = "interrupted"
+            else:
+                status = "processing" if status_code == 0 else f"unknown_{status_code}"
         else:
-            status = "processing" if status_code == 0 else f"unknown_{status_code}"
+            if status_code in [1, 10]:
+                status = "completed"
+            elif status_code == 5:
+                status = "processing"
+            elif status_code in [7, 17]:
+                status = "filtered"
+            elif status_code in [8, 9]:
+                status = "failed"
+            else:
+                status = "processing" if status_code == 0 else f"unknown_{status_code}"
 
         # Extract URLs
         video_url = data.get("customer_video_url") or data.get("video_url") or data.get("url")

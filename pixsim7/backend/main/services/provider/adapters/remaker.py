@@ -745,7 +745,12 @@ class RemakerProvider(WebApiProvider):
             }
         }
 
-    def compute_actual_credits(self, generation, actual_duration: Optional[float] = None) -> Optional[int]:
+    def compute_actual_credits(
+        self,
+        generation,
+        account: Optional["ProviderAccount"] = None,
+        actual_duration: Optional[float] = None,
+    ) -> Optional[int]:
         # Remaker credits are provider-specific and currently not modeled in PixSim7.
         # Returning 0 causes billing to be skipped.
         return 0

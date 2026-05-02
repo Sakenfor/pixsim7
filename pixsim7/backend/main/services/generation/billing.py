@@ -127,9 +127,11 @@ class GenerationBillingService:
             await self.db.flush()
             return generation
 
-        # Compute actual credits
+        # Compute actual credits (pass account so adapters can apply
+        # per-account pricing like promotion discounts).
         actual_credits = self._compute_actual_credits(
             generation=generation,
+            account=account,
             actual_duration=actual_duration,
         )
 
@@ -223,6 +225,7 @@ class GenerationBillingService:
     def _compute_actual_credits(
         self,
         generation: Generation,
+        account: Optional[ProviderAccount] = None,
         actual_duration: Optional[float] = None,
     ) -> Optional[int]:
         """
@@ -237,6 +240,9 @@ class GenerationBillingService:
 
         Args:
             generation: The completed generation
+            account: The account being charged. Forwarded to the provider so
+                per-account pricing (promotion discounts, plan-specific tiers,
+                etc.) can be applied. May be None if not yet resolved.
             actual_duration: Actual duration from provider (for videos)
 
         Returns:
@@ -246,7 +252,7 @@ class GenerationBillingService:
 
         try:
             provider = registry.get(generation.provider_id)
-            return provider.compute_actual_credits(generation, actual_duration)
+            return provider.compute_actual_credits(generation, account, actual_duration)
         except KeyError:
             logger.warning(
                 "provider_not_found_for_billing",

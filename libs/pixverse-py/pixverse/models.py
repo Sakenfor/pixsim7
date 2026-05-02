@@ -41,6 +41,10 @@ class VideoModelSpec:
     # Per-second WebAPI cost overrides as ((quality, credits_per_second), ...).
     # Empty = inherit the provider-wide default WEBAPI_BASE_COSTS table.
     pricing: tuple[tuple[str, int], ...] = ()
+    # External-partner relay (e.g. fal-proxied models like grok-imagine,
+    # happyhorse-1.0). Status codes have different semantics than native
+    # Pixverse models — see _parse_video_response status table.
+    fal_proxied: bool = False
 
     @property
     def capabilities(self) -> Dict[str, bool]:
@@ -134,6 +138,7 @@ class VideoModel:
         qualities=("480p", "720p"),
         # PixVerse partner pricing — credits per second.
         pricing=(("480p", 10), ("720p", 15)),
+        fal_proxied=True,
     )
     SEEDANCE_2_STANDARD = VideoModelSpec(
         "seedance-2.0-standard",
@@ -155,12 +160,23 @@ class VideoModel:
         # Credits per second.
         pricing=(("480p", 10), ("720p", 20)),
     )
+    HAPPYHORSE_1 = VideoModelSpec(
+        "happyhorse-1.0",
+        badge="HH",
+        qualities=("720p", "1080p"),
+        min_duration=3,
+        max_duration=15,
+        # Credits per second. Confirmed on a paid account: 720p/5s=150, 1080p/5s=300.
+        pricing=(("720p", 30), ("1080p", 60)),
+        fal_proxied=True,
+    )
 
     # All models (order matters for UI)
     ALL: List[VideoModelSpec] = [
         V5, V5_FAST, V5_5, V5_6, V6, C1,
         GROK_IMAGINE,
         SEEDANCE_2_STANDARD, SEEDANCE_2_FAST,
+        HAPPYHORSE_1,
     ]
     DEFAULT: VideoModelSpec = V5
 
@@ -689,7 +705,13 @@ class Video(BaseModel):
 
     id: str = Field(description="Video ID")
     url: Optional[str] = Field(default=None, description="Video URL")
-    status: str = Field(default="pending", description="Video status (pending, processing, completed, failed)")
+    status: str = Field(
+        default="pending",
+        description=(
+            "Video status: pending, processing, completed, failed, filtered, "
+            "interrupted (fal-proxied models only — partner refused mid-stream)"
+        ),
+    )
     prompt: Optional[str] = Field(default=None, description="Generation prompt")
     thumbnail: Optional[str] = Field(
         default=None,

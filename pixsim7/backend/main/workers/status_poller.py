@@ -121,6 +121,40 @@ logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
 
 
+def _is_partner_interrupted_filter(status_result: Any, generation: Any) -> bool:
+    """Detect Pixverse fal-proxied partner-interrupt (video_status=8 on grok-imagine,
+    happyhorse-1.0, etc.).
+
+    The partner accepted the job and refused mid-stream — Pixverse UI labels this
+    "generation interrupted." Distinct from a regular content filter: the input
+    is the trigger, so retrying the same input is futile. We don't get a
+    structured reason from fal, so we can't say *what* (prompt vs image vs
+    other partner policy) was rejected — just that the partner refused.
+
+    Returns True only when both signals are present:
+      - status_result.metadata.provider_status == 8 (raw int)
+      - the generation's model is registered as fal_proxied in the SDK spec
+
+    Conservative on missing data: anything ambiguous returns False, so the
+    caller falls through to CONTENT_FILTERED (which retries — keeps existing
+    behavior for unknown shapes).
+    """
+    metadata = getattr(status_result, "metadata", None) or {}
+    raw_provider_status = metadata.get("provider_status")
+    if raw_provider_status != 8:
+        return False
+    canonical = getattr(generation, "canonical_params", None) or {}
+    model = canonical.get("model")
+    if not isinstance(model, str) or not model:
+        return False
+    try:
+        from pixverse.models import VideoModel  # type: ignore
+        spec = VideoModel.get(model)
+        return bool(spec and getattr(spec, "fal_proxied", False))
+    except Exception:
+        return False
+
+
 # Grace period before honouring a deferred cancel on a PROCESSING generation.
 # Gives the provider time to finish so we don't lose completed results.
 _CANCEL_GRACE_PERIOD_SEC = 120
@@ -1313,6 +1347,13 @@ async def _poll_single_generation(
                         # doesn't burn the budget re-submitting the same prompt.
                         if (status_result.metadata or {}).get("extend_silent_filter"):
                             error_code = GenerationErrorCode.CONTENT_PROMPT_REJECTED.value
+                        elif _is_partner_interrupted_filter(status_result, generation):
+                            # Fal-proxied models (grok-imagine, happyhorse-1.0)
+                            # report video_status=8 when the partner accepts the
+                            # job then refuses mid-stream. We can't tell whether
+                            # prompt, image, or some other partner policy was
+                            # the trigger — distinct, non-retryable code.
+                            error_code = GenerationErrorCode.EXTERNAL_PARTNER_REFUSED.value
                         else:
                             error_code = GenerationErrorCode.CONTENT_FILTERED.value
                     elif status_result.status == ProviderStatus.FAILED:

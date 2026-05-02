@@ -169,14 +169,32 @@ class CreditsOperations:
             "credit_package": credit_package,
         }
 
-        # Surface active discount/promotion flags for pricing callers
+        # Surface active discount/promotion flags for downstream callers.
+        # Two coexisting shapes from Pixverse:
+        #   1. Legacy: top-level ``is_*_discount`` / ``is_*_promo`` bool flags
+        #      (e.g. ``is_v6_discount``, ``is_story_discount``). New flags
+        #      arrive over time — pass through any matching the shape rather
+        #      than maintaining a hardcoded allowlist.
+        #   2. Newer: ``promotion_discounts`` dict keyed by model ID
+        #      (e.g. ``{"happyhorse-1.0": true}``).
+        # We pass both through verbatim. Consumers (backend extractor + UI
+        # categorizer) decide which are pricing-relevant vs feature-flag noise;
+        # this layer no longer filters by name.
         promotions: Dict[str, bool] = {}
-        if resp_data.get("is_v6_discount"):
-            promotions["v6"] = True
-        if resp_data.get("is_story_discount"):
-            promotions["story"] = True
+        for raw_key, raw_value in resp_data.items():
+            if not isinstance(raw_key, str):
+                continue
+            lower = raw_key.lower()
+            if lower.startswith("is_") and (
+                lower.endswith("_discount") or lower.endswith("_promo")
+            ):
+                promotions[raw_key] = bool(raw_value)
         if promotions:
             result["promotions"] = promotions
+
+        new_shape = resp_data.get("promotion_discounts")
+        if isinstance(new_shape, dict) and new_shape:
+            result["promotion_discounts"] = new_shape
 
         return result
 

@@ -1,19 +1,11 @@
-export const PROMOTION_DISCOUNTS: Record<string, number> = {
-  v6: 0.7, // 30% off during v6 launch promo
-};
+// Discount multipliers are backend-authoritative and arrive per-account on
+// `account.promotion_discounts`. There is intentionally no FE catalog: a stale
+// constant here would silently mis-price promos vs. what the backend actually
+// charges. Promos the backend hasn't resolved surface as `unknownPromotions`.
 
 const PROMOTION_KEY_ALIASES: Record<string, string> = {
   is_v6_discount: 'v6',
 };
-
-const PROMOTION_DISCOUNT_LOOKUP: Record<string, number> = Object.entries(PROMOTION_DISCOUNTS).reduce(
-  (acc, [rawModelId, multiplier]) => {
-    const key = normalizePromotionKey(rawModelId);
-    if (key) acc[key] = multiplier;
-    return acc;
-  },
-  {} as Record<string, number>,
-);
 
 export function normalizePromotionKey(rawKey: string): string {
   let key = rawKey.trim().toLowerCase();
@@ -66,12 +58,6 @@ export function isKnownModelPromotion(modelId: string, knownModelMatchKeys: Set<
   return getModelMatchKeys(modelId).some((key) => knownModelMatchKeys.has(key));
 }
 
-export function resolvePromotionDiscount(rawModelId: string): number | undefined {
-  const key = normalizePromotionKey(rawModelId);
-  if (!key) return undefined;
-  return PROMOTION_DISCOUNT_LOOKUP[key];
-}
-
 export type PromotionCategory =
   | 'pricing_mapped'
   | 'pricing_unmapped'
@@ -89,6 +75,7 @@ export interface PromotionDetailEntry {
 export function buildPromotionDetailEntries(
   promotions: Record<string, unknown> | null | undefined,
   knownModelIds?: Iterable<string>,
+  promotionDiscounts?: Record<string, number> | null,
 ): PromotionDetailEntry[] {
   if (!promotions || typeof promotions !== 'object') return [];
   const knownModelMatchKeys = buildKnownModelMatchKeySet(knownModelIds);
@@ -98,7 +85,9 @@ export function buildPromotionDetailEntries(
     const key = normalizePromotionKey(rawKey);
     if (!key) continue;
     const active = isPromotionActive(rawValue);
-    const discountMultiplier = resolvePromotionDiscount(key);
+    const backendMult = promotionDiscounts?.[key];
+    const discountMultiplier =
+      typeof backendMult === 'number' && backendMult >= 0 ? backendMult : undefined;
     const knownModel = isKnownModelPromotion(key, knownModelMatchKeys);
 
     const category: PromotionCategory = !active

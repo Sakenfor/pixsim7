@@ -487,12 +487,15 @@ class MyProvider(Provider):
     def compute_actual_credits(
         self,
         generation: Generation,
+        account: Optional[ProviderAccount] = None,
         actual_duration: Optional[float] = None,
     ) -> Optional[int]:
         """
         Compute actual credits after completion.
 
-        Returns None if computation not supported.
+        Returns None if computation not supported. Adapters that apply
+        per-account pricing (promotion discounts, plan-specific tiers)
+        should read it from ``account.provider_metadata`` here.
         """
         if actual_duration:
             return int(actual_duration)

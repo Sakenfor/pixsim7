@@ -289,7 +289,7 @@ class TestParseVideoResponse:
         assert video.last_frame_url == "https://example.com/customer.jpg"
 
     def test_parse_video_status_codes(self, api_client):
-        """Test status code mapping"""
+        """Native (v5/v6) status code mapping"""
         status_map = {
             1: "completed",
             10: "completed",
@@ -304,6 +304,38 @@ class TestParseVideoResponse:
             data = {"video_id": "123", "status": code}
             video = api_client._parse_video_response(data)
             assert video.status == expected_status
+
+    def test_parse_video_status_codes_fal_proxied(self, api_client):
+        """Fal-proxied models (grok-imagine, happyhorse-1.0) reuse the same
+        ints with different lifecycle semantics. Confirmed empirically on
+        happyhorse-1.0: 9 = initial submitted, 10 = forwarded to fal,
+        8 = interrupted (mid-stream refusal). Pixverse UI labels 8 as
+        "generation interrupted."
+        """
+        status_map = {
+            1: "completed",
+            5: "processing",
+            9: "processing",   # initial / queued at fal (was "failed" pre-fix)
+            10: "processing",  # processing at fal (was "completed" pre-fix — dangerous)
+            8: "interrupted",  # partner refused mid-stream
+            7: "filtered",
+            17: "filtered",
+        }
+
+        for code, expected_status in status_map.items():
+            data = {"video_id": "123", "status": code, "model": "happyhorse-1.0"}
+            video = api_client._parse_video_response(data)
+            assert video.status == expected_status, (
+                f"happyhorse-1.0 status_code={code}: expected {expected_status}, got {video.status}"
+            )
+
+        # grok-imagine should follow the same fal-proxied table
+        for code, expected_status in status_map.items():
+            data = {"video_id": "123", "status": code, "model": "grok-imagine"}
+            video = api_client._parse_video_response(data)
+            assert video.status == expected_status, (
+                f"grok-imagine status_code={code}: expected {expected_status}, got {video.status}"
+            )
 
 
 if __name__ == "__main__":

@@ -211,7 +211,7 @@ That's it! The provider will be auto-discovered on startup.
 | `get_operation_parameter_spec()` | Return UI form hints | For dynamic form generation |
 | `moderation_recheck(account, job_id, asset_url, op_type)` | Post-delivery flagging check | Providers with delayed content moderation (returns `ModerationRecheckResult`) |
 | `estimate_credits(operation_type, params)` | Pre-submission credit estimate | Credit-aware providers |
-| `compute_actual_credits(generation, duration)` | Post-completion credit calc | Credit-aware providers |
+| `compute_actual_credits(generation, account, duration)` | Post-completion credit calc; read `account.provider_metadata` for per-account pricing (e.g. promotion discounts) | Credit-aware providers |
 | `upload_asset(account, file_path)` | Upload media to provider | Cross-provider operations |
 | `extract_embedded_assets(video_id, metadata)` | Extract source assets | For sync features |
 

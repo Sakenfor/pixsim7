@@ -144,6 +144,7 @@ export function CompactAccountCard({
               {promotionCount > 0 && (
                 <PromotionDetailsPopover
                   promotions={promotions}
+                  promotionDiscounts={account.promotion_discounts as Record<string, number> | undefined}
                   knownModelIds={knownModelIds}
                   title={`Promotions • ${account.nickname || account.email}`}
                   triggerClassName="px-1.5 py-0.5 text-[9px] font-bold border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"

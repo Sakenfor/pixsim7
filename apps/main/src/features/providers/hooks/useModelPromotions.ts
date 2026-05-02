@@ -5,7 +5,6 @@ import {
   isKnownModelPromotion,
   isPromotionActive,
   normalizePromotionKey,
-  resolvePromotionDiscount,
 } from '../lib/promotionCatalog';
 
 import { useProviderAccounts } from './useProviderAccounts';
@@ -51,7 +50,8 @@ export function useModelPromotions(
         return;
       }
 
-      // Backend-provided discount multipliers (authoritative when available)
+      // Discount multipliers are backend-authoritative; promos missing from
+      // this map surface as `unknownPromotions`.
       const backendDiscounts: Record<string, number> | undefined =
         account?.promotion_discounts && typeof account.promotion_discounts === 'object'
           ? account.promotion_discounts as Record<string, number>
@@ -68,12 +68,9 @@ export function useModelPromotions(
         }
         promoted.add(modelId);
         accountContributed = true;
-        // Prefer backend-provided discount, fall back to catalog
-        const backendMult = backendDiscounts?.[modelId];
-        const mult = typeof backendMult === 'number' && backendMult > 0
-          ? backendMult
-          : resolvePromotionDiscount(modelId);
-        if (mult !== undefined) {
+        const mult = backendDiscounts?.[modelId];
+        // Accept >= 0 so fully-free promos (multiplier 0) are honored.
+        if (typeof mult === 'number' && mult >= 0) {
           discounts[modelId] = mult;
         } else {
           unknownPromotions.add(modelId);

@@ -102,6 +102,25 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_moderation import 
 )
 
 
+def _account_promotion_discounts(
+    account: Optional[ProviderAccount],
+) -> Optional[Dict[str, float]]:
+    """Return the active promotion-discount map for an account, or None.
+
+    Reads ``account.provider_metadata['promotion_discounts']`` (written by
+    pixverse_promotions.apply_promotions_to_metadata during credit sync).
+    Returns None when no discounts are recorded so callers can use the
+    base pricing path unchanged.
+    """
+    if account is None:
+        return None
+    metadata = getattr(account, "provider_metadata", None) or {}
+    discounts = metadata.get("promotion_discounts")
+    if isinstance(discounts, dict) and discounts:
+        return {k: v for k, v in discounts.items() if isinstance(v, (int, float))}
+    return None
+
+
 class PixverseProvider(
     PixverseSessionMixin,
     PixverseAuthMixin,
@@ -721,12 +740,16 @@ class PixverseProvider(
     def compute_actual_credits(
         self,
         generation: Generation,
+        account: Optional[ProviderAccount] = None,
         actual_duration: Optional[float] = None,
     ) -> Optional[int]:
         """
         Compute actual Pixverse credits for a completed generation.
 
-        Uses actual duration from provider when available.
+        Uses actual duration from provider when available. When ``account`` is
+        supplied, applies any active promotion discounts stored in
+        ``account.provider_metadata['promotion_discounts']`` so the local
+        deduction matches what Pixverse actually charged.
         """
         params = generation.canonical_params or {}
         model = params.get("model") or "v5"
@@ -748,6 +771,7 @@ class PixverseProvider(
             motion_mode = params.get("motion_mode")
             multi_shot = bool(params.get("multi_shot"))
             audio = bool(params.get("audio"))
+            discounts = _account_promotion_discounts(account)
 
             return estimate_video_credit_change(
                 quality=str(quality),
@@ -756,6 +780,7 @@ class PixverseProvider(
                 motion_mode=motion_mode,
                 multi_shot=multi_shot,
                 audio=audio,
+                discounts=discounts,
             )
 
         return None

@@ -25,6 +25,7 @@ _PROMOTION_KEY_ALIASES: Dict[str, str] = {
 # Updated when promotions change (backend-authoritative, frontend reads from metadata).
 KNOWN_PROMOTION_DISCOUNTS: Dict[str, float] = {
     "v6": 0.7,  # 30% off during v6 launch promo (observed 14cr vs 20cr base for 360p/5s)
+    "happyhorse-1.0": 0.0,  # Free during launch promo (observed on pro accounts)
 }
 
 
@@ -68,24 +69,36 @@ def normalize_pixverse_promotions(payload: Any) -> Dict[str, bool]:
 
 
 def extract_pixverse_promotions(credits_payload: Any) -> Dict[str, bool]:
-    """Extract + normalize promotions from Pixverse credits payload."""
+    """Extract + normalize promotions from Pixverse credits payload.
+
+    Reads three shapes (merged, with later sources overriding earlier):
+      1. ``promotions``: legacy nested dict (e.g. ``{"is_v6_discount": true}``)
+      2. top-level ``is_*_discount`` / ``is_*_promo`` flags
+      3. ``promotion_discounts``: newer model-id-keyed dict
+         (e.g. ``{"happyhorse-1.0": true}``)
+    """
     if not isinstance(credits_payload, dict):
         return {}
 
+    merged: Dict[str, bool] = {}
+
     nested_promotions = credits_payload.get("promotions")
     if isinstance(nested_promotions, dict):
-        return normalize_pixverse_promotions(nested_promotions)
+        merged.update(normalize_pixverse_promotions(nested_promotions))
 
     fallback_flags: Dict[str, Any] = {}
     for raw_key, raw_value in credits_payload.items():
         key = str(raw_key).strip().lower()
         if key.startswith("is_") and (key.endswith("_discount") or key.endswith("_promo")):
             fallback_flags[key] = raw_value
-
     if fallback_flags:
-        return normalize_pixverse_promotions(fallback_flags)
+        merged.update(normalize_pixverse_promotions(fallback_flags))
 
-    return {}
+    promotion_discounts = credits_payload.get("promotion_discounts")
+    if isinstance(promotion_discounts, dict):
+        merged.update(normalize_pixverse_promotions(promotion_discounts))
+
+    return merged
 
 
 def resolve_promotion_discounts(promotions: Dict[str, bool]) -> Dict[str, float]:
@@ -148,10 +161,12 @@ def probe_promotion_discounts(
             continue
         try:
             actual = estimate_fn(_PROBE_QUALITY, _PROBE_DURATION, model_id)
-            if actual is None or not isinstance(actual, (int, float)) or actual <= 0:
+            if actual is None or not isinstance(actual, (int, float)) or actual < 0:
                 continue
             multiplier = round(actual / base, 2)
-            if 0.01 <= multiplier < 1.0:
+            # Accept 0.0 (fully free promo) through <1.0 (any non-zero discount).
+            # Cost >= base means no active discount; ignore.
+            if 0.0 <= multiplier < 1.0:
                 discovered[model_id] = multiplier
                 logger.info(
                     "promo_discount_probed model=%s base=%d actual=%d multiplier=%.2f",
@@ -161,4 +176,42 @@ def probe_promotion_discounts(
             logger.debug("promo_discount_probe_failed model=%s error=%s", model_id, exc)
 
     return discovered
+
+
+# ---------------------------------------------------------------------------
+# Persistence — apply credits-payload promotions to account metadata
+# ---------------------------------------------------------------------------
+
+
+def apply_promotions_to_metadata(account: Any, credits_data: Any) -> bool:
+    """Persist active promotions + resolved discounts onto ``account.provider_metadata``.
+
+    Reads ``promotions`` and ``promotion_discounts`` from a credits-fetch
+    payload (as produced by ``PixverseCreditsMixin.get_credits``) and writes
+    them into ``account.provider_metadata``. Calls ``flag_modified`` so the
+    JSONB column is marked dirty even when the existing dict is mutated in
+    place.
+
+    Returns ``True`` if metadata was modified, ``False`` otherwise (e.g. when
+    the payload has no ``promotions`` key).
+    """
+    if not isinstance(credits_data, dict):
+        return False
+
+    promotions = credits_data.get("promotions")
+    if not (promotions and isinstance(promotions, dict)):
+        return False
+
+    metadata = account.provider_metadata or {}
+    metadata["promotions"] = promotions
+
+    promo_discounts = credits_data.get("promotion_discounts")
+    if promo_discounts and isinstance(promo_discounts, dict):
+        metadata["promotion_discounts"] = promo_discounts
+
+    account.provider_metadata = metadata
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(account, "provider_metadata")
+    return True
 

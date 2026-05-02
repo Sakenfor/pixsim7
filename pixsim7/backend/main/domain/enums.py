@@ -170,6 +170,13 @@ class GenerationErrorCode(str, Enum):
     CONTENT_OUTPUT_REJECTED = "content_output_rejected"
     CONTENT_IMAGE_REJECTED = "content_image_rejected"
     CONTENT_FILTERED = "content_filtered"
+    # External partner (e.g. fal-proxied models like grok-imagine, happyhorse-1.0)
+    # accepted the job then refused mid-stream. We don't get a structured reason
+    # back — could be prompt, image, or some other partner-side policy. Distinct
+    # from CONTENT_PROMPT_REJECTED (which implies the prompt specifically was the
+    # trigger) and from CONTENT_FILTERED (which is retryable on the assumption
+    # that output varies — false here since the partner refused the input).
+    EXTERNAL_PARTNER_REFUSED = "external_partner_refused"
 
     # Parameter validation (all non-retryable)
     PARAM_TOO_LONG = "param_too_long"

@@ -86,7 +86,11 @@ def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus
             return ProviderStatus.PROCESSING
         if token == "failed":
             return ProviderStatus.FAILED
-        if token in ("filtered", "rejected"):
+        # fal-proxied "interrupted" (partner refused mid-stream) is functionally
+        # a content filter from the user's perspective — same refund/skip-billing
+        # path as a regular filter. The lifecycle distinction is preserved at
+        # the SDK string layer for diagnostics.
+        if token in ("filtered", "rejected", "interrupted"):
             return ProviderStatus.FILTERED
         if token == "cancelled":
             return ProviderStatus.CANCELLED
@@ -111,6 +115,33 @@ def _map_pixverse_status_for(payload: Any, *, is_image: bool) -> "ProviderStatus
             # not in SDK docs) and 2→PROCESSING (same reason).  17→FILTERED is
             # grok-imagine's terminal code (fal-proxied jobs); response shape is
             # identical to 7 (default.mp4 swap, dims=0, last_frame='').
+            #
+            # Fal-proxied models (grok-imagine, happyhorse-1.0) reuse the same
+            # ints with different semantics: 9=queued, 10=processing-at-fal,
+            # 8=interrupted (mid-stream refusal). Dispatched on VideoModelSpec.
+            try:
+                from pixverse.models import VideoModel  # type: ignore
+                _model_id = _get_field(payload, "model", default=None)
+                _spec = VideoModel.get(_model_id) if _model_id else None
+                _is_fal_proxied = bool(_spec and _spec.fal_proxied)
+            except Exception:
+                _is_fal_proxied = False
+
+            if _is_fal_proxied:
+                if raw == 1:
+                    return ProviderStatus.COMPLETED
+                if raw in (0, 2, 5, 9, 10):
+                    return ProviderStatus.PROCESSING
+                if raw == 8:
+                    # "Interrupted" — fal mid-stream refusal. Treated as filtered
+                    # so refund/skip-billing logic kicks in.
+                    return ProviderStatus.FILTERED
+                if raw in (3, 7, 17):
+                    return ProviderStatus.FILTERED
+                if raw in (-1, 4):
+                    return ProviderStatus.FAILED
+                return ProviderStatus.PROCESSING
+
             if raw == 1:
                 return ProviderStatus.COMPLETED
             if raw == 10:

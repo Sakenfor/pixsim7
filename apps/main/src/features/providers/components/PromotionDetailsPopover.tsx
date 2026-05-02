@@ -12,6 +12,7 @@ import {
 
 interface PromotionDetailsPopoverProps {
   promotions?: Record<string, unknown> | null;
+  promotionDiscounts?: Record<string, number> | null;
   knownModelIds?: Iterable<string>;
   title?: string;
   triggerClassName?: string;
@@ -48,6 +49,7 @@ function discountLabel(multiplier?: number): string | null {
 
 export function PromotionDetailsPopover({
   promotions,
+  promotionDiscounts,
   knownModelIds,
   title = 'Promotions',
   triggerClassName,
@@ -58,8 +60,8 @@ export function PromotionDetailsPopover({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const entries = useMemo(
-    () => buildPromotionDetailEntries(promotions, knownModelIds),
-    [promotions, knownModelIds],
+    () => buildPromotionDetailEntries(promotions, knownModelIds, promotionDiscounts),
+    [promotions, knownModelIds, promotionDiscounts],
   );
   const activeCount = useMemo(
     () => Object.values(promotions ?? {}).filter((value) => isPromotionActive(value)).length,
