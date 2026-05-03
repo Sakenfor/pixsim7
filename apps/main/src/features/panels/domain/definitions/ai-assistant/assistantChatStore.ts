@@ -58,6 +58,25 @@ interface ChatTab {
 // =============================================================================
 // localStorage keys
 // =============================================================================
+//
+// Messages are stored under TWO keys with overlapping data on purpose:
+//
+//   MSG_KEY_PREFIX       — keyed by tab.id. Written eagerly on every
+//                          appendMessage / setMessages. Required because tabs
+//                          start without a sessionId (no bridge reply yet) so
+//                          the user's first message has nowhere session-keyed
+//                          to live. This is what loadTabMessages reads.
+//
+//   SESSION_MSG_PREFIX   — keyed by sessionId. Written via syncToServer (also
+//                          PATCHed to the backend, debounced 2s). Used as the
+//                          fallback in fetchServerMessages when the server
+//                          can't be reached — covers cross-device resume and
+//                          tabs reopened after a different device created the
+//                          session.
+//
+// The split is annoying but the alternative (single storage) breaks one of
+// {first-message-before-session, cross-device-resume}. Treat both as caches —
+// the server transcript is the source of truth once a sessionId exists.
 
 const TABS_KEY = 'ai-assistant:tabs';
 const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
@@ -337,12 +356,23 @@ function setActiveTabIdLS(id: string | null) {
 function parseMessages(raw: string | null): ChatMessage[] {
   if (!raw) return [];
   try {
-    return (JSON.parse(raw) as Array<Record<string, unknown>>).map((m) => ({
-      role: m.role as ChatMessage['role'],
-      text: m.text as string,
-      duration_ms: m.duration_ms as number | undefined,
-      timestamp: new Date(m.timestamp as string),
-    }));
+    return (JSON.parse(raw) as Array<Record<string, unknown>>).map((m) => {
+      const msg: ChatMessage = {
+        role: m.role as ChatMessage['role'],
+        text: m.text as string,
+        duration_ms: m.duration_ms as number | undefined,
+        timestamp: new Date(m.timestamp as string),
+      };
+      // Preserve thinking log + confirmation across reload — JSON.stringify
+      // already wrote them, but earlier versions of this parser dropped them.
+      if (Array.isArray(m.thinkingLog)) {
+        msg.thinkingLog = m.thinkingLog as ChatMessage['thinkingLog'];
+      }
+      if (m.confirmation && typeof m.confirmation === 'object') {
+        msg.confirmation = m.confirmation as ChatMessageConfirmation;
+      }
+      return msg;
+    });
   } catch {
     return [];
   }
@@ -356,11 +386,18 @@ function loadTabMessages(tabId: string): ChatMessage[] {
   }
 }
 
+/**
+ * Strip transient errors and cap at the last 50 entries — shared shape for
+ * the per-tab and session-keyed localStorage caches. Preserves full
+ * ChatMessage fields (thinkingLog, confirmation) unlike the server payload.
+ */
+function toPersistableLocalPayload(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter((m) => m.role !== 'error').slice(-50);
+}
+
 function persistTabMessages(tabId: string, messages: ChatMessage[]) {
   try {
-    // Don't persist transient error messages (network errors, cancellations)
-    const persistable = messages.filter((m) => m.role !== 'error');
-    localStorage.setItem(msgKey(tabId), JSON.stringify(persistable.slice(-50)));
+    localStorage.setItem(msgKey(tabId), JSON.stringify(toPersistableLocalPayload(messages)));
   } catch (err) {
     console.warn('[ai-assistant] Failed to persist messages — localStorage may be full', err);
   }
@@ -434,10 +471,31 @@ const _pendingSyncs = hmrSingleton(
   () => new Map<string, { sessionId: string; messages: ChatMessage[] }>(),
 );
 
+/**
+ * Single source of truth for the server PATCH payload shape. Strips error
+ * messages (transient — never sent to server), caps at the last 50 entries,
+ * and serializes timestamps. Matches what the server expects.
+ */
+function toPersistableServerPayload(messages: ChatMessage[]): Array<{
+  role: ChatMessage['role'];
+  text: string;
+  duration_ms?: number;
+  timestamp: string;
+}> {
+  return messages
+    .filter((m) => m.role !== 'error')
+    .slice(-50)
+    .map((m) => ({
+      role: m.role,
+      text: m.text,
+      duration_ms: m.duration_ms,
+      timestamp: m.timestamp.toISOString(),
+    }));
+}
+
 function persistSessionMessages(sessionId: string, messages: ChatMessage[]) {
   try {
-    const persistable = messages.filter((m) => m.role !== 'error');
-    localStorage.setItem(sessionMsgKey(sessionId), JSON.stringify(persistable.slice(-50)));
+    localStorage.setItem(sessionMsgKey(sessionId), JSON.stringify(toPersistableLocalPayload(messages)));
   } catch { /* ignore */ }
 }
 
@@ -461,18 +519,9 @@ function syncMessagesToServer(sessionId: string, messages: ChatMessage[]) {
     setTimeout(() => {
       _syncTimers.delete(sessionId);
       _pendingSyncs.delete(sessionId);
-      const persistable = messages
-        .filter((m) => m.role !== 'error')
-        .slice(-50)
-        .map((m) => ({
-          role: m.role,
-          text: m.text,
-          duration_ms: m.duration_ms,
-          timestamp: m.timestamp.toISOString(),
-        }));
       pixsimClient
         .patch(`/meta/agents/chat-sessions/${sessionId}/messages`, {
-          messages: persistable,
+          messages: toPersistableServerPayload(messages),
         })
         .catch(() => {});
     }, 2000),
@@ -485,15 +534,6 @@ function flushPendingSyncs() {
     if (timer) clearTimeout(timer);
     _syncTimers.delete(id);
     _pendingSyncs.delete(id);
-    const persistable = messages
-      .filter((m) => m.role !== 'error')
-      .slice(-50)
-      .map((m) => ({
-        role: m.role,
-        text: m.text,
-        duration_ms: m.duration_ms,
-        timestamp: m.timestamp.toISOString(),
-      }));
     // keepalive: true survives page unload (like sendBeacon but supports PATCH)
     try {
       const url = `${API_BASE_URL}/meta/agents/chat-sessions/${sessionId}/messages`;
@@ -503,7 +543,7 @@ function flushPendingSyncs() {
           { 'Content-Type': 'application/json' },
           'panel:ai-assistant:flush-pending-syncs',
         ),
-        body: JSON.stringify({ messages: persistable }),
+        body: JSON.stringify({ messages: toPersistableServerPayload(messages) }),
         keepalive: true,
       }).catch(() => {});
     } catch {
@@ -605,18 +645,9 @@ export const useAssistantChatStore = hmrSingleton(
             if (timer) clearTimeout(timer);
             _syncTimers.delete(closingTab.sessionId);
             _pendingSyncs.delete(closingTab.sessionId);
-            const persistable = msgs
-              .filter((m) => m.role !== 'error')
-              .slice(-50)
-              .map((m) => ({
-                role: m.role,
-                text: m.text,
-                duration_ms: m.duration_ms,
-                timestamp: m.timestamp.toISOString(),
-              }));
             pixsimClient
               .patch(`/meta/agents/chat-sessions/${closingTab.sessionId}/messages`, {
-                messages: persistable,
+                messages: toPersistableServerPayload(msgs),
               })
               .catch(() => {});
           }

@@ -212,6 +212,40 @@ describe('Assistant Chat Store', () => {
       expect(useAssistantChatStore.getState().messagesByTab['tab-1']).toBeUndefined();
     });
 
+    it('preserves thinkingLog and confirmation across reload', () => {
+      const s = useAssistantChatStore.getState();
+      s.appendMessage('tab-1', {
+        role: 'assistant',
+        text: 'reply',
+        thinkingLog: [{ action: 'reading', detail: 'file.ts' }],
+        timestamp: new Date(),
+      });
+      s.appendMessage('tab-1', {
+        role: 'system',
+        text: 'Approved: write',
+        timestamp: new Date(),
+        confirmation: {
+          confirmationId: 'cf-1',
+          title: 'Write',
+          description: 'Write file.ts',
+          toolName: 'write',
+          resolved: 'approved',
+        },
+      });
+
+      // Simulate reload — wipe in-memory, re-read from localStorage
+      useAssistantChatStore.setState({ messagesByTab: {} });
+      const restored = useAssistantChatStore.getState().getMessages('tab-1');
+
+      expect(restored).toHaveLength(2);
+      expect(restored[0].thinkingLog).toEqual([{ action: 'reading', detail: 'file.ts' }]);
+      expect(restored[1].confirmation).toMatchObject({
+        confirmationId: 'cf-1',
+        resolved: 'approved',
+        toolName: 'write',
+      });
+    });
+
     it('appendMessage reads from store, not stale localStorage', () => {
       const s = useAssistantChatStore.getState();
       s.appendMessage('tab-1', makeMsg('user', 'first'));

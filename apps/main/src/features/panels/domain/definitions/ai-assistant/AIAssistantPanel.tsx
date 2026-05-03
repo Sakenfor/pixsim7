@@ -30,6 +30,7 @@ import {
   normalizeProfileId,
   createTabId,
   findLatestUnansweredUserMessage,
+  findMissingAssistantTail,
   evaluateTranscriptRecovery,
   isLastAssistantMessageEqual,
   type ChatTab,
@@ -164,7 +165,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
         const recovery = evaluateTranscriptRecovery(current, serverMsgs);
         if (recovery.recoveredAssistantTail.length > 0) {
-          st.setMessages(tab.id, [...current, ...recovery.recoveredAssistantTail]);
+          // Match the consume-effect's reconnect-failure recovery UX — surface
+          // a system note so the user knows this came from server reconciliation
+          // rather than the live agent stream.
+          st.setMessages(tab.id, [
+            ...current,
+            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
+            ...recovery.recoveredAssistantTail,
+          ]);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
           setResponseLost(false);
@@ -272,53 +280,38 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       // Ack AFTER appendMessage has persisted to localStorage — safe to clear backup
       chatBridge.ack(tab.id);
     } else {
-      // Reconnect failure — try recovering from server-stored messages.
+      // Reconnect failure — the bridge lost track of the request, but the
+      // backend may have produced a response anyway. Try the same recovery
+      // pipeline the reconcile effect uses (prefix-checked findMissingAssistantTail)
+      // before showing the error.
       const isReconnectFailure = result.reconnected || result.error_code === 'task_not_found' || (result.error || '').includes('not found');
+      const showError = () => {
+        useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+        chatBridge.ack(tab.id);
+      };
       if (isReconnectFailure && tab.sessionId) {
         fetchServerMessages(tab.sessionId).then((serverMsgs) => {
-          if (serverMsgs.length === 0) {
-            useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+          if (serverMsgs.length === 0) { showError(); return; }
+          const st = useAssistantChatStore.getState();
+          const curr = st.getMessages(tab.id);
+          const recovered = findMissingAssistantTail(curr, serverMsgs);
+          if (recovered.length === 0) { showError(); return; }
+          // Dedupe: if a prior load already ran this recovery and reload
+          // landed before ack, the tail is already at the bottom.
+          const lastRecoveredText = recovered[recovered.length - 1].text;
+          if (isLastAssistantMessageEqual(curr, lastRecoveredText)) {
             chatBridge.ack(tab.id);
             return;
           }
-          const current = useAssistantChatStore.getState().getMessages(tab.id);
-          let lastLocalUserIdx = -1;
-          for (let i = current.length - 1; i >= 0; i--) { if (current[i].role === 'user') { lastLocalUserIdx = i; break; } }
-          const lastLocalUserText = lastLocalUserIdx >= 0 ? current[lastLocalUserIdx].text : null;
-          let serverLastUserIdx = -1;
-          for (let i = serverMsgs.length - 1; i >= 0; i--) {
-            if (serverMsgs[i].role === 'user' && serverMsgs[i].text === lastLocalUserText) { serverLastUserIdx = i; break; }
-          }
-          if (serverLastUserIdx >= 0 && serverLastUserIdx < serverMsgs.length - 1) {
-            const recovered = serverMsgs.slice(serverLastUserIdx + 1).filter((m) => m.role === 'assistant');
-            if (recovered.length > 0) {
-              const st = useAssistantChatStore.getState();
-              const curr = st.getMessages(tab.id);
-              const lastRecoveredText = recovered[recovered.length - 1].text;
-              // Dedupe: if the prior load already ran this recovery and reload
-              // landed before ack, the recovered tail is already at the bottom.
-              if (isLastAssistantMessageEqual(curr, lastRecoveredText)) {
-                chatBridge.ack(tab.id);
-                return;
-              }
-              st.setMessages(tab.id, [
-                ...curr,
-                { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
-                ...recovered,
-              ]);
-              chatBridge.ack(tab.id);
-              return;
-            }
-          }
-          useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
+          st.setMessages(tab.id, [
+            ...curr,
+            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
+            ...recovered,
+          ]);
           chatBridge.ack(tab.id);
-        }).catch(() => {
-          useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
-          chatBridge.ack(tab.id);
-        });
+        }).catch(showError);
       } else {
-        s.appendMessage(tab.id, { role: 'error', text: errorText, timestamp: new Date() });
-        chatBridge.ack(tab.id);
+        showError();
       }
     }
   }, [bridgeVersion, bridgeReq, onUpdateTab, tab.id, tab.sessionId]);
