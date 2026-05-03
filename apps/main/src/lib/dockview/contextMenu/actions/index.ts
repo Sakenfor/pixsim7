@@ -5,7 +5,7 @@
  * Import this module to register actions.
  *
  * Composite submenus group related actions:
- * - "Panels" submenu: quick-add, add panel, split/move/focus
+ * - "Panels" submenu: default panels, related panels, add panel, split/move/focus
  * - "Layout Presets" submenu: save, load, delete, reset
  * - "Generate" submenu (in assetActions): send-to-generator, shortcuts, queue
  * - "Copy" submenu (in assetActions): copy URL, copy ID
@@ -14,14 +14,12 @@
 import { useContextMenuHistoryStore } from '@features/workspace/stores/contextMenuHistoryStore';
 
 import { contextMenuRegistry } from '../ContextMenuRegistry';
+import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction } from '../types';
 
-import {
-  addPanelAction,
-  getEditQuickAddActions,
-} from './addPanelActions';
+import { addPanelAction, getDefaultScopePanelSubmenu } from './addPanelActions';
 import { assetActions } from './assetActions';
-import { contextHubActions } from './contextHubActions';
+import { buildRelatedPanelActions, contextHubActions } from './contextHubActions';
 import { cubeActions } from './cubeActions';
 import { debugActions } from './debugActions';
 import { devContextActions } from './devContextActions';
@@ -85,8 +83,8 @@ export {
 } from './presetActions';
 export {
   addPanelAction,
-  getEditQuickAddActions,
   addPanelActions,
+  getDefaultScopePanelSubmenu,
 } from './addPanelActions';
 export { assetActions } from './assetActions';
 export { contextHubActions } from './contextHubActions';
@@ -111,36 +109,46 @@ const panelsSubmenuAction: MenuAction = {
   availableIn: ['background', 'tab', 'panel-content'],
   children: (ctx) => {
     const items: MenuAction[] = [];
+    const { api } = resolveCurrentDockview(ctx);
 
-    // Section 1: Quick Add — config submenu only.
-    // Pinned shortcuts used to be flattened below this entry as "Add <Panel>"
-    // rows, but they duplicated panels already reachable under Add Panel → its
-    // category and caused grayed/enabled inconsistencies between the two
-    // surfaces. Pins still power the sidebar shortcut bar (useWorkspaceStore
-    // .pinnedShortcuts); they just no longer appear in this context menu.
-    if (ctx.panelRegistry) {
-      const editQuickAdd = getEditQuickAddActions(ctx);
-      items.push({
-        id: 'composite:panels:quick-add-header',
-        label: 'Quick Add ⚙',
-        icon: 'pin',
-        availableIn: ['background', 'tab', 'panel-content'],
-        children: editQuickAdd.children,
-        execute: () => {},
-      });
+    // Add-related entries (no internal dividers — all are "add a panel" actions,
+    // ordered most-specific to most-generic).
+
+    // 1. Default Panels — curated list for scoped docks (AssetViewer, QuickGen,
+    //    sub-panel hosts). Hidden when scope is too broad or empty.
+    const defaultScopeSubmenu = getDefaultScopePanelSubmenu(ctx, api);
+    if (defaultScopeSubmenu) {
+      items.push({ ...defaultScopeSubmenu, category: undefined });
     }
 
-    // Section 2: Add Panel (full categorized browser; this dock's default
-    // panels appear under their respective categories here, so a separate
-    // "Default Panels" shortcut was redundant with Quick Add).
-    if (addPanelAction.visible?.(ctx) !== false) {
-      if (items.length > 0) {
-        items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Add' };
+    // 2. Related Panels — capability-matched panels for the right-clicked
+    //    panel. Only meaningful when a specific panel is the click target;
+    //    skipped on background context. Moved here from Connect (which is
+    //    purely about provider routing now).
+    if (ctx.contextType !== 'background') {
+      const relatedActions = buildRelatedPanelActions(ctx);
+      if (relatedActions && relatedActions.length > 0) {
+        items.push({
+          id: 'composite:panels:related',
+          label: 'Related Panels',
+          icon: 'plus-circle',
+          availableIn: ['tab', 'panel-content'],
+          children: relatedActions,
+          execute: () => {},
+        });
       }
+    }
+
+    // 3. Add Panel — full categorized browser (always present when the dock
+    //    has an api).
+    // Quick-add pin management lives in MorePanelsFlyout (ActivityBar's
+    // layout-grid button) — searchable, draggable, and toggles the same
+    // pinnedShortcuts store. A duplicate config submenu here was redundant.
+    if (addPanelAction.visible?.(ctx) !== false) {
       items.push({ ...addPanelAction, category: undefined });
     }
 
-    // Section 3: Layout actions (Split, Move, Focus)
+    // Layout section — Split, Move, Focus. Divider separates from add-actions.
     const layoutItems = [splitPanelAction, movePanelAction, focusPanelAction]
       .filter(a => a.visible?.(ctx) !== false);
     if (layoutItems.length > 0) {

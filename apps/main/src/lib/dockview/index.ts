@@ -108,7 +108,7 @@ export {
   focusPanelAction,
   getAllProviders,
   getCapability,
-  getEditQuickAddActions,
+  getDefaultScopePanelSubmenu,
   getRegistryChain,
   getScopeLabel,
   hasCapability,

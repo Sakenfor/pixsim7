@@ -18,6 +18,11 @@ import { useToastStore } from '@pixsim7/shared.ui';
 import type { AssetModel } from '@features/assets';
 import { assetEvents, getAssetDisplayUrls, toViewerAsset, toViewerAssets, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
 import { applyQuickTag, useQuickTagStore } from '@features/assets';
+import {
+  loadToQuickGenDescriptor,
+  patchAssetDescriptor,
+  type AssetActionDescriptor,
+} from '@features/assets/actions';
 import { archiveAsset } from '@features/assets/lib/api';
 import { assertBackendAssetId } from '@features/assets/lib/backendAssetId';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
@@ -34,7 +39,7 @@ import {
   type GenerationContextSummary,
 } from '@features/contextHub';
 import { useGenerationInputStore } from '@features/generation';
-import { upgradeModelForAsset, patchAssetToWidget } from '@features/generation/lib/assetGenerationActions';
+import { upgradeModelForAsset } from '@features/generation/lib/assetGenerationActions';
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
@@ -511,33 +516,65 @@ const upgradeModelAction: MenuAction = {
   },
 };
 
-const patchAssetAction: MenuAction = {
-  id: 'asset:patch-asset',
-  label: 'Patch Asset',
-  icon: 'pencil',
-  category: 'generation',
-  requiredCapabilities: [CAP_ASSET, CAP_GENERATION_WIDGET],
-  visible: (ctx) => {
-    const assets = resolveAssets(ctx);
-    return assets.length === 1;
+/**
+ * Adapt a surface-agnostic AssetActionDescriptor into a MenuAction.
+ * `params` is supplied per-binding (e.g. one binding for "Load to Quick Gen"
+ * with `withoutSeed: false`, another for the "no seed" variant).
+ * `override` lets a binding customize id/label/icon — e.g. to express the
+ * `withoutSeed: true` variant under its own menu entry.
+ */
+function toMenuAction<P>(
+  descriptor: AssetActionDescriptor<P>,
+  params: P,
+  override: Partial<Pick<MenuAction, 'id' | 'label' | 'icon'>> & { failureLabel?: string } = {},
+): MenuAction {
+  const failureLabel = override.failureLabel ?? 'Action';
+  return {
+    id: override.id ?? descriptor.id,
+    label: override.label ?? descriptor.defaultLabel,
+    icon: override.icon ?? descriptor.defaultIcon,
+    category: 'generation',
+    requiredCapabilities: descriptor.requiredCapabilities,
+    visible: (ctx) => {
+      const assets = resolveAssets(ctx);
+      return assets.length === 1 && descriptor.isVisible(assets[0]);
+    },
+    execute: async (ctx) => {
+      const assets = resolveAssets(ctx);
+      if (!assets.length) return;
+      const widget = resolveGenerationWidget(ctx);
+      if (!widget) {
+        notify('warning', 'No generation widget available');
+        return;
+      }
+      const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
+      const fallbackOp = resolveOperationType(generationContext?.mode, 'image_to_video');
+      try {
+        await descriptor.execute(assets[0], { widget, fallbackOperationType: fallbackOp }, params);
+      } catch (err) {
+        notify('error', `${failureLabel} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  };
+}
+
+const patchAssetAction = toMenuAction(patchAssetDescriptor, undefined as void, { failureLabel: 'Patch' });
+
+const loadToQuickGenAction = toMenuAction(
+  loadToQuickGenDescriptor,
+  { withoutSeed: false },
+  { failureLabel: 'Load' },
+);
+
+const loadToQuickGenNoSeedAction = toMenuAction(
+  loadToQuickGenDescriptor,
+  { withoutSeed: true },
+  {
+    id: 'asset:load-to-quick-gen-no-seed',
+    label: 'Load to Quick Gen (no seed)',
+    failureLabel: 'Load',
   },
-  execute: async (ctx) => {
-    const assets = resolveAssets(ctx);
-    if (!assets.length) return;
-    const widget = resolveGenerationWidget(ctx);
-    if (!widget) {
-      notify('warning', 'No generation widget available');
-      return;
-    }
-    const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
-    const fallbackOp = resolveOperationType(generationContext?.mode, 'image_to_video');
-    try {
-      await patchAssetToWidget(assets[0], fallbackOp, { widget });
-    } catch (err) {
-      notify('error', `Patch failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  },
-};
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Queue Management Actions
@@ -782,8 +819,13 @@ const generateSubmenuAction: MenuAction = {
       items.push(...shortcuts);
     }
 
-    // Re-generate actions (Upgrade Model, Patch Asset)
-    const regenActions = [upgradeModelAction, patchAssetAction]
+    // Re-generate actions (Upgrade Model, Patch Asset, Load to Quick Gen)
+    const regenActions = [
+      upgradeModelAction,
+      patchAssetAction,
+      loadToQuickGenAction,
+      loadToQuickGenNoSeedAction,
+    ]
       .filter(a => a.visible?.(ctx) !== false)
       .map(a => ({ ...a, category: undefined, requiredCapabilities: undefined }));
     if (regenActions.length > 0) {

@@ -103,6 +103,13 @@ export interface MenuActionContextBase<
   /** Reset the current dockview layout (if available) */
   resetDockviewLayout?: () => void;
 
+  /**
+   * Panel IDs scoped to the current dockview (from explicit `allowedPanels` or
+   * `panelScope` discovery). Used by the Default Panels submenu to surface a
+   * curated set for scoped docks (AssetViewer, QuickGen, sub-panel hosts).
+   */
+  scopedPanelIds?: string[];
+
   /** Handler for floating panels (if dockview supports it) */
   floatPanelHandler?: (
     dockviewPanelId: string,

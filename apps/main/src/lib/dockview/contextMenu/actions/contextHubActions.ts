@@ -509,8 +509,13 @@ function buildRelatedPanelMenuItem(ctx: MenuActionContext, p: RelatedPanelCandid
 
 /**
  * Build the "Related Panels" submenu actions from capability-matched panels.
+ *
+ * Surfaced inside the `Panels` submenu (alongside Default Panels and Add
+ * Panel) when right-clicking on a capability-aware panel. Used to live under
+ * `Connect`, but was moved out — adding panels is the Panels submenu's job;
+ * Connect is now purely about provider routing.
  */
-function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
+export function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
   const related = resolveRelatedPanels(ctx);
   if (related.length === 0) return null;
 
@@ -576,21 +581,6 @@ export const contextHubActions: MenuAction[] = [
           execute: () => {},
         });
       });
-
-      // Related Panels section
-      const relatedActions = buildRelatedPanelActions(ctx);
-      if (relatedActions && relatedActions.length > 0) {
-        actions.push({
-          id: "connect:related",
-          label: "Related Panels",
-          icon: "plus-circle",
-          divider: true,
-          sectionLabel: "Add",
-          availableIn: ["panel-content", "tab"],
-          children: relatedActions,
-          execute: () => {},
-        });
-      }
 
       if (actions.length === 0) {
         return [

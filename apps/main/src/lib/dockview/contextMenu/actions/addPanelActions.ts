@@ -8,12 +8,16 @@
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { useWorkspaceStore } from '@features/workspace';
+import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { addPanelInCurrentDockview, isPanelOpenAnywhere, isPanelOpenInCurrentDockview } from './panelOpenUtils';
+
+/** Cap on how many scoped panels surface as Default Panels — beyond this the
+ * full Add Panel browser is the better surface. */
+const DEFAULT_PANELS_MAX = 20;
 
 function getAddPanelEquivalentIds(panelId: string): string[] {
   const panelDef = panelSelectors.get(panelId) as { addPanelEquivalentIds?: unknown } | undefined;
@@ -39,6 +43,32 @@ function isRepresentedByOpenPanel(ctx: MenuActionContext, panelId: string): bool
     }
   }
   return false;
+}
+
+/**
+ * Returns a short suffix flagging where this panel is currently open, so the
+ * menu can lightly mark already-added panels without hiding them. Probes with
+ * allowMultiple=false because the indicator is informational — even
+ * multi-instance panels should signal that an instance already exists.
+ */
+function getOpenIndicator(
+  ctx: MenuActionContext,
+  panelId: string,
+): 'open' | 'open elsewhere' | null {
+  if (isPanelOpenInCurrentDockview(ctx, panelId, false)) return 'open';
+  if (isPanelOpenAnywhere(ctx, panelId)) return 'open elsewhere';
+  return null;
+}
+
+function decoratePanelEntry(
+  panel: { title: string; icon?: string },
+  indicator: 'open' | 'open elsewhere' | null,
+): { label: string; iconColor: string | undefined } {
+  if (!indicator) return { label: panel.title, iconColor: undefined };
+  return {
+    label: `${panel.title}  ·  ${indicator}`,
+    iconColor: 'text-neutral-500',
+  };
 }
 
 function getPanelAddDisabledReason(
@@ -89,8 +119,10 @@ function getPanelAddDisabledReason(
  *
  * Filtering:
  *   - Self-exclusion: never offer the host dockview's own panel id.
- *   - Already-open single-instance panels are hidden outright; multi-instance
- *     panels stay so a user can legitimately add another copy.
+ *   - Already-open panels stay listed (with a "· open" suffix + dimmed icon
+ *     via decoratePanelEntry). Single-instance ones are then disabled with a
+ *     reason; multi-instance ones remain enabled so the user can add another
+ *     copy intentionally.
  */
 function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
   id: string;
@@ -115,11 +147,6 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
 
   for (const panel of allPanels) {
     if (hostPanelId && panel.id === hostPanelId) continue;
-
-    const allowMultiple = !!panel.supportsMultipleInstances;
-    if (!allowMultiple && isPanelOpenInCurrentDockview(ctx, panel.id, false)) {
-      continue;
-    }
 
     const category = panel.category || defaultCategory;
     if (!categories.has(category)) {
@@ -214,14 +241,19 @@ export const addPanelAction: MenuAction = {
         id: `panel:add:category:${category}`,
         label: formatCategoryLabel(category),
         availableIn: ['background', 'tab', 'panel-content'],
-        children: panels.map(panel => ({
-          id: `panel:add:${panel.id}`,
-          label: panel.title,
-          icon: panel.icon,
-          availableIn: ['background', 'tab', 'panel-content'] as const,
-          disabled: () => getPanelAddDisabledReason(ctx, panel.id, !!panel.supportsMultipleInstances, !!api),
-          execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
-        })),
+        children: panels.map(panel => {
+          const allowMultiple = !!panel.supportsMultipleInstances;
+          const { label, iconColor } = decoratePanelEntry(panel, getOpenIndicator(ctx, panel.id));
+          return {
+            id: `panel:add:${panel.id}`,
+            label,
+            icon: panel.icon,
+            iconColor,
+            availableIn: ['background', 'tab', 'panel-content'] as const,
+            disabled: () => getPanelAddDisabledReason(ctx, panel.id, allowMultiple, !!api),
+            execute: () => addPanel(ctx, panel.id, allowMultiple),
+          };
+        }),
         execute: () => {},
       });
     }
@@ -232,30 +264,60 @@ export const addPanelAction: MenuAction = {
 };
 
 /**
- * Get "Edit Quick Add" submenu with toggleable pin items.
+ * Default Panels submenu — curated list of panels declared for the current
+ * dock zone (via `getDockWidgetPanelIds`) or scoped via `ctx.scopedPanelIds`
+ * (set by SmartDockview/PanelHostDockview from `allowedPanels` or `panelScope`).
+ *
+ * Only surfaces when the scope is small enough to be useful (≤ DEFAULT_PANELS_MAX).
+ * Workspace-style docks expose hundreds of panels via their scope, in which case
+ * Add Panel → category is the right surface and this submenu stays hidden.
  */
-export function getEditQuickAddActions(ctx: MenuActionContext): MenuAction {
-  return {
-    id: 'panel:edit-quick-add',
-    label: 'Edit Quick Add',
-    icon: 'pin',
-    availableIn: ['background', 'tab', 'panel-content'],
-    children: () => {
-      const allPanels = ctx.panelRegistry?.getPublicPanels
-        ? ctx.panelRegistry.getPublicPanels()
-        : ctx.panelRegistry?.getAll() ?? [];
-      const store = useWorkspaceStore.getState();
+export function getDefaultScopePanelSubmenu(
+  ctx: MenuActionContext,
+  api: ReturnType<typeof resolveCurrentDockview>['api'],
+): MenuAction | null {
+  if (!ctx.currentDockviewId || !ctx.panelRegistry) return null;
 
-      return allPanels.map((panel) => ({
-        id: `panel:edit-quick-add:${panel.id}`,
-        label: `${store.isPinnedQuickAdd(panel.id) ? '✓ ' : ''}${panel.title}`,
-        icon: panel.icon,
-        availableIn: ['background', 'tab', 'panel-content'] as const,
-        execute: () => {
-          useWorkspaceStore.getState().toggleQuickAddPin(panel.id);
-        },
-      }));
-    },
+  const dockZonePanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
+  const scopedIds = dockZonePanelIds.length > 0
+    ? dockZonePanelIds
+    : ctx.scopedPanelIds ?? [];
+
+  if (scopedIds.length === 0 || scopedIds.length > DEFAULT_PANELS_MAX) return null;
+
+  const dockWidget = getDockWidgetByDockviewId(ctx.currentDockviewId);
+  const scopeLabel = dockWidget?.label ?? ctx.currentDockviewId;
+  const allPanels = ctx.panelRegistry.getPublicPanels
+    ? ctx.panelRegistry.getPublicPanels()
+    : ctx.panelRegistry.getAll();
+  const panelMap = new Map(allPanels.map((p) => [p.id, p]));
+
+  const children: MenuAction[] = [];
+  for (const panelId of scopedIds) {
+    if (panelId === ctx.currentDockviewId) continue;
+    const panel = panelMap.get(panelId);
+    if (!panel) continue;
+    const allowMultiple = !!panel.supportsMultipleInstances;
+    const { label, iconColor } = decoratePanelEntry(panel, getOpenIndicator(ctx, panel.id));
+    children.push({
+      id: `panel:add:default-scope:${panel.id}`,
+      label,
+      icon: panel.icon,
+      iconColor,
+      availableIn: ['background', 'tab', 'panel-content'],
+      disabled: () => getPanelAddDisabledReason(ctx, panel.id, allowMultiple, !!api),
+      execute: () => addPanel(ctx, panel.id, allowMultiple),
+    });
+  }
+
+  if (children.length === 0) return null;
+
+  return {
+    id: `panel:add:defaults:${ctx.currentDockviewId}`,
+    label: `Default Panels (${scopeLabel})`,
+    icon: 'layout',
+    availableIn: ['background', 'tab', 'panel-content'],
+    children,
     execute: () => {},
   };
 }
