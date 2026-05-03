@@ -111,6 +111,8 @@ export type GalleryClusterBy = "prompt" | "generation" | "sibling";
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
   badgeConfig?: Partial<MediaCardBadgeConfig>;
+  layout?: "masonry" | "grid";
+  cardSize?: number;
   groupBy?: GalleryGroupBySelection;
   groupView?: GalleryGroupView;
   groupScope?: GalleryGroupScope;
@@ -136,6 +138,8 @@ const defaultPanelConfigs: Partial<Record<string, PanelConfig>> = {
     settings: {
       overlayPresetId: "media-card-default",
       badgeConfig: defaultGalleryBadgeConfig,
+      layout: "masonry",
+      cardSize: 260,
       groupBy: "none",
       groupView: "inline",
       groupScope: [],
