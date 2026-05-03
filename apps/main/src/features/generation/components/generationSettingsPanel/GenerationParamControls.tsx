@@ -44,6 +44,12 @@ interface GenerationParamControlsProps {
   unlimitedModels?: Set<string>;
   promotedModels?: Set<string>;
   showApiMethodToggle?: boolean;
+  /** Map of param name → value that probe-mode will override at submit time.
+   *  Only entries whose value differs from the current `values[name]` should
+   *  be present (the panel pre-filters). Renders a small inline indicator
+   *  next to the relevant control so the user sees the swap without losing
+   *  their normal-mode setting. */
+  probeOverrides?: Record<string, unknown> | null;
 }
 
 export function GenerationParamControls({
@@ -54,6 +60,7 @@ export function GenerationParamControls({
   unlimitedModels = new Set<string>(),
   promotedModels = new Set<string>(),
   showApiMethodToggle = false,
+  probeOverrides = null,
 }: GenerationParamControlsProps) {
   const durationOptions = useMemo(
     () => getDurationOptions(paramSpecs, values?.model)?.options ?? null,
@@ -143,6 +150,36 @@ export function GenerationParamControls({
           if (currentModel && !appliesToModels.includes(currentModel)) return null;
         }
 
+        // Probe override (non-duration): replace the entire control with a
+        // static amber pill so the user sees what probe will run with. Duration
+        // has its own custom override rendering below so the surrounding
+        // audio/api-method buttons stay live.
+        if (param.name !== 'duration') {
+          const probeOverrideValue = probeOverrides?.[param.name];
+          if (probeOverrideValue !== undefined) {
+            const raw = String(probeOverrideValue ?? '—');
+            const display = param.name === 'aspect_ratio' ? getAspectRatioLabel(raw) : raw;
+            const truncated = display.length > 18 ? `${display.slice(0, 16)}…` : display;
+            const paramIcon = getParamIcon(param.name, raw);
+            return (
+              <div
+                key={param.name}
+                className="flex items-center gap-1 flex-shrink-0 rounded-lg shadow-sm bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400 dark:ring-amber-500 px-1.5 py-1.5"
+                title={`Probe override — ${param.name} runs as ${display}. Turn Probe OFF (or edit the bound probe preset) to change.`}
+              >
+                {paramIcon && (
+                  <span className="flex items-center text-amber-700 dark:text-amber-300">
+                    {paramIcon}
+                  </span>
+                )}
+                <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">
+                  {truncated}
+                </span>
+              </div>
+            );
+          }
+        }
+
         if (param.name === 'duration' && param.type === 'number' && durationOptions) {
           const currentDuration = Number(values[param.name]) || durationOptions[0];
           // Audio toggle: find the audio boolean param and check if applicable to current model
@@ -171,28 +208,58 @@ export function GenerationParamControls({
                   <Icon name="key" size={14} />
                 </button>
               )}
-              <div
-                ref={durationWheelCallbackRef}
-                className="flex items-center flex-shrink-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
-                title="Duration — scroll to adjust"
-              >
-                <span className="flex items-center justify-center pl-1.5 pr-0 py-1.5 text-neutral-400 dark:text-neutral-500" aria-hidden="true">
-                  <Icon name="clock" size={12} />
-                </span>
-                <select
-                  value={currentDuration}
-                  onChange={(e) => onChange('duration', Number(e.target.value))}
-                  disabled={generating}
-                  className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
-                  title="Duration"
-                >
-                  {durationOptions.map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds}s
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {(() => {
+                const probeDurOverride = probeOverrides?.duration;
+                const isProbeDurOverridden = probeDurOverride !== undefined;
+                return (
+                  <div
+                    ref={durationWheelCallbackRef}
+                    className={clsx(
+                      'flex items-center flex-shrink-0 rounded-lg shadow-sm',
+                      isProbeDurOverridden
+                        ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400 dark:ring-amber-500'
+                        : 'bg-white dark:bg-neutral-800',
+                    )}
+                    title={isProbeDurOverridden
+                      ? `Probe override active — runs use ${probeDurOverride}s. Your saved duration is ${currentDuration}s; turn Probe OFF (or edit the bound probe preset) to change it.`
+                      : 'Duration — scroll to adjust'}
+                  >
+                    <span
+                      className={clsx(
+                        'flex items-center justify-center pl-1.5 pr-0 py-1.5',
+                        isProbeDurOverridden
+                          ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-neutral-400 dark:text-neutral-500',
+                      )}
+                      aria-hidden="true"
+                    >
+                      <Icon name="clock" size={12} />
+                    </span>
+                    {isProbeDurOverridden ? (
+                      <span
+                        className="px-1.5 py-1.5 text-[11px] font-semibold tabular-nums text-amber-800 dark:text-amber-200"
+                        aria-label={`probe override duration: ${probeDurOverride}s`}
+                      >
+                        {String(probeDurOverride)}s
+                      </span>
+                    ) : (
+                      <select
+                        value={currentDuration}
+                        onChange={(e) => onChange('duration', Number(e.target.value))}
+                        disabled={generating}
+                        className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
+                        title="Duration"
+                      >
+                        {durationOptions.map((seconds) => (
+                          <option key={seconds} value={seconds}>
+                            {seconds}s
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                );
+              })()}
               {showAudio && (
                 <button
                   type="button"

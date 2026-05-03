@@ -16,16 +16,13 @@ import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateSto
 import { providerCapabilityRegistry } from '@features/providers';
 
 import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
-import { getFallbackOperation, type OperationType } from '@/types/operations';
+import { getFallbackOperation, OPERATION_METADATA, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
 
 import { computeCombinations, type CombinationStrategy, type EachStrategy } from '../lib/combinationStrategies';
-import {
-  executeTrackedEachBackendExecution,
-  prepareEachBackendExecutionPayload,
-} from '../lib/eachBackendExecution';
+import { prepareEachBackendExecutionPayload } from '../lib/eachBackendExecution';
 import { prepareEachExecutionItems } from '../lib/eachExecutionItems';
 import { ensureInputsUploaded } from '../lib/ensureInputsUploaded';
 import { planFanoutGroups } from '../lib/fanoutPlanner';
@@ -37,6 +34,10 @@ import {
 } from '../lib/fanoutPresets';
 import { pickFromSet } from '../lib/pickFromSet';
 import { buildGenerationRequest, type PickStateUpdate } from '../lib/quickGenerateLogic';
+import {
+  dispatchRawItemBackendExecution,
+  trackRawItemBackendExecution,
+} from '../lib/rawItemBackendExecution';
 import {
   createGenerationRunDescriptor,
   createGenerationRunItemContext,
@@ -90,6 +91,17 @@ function recordInputHistory(operationType: string, assets: HistoryAsset[]) {
   if (assets.length > 0) {
     useGenerationHistoryStore.getState().recordUsage(operationType, assets);
   }
+}
+
+/** Probe-mode param overrides applied when ephemeral=true. Keeps probes cheap
+ *  and fast: video ops are clamped to duration=5. video_transition is skipped
+ *  because its top-level `duration` is hidden (per-segment durations drive the
+ *  total). Image ops get no override. */
+function getProbeParamOverrides(operationType: OperationType): Record<string, any> {
+  const meta = OPERATION_METADATA[operationType];
+  if (!meta || meta.outputType !== 'video') return {};
+  if (meta.hiddenParams?.includes('duration')) return {};
+  return { duration: 5 };
 }
 
 /** Clamp inputs to the operation's max slot limit so request + tracking agree. */
@@ -1039,28 +1051,35 @@ export function useQuickGenerateController() {
       items: itemPayloads,
     });
 
-    const { generationIds } = await executeTrackedEachBackendExecution({
-      request,
+    const { executionId } = await dispatchRawItemBackendExecution(request);
+
+    // Fire-and-forget progress tracker. Seeds a pending card the moment each
+    // backend item registers a generation_id (visible while the run is still
+    // in flight). The QuickGen UI is released as soon as dispatch returns.
+    trackRawItemBackendExecution({
+      executionId,
       total,
       executionMode,
       onProgress: (progress) => setQueueProgress(progress),
-    });
-
-    for (const genId of generationIds) {
-      addOrUpdateGeneration(createPendingGeneration({
-        id: genId,
-        operationType,
-        providerId,
-        finalPrompt: prompt,
-        params: {},
-        status: 'pending',
-      }));
-    }
-    if (generationIds.length > 0) {
-      const lastId = generationIds[generationIds.length - 1];
-      setGenerationId(lastId);
-      setWatchingGeneration(lastId);
-    }
+      onNewGenerationId: (genId) => {
+        addOrUpdateGeneration(createPendingGeneration({
+          id: genId,
+          operationType,
+          providerId,
+          finalPrompt: prompt,
+          params: {},
+          status: 'pending',
+        }));
+        setGenerationId(genId);
+        setWatchingGeneration(genId);
+      },
+    })
+      .catch((err) => {
+        console.error('[quickgen] backend each tracker failed', err);
+      })
+      .finally(() => {
+        setTimeout(() => setQueueProgress(null), 2000);
+      });
   }
 
   /**
@@ -1083,7 +1102,12 @@ export function useQuickGenerateController() {
     const hasAssetOverrides = Array.isArray(overrides?.assetOverrides);
 
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
-    const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
+    const probeDefaults = overrides?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+    const dynamicParams = {
+      ...bindings.dynamicParams,
+      ...(probeDefaults || {}),
+      ...overrides?.paramOverrides,
+    };
 
     // assetOverrides are documented as replacing current inputs, so clear any
     // persisted source/composition params that could override the provided assets.
@@ -1180,9 +1204,12 @@ export function useQuickGenerateController() {
     if (isBurst) {
       // ── Burst path ──
       const generatedIds: number[] = [];
+      const burstRunMetadata: Record<string, unknown> = {};
+      if (overrides?.assetOverrides) burstRunMetadata.source = 'assetOverrides';
+      if (overrides?.ephemeral) burstRunMetadata.ephemeral = true;
       const run = createGenerationRunDescriptor({
         mode: 'quickgen_burst',
-        ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+        ...(Object.keys(burstRunMetadata).length > 0 ? { metadata: burstRunMetadata } : {}),
       });
       callbacks?.onProgress?.({ queued: 0, total: burstCount });
 
@@ -1205,7 +1232,9 @@ export function useQuickGenerateController() {
         throw new Error(baseRequest.error);
       }
 
-      recordInputHistory(activeOperationType, baseRequest.historyAssets);
+      if (!overrides?.ephemeral) {
+        recordInputHistory(activeOperationType, baseRequest.historyAssets);
+      }
 
       // Pre-build all requests (sequential only when random_each needs fresh picks)
       const burstRequests: typeof baseRequest[] = [];
@@ -1290,9 +1319,12 @@ export function useQuickGenerateController() {
       throw new Error(request.error);
     }
 
+    const singleRunMetadata: Record<string, unknown> = {};
+    if (overrides?.assetOverrides) singleRunMetadata.source = 'assetOverrides';
+    if (overrides?.ephemeral) singleRunMetadata.ephemeral = true;
     const run = createGenerationRunDescriptor({
       mode: 'quickgen_single',
-      ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+      ...(Object.keys(singleRunMetadata).length > 0 ? { metadata: singleRunMetadata } : {}),
     });
     const genId = await submitOne(
       request,
@@ -1304,7 +1336,9 @@ export function useQuickGenerateController() {
     );
     setGenerationId(genId);
     setWatchingGeneration(genId);
-    recordInputHistory(activeOperationType, request.historyAssets);
+    if (!overrides?.ephemeral) {
+      recordInputHistory(activeOperationType, request.historyAssets);
+    }
 
     logEvent('INFO', 'generation_created', {
       generationId: genId,
@@ -1346,19 +1380,32 @@ export function useQuickGenerateController() {
     }
   }
 
-  const generateSequentialBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
-    if (count <= 1) return generate({ paramOverrides: options?.overrideDynamicParams });
+  const generateSequentialBurst = useCallback(async (
+    count: number,
+    options?: { overrideDynamicParams?: Record<string, any>; ephemeral?: boolean },
+  ) => {
+    if (count <= 1) return generate({ paramOverrides: options?.overrideDynamicParams, ephemeral: options?.ephemeral });
 
     resetForGeneration();
     const total = count;
     const activeOperationType = getActiveOperationType();
     const generatedIds: number[] = [];
-    const run = createGenerationRunDescriptor({ mode: 'quickgen_burst' });
+    const seqBurstMetadata: Record<string, unknown> = {};
+    if (options?.ephemeral) seqBurstMetadata.ephemeral = true;
+    const run = createGenerationRunDescriptor({
+      mode: 'quickgen_burst',
+      ...(Object.keys(seqBurstMetadata).length > 0 ? { metadata: seqBurstMetadata } : {}),
+    });
     setQueueProgress({ queued: 0, total });
 
     try {
       const { currentInputs: rawCurrentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
-      const baseDynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
+      const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
+      const baseDynamicParams = {
+        ...bindings.dynamicParams,
+        ...(probeDefaults || {}),
+        ...options?.overrideDynamicParams,
+      };
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
 
@@ -1374,7 +1421,9 @@ export function useQuickGenerateController() {
         baseDynamicParams?.model as string | undefined,
         providerId,
       );
-      recordInputHistory(activeOperationType, buildHistoryAssets(currentInputs));
+      if (!options?.ephemeral) {
+        recordInputHistory(activeOperationType, buildHistoryAssets(currentInputs));
+      }
 
       // Pre-resolve sets once for step 1 (step 2+ uses previous output, no set refs)
       const hasRandomEachRef = currentInputs.some(
@@ -1492,6 +1541,7 @@ export function useQuickGenerateController() {
     overrideDynamicParams?: Record<string, any>;
     strategy?: CombinationStrategy;
     fanoutOptions?: Partial<FanoutRunOptions>;
+    ephemeral?: boolean;
   }) => {
     let { currentInputs } = getInputState();
     // Auto-upload any local-only assets before building each-generation requests
@@ -1510,6 +1560,7 @@ export function useQuickGenerateController() {
         on_error: fanout.onError,
         execution_mode: fanout.executionMode,
         reuse_previous_output_as_input: fanout.reusePreviousOutputAsInput,
+        ...(options?.ephemeral ? { ephemeral: true } : {}),
       },
     });
 
@@ -1549,7 +1600,11 @@ export function useQuickGenerateController() {
         }
         setQueueProgress({ queued: 0, total });
 
-        const overrideParams = options?.overrideDynamicParams || {};
+        const probeDefaults = options?.ephemeral ? getProbeParamOverrides(operationType) : null;
+        const overrideParams = {
+          ...(probeDefaults || {}),
+          ...(options?.overrideDynamicParams || {}),
+        };
         const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
         await submitEachViaBackendExecution({
@@ -1565,9 +1620,9 @@ export function useQuickGenerateController() {
         });
       } catch (err) {
         setError(extractErrorMessage(err, 'Failed to queue iterate-mode generations'));
+        setQueueProgress(null);
       } finally {
         setGenerating(false);
-        setTimeout(() => setQueueProgress(null), 2000);
       }
       return;
     }
@@ -1587,7 +1642,11 @@ export function useQuickGenerateController() {
     setQueueProgress({ queued: 0, total });
 
     try {
-      const overrideParams = options?.overrideDynamicParams || {};
+      const probeDefaults = options?.ephemeral ? getProbeParamOverrides(operationType) : null;
+      const overrideParams = {
+        ...(probeDefaults || {}),
+        ...(options?.overrideDynamicParams || {}),
+      };
 
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
@@ -1607,9 +1666,9 @@ export function useQuickGenerateController() {
       });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to queue individual generations'));
+      setQueueProgress(null);
     } finally {
       setGenerating(false);
-      setTimeout(() => setQueueProgress(null), 2000);
     }
   }, [
     generate,
@@ -1629,7 +1688,10 @@ export function useQuickGenerateController() {
   ]);
 
   /** Generate using only the currently selected carousel input (ignores other queued inputs). */
-  async function generateCurrentOnly(count?: number) {
+  async function generateCurrentOnly(
+    count?: number,
+    options?: { ephemeral?: boolean; paramOverrides?: Record<string, any> },
+  ) {
     const activeOperationType = getActiveOperationType();
     const inputState = (useInputStore as any).getState();
     const operationData = inputState.inputsByOperation?.[activeOperationType];
@@ -1641,15 +1703,15 @@ export function useQuickGenerateController() {
 
     if (isOnVirtualSlot) {
       // No asset on virtual slot — force text-to-* with empty inputs
-      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count });
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count, ephemeral: options?.ephemeral, paramOverrides: options?.paramOverrides });
     }
 
     const { currentInput } = getInputState();
     if (!currentInput?.asset) {
       // Empty carousel or no asset — skip gallery fallback so text-to-* kicks in
-      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count });
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count, ephemeral: options?.ephemeral, paramOverrides: options?.paramOverrides });
     }
-    return generate({ assetOverrides: [currentInput.asset], count });
+    return generate({ assetOverrides: [currentInput.asset], count, ephemeral: options?.ephemeral, paramOverrides: options?.paramOverrides });
   }
 
   return {

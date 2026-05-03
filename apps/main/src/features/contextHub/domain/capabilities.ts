@@ -330,6 +330,10 @@ export interface GenerateOverrides {
   count?: number;
   /** Skip falling back to the active/selected asset when no inputs are queued */
   skipActiveAssetFallback?: boolean;
+  /** Probe-style throwaway run. Marks run_context.metadata.ephemeral=true so
+   *  the resulting asset is created with asset_kind='probe' and skips the
+   *  QuickGen history seed. */
+  ephemeral?: boolean;
 }
 
 /**

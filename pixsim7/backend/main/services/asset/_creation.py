@@ -241,6 +241,13 @@ class AssetCreationMixin:
             metadata["provider_flagged"] = True
             metadata["provider_flagged_reason"] = flag_reason
 
+        # run_context.metadata.ephemeral=true marks this run as a probe — a
+        # throwaway test generation that should be excluded from gallery listings
+        # by default. The marker rides through as asset_kind='probe'.
+        run_context = self._extract_run_context(generation)
+        is_probe = bool(run_context and run_context.get("ephemeral"))
+        asset_kind = "probe" if is_probe else "content"
+
         # Create asset — each generation always gets its own Asset record.
         # Content dedup is handled at the storage layer (content-addressed keys)
         # and tracked via ContentBlob.
@@ -264,6 +271,7 @@ class AssetCreationMixin:
             media_metadata=metadata,
             prompt=prompt_text,
             prompt_analysis=prompt_analysis_result,
+            asset_kind=asset_kind,
             searchable=not _asset_url_is_placeholder,
             created_at=datetime.now(timezone.utc),
         )

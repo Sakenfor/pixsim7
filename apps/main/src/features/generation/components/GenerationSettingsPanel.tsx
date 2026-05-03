@@ -7,8 +7,9 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
+import { DropdownItem, DropdownSectionHeader, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { getAspectRatioLabel } from '@lib/generation-ui';
@@ -21,10 +22,11 @@ import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
 } from '@features/contextHub';
-import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
+import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState, useGenerationPresetStore } from '@features/generation';
 import { useAuthoringHintsStore, type AuthoringHints } from '@features/generation/stores/authoringHintsStore';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels, useModelPromotions } from '@features/providers';
 import { providerCapabilityRegistry } from '@features/providers';
+import { openWorkspacePanel } from '@features/workspace';
 
 import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
@@ -224,8 +226,10 @@ export interface GenerationSettingsPanelProps {
   generating: boolean;
   /** Whether the Go button should be enabled */
   canGenerate: boolean;
-  /** Callback when Go button is clicked */
-  onGenerate: () => void;
+  /** Callback when Go button is clicked. Receives `{ ephemeral, paramOverrides }`
+   *  when probe mode is active so single-shot Go fires as a throwaway run with
+   *  optional preset-driven param overrides. */
+  onGenerate: (opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
   /** Custom class name for the container */
   className?: string;
   /** Secondary "Go with Asset" button configuration */
@@ -241,14 +245,16 @@ export interface GenerationSettingsPanelProps {
   error?: string | null;
   /** Queue progress state */
   queueProgress?: { queued: number; total: number } | null;
-  /** Callback for burst generation (receives count) */
-  onGenerateBurst?: (count: number) => void;
+  /** Callback for burst generation (receives count). When probe mode is on,
+   *  the second arg carries `ephemeral: true` (and any preset-driven
+   *  paramOverrides) so every burst item lands with asset_kind='probe'. */
+  onGenerateBurst?: (count: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
   /** Callback for sequential burst generation (waits for each run to complete before the next) */
-  onGenerateSequentialBurst?: (count: number) => void;
+  onGenerateSequentialBurst?: (count: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
   /** Callback for generate-each mode (one generation per queued asset or group) */
-  onGenerateEach?: (options?: FanoutRunOptions) => void;
+  onGenerateEach?: (options?: FanoutRunOptions, extra?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
   /** Callback to generate using only the currently selected carousel input (receives burst count) */
-  onGenerateCurrentOnly?: (count?: number) => void;
+  onGenerateCurrentOnly?: (count?: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
   /** Optional node rendered in Row 2 next to Presets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
@@ -287,6 +293,49 @@ export function GenerationSettingsPanel({
   const [burstSequentialMode, setBurstSequentialMode] = usePersistedScopeState(`burstSequentialMode:${operationType}`, false);
   const isBurstMode = burstCount > 1;
   const canUseSequentialBurst = !!onGenerateSequentialBurst;
+
+  // Probe mode — when on, Go/Each/CurrentOnly fire with ephemeral=true so the
+  // resulting assets land as asset_kind='probe' (excluded from gallery + QuickGen
+  // history). Sticky toggle: stays on for a probing session until the user flips
+  // it back. Persisted per scope (not per operation), since "I'm probing right
+  // now" is a session-wide state.
+  const [probeMode, setProbeMode] = usePersistedScopeState('probeMode', false);
+  // Optional preset id: when probe mode is on AND a preset is selected, the
+  // preset's params merge as paramOverrides on top of the hardcoded probe
+  // defaults (duration=5 for video). null = use hardcoded defaults only.
+  // Persisted per (scope × operation) so each op type can have its own probe preset.
+  const [probePresetId, setProbePresetId] = usePersistedScopeState<string | null>(
+    `probePresetId:${operationType}`,
+    null,
+  );
+  const [probePopoverOpen, setProbePopoverOpen] = useState(false);
+  const probeChevronRef = useRef<HTMLButtonElement>(null);
+
+  // Resolve preset.params at render time so changes to the underlying preset
+  // (rename / edit) are picked up automatically without a manual re-bind.
+  const probePresetParams = useGenerationPresetStore((s) =>
+    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.params : undefined,
+  );
+  const probePresetName = useGenerationPresetStore((s) =>
+    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.name : undefined,
+  );
+  const probePresetsForOperation = useGenerationPresetStore(
+    useShallow((s) => s.presets.filter((p) => p.operationType === operationType)),
+  );
+  const savePresetAction = useGenerationPresetStore((s) => s.savePreset);
+  const probeOpts = probeMode
+    ? {
+        ephemeral: true as const,
+        ...(probePresetParams ? { paramOverrides: { ...probePresetParams } } : {}),
+      }
+    : undefined;
+
+  // If the bound preset disappears (e.g. user deleted it) clear the binding.
+  useEffect(() => {
+    if (probePresetId && !probePresetParams) {
+      setProbePresetId(null);
+    }
+  }, [probePresetId, probePresetParams, setProbePresetId]);
 
   // Non-passive wheel listener for burst count stepper (React onWheel is passive)
   const burstWheelRef = useRef<HTMLDivElement>(null);
@@ -349,6 +398,30 @@ export function GenerationSettingsPanel({
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
+
+  // Map of param name → value that probe-mode will override at submit time.
+  // Only includes entries that *differ* from the current dynamicParams — used
+  // to render inline override indicators on individual param controls (e.g.
+  // a "→5s" badge on the duration dropdown). Returns null when probe is off
+  // or there are no diffs, so consumers can early-out cheaply.
+  // Declared after `workbench` to avoid a TDZ error.
+  const probeOverrides = useMemo<Record<string, unknown> | null>(() => {
+    if (!probeMode) return null;
+    const meta = OPERATION_METADATA[operationType];
+    const probeDefaults: Record<string, unknown> = (meta?.outputType === 'video' && !meta.hiddenParams?.includes('duration'))
+      ? { duration: 5 }
+      : {};
+    const merged: Record<string, unknown> = { ...probeDefaults, ...(probePresetParams || {}) };
+    const current = (workbench.dynamicParams ?? {}) as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    let hasAny = false;
+    for (const [key, to] of Object.entries(merged)) {
+      if (current[key] === to) continue;
+      out[key] = to;
+      hasAny = true;
+    }
+    return hasAny ? out : null;
+  }, [probeMode, operationType, probePresetParams, workbench.dynamicParams]);
 
   const modelProviderId = useProviderIdForModel(
     workbench.dynamicParams?.model as string | undefined
@@ -710,6 +783,7 @@ export function GenerationSettingsPanel({
             unlimitedModels={unlimitedModels}
             promotedModels={promotedModels}
             showApiMethodToggle={showApiMethodToggle}
+            probeOverrides={probeOverrides}
           />
         </div>
 
@@ -746,7 +820,7 @@ export function GenerationSettingsPanel({
           {onGenerateEach && (inputCount > 1 || hasAnyLinkedSet) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <div className="min-w-0">
               <EachSplitButton
-                onGenerateEach={onGenerateEach}
+                onGenerateEach={(opts) => onGenerateEach(opts, probeOpts)}
                 disabled={generating || !canGenerate}
                 generating={generating}
                 queueProgress={queueProgress}
@@ -790,12 +864,12 @@ export function GenerationSettingsPanel({
               onClick={() => {
                 if (isBurstMode && onGenerateBurst) {
                   if (burstSequentialMode && onGenerateSequentialBurst) {
-                    onGenerateSequentialBurst(burstCount);
+                    onGenerateSequentialBurst(burstCount, probeOpts);
                   } else {
-                    onGenerateBurst(burstCount);
+                    onGenerateBurst(burstCount, probeOpts);
                   }
                 } else {
-                  onGenerate();
+                  onGenerate(probeOpts);
                 }
               }}
               disabled={generating || !canGenerate}
@@ -836,7 +910,7 @@ export function GenerationSettingsPanel({
               const disableCurrentOnly = generating || !canGenerate || currentOnlyRedundant;
               return (
                 <button
-                  onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
+                  onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined, probeOpts)}
                   disabled={disableCurrentOnly}
                   className={clsx(
                     'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
@@ -910,6 +984,159 @@ export function GenerationSettingsPanel({
                 <Icon name="chevronDown" size={10} />
               </button>
             </div>
+          </div>
+
+          {/* Probe-mode split-button — pill toggles probeMode; chevron opens a
+              popover that binds an optional preset whose params merge as
+              paramOverrides on probe runs. When the toggle is on, Go / Burst /
+              Each / Current fire with ephemeral=true so resulting assets land
+              as asset_kind='probe' (excluded from gallery + QuickGen history).
+              Hardcoded fallback when no preset is bound: duration=5 for video. */}
+          <div className="flex-shrink-0 flex">
+            <button
+              type="button"
+              onClick={() => setProbeMode((v) => !v)}
+              disabled={generating}
+              aria-pressed={probeMode}
+              className={clsx(
+                'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold inline-flex items-center gap-1',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                probeMode
+                  ? 'text-white bg-amber-500 ring-2 ring-amber-300 hover:bg-amber-600'
+                  : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title={probeMode
+                ? `Probe mode ON — Go/Each/Current fire as throwaway runs (asset_kind='probe', excluded from gallery + QuickGen history).${probePresetName ? `\n\nPreset bound: "${probePresetName}" — its params override current settings.` : '\n\nNo preset bound; video ops clamp to duration=5.'}\n\nClick pill to disable. Click ▾ to bind/change preset.`
+                : `Probe mode OFF — click to flip Go/Each into throwaway-probe mode.${probePresetName ? `\nWill apply preset "${probePresetName}".` : '\nWill use cheap defaults (video duration=5) until you bind a preset via ▾.'}\n\nReview/cleanup via Library → Maintenance → Probes.`}
+            >
+              <Icon name="flask" size={11} color={probeMode ? '#fff' : undefined} />
+              <span>{probeMode ? 'Probe ON' : 'Probe'}</span>
+              {probeMode && probePresetName && (
+                <span
+                  className="ml-0.5 px-1 py-px rounded text-[8px] font-bold uppercase tracking-wider bg-white/20 text-white"
+                  title={`Preset: ${probePresetName}`}
+                >
+                  {probePresetName.length > 10 ? `${probePresetName.slice(0, 10)}…` : probePresetName}
+                </span>
+              )}
+            </button>
+            <button
+              ref={probeChevronRef}
+              type="button"
+              onClick={() => setProbePopoverOpen((o) => !o)}
+              disabled={generating}
+              className={clsx(
+                'px-1 py-1.5 rounded-r-lg border-l border-white/20',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                probeMode
+                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title="Probe settings — bind a preset whose params apply on probe runs"
+            >
+              <Icon
+                name="chevronDown"
+                size={10}
+                color={probeMode ? '#fff' : undefined}
+                className={clsx(probePopoverOpen && 'rotate-180')}
+              />
+            </button>
+            <Popover
+              open={probePopoverOpen}
+              onClose={() => setProbePopoverOpen(false)}
+              anchor={probeChevronRef.current}
+              placement="top"
+              align="end"
+              offset={6}
+              triggerRef={probeChevronRef}
+              className="w-[280px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
+            >
+              <div className="flex flex-col">
+                <DropdownSectionHeader first>Apply preset on probe</DropdownSectionHeader>
+                <DropdownItem
+                  onClick={() => {
+                    setProbePresetId(null);
+                    setProbePopoverOpen(false);
+                  }}
+                  className={clsx('text-[11px]', probePresetId === null && 'font-semibold bg-accent/10')}
+                  icon={
+                    probePresetId === null
+                      ? <Icon name="check" size={10} />
+                      : <Icon name="x" size={10} />
+                  }
+                >
+                  <div className="flex flex-col items-start">
+                    <span>None — use defaults</span>
+                    <span className="text-[9px] text-neutral-400">video → duration 5; other params untouched</span>
+                  </div>
+                </DropdownItem>
+                {probePresetsForOperation.length > 0 ? (
+                  probePresetsForOperation.map((preset) => {
+                    const isActive = probePresetId === preset.id;
+                    return (
+                      <DropdownItem
+                        key={preset.id}
+                        onClick={() => {
+                          setProbePresetId(preset.id);
+                          setProbePopoverOpen(false);
+                        }}
+                        className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+                        icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
+                      >
+                        <div className="flex flex-col items-start">
+                          <span>{preset.name}</span>
+                          {preset.description && (
+                            <span className="text-[9px] text-neutral-400">{preset.description}</span>
+                          )}
+                        </div>
+                      </DropdownItem>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-1.5 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    No presets saved for this operation. Use the button below or the regular preset selector to save one.
+                  </div>
+                )}
+                <div className="px-2 py-1.5 border-t border-neutral-200 dark:border-neutral-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openWorkspacePanel('probes');
+                      setProbePopoverOpen(false);
+                    }}
+                    className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 inline-flex items-center gap-1"
+                  >
+                    <Icon name="flask" size={10} />
+                    Open Probes panel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window === 'undefined') return;
+                      const name = window.prompt('Probe preset name', `${operationType} probe`);
+                      if (!name || !name.trim()) return;
+                      const created = savePresetAction(name.trim(), {
+                        operationType,
+                        ...(providerId ? { providerId } : {}),
+                        prompt: '',
+                        inputs: [],
+                        params: { ...(workbench.dynamicParams || {}) },
+                      }, 'Saved from probe popover');
+                      setProbePresetId(created.id);
+                      setProbePopoverOpen(false);
+                    }}
+                    className="mt-1 w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                  >
+                    Save current params as probe preset…
+                  </button>
+                  <div className="mt-1 text-[9px] text-neutral-400">
+                    Probe presets are stored in the regular preset bucket — manage via the Presets row above.
+                  </div>
+                </div>
+              </div>
+            </Popover>
           </div>
 
           {/* Secondary Go button (with media viewer asset) */}
