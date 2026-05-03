@@ -21,18 +21,12 @@ import {
 import { BACKEND_BASE } from '../api/client';
 import { previewBridge } from '../preview-bridge';
 
-let isRedirecting = false;
+import { redirectToLoginOnUnauthorized } from './unauthorizedRedirect';
 
 // Configure the auth service with API client settings
 configureAuthService({
   baseUrl: BACKEND_BASE,
-  onUnauthorized: () => {
-    if (typeof window === 'undefined') return;
-    if (!window.location.pathname.startsWith('/login') && !isRedirecting) {
-      isRedirecting = true;
-      window.location.href = '/login';
-    }
-  },
+  onUnauthorized: redirectToLoginOnUnauthorized,
 });
 
 // Hook into token changes for preview bridge sync
