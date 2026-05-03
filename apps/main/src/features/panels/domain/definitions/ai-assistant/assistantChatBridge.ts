@@ -234,6 +234,9 @@ class AssistantChatBridge {
           error: 'Request timed out — no response from agent. Try sending again.',
           thinkingLog: req.thinkingLog,
         };
+        // Persist so the timeout error survives a reload before the panel
+        // has a chance to consume it.
+        saveCompletedResult(req.tabId, req.result);
         inflightChanged = true;
         this._notify();
       }

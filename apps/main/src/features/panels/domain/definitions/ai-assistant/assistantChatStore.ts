@@ -257,6 +257,22 @@ function serverHasUnansweredUserTurn(
   return false;
 }
 
+/**
+ * True when the last stored message is an assistant message whose text matches
+ * the given response. Used to dedupe append-on-consume after a page reload that
+ * lands between consume and ack — without this check the same assistant reply
+ * gets appended twice (once before reload from the live result, again after
+ * reload when the bridge restores from COMPLETED_KEY and the panel re-consumes).
+ */
+function isLastAssistantMessageEqual(
+  messages: ChatMessage[],
+  text: string | null | undefined,
+): boolean {
+  if (!text) return false;
+  const last = messages[messages.length - 1];
+  return !!last && last.role === 'assistant' && last.text === text;
+}
+
 interface TranscriptRecoveryStatus {
   unresolvedUser: { index: number; text: string } | null;
   recoveredAssistantTail: ChatMessage[];
@@ -853,5 +869,6 @@ export {
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
+  isLastAssistantMessageEqual,
 };
 export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };

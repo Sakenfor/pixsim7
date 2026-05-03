@@ -31,6 +31,7 @@ import {
   createTabId,
   findLatestUnansweredUserMessage,
   evaluateTranscriptRecovery,
+  isLastAssistantMessageEqual,
   type ChatTab,
   type AgentEngine,
 } from './assistantChatStore';
@@ -247,6 +248,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       s.appendMessage(tab.id, { role: 'system', text: 'Request cancelled', timestamp: new Date() });
       chatBridge.ack(tab.id);
     } else if (result.ok && result.response) {
+      // Dedupe: if a reload landed between the previous consume and ack, the
+      // assistant message is already in the store. Re-appending would duplicate.
+      if (isLastAssistantMessageEqual(s.getMessages(tab.id), result.response)) {
+        chatBridge.ack(tab.id);
+        return;
+      }
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
@@ -287,6 +294,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             if (recovered.length > 0) {
               const st = useAssistantChatStore.getState();
               const curr = st.getMessages(tab.id);
+              const lastRecoveredText = recovered[recovered.length - 1].text;
+              // Dedupe: if the prior load already ran this recovery and reload
+              // landed before ack, the recovered tail is already at the bottom.
+              if (isLastAssistantMessageEqual(curr, lastRecoveredText)) {
+                chatBridge.ack(tab.id);
+                return;
+              }
               st.setMessages(tab.id, [
                 ...curr,
                 { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
@@ -628,6 +642,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           serverTranscriptDiverged={serverTranscriptDiverged}
           responseLost={responseLost}
           onRecheck={() => setReconcileNonce((n) => n + 1)}
+          onRetry={responseLost ? retryLast : undefined}
         />
 
         {/* Textarea — above the toolbar for more space */}

@@ -845,5 +845,28 @@ describe('AssistantChatBridge', () => {
       await vi.advanceTimersByTimeAsync(200_000);
       expect(bridge.get('tab-1')!.status).toBe('completed');
     });
+
+    it('persists stale-timeout result so it survives reload before consume', async () => {
+      await connectAndSend('tab-1');
+
+      // No heartbeats — push past the stale window
+      await vi.advanceTimersByTimeAsync(105_000);
+      expect(bridge.get('tab-1')!.status).toBe('error');
+
+      // Completed key must contain the timeout error so a fresh bridge restores it
+      const raw = localStorage.getItem('ai-assistant:completed');
+      expect(raw).not.toBeNull();
+      const map = JSON.parse(raw!) as Record<string, { result: { ok: boolean; error?: string } }>;
+      expect(map['tab-1']).toBeDefined();
+      expect(map['tab-1'].result.ok).toBe(false);
+      expect(map['tab-1'].result.error).toMatch(/timed out/i);
+
+      // Fresh bridge (simulating page reload) should restore + expose the error
+      createFreshBridge();
+      const mod = await import('../assistantChatBridge');
+      const restored = mod.chatBridge.consume('tab-1');
+      expect(restored?.ok).toBe(false);
+      expect(restored?.error).toMatch(/timed out/i);
+    });
   });
 });

@@ -24,6 +24,7 @@ import {
   getAssistantTailGap,
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
+  isLastAssistantMessageEqual,
   type ChatTab,
   type ChatMessage,
 } from '../assistantChatStore';
@@ -414,6 +415,34 @@ describe('Assistant Chat Store', () => {
   // ────────────────────────────────────────────────────────
   // Unread tracking
   // ────────────────────────────────────────────────────────
+
+  describe('isLastAssistantMessageEqual', () => {
+    it('returns true when last message is assistant with matching text', () => {
+      const msgs = [makeMsg('user', 'q'), makeMsg('assistant', 'answer')];
+      expect(isLastAssistantMessageEqual(msgs, 'answer')).toBe(true);
+    });
+
+    it('returns false when last message text differs', () => {
+      const msgs = [makeMsg('user', 'q'), makeMsg('assistant', 'old')];
+      expect(isLastAssistantMessageEqual(msgs, 'new')).toBe(false);
+    });
+
+    it('returns false when last message is a non-assistant role', () => {
+      const msgs = [makeMsg('assistant', 'answer'), makeMsg('system', 'note')];
+      expect(isLastAssistantMessageEqual(msgs, 'answer')).toBe(false);
+    });
+
+    it('returns false on empty messages', () => {
+      expect(isLastAssistantMessageEqual([], 'anything')).toBe(false);
+    });
+
+    it('returns false when text is empty/null/undefined', () => {
+      const msgs = [makeMsg('assistant', '')];
+      expect(isLastAssistantMessageEqual(msgs, '')).toBe(false);
+      expect(isLastAssistantMessageEqual(msgs, null)).toBe(false);
+      expect(isLastAssistantMessageEqual(msgs, undefined)).toBe(false);
+    });
+  });
 
   describe('evaluateTranscriptRecovery', () => {
     it('marks responseLost when server has the user turn but no assistant reply', () => {
