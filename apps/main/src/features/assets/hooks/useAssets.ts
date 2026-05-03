@@ -219,6 +219,12 @@ export function useAssets(options?: {
 
     // Prompt version filter
     prompt_version_id: filters.prompt_version_id || undefined,
+
+    // Asset kind — surfaced explicitly so the live-prepend handler can compare
+    // an inbound asset's kind against the active filter. Without this, kinds
+    // like 'probe' / 'mask' that ride through extraRegistryFilters would still
+    // be rejected by the default-content fallback at line ~604.
+    asset_kind: (filters as Record<string, unknown>).asset_kind as string | undefined,
   }), [
     filters.q, filters.tag, filters.provider_id, filters.sort,
     filters.media_type, filters.upload_method, filters.provider_status, filters.include_archived,
@@ -228,6 +234,7 @@ export function useAssets(options?: {
     filters.source_generation_id, filters.source_asset_id, filters.source_asset_ids, filters.sha256, filters.operation_type, filters.has_parent, filters.has_children,
     filters.similar_to, filters.similarity_threshold,
     filters.prompt_version_id,
+    (filters as Record<string, unknown>).asset_kind,
   ]);
 
   const extraRegistryFilters = useMemo(() => {

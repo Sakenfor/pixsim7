@@ -991,12 +991,22 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const isLocalOnly =
     contextMenuAsset?.providerStatus === 'local_only' ||
     (contextMenuAsset?.syncStatus === 'downloaded' && !contextMenuAsset?.remoteUrl);
-  const compactBorder = isLocalOnly
-    ? 'border-amber-300 dark:border-amber-700'
-    : 'border-green-300 dark:border-green-700';
+  // Probe assets are highlighted everywhere they're rendered (recents strip,
+  // mixed gallery views, etc.) so throwaway runs stay visually distinct. The
+  // amber probe outline takes priority over the local-only/synced status
+  // border in compact mode (probes are throwaway — their sync status matters
+  // less). In non-compact mode the probe shows as a ring outside the neutral
+  // border so the two cues don't fight for the same layer.
+  const isProbe = contextMenuAsset?.assetKind === 'probe';
+  const compactBorder = isProbe
+    ? 'border-amber-400 dark:border-amber-500'
+    : isLocalOnly
+      ? 'border-amber-300 dark:border-amber-700'
+      : 'border-green-300 dark:border-green-700';
+  const probeRing = isProbe && !isCompact ? 'ring-2 ring-amber-400 dark:ring-amber-500' : '';
   const wrapperClass = isCompact
     ? `cq-scale relative rounded-md border-2 ${compactBorder} bg-white dark:bg-neutral-900 overflow-hidden ${layout?.fillHeight ? 'h-full flex flex-col' : ''} ${layout?.onClick ? 'cursor-pointer' : ''} ${picker?.skipped ? 'opacity-40' : ''} group/card ${layout?.className ?? ''}`
-    : 'cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10';
+    : `cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 ${probeRing} bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10`;
 
   return (
     <div

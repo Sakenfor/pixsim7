@@ -1006,28 +1006,46 @@ export function GenerationSettingsPanel({
               <Icon name="flask" size={11} color={probeMode ? '#fff' : undefined} />
               <span>Probe</span>
             </button>
-            <button
-              ref={probeChevronRef}
-              type="button"
-              onClick={() => setProbePopoverOpen((o) => !o)}
-              disabled={generating}
-              className={clsx(
-                'px-1 py-1.5 rounded-r-lg border-l border-white/20',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                probeMode
-                  ? 'text-white bg-amber-500 hover:bg-amber-600'
-                  : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
-              )}
-              style={{ transition: 'none', animation: 'none' }}
-              title="Probe settings — bind a preset whose params apply on probe runs"
-            >
-              <Icon
-                name="chevronDown"
-                size={10}
-                color={probeMode ? '#fff' : undefined}
-                className={clsx(probePopoverOpen && 'rotate-180')}
-              />
-            </button>
+            <div className="flex flex-col border-l border-white/20">
+              <button
+                type="button"
+                onClick={() => openWorkspacePanel('probes')}
+                disabled={generating}
+                className={clsx(
+                  'px-1 flex-1 flex items-center justify-center rounded-tr-lg',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  probeMode
+                    ? 'text-white bg-amber-500 hover:bg-amber-600'
+                    : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+                )}
+                style={{ transition: 'none', animation: 'none' }}
+                title="Open Probes panel — review / clean up probe-tagged assets"
+              >
+                <Icon name="image" size={10} color={probeMode ? '#fff' : undefined} />
+              </button>
+              <button
+                ref={probeChevronRef}
+                type="button"
+                onClick={() => setProbePopoverOpen((o) => !o)}
+                disabled={generating}
+                className={clsx(
+                  'px-1 flex-1 flex items-center justify-center rounded-br-lg border-t border-white/20',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  probeMode
+                    ? 'text-white bg-amber-500 hover:bg-amber-600'
+                    : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+                )}
+                style={{ transition: 'none', animation: 'none' }}
+                title="Probe settings — bind a preset whose params apply on probe runs"
+              >
+                <Icon
+                  name="chevronDown"
+                  size={10}
+                  color={probeMode ? '#fff' : undefined}
+                  className={clsx(probePopoverOpen && 'rotate-180')}
+                />
+              </button>
+            </div>
             <Popover
               open={probePopoverOpen}
               onClose={() => setProbePopoverOpen(false)}
@@ -1088,17 +1106,6 @@ export function GenerationSettingsPanel({
                   <button
                     type="button"
                     onClick={() => {
-                      openWorkspacePanel('probes');
-                      setProbePopoverOpen(false);
-                    }}
-                    className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 inline-flex items-center gap-1"
-                  >
-                    <Icon name="flask" size={10} />
-                    Open Probes panel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
                       if (typeof window === 'undefined') return;
                       const name = window.prompt('Probe preset name', `${operationType} probe`);
                       if (!name || !name.trim()) return;
@@ -1112,7 +1119,7 @@ export function GenerationSettingsPanel({
                       setProbePresetId(created.id);
                       setProbePopoverOpen(false);
                     }}
-                    className="mt-1 w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                    className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
                   >
                     Save current params as probe preset…
                   </button>

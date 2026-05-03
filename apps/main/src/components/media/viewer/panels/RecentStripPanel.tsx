@@ -89,6 +89,12 @@ function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: S
     [asset.id, asset.name, asset, model],
   );
 
+  // Probe assets (asset_kind='probe') get an amber outline so throwaway runs
+  // stay visually distinct in the recents strip. Skipped when the thumb is
+  // already the blue active selection — the active-state outline takes
+  // priority. Falls through to a ring (not the border, which is owned by
+  // active/hover state) so the probe cue layers on top without flicker.
+  const isProbe = asset._assetModel?.assetKind === 'probe';
   return (
     <button
       ref={activeRef}
@@ -104,6 +110,7 @@ function StripThumb({ asset, index, isActive, isPending, activeRef, onClick }: S
           : 'border-transparent hover:border-neutral-400 dark:hover:border-neutral-500',
         isPending && !isActive ? 'ring-2 ring-blue-400 animate-pulse' : '',
         isCommitted ? 'ring-2 ring-emerald-400' : '',
+        isProbe && !isActive && !isPending && !isCommitted ? 'ring-2 ring-amber-400' : '',
       ].join(' ')}
       title={asset.name}
     >
