@@ -26,8 +26,8 @@ blocks:
             required: false
         params:
           - key: expression
+            tag_key: expression
             type: enum
-            default: neutral
             enum:
               - neutral
               - happy
@@ -37,15 +37,15 @@ blocks:
               - surprised
               - disgusted
               - pained
-            tag_key: expression
+            default: neutral
           - key: intensity
+            tag_key: expression_intensity
             type: enum
-            default: medium
             enum:
               - low
               - medium
               - high
-            tag_key: expression_intensity
+            default: medium
         default_args:
           expression: neutral
           intensity: medium

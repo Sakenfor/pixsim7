@@ -30,40 +30,40 @@ blocks:
             description: Color temperature — delegates to color primitives instead of duplicating warmth vocabulary
         params:
           - key: key_light
+            tag_key: light_key
             type: enum
-            default: diffuse
             enum:
               - diffuse
               - soft
               - hard
               - rim
               - backlit
-            tag_key: light_key
+            default: diffuse
           - key: intensity
+            tag_key: light_intensity
             type: enum
-            default: medium
             enum:
               - low
               - medium
               - high
-            tag_key: light_intensity
+            default: medium
           - key: temperature
+            tag_key: light_temperature
             type: enum
-            default: neutral
             enum:
               - warm
               - neutral
               - cool
               - mixed
-            tag_key: light_temperature
+            default: neutral
           - key: contrast
+            tag_key: light_contrast
             type: enum
-            default: medium
             enum:
               - low
               - medium
               - high
-            tag_key: light_contrast
+            default: medium
         default_args:
           key_light: diffuse
           intensity: medium

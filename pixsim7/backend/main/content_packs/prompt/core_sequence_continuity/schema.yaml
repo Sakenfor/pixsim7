@@ -33,35 +33,35 @@ blocks:
             required: false
         params:
           - key: role_in_sequence
+            tag_key: role_in_sequence
             type: enum
-            default: continuation
             enum:
               - initial
               - continuation
               - transition
               - unspecified
-            tag_key: role_in_sequence
+            default: continuation
           - key: continuity_focus
+            tag_key: continuity_focus
             type: enum
-            default: subject
             enum:
               - subject
               - target
               - setting
               - props
               - tone
-            tag_key: continuity_focus
+            default: subject
           - key: continuity_priority
+            tag_key: continuity_priority
             type: enum
-            default: medium
             enum:
               - low
               - medium
               - high
-            tag_key: continuity_priority
+            default: medium
           - key: target_ref
-            type: ref
             required: false
+            type: ref
             ref_capability: target
         default_args:
           role_in_sequence: continuation

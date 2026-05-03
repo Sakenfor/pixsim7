@@ -40,8 +40,8 @@ blocks:
             required: false
         params:
           - key: relation
+            tag_key: placement_relation
             type: enum
-            default: near
             enum:
               - near
               - left_of
@@ -50,32 +50,32 @@ blocks:
               - behind
               - above
               - below
-            tag_key: placement_relation
+            default: near
           - key: distance
+            tag_key: placement_distance
             type: enum
-            default: medium
             enum:
               - contact
               - near
               - medium
               - far
-            tag_key: placement_distance
+            default: medium
           - key: orientation
+            tag_key: placement_orientation
             type: enum
-            default: front
             enum:
               - front
               - profile_left
               - profile_right
               - back
-            tag_key: placement_orientation
+            default: front
           - key: anchor_ref
-            type: ref
             required: false
+            type: ref
             ref_capability: anchor
           - key: target_ref
-            type: ref
             required: false
+            type: ref
             ref_capability: target
         default_args:
           relation: near

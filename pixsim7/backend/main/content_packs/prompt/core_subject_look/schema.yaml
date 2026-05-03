@@ -29,17 +29,17 @@ blocks:
             required: false
         params:
           - key: focus
+            tag_key: look_focus
             type: enum
-            default: eyes
             enum:
               - eyes
               - head
               - away
               - body
-            tag_key: look_focus
+            default: eyes
           - key: target_ref
-            type: ref
             required: false
+            type: ref
             ref_capability: target
         default_args:
           focus: eyes
