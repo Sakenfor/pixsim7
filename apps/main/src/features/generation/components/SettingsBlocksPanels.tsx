@@ -105,14 +105,14 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           showPresets={resolvedSettings.showInputSets}
           generating={controller.generating}
           canGenerate={canGenerate}
-          onGenerate={(opts) => controller.generate({ ephemeral: opts?.ephemeral, paramOverrides: opts?.paramOverrides })}
+          onGenerate={controller.generate}
           error={controller.error}
           targetProviderId={targetProviderId}
           queueProgress={controller.queueProgress}
-          onGenerateBurst={(count, opts) => controller.generate({ count, ephemeral: opts?.ephemeral, paramOverrides: opts?.paramOverrides })}
-          onGenerateSequentialBurst={(count, opts) => controller.generateSequentialBurst(count, { ephemeral: opts?.ephemeral, overrideDynamicParams: opts?.paramOverrides })}
-          onGenerateEach={(fanoutOptions, extra) => controller.generateEach({ fanoutOptions, ephemeral: extra?.ephemeral, overrideDynamicParams: extra?.paramOverrides })}
-          onGenerateCurrentOnly={(count, opts) => controller.generateCurrentOnly(count, { ephemeral: opts?.ephemeral, paramOverrides: opts?.paramOverrides })}
+          onGenerateBurst={(count) => controller.generate({ count })}
+          onGenerateSequentialBurst={controller.generateSequentialBurst}
+          onGenerateEach={(fanoutOptions) => controller.generateEach({ fanoutOptions })}
+          onGenerateCurrentOnly={controller.generateCurrentOnly}
           sourceToggle={sourceToggle}
         />
       </div>

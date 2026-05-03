@@ -226,10 +226,9 @@ export interface GenerationSettingsPanelProps {
   generating: boolean;
   /** Whether the Go button should be enabled */
   canGenerate: boolean;
-  /** Callback when Go button is clicked. Receives `{ ephemeral, paramOverrides }`
-   *  when probe mode is active so single-shot Go fires as a throwaway run with
-   *  optional preset-driven param overrides. */
-  onGenerate: (opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
+  /** Callback when Go button is clicked. Probe-mode state (toggle + bound preset)
+   *  is auto-applied by the controller, so the panel doesn't need to forward it. */
+  onGenerate: () => void;
   /** Custom class name for the container */
   className?: string;
   /** Secondary "Go with Asset" button configuration */
@@ -245,16 +244,16 @@ export interface GenerationSettingsPanelProps {
   error?: string | null;
   /** Queue progress state */
   queueProgress?: { queued: number; total: number } | null;
-  /** Callback for burst generation (receives count). When probe mode is on,
-   *  the second arg carries `ephemeral: true` (and any preset-driven
-   *  paramOverrides) so every burst item lands with asset_kind='probe'. */
-  onGenerateBurst?: (count: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
+  /** Callback for burst generation (receives count). Probe-mode is auto-applied
+   *  by the controller — every burst item picks up ephemeral=true plus any bound
+   *  preset's params without the panel needing to forward state. */
+  onGenerateBurst?: (count: number) => void;
   /** Callback for sequential burst generation (waits for each run to complete before the next) */
-  onGenerateSequentialBurst?: (count: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
+  onGenerateSequentialBurst?: (count: number) => void;
   /** Callback for generate-each mode (one generation per queued asset or group) */
-  onGenerateEach?: (options?: FanoutRunOptions, extra?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
+  onGenerateEach?: (options?: FanoutRunOptions) => void;
   /** Callback to generate using only the currently selected carousel input (receives burst count) */
-  onGenerateCurrentOnly?: (count?: number, opts?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) => void;
+  onGenerateCurrentOnly?: (count?: number) => void;
   /** Optional node rendered in Row 2 next to Presets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
@@ -323,12 +322,6 @@ export function GenerationSettingsPanel({
     useShallow((s) => s.presets.filter((p) => p.operationType === operationType)),
   );
   const savePresetAction = useGenerationPresetStore((s) => s.savePreset);
-  const probeOpts = probeMode
-    ? {
-        ephemeral: true as const,
-        ...(probePresetParams ? { paramOverrides: { ...probePresetParams } } : {}),
-      }
-    : undefined;
 
   // If the bound preset disappears (e.g. user deleted it) clear the binding.
   useEffect(() => {
@@ -820,7 +813,7 @@ export function GenerationSettingsPanel({
           {onGenerateEach && (inputCount > 1 || hasAnyLinkedSet) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <div className="min-w-0">
               <EachSplitButton
-                onGenerateEach={(opts) => onGenerateEach(opts, probeOpts)}
+                onGenerateEach={onGenerateEach}
                 disabled={generating || !canGenerate}
                 generating={generating}
                 queueProgress={queueProgress}
@@ -864,12 +857,12 @@ export function GenerationSettingsPanel({
               onClick={() => {
                 if (isBurstMode && onGenerateBurst) {
                   if (burstSequentialMode && onGenerateSequentialBurst) {
-                    onGenerateSequentialBurst(burstCount, probeOpts);
+                    onGenerateSequentialBurst(burstCount);
                   } else {
-                    onGenerateBurst(burstCount, probeOpts);
+                    onGenerateBurst(burstCount);
                   }
                 } else {
-                  onGenerate(probeOpts);
+                  onGenerate();
                 }
               }}
               disabled={generating || !canGenerate}
@@ -910,7 +903,7 @@ export function GenerationSettingsPanel({
               const disableCurrentOnly = generating || !canGenerate || currentOnlyRedundant;
               return (
                 <button
-                  onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined, probeOpts)}
+                  onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
                   disabled={disableCurrentOnly}
                   className={clsx(
                     'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
@@ -1011,15 +1004,7 @@ export function GenerationSettingsPanel({
                 : `Probe mode OFF — click to flip Go/Each into throwaway-probe mode.${probePresetName ? `\nWill apply preset "${probePresetName}".` : '\nWill use cheap defaults (video duration=5) until you bind a preset via ▾.'}\n\nReview/cleanup via Library → Maintenance → Probes.`}
             >
               <Icon name="flask" size={11} color={probeMode ? '#fff' : undefined} />
-              <span>{probeMode ? 'Probe ON' : 'Probe'}</span>
-              {probeMode && probePresetName && (
-                <span
-                  className="ml-0.5 px-1 py-px rounded text-[8px] font-bold uppercase tracking-wider bg-white/20 text-white"
-                  title={`Preset: ${probePresetName}`}
-                >
-                  {probePresetName.length > 10 ? `${probePresetName.slice(0, 10)}…` : probePresetName}
-                </span>
-              )}
+              <span>Probe</span>
             </button>
             <button
               ref={probeChevronRef}

@@ -150,35 +150,21 @@ export function GenerationParamControls({
           if (currentModel && !appliesToModels.includes(currentModel)) return null;
         }
 
-        // Probe override (non-duration): replace the entire control with a
-        // static amber pill so the user sees what probe will run with. Duration
-        // has its own custom override rendering below so the surrounding
-        // audio/api-method buttons stay live.
-        if (param.name !== 'duration') {
-          const probeOverrideValue = probeOverrides?.[param.name];
-          if (probeOverrideValue !== undefined) {
-            const raw = String(probeOverrideValue ?? '—');
-            const display = param.name === 'aspect_ratio' ? getAspectRatioLabel(raw) : raw;
-            const truncated = display.length > 18 ? `${display.slice(0, 16)}…` : display;
-            const paramIcon = getParamIcon(param.name, raw);
-            return (
-              <div
-                key={param.name}
-                className="flex items-center gap-1 flex-shrink-0 rounded-lg shadow-sm bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400 dark:ring-amber-500 px-1.5 py-1.5"
-                title={`Probe override — ${param.name} runs as ${display}. Turn Probe OFF (or edit the bound probe preset) to change.`}
-              >
-                {paramIcon && (
-                  <span className="flex items-center text-amber-700 dark:text-amber-300">
-                    {paramIcon}
-                  </span>
-                )}
-                <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">
-                  {truncated}
-                </span>
-              </div>
-            );
-          }
-        }
+        // Probe override (non-duration): yellow ring on the existing control
+        // signals "probe will swap this value at submit time" without changing
+        // the displayed value or interactivity. Computed once per param so all
+        // branches below can apply the same accent.
+        const probeOverrideValue = param.name === 'duration'
+          ? undefined  // duration handles its own ring inline
+          : probeOverrides?.[param.name];
+        const isProbeOverridden = probeOverrideValue !== undefined;
+        const probeOverrideTooltip = isProbeOverridden
+          ? (() => {
+              const raw = String(probeOverrideValue ?? '—');
+              const display = param.name === 'aspect_ratio' ? getAspectRatioLabel(raw) : raw;
+              return `Probe override — ${param.name} will run as ${display}.`;
+            })()
+          : undefined;
 
         if (param.name === 'duration' && param.type === 'number' && durationOptions) {
           const currentDuration = Number(values[param.name]) || durationOptions[0];
@@ -208,75 +194,57 @@ export function GenerationParamControls({
                   <Icon name="key" size={14} />
                 </button>
               )}
-              {(() => {
-                const probeDurOverride = probeOverrides?.duration;
-                const isProbeDurOverridden = probeDurOverride !== undefined;
+              <div
+                ref={durationWheelCallbackRef}
+                className={clsx(
+                  'flex items-center flex-shrink-0 rounded-lg bg-white dark:bg-neutral-800 shadow-sm',
+                  probeOverrides?.duration !== undefined && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                )}
+                title={probeOverrides?.duration !== undefined
+                  ? `Probe override — runs at ${String(probeOverrides.duration)}s instead of your saved ${currentDuration}s.`
+                  : 'Duration — scroll to adjust'}
+              >
+                <span className="flex items-center justify-center pl-1.5 pr-0 py-1.5 text-neutral-400 dark:text-neutral-500" aria-hidden="true">
+                  <Icon name="clock" size={12} />
+                </span>
+                <select
+                  value={currentDuration}
+                  onChange={(e) => onChange('duration', Number(e.target.value))}
+                  disabled={generating}
+                  className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
+                  title="Duration"
+                >
+                  {durationOptions.map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {seconds}s
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {showAudio && (() => {
+                const probeAudioOverride = probeOverrides?.audio;
+                const isProbeAudioOverridden = probeAudioOverride !== undefined;
                 return (
-                  <div
-                    ref={durationWheelCallbackRef}
+                  <button
+                    type="button"
+                    onClick={() => onChange('audio', !audioOn)}
+                    disabled={generating}
                     className={clsx(
-                      'flex items-center flex-shrink-0 rounded-lg shadow-sm',
-                      isProbeDurOverridden
-                        ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400 dark:ring-amber-500'
-                        : 'bg-white dark:bg-neutral-800',
+                      'flex items-center justify-center rounded-lg px-1.5 py-1.5 transition-colors',
+                      audioOn
+                        ? 'bg-accent text-accent-text shadow-sm'
+                        : 'bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300',
+                      isProbeAudioOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+                      generating && 'opacity-50 cursor-not-allowed',
                     )}
-                    title={isProbeDurOverridden
-                      ? `Probe override active — runs use ${probeDurOverride}s. Your saved duration is ${currentDuration}s; turn Probe OFF (or edit the bound probe preset) to change it.`
-                      : 'Duration — scroll to adjust'}
+                    title={isProbeAudioOverridden
+                      ? `Probe override — audio will be ${probeAudioOverride ? 'on' : 'off'} (your saved value: ${audioOn ? 'on' : 'off'}).`
+                      : audioOn ? 'Audio generation on' : 'Audio generation off'}
                   >
-                    <span
-                      className={clsx(
-                        'flex items-center justify-center pl-1.5 pr-0 py-1.5',
-                        isProbeDurOverridden
-                          ? 'text-amber-700 dark:text-amber-300'
-                          : 'text-neutral-400 dark:text-neutral-500',
-                      )}
-                      aria-hidden="true"
-                    >
-                      <Icon name="clock" size={12} />
-                    </span>
-                    {isProbeDurOverridden ? (
-                      <span
-                        className="px-1.5 py-1.5 text-[11px] font-semibold tabular-nums text-amber-800 dark:text-amber-200"
-                        aria-label={`probe override duration: ${probeDurOverride}s`}
-                      >
-                        {String(probeDurOverride)}s
-                      </span>
-                    ) : (
-                      <select
-                        value={currentDuration}
-                        onChange={(e) => onChange('duration', Number(e.target.value))}
-                        disabled={generating}
-                        className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
-                        title="Duration"
-                      >
-                        {durationOptions.map((seconds) => (
-                          <option key={seconds} value={seconds}>
-                            {seconds}s
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
+                    <Icon name="audio" size={14} />
+                  </button>
                 );
               })()}
-              {showAudio && (
-                <button
-                  type="button"
-                  onClick={() => onChange('audio', !audioOn)}
-                  disabled={generating}
-                  className={clsx(
-                    'flex items-center justify-center rounded-lg px-1.5 py-1.5 transition-colors',
-                    audioOn
-                      ? 'bg-accent text-accent-text shadow-sm'
-                      : 'bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300',
-                    generating && 'opacity-50 cursor-not-allowed',
-                  )}
-                  title={audioOn ? 'Audio generation on' : 'Audio generation off'}
-                >
-                  <Icon name="audio" size={14} />
-                </button>
-              )}
             </div>
           );
         }
@@ -296,8 +264,11 @@ export function GenerationParamControls({
               onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
               disabled={generating}
               placeholder={param.name}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-              title={param.name}
+              className={clsx(
+                'w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm',
+                isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+              )}
+              title={probeOverrideTooltip ?? param.name}
             />
           );
         }
@@ -308,15 +279,26 @@ export function GenerationParamControls({
         const currentValue = values[param.name] ?? param.default ?? options[0];
 
         if (param.name === 'aspect_ratio') {
-          return (
+          const inner = (
             <AspectRatioDropdown
-              key={param.name}
               options={options}
               currentValue={currentValue}
               onChange={(val) => onChange(param.name, val)}
               disabled={generating}
             />
           );
+          if (isProbeOverridden) {
+            return (
+              <div
+                key={param.name}
+                className="flex-shrink-0 rounded-lg ring-2 ring-amber-400 dark:ring-amber-500"
+                title={probeOverrideTooltip}
+              >
+                {inner}
+              </div>
+            );
+          }
+          return <div key={param.name}>{inner}</div>;
         }
 
         const isIconOnly = param.name === 'quality';
@@ -329,6 +311,7 @@ export function GenerationParamControls({
                 const isSelected = currentValue === opt;
                 const isFreeModel = param.name === 'model' && isModelInUnlimitedSet(unlimitedModels, opt);
                 const isPromoModel = param.name === 'model' && isModelInPromotionSet(promotedModels, opt);
+                const isProbeTarget = isProbeOverridden && String(probeOverrideValue) === opt;
 
                 return (
                   <button
@@ -347,8 +330,11 @@ export function GenerationParamControls({
                               ? 'bg-accent text-accent-text shadow-sm ring-1 ring-amber-300/60'
                               : 'bg-accent text-accent-text shadow-sm')
                         : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-accent-subtle dark:hover:bg-neutral-700',
+                      isProbeTarget && 'ring-2 ring-amber-400 dark:ring-amber-500',
                     )}
-                    title={isFreeModel ? `${opt} (currently free)` : isPromoModel ? `${opt} (promotional discount)` : opt}
+                    title={isProbeTarget
+                      ? `Probe override — will run with ${opt} instead of your selected ${String(currentValue)}.`
+                      : isFreeModel ? `${opt} (currently free)` : isPromoModel ? `${opt} (promotional discount)` : opt}
                   >
                     {icon}
                     {!isIconOnly && param.name === 'model' && modelFamilies?.[opt] && (
@@ -388,9 +374,8 @@ export function GenerationParamControls({
 
         // Model param: use rich dropdown with model badges
         if (param.name === 'model') {
-          return (
+          const inner = (
             <ModelDropdown
-              key={param.name}
               options={options}
               currentValue={currentValue}
               onChange={(val) => onChange(param.name, val)}
@@ -400,6 +385,18 @@ export function GenerationParamControls({
               promotedModels={promotedModels}
             />
           );
+          if (isProbeOverridden) {
+            return (
+              <div
+                key={param.name}
+                className="rounded-lg ring-2 ring-amber-400 dark:ring-amber-500"
+                title={probeOverrideTooltip}
+              >
+                {inner}
+              </div>
+            );
+          }
+          return <div key={param.name}>{inner}</div>;
         }
 
         return (
@@ -408,8 +405,11 @@ export function GenerationParamControls({
             value={currentValue}
             onChange={(e) => onChange(param.name, e.target.value)}
             disabled={generating}
-            className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-            title={param.name}
+            className={clsx(
+              'w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm',
+              isProbeOverridden && 'ring-2 ring-amber-400 dark:ring-amber-500',
+            )}
+            title={probeOverrideTooltip ?? param.name}
           >
             {options.map((opt: string) => {
               const baseLabel = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;

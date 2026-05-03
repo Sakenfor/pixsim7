@@ -9,7 +9,7 @@ import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import type { GenerateOverrides } from '@features/contextHub';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
-import { useGenerationScopeStores } from '@features/generation';
+import { useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 import { generateAsset, prepareGenerateAssetSubmission } from '@features/generation/lib/api';
 import { useQuickGenerateBindings } from '@features/prompts';
 import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateStore';
@@ -48,6 +48,7 @@ import {
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 import { useGenerationInputStore } from '../stores/generationInputStore';
+import { useGenerationPresetStore } from '../stores/generationPresetStore';
 import { getRegisteredInputStores } from '../stores/generationScopeStores';
 
 /** Result of the generation pipeline (no widget state side-effects). */
@@ -410,6 +411,28 @@ export function useQuickGenerateController() {
     (s) => s.uiState?.[PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY],
   );
 
+  // Probe-mode state read directly from scope. When ON, every generation entry
+  // point auto-applies ephemeral=true + the bound preset's params (if any) so
+  // the toggle reaches calls that don't go through the panel buttons —
+  // AssetPanel's play-Generate, the widget capability used by media-card
+  // gestures and prompt authoring, etc. Explicit caller values still win:
+  // pass `ephemeral: false` to opt out of probe even with the toggle on.
+  // Held in a ref so useCallback-wrapped paths (generateEach,
+  // generateSequentialBurst) don't capture stale state.
+  const [probeMode] = usePersistedScopeState('probeMode', false);
+  const [probePresetId] = usePersistedScopeState<string | null>(
+    `probePresetId:${operationType}`,
+    null,
+  );
+  const probePresetParams = useGenerationPresetStore((s) =>
+    probePresetId ? s.presets.find((p) => p.id === probePresetId)?.params : undefined,
+  );
+  const probeStateRef = useRef<{ probeMode: boolean; probePresetParams: Record<string, any> | undefined }>({
+    probeMode,
+    probePresetParams,
+  });
+  probeStateRef.current = { probeMode, probePresetParams };
+
   // Template pinning state (global, from blockTemplateStore)
   // Sync pinned template per-operation (same pattern as promptPerOperation in session store)
   useEffect(() => {
@@ -485,6 +508,38 @@ export function useQuickGenerateController() {
   }, [generationId, watchedStatus, watchedErrorMessage]);
 
   // ─── Shared generation helpers ───
+
+  /** Auto-apply probe state to a GenerateOverrides bag. Explicit caller values
+   *  win — only fills in ephemeral/paramOverrides when caller didn't set them.
+   *  Reads through the ref so useCallback closures stay in sync. */
+  function applyProbeState<T extends { ephemeral?: boolean; paramOverrides?: Record<string, any> } | undefined>(
+    overrides: T,
+  ): T {
+    const { probeMode: pm, probePresetParams: pp } = probeStateRef.current;
+    if (!pm) return overrides;
+    const next: any = { ...(overrides ?? {}) };
+    if (next.ephemeral === undefined) next.ephemeral = true;
+    if (next.paramOverrides === undefined && pp) {
+      next.paramOverrides = { ...pp };
+    }
+    return next;
+  }
+
+  /** Auto-apply probe state to the alternate options shape used by
+   *  generateEach / generateSequentialBurst (overrideDynamicParams instead of
+   *  paramOverrides). */
+  function applyProbeStateAlt<T extends { ephemeral?: boolean; overrideDynamicParams?: Record<string, any> } | undefined>(
+    options: T,
+  ): T {
+    const { probeMode: pm, probePresetParams: pp } = probeStateRef.current;
+    if (!pm) return options;
+    const next: any = { ...(options ?? {}) };
+    if (next.ephemeral === undefined) next.ephemeral = true;
+    if (next.overrideDynamicParams === undefined && pp) {
+      next.overrideDynamicParams = { ...pp };
+    }
+    return next;
+  }
 
   /** Reset state for a new generation attempt */
   function resetForGeneration() {
@@ -1093,9 +1148,10 @@ export function useQuickGenerateController() {
    * side-effects on the widget's UI state.
    */
   async function executeGeneration(
-    overrides?: GenerateOverrides,
+    rawOverrides?: GenerateOverrides,
     callbacks?: { onProgress?: (progress: { queued: number; total: number } | null) => void },
   ): Promise<GenerationPipelineResult> {
+    const overrides = applyProbeState(rawOverrides);
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
     const activeOperationType = getActiveOperationType();
@@ -1382,8 +1438,9 @@ export function useQuickGenerateController() {
 
   const generateSequentialBurst = useCallback(async (
     count: number,
-    options?: { overrideDynamicParams?: Record<string, any>; ephemeral?: boolean },
+    rawOptions?: { overrideDynamicParams?: Record<string, any>; ephemeral?: boolean },
   ) => {
+    const options = applyProbeStateAlt(rawOptions);
     if (count <= 1) return generate({ paramOverrides: options?.overrideDynamicParams, ephemeral: options?.ephemeral });
 
     resetForGeneration();
@@ -1537,12 +1594,13 @@ export function useQuickGenerateController() {
    * Asset-set iteration is driven by per-slot `assetSetRef.mode === 'iterate'`
    * — the strategy here only describes how multiple input slots zip together.
    */
-  const generateEach = useCallback(async (options?: {
+  const generateEach = useCallback(async (rawOptions?: {
     overrideDynamicParams?: Record<string, any>;
     strategy?: CombinationStrategy;
     fanoutOptions?: Partial<FanoutRunOptions>;
     ephemeral?: boolean;
   }) => {
+    const options = applyProbeStateAlt(rawOptions);
     let { currentInputs } = getInputState();
     // Auto-upload any local-only assets before building each-generation requests
     currentInputs = await ensureInputsUploaded(currentInputs);
