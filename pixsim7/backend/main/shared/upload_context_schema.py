@@ -60,7 +60,8 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
         "source_folder_id": {
           "type": "string",
           "label": "Source Folder",
-          "description": "Local folder ID"
+          "description": "Local folder ID",
+          "filterable": true
         },
         "source_folder": {
           "type": "string",

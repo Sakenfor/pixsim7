@@ -213,6 +213,7 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
         exclude_key: str | None = None,
     ) -> list[Any]:
         conditions: list[Any] = []
+        injected_dep_keys: set[str] = set()
         for key, value in context.items():
             if exclude_key and key == exclude_key:
                 continue
@@ -249,6 +250,34 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
                 if normalized_value is None:
                     continue
                 conditions.append(column == normalized_value)
+
+            # Inject depends_on conditions when the user filters on a key whose
+            # spec declares a hard prerequisite (e.g. source_folder_id requires
+            # upload_method='local'). Without this, partial indexes whose
+            # predicate references the prerequisite cannot fire — see
+            # idx_asset_gallery_source_folder_id (495ms → 7ms with upload_method
+            # pinned).
+            if not spec.depends_on:
+                continue
+            for dep_key, allowed in spec.depends_on.items():
+                if dep_key in context or dep_key in injected_dep_keys:
+                    continue
+                if exclude_key and dep_key == exclude_key:
+                    continue
+                dep_spec = self.get_spec(dep_key)
+                if dep_spec is None:
+                    continue
+                dep_column = _resolve_filter_column(dep_spec)
+                if dep_column is None:
+                    continue
+                allowed_values = [v for v in allowed if v is not None and v != ""]
+                if not allowed_values:
+                    continue
+                if len(allowed_values) == 1:
+                    conditions.append(dep_column == allowed_values[0])
+                else:
+                    conditions.append(dep_column.in_(allowed_values))
+                injected_dep_keys.add(dep_key)
         return conditions
 
 

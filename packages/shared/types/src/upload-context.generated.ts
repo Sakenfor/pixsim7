@@ -77,7 +77,8 @@ export const uploadContextSpec: UploadContextSpec = {
         "source_folder_id": {
           "type": "string",
           "label": "Source Folder",
-          "description": "Local folder ID"
+          "description": "Local folder ID",
+          "filterable": true
         },
         "source_folder": {
           "type": "string",

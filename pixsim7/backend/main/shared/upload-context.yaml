@@ -41,6 +41,7 @@ upload_methods:
         type: string
         label: Source Folder
         description: Local folder ID
+        filterable: true
       source_folder:
         type: string
         label: Folder Name

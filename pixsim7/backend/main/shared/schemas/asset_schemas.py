@@ -10,8 +10,8 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDoma
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 
 # Canonical asset kind values — extend this tuple when adding new kinds
-ASSET_KINDS = ("content", "mask", "guidance", "reference", "extracted_frame")
-AssetKind = Literal["content", "mask", "guidance", "reference", "extracted_frame"]
+ASSET_KINDS = ("content", "mask", "guidance", "reference", "extracted_frame", "probe")
+AssetKind = Literal["content", "mask", "guidance", "reference", "extracted_frame", "probe"]
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as normalize_pixverse_url,
@@ -260,7 +260,11 @@ class AssetResponse(BaseModel):
 
         Priority for preview_url:
         1. Generated from preview_key
-        2. file_url (fallback)
+        2. thumbnail_url (smaller, prevents serving full-resolution originals
+           as the gallery's visible card image when previews are disabled —
+           18 MP source images cause severe scroll lag in the gallery, which
+           passes preview_url as the card thumb)
+        3. remote_url / original_source_url (only when no local thumbnail exists)
         """
         asset_id = getattr(self, "id", None)
         provider_id = getattr(self, "provider_id", None)
@@ -328,13 +332,16 @@ class AssetResponse(BaseModel):
             elif is_valid_url(original_source_url):
                 object.__setattr__(self, "thumbnail_url", original_source_url)
 
-        # Compute preview_url from key
+        # Compute preview_url from key. When no preview derivative exists,
+        # fall back to the thumbnail rather than the full-resolution file —
+        # the gallery card uses preview_url as its visible image, and serving
+        # an 18 MP original per card chokes the browser's image decoder.
         if preview_key:
             object.__setattr__(self, "preview_url", storage_key_to_url(preview_key))
         elif not is_video and getattr(self, "preview_url", None) is None:
-            file_url = getattr(self, "file_url", None)
-            if file_url:
-                object.__setattr__(self, "preview_url", file_url)
+            thumbnail_url = getattr(self, "thumbnail_url", None)
+            if thumbnail_url:
+                object.__setattr__(self, "preview_url", thumbnail_url)
             elif is_valid_url(remote_url):
                 object.__setattr__(self, "preview_url", remote_url)
             elif is_valid_url(original_source_url):
