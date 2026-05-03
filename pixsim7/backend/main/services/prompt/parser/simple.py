@@ -491,17 +491,29 @@ class SimplePromptParser:
         # Resolve ontology IDs from already-matched keywords.
         # This replaces the separate match_keywords() call so that ontology
         # matching inherits stemming + negation from the parser pass above.
+        # Also tracks keywords that matched a role but had no ontology mapping —
+        # these are vocabulary gaps surfaced to the harvester for review.
         if self.config.enable_ontology_resolution and self._keyword_to_ontology:
             seen_ids: Set[str] = set()
             ontology_ids: List[str] = []
+            unresolved: List[str] = []
+            seen_unresolved: Set[str] = set()
             for kw in all_matched_keywords:
                 normalized_keyword = self._normalize_keyword_text(kw)
-                for oid in self._keyword_to_ontology.get(normalized_keyword, []):
-                    if oid not in seen_ids:
-                        seen_ids.add(oid)
-                        ontology_ids.append(oid)
+                resolved = self._keyword_to_ontology.get(normalized_keyword, [])
+                if resolved:
+                    for oid in resolved:
+                        if oid not in seen_ids:
+                            seen_ids.add(oid)
+                            ontology_ids.append(oid)
+                else:
+                    if normalized_keyword and normalized_keyword not in seen_unresolved:
+                        seen_unresolved.add(normalized_keyword)
+                        unresolved.append(normalized_keyword)
             if ontology_ids:
                 metadata["ontology_ids"] = ontology_ids
+            if unresolved:
+                metadata["unresolved_keywords"] = unresolved
 
         # Determine best role
         best_role = self.config.default_role

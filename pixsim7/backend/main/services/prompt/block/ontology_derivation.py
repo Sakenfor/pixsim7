@@ -7,9 +7,14 @@ Author overrides (read from block_tags):
     ontology_ids:         explicit IDs that survive regardless of matching
     ontology_ids_exclude: IDs to suppress (consumed; not retained)
 
-Auto-derived IDs come from `vocabularies.match_keywords(text)`. The merged
-result is deduped and order-preserving (explicit first, auto second).
-If nothing survives, the key is dropped to keep tags tidy.
+Auto-derived IDs come from `vocabularies.match_keywords(text)`, with
+`role:*` matches dropped — role membership is already captured via the
+composition `has:{role}` candidate path, so re-emitting it as an
+ontology_id reproduces the category-leak pattern the bare-bool drop
+fixed. Explicit author overrides starting with `role:` still pass
+through. The merged result is deduped and order-preserving (explicit
+first, auto second). If nothing survives, the key is dropped to keep
+tags tidy.
 """
 
 from __future__ import annotations
@@ -41,7 +46,10 @@ def populate_block_ontology_ids(
         try:
             from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
 
-            auto_ids = list(get_registry().match_keywords(text))
+            auto_ids = [
+                oid for oid in get_registry().match_keywords(text)
+                if not oid.startswith("role:")
+            ]
         except Exception:
             auto_ids = []
 

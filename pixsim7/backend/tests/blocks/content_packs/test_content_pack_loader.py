@@ -256,6 +256,49 @@ def test_populate_block_ontology_ids_handles_registry_failure(
     assert out["ontology_ids"] == ["mood:tender"]
 
 
+def test_populate_block_ontology_ids_drops_auto_role_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-matched `role:*` IDs are filtered (role membership lives on the composition path)."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return [
+                "role:entities:prop",
+                "role:world:environment",
+                "mood:tender",
+                "color:amber",
+            ]
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags: dict = {}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="amber prop")
+    assert out["ontology_ids"] == ["mood:tender", "color:amber"]
+
+
+def test_populate_block_ontology_ids_keeps_explicit_role_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit author overrides starting with `role:` still pass through; only auto matches are filtered."""
+
+    class _StubRegistry:
+        def match_keywords(self, _text: str) -> list[str]:
+            return ["role:entities:prop", "mood:tender"]
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.shared.ontology.vocabularies.get_registry",
+        lambda: _StubRegistry(),
+    )
+
+    tags = {"ontology_ids": ["role:camera:angle"]}
+    out = ontology_derivation.populate_block_ontology_ids(block_tags=tags, text="angle from above")
+    assert out["ontology_ids"] == ["role:camera:angle", "mood:tender"]
+
+
 def test_project_block_to_primitive_preserves_block_metadata_and_sets_composition_role() -> None:
     item = loader._project_block_to_primitive(
         {

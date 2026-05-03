@@ -147,6 +147,18 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
         factory=make_generic,
         keywords_attr=None,
     ),
+    # Auto-bridged primitive concepts. Items are derived from primitive
+    # YAML at boot by `services/prompt/block/vocab_bridge.py`; no
+    # `primitive_concepts.yaml` ships with this vocab type. Keywords are
+    # indexed so the auto-deriver picks them up via match_keywords().
+    "primitive_concepts": VocabTypeConfig(
+        name="primitive_concepts",
+        yaml_file="primitive_concepts.yaml",
+        yaml_key="primitive_concepts",
+        factory=make_generic,
+        keywords_attr="keywords",
+        match_mode="word",
+    ),
 }
 
 

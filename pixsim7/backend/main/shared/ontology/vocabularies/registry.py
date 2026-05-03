@@ -178,7 +178,34 @@ class VocabularyRegistry:
         self._build_pose_indices()
         self._build_keyword_index()
 
+        # Mark loaded BEFORE bridging so register_pack()'s internal
+        # `_ensure_loaded()` is a no-op (avoids recursion through
+        # services.prompt.block.* which also touches the registry).
         self._loaded = True
+
+        # Auto-bridge primitive concepts into the keyword index. Hand-
+        # authored vocabs (loaded above) take precedence on ID collision.
+        self._bridge_primitive_concepts()
+
+    def _bridge_primitive_concepts(self) -> None:
+        """Register implicit `primitive_concepts` entries from primitive YAML.
+
+        Lives in services/prompt/block/vocab_bridge.py to keep the
+        registry layer free of feature-side knowledge. Failures are
+        swallowed (best-effort) so a malformed pack can't break boot.
+        """
+        try:
+            from pixsim7.backend.main.services.prompt.block.vocab_bridge import (
+                bridge_primitive_concepts_into,
+            )
+
+            bridge_primitive_concepts_into(self)
+        except Exception as exc:  # noqa: BLE001 — vocab bridge is best-effort
+            import logging
+            logging.getLogger(__name__).warning(
+                "vocab_bridge: failed to register primitive concepts: %s",
+                exc,
+            )
 
     @property
     def name(self) -> str:

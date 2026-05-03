@@ -14,6 +14,10 @@ Read-only. No DB writes. Run:
     python tools/audit_block_ontology_coverage.py
     python tools/audit_block_ontology_coverage.py --json out.json
     python tools/audit_block_ontology_coverage.py --zero-only
+
+The structured matrix used by `/api/v1/dev/semantic-surface/coverage-matrix`
+lives at `pixsim7.backend.main.services.prompt.block.coverage`. This script
+re-uses the same primitive walker so the two views can't drift.
 """
 from __future__ import annotations
 
@@ -27,36 +31,12 @@ from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pixsim7.backend.main.services.prompt.block import primitive_loader
-
-PRIMITIVES_ROOT = (
-    Path(__file__).resolve().parents[1]
-    / "pixsim7"
-    / "backend"
-    / "main"
-    / "content_packs"
-    / "primitives"
+from pixsim7.backend.main.services.prompt.block.coverage import (
+    PRIMITIVES_ROOT,
+    _iter_primitives,
+    _ontology_ids,
+    _resolve_category,
 )
-
-
-def _resolve_category(block: Dict[str, Any]) -> str:
-    cat = block.get("category")
-    if isinstance(cat, str) and cat.strip():
-        return cat.strip()
-    tags = block.get("tags") or {}
-    if isinstance(tags, dict):
-        legacy = tags.get("legacy_category")
-        if isinstance(legacy, str) and legacy.strip():
-            return legacy.strip()
-    return "<no_category>"
-
-
-def _ontology_ids(block: Dict[str, Any]) -> List[str]:
-    tags = block.get("tags") or {}
-    if not isinstance(tags, dict):
-        return []
-    ids = tags.get("ontology_ids")
-    return [oid for oid in ids if isinstance(oid, str)] if isinstance(ids, list) else []
 
 
 def audit() -> Dict[str, Any]:
@@ -75,36 +55,33 @@ def audit() -> Dict[str, Any]:
     id_counter: Counter = Counter()
     skipped: List[Tuple[str, str]] = []
 
-    for pack_dir in sorted(p for p in PRIMITIVES_ROOT.iterdir() if p.is_dir()):
-        try:
-            blocks = primitive_loader._collect_pack_primitives(pack_dir)
-        except Exception as exc:  # noqa: BLE001 — audit is best-effort
-            skipped.append((pack_dir.name, str(exc)))
+    for pack_name, block in _iter_primitives(PRIMITIVES_ROOT):
+        if pack_name == "_skipped":
+            skipped.append((block["pack"], block["error"]))
             continue
 
-        for block in blocks:
-            total += 1
-            block_id = str(block.get("block_id", "<unknown>"))
-            category = _resolve_category(block)
-            text = str(block.get("text") or "")
-            ids = _ontology_ids(block)
+        total += 1
+        block_id = str(block.get("block_id", "<unknown>"))
+        category = _resolve_category(block)
+        text = str(block.get("text") or "")
+        ids = _ontology_ids(block)
 
-            by_category[category]["total"] += 1
-            by_pack[pack_dir.name]["total"] += 1
-            if ids:
-                matched += 1
-                by_category[category]["matched"] += 1
-                by_pack[pack_dir.name]["matched"] += 1
-                id_counter.update(ids)
-            else:
-                zero_match.append(
-                    {
-                        "pack": pack_dir.name,
-                        "category": category,
-                        "block_id": block_id,
-                        "text": text,
-                    }
-                )
+        by_category[category]["total"] += 1
+        by_pack[pack_name]["total"] += 1
+        if ids:
+            matched += 1
+            by_category[category]["matched"] += 1
+            by_pack[pack_name]["matched"] += 1
+            id_counter.update(ids)
+        else:
+            zero_match.append(
+                {
+                    "pack": pack_name,
+                    "category": category,
+                    "block_id": block_id,
+                    "text": text,
+                }
+            )
 
     return {
         "total": total,
