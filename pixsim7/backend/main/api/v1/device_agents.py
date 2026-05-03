@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import secrets
 
-from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.database.session import get_automation_db
 from pixsim7.automation.domain import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod, PairingRequest
 from pixsim7.backend.main.api.dependencies import CurrentUser
 
@@ -71,7 +71,7 @@ async def register_agent(
     request: Request,
     data: AgentRegisterRequest,
     user: CurrentUser,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """Register a new device agent"""
     
@@ -140,7 +140,7 @@ async def register_agent(
 async def request_pairing(
     data: PairingStartRequest,
     req: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_automation_db),
 ) -> PairingStartResponse:
     """Start pairing flow for a remote agent (no auth required).
 
@@ -215,7 +215,7 @@ async def request_pairing(
 async def complete_pairing(
     body: CompletePairingRequest,
     user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_automation_db),
 ) -> CompletePairingResponse:
     """Complete pairing for an agent using a pairing code.
 
@@ -286,7 +286,7 @@ async def complete_pairing(
 @router.get("/pairing-status/{agent_id}", response_model=PairingStatusResponse)
 async def get_pairing_status(
     agent_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ) -> PairingStatusResponse:
     """Check pairing status for an agent (used by agent to know when user has paired it)."""
     pairing_request = (await db.execute(
@@ -310,7 +310,7 @@ async def get_pairing_status(
 async def agent_heartbeat(
     agent_id: str,
     data: AgentHeartbeatRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """Receive heartbeat from agent and sync devices.
 
@@ -400,7 +400,7 @@ async def agent_heartbeat(
 @router.get("")
 async def list_agents(
     user: CurrentUser,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """List all agents for current user"""
     result = await db.execute(
@@ -434,7 +434,7 @@ class AdminCreateAgentRequest(BaseModel):
 async def admin_create_agent(
     data: AdminCreateAgentRequest,
     user: CurrentUser,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """Directly create a device agent (for testing/admin use).
 
@@ -507,7 +507,7 @@ async def admin_create_agent(
 async def delete_agent(
     agent_id: str,
     user: CurrentUser,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """Delete an agent and its devices"""
     result = await db.execute(

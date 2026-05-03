@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast
 from typing import List, Dict, Any, Optional
 
-from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.database.session import (
+    get_automation_db,
+    get_db,
+)
 from pixsim7.automation.domain import AndroidDevice, DeviceAgent, DeviceStatus, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.automation.services import ExecutionLoopService
@@ -87,7 +90,7 @@ async def list_devices(
     user: CurrentUser,
     include_alt: bool = False,
     include_disabled: bool = False,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_automation_db),
 ):
     """
     List Android devices.
@@ -124,7 +127,7 @@ async def list_devices(
 
 
 @router.post("/devices/scan", response_model=DeviceScanResponse)
-async def scan_devices(db: AsyncSession = Depends(get_db)) -> DeviceScanResponse:
+async def scan_devices(db: AsyncSession = Depends(get_automation_db)) -> DeviceScanResponse:
     """Scan for ADB devices and sync to database."""
     svc = DeviceSyncService(db)
     stats = await svc.scan_and_sync()
@@ -132,7 +135,7 @@ async def scan_devices(db: AsyncSession = Depends(get_db)) -> DeviceScanResponse
 
 
 @router.post("/devices/check-ads")
-async def check_device_ads(db: AsyncSession = Depends(get_db)):
+async def check_device_ads(db: AsyncSession = Depends(get_automation_db)):
     """
     Manually trigger ad detection check on all devices.
     Returns which primary devices are watching ads or in ad session.
@@ -166,7 +169,7 @@ async def check_device_ads(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/devices/{device_id}/reset", response_model=ResetDeviceStatusResponse)
-async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_db)):
+async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_automation_db)):
     """
     Reset a stuck device back to ONLINE status.
 
@@ -214,7 +217,7 @@ async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_db)
 @router.get("/loops", response_model=List[ExecutionLoop])
 async def list_loops(
     provider_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """
     List all loops, optionally filtered by provider.
@@ -281,7 +284,7 @@ async def list_loops(
 
 
 @router.post("/loops", response_model=ExecutionLoop)
-async def create_loop(loop: ExecutionLoop, db: AsyncSession = Depends(get_db)):
+async def create_loop(loop: ExecutionLoop, db: AsyncSession = Depends(get_automation_db)):
     db.add(loop)
     await db.commit()
     await db.refresh(loop)
@@ -289,7 +292,7 @@ async def create_loop(loop: ExecutionLoop, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/loops/{loop_id}/start")
-async def start_loop(loop_id: int, db: AsyncSession = Depends(get_db)):
+async def start_loop(loop_id: int, db: AsyncSession = Depends(get_automation_db)):
     loop = await db.get(ExecutionLoop, loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
@@ -299,7 +302,7 @@ async def start_loop(loop_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/loops/{loop_id}/pause")
-async def pause_loop(loop_id: int, db: AsyncSession = Depends(get_db)):
+async def pause_loop(loop_id: int, db: AsyncSession = Depends(get_automation_db)):
     loop = await db.get(ExecutionLoop, loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
@@ -309,7 +312,7 @@ async def pause_loop(loop_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/loops/{loop_id}/run-now")
-async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_db)):
+async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_automation_db)):
     loop = await db.get(ExecutionLoop, loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
@@ -329,7 +332,7 @@ async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/presets", response_model=List[AppActionPreset])
 async def list_presets(
     provider_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """
     List all presets, optionally filtered by provider.
@@ -357,7 +360,7 @@ async def list_presets(
 
 
 @router.post("/presets", response_model=AppActionPreset)
-async def create_preset(preset: AppActionPreset, db: AsyncSession = Depends(get_db)):
+async def create_preset(preset: AppActionPreset, db: AsyncSession = Depends(get_automation_db)):
     db.add(preset)
     await db.commit()
     await db.refresh(preset)
@@ -365,7 +368,7 @@ async def create_preset(preset: AppActionPreset, db: AsyncSession = Depends(get_
 
 
 @router.get("/presets/{preset_id}", response_model=AppActionPreset)
-async def get_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
+async def get_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
     preset = await db.get(AppActionPreset, preset_id)
     if not preset:
         raise HTTPException(status_code=404, detail="Preset not found")
@@ -376,7 +379,7 @@ async def get_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
 async def update_preset(
     preset_id: int,
     updated_data: AppActionPreset,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """
     Update an existing preset.
@@ -410,7 +413,7 @@ async def update_preset(
 
 
 @router.delete("/presets/{preset_id}")
-async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
     """
     Delete a preset.
 
@@ -433,7 +436,7 @@ async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/presets/{preset_id}/copy", response_model=AppActionPreset)
-async def copy_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
+async def copy_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
     """
     Copy a preset (including system presets) to create a new user-editable preset.
 
@@ -469,7 +472,7 @@ async def copy_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
 async def list_executions(
     limit: int = 100,
     status: str | None = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_automation_db),
 ):
     """
     List automation executions with optional filtering and limit.
@@ -490,7 +493,7 @@ async def list_executions(
 @router.delete("/executions/clear", response_model=ClearExecutionsResponse)
 async def clear_executions(
     status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ) -> ClearExecutionsResponse:
     """
     Clear (delete) automation executions by status.
@@ -533,7 +536,7 @@ async def clear_executions(
 
 
 @router.get("/executions/{execution_id}", response_model=AutomationExecution)
-async def get_execution(execution_id: int, db: AsyncSession = Depends(get_db)):
+async def get_execution(execution_id: int, db: AsyncSession = Depends(get_automation_db)):
     execution = await db.get(AutomationExecution, execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
@@ -598,7 +601,8 @@ class ExecutePresetRequest(BaseModel):
 @router.post("/execute-preset", response_model=ExecutePresetResponse)
 async def execute_preset_for_account(
     request: ExecutePresetRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db),
+    backend_db: AsyncSession = Depends(get_db),
 ) -> ExecutePresetResponse:
     """
     Execute a single preset for a specific account.
@@ -609,23 +613,23 @@ async def execute_preset_for_account(
     - If device_id is specified, uses that device (if available)
     - If device_id is None/omitted, automatically selects best available device using LRU algorithm
     """
-    # Validate preset exists
+    # Validate preset exists (automation DB)
     preset = await db.get(AppActionPreset, request.preset_id)
     if not preset:
         raise HTTPException(status_code=404, detail="Preset not found")
 
-    # Validate account exists
-    account = await db.get(ProviderAccount, request.account_id)
+    # Validate account exists (backend DB — cross-DB ref)
+    account = await backend_db.get(ProviderAccount, request.account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    # Validate device if specified
+    # Validate device if specified (automation DB)
     if request.device_id:
         device = await db.get(AndroidDevice, request.device_id)
         if not device:
             raise HTTPException(status_code=404, detail="Device not found")
 
-    # Create execution
+    # Create execution (automation DB)
     total_actions = len(preset.actions) if preset.actions else 0
     execution = AutomationExecution(
         user_id=account.user_id,
@@ -670,7 +674,8 @@ class TestActionsRequest(BaseModel):
 @router.post("/test-actions", response_model=TestActionsResponse)
 async def test_actions(
     request: TestActionsRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db),
+    backend_db: AsyncSession = Depends(get_db),
 ) -> TestActionsResponse:
     """
     Test actions by creating a queued execution (reuses existing infrastructure).
@@ -678,12 +683,12 @@ async def test_actions(
     Stores actions in execution_context and queues via normal worker.
     Frontend can poll execution status for progress.
     """
-    # Validate account
-    account = await db.get(ProviderAccount, request.account_id)
+    # Validate account (backend DB — cross-DB ref)
+    account = await backend_db.get(ProviderAccount, request.account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    # Validate device if specified
+    # Validate device if specified (automation DB)
     if request.device_id:
         device = await db.get(AndroidDevice, request.device_id)
         if not device:
@@ -745,7 +750,8 @@ class ExecuteLoopForAccountRequest(BaseModel):
 @router.post("/loops/execute-for-account")
 async def execute_loop_for_account(
     request: ExecuteLoopForAccountRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db),
+    backend_db: AsyncSession = Depends(get_db),
 ):
     """
     Execute the next preset from a loop for a specific account.
@@ -755,13 +761,13 @@ async def execute_loop_for_account(
     - SHARED_LIST: Uses the next preset in the shared list
     - PER_ACCOUNT: Uses the next preset in the account's specific list
     """
-    # Validate loop exists
+    # Validate loop exists (automation DB)
     loop = await db.get(ExecutionLoop, request.loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
 
-    # Validate account exists
-    account = await db.get(ProviderAccount, request.account_id)
+    # Validate account exists (backend DB — cross-DB ref)
+    account = await backend_db.get(ProviderAccount, request.account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -818,7 +824,7 @@ async def execute_loop_for_account(
 async def dump_device_ui(
     device_id: int,
     filter: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_automation_db)
 ):
     """
     Dump UI elements from a device for debugging element selectors.
@@ -926,7 +932,7 @@ def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> di
 @router.get("/devices/{device_id}/screenshot")
 async def get_device_screenshot(
     device_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_automation_db),
 ):
     """Return a fresh PNG screenshot of the device for the UI Inspector overlay."""
     from fastapi import Response

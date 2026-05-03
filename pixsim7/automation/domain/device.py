@@ -60,8 +60,9 @@ class AndroidDevice(SQLModel, table=True):
     status: DeviceStatus = Field(default=DeviceStatus.OFFLINE, index=True)
     is_enabled: bool = Field(default=True)
 
-    # Assignment
-    assigned_account_id: Optional[int] = Field(default=None, foreign_key="provider_accounts.id", index=True)
+    # Assignment (cross-DB ref to provider_accounts.id; FK dropped for
+    # automation-DB extraction — plan automation-package-extraction Phase 2c)
+    assigned_account_id: Optional[int] = Field(default=None, index=True)
     assigned_at: Optional[datetime] = Field(default=None)
 
     # Metadata

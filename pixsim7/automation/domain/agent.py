@@ -22,8 +22,9 @@ class DeviceAgent(SQLModel, table=True):
     port: int = Field(default=5037)  # ADB port
     api_port: int = Field(default=8765)  # Agent API port for commands
     
-    # Owner
-    user_id: int = Field(foreign_key="users.id", index=True)
+    # Owner (cross-DB ref to users.id; FK dropped for automation-DB
+    # extraction — plan automation-package-extraction Phase 2c)
+    user_id: int = Field(index=True)
     
     # Status
     status: str = Field(max_length=20, default="offline", index=True)  # online, offline, error

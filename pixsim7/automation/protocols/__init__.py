@@ -10,7 +10,11 @@ Design invariants (keep these stable so Phase 2/3 stay reachable):
 - No transactions span the protocol. Cross-domain writes go through events
   (on_account_deleted etc.), not synchronous calls.
 """
-from pixsim7.automation.protocols.accounts import AccountLookup, AccountSnapshot
+from pixsim7.automation.protocols.accounts import (
+    AccountLookup,
+    AccountSnapshot,
+    ReservationToken,
+)
 from pixsim7.automation.protocols.providers import (
     ProviderMetadataLookup,
     PixverseAdTask,
@@ -21,6 +25,7 @@ from pixsim7.automation.protocols.paths import PathRegistry
 __all__ = [
     "AccountLookup",
     "AccountSnapshot",
+    "ReservationToken",
     "ProviderMetadataLookup",
     "PixverseAdTask",
     "JobQueue",

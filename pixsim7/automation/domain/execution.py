@@ -20,11 +20,14 @@ class AutomationExecution(SQLModel, table=True):
     __tablename__ = "automation_executions"
 
     id: Optional[int] = Field(default=None, primary_key=True, index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    # Cross-DB ref to users.id; FK dropped for automation-DB extraction
+    # — plan automation-package-extraction Phase 2c.
+    user_id: int = Field(index=True)
 
     # What to execute (preset_id is optional for test executions with inline actions)
     preset_id: Optional[int] = Field(default=None, foreign_key="app_action_presets.id", index=True)
-    account_id: int = Field(foreign_key="provider_accounts.id", index=True)
+    # Cross-DB ref to provider_accounts.id; FK dropped (Phase 2c).
+    account_id: int = Field(index=True)
     device_id: Optional[int] = Field(default=None, foreign_key="android_devices.id", index=True)
 
     # Status

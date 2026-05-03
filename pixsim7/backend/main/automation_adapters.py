@@ -25,6 +25,7 @@ from pixsim7.automation.locator import (
 from pixsim7.automation.protocols import (
     AccountSnapshot,
     PixverseAdTask,
+    ReservationToken,
 )
 from pixsim7.backend.main.domain.enums import AccountStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -71,6 +72,41 @@ class BackendAccountLookup:
             accounts = result.scalars().all()
             return [_to_snapshot(a, self._resolve_password(a)) for a in accounts]
         return []  # pragma: no cover
+
+    async def reserve_account(
+        self,
+        account_id: int,
+        *,
+        claimed_by: str,
+        wait_for_lock: bool = False,
+    ) -> Optional[tuple[AccountSnapshot, ReservationToken]]:
+        from pixsim7.backend.main.services.account.reservation_service import (
+            AccountReservationService,
+        )
+        async for db in get_db():
+            service = AccountReservationService(db)
+            reservation = await service.reserve(
+                account_id,
+                claimed_by=claimed_by,
+                wait_for_lock=wait_for_lock,
+            )
+            if reservation is None:
+                return None
+            snapshot = _to_snapshot(
+                reservation.account,
+                self._resolve_password(reservation.account),
+            )
+            return snapshot, reservation.token
+        return None  # pragma: no cover
+
+    async def release_reservation(self, token: ReservationToken) -> None:
+        from pixsim7.backend.main.services.account.reservation_service import (
+            AccountReservationService,
+        )
+        async for db in get_db():
+            service = AccountReservationService(db)
+            await service.release(token)
+            return
 
     @staticmethod
     def _resolve_password(account: ProviderAccount) -> Optional[str]:

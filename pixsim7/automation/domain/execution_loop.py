@@ -34,7 +34,9 @@ class ExecutionLoop(SQLModel, table=True):
     __tablename__ = "execution_loops"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="users.id")
+    # Cross-DB ref to users.id; FK dropped for automation-DB extraction
+    # — plan automation-package-extraction Phase 2c.
+    user_id: int = Field(index=True)
     name: str = Field(max_length=200)
     description: Optional[str] = Field(default=None, max_length=500)
 
@@ -154,8 +156,9 @@ class ExecutionLoopHistory(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     loop_id: int = Field(foreign_key="execution_loops.id", index=True)
-    user_id: int = Field(foreign_key="users.id")
-    account_id: Optional[int] = Field(default=None, foreign_key="provider_accounts.id")
+    # Cross-DB refs to users.id / provider_accounts.id; FK dropped (Phase 2c).
+    user_id: int = Field(index=True)
+    account_id: Optional[int] = Field(default=None, index=True)
     device_id: Optional[int] = Field(default=None, foreign_key="android_devices.id")
     execution_id: Optional[int] = Field(default=None, foreign_key="automation_executions.id")
     preset_id: Optional[int] = Field(default=None, foreign_key="app_action_presets.id")

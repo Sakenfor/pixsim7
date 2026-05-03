@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.automation.domain import AutomationExecution, AutomationStatus, AppActionPreset, AndroidDevice
-from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.database.session import get_automation_db
 from pixsim7.automation.services import ExecutionLoopService
 from sqlalchemy import select
 from pixsim7.automation.services.action_executor import ActionExecutor, ExecutionContext, ExecutionError
@@ -58,7 +58,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
     """
     logger.info("automation_start", execution_id=execution_id)
 
-    async for db in get_db():
+    async for db in get_automation_db():
         try:
             execution = await db.get(AutomationExecution, execution_id)
             if not execution:
@@ -307,7 +307,7 @@ async def run_automation_loops(ctx: dict) -> dict:
     """
     processed = 0
     created = 0
-    async for db in get_db():
+    async for db in get_automation_db():
         try:
             from pixsim7.automation.domain import ExecutionLoop, LoopStatus
             result = await db.execute(select(ExecutionLoop).where(ExecutionLoop.is_enabled == True, ExecutionLoop.status == LoopStatus.ACTIVE))
@@ -340,7 +340,7 @@ async def queue_pending_executions(ctx: dict) -> dict:
         ctx: ARQ worker context
     """
     queued = 0
-    async for db in get_db():
+    async for db in get_automation_db():
         try:
             job_queue = get_job_queue()
 

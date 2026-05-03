@@ -39,8 +39,9 @@ class AppActionPreset(SQLModel, table=True):
     name: str = Field(max_length=200)
     description: str = Field(sa_column=Column(Text))
 
-    # Ownership and visibility
-    owner_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    # Ownership and visibility (cross-DB ref to users.id; FK constraint dropped
+    # for automation-DB extraction — see plan automation-package-extraction Phase 2c)
+    owner_id: Optional[int] = Field(default=None, index=True)
     is_shared: bool = Field(default=False, index=True)
     is_system: bool = Field(default=False, index=True)
     cloned_from_id: Optional[int] = Field(default=None, foreign_key="app_action_presets.id")

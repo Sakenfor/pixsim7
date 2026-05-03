@@ -92,6 +92,28 @@ AsyncBlocksSessionLocal = async_sessionmaker(
 )
 
 
+# ===== ASYNC ENGINE (Automation - Devices, Executions, Loops, Presets) =====
+# Separate database for the automation subsystem (sibling pixsim7.automation package).
+# Plan: automation-package-extraction Phase 2a — engine plumbing only, models are
+# still bound to the main MetaData until Phase 2c moves them.
+async_automation_engine = create_async_engine(
+    settings.async_automation_database_url,
+    echo=_sql_logging_enabled,
+    pool_size=4,
+    max_overflow=8,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
+
+AsyncAutomationSessionLocal = async_sessionmaker(
+    async_automation_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+
 # ===== SYNC ENGINE (Secondary) =====
 # For Alembic migrations and background workers
 sync_engine = create_engine(
@@ -191,7 +213,7 @@ def _strip_tz_from_params(conn, cursor, statement, parameters, context, executem
 
 
 # Register tz-stripping on all async engines
-for _engine in (async_engine, async_blocks_engine):
+for _engine in (async_engine, async_blocks_engine, async_automation_engine):
     event.listen(_engine.sync_engine, "before_cursor_execute", _strip_tz_from_params, retval=True)
 
 
@@ -305,6 +327,27 @@ async def get_async_blocks_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+# ===== AUTOMATION DATABASE SESSIONS =====
+
+async def get_automation_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency for automation database sessions."""
+    async with AsyncAutomationSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+@asynccontextmanager
+async def get_async_automation_session() -> AsyncGenerator[AsyncSession, None]:
+    """Context manager for async automation database sessions."""
+    async with AsyncAutomationSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 # ===== LIFECYCLE =====
 
 async def init_database():
@@ -400,5 +443,6 @@ async def close_database():
     await async_engine.dispose()
     await async_log_engine.dispose()
     await async_blocks_engine.dispose()
+    await async_automation_engine.dispose()
     sync_engine.dispose()
     logger.info("✅ Database connections closed")

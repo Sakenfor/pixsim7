@@ -438,9 +438,9 @@ async def poll_device_ads(ctx: dict) -> Dict[str, int]:
     This runs periodically to check if any device is watching ads
     and marks them as BUSY so automation doesn't try to use them.
     """
-    from pixsim7.backend.main.infrastructure.database.session import get_db
+    from pixsim7.backend.main.infrastructure.database.session import get_automation_db
 
-    async for db in get_db():
+    async for db in get_automation_db():
         try:
             service = DeviceSyncService(db)
             result = await service.check_device_ads()

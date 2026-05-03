@@ -26,8 +26,9 @@ class PairingRequest(SQLModel, table=True):
     version: str = Field(max_length=20)
     os_info: str = Field(max_length=100)
 
-    # Pairing status
-    paired_user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    # Pairing status (cross-DB ref to users.id; FK dropped for automation-DB
+    # extraction — plan automation-package-extraction Phase 2c)
+    paired_user_id: Optional[int] = Field(default=None, index=True)
 
     # Timestamps
     created_at: datetime = Field(default_factory=utcnow)
