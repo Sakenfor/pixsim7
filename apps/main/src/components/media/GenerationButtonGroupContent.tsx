@@ -24,7 +24,7 @@ type GenerationButtonGroupContentProps = {
 };
 
 export function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
-  const { actions, providerMenu, container } = useGenerationButtonGroup({ data, cardProps });
+  const { actions, providerMenu, hotkeyContextMenu, container } = useGenerationButtonGroup({ data, cardProps });
   const buttonItems = useMemo(() => toPillButtonItems(actions), [actions]);
 
   return (
@@ -58,6 +58,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       </div>
 
       <GenerationProviderPickerPopover menu={providerMenu} />
+      {hotkeyContextMenu}
     </div>
   );
 }

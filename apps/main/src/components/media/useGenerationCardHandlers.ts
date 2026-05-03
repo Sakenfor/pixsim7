@@ -7,18 +7,18 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 import { useState, useCallback } from 'react';
 
-import { extractFrame, getAsset, getAssetGenerationContext } from '@lib/api/assets';
+import { extractFrame, getAssetGenerationContext } from '@lib/api/assets';
 import { searchBlocks } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 import { fromAssetResponse, toSelectedAsset, type AssetModel } from '@features/assets';
+import { loadToQuickGenDescriptor } from '@features/assets/actions';
 import {
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import {
   getGenerationSessionStore,
   getGenerationSettingsStore,
-  getGenerationInputStore,
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
@@ -116,71 +116,6 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
-  const hydrateWidgetGenerationState = useCallback(
-    async (options: {
-      operationType: OperationType;
-      providerId?: string;
-      prompt: string;
-      dynamicParams: Record<string, unknown>;
-      assets?: AssetModel[];
-      triggerGenerate?: boolean;
-    }): Promise<boolean> => {
-      const {
-        operationType: nextOperationType,
-        providerId,
-        prompt,
-        dynamicParams,
-        assets = [],
-        triggerGenerate = false,
-      } = options;
-
-        // Prefer the actual widget scope when available so "Load to Quick Gen"
-        // hydrates the visible widget, not a nearby media-card-local scope.
-        const targetScopeId = widgetContext?.scopeId ?? scopedScopeId;
-        const sessionStore = targetScopeId
-          ? getGenerationSessionStore(targetScopeId).getState()
-          : (useSessionStore as any).getState();
-        const settingsStore = targetScopeId
-          ? getGenerationSettingsStore(targetScopeId).getState()
-          : (useSettingsStore as any).getState();
-        const inputStore = targetScopeId
-          ? getGenerationInputStore(targetScopeId).getState()
-          : (useInputStore as any).getState();
-
-      sessionStore.setOperationType(nextOperationType);
-      widgetContext?.setOperationType?.(nextOperationType);
-
-      if (providerId) {
-        sessionStore.setProvider(providerId);
-      }
-
-      // Sync settings store's active operation type BEFORE setting params,
-      // so setDynamicParams saves to the correct paramsPerOperation key.
-      // Without this, the useEffect in useGenerationWorkbench that syncs
-      // activeOperationType fires after render and overwrites our params
-      // with stale/empty values for the new operation type.
-      settingsStore.setActiveOperationType(nextOperationType);
-
-      sessionStore.setPrompt(prompt);
-      settingsStore.setDynamicParams(dynamicParams);
-      inputStore.clearInputs(nextOperationType);
-
-      if (assets.length > 0) {
-        inputStore.addInputs({ assets, operationType: nextOperationType });
-      }
-
-      widgetContext?.setOpen(true);
-
-      if (triggerGenerate && widgetContext?.generate) {
-        await widgetContext.generate();
-        return true;
-      }
-
-      return false;
-    },
-      [widgetContext, scopedScopeId, useSessionStore, useSettingsStore, useInputStore],
-    );
-
   const submitDirectGeneration = useCallback(
     async (options: {
       operationType: OperationType;
@@ -251,44 +186,15 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   }, [isQuickGenerating, widgetContext, inputAsset]);
 
   const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isLoadingSource) return;
+    if (!loadToQuickGenDescriptor.isVisible(inputAsset) || isLoadingSource || !widgetContext) return;
 
     setIsLoadingSource(true);
-
     try {
-      const withoutSeed = options?.withoutSeed === true;
-      const ctx = await getAssetGenerationContext(id);
-      const {
-        params,
-        operationType: resolvedOperationType,
-        providerId,
-        prompt,
-        sourceAssetIds,
-      } = parseGenerationContext(ctx, operationType);
-
-      const sourceParams = (params && typeof params === 'object')
-        ? (params as Record<string, unknown>)
-        : {};
-      const paramsForWidget = withoutSeed
-        ? stripSeedFromParams(sourceParams)
-        : sourceParams;
-
-      // Resolve input assets from context's source_asset_ids
-      let assets: AssetModel[] = [];
-      if (sourceAssetIds.length > 0) {
-        const results = await Promise.allSettled(sourceAssetIds.map((assetId) => getAsset(assetId)));
-        assets = results
-          .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
-          .filter((asset): asset is AssetModel => !!asset);
-      }
-
-      await hydrateWidgetGenerationState({
-        operationType: resolvedOperationType,
-        providerId,
-        prompt,
-        dynamicParams: stripInputParams(paramsForWidget),
-        assets,
-      });
+      await loadToQuickGenDescriptor.execute(
+        inputAsset,
+        { widget: widgetContext, fallbackOperationType: operationType, scopeId: scopedScopeId },
+        { withoutSeed: options?.withoutSeed === true },
+      );
     } catch (error) {
       console.error('Failed to load generation into Quick Generate:', error);
       useToastStore.getState().addToast({
@@ -300,12 +206,11 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       setIsLoadingSource(false);
     }
   }, [
-    id,
-    data.sourceGenerationId,
-    data.hasGenerationContext,
+    inputAsset,
     isLoadingSource,
     operationType,
-    hydrateWidgetGenerationState,
+    widgetContext,
+    scopedScopeId,
   ]);
 
   const handleInsertPromptOnly = useCallback(async () => {
@@ -839,6 +744,5 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     handleArtificialExtend,
     handleRegenerate,
     handleGenerateStyleVariations,
-    hydrateWidgetGenerationState,
   };
 }

@@ -8,10 +8,53 @@
  * at the boundary before storing.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { listGenerations } from '@lib/api/generations';
-import { useGenerationsStore } from '../stores/generationsStore';
-import { fromGenerationResponse } from '../models';
+
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { listGenerations, type GenerationStatus } from '@lib/api/generations';
+
+import { fromGenerationResponse } from '../models';
+import { useGenerationsStore } from '../stores/generationsStore';
+
+/**
+ * Statuses fetched explicitly on hydrate so old non-terminal generations
+ * aren't lost behind the recency-only top-N window.  Without this, a user
+ * with hundreds of recent terminal gens never sees their old paused or
+ * pending rows; resumed gens then arrive via websocket but the optimistic
+ * patch is a no-op for unknown IDs (see useGenerationWebSocket.ts).
+ */
+const ACTIVE_HYDRATE_STATUSES: GenerationStatus[] = [
+  'pending',
+  'processing',
+  'paused',
+];
+
+/**
+ * Fetch the most recent N generations plus all currently-active rows
+ * (pending / processing / paused) regardless of recency, and merge the
+ * results into the generations store.
+ *
+ * Exported so both the hook and the panel's silent background refresh can
+ * share the same hydration shape.
+ */
+export async function syncGenerationsFromApi(limit: number): Promise<void> {
+  const recencyFetch = listGenerations({ limit, offset: 0 });
+  const activeFetches = ACTIVE_HYDRATE_STATUSES.map((status) =>
+    listGenerations({ status, limit, offset: 0 }),
+  );
+  const responses = await Promise.allSettled([recencyFetch, ...activeFetches]);
+
+  useGenerationsStore.setState((state) => {
+    const newMap = new Map(state.generations);
+    for (const settled of responses) {
+      if (settled.status !== 'fulfilled') continue;
+      for (const gen of settled.value.generations) {
+        const model = fromGenerationResponse(gen);
+        newMap.set(model.id, model);
+      }
+    }
+    return { generations: newMap };
+  });
+}
 
 export interface UseRecentGenerationsOptions {
   /** Number of generations to fetch (default: 50) */
@@ -50,19 +93,9 @@ export function useRecentGenerations(
     setError(null);
 
     try {
-      const response = await listGenerations({ limit, offset: 0 });
+      await syncGenerationsFromApi(limit);
 
       if (mountedRef.current) {
-        // Map API responses to internal models and batch update store
-        useGenerationsStore.setState((state) => {
-          const newMap = new Map(state.generations);
-          response.generations.forEach((gen) => {
-            const model = fromGenerationResponse(gen);
-            newMap.set(model.id, model);
-          });
-          return { generations: newMap };
-        });
-
         setHasFetched(true);
         sessionHasFetched = true;
         setIsLoading(false);

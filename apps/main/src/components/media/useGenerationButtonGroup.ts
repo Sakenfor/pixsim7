@@ -13,6 +13,7 @@ import { useToast } from '@pixsim7/shared.ui';
 import { uploadAssetToProvider } from '@lib/api/assets';
 import { searchBlocks, type PromptBlockResponse } from '@lib/api/blockTemplates';
 import { useAction } from '@lib/capabilities';
+import { useActionHotkeyContextMenu } from '@lib/capabilities/useActionHotkeyContextMenu';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { resolveButtonState, makeAsyncStates, UPLOAD_BUTTON_STATES } from '@lib/ui/buttonStates';
 
@@ -169,6 +170,7 @@ export type GenerationProviderMenuState = {
 export type GenerationButtonGroupModel = {
   actions: GenerationAction[];
   providerMenu: GenerationProviderMenuState;
+  hotkeyContextMenu: React.ReactNode;
   container: {
     ref: React.RefObject<HTMLDivElement>;
     onWheel: (e: React.WheelEvent<HTMLDivElement>) => void;
@@ -381,6 +383,7 @@ export function useGenerationButtonGroup({
   const regenerateAction = useAction(MEDIA_CARD_ACTION_IDS.regenerate);
   const variationsAction = useAction(MEDIA_CARD_ACTION_IDS.variations);
   const insertPromptAction = useAction(MEDIA_CARD_ACTION_IDS.insertPrompt);
+  const { getActionContextMenuHandler, hotkeyContextMenu } = useActionHotkeyContextMenu();
   const withShortcut = (title: string | undefined, shortcut: string | undefined): string => {
     if (!title) return title ?? '';
     if (!shortcut) return title;
@@ -792,6 +795,10 @@ export function useGenerationButtonGroup({
       label: resolved.label,
       title: withShortcut(resolved.title, quickGenAction?.shortcut),
       onClick: handleQuickGenerate,
+      onContextMenu: getActionContextMenuHandler({
+        actionId: MEDIA_CARD_ACTION_IDS.quickGenerate,
+        label: 'Quick generate',
+      }),
     });
   }
 
@@ -814,6 +821,10 @@ export function useGenerationButtonGroup({
       label: resolved.label,
       title: withShortcut(resolved.title, extendAction?.shortcut),
       onClick: onNativeExtend,
+      onContextMenu: getActionContextMenuHandler({
+        actionId: MEDIA_CARD_ACTION_IDS.extend,
+        label: 'Extend video',
+      }),
       expand: {
         kind: 'extend-menu',
         promptSource: extendPromptSource,
@@ -852,6 +863,10 @@ export function useGenerationButtonGroup({
       label: resolved.label,
       title: withShortcut(resolved.title, regenerateAction?.shortcut),
       onClick: handleRegenerate,
+      onContextMenu: getActionContextMenuHandler({
+        actionId: MEDIA_CARD_ACTION_IDS.regenerate,
+        label: 'Regenerate',
+      }),
       expand: {
         kind: 'regenerate-menu',
         assetAcceptsInput,
@@ -882,6 +897,10 @@ export function useGenerationButtonGroup({
       label: resolved.label,
       title: withShortcut(resolved.title, variationsAction?.shortcut),
       onClick: () => { void handleGenerateStyleVariations(); },
+      onContextMenu: getActionContextMenuHandler({
+        actionId: MEDIA_CARD_ACTION_IDS.variations,
+        label: 'Generate style variations',
+      }),
       onMouseEnter: fetchStyleBlocks,
       expand: {
         kind: 'style-variations',
@@ -912,6 +931,7 @@ export function useGenerationButtonGroup({
   return {
     actions,
     providerMenu,
+    hotkeyContextMenu,
     container: {
       ref: triggerRef,
       onWheel: handleModeCycleWheel,

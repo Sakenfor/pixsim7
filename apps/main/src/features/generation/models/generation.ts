@@ -310,6 +310,7 @@ export type GranularStatus =
   | 'yielding' | 'cooldown' | 'retrying'            // from pending/queued
   | 'accepted' | 'submitted' | 'queued'             // from pending/queued
   | 'paused'                                         // paused (hold)
+  | 'cancelling' | 'pausing'                         // deferred-action in flight
   | 'completed' | 'failed' | 'cancelled';           // terminal
 
 /**
@@ -318,8 +319,14 @@ export type GranularStatus =
  */
 export function resolveGranularStatus(g: Pick<
   GenerationModel,
-  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason'
+  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason' | 'deferredAction'
 >): GranularStatus {
+  // Deferred cancel/pause: backend keeps status='processing' (or pending) until
+  // the poller honours the request, but the user has already asked for it to
+  // stop — surface that intent instead of the underlying activity label.
+  if (g.deferredAction === 'cancel' && g.status !== 'cancelled') return 'cancelling';
+  if (g.deferredAction === 'pause' && g.status !== 'paused') return 'pausing';
+
   const hasSubmitEvidence =
     (g.attemptCount != null && g.attemptCount > 0) ||
     g.latestSubmissionPayload != null;
@@ -355,6 +362,8 @@ const GRANULAR_STATUS_LABELS: Record<GranularStatus, string> = {
   submitted: 'Submitted',
   queued: 'Queued',
   paused: 'Paused',
+  cancelling: 'Cancelling',
+  pausing: 'Pausing',
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',

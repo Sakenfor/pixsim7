@@ -7,7 +7,7 @@
 import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton, ConfirmModal, PromptModal, useToast } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
-import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration, listGenerations } from '@lib/api/generations';
+import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
@@ -24,7 +24,7 @@ import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { useBatchCancelGenerations } from '../hooks/useBatchCancelGenerations';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
-import { useRecentGenerations } from '../hooks/useRecentGenerations';
+import { syncGenerationsFromApi, useRecentGenerations } from '../hooks/useRecentGenerations';
 import { GENERATION_FILTER_DEFS } from '../lib/generationFilterDefs';
 import {
   groupGenerations,
@@ -181,15 +181,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     if (backgroundRefreshInFlightRef.current) return;
     backgroundRefreshInFlightRef.current = true;
     try {
-      const response = await listGenerations({ limit: PANEL_FETCH_LIMIT, offset: 0 });
-      useGenerationsStore.setState((state) => {
-        const newMap = new Map(state.generations);
-        response.generations.forEach((gen) => {
-          const model = fromGenerationResponse(gen);
-          newMap.set(model.id, model);
-        });
-        return { generations: newMap };
-      });
+      await syncGenerationsFromApi(PANEL_FETCH_LIMIT);
     } catch (error) {
       console.warn('[GenerationsPanel] Background refresh failed:', error);
     } finally {
@@ -1079,6 +1071,26 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
   const canResume = isPaused;
   const canDelete = isTerminal;
   const activityBadge = useMemo(() => {
+    // Deferred action takes precedence over the activity label — the user has
+    // already asked to cancel/pause, surface that intent rather than the
+    // underlying activity state (which can briefly look like "STARTING" when
+    // the cancel response strips submit metadata).
+    if (generation.deferredAction === 'cancel' && generation.status !== 'cancelled') {
+      return {
+        label: 'CANCELLING',
+        className:
+          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+        title: 'Cancel requested — finalizing after current poll completes',
+      };
+    }
+    if (generation.deferredAction === 'pause' && generation.status !== 'paused') {
+      return {
+        label: 'PAUSING',
+        className:
+          'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+        title: 'Pause requested — applying after current attempt finishes',
+      };
+    }
     const hasSubmitEvidence =
       (generation.attemptCount != null && generation.attemptCount > 0) ||
       generation.latestSubmissionPayload != null;
@@ -1163,6 +1175,7 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
     generation.latestSubmissionPayload,
     generation.latestSubmissionProviderJobId,
     generation.waitReason,
+    generation.deferredAction,
   ]);
 
   // Manual refresh for debugging stuck generations

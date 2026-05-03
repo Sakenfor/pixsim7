@@ -31,43 +31,53 @@ export async function pollExecutionToTerminal(
   }
 }
 
-export interface ExecuteTrackedRawItemBackendExecutionArgs {
-  request: ExecuteEphemeralFanoutRequest;
+export interface TrackRawItemBackendExecutionArgs {
+  executionId: string;
   total: number;
   executionMode: RawItemExecutionMode;
   pollIntervalMs?: number;
   timeoutMs?: number;
   onProgress?: (progress: { queued: number; total: number }, execution: ChainExecution) => void;
+  onNewGenerationId?: (generationId: number, execution: ChainExecution) => void;
 }
 
-export interface ExecuteTrackedRawItemBackendExecutionResult {
+export interface TrackRawItemBackendExecutionResult {
   execution: ChainExecution;
   generationIds: number[];
 }
 
-export async function executeTrackedRawItemBackendExecution(
-  args: ExecuteTrackedRawItemBackendExecutionArgs,
-): Promise<ExecuteTrackedRawItemBackendExecutionResult> {
+export async function trackRawItemBackendExecution(
+  args: TrackRawItemBackendExecutionArgs,
+): Promise<TrackRawItemBackendExecutionResult> {
   const {
-    request,
+    executionId,
     total,
     executionMode,
     pollIntervalMs = 1000,
     timeoutMs = 60 * 60 * 1000,
     onProgress,
+    onNewGenerationId,
   } = args;
 
-  const started = await executeEphemeralFanout(request);
   const startedAt = Date.now();
+  const seenGenerationIds = new Set<number>();
   let execution: ChainExecution | null = null;
 
   while (true) {
-    const state = await getExecution(started.execution_id);
+    const state = await getExecution(executionId);
     execution = state;
     onProgress?.(
       { queued: countRawItemExecutionProgress(state, executionMode), total },
       state,
     );
+    if (onNewGenerationId) {
+      for (const id of extractGenerationIdsFromExecution(state)) {
+        if (!seenGenerationIds.has(id)) {
+          seenGenerationIds.add(id);
+          onNewGenerationId(id, state);
+        }
+      }
+    }
     if (isTerminalExecutionStatus(state.status)) {
       break;
     }
@@ -85,6 +95,42 @@ export async function executeTrackedRawItemBackendExecution(
     execution,
     generationIds: extractGenerationIdsFromExecution(execution),
   };
+}
+
+export interface ExecuteTrackedRawItemBackendExecutionArgs {
+  request: ExecuteEphemeralFanoutRequest;
+  total: number;
+  executionMode: RawItemExecutionMode;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  onProgress?: (progress: { queued: number; total: number }, execution: ChainExecution) => void;
+}
+
+export type ExecuteTrackedRawItemBackendExecutionResult = TrackRawItemBackendExecutionResult;
+
+export async function executeTrackedRawItemBackendExecution(
+  args: ExecuteTrackedRawItemBackendExecutionArgs,
+): Promise<ExecuteTrackedRawItemBackendExecutionResult> {
+  const started = await executeEphemeralFanout(args.request);
+  return trackRawItemBackendExecution({
+    executionId: started.execution_id,
+    total: args.total,
+    executionMode: args.executionMode,
+    pollIntervalMs: args.pollIntervalMs,
+    timeoutMs: args.timeoutMs,
+    onProgress: args.onProgress,
+  });
+}
+
+export interface DispatchRawItemBackendExecutionResult {
+  executionId: string;
+}
+
+export async function dispatchRawItemBackendExecution(
+  request: ExecuteEphemeralFanoutRequest,
+): Promise<DispatchRawItemBackendExecutionResult> {
+  const started = await executeEphemeralFanout(request);
+  return { executionId: started.execution_id };
 }
 
 export function extractGenerationIdsFromExecution(execution: ChainExecution): number[] {
@@ -105,18 +151,20 @@ export function extractLastAssetIdFromExecution(execution: ChainExecution): numb
 
 export function countRawItemExecutionProgress(
   execution: ChainExecution,
-  executionMode: RawItemExecutionMode,
+  _executionMode: RawItemExecutionMode,
 ): number {
+  // Count items whose generation row has been created (dispatched to provider),
+  // not items whose generation has finished. This keeps the QuickGen bar moving
+  // in sequential mode, where the wait between submissions can be minutes.
   const stepStates = Array.isArray(execution.step_states) ? execution.step_states : [];
-  if (executionMode === 'sequential') {
-    return stepStates.filter((s: any) =>
-      s?.status === 'completed'
-      || s?.status === 'failed'
-      || s?.status === 'cancelled'
-      || s?.status === 'timeout'
-    ).length;
-  }
-  return stepStates.filter((s: any) => s?.status === 'submitted').length;
+  return stepStates.filter((s: any) =>
+    s?.status === 'submitted'
+    || s?.status === 'generating'
+    || s?.status === 'completed'
+    || s?.status === 'failed'
+    || s?.status === 'cancelled'
+    || s?.status === 'timeout'
+  ).length;
 }
 
 export function isTerminalExecutionStatus(status: string | null | undefined): boolean {

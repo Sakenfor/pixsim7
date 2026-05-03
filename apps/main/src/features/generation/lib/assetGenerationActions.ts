@@ -4,10 +4,10 @@
  * Pure async functions with no React dependency — callable from both
  * context menu actions (assetActions.ts) and React hooks (useMediaGenerationActions).
  */
-import { getAssetGenerationContext } from '@lib/api/assets';
+import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { getModelFamily } from '@lib/generation-ui';
 
-import type { AssetModel } from '@features/assets';
+import { fromAssetResponse, type AssetModel } from '@features/assets';
 import type { GenerationWidgetContext } from '@features/contextHub';
 import { providerCapabilityRegistry } from '@features/providers';
 
@@ -163,6 +163,83 @@ export async function patchAssetToWidget(
   if (inputStore) {
     inputStore.clearInputs(operationType);
     inputStore.addInputs({ assets: [asset], operationType });
+  }
+
+  widget.setOpen(true);
+}
+
+// ─── Load to Quick Gen (restore original generation setup) ───────────────────
+
+export interface LoadAssetToQuickGenOptions {
+  /** The generation widget to hydrate. */
+  widget: GenerationWidgetContext;
+  /** Scope ID for store resolution (from widget or hook context). */
+  scopeId?: string;
+  /** Strip seed from params before hydration. */
+  withoutSeed?: boolean;
+}
+
+/**
+ * Restore the original generation setup that produced this asset:
+ * load its gen context (op type, prompt, params) and resolve its
+ * source assets back into the widget's input slots. Unlike
+ * `patchAssetToWidget`, the asset itself is NOT used as input —
+ * the inputs are the source assets that originally produced it.
+ */
+export async function loadAssetToQuickGen(
+  asset: AssetModel,
+  fallbackOperationType: OperationType,
+  options: LoadAssetToQuickGenOptions,
+): Promise<void> {
+  const { widget, scopeId, withoutSeed = false } = options;
+
+  const { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore } =
+    await import('../stores/generationScopeStores');
+
+  const ctx = await getAssetGenerationContext(asset.id);
+  const parsed = parseGenerationContext(ctx, fallbackOperationType);
+  const { params, operationType, providerId, prompt, sourceAssetIds } = parsed;
+
+  const paramsForWidget = withoutSeed ? stripSeedFromParams(params) : params;
+
+  let assets: AssetModel[] = [];
+  if (sourceAssetIds.length > 0) {
+    const results = await Promise.allSettled(sourceAssetIds.map((id) => getAsset(id)));
+    assets = results
+      .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
+      .filter((a): a is AssetModel => !!a);
+  }
+
+  const targetScopeId = widget.scopeId ?? scopeId;
+  const sessionStore = targetScopeId
+    ? getGenerationSessionStore(targetScopeId).getState()
+    : null;
+  const settingsStore = targetScopeId
+    ? getGenerationSettingsStore(targetScopeId).getState()
+    : null;
+  const inputStore = targetScopeId
+    ? getGenerationInputStore(targetScopeId).getState()
+    : null;
+
+  if (sessionStore) {
+    sessionStore.setOperationType(operationType);
+    if (providerId) {
+      sessionStore.setProvider(providerId);
+    }
+    sessionStore.setPrompt(prompt);
+  }
+  widget.setOperationType?.(operationType);
+
+  if (settingsStore) {
+    settingsStore.setActiveOperationType(operationType);
+    settingsStore.setDynamicParams(stripInputParams(paramsForWidget));
+  }
+
+  if (inputStore) {
+    inputStore.clearInputs(operationType);
+    if (assets.length > 0) {
+      inputStore.addInputs({ assets, operationType });
+    }
   }
 
   widget.setOpen(true);

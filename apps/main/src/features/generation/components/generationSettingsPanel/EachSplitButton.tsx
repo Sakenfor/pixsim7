@@ -27,13 +27,6 @@ const STRATEGY_ICONS: Record<CombinationStrategy, IconName> = {
   all_pairs: 'grid',
 };
 
-/** Short 2-character codes — readable at a glance, scroll-cycle friendly. */
-const STRATEGY_CODES: Record<CombinationStrategy, string> = {
-  each: 'Ea',
-  anchor_sweep: 'An',
-  sequential_pairs: 'Pr',
-  all_pairs: 'AP',
-};
 
 /** Split-button for "Each" (fanout) with strategy + preset controls. */
 export function EachSplitButton({
@@ -122,25 +115,49 @@ export function EachSplitButton({
 
   const handleToggle = () => setOpen((o) => !o);
 
-  // Wheel cycles through the "each" (non-set) strategies so the compact pill
-  // can scroll-through without opening the popover. Ref pattern keeps the
-  // listener attached once with { passive: false } so preventDefault works.
-  const strategyWheelStateRef = useRef({ selectedStrategy, disabled, setDraftPatch });
-  strategyWheelStateRef.current = { selectedStrategy, disabled, setDraftPatch };
+  // Wheel bindings on the Each pill (mirrors the Go burst-count stepper):
+  //   plain scroll  → repeatCount (1..50)
+  //   ctrl/cmd+scroll → toggle executionMode (fanout ↔ sequential)
+  //   shift+scroll → cycle "each" combination strategies
+  // Ref pattern keeps the listener attached once with { passive: false } so
+  // preventDefault works.
+  const strategyWheelStateRef = useRef({
+    selectedStrategy,
+    repeatCount: currentRunOptions.repeatCount,
+    executionMode: currentRunOptions.executionMode,
+    disabled,
+    setDraftPatch,
+  });
+  strategyWheelStateRef.current = {
+    selectedStrategy,
+    repeatCount: currentRunOptions.repeatCount,
+    executionMode: currentRunOptions.executionMode,
+    disabled,
+    setDraftPatch,
+  };
   useEffect(() => {
     const el = strategyWheelRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      const { selectedStrategy: s, disabled: d, setDraftPatch: patch } = strategyWheelStateRef.current;
+      const { selectedStrategy: s, repeatCount: r, executionMode: m, disabled: d, setDraftPatch: patch } = strategyWheelStateRef.current;
       if (d) return;
       e.preventDefault();
-      const list = EACH_STRATEGIES;
-      const idx = list.findIndex((x) => x.id === s);
-      const baseIdx = idx < 0 ? 0 : idx;
-      const next = e.deltaY < 0
-        ? (baseIdx + 1) % list.length
-        : (baseIdx - 1 + list.length) % list.length;
-      patch({ strategy: list[next].id });
+      const dir = e.deltaY < 0 ? 1 : -1;
+      if (e.ctrlKey || e.metaKey) {
+        patch({ executionMode: m === 'sequential' ? 'fanout' : 'sequential' });
+        return;
+      }
+      if (e.shiftKey) {
+        const list = EACH_STRATEGIES;
+        const idx = list.findIndex((x) => x.id === s);
+        const baseIdx = idx < 0 ? 0 : idx;
+        const next = dir > 0
+          ? (baseIdx + 1) % list.length
+          : (baseIdx - 1 + list.length) % list.length;
+        patch({ strategy: list[next].id });
+        return;
+      }
+      patch({ repeatCount: Math.max(1, Math.min(50, r + dir)) });
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
@@ -203,7 +220,10 @@ export function EachSplitButton({
           style={{ transition: 'none', animation: 'none' }}
           title={
             buildStrategyTooltip(activeStrategyEntry.id, activeStrategyEntry.description, true, inputCount, currentRunOptions.repeatCount, plannedGroupCount)
-            + '\n\nScroll to cycle strategies'
+            + `\n\nMode: ${currentRunOptions.executionMode === 'sequential' ? 'Sequential' : 'Fanout'}`
+            + '\n\nScroll: change repeat count'
+            + '\nCtrl+Scroll: toggle Fanout/Sequential'
+            + '\nShift+Scroll: cycle strategy'
             + (iterateSetSizes && iterateSetSizes.length > 0
               ? `\n\nIterate-mode slots: ${iterateSetSizes.join(' × ')}${selectedStrategy === 'all_pairs' && iterateSetSizes.length >= 2 ? ' (cartesian)' : ' (zip)'}`
               : '')
@@ -211,11 +231,23 @@ export function EachSplitButton({
         >
           {canRun && !showProgress && <Icon name="play" size={9} color="#fff" />}
           <Icon name={STRATEGY_ICONS[activeStrategyEntry.id]} size={11} color="#fff" />
-          <span className="text-[10px] font-bold uppercase tracking-wider tabular-nums text-white">
-            {STRATEGY_CODES[activeStrategyEntry.id]}
+          <span className="text-[11px] font-semibold text-white">
+            {activeStrategyEntry.shortLabel}
           </span>
           {!showProgress && plannedGroupCount != null && plannedGroupCount > 1 && (
             <span className="tabular-nums">×{plannedGroupCount}</span>
+          )}
+          {!showProgress && (
+            <span
+              className="ml-0.5 px-1 py-px rounded text-[8px] font-bold uppercase tracking-wider bg-white/15 text-white/90"
+              title={
+                currentRunOptions.executionMode === 'sequential'
+                  ? 'Sequential mode — one generation at a time (Ctrl+Scroll to toggle)'
+                  : 'Fanout mode — submit all in parallel (Ctrl+Scroll to toggle)'
+              }
+            >
+              {currentRunOptions.executionMode === 'sequential' ? 'Seq' : 'Fan'}
+            </span>
           )}
         </button>
         {/* Popover trigger + asset sets */}
