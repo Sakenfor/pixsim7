@@ -133,6 +133,8 @@ def test_account_snapshot_fields() -> None:
         "email",
         "provider_id",
         "resolved_password",
+        "user_id",
+        "total_credits",
     ]
 
 

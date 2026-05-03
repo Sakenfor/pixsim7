@@ -12,12 +12,23 @@ class AccountSnapshot:
     `resolved_password` is the password automation should use — backend's
     adapter does the account-password-else-provider-global-password fallback
     and ships the result here. Automation never sees provider settings.
+
+    `user_id` is the account owner; automation persists it on execution rows
+    in its own DB so post-cutover queries don't need a cross-DB join.
+
+    `total_credits` is the sum of all credit pools at snapshot time; used by
+    loop selection strategies (MOST_CREDITS / LEAST_CREDITS) and the
+    min_credits / max_credits filter. Stale by the time the worker actually
+    runs the job — provider adapters do their own pre-submit checks; this is
+    just for scheduling preference.
     """
 
     id: int
     email: str
     provider_id: str
     resolved_password: Optional[str]
+    user_id: Optional[int]
+    total_credits: int
 
 
 @dataclass(frozen=True, slots=True)

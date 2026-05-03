@@ -133,6 +133,8 @@ def _to_snapshot(account: ProviderAccount, resolved_password: Optional[str]) -> 
         email=account.email,
         provider_id=account.provider_id,
         resolved_password=resolved_password,
+        user_id=account.user_id,
+        total_credits=account.get_total_credits() or 0,
     )
 
 
