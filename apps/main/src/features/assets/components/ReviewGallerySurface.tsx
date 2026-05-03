@@ -20,8 +20,9 @@ import { usePersistentSet } from '@/hooks/usePersistentState';
 
 import type { AssetsController } from '../hooks/useAssetsController';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
+import type { AssetModel } from '../models/asset';
 
-import { GallerySurfaceShell } from './shared';
+import { GalleryGrid, GallerySurfaceShell } from './shared';
 
 export interface ReviewSurfaceContentProps {
   controller: AssetsController;
@@ -188,77 +189,70 @@ export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) 
     </div>
   );
 
-  // Large card grid for review
-  const reviewGrid = (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {controller.assets.map((asset, index) => {
-        const assetId = String(asset.id);
-        const isAccepted = acceptedAssets.has(assetId);
-        const isRejected = rejectedAssets.has(assetId);
-        const isReviewed = reviewedAssets.has(assetId);
-        const isFocused = index === focusedAssetIndex;
+  const renderCard = (asset: AssetModel, index: number) => {
+    const assetId = String(asset.id);
+    const isAccepted = acceptedAssets.has(assetId);
+    const isRejected = rejectedAssets.has(assetId);
+    const isReviewed = reviewedAssets.has(assetId);
+    const isFocused = index === focusedAssetIndex;
 
-        return (
-          <div
-            key={asset.id}
-            className={`border-2 rounded-lg overflow-hidden transition-all ${
-              isFocused
-                ? 'ring-4 ring-blue-500 ring-offset-2'
-                : ''
-            } ${
-              isAccepted
-                ? 'border-green-500 bg-green-50 dark:bg-green-900/10'
-                : isRejected
-                ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
-                : 'border-neutral-200 dark:border-neutral-700'
-            }`}
-            onClick={() => setFocusedAssetIndex(index)}
-          >
-            <MediaCard
-              asset={asset}
-              onToggleFavorite={() => toggleFavoriteTag(asset)}
-              actions={{
-                ...controller.getAssetActions(asset),
-                onApprove: () => handleAccept(assetId),
-                onReject: () => handleReject(assetId),
-              }}
-              overlayPresetId="media-card-review"
-              contextMenuSelection={selectedAssets}
-            />
+    return (
+      <div
+        className={`border-2 rounded-lg overflow-hidden transition-all ${
+          isFocused
+            ? 'ring-4 ring-blue-500 ring-offset-2'
+            : ''
+        } ${
+          isAccepted
+            ? 'border-green-500 bg-green-50 dark:bg-green-900/10'
+            : isRejected
+            ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
+            : 'border-neutral-200 dark:border-neutral-700'
+        }`}
+        onClick={() => setFocusedAssetIndex(index)}
+      >
+        <MediaCard
+          asset={asset}
+          onToggleFavorite={() => toggleFavoriteTag(asset)}
+          actions={{
+            ...controller.getAssetActions(asset),
+            onApprove: () => handleAccept(assetId),
+            onReject: () => handleReject(assetId),
+          }}
+          overlayPresetId="media-card-review"
+          contextMenuSelection={selectedAssets}
+        />
 
-            {/* Review Actions */}
-            <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
-              <div className="flex gap-2">
-                <Button
-                  variant={isAccepted ? 'primary' : 'secondary'}
-                  onClick={() => handleAccept(assetId)}
-                  className="flex-1 text-sm"
-                >
-                  ✓ Accept
-                </Button>
-                <Button
-                  variant={isRejected ? 'primary' : 'secondary'}
-                  onClick={() => handleReject(assetId)}
-                  className="flex-1 text-sm"
-                >
-                  ✗ Reject
-                </Button>
-                {isReviewed && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleSkip(assetId)}
-                    className="text-sm"
-                  >
-                    ↺
-                  </Button>
-                )}
-              </div>
-            </div>
+        <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="flex gap-2">
+            <Button
+              variant={isAccepted ? 'primary' : 'secondary'}
+              onClick={() => handleAccept(assetId)}
+              className="flex-1 text-sm"
+            >
+              ✓ Accept
+            </Button>
+            <Button
+              variant={isRejected ? 'primary' : 'secondary'}
+              onClick={() => handleReject(assetId)}
+              className="flex-1 text-sm"
+            >
+              ✗ Reject
+            </Button>
+            {isReviewed && (
+              <Button
+                variant="secondary"
+                onClick={() => handleSkip(assetId)}
+                className="text-sm"
+              >
+                ↺
+              </Button>
+            )}
           </div>
-        );
-      })}
-    </div>
-  );
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -292,12 +286,23 @@ export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) 
         filtersLayout="horizontal"
         error={controller.error}
         loading={controller.loading}
-        hasMore={controller.hasMore}
-        onLoadMore={controller.loadMore}
         itemCount={controller.assets.length}
-        loadMoreMode="button"
       >
-        {reviewGrid}
+        <GalleryGrid
+          items={controller.assets}
+          renderCard={renderCard}
+          getKey={(a) => a.id}
+          cardSize={320}
+          rowGap={24}
+          columnGap={24}
+          pagination={{
+            currentPage: controller.currentPage,
+            totalPages: controller.totalPages,
+            hasMore: controller.hasMore,
+            loading: controller.loading,
+            onPageChange: controller.goToPage,
+          }}
+        />
       </GallerySurfaceShell>
     </>
   );

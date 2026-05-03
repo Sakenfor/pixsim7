@@ -56,3 +56,10 @@ export {
   GalleryToolsStrip,
   type GalleryToolsStripProps,
 } from './GalleryToolsStrip';
+
+export {
+  GalleryGrid,
+  type GalleryGridProps,
+  type GalleryGridPaginationProps,
+  type GalleryGridLoadMoreProps,
+} from './GalleryGrid';

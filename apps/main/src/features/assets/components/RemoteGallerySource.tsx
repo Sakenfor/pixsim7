@@ -418,6 +418,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
         context: {
           initialFilters: { asset_ids: set.assetIds },
           sourceLabel: set.name,
+          suppressHoverActions: true,
         },
       });
     },
@@ -431,6 +432,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           initialFilters: currentFilters,
           syncInitialFilters: true,
           sourceLabel: 'Filtered assets',
+          suppressHoverActions: true,
         },
       });
     },

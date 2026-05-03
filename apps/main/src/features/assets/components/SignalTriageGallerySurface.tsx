@@ -23,7 +23,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import type { AssetsController } from '../hooks/useAssetsController';
 import type { AssetModel } from '../models/asset';
 
-import { GallerySurfaceShell } from './shared';
+import { GalleryGrid, GallerySurfaceShell } from './shared';
 
 export interface SignalTriageContentProps {
   controller: AssetsController;
@@ -108,6 +108,75 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
     [controller.assets.length, controller.hasMore],
   );
 
+  const renderCard = useCallback(
+    (asset: AssetModel, index: number) => {
+      const isFocused = index === focusedIndex;
+      const score = readSignalScore(asset);
+      return (
+        <div
+          className={`relative border-2 rounded-lg overflow-hidden transition-all ${
+            isFocused
+              ? 'ring-4 ring-blue-500 ring-offset-2 border-neutral-300 dark:border-neutral-600'
+              : 'border-neutral-200 dark:border-neutral-700'
+          }`}
+          onClick={() => setFocusedIndex(index)}
+        >
+          {score !== null && (
+            <div className="absolute top-2 left-2 z-10 px-2 py-0.5 text-xs font-mono bg-black/70 text-amber-300 rounded">
+              score {score}
+            </div>
+          )}
+          <MediaCard
+            asset={asset}
+            actions={{
+              ...controller.getAssetActions(asset),
+              onMarkSignalKeep: () => handleKeep(asset.id),
+              onMarkSignalFlag: () => handleFlag(asset.id),
+            }}
+            gestureSurfaceId="signal-triage"
+          />
+          <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleKeep(asset.id);
+                }}
+                className="flex-1 text-sm"
+              >
+                ✓ Keep
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleFlag(asset.id);
+                }}
+                className="flex-1 text-sm"
+              >
+                ⚠ Flag
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    },
+    [focusedIndex, controller, handleKeep, handleFlag],
+  );
+
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="text-3xl mb-3">✓</div>
+      <div className="text-lg font-medium text-neutral-700 dark:text-neutral-200">
+        Nothing left to triage
+      </div>
+      <div className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+        No videos in the broken queue. Run the scanner if you want to add more.
+      </div>
+    </div>
+  );
+
   return (
     <GallerySurfaceShell
       title="Signal Triage"
@@ -121,111 +190,25 @@ export function SignalTriageContent({ controller }: SignalTriageContentProps) {
       filtersLayout="horizontal"
       error={controller.error}
       loading={controller.loading}
-      hasMore={controller.hasMore}
-      onLoadMore={controller.loadMore}
       itemCount={controller.assets.length}
-      loadMoreMode="button"
     >
-      <TriageGrid
-        assets={controller.assets}
-        focusedIndex={focusedIndex}
-        onFocus={setFocusedIndex}
-        onKeep={handleKeep}
-        onFlag={handleFlag}
-        getActions={controller.getAssetActions}
+      <GalleryGrid
+        items={controller.assets}
+        renderCard={renderCard}
+        getKey={(a) => a.id}
+        cardSize={320}
+        rowGap={24}
+        columnGap={24}
+        pagination={{
+          currentPage: controller.currentPage,
+          totalPages: controller.totalPages,
+          hasMore: controller.hasMore,
+          loading: controller.loading,
+          onPageChange: controller.goToPage,
+        }}
+        emptyState={emptyState}
       />
     </GallerySurfaceShell>
-  );
-}
-
-interface TriageGridProps {
-  assets: AssetModel[];
-  focusedIndex: number;
-  onFocus: (index: number) => void;
-  onKeep: (id: number) => void;
-  onFlag: (id: number) => void;
-  getActions: AssetsController['getAssetActions'];
-}
-
-function TriageGrid({
-  assets,
-  focusedIndex,
-  onFocus,
-  onKeep,
-  onFlag,
-  getActions,
-}: TriageGridProps) {
-  if (assets.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="text-3xl mb-3">✓</div>
-        <div className="text-lg font-medium text-neutral-700 dark:text-neutral-200">
-          Nothing left to triage
-        </div>
-        <div className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          No videos in the broken queue. Run the scanner if you want to add more.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {assets.map((asset, index) => {
-        const isFocused = index === focusedIndex;
-        const score = readSignalScore(asset);
-        return (
-          <div
-            key={asset.id}
-            className={`relative border-2 rounded-lg overflow-hidden transition-all ${
-              isFocused
-                ? 'ring-4 ring-blue-500 ring-offset-2 border-neutral-300 dark:border-neutral-600'
-                : 'border-neutral-200 dark:border-neutral-700'
-            }`}
-            onClick={() => onFocus(index)}
-          >
-            {score !== null && (
-              <div className="absolute top-2 left-2 z-10 px-2 py-0.5 text-xs font-mono bg-black/70 text-amber-300 rounded">
-                score {score}
-              </div>
-            )}
-            <MediaCard
-              asset={asset}
-              actions={{
-                ...getActions(asset),
-                onMarkSignalKeep: () => onKeep(asset.id),
-                onMarkSignalFlag: () => onFlag(asset.id),
-              }}
-              gestureSurfaceId="signal-triage"
-            />
-            <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onKeep(asset.id);
-                  }}
-                  className="flex-1 text-sm"
-                >
-                  ✓ Keep
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFlag(asset.id);
-                  }}
-                  className="flex-1 text-sm"
-                >
-                  ⚠ Flag
-                </Button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 

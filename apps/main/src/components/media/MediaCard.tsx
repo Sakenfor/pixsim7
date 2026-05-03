@@ -364,15 +364,17 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     (state) => state.enableMediaCardContextMenu,
   );
   const pinCompareTarget = useMediaCompareTargetStore((state) => state.pinTarget);
+  const [isCapabilityActive, setIsCapabilityActive] = useState(false);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({
     id: 'media-card',
+    priority: isCapabilityActive ? 60 : 0,
     getValue: () => contextMenuAsset,
-    isAvailable: () => !!contextMenuAsset?.id,
+    isAvailable: () => isCapabilityActive && !!contextMenuAsset?.id,
     exposeToContextMenu: true,
-  }), [contextMenuAsset]);
-  useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
+  }), [contextMenuAsset, isCapabilityActive]);
+  useProvideCapability(CAP_ASSET, assetProvider, [assetProvider, isCapabilityActive]);
 
   // Register extract-frame / extract-last-frame callbacks in the shared video
   // store so scrubber capability actions (U, Shift+U, etc.) can invoke them
@@ -691,6 +693,18 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     }
   };
 
+  const handleMediaDragStart = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!gesture.enabled) return;
+
+    // Preserve parent-level HTML5 drag/drop (e.g. QuickGen slot reordering).
+    // We only suppress native media dragging when this card is not nested in a
+    // draggable container.
+    const draggableAncestor = event.currentTarget.closest('[draggable="true"]');
+    if (draggableAncestor) return;
+
+    event.preventDefault();
+  }, [gesture.enabled]);
+
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent) => {
       // Ctrl+right-click (or Cmd on Mac) bypasses custom menu → show native browser menu
@@ -989,6 +1003,15 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       className={wrapperClass}
       data-pixsim7="media-card"
       {...componentContextMenuAttrs}
+      onPointerEnter={() => setIsCapabilityActive(true)}
+      onPointerLeave={() => setIsCapabilityActive(false)}
+      onFocusCapture={() => setIsCapabilityActive(true)}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+          setIsCapabilityActive(false);
+        }
+      }}
       onClick={isCompact ? layout?.onClick : undefined}
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >
@@ -1022,7 +1045,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
-          onDragStart={gesture.enabled ? (e) => e.preventDefault() : undefined}
+          onDragStart={handleMediaDragStart}
           {...gesture.gestureHandlers}
           style={
             !layout?.aspectSquare && !layout?.fillHeight && mediaType === 'video' && videoAspectRatio
