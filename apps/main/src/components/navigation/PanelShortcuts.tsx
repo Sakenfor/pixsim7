@@ -13,6 +13,7 @@ import { moduleRegistry } from '@app/modules';
 
 import { NavIcon } from './ActivityBar';
 import { DRAG_MIME, parseShortcutKey } from './shortcutDrag';
+import { buildShortcutFlyoutInfo } from './shortcutFlyoutInfo';
 import { ShortcutGroupButton } from './ShortcutGroupButton';
 import { SubNavFlyout, type NavFlyoutAction } from './SubNavFlyout';
 
@@ -22,6 +23,7 @@ interface ResolvedShortcut {
   id: string;
   icon: string;
   title: string;
+  description?: string;
   route?: string; // for pages
 }
 
@@ -105,6 +107,7 @@ export function PanelShortcuts() {
             id: parsed.id,
             icon: panel.icon ?? 'layout',
             title: panel.title,
+            description: panel.description,
           },
         });
       } else {
@@ -113,7 +116,15 @@ export function PanelShortcuts() {
         out.push({
           type: 'shortcut',
           key,
-          data: { key, kind: 'page', id: parsed.id, icon: page.icon, title: page.name, route: page.route },
+          data: {
+            key,
+            kind: 'page',
+            id: parsed.id,
+            icon: page.icon,
+            title: page.name,
+            description: page.description,
+            route: page.route,
+          },
         });
       }
     }
@@ -296,6 +307,7 @@ export function PanelShortcuts() {
             key={s.key}
             items={flyoutItems}
             route={s.route ?? '/'}
+            info={buildShortcutFlyoutInfo(s)}
             pageActions={pageActions}
           >
             <ShortcutButton

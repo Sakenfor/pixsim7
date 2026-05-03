@@ -8,6 +8,7 @@ import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUt
 
 import { NavIcon } from './ActivityBar';
 import { DRAG_MIME, pinnedPanelIdsFrom } from './shortcutDrag';
+import { buildShortcutFlyoutInfo } from './shortcutFlyoutInfo';
 import { SubNavFlyout, type NavFlyoutAction } from './SubNavFlyout';
 
 const MAX_RECENT = 3;
@@ -71,13 +72,24 @@ export function RecentShortcuts() {
           id={panel.id}
           icon={panel.icon ?? 'layout'}
           title={panel.title}
+          description={panel.description}
         />
       ))}
     </div>
   );
 }
 
-function RecentShortcutRow({ id, icon, title }: { id: string; icon: string; title: string }) {
+function RecentShortcutRow({
+  id,
+  icon,
+  title,
+  description,
+}: {
+  id: string;
+  icon: string;
+  title: string;
+  description?: string;
+}) {
   const toggleShortcutPin = useWorkspaceStore((s) => s.toggleShortcutPin);
   const pageActions: NavFlyoutAction[] = [
     {
@@ -88,7 +100,12 @@ function RecentShortcutRow({ id, icon, title }: { id: string; icon: string; titl
     },
   ];
   return (
-    <SubNavFlyout items={[]} route="/" pageActions={pageActions}>
+    <SubNavFlyout
+      items={[]}
+      route="/"
+      info={buildShortcutFlyoutInfo({ kind: 'panel', id, icon, title, description })}
+      pageActions={pageActions}
+    >
       <RecentShortcutButton
         id={id}
         icon={icon}

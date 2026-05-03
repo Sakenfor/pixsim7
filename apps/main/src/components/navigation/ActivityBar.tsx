@@ -1,4 +1,3 @@
-import type { SubNavItem } from '@pixsim7/shared.modules.core';
 import { useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,6 +7,7 @@ import { useHasManualRefreshUpdate } from '@lib/dev/manualRefreshStatus';
 import { getBaseIcon } from '@lib/icons';
 import { useEdgeInset } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
+import { suppressBeforeUnloadPrompt } from '@lib/utils/beforeUnloadGuard';
 
 
 import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
@@ -145,9 +145,11 @@ function NavTooltip({ name, triggerRef }: { name: string; triggerRef: React.RefO
 function NavButton({
   page,
   active,
+  clickOverride,
 }: {
   page: PageEntry;
   active: boolean;
+  clickOverride?: { onClick: () => void; title: string };
 }) {
   const navigate = useNavigate();
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -159,8 +161,12 @@ function NavButton({
   const toggleHiddenPage = useActivityBarStore((s) => s.toggleHiddenPage);
 
   const handleClick = useCallback(() => {
+    if (clickOverride) {
+      clickOverride.onClick();
+      return;
+    }
     navigate(page.route);
-  }, [navigate, page.route]);
+  }, [clickOverride, navigate, page.route]);
 
   const shortcutKey = `page:${page.id}`;
   const isPinned = isPinnedShortcut(shortcutKey);
@@ -181,6 +187,12 @@ function NavButton({
     },
   ];
 
+  const buttonStateClass = clickOverride
+    ? 'text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 hover:text-emerald-300 animate-pulse-subtle'
+    : active
+      ? 'text-accent bg-accent/15'
+      : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50';
+
   const button = (
     <div
       ref={triggerRef}
@@ -191,18 +203,15 @@ function NavButton({
         e.dataTransfer.setData(DRAG_MIME, shortcutKey);
       }}
     >
-      {/* Active indicator bar */}
-      {active && (
+      {/* Active indicator bar — hidden while click is repurposed as refresh */}
+      {active && !clickOverride && (
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
       )}
       <button
         onClick={handleClick}
-        className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
-          active
-            ? 'text-accent bg-accent/15'
-            : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
-        }`}
-        aria-label={page.name}
+        className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${buttonStateClass}`}
+        aria-label={clickOverride?.title ?? page.name}
+        title={clickOverride?.title}
       >
         <NavIcon name={page.icon} size={20} />
       </button>
@@ -222,68 +231,42 @@ function NavButton({
   );
 }
 
-/** Convert a page to a SubNavItem, forwarding its pre-built subNav as children. */
-function pageToSubNavItem(page: PageEntry): SubNavItem {
-  const subNav = typeof page.subNav === 'function' ? page.subNav() : page.subNav;
-  return {
-    id: `page:${page.id}`,
-    label: page.name,
-    icon: page.icon,
-    route: page.route,
-    ...(subNav && subNav.length > 0 ? { children: subNav } : {}),
-  };
-}
-
 function CategoryGroup({
   category,
   pages,
   location,
-  refreshBadgeTitle,
+  refreshOverride,
 }: {
   category: string;
   pages: PageEntry[];
   location: { pathname: string };
-  refreshBadgeTitle?: string;
+  refreshOverride?: { onClick: () => void; title: string };
 }) {
   const isCollapsed = useActivityBarStore((s) => s.collapsedCategories.includes(category));
   const toggleCategory = useActivityBarStore((s) => s.toggleCategory);
 
-  const flyoutItems: SubNavItem[] = useMemo(() => pages.map(pageToSubNavItem), [pages]);
-
   return (
     <div className="flex flex-col items-center">
-      <SubNavFlyout items={flyoutItems} route="/">
-        <button
-          onClick={() => toggleCategory(category)}
-          className="w-full py-0.5 text-[9px] uppercase font-semibold tracking-wider text-neutral-600 hover:text-neutral-400 transition-colors select-none"
-        >
-          <span className="inline-flex items-center gap-1">
-            {CATEGORY_LABELS[category] ?? category.toUpperCase()}
-            {refreshBadgeTitle && (
-              <NavBadge
-                size="xs"
-                shape="circle"
-                tone="success"
-                icon="refreshCw"
-                title={refreshBadgeTitle}
-              />
-            )}
-          </span>
-        </button>
-      </SubNavFlyout>
+      <button
+        onClick={() => toggleCategory(category)}
+        className="w-full py-0.5 text-[9px] uppercase font-semibold tracking-wider text-neutral-600 hover:text-neutral-400 transition-colors select-none"
+      >
+        {CATEGORY_LABELS[category] ?? category.toUpperCase()}
+      </button>
       {!isCollapsed &&
-        pages.map((page) => (
+        pages.map((page, idx) => (
           <NavButton
             key={page.id}
             page={page}
             active={location.pathname.startsWith(page.route)}
+            clickOverride={idx === 0 ? refreshOverride : undefined}
           />
         ))}
     </div>
   );
 }
 
-const DEV_REFRESH_BADGE_CATEGORY = 'development';
+const DEV_REFRESH_CATEGORY = 'development';
 
 export function ActivityBar() {
   const collapsed = useActivityBarStore((s) => s.collapsed);
@@ -341,12 +324,21 @@ export function ActivityBar() {
     hasUpdate: manualRefreshHasUpdate,
     lastFile: manualRefreshLastFile,
   } = useHasManualRefreshUpdate();
-  const devRefreshBadgeTitle =
-    manualRefreshEnabled && manualRefreshHasUpdate
-      ? manualRefreshLastFile
-        ? `Frontend update available (${manualRefreshLastFile}). Refresh page to apply.`
-        : 'Frontend update available. Refresh page to apply.'
-      : undefined;
+  const devRefreshOverride = useMemo(
+    () =>
+      manualRefreshEnabled && manualRefreshHasUpdate
+        ? {
+            onClick: () => {
+              suppressBeforeUnloadPrompt();
+              window.location.reload();
+            },
+            title: manualRefreshLastFile
+              ? `Frontend update available (${manualRefreshLastFile}). Click to refresh.`
+              : 'Frontend update available. Click to refresh.',
+          }
+        : undefined,
+    [manualRefreshEnabled, manualRefreshHasUpdate, manualRefreshLastFile],
+  );
 
   const { isExpanded: homeHovered, handlers: homeHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
   const { isExpanded: toggleHovered, handlers: toggleHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
@@ -403,7 +395,7 @@ export function ActivityBar() {
                   category={cat}
                   pages={group}
                   location={location}
-                  refreshBadgeTitle={cat === DEV_REFRESH_BADGE_CATEGORY ? devRefreshBadgeTitle : undefined}
+                  refreshOverride={cat === DEV_REFRESH_CATEGORY ? devRefreshOverride : undefined}
                 />
               </div>
             );

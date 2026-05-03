@@ -69,6 +69,7 @@ export const interactionDemoModule = defineModule({
     description: 'See all interaction components in action with live examples',
     category: 'development',
     featureId: 'interaction-demo',
+    showInNav: false,
     component: lazy(() => import('../../../routes/InteractionComponentsDemo').then(m => ({ default: m.InteractionComponentsDemo }))),
   },
 });

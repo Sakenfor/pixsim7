@@ -20,11 +20,22 @@ export interface NavFlyoutAction {
   onClick: () => void;
 }
 
+/** Optional context block shown at the top of the flyout. */
+export interface NavFlyoutInfo {
+  title: string;
+  icon?: string;
+  kind?: string;
+  meta?: string;
+  description?: string;
+}
+
 interface SubNavFlyoutProps {
   /** The nav items to display in the flyout */
   items: SubNavItem[];
   /** Base route for the page (e.g. '/assets') */
   route: string;
+  /** Optional informational header for the hovered target. */
+  info?: NavFlyoutInfo;
   /** Optional page-level actions (pin/hide etc.) rendered in a section below items */
   pageActions?: NavFlyoutAction[];
   /** Render the trigger button */
@@ -36,7 +47,7 @@ type MouseHandlers = {
   onMouseLeave: React.MouseEventHandler;
 };
 
-export function SubNavFlyout({ items, route, pageActions, children }: SubNavFlyoutProps) {
+export function SubNavFlyout({ items, route, info, pageActions, children }: SubNavFlyoutProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
@@ -47,7 +58,10 @@ export function SubNavFlyout({ items, route, pageActions, children }: SubNavFlyo
 
   const activeItemId = getActiveItemId(items, location.pathname, location.search);
 
-  const visible = isExpanded && (items.length > 0 || (pageActions && pageActions.length > 0));
+  const hasInfo = info != null;
+  const hasItems = items.length > 0;
+  const hasActions = !!(pageActions && pageActions.length > 0);
+  const visible = isExpanded && (hasInfo || hasItems || hasActions);
 
   return (
     <div ref={triggerRef} {...handlers}>
@@ -62,15 +76,21 @@ export function SubNavFlyout({ items, route, pageActions, children }: SubNavFlyo
           onMouseEnter={handlers.onMouseEnter}
           onMouseLeave={handlers.onMouseLeave}
         >
-          <SubNavItemsList
-            items={items}
-            route={route}
-            activeItemId={activeItemId}
-            parentHandlers={handlers}
-          />
-          {pageActions && pageActions.length > 0 && (
+          {hasInfo && <FlyoutInfo info={info} />}
+          {hasInfo && (hasItems || hasActions) && <div className="my-1 border-t border-neutral-700/40" />}
+          {hasItems && (
+            <div className="max-h-[280px] overflow-y-auto thin-scrollbar">
+              <SubNavItemsList
+                items={items}
+                route={route}
+                activeItemId={activeItemId}
+                parentHandlers={handlers}
+              />
+            </div>
+          )}
+          {hasActions && (
             <>
-              {items.length > 0 && <div className="my-1 border-t border-neutral-700/40" />}
+              {hasItems && <div className="my-1 border-t border-neutral-700/40" />}
               {pageActions.map((action) => (
                 <button
                   key={action.id}
@@ -92,6 +112,42 @@ export function SubNavFlyout({ items, route, pageActions, children }: SubNavFlyo
           )}
         </PortalFloat>
       )}
+    </div>
+  );
+}
+
+function FlyoutInfo({ info }: { info: NavFlyoutInfo }) {
+  const meta = info.meta?.trim();
+  return (
+    <div className="px-3 py-1">
+      <div className="flex items-start gap-2 min-w-0">
+        {info.icon && (
+          <span className="mt-0.5 text-neutral-300" aria-hidden>
+            <NavIcon name={info.icon} size={13} />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-neutral-100 truncate" title={info.title}>
+            {info.title}
+          </div>
+          {(info.kind || meta) && (
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] min-w-0">
+              {info.kind && <span className="uppercase tracking-wider text-neutral-500">{info.kind}</span>}
+              {info.kind && meta && <span className="text-neutral-600">|</span>}
+              {meta && (
+                <span className="text-neutral-500 truncate" title={meta}>
+                  {meta}
+                </span>
+              )}
+            </div>
+          )}
+          {info.description && (
+            <p className="mt-1 text-xs text-neutral-400 leading-snug">
+              {info.description}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -250,12 +306,14 @@ function SubNavRow({
           onMouseEnter={bridgedHandlers.onMouseEnter}
           onMouseLeave={bridgedHandlers.onMouseLeave}
         >
-          <SubNavItemsList
-            items={resolvedChildren!}
-            route={route}
-            activeItemId={null}
-            parentHandlers={bridgedHandlers}
-          />
+          <div className="max-h-[280px] overflow-y-auto thin-scrollbar">
+            <SubNavItemsList
+              items={resolvedChildren!}
+              route={route}
+              activeItemId={null}
+              parentHandlers={bridgedHandlers}
+            />
+          </div>
         </PortalFloat>
       )}
     </div>

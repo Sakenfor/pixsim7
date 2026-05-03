@@ -3,12 +3,14 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useActions } from '@lib/capabilities';
+import { useActionHotkeyContextMenu } from '@lib/capabilities/useActionHotkeyContextMenu';
 import { Icon, type IconName } from '@lib/icons';
 
 export interface Shortcut {
   id: string;
   label: string;
   icon?: IconName;
+  actionId?: string;
   action: () => void;
 }
 
@@ -26,6 +28,12 @@ const actionShortcutIds = [
 export function ShortcutsModule() {
   const navigate = useNavigate();
   const actions = useActions();
+  const {
+    canEditHotkeyForAction,
+    getActionContextMenuHandler,
+    getActionShortcutLabel,
+    hotkeyContextMenu,
+  } = useActionHotkeyContextMenu();
 
   const shortcuts: Shortcut[] = useMemo(() => {
     const actionMap = new Map(actions.map((action) => [action.id, action]));
@@ -34,6 +42,7 @@ export function ShortcutsModule() {
       .filter((action): action is (typeof actions)[number] => Boolean(action))
       .map((action) => ({
         id: action.id,
+        actionId: action.id,
         label: action.name,
         icon: action.icon as IconName | undefined,
         action: () => action.execute({ source: 'programmatic' }),
@@ -52,30 +61,57 @@ export function ShortcutsModule() {
   return (
     <div className="p-4">
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
-        {shortcuts.map(shortcut => (
-          <button
-            key={shortcut.id}
-            onClick={shortcut.action}
-            className={clsx(
-              'flex flex-col items-center justify-center gap-2 p-4 rounded-lg',
-              'border border-neutral-200 dark:border-neutral-700',
-              'bg-white dark:bg-neutral-900',
-              'hover:bg-neutral-50 dark:hover:bg-neutral-800',
-              'hover:border-accent-muted',
-              'transition-all duration-150',
-              'focus:outline-none focus:ring-2 focus:ring-accent'
-            )}
-            aria-label={shortcut.label}
-          >
-            {shortcut.icon && (
-              <Icon name={shortcut.icon} size={32} aria-hidden="true" />
-            )}
-            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              {shortcut.label}
-            </span>
-          </button>
-        ))}
+        {shortcuts.map((shortcut) => {
+          const canEditHotkey = !!(
+            shortcut.actionId &&
+            canEditHotkeyForAction(shortcut.actionId)
+          );
+          const shortcutLabel = shortcut.actionId
+            ? getActionShortcutLabel(shortcut.actionId)
+            : undefined;
+
+          return (
+            <button
+              key={shortcut.id}
+              onClick={shortcut.action}
+              onContextMenu={
+                shortcut.actionId && canEditHotkey
+                  ? getActionContextMenuHandler({
+                      actionId: shortcut.actionId,
+                      label: shortcut.label,
+                    })
+                  : undefined
+              }
+              className={clsx(
+                'flex flex-col items-center justify-center gap-2 p-4 rounded-lg',
+                'border border-neutral-200 dark:border-neutral-700',
+                'bg-white dark:bg-neutral-900',
+                'hover:bg-neutral-50 dark:hover:bg-neutral-800',
+                'hover:border-accent-muted',
+                'transition-all duration-150',
+                'focus:outline-none focus:ring-2 focus:ring-accent'
+              )}
+              aria-label={shortcut.label}
+              title={shortcutLabel ? `${shortcut.label} (${shortcutLabel})` : shortcut.label}
+            >
+              {shortcut.icon && (
+                <Icon name={shortcut.icon} size={32} aria-hidden="true" />
+              )}
+              <span className="text-center">
+                <span className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  {shortcut.label}
+                </span>
+                {shortcutLabel && (
+                  <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                    {shortcutLabel}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
+      {hotkeyContextMenu}
     </div>
   );
 }

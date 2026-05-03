@@ -34,6 +34,14 @@ const DEFAULT_MAX_ITEMS = 5;
 const MAX_ROUTE_ITEMS = 2;
 
 const PAGE_NAV_HINTS: Record<string, PageNavHints> = {
+  'dev-tools-panel': {
+    panelIds: ['health'],
+    routePageIds: ['interaction-demo', 'gizmo-lab'],
+    featureTagHints: ['dev', 'debug', 'diagnostics', 'tools', 'interaction'],
+    // DEV cascade is the catalog's hover preview — surface a generous list
+    // (the flyout itself caps its visible height and scrolls beyond ~8 rows).
+    maxItems: 12,
+  },
   'interaction-demo': {
     panelIds: ['dev-tools', 'health'],
     routePageIds: ['gizmo-lab'],

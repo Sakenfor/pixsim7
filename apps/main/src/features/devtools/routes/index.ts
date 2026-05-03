@@ -75,9 +75,9 @@ export const promptImporterPageModule = defineModule({
 export const devToolsPanelModule = defineModule({
   id: 'dev-tools-panel',
   name: 'Dev Tools',
-  updatedAt: '2026-04-16T00:00:00Z',
-  changeNote: 'DEV-group shortcut — renders DevToolsPanel inline as a full page, or via the SubNav float chip to overlay the current page.',
-  featureHighlights: ['Full-page view at /dev-tools plus float-on-current-page via the SubNav flyout.'],
+  updatedAt: '2026-05-03T00:00:00Z',
+  changeNote: 'Promoted to the visible DEV-group shortcut — flask icon points at /dev-tools catalog; click reloads when an HMR update is pending.',
+  featureHighlights: ['Full-page catalog at /dev-tools plus float-on-current-page via the SubNav flyout.'],
   page: {
     route: '/dev-tools',
     icon: 'flask',
@@ -86,10 +86,6 @@ export const devToolsPanelModule = defineModule({
     category: 'development',
     featureId: 'dev-tools',
     featurePrimary: true,
-    // Keep the route reachable (via URL and cascading hover on other DEV pages),
-    // but don't render a direct icon in the sidebar — the Interaction Demo hover
-    // already surfaces all dev-category panels via the children cascade.
-    showInNav: false,
     component: DevToolsPage,
   },
 });
