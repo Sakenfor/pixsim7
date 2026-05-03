@@ -67,6 +67,10 @@ import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { OperatorEditPopover } from './OperatorEditPopover';
+import {
+  PromptCompareSideBySide,
+  type CompareSource,
+} from './PromptCompareSideBySide';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowSidePanel } from './ShadowSidePanel';
 import { ShadowTextarea } from './ShadowTextarea';
@@ -313,6 +317,10 @@ export function PromptComposer({
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
   const editorEngine = usePromptSettingsStore((state) => state.editorEngine);
   const setEditorEngine = usePromptSettingsStore((state) => state.setEditorEngine);
+  const ghostDiffPrecision = usePromptSettingsStore((state) => state.ghostDiffPrecision);
+  const setGhostDiffPrecision = usePromptSettingsStore(
+    (state) => state.setGhostDiffPrecision,
+  );
   const useCodemirror = editorEngine === 'codemirror';
   const [mode, setMode] = useState<PromptComposerMode>('text');
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -344,6 +352,15 @@ export function PromptComposer({
     anchor: HTMLElement;
     operator: OperatorRange;
   } | null>(null);
+
+  // --- Compare-button dropdown menu (chevron next to the compare-media button) ---
+  const [compareMenuAnchor, setCompareMenuAnchor] = useState<HTMLElement | null>(null);
+  // --- Side-by-side compare popover (opened from the dropdown) ---
+  const [compareSideBySideAnchor, setCompareSideBySideAnchor] =
+    useState<HTMLElement | null>(null);
+  // --- Side-by-side per-column source selection — stable across opens ---
+  const [leftCompareSourceId, setLeftCompareSourceId] = useState<string>('viewer');
+  const [rightCompareSourceId, setRightCompareSourceId] = useState<string>('current');
   const operatorVocabulary = useOperatorVocabulary();
   const relationRecipes = useRelationRecipes();
 
@@ -357,7 +374,6 @@ export function PromptComposer({
   const [ghostSuppressed, setGhostSuppressed] = useState(false);
   /** Removed tokens from the current diff — not rendered inline (breaks alignment), surfaced as badge. */
   const [ghostRemoved, setGhostRemoved] = useState<string[]>([]);
-  const [ghostPrecisionHover, setGhostPrecisionHover] = useState(false);
   const [pointerOverMediaCard, setPointerOverMediaCard] = useState(false);
   /** Whether Shift is held — while held + in media-compare mode, hover overrides selection. */
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -590,21 +606,6 @@ export function PromptComposer({
     };
   }, [compareAgainstMedia]);
 
-  useEffect(() => {
-    if (!ghostSource) {
-      setGhostPrecisionHover(false);
-    }
-  }, [ghostSource]);
-
-  const handleGhostPrecisionEnter = useCallback(() => {
-    if (!ghostSource || compareAgainstMedia) return;
-    setGhostPrecisionHover(true);
-  }, [ghostSource, compareAgainstMedia]);
-
-  const handleGhostPrecisionLeave = useCallback(() => {
-    setGhostPrecisionHover(false);
-  }, []);
-
   const flushSnapshot = useCallback(() => {
     clearTimeout(undoDebounceRef.current);
     history.snapshot(valueRef.current);
@@ -697,6 +698,55 @@ export function PromptComposer({
   const historyTimeline = showHistory
     ? history.getTimeline()
     : { entries: [], entryIds: [], pinnedByIndex: [], pinnedCount: 0, currentIndex: 0 };
+
+  // --- Compare side-by-side source list (only built when the popover is open) ---
+  const compareSources = useMemo<CompareSource[]>(() => {
+    if (!compareSideBySideAnchor) return [];
+    const list: CompareSource[] = [
+      { id: 'current', label: 'Current prompt', text: value },
+    ];
+    if (selectionAssetPrompt) {
+      list.push({ id: 'viewer', label: 'Viewer selection', text: selectionAssetPrompt });
+    }
+    if (pinnedAssetPrompt) {
+      list.push({ id: 'pinned', label: 'Pinned card', text: pinnedAssetPrompt });
+    }
+    if (peekingHover && hoverAssetPrompt) {
+      list.push({ id: 'hovered', label: 'Hovered card', text: hoverAssetPrompt });
+    }
+    const tl = history.getTimeline();
+    const maxBack = Math.min(5, tl.currentIndex);
+    for (let i = 1; i <= maxBack; i += 1) {
+      const text = tl.entries[tl.currentIndex - i] ?? '';
+      list.push({ id: `history-${i}`, label: `History −${i}`, text });
+    }
+    return list;
+  }, [
+    compareSideBySideAnchor,
+    value,
+    selectionAssetPrompt,
+    pinnedAssetPrompt,
+    hoverAssetPrompt,
+    peekingHover,
+    history,
+  ]);
+
+  // When the popover opens (or the available sources change underneath us),
+  // make sure the selected ids still resolve. Fall back to the first non-current
+  // source for the left side, and 'current' for the right.
+  useEffect(() => {
+    if (!compareSideBySideAnchor || compareSources.length === 0) return;
+    const ids = new Set(compareSources.map((s) => s.id));
+    if (!ids.has(leftCompareSourceId)) {
+      const fallback =
+        compareSources.find((s) => s.id !== 'current' && s.text) ??
+        compareSources[0];
+      setLeftCompareSourceId(fallback.id);
+    }
+    if (!ids.has(rightCompareSourceId)) {
+      setRightCompareSourceId('current');
+    }
+  }, [compareSideBySideAnchor, compareSources, leftCompareSourceId, rightCompareSourceId]);
   const handleOpenHistory = useCallback(() => {
     flushSnapshot();
     forceHistoryRender((prev) => prev + 1);
@@ -794,10 +844,8 @@ export function PromptComposer({
   });
 
   // --- CM extensions for CodeMirror mode ---
-  // Keep media-compare stable: hovering the prompt should not switch diff granularity.
-  // Fine precision remains available for history diff inspection.
-  const ghostDiffPrecision: 'coarse' | 'fine' =
-    ghostPrecisionHover && !compareAgainstMedia ? 'fine' : 'coarse';
+  // Diff precision is a user-controlled setting (toolbar dropdown) so both
+  // history-sticky and media-compare diffs stay stable as the cursor moves.
   const cmGhostConfig: GhostDiffConfig | null = ghostSource
     ? {
         comparisonText: ghostSource.comparisonText,
@@ -1269,119 +1317,132 @@ export function PromptComposer({
           <Icon name="history" size={14} />
         </button>
 
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            const next = !ghostSticky;
-            setGhostSticky(next);
-            if (next) {
-              // Turning on history-sticky disables media-compare (mutually exclusive)
-              setCompareAgainstMedia(false);
-              flushSnapshot();
-              setGhostCompareOffset(1);
-              applyStickyGhost(1);
-            } else {
-              clearTimeout(ghostClearTimerRef.current);
-              setGhostSource(null);
-            }
-          }}
-          onWheel={(e) => {
-            if (!ghostSticky) return;
-            e.preventDefault();
-            const tl = history.getTimeline();
-            const maxOffset = tl.currentIndex; // can't go further back than the start
-            if (maxOffset < 1) return;
-            const delta = e.deltaY > 0 ? 1 : -1; // scroll down = further back
-            const next = Math.max(1, Math.min(maxOffset, ghostCompareOffset + delta));
-            if (next !== ghostCompareOffset) {
-              applyStickyGhost(next);
-            }
-          }}
-          title={
-            ghostSticky
-              ? `Comparing vs ${ghostCompareOffset} step${ghostCompareOffset === 1 ? '' : 's'} back — scroll to change${
-                  ghostRemoved.length > 0 ? `\nRemoved: ${ghostRemoved.join(' · ')}` : ''
-                }`
-              : 'Show change highlights (scroll to browse history)'
-          }
-          className={clsx(
-            'p-1 rounded transition-colors relative',
-            ghostSticky
-              ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-          )}
-        >
-          <Icon name="layers" size={14} />
-          {ghostSticky && ghostCompareOffset > 1 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-green-600 dark:bg-green-500 text-white text-[8px] font-bold leading-none px-0.5">
-              {ghostCompareOffset}
-            </span>
-          )}
-          {ghostSticky && ghostRemoved.length > 0 && (
-            <span className="absolute -bottom-1.5 -left-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 text-white text-[8px] font-bold leading-none px-0.5">
-              −{ghostRemoved.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            const next = !compareAgainstMedia;
-            setCompareAgainstMedia(next);
-            if (next) {
-              // Turning on media-compare disables history-sticky
-              setGhostSticky(false);
+        <div className="flex items-stretch">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              // Toggle current active mode off if any; otherwise turn on media compare.
+              if (ghostSticky) {
+                setGhostSticky(false);
+                clearTimeout(ghostClearTimerRef.current);
+                setGhostSource(null);
+                return;
+              }
+              if (compareAgainstMedia) {
+                setCompareAgainstMedia(false);
+                setGhostSource(null);
+                return;
+              }
+              setCompareAgainstMedia(true);
               clearTimeout(ghostClearTimerRef.current);
               // source syncs via useEffect watching activeAssetPrompt
-            } else {
-              setGhostSource(null);
+            }}
+            onWheel={(e) => {
+              if (!ghostSticky) return;
+              e.preventDefault();
+              const tl = history.getTimeline();
+              const maxOffset = tl.currentIndex;
+              if (maxOffset < 1) return;
+              const delta = e.deltaY > 0 ? 1 : -1;
+              const next = Math.max(1, Math.min(maxOffset, ghostCompareOffset + delta));
+              if (next !== ghostCompareOffset) {
+                applyStickyGhost(next);
+              }
+            }}
+            title={
+              ghostSticky
+                ? `Comparing vs ${ghostCompareOffset} step${ghostCompareOffset === 1 ? '' : 's'} back — scroll to change${
+                    ghostRemoved.length > 0 ? `\nRemoved: ${ghostRemoved.join(' · ')}` : ''
+                  }`
+                : compareAgainstMedia
+                  ? ghostSuppressed
+                    ? `Diff too large - prompts too different (${comparisonSourceLabel ?? 'no target'})`
+                    : peekingHover
+                      ? 'Peeking hovered asset (release Shift to return to pinned/selection target)'
+                      : activeAssetPrompt
+                        ? hasPinnedCompareTarget
+                          ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin'
+                          : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered`
+                        : 'Compare mode on - waiting for a target (hold Shift + hover, or Shift+click a media card)'
+                  : 'Compare prompt vs viewer media (Shift+hover peeks, Shift+click pins; chevron picks history step)'
             }
-          }}
-          title={
-            compareAgainstMedia
-              ? ghostSuppressed
-                ? `Diff too large - prompts too different (${comparisonSourceLabel ?? 'no target'})`
-                : peekingHover
-                  ? 'Peeking hovered asset (release Shift to return to pinned/selection target)'
-                  : activeAssetPrompt
-                    ? hasPinnedCompareTarget
-                      ? 'Comparing vs pinned media card - hold Shift to peek hovered, Shift+click another card to repin'
-                      : `Comparing vs ${comparisonSourceLabel} - hold Shift to peek hovered`
-                    : 'Compare mode on - waiting for a target (hold Shift + hover, or Shift+click a media card)'
-              : 'Compare prompt vs viewer media (Shift+hover peeks, Shift+click pins a media card)'
-          }
-          className={clsx(
-            'p-1 rounded transition-colors relative',
-            compareAgainstMedia
-              ? ghostSuppressed
-                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                : peekingHover
-                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
-                  : activeAssetPrompt
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
-              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-          )}
-        >
-          <Icon name={activeAssetType === 'video' ? 'video' : 'image'} size={14} />
-          {compareAgainstMedia && ghostSuppressed && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
-          )}
-          {compareAgainstMedia && !ghostSuppressed && canPeekHoveredAsset && !shiftHeld && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-violet-500/60" title="Hold Shift to peek" />
-          )}
-          {compareAgainstMedia && !ghostSuppressed && ghostRemoved.length > 0 && (
-            <span
-              className="absolute -bottom-1.5 -left-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 text-white text-[8px] font-bold leading-none px-0.5"
-              title={`Removed: ${ghostRemoved.join(' · ')}`}
-            >
-              −{ghostRemoved.length}
-            </span>
-          )}
-        </button>
+            className={clsx(
+              'p-1 rounded-l transition-colors relative',
+              ghostSticky
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                : compareAgainstMedia
+                  ? ghostSuppressed
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                    : peekingHover
+                      ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+                      : activeAssetPrompt
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                        : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
+                  : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            <Icon
+              name={
+                ghostSticky
+                  ? 'layers'
+                  : activeAssetType === 'video'
+                    ? 'video'
+                    : 'image'
+              }
+              size={14}
+            />
+            {ghostSticky && ghostCompareOffset > 1 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-green-600 dark:bg-green-500 text-white text-[8px] font-bold leading-none px-0.5">
+                {ghostCompareOffset}
+              </span>
+            )}
+            {!ghostSticky && compareAgainstMedia && ghostSuppressed && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
+            )}
+            {!ghostSticky && compareAgainstMedia && !ghostSuppressed && canPeekHoveredAsset && !shiftHeld && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-violet-500/60" title="Hold Shift to peek" />
+            )}
+            {((ghostSticky && ghostRemoved.length > 0) ||
+              (!ghostSticky && compareAgainstMedia && !ghostSuppressed && ghostRemoved.length > 0)) && (
+              <span
+                className="absolute -bottom-1.5 -left-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 text-white text-[8px] font-bold leading-none px-0.5"
+                title={`Removed: ${ghostRemoved.join(' · ')}`}
+              >
+                −{ghostRemoved.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={(event) => {
+              setCompareMenuAnchor(
+                compareMenuAnchor ? null : event.currentTarget,
+              );
+            }}
+            title="Compare options"
+            className={clsx(
+              'pl-0.5 pr-1 py-1 rounded-r transition-colors border-l border-black/10 dark:border-white/10',
+              compareMenuAnchor
+                ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+                : ghostSticky
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                  : compareAgainstMedia
+                    ? ghostSuppressed
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50'
+                      : peekingHover
+                        ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50'
+                        : activeAssetPrompt
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                          : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+                    : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            <Icon name="chevron-down" size={10} />
+          </button>
+        </div>
 
         <button
           type="button"
@@ -1501,8 +1562,6 @@ export function PromptComposer({
             <div
               ref={referencePickerContainerRef}
               className="relative flex flex-col flex-1 min-w-0"
-              onMouseEnter={handleGhostPrecisionEnter}
-              onMouseLeave={handleGhostPrecisionLeave}
             >
               <PromptEditor
                 value={value}
@@ -1615,8 +1674,6 @@ export function PromptComposer({
           <div
             ref={referencePickerContainerRef}
             className="relative flex flex-col flex-1 min-h-0"
-            onMouseEnter={handleGhostPrecisionEnter}
-            onMouseLeave={handleGhostPrecisionLeave}
           >
             <PromptInput
               value={value}
@@ -1886,6 +1943,137 @@ export function PromptComposer({
         promotionError={historyPromotionError}
         onJumpTo={handleHistoryJump}
       />
+
+      <Popover
+        anchor={compareMenuAnchor}
+        placement="bottom"
+        align="end"
+        offset={6}
+        open={!!compareMenuAnchor}
+        onClose={() => setCompareMenuAnchor(null)}
+        className="min-w-[240px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
+      >
+        <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+          Compare vs
+        </div>
+        <DropdownItem
+          icon={<Icon name={activeAssetType === 'video' ? 'video' : 'image'} size={14} />}
+          rightSlot={compareAgainstMedia ? <Icon name="check" size={12} /> : undefined}
+          onClick={() => {
+            // Toggle: if media-compare is the active mode, turn it off; otherwise enable.
+            if (compareAgainstMedia) {
+              setCompareAgainstMedia(false);
+              setGhostSource(null);
+            } else {
+              setGhostSticky(false);
+              clearTimeout(ghostClearTimerRef.current);
+              setCompareAgainstMedia(true);
+            }
+            setCompareMenuAnchor(null);
+          }}
+        >
+          Viewer media
+        </DropdownItem>
+        {(() => {
+          const tl = history.getTimeline();
+          const maxBack = Math.min(5, tl.currentIndex);
+          if (maxBack < 1) return null;
+          const items: React.ReactNode[] = [];
+          for (let i = 1; i <= maxBack; i += 1) {
+            const isActive = ghostSticky && ghostCompareOffset === i;
+            items.push(
+              <DropdownItem
+                key={`history-${i}`}
+                icon={<Icon name="layers" size={14} />}
+                rightSlot={isActive ? <Icon name="check" size={12} /> : undefined}
+                onClick={() => {
+                  if (isActive) {
+                    setGhostSticky(false);
+                    clearTimeout(ghostClearTimerRef.current);
+                    setGhostSource(null);
+                  } else {
+                    setCompareAgainstMedia(false);
+                    flushSnapshot();
+                    setGhostSticky(true);
+                    setGhostCompareOffset(i);
+                    applyStickyGhost(i);
+                  }
+                  setCompareMenuAnchor(null);
+                }}
+              >
+                {`History −${i}`}
+              </DropdownItem>,
+            );
+          }
+          return items;
+        })()}
+        {(compareAgainstMedia || ghostSticky) && (
+          <DropdownItem
+            icon={<Icon name="x" size={14} />}
+            onClick={() => {
+              setCompareAgainstMedia(false);
+              setGhostSticky(false);
+              clearTimeout(ghostClearTimerRef.current);
+              setGhostSource(null);
+              setCompareMenuAnchor(null);
+            }}
+          >
+            Off
+          </DropdownItem>
+        )}
+        <DropdownDivider />
+        <DropdownItem
+          icon={<Icon name="columns" size={14} />}
+          onClick={() => {
+            setCompareSideBySideAnchor(compareMenuAnchor);
+            setCompareMenuAnchor(null);
+          }}
+        >
+          Open side-by-side view
+        </DropdownItem>
+        <DropdownDivider />
+        <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+          Diff precision
+        </div>
+        <DropdownItem
+          rightSlot={ghostDiffPrecision === 'coarse' ? <Icon name="check" size={12} /> : undefined}
+          onClick={() => {
+            setGhostDiffPrecision('coarse');
+            setCompareMenuAnchor(null);
+          }}
+        >
+          Coarse (clauses)
+        </DropdownItem>
+        <DropdownItem
+          rightSlot={ghostDiffPrecision === 'fine' ? <Icon name="check" size={12} /> : undefined}
+          onClick={() => {
+            setGhostDiffPrecision('fine');
+            setCompareMenuAnchor(null);
+          }}
+        >
+          Fine (words)
+        </DropdownItem>
+      </Popover>
+
+      <Popover
+        anchor={compareSideBySideAnchor}
+        placement="bottom"
+        align="end"
+        offset={6}
+        open={!!compareSideBySideAnchor}
+        onClose={() => setCompareSideBySideAnchor(null)}
+      >
+        {compareSideBySideAnchor && (
+          <PromptCompareSideBySide
+            sources={compareSources}
+            leftSourceId={leftCompareSourceId}
+            rightSourceId={rightCompareSourceId}
+            onChangeLeftSource={setLeftCompareSourceId}
+            onChangeRightSource={setRightCompareSourceId}
+            precision={ghostDiffPrecision}
+          />
+        )}
+      </Popover>
     </div>
   );
 }
