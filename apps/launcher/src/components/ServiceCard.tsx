@@ -21,6 +21,8 @@ const healthLabel: Record<string, string> = {
   unknown: 'Unknown',
 }
 
+const HEALTH_ERROR_PREFIX = 'Health check failed: '
+
 interface Props {
   service: ServiceState
   services: ServiceState[]
@@ -40,6 +42,7 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
   const focusServiceTab = useServicesStore((s) => s.focusServiceTab)
   const [sections, setSections] = useState<string[]>([])
   const [expanded, setExpanded] = useState(false)
+  const [errorExpanded, setErrorExpanded] = useState(false)
 
   // Manual build state (for cards declaring build_before_start_package)
   const buildPkg = service.build_before_start_package ?? null
@@ -122,9 +125,21 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
 
   // Collapse when deselected
   useEffect(() => {
-    if (!selected) { setExpanded(false); selectSection(null) }
+    if (!selected) {
+      setExpanded(false)
+      setErrorExpanded(false)
+      selectSection(null)
+    }
   }, [selected])
   const color = isConfigOnly ? 'text-gray-500' : (healthColor[service.health] ?? healthColor.unknown)
+  const rawLastError = service.last_error?.trim() ?? ''
+  const isHealthCheckError = rawLastError.startsWith(HEALTH_ERROR_PREFIX)
+  const lastError = isHealthCheckError && !isRunning ? '' : rawLastError
+  const hasLastError = lastError.length > 0
+
+  useEffect(() => {
+    if (!hasLastError) setErrorExpanded(false)
+  }, [hasLastError])
 
   // Peer relationships
   const devPeer = service.dev_peer_of
@@ -182,6 +197,19 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
           {buildPkg && (
             <IconButton className={buildButtonTone} title={buildButtonTitle} onClick={runBuild}>
               <IconHammer />
+            </IconButton>
+          )}
+          {hasLastError && (
+            <IconButton
+              className={`${
+                errorExpanded
+                  ? 'text-red-300 bg-red-500/20 hover:bg-red-500/30'
+                  : 'text-red-400/80 hover:text-red-300'
+              }`}
+              title={errorExpanded ? 'Hide last error' : 'Show last error'}
+              onClick={() => setErrorExpanded((v) => !v)}
+            >
+              <IconAlert />
             </IconButton>
           )}
           {!isRunning ? (
@@ -255,9 +283,9 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
       )}
 
       {/* Error line */}
-      {service.last_error && (
+      {hasLastError && errorExpanded && (
         <div className="mt-1.5 text-[10px] text-red-400 whitespace-pre-wrap break-words select-text pl-[30px]">
-          {service.last_error}
+          {lastError}
         </div>
       )}
 
@@ -380,6 +408,16 @@ function IconHammer() {
       <path d="M15 12l-8.5 8.5a1.5 1.5 0 1 1-2.12-2.12L12 10" />
       <path d="M17.64 15L22 10.64" />
       <path d="M20.91 11.7l-1.25 1.25a2.12 2.12 0 0 1-3-3L14.7 6.98a5.37 5.37 0 0 1 3.2-4.63 5.37 5.37 0 0 1 6.4 6.4 5.37 5.37 0 0 1-4.63 3.2z" />
+    </svg>
+  )
+}
+
+function IconAlert() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 8v5" />
+      <path d="M12 17h.01" />
+      <circle cx="12" cy="12" r="9" />
     </svg>
   )
 }

@@ -13,13 +13,14 @@ import subprocess
 import threading
 import urllib.request
 import logging
-from typing import Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable
 from .types import HealthStatus, HealthEvent, ServiceState, ServiceStatus
 
 logger = logging.getLogger("launcher.core.health")
 
 # Stop counting after this many consecutive failures.
 MAX_FAILURE_COUNT = 50
+HEALTH_ERROR_PREFIX = "Health check failed: "
 
 # Service ids that run as `python -m arq <WorkerSettings>`. They share the
 # Redis-backed health logic (PID liveness + Redis reachability), and need
@@ -143,6 +144,30 @@ class HealthManager:
         self.failure_counts[key] = count
         return count
 
+    @staticmethod
+    def _normalize_reason(reason: Optional[Any]) -> Optional[str]:
+        if reason is None:
+            return None
+        text = str(reason).strip()
+        if not text:
+            return None
+        return " ".join(text.split())
+
+    def _update_state_last_error_from_health(
+        self,
+        state: Optional[ServiceState],
+        status: HealthStatus,
+        reason: Optional[str],
+    ) -> None:
+        if state is None:
+            return
+        if status == HealthStatus.HEALTHY:
+            if state.last_error.startswith(HEALTH_ERROR_PREFIX):
+                state.last_error = ""
+            return
+        if reason:
+            state.last_error = f"{HEALTH_ERROR_PREFIX}{reason}"
+
     def _emit_event(self, event: HealthEvent):
         """Emit a health event to the callback if registered."""
         if self.event_callback:
@@ -200,19 +225,39 @@ class HealthManager:
         if state:
             state.health = status
 
-        # Log transitions
-        old = self._prev_status.get(key)
-        if old is not None and old != status:
-            logger.info("health_transition service=%s %s → %s failures=%d",
-                        key, old.value, status.value, self.failure_counts.get(key, 0))
-        self._prev_status[key] = status
-
         # Enrich details with state metadata
         merged = dict(details) if details else {}
         if state:
             merged.setdefault("externally_managed", state.externally_managed)
             if state.detected_pid:
                 merged.setdefault("detected_pid", state.detected_pid)
+        reason = self._normalize_reason(merged.get("reason"))
+        if reason:
+            merged["reason"] = reason
+
+        self._update_state_last_error_from_health(state, status, reason)
+
+        # Log transitions
+        old = self._prev_status.get(key)
+        if old is not None and old != status:
+            if reason:
+                logger.info(
+                    "health_transition service=%s %s -> %s failures=%d reason=%s",
+                    key,
+                    old.value,
+                    status.value,
+                    self.failure_counts.get(key, 0),
+                    reason,
+                )
+            else:
+                logger.info(
+                    "health_transition service=%s %s -> %s failures=%d",
+                    key,
+                    old.value,
+                    status.value,
+                    self.failure_counts.get(key, 0),
+                )
+        self._prev_status[key] = status
 
         self._emit_event(HealthEvent(
             service_key=key,
@@ -525,33 +570,63 @@ class HealthManager:
                 if is_healthy:
                     self.failure_counts[key] = 0
                     self._handle_healthy(key, state)
-                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                    self._emit_health_update(
+                        key,
+                        HealthStatus.HEALTHY,
+                        details={"reason": "custom health check passed"},
+                    )
                 else:
                     self._increment_failures(key)
                     if self.failure_counts[key] < definition.health_grace_attempts:
-                        self._emit_health_update(key, HealthStatus.STARTING)
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.STARTING,
+                            details={"reason": "custom health check returned false"},
+                        )
                     else:
-                        self._emit_health_update(key, HealthStatus.UNHEALTHY)
-            except Exception:
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.UNHEALTHY,
+                            details={"reason": "custom health check returned false"},
+                        )
+            except Exception as e:
                 self._increment_failures(key)
-                self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                self._emit_health_update(
+                    key,
+                    HealthStatus.UNHEALTHY,
+                    details={"reason": f"custom health check error: {e.__class__.__name__}: {e}"},
+                )
             return
 
         # ── Docker-compose ──
         if definition.key == 'db' or definition.is_detached:
             try:
                 compose_file = os.path.join(definition.cwd, 'docker-compose.db-only.yml')
-                is_healthy = os.path.exists(compose_file) and self._check_docker_compose_health(compose_file)
+                compose_exists = os.path.exists(compose_file)
+                is_healthy = compose_exists and self._check_docker_compose_health(compose_file)
                 if is_healthy:
                     self.failure_counts[key] = 0
                     self._handle_healthy(key, state)
-                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                    self._emit_health_update(
+                        key,
+                        HealthStatus.HEALTHY,
+                        details={"reason": "docker compose service reported running"},
+                    )
                 else:
                     self._increment_failures(key)
-                    self._emit_health_update(key, HealthStatus.STOPPED)
-            except Exception:
+                    reason = (
+                        f"docker compose file missing: {compose_file}"
+                        if not compose_exists
+                        else "docker compose service not running"
+                    )
+                    self._emit_health_update(key, HealthStatus.STOPPED, details={"reason": reason})
+            except Exception as e:
                 self._increment_failures(key)
-                self._emit_health_update(key, HealthStatus.STOPPED)
+                self._emit_health_update(
+                    key,
+                    HealthStatus.STOPPED,
+                    details={"reason": f"docker compose health check error: {e.__class__.__name__}: {e}"},
+                )
             return
 
         # ── Worker (Redis health check) ──
@@ -579,24 +654,46 @@ class HealthManager:
             if is_healthy and has_worker_pid:
                 self.failure_counts[key] = 0
                 self._handle_healthy(key, state)
-                self._emit_health_update(key, HealthStatus.HEALTHY)
+                self._emit_health_update(
+                    key,
+                    HealthStatus.HEALTHY,
+                    details={"reason": "worker PID is alive and Redis probe succeeded"},
+                )
             elif not has_worker_pid:
                 self._increment_failures(key)
                 # Without a live worker PID, the worker is not running even if
                 # Redis is reachable. Mark stopped to avoid false-positive green.
                 state.status = ServiceStatus.STOPPED
                 state.externally_managed = False
-                self._emit_health_update(key, HealthStatus.STOPPED)
+                redis_state = "reachable" if is_healthy else "unreachable"
+                self._emit_health_update(
+                    key,
+                    HealthStatus.STOPPED,
+                    details={"reason": f"worker process not detected (Redis is {redis_state} at {redis_url})"},
+                )
             else:
                 self._increment_failures(key)
                 grace = definition.health_grace_attempts
+                redis_reason = f"Redis health probe failed at {redis_url}"
                 if self.failure_counts[key] < grace:
                     if state.status.value in ('running', 'starting'):
-                        self._emit_health_update(key, HealthStatus.STARTING)
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.STARTING,
+                            details={"reason": redis_reason},
+                        )
                     else:
-                        self._emit_health_update(key, HealthStatus.STOPPED)
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.STOPPED,
+                            details={"reason": redis_reason},
+                        )
                 else:
-                    self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                    self._emit_health_update(
+                        key,
+                        HealthStatus.UNHEALTHY,
+                        details={"reason": redis_reason},
+                    )
             return
 
         # ── Standard HTTP health check ──
@@ -615,7 +712,11 @@ class HealthManager:
                         self._emit_health_update(key, HealthStatus.STOPPED)
                     else:
                         self._handle_healthy(key, state)
-                        self._emit_health_update(key, HealthStatus.HEALTHY)
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.HEALTHY,
+                            details={"reason": f"HTTP health probe succeeded at {definition.health_url}"},
+                        )
                 else:
                     self._handle_http_failure(key, state, None)
             except Exception as e:
@@ -662,30 +763,46 @@ class HealthManager:
             self._record_transport_backoff(key)
         elif error is not None:
             self._clear_transport_backoff(key)
+        if error is None:
+            reason = f"HTTP health probe returned non-200 at {definition.health_url}"
+        else:
+            reason = (
+                f"HTTP health probe failed at {definition.health_url}: "
+                f"{error.__class__.__name__}: {error}"
+            )
+        if transient:
+            reason = f"{reason} (transient transport)"
+        details = {
+            "reason": reason,
+            "health_url": definition.health_url,
+            "failure_count": fc,
+            "grace_attempts": grace,
+            "transient_transport": transient,
+        }
 
         # Tolerate short glitches while previously healthy
         if current_health == HealthStatus.HEALTHY and fc < grace and transient:
-            self._emit_health_update(key, HealthStatus.HEALTHY)
+            self._emit_health_update(key, HealthStatus.HEALTHY, details=details)
             return
 
         # Grace period: keep STARTING
         if current_health in (HealthStatus.STARTING, HealthStatus.UNKNOWN) and fc < grace:
             if state.status.value in ('running', 'starting'):
-                self._emit_health_update(key, HealthStatus.STARTING)
+                self._emit_health_update(key, HealthStatus.STARTING, details=details)
             else:
-                self._emit_health_update(key, HealthStatus.STOPPED)
+                self._emit_health_update(key, HealthStatus.STOPPED, details=details)
         # Was healthy, now failing
         elif current_health == HealthStatus.HEALTHY or (
             state.status.value == 'running' and current_health == HealthStatus.STARTING
         ):
-            self._emit_health_update(key, HealthStatus.UNHEALTHY)
+            self._emit_health_update(key, HealthStatus.UNHEALTHY, details=details)
         # Fully stopped
         else:
             state.pid = None
             state.detected_pid = None
             state.status = ServiceStatus.STOPPED
             state.externally_managed = False
-            self._emit_health_update(key, HealthStatus.STOPPED)
+            self._emit_health_update(key, HealthStatus.STOPPED, details=details)
 
     def _run_loop(self):
         """Main health checking loop (runs in thread)."""
@@ -713,7 +830,11 @@ class HealthManager:
                 except Exception as exc:
                     try:
                         self._increment_failures(key)
-                        self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                        self._emit_health_update(
+                            key,
+                            HealthStatus.UNHEALTHY,
+                            details={"reason": f"health check loop error: {exc.__class__.__name__}: {exc}"},
+                        )
                     except Exception:
                         pass  # Never let emit errors kill the health loop
 
@@ -724,3 +845,4 @@ class HealthManager:
           except Exception:
             # Never let the health loop die — sleep and retry
             self._stop_event.wait(timeout=2.0)
+
