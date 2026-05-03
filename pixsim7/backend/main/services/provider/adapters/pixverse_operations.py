@@ -866,11 +866,21 @@ class PixverseOperationsMixin:
             # Mark non-retryable so the worker doesn't burn two more attempts
             # on guaranteed failures.
             msg_lc = error_msg.lower()
+            is_upload_rejection = (
+                "upload failed" in msg_lc
+                or "replace it and try again" in msg_lc
+                or "not compliant" in msg_lc
+            )
             is_moderation = (
                 "not compliant" in msg_lc
                 or "content policy" in msg_lc
                 or "moderation" in msg_lc
             )
+            # Upload rejections are deterministic for unchanged source bytes.
+            # Surface a non-retryable structured code so auto-retry logic
+            # does not requeue the same upload failure indefinitely.
+            is_retryable = not (is_moderation or is_upload_rejection)
+            error_code = "param_asset_unresolvable" if is_upload_rejection else None
 
             if is_provider_error:
                 # Provider-side error - log as warning without traceback
@@ -882,7 +892,11 @@ class PixverseOperationsMixin:
                     email=account.email,
                     error=error_msg,
                     error_type=error_type,
-                    extra={"file_path": file_path, "retryable": not is_moderation},
+                    extra={
+                        "file_path": file_path,
+                        "retryable": is_retryable,
+                        "error_code": error_code,
+                    },
                     severity="warning",
                 )
                 logger.warning(
@@ -890,11 +904,13 @@ class PixverseOperationsMixin:
                     provider_id="pixverse",
                     file_path=file_path,
                     reason=error_msg,
-                    retryable=(not is_moderation),
+                    retryable=is_retryable,
+                    error_code=error_code,
                 )
                 raise ProviderError(
                     f"Upload rejected by Pixverse: {error_msg}",
-                    retryable=(not is_moderation),
+                    retryable=is_retryable,
+                    error_code=error_code,
                 )
             else:
                 # Unexpected error - log as error with traceback

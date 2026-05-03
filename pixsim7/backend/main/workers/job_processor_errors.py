@@ -40,6 +40,9 @@ NON_RETRYABLE_ERROR_PATTERNS = (
     "invalid parameter",  # Alternative wording
     "too-long parameters",  # Prompt/param length exceeded (e.g. Pixverse 400018)
     "cannot exceed",  # Generic length limit exceeded
+    "upload rejected by pixverse",  # Deterministic provider upload rejection
+    "uploaded image is not compliant",
+    "failed to upload asset to pixverse",
 )
 
 

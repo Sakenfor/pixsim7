@@ -24,8 +24,14 @@ from pixsim7.backend.main.infrastructure.domain_registry import init_domain_regi
 # All domain models are now registered with SQLModel.metadata
 _domain_registry = init_domain_registry("pixsim7/backend/main/domain_models")
 
-# Import GAME_TABLES to exclude from main autogenerate
-from pixsim7.backend.main.scripts.check_cross_domain_fks import GAME_TABLES
+# Tables managed by separate alembic chains — excluded from main autogenerate
+# so the main env doesn't try to drop/recreate tables it doesn't own.
+from pixsim7.backend.main.scripts.check_cross_domain_fks import (
+    AUTOMATION_TABLES,
+    GAME_TABLES,
+)
+
+_NON_MAIN_TABLES = GAME_TABLES | AUTOMATION_TABLES
 
 # this is the Alembic Config object
 config = context.config
@@ -42,12 +48,13 @@ target_metadata = SQLModel.metadata
 
 
 def include_object(obj, name, type_, reflected, compare_to):
-    """Exclude game-owned tables from main autogenerate diffs."""
+    """Exclude tables owned by other alembic chains (game, automation) from
+    main autogenerate diffs."""
     if type_ == "table":
-        return name not in GAME_TABLES
-    # Exclude columns/indexes/constraints belonging to game tables
+        return name not in _NON_MAIN_TABLES
+    # Exclude columns/indexes/constraints belonging to those tables
     if hasattr(obj, "table") and hasattr(obj.table, "name"):
-        return obj.table.name not in GAME_TABLES
+        return obj.table.name not in _NON_MAIN_TABLES
     return True
 
 

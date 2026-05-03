@@ -51,6 +51,11 @@ class Settings(BaseSettings):
         description="Separate database URL for block primitives. Falls back to database_url if not set."
     )
 
+    automation_database_url: str | None = Field(
+        default=None,
+        description="Separate database URL for automation (devices, executions, loops, presets). Falls back to database_url if not set."
+    )
+
     # ===== REDIS =====
     redis_url: str = Field(
         default=DEFAULT_REDIS_URL,
@@ -177,10 +182,6 @@ class Settings(BaseSettings):
     # ===== GENERATION =====
     # Generation business rules → GenerationSettings (DB "generation" namespace)
     # Worker runtime tuning → GenerationWorkerSettings (DB "generation_worker" namespace)
-    validate_composition_vocabs: bool = Field(
-        default=False,
-        description="Validate composition asset vocab fields (role, pose_id, location_id, etc.) against the vocabulary registry. Logs warnings for unknown values."
-    )
 
     # ===== NETWORK =====
     host: str = Field(
@@ -469,6 +470,21 @@ class Settings(BaseSettings):
     def blocks_database_url_resolved(self) -> str:
         """Get sync blocks database URL (for migrations)."""
         return self.blocks_database_url or self.database_url
+
+    @property
+    def async_automation_database_url(self) -> str:
+        """Get async automation database URL. Falls back to main database."""
+        if self.automation_database_url:
+            return self.automation_database_url.replace(
+                "postgresql://",
+                "postgresql+asyncpg://"
+            )
+        return self.async_database_url
+
+    @property
+    def automation_database_url_resolved(self) -> str:
+        """Get sync automation database URL (for migrations)."""
+        return self.automation_database_url or self.database_url
 
 
 def _resolve_repo_root() -> Path:

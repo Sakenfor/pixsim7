@@ -61,6 +61,20 @@ GAME_TABLES: set[str] = {
     "clip_sequence_entries",
 }
 
+# Tables belonging to the automation database.
+# Same exclusion contract as GAME_TABLES — main alembic env skips these in
+# autogenerate so the automation chain owns them. Plan:
+# automation-package-extraction Phase 2c.
+AUTOMATION_TABLES: set[str] = {
+    "android_devices",
+    "app_action_presets",
+    "automation_executions",
+    "device_agents",
+    "execution_loop_history",
+    "execution_loops",
+    "pairing_requests",
+}
+
 # Files that are game-owned (relative to BACKEND_ROOT)
 GAME_FILE_PREFIXES: list[str] = [
     "domain/game/",

@@ -185,3 +185,21 @@ async def test_fallback_string_pattern_non_retryable():
 
     with _patch_max_attempts(20):
         assert await svc.should_auto_retry(gen) is False
+
+
+@pytest.mark.asyncio
+async def test_fallback_upload_rejection_pattern_non_retryable():
+    """Upload moderation/input rejection must not trigger auto-retry."""
+    svc = GenerationRetryService(AsyncMock(), creation_service=AsyncMock())
+    gen = _make_generation(
+        error_code=None,
+        error_message=(
+            "Failed to upload asset to pixverse: Upload rejected by Pixverse: "
+            "Upload failed: The uploaded image is not compliant, please replace it and try again"
+        ),
+        retry_count=0,
+        attempt_id=0,
+    )
+
+    with _patch_max_attempts(20):
+        assert await svc.should_auto_retry(gen) is False

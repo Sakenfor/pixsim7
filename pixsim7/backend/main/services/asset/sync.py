@@ -19,6 +19,7 @@ from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
+    ProviderError,
 )
 from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 
@@ -518,7 +519,11 @@ class AssetSyncService:
 
         except Exception as e:
             # Extract error details for tracking
-            error_code = getattr(e, 'code', None) or type(e).__name__
+            error_code = (
+                getattr(e, 'error_code', None)
+                or getattr(e, 'code', None)
+                or type(e).__name__
+            )
             error_message = str(e)
 
             # Record failed upload (Task 104)
@@ -530,6 +535,11 @@ class AssetSyncService:
                 error_message=error_message,
                 method='cross_provider'
             )
+
+            # Preserve structured provider classification (retryable/error_code)
+            # for upstream generation retry decisions.
+            if isinstance(e, ProviderError):
+                raise
 
             raise InvalidOperationError(
                 f"Failed to upload asset to {target_provider_id}: {e}"

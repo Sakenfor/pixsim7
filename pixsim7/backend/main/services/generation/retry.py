@@ -39,6 +39,10 @@ NON_RETRYABLE_PATTERNS = [
     "text input was rejected",
     "too-long parameters",        # Prompt/param length exceeded (e.g. Pixverse 400018)
     "cannot exceed",              # Generic length limit exceeded
+    "upload rejected by pixverse",  # Deterministic upload moderation/input rejection
+    "uploaded image is not compliant",
+    "failed to upload asset to pixverse",
+    "replace it and try again",   # Provider asks for different input media
 ]
 
 # Content filtering indicators - retryable because output varies

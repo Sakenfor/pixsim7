@@ -486,6 +486,8 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
+            if hasattr(e, "retryable"):
+                submission.response["retryable"] = bool(getattr(e, "retryable"))
             if error_code:
                 submission.response["error_code"] = error_code
             submission.response = _build_submission_response(
@@ -650,6 +652,8 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
+            if hasattr(e, "retryable"):
+                submission.response["retryable"] = bool(getattr(e, "retryable"))
             if error_code:
                 submission.response["error_code"] = error_code
             submission.response = _build_submission_response(

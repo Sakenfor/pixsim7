@@ -437,9 +437,13 @@ async def resolve_composition_assets_for_pixverse(
                     target_provider_id="pixverse",
                 )
             except Exception as e:
+                inherited_error_code = getattr(e, "error_code", None)
+                inherited_retryable = getattr(e, "retryable", True)
                 raise ProviderError(
-                    f"Failed to resolve composition_assets[{i}] (asset:{asset_id}): {e}"
-                )
+                    f"Failed to resolve composition_assets[{i}] (asset:{asset_id}): {e}",
+                    error_code=inherited_error_code,
+                    retryable=inherited_retryable,
+                ) from e
 
             # Also load the asset to get remote_url as fallback
             asset_remote_url = None
