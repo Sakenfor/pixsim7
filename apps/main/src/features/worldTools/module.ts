@@ -65,8 +65,15 @@ export const gameModule = defineModule({
       icon: 'user',
       label: 'NPCs',
       fetch: () =>
-        pixsimClient.get<{ npcs: Array<{ id: number; name: string; world_id: number }> }>('/game/npcs/')
-          .then((r) => (r.npcs || []).map((n) => ({ type: 'npc', id: String(n.id), label: n.name, detail: `world:${n.world_id}` })))
+        pixsimClient
+          .get<
+            | Array<{ id: number; name: string; world_id: number }>
+            | { npcs?: Array<{ id: number; name: string; world_id: number }> }
+          >('/game/npcs/')
+          .then((r) => {
+            const rows = Array.isArray(r) ? r : (r.npcs || []);
+            return rows.map((n) => ({ type: 'npc', id: String(n.id), label: n.name, detail: `world:${n.world_id}` }));
+          })
           .catch(() => []),
     });
 
@@ -75,8 +82,19 @@ export const gameModule = defineModule({
       icon: 'mapPin',
       label: 'Locations',
       fetch: () =>
-        pixsimClient.get<{ items: Array<{ id: number; name: string; world_id: number }> }>('/game/locations/')
-          .then((r) => (r.items || []).map((l) => ({ type: 'location', id: String(l.id), label: l.name, detail: `world:${l.world_id}` })))
+        pixsimClient
+          .get<
+            | Array<{ id: number; name: string; world_id: number }>
+            | { items?: Array<{ id: number; name: string; world_id: number }>; locations?: Array<{ id: number; name: string; world_id: number }> }
+          >('/game/locations/')
+          .then((r) => {
+            const rows = Array.isArray(r)
+              ? r
+              : Array.isArray(r.items)
+                ? r.items
+                : (r.locations || []);
+            return rows.map((l) => ({ type: 'location', id: String(l.id), label: l.name, detail: `world:${l.world_id}` }));
+          })
           .catch(() => []),
     });
 
@@ -85,8 +103,20 @@ export const gameModule = defineModule({
       icon: 'film',
       label: 'Scenes',
       fetch: () =>
-        pixsimClient.get<{ scenes: Array<{ id: number; label: string; world_id: number }> }>('/game/scenes/')
-          .then((r) => (r.scenes || []).map((s) => ({ type: 'scene', id: String(s.id), label: s.label, detail: `world:${s.world_id}` })))
+        pixsimClient
+          .get<
+            | Array<{ id: number; label?: string; name?: string; world_id: number }>
+            | { scenes?: Array<{ id: number; label?: string; name?: string; world_id: number }> }
+          >('/game/scenes/')
+          .then((r) => {
+            const rows = Array.isArray(r) ? r : (r.scenes || []);
+            return rows.map((s) => ({
+              type: 'scene',
+              id: String(s.id),
+              label: s.label || s.name || `Scene ${s.id}`,
+              detail: `world:${s.world_id}`,
+            }));
+          })
           .catch(() => []),
     });
   },

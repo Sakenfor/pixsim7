@@ -7,6 +7,7 @@ import {
   subscribeAuthoringProjectBundleDirtyState,
   startAutosave,
 } from "@lib/game/projectBundle";
+import { isBeforeUnloadPromptSuppressed } from "@lib/utils/beforeUnloadGuard";
 
 import {
   CAP_SCENE_CONTEXT,
@@ -61,6 +62,9 @@ export function ContextHubRootProviders() {
 
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (suppressBeforeUnloadForHmrRef.current) {
+        return;
+      }
+      if (isBeforeUnloadPromptSuppressed()) {
         return;
       }
       if (!useProjectSessionStore.getState().dirty) {

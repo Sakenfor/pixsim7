@@ -106,9 +106,11 @@ export function resolveAuthoringContext(
 
   // 2. Project context
   if (projectCtx?.projectId != null) {
+    const resolvedProjectWorldId =
+      projectCtx.worldId ?? projectCtx.projectSourceWorldId ?? null;
     return {
       projectId: projectCtx.projectId,
-      worldId: projectCtx.worldId ?? null,
+      worldId: resolvedProjectWorldId,
       projectSourceWorldId: projectCtx.projectSourceWorldId ?? null,
       source: "project-context",
       followActive,

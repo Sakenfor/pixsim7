@@ -163,6 +163,18 @@ describe("resolveAuthoringContext", () => {
     expect(result.isReady).toBe(true);
   });
 
+  it("uses projectSourceWorldId when project context has no worldId", () => {
+    const result = resolveAuthoringContext({
+      ...EMPTY,
+      projectCtx: { projectId: 7, projectSourceWorldId: 42 },
+    });
+    expect(result.source).toBe("project-context");
+    expect(result.projectId).toBe(7);
+    expect(result.worldId).toBe(42);
+    expect(result.projectSourceWorldId).toBe(42);
+    expect(result.isReady).toBe(true);
+  });
+
   // ---- panel-override ----------------------------------------------------
 
   it('returns "panel-override" when followActive is false', () => {

@@ -86,15 +86,25 @@ referenceRegistry.register({
   label: 'Worlds',
   fetch: () =>
     pixsimClient
-      .get<{ items: Array<{ id: number; name: string; description?: string }> }>('/game/worlds/')
-      .then((r) =>
-        (r.items || []).map((w) => ({
+      .get<
+        | Array<{ id: number; name: string; description?: string }>
+        | { items?: Array<{ id: number; name: string; description?: string }>; worlds?: Array<{ id: number; name: string; description?: string }> }
+      >('/game/worlds/')
+      .then((r) => {
+        const rows = Array.isArray(r)
+          ? r
+          : Array.isArray(r.items)
+            ? r.items
+            : Array.isArray(r.worlds)
+              ? r.worlds
+              : [];
+        return rows.map((w) => ({
           type: 'world' as const,
           id: String(w.id),
           label: w.name,
           detail: w.description,
-        })),
-      )
+        }));
+      })
       .catch(() => []),
 });
 
