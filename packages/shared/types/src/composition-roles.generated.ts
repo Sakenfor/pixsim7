@@ -296,6 +296,9 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = {
   "scene": "world:environment",
   "place": "world:environment",
   "style": "materials:rendering",
+  "rendering_technique": "materials:rendering",
+  "form_language": "materials:rendering",
+  "aesthetic_preset": "materials:rendering",
   "lighting": "lighting:key",
   "camera": "camera:angle",
   "pose": "entities:subject",
@@ -305,7 +308,8 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = {
   "clothing_lock": "entities:subject",
   "light": "lighting:key",
   "color": "materials:atmosphere",
-  "character_pose": "entities:subject"
+  "character_pose": "entities:subject",
+  "anatomy": "entities:main_character"
 } as const satisfies Record<string, ImageCompositionRole>;
 
 /**

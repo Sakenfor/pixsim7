@@ -44,6 +44,27 @@ import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
 import { Icon, IconBadge } from '../lib/icons';
 
 
+const DEFAULT_GALLERY_LAYOUT: 'masonry' | 'grid' = 'masonry';
+const DEFAULT_GALLERY_CARD_SIZE = 260;
+const MIN_GALLERY_CARD_SIZE = 160;
+const MAX_GALLERY_CARD_SIZE = 400;
+
+function parseGalleryLayoutSetting(value: unknown): 'masonry' | 'grid' {
+  return value === 'grid' ? 'grid' : DEFAULT_GALLERY_LAYOUT;
+}
+
+function parseGalleryCardSizeSetting(value: unknown): number {
+  const raw =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(raw)) return DEFAULT_GALLERY_CARD_SIZE;
+  const rounded = Math.round(raw);
+  return Math.max(MIN_GALLERY_CARD_SIZE, Math.min(MAX_GALLERY_CARD_SIZE, rounded));
+}
+
 
 export function AssetsRoute() {
   const toast = useToast();
@@ -103,9 +124,43 @@ export function AssetsRoute() {
     }
   }, [deleteModalAssets, closeDeleteModal, isViewerOpen, viewerAsset, storeRemoveAsset, closeViewer, toast]);
 
-  // Shared layout state for all sources
-  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
-  const [cardSize, setCardSize] = useState<number>(260);
+  // Panel settings (must be before any conditional returns)
+  const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
+  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
+  const gallerySettings = useMemo(
+    () => (panelConfig?.settings || {}) as GalleryPanelSettings,
+    [panelConfig],
+  );
+
+  // Shared layout state for all sources (synced to persisted panel settings)
+  const [layout, setLayoutState] = useState<'masonry' | 'grid'>(() =>
+    parseGalleryLayoutSetting(gallerySettings.layout),
+  );
+  const [cardSize, setCardSizeState] = useState<number>(() =>
+    parseGalleryCardSizeSetting(gallerySettings.cardSize),
+  );
+
+  const persistedLayout = parseGalleryLayoutSetting(gallerySettings.layout);
+  const persistedCardSize = parseGalleryCardSizeSetting(gallerySettings.cardSize);
+
+  useEffect(() => {
+    setLayoutState((current) => (current === persistedLayout ? current : persistedLayout));
+  }, [persistedLayout]);
+
+  useEffect(() => {
+    setCardSizeState((current) => (current === persistedCardSize ? current : persistedCardSize));
+  }, [persistedCardSize]);
+
+  const setLayout = useCallback((nextLayout: 'masonry' | 'grid') => {
+    setLayoutState(nextLayout);
+    updatePanelSettings('gallery', { layout: nextLayout });
+  }, [updatePanelSettings]);
+
+  const setCardSize = useCallback((nextSize: number) => {
+    const normalized = parseGalleryCardSizeSetting(nextSize);
+    setCardSizeState(normalized);
+    updatePanelSettings('gallery', { cardSize: normalized });
+  }, [updatePanelSettings]);
 
   // Dropdown states
   const [panelsDropdownOpen, setPanelsDropdownOpen] = useState(false);
@@ -126,25 +181,20 @@ export function AssetsRoute() {
   const SourceComponent = sourceDef?.component;
   const allSources = getAllAssetSources();
 
-  // Get badge config from panel settings (must be before any conditional returns)
-  const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
-  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
-
   // Get current control center state for smart quick actions
   // const controlCenterOpen = useControlCenterStore((s) => s.isOpen);
   // const controlCenterOperation = useControlCenterStore((s) => s.operationType);
 
   // Get current overlay preset ID
   const currentOverlayPresetId = useMemo(() => {
-    const settings = (panelConfig?.settings || {}) as GalleryPanelSettings;
-    if (settings.overlayPresetId) {
-      return settings.overlayPresetId;
+    if (gallerySettings.overlayPresetId) {
+      return gallerySettings.overlayPresetId;
     }
-    if (settings.badgeConfig) {
-      return deriveOverlayPresetIdFromBadgeConfig(settings.badgeConfig);
+    if (gallerySettings.badgeConfig) {
+      return deriveOverlayPresetIdFromBadgeConfig(gallerySettings.badgeConfig);
     }
     return 'media-card-default';
-  }, [panelConfig]);
+  }, [gallerySettings]);
 
   const assetSelectionValue = useMemo<AssetSelection>(
     () => {

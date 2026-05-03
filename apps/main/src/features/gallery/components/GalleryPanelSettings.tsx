@@ -22,6 +22,8 @@ import { deriveOverlayPresetIdFromBadgeConfig } from '../lib/core/badgeConfigMer
 export interface GalleryPanelSettings {
   overlayPresetId?: string;
   badgeConfig?: Partial<MediaCardBadgeConfig>;
+  layout?: 'masonry' | 'grid';
+  cardSize?: number;
   groupBy?: GalleryGroupBySelection;
   groupView?: GalleryGroupView;
   groupScope?: string[];
@@ -352,4 +354,3 @@ export const galleryPanelSettingsSections: PanelSettingsSection<GalleryPanelSett
     component: GroupingSection,
   },
 ];
-

@@ -112,7 +112,8 @@ export interface MiniGalleryProps {
   /** Extra overlay content rendered on top of each card (pin badges, counts, etc.). */
   renderItemOverlay?: (asset: AssetModel) => ReactNode;
   /** Wrap or replace the default hover actions (zap + viewer buttons).
-   *  Receives the asset and the default action buttons as `defaultActions`.
+   *  Receives the asset and a compatibility `defaultActions` node.
+   *  By default MiniGallery no longer renders built-in hover actions.
    *  Return `null` to suppress hover actions entirely. */
   renderItemActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
 
@@ -229,6 +230,8 @@ function MiniGalleryItem({
     [asset.mediaType, isResolving, extraOverlay],
   );
 
+  // Legacy compatibility node exposed to renderActions callbacks that still
+  // want the old single-button mini-gallery behavior.
   const defaultActions = useMemo(
     () => (
       <>
@@ -260,7 +263,10 @@ function MiniGalleryItem({
 
   const hoverActions = useMemo(() => {
     if (suppressHoverActions) return null;
-    const content = renderActions ? renderActions(asset, defaultActions) : defaultActions;
+    // New standard: no built-in mini-gallery hover actions. Use MediaCard's
+    // own button-group overlay unless caller explicitly provides custom actions.
+    if (!renderActions) return null;
+    const content = renderActions(asset, defaultActions);
     if (content === null) return null;
     return (
       <div className="flex items-center gap-1">
