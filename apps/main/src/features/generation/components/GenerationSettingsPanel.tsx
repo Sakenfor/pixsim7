@@ -24,6 +24,7 @@ import {
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState, useGenerationPresetStore } from '@features/generation';
 import { useAuthoringHintsStore, type AuthoringHints } from '@features/generation/stores/authoringHintsStore';
+import { useUnseenProbesStore } from '@features/generation/stores/unseenProbesStore';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels, useModelPromotions } from '@features/providers';
 import { providerCapabilityRegistry } from '@features/providers';
 import { openWorkspacePanel } from '@features/workspace';
@@ -322,6 +323,8 @@ export function GenerationSettingsPanel({
     useShallow((s) => s.presets.filter((p) => p.operationType === operationType)),
   );
   const savePresetAction = useGenerationPresetStore((s) => s.savePreset);
+  const unseenProbesCount = useUnseenProbesStore((s) => s.unseen);
+  const markProbesOpened = useUnseenProbesStore((s) => s.markOpened);
 
   // If the bound preset disappears (e.g. user deleted it) clear the binding.
   useEffect(() => {
@@ -1006,46 +1009,59 @@ export function GenerationSettingsPanel({
               <Icon name="flask" size={11} color={probeMode ? '#fff' : undefined} />
               <span>Probe</span>
             </button>
-            <div className="flex flex-col border-l border-white/20">
-              <button
-                type="button"
-                onClick={() => openWorkspacePanel('probes')}
-                disabled={generating}
-                className={clsx(
-                  'px-1 flex-1 flex items-center justify-center rounded-tr-lg',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  probeMode
-                    ? 'text-white bg-amber-500 hover:bg-amber-600'
-                    : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
-                )}
-                style={{ transition: 'none', animation: 'none' }}
-                title="Open Probes panel — review / clean up probe-tagged assets"
-              >
-                <Icon name="image" size={10} color={probeMode ? '#fff' : undefined} />
-              </button>
-              <button
-                ref={probeChevronRef}
-                type="button"
-                onClick={() => setProbePopoverOpen((o) => !o)}
-                disabled={generating}
-                className={clsx(
-                  'px-1 flex-1 flex items-center justify-center rounded-br-lg border-t border-white/20',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  probeMode
-                    ? 'text-white bg-amber-500 hover:bg-amber-600'
-                    : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
-                )}
-                style={{ transition: 'none', animation: 'none' }}
-                title="Probe settings — bind a preset whose params apply on probe runs"
-              >
-                <Icon
-                  name="chevronDown"
-                  size={10}
-                  color={probeMode ? '#fff' : undefined}
-                  className={clsx(probePopoverOpen && 'rotate-180')}
-                />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                markProbesOpened();
+                openWorkspacePanel('probes');
+              }}
+              disabled={generating}
+              className={clsx(
+                'relative px-2 py-1.5 border-l border-white/20 inline-flex items-center justify-center',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                probeMode
+                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title={
+                unseenProbesCount > 0
+                  ? `Open Probes panel — ${unseenProbesCount} new probe${unseenProbesCount === 1 ? '' : 's'} since last open`
+                  : 'Open Probes panel — review / clean up probe-tagged assets'
+              }
+            >
+              <Icon name="image" size={11} color={probeMode ? '#fff' : undefined} />
+              {unseenProbesCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none flex items-center justify-center px-1 ring-1 ring-white dark:ring-neutral-900"
+                  aria-label={`${unseenProbesCount} unseen probes`}
+                >
+                  {unseenProbesCount > 99 ? '99+' : unseenProbesCount}
+                </span>
+              )}
+            </button>
+            <button
+              ref={probeChevronRef}
+              type="button"
+              onClick={() => setProbePopoverOpen((o) => !o)}
+              disabled={generating}
+              className={clsx(
+                'px-1 py-1.5 rounded-r-lg border-l border-white/20 inline-flex items-center justify-center',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                probeMode
+                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title="Probe settings — bind a preset whose params apply on probe runs"
+            >
+              <Icon
+                name="chevronDown"
+                size={10}
+                color={probeMode ? '#fff' : undefined}
+                className={clsx(probePopoverOpen && 'rotate-180')}
+              />
+            </button>
             <Popover
               open={probePopoverOpen}
               onClose={() => setProbePopoverOpen(false)}
