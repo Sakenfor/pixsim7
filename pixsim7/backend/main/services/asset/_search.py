@@ -108,6 +108,7 @@ class AssetSearchMixin:
         sf: AssetSearchFilters,
         group_filter_invert: bool = False,
         similar_to_embedding=None,
+        similar_to_embedder_id: Optional[str] = None,
     ):
         from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
@@ -301,17 +302,24 @@ class AssetSearchMixin:
         if sha256:
             query = query.where(Asset.sha256 == sha256)
 
-        # Visual similarity filter (CLIP embedding cosine distance)
-        if similar_to_embedding is not None:
+        # Visual similarity filter (cosine distance against AssetEmbedding.vector)
+        if similar_to_embedding is not None and similar_to_embedder_id:
+            from pixsim7.backend.main.domain.assets.embedding import AssetEmbedding
             threshold = similarity_threshold if similarity_threshold is not None else 0.3
             max_distance = 1.0 - threshold
-            distance_expr = Asset.embedding.cosine_distance(similar_to_embedding)
-            query = query.where(Asset.embedding.isnot(None))
+            query = query.join(
+                AssetEmbedding,
+                and_(
+                    AssetEmbedding.asset_id == Asset.id,
+                    AssetEmbedding.embedder_id == similar_to_embedder_id,
+                ),
+            )
+            distance_expr = AssetEmbedding.vector.cosine_distance(similar_to_embedding)
             query = query.where(distance_expr <= max_distance)
             if similar_to_asset_id is not None:
                 query = query.where(Asset.id != similar_to_asset_id)
         elif similar_to_asset_id is not None:
-            # Source asset has no embedding — return empty result
+            # Source asset has no embedding for the requested space — return empty
             from sqlalchemy import literal
             query = query.where(literal(False))
 
@@ -571,19 +579,56 @@ class AssetSearchMixin:
         return result.scalars().all()
 
     async def _resolve_similarity_embedding(
-        self, similar_to: Optional[int], owner_user_id: int,
-    ):
-        """Pre-resolve embedding vector for similarity search."""
+        self,
+        similar_to: Optional[int],
+        owner_user_id: int,
+        embedder_id: Optional[str] = None,
+    ) -> tuple[Optional[list[float]], Optional[str]]:
+        """
+        Pre-resolve embedding vector + embedder_id for similarity search.
+
+        If embedder_id is omitted, uses the user's primary embedder.
+        Returns (vector, embedder_id) — both None if no match.
+        """
         if similar_to is None:
-            return None
+            return None, None
+
         from sqlalchemy import select as sa_select
-        result = await self.db.execute(
-            sa_select(Asset.embedding).where(
+        from pixsim7.backend.main.domain.assets.embedding import AssetEmbedding
+
+        resolved_id = embedder_id
+        if not resolved_id:
+            from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
+                AnalyzerInstanceService,
+            )
+            primary = await AnalyzerInstanceService(self.db).get_primary_embedder(
+                owner_user_id=owner_user_id,
+            )
+            if primary and primary.embedder_id:
+                resolved_id = primary.embedder_id
+
+        if not resolved_id:
+            return None, None
+
+        # Scope to source asset owned by the requesting user — prevents cross-user
+        # similarity probes via direct asset_id reference
+        asset_row = await self.db.execute(
+            sa_select(Asset.id).where(
                 Asset.id == similar_to,
                 Asset.user_id == owner_user_id,
             )
         )
-        return result.scalar_one_or_none()
+        if asset_row.scalar_one_or_none() is None:
+            return None, resolved_id
+
+        result = await self.db.execute(
+            sa_select(AssetEmbedding.vector).where(
+                AssetEmbedding.asset_id == similar_to,
+                AssetEmbedding.embedder_id == resolved_id,
+            )
+        )
+        vector = result.scalar_one_or_none()
+        return vector, resolved_id
 
     async def list_assets(
         self,
@@ -609,14 +654,17 @@ class AssetSearchMixin:
         if sf is None:
             sf = AssetSearchFilters(**kwargs)
 
-        # Pre-resolve embedding for similarity search
+        # Pre-resolve embedding + embedder_id for similarity search
         owner_user_id = resolve_effective_user_id(user) or 0
-        similar_to_embedding = await self._resolve_similarity_embedding(
-            sf.similar_to, owner_user_id,
+        similar_to_embedding, similar_to_embedder_id = await self._resolve_similarity_embedding(
+            sf.similar_to, owner_user_id, embedder_id=sf.embedder_id,
         )
 
         query = self._build_asset_search_query(
-            user=user, sf=sf, similar_to_embedding=similar_to_embedding,
+            user=user,
+            sf=sf,
+            similar_to_embedding=similar_to_embedding,
+            similar_to_embedder_id=similar_to_embedder_id,
         )
 
         # Total count (before sorting/pagination)
@@ -628,8 +676,9 @@ class AssetSearchMixin:
             total = (await self.db.execute(count_query)).scalar_one() or 0
 
         # Sorting — similarity search overrides default sort
-        if similar_to_embedding is not None:
-            distance_expr = Asset.embedding.cosine_distance(similar_to_embedding)
+        if similar_to_embedding is not None and similar_to_embedder_id:
+            from pixsim7.backend.main.domain.assets.embedding import AssetEmbedding
+            distance_expr = AssetEmbedding.vector.cosine_distance(similar_to_embedding)
             query = query.order_by(distance_expr.asc(), Asset.created_at.desc())
         elif sort_by and sort_by in ('created_at', 'file_size_bytes'):
             sort_col = getattr(Asset, sort_by)

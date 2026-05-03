@@ -1,19 +1,21 @@
 """
 Analysis result projection helpers.
 
-Projects structured analysis outputs onto first-class domain columns.
+Projects structured analysis outputs onto first-class domain models.
+Embedding analyzers write to asset_embedding keyed by (asset_id, embedder_id).
 """
 from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis
+from pixsim7.backend.main.domain.assets.embedding import AssetEmbedding
 from pixsim7.backend.main.services.prompt.parser import (
     AnalyzerTaskFamily,
     analyzer_registry,
@@ -21,16 +23,14 @@ from pixsim7.backend.main.services.prompt.parser import (
 
 logger = logging.getLogger(__name__)
 
-_EMBEDDING_DIMENSIONS = 768
+_EMBEDDING_DIMENSIONS = 1024
 _NESTED_RESULT_KEYS = ("result", "data", "output", "attributes")
 _VECTOR_KEYS = ("embedding", "vector")
 _MATRIX_KEYS = ("embeddings",)
 
 
 class AnalysisResultApplier:
-    """
-    Apply analysis result projections to domain models.
-    """
+    """Apply analysis result projections to domain models."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -39,9 +39,6 @@ class AnalysisResultApplier:
         self,
         analysis: AssetAnalysis,
     ) -> None:
-        """
-        Apply completion side-effects for an analysis result.
-        """
         if not self._is_embedding_analysis(analysis.analyzer_id):
             return
 
@@ -58,12 +55,33 @@ class AnalysisResultApplier:
             )
             return
 
-        asset.embedding = embedding
-        asset.embedding_generated_at = datetime.now(timezone.utc)
+        embedder_id = analysis.embedder_id or analysis.model_id or "primary"
+
+        existing = await self.db.execute(
+            select(AssetEmbedding).where(
+                AssetEmbedding.asset_id == analysis.asset_id,
+                AssetEmbedding.embedder_id == embedder_id,
+            )
+        )
+        row = existing.scalar_one_or_none()
+
+        if row is None:
+            row = AssetEmbedding(
+                asset_id=analysis.asset_id,
+                embedder_id=embedder_id,
+                vector=embedding,
+                model_id=analysis.model_id,
+            )
+            self.db.add(row)
+        else:
+            row.vector = embedding
+            row.model_id = analysis.model_id
+
         logger.info(
-            "analysis_result_embedding_applied analysis_id=%s asset_id=%s dims=%s",
+            "analysis_result_embedding_applied analysis_id=%s asset_id=%s embedder_id=%s dims=%s",
             analysis.id,
             analysis.asset_id,
+            embedder_id,
             len(embedding),
         )
 

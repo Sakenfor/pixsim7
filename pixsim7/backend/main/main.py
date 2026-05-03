@@ -115,11 +115,10 @@ async def lifespan(app: FastAPI):
     )
     bind_default_capabilities()
 
-    # Bind automation package's protocol locator — backend adapters over
-    # accounts / provider metadata / job queue / paths. See plan:
-    # automation-package-extraction.
-    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
-    bind_automation_capabilities()
+    # Bind sibling-package capabilities (automation, embedding, ...) registered
+    # for this host. Single source of truth: backend/main/capability_registry.py.
+    from pixsim7.backend.main.capability_registry import bind_for_host
+    bind_for_host("fastapi")
 
     # Setup domain registry
     domain_registry = setup_domain_registry(settings.domain_models_dir)

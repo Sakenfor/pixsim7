@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from sqlalchemy import update
+
 from pixsim7.backend.main.domain.providers import (
     ProviderInstanceConfig,
     ProviderInstanceConfigKind,
@@ -17,6 +19,9 @@ from pixsim7.backend.main.services.provider_instance_base import (
     ProviderInstanceServiceBase,
     ProviderInstanceConfigError,
 )
+
+
+EMBEDDING_ANALYZER_ID = "asset:embedding"
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +77,8 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
         enabled: bool = True,
         priority: int = 0,
         on_ingest: bool = False,
+        embedder_id: Optional[str] = None,
+        is_primary: bool = False,
     ) -> ProviderInstanceConfig:
         analyzer_id, provider_id, model_id = _resolve_analyzer_defaults(
             analyzer_id,
@@ -81,6 +88,12 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
 
         if not isinstance(config, dict):
             raise AnalyzerInstanceConfigError(analyzer_id, "Config must be a dictionary")
+
+        if analyzer_id == EMBEDDING_ANALYZER_ID and not embedder_id:
+            embedder_id = model_id or "primary"
+
+        if is_primary:
+            await self._unset_primary(owner_user_id=owner_user_id)
 
         instance = await self._create(
             provider_id=provider_id,
@@ -93,6 +106,8 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
             enabled=enabled,
             priority=priority,
             on_ingest=on_ingest,
+            embedder_id=embedder_id,
+            is_primary=is_primary,
         )
 
         logger.info(
@@ -101,6 +116,32 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
             analyzer_id=analyzer_id,
         )
         return instance
+
+    async def _unset_primary(self, *, owner_user_id: int) -> None:
+        """Clear is_primary for all of this user's analyzer instances."""
+        await self.session.execute(
+            update(ProviderInstanceConfig)
+            .where(
+                ProviderInstanceConfig.kind == self._kind,
+                ProviderInstanceConfig.owner_user_id == owner_user_id,
+                ProviderInstanceConfig.is_primary == True,  # noqa: E712
+            )
+            .values(is_primary=False)
+        )
+
+    async def get_primary_embedder(
+        self,
+        *,
+        owner_user_id: int,
+    ) -> Optional[ProviderInstanceConfig]:
+        """Return the user's primary asset:embedding instance, if any."""
+        instances = await self._list(
+            ProviderInstanceConfig.owner_user_id == owner_user_id,
+            ProviderInstanceConfig.analyzer_id == EMBEDDING_ANALYZER_ID,
+            ProviderInstanceConfig.is_primary == True,  # noqa: E712
+            enabled_only=True,
+        )
+        return instances[0] if instances else None
 
     async def get_instance(self, instance_id: int) -> Optional[ProviderInstanceConfig]:
         return await self._get_by_id(instance_id)
@@ -165,9 +206,15 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
                 "Config must be a dictionary"
             )
 
+        if updates.get("is_primary") is True and not instance.is_primary:
+            await self._unset_primary(owner_user_id=owner_user_id)
+
         return await self._apply_updates(
             instance,
-            {"provider_id", "model_id", "label", "description", "config", "enabled", "priority", "on_ingest"},
+            {
+                "provider_id", "model_id", "label", "description", "config",
+                "enabled", "priority", "on_ingest", "embedder_id", "is_primary",
+            },
             updates,
         )
 

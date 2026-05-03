@@ -51,7 +51,7 @@ class _AutomationLocator:
         if impl is _MISSING:
             raise KeyError(
                 f"automation capability {name!r} not bound — "
-                f"backend must call pixsim7.backend.main.automation_adapters."
+                f"backend must call pixsim7.backend.main.adapters.automation."
                 f"bind_automation_capabilities() at startup"
             )
         return impl

@@ -61,6 +61,12 @@ class AssetAnalysis(SQLModel, table=True):
         index=True,
         description="Resolved provider ID for analyzer execution",
     )
+    embedder_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Vector-space identifier for asset:embedding analyses",
+    )
 
     # Analysis input
     prompt: Optional[str] = Field(

@@ -6,9 +6,12 @@ Processes analyses created via AnalysisService:
 2. Submit analysis to provider
 3. Update analysis status
 
-Mirrors the generation processor pattern for consistency.
+Embedding analyses skip the provider/account path and go through the
+embedding service locator (long-lived daemon process) — purely local
+compute, no provider account needed.
 """
 from datetime import datetime, timezone
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -17,6 +20,7 @@ from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.user import UserService
+from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -96,6 +100,16 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
             if status_value != "pending":
                 analysis_logger.warning("analysis_not_pending", status=status_value)
                 return {"status": "skipped", "reason": f"Analysis status is {status_value}"}
+
+            # Embedding analyses skip the provider/account path entirely —
+            # they're local compute via the embedding service daemon.
+            if analysis.analyzer_id == "asset:embedding":
+                return await _process_embedding_analysis(
+                    db=db,
+                    analysis=analysis,
+                    analysis_service=analysis_service,
+                    analysis_logger=analysis_logger,
+                )
 
             # Select and reserve account atomically
             MAX_ACCOUNT_RETRIES = 10
@@ -228,6 +242,78 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
 
         finally:
             await db.close()
+
+
+async def _process_embedding_analysis(
+    *,
+    db: AsyncSession,
+    analysis: AssetAnalysis,
+    analysis_service: AnalysisService,
+    analysis_logger,
+) -> dict:
+    """Run an asset:embedding analysis via the embedding service locator.
+
+    Resolves the asset's path (preferring thumbnail), invokes the daemon, and
+    marks the analysis completed with the resulting vector. The applier picks
+    the result up via the standard `mark_completed` hook.
+    """
+    from pixsim7.embedding.locator import get_embedding_service
+    from pixsim7.embedding.protocol import EmbedRequest, EmbeddingServiceError
+
+    from pixsim7.backend.main.domain import Asset
+
+    asset = await db.get(Asset, analysis.asset_id)
+    if asset is None:
+        await analysis_service.mark_failed(analysis.id, "asset not found")
+        return {"status": "failed", "reason": "missing_asset"}
+
+    storage = get_storage_service()
+    embed_path: str | None = None
+    if asset.thumbnail_key:
+        candidate = storage.get_path(asset.thumbnail_key)
+        if Path(candidate).exists():
+            embed_path = candidate
+    if embed_path is None and asset.stored_key:
+        candidate = storage.get_path(asset.stored_key)
+        if Path(candidate).exists():
+            embed_path = candidate
+
+    if embed_path is None:
+        await analysis_service.mark_failed(analysis.id, "no readable asset path")
+        return {"status": "failed", "reason": "no_path"}
+
+    await analysis_service.mark_started(analysis.id)
+    analysis_logger.info("embedding_started", asset_id=asset.id, path=embed_path)
+
+    try:
+        result = await get_embedding_service().embed_images(
+            EmbedRequest(paths=[embed_path])
+        )
+    except EmbeddingServiceError as exc:
+        await analysis_service.mark_failed(analysis.id, str(exc))
+        analysis_logger.error("embedding_failed", error=str(exc))
+        return {"status": "failed", "reason": "embedding_service_error"}
+
+    if not result.vectors:
+        await analysis_service.mark_failed(analysis.id, "embedding service returned no vectors")
+        return {"status": "failed", "reason": "empty_result"}
+
+    await analysis_service.mark_completed(
+        analysis.id,
+        {"embedding": result.vectors[0]},
+    )
+    analysis_logger.info(
+        "embedding_completed",
+        asset_id=asset.id,
+        embedder_id=analysis.embedder_id,
+        dim=result.dim,
+    )
+
+    return {
+        "status": "completed",
+        "analysis_id": analysis.id,
+        "dim": result.dim,
+    }
 
 
 async def requeue_pending_analyses(ctx: dict) -> dict:

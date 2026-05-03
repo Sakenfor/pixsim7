@@ -960,6 +960,7 @@ def register_default_asset_filters() -> None:
     )
     # -- Missing metadata filters --
     from pixsim7.backend.main.domain.assets.tag import AssetTag as _AssetTag
+    from pixsim7.backend.main.domain.assets.embedding import AssetEmbedding as _AssetEmbedding
 
     asset_filter_registry.register(
         FilterSpec(
@@ -984,7 +985,9 @@ def register_default_asset_filters() -> None:
             key="missing_embedding",
             type="boolean",
             label="Missing Embedding",
-            condition_builder=lambda v: Asset.embedding.is_(None) if v else None,
+            condition_builder=lambda v: ~exists(
+                select(_AssetEmbedding.asset_id).where(_AssetEmbedding.asset_id == Asset.id)
+            ) if v else None,
         )
     )
     asset_filter_registry.register(

@@ -12,7 +12,6 @@ from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import BigInteger, ForeignKey, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -145,11 +144,7 @@ class Asset(SQLModel, table=True):
     )
     # NOTE: tags and style_tags have been migrated to structured hierarchical tags
     # See Tag and AssetTag models for the new tag system
-    embedding: Optional[List[float]] = Field(
-        default=None,
-        sa_column=Column(Vector(768)),
-        description="Vector embedding for visual similarity (CLIP)"
-    )
+    # Vector embeddings live in `asset_embedding`, keyed by (asset_id, embedder_id)
 
     # ===== CONTENT DOMAIN & SAFETY =====
     content_domain: ContentDomain = Field(
@@ -281,11 +276,6 @@ class Asset(SQLModel, table=True):
         default=None,
         description="When preview derivative generation completed"
     )
-    embedding_generated_at: Optional[datetime] = Field(
-        default=None,
-        description="When CLIP embedding was generated for visual similarity"
-    )
-
     # ===== PROVENANCE =====
     # Link back to creation generation (for audit trail)
     source_generation_id: Optional[int] = Field(

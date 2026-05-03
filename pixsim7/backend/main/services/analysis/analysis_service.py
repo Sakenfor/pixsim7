@@ -92,6 +92,7 @@ class AnalysisService:
         params: Optional[Dict[str, Any]] = None,
         priority: int = 5,
         enqueue: bool = True,
+        embedder_id: Optional[str] = None,
     ) -> AssetAnalysis:
         """
         Create a new asset analysis job.
@@ -124,6 +125,7 @@ class AnalysisService:
             params=params,
             priority=priority,
             enqueue=enqueue,
+            embedder_id=embedder_id,
         )
         return analysis
 
@@ -139,6 +141,7 @@ class AnalysisService:
         params: Optional[Dict[str, Any]] = None,
         priority: int = 5,
         enqueue: bool = True,
+        embedder_id: Optional[str] = None,
     ) -> tuple[AssetAnalysis, bool]:
         """
         Create analysis and return `(analysis, created)` where `created=False`
@@ -253,6 +256,7 @@ class AnalysisService:
             analyzer_id=resolved_execution.analyzer_id,
             model_id=resolved_execution.model_id,
             provider_id=resolved_execution.provider_id,
+            embedder_id=embedder_id,
             prompt=prompt,
             params=normalized_params,
             analysis_point=resolved_analysis_point,

@@ -18,6 +18,7 @@ Usage:
 from .models import Asset, AssetVariant
 from .content import ContentBlob
 from .analysis import AssetAnalysis, AnalysisStatus
+from .embedding import AssetEmbedding
 from .lineage import AssetLineage
 from .branching import AssetBranch, AssetBranchVariant, AssetClip
 from .metadata import (
@@ -44,6 +45,8 @@ __all__ = [
     # Analysis
     "AssetAnalysis",
     "AnalysisStatus",
+    # Embeddings
+    "AssetEmbedding",
     # Lineage and branching
     "AssetLineage",
     "AssetBranch",

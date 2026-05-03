@@ -36,17 +36,26 @@ async def test_similar_to_embedding_lookup_is_scoped_to_current_user() -> None:
 
     async def _execute_side_effect(statement):
         executed_statements.append(statement)
-        if len(executed_statements) == 1:
-            return _ScalarResult([0.0] * 768)
-        return _RowsResult([])
+        # First call: ownership probe on assets.id; return None so resolution short-circuits
+        return _ScalarResult(None)
 
     service.db.execute = AsyncMock(side_effect=_execute_side_effect)
 
-    user = MagicMock()
-    user.id = 42
-    user.is_admin.return_value = False
+    # Stub primary-embedder lookup to a fixed embedder_id
+    from unittest.mock import patch
+    primary_stub = MagicMock()
+    primary_stub.embedder_id = "siglip2-large"
 
-    await service.list_assets(user=user, similar_to=99, limit=5)
+    with patch(
+        "pixsim7.backend.main.services.analysis.analyzer_instance_service."
+        "AnalyzerInstanceService.get_primary_embedder",
+        new=AsyncMock(return_value=primary_stub),
+    ):
+        user = MagicMock()
+        user.id = 42
+        user.is_admin.return_value = False
+
+        await service.list_assets(user=user, similar_to=99, limit=5)
 
     assert executed_statements, "expected at least one DB statement"
     first_statement_sql = str(executed_statements[0])

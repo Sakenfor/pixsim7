@@ -99,8 +99,9 @@ const INITIAL_BACKFILL_FORM_STATE: BackfillFormState = {
 const DEFAULT_VISUAL_SIMILARITY_THRESHOLD = 0.3;
 const EMBEDDING_ANALYZER_ID = 'asset:embedding';
 const DEFAULT_EMBEDDING_PROVIDER_ID = 'cmd-embedding';
-const DEFAULT_EMBEDDING_MODEL_ID = 'clip-default';
-const DEFAULT_EMBEDDING_LABEL = 'Visual Embeddings';
+const DEFAULT_EMBEDDING_MODEL_ID = 'google/siglip2-large-patch16-384';
+const DEFAULT_EMBEDDING_EMBEDDER_ID = 'siglip2-large';
+const DEFAULT_EMBEDDING_LABEL = 'SigLIP-2 Large (primary)';
 
 const ACTIVE_BACKFILL_STATUSES: AnalysisBackfillStatus[] = ['pending', 'running'];
 
@@ -1691,6 +1692,8 @@ export function AnalyzersSettings() {
             label: DEFAULT_EMBEDDING_LABEL,
             provider_id: DEFAULT_EMBEDDING_PROVIDER_ID,
             model_id: DEFAULT_EMBEDDING_MODEL_ID,
+            embedder_id: DEFAULT_EMBEDDING_EMBEDDER_ID,
+            is_primary: true,
             enabled: shouldEnable,
             on_ingest: shouldEnable,
             priority: 0,
@@ -2265,13 +2268,13 @@ export function AnalyzersSettings() {
       {isAdmin && (
         <section className="space-y-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            Visual Embeddings
+            Primary Embedder (Visual Similarity)
           </h3>
           <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-            CLIP embeddings enable "Similar content" search. This control now maps to your
-            <span className="font-mono"> asset:embedding </span>
-            analyzer instance with
-            <span className="font-mono"> on_ingest=true</span>.
+            The primary embedder powers "Similar content" search. Currently SigLIP-2 large
+            (1024-dim). Specialized embedders (FashionCLIP, etc.) can be added later as
+            additional <span className="font-mono">asset:embedding</span> instances and
+            queried independently.
           </p>
           {embeddingError && (
             <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-[10px] text-red-700 dark:text-red-300">
@@ -2301,7 +2304,7 @@ export function AnalyzersSettings() {
                 </span>
               </label>
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                Generate CLIP embeddings during asset ingestion for "Similar content" searches.
+                Generate SigLIP-2 embeddings during asset ingestion for "Similar content" searches.
               </p>
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
                 Active instance: {activeEmbeddingInstance ? (
@@ -2321,7 +2324,7 @@ export function AnalyzersSettings() {
 
             <div className="space-y-1">
               <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                CLIP Embedding Command
+                Embedding Command
               </label>
               <div className="flex gap-2">
                 <input
@@ -2329,7 +2332,7 @@ export function AnalyzersSettings() {
                   value={embeddingCommandDraft}
                   onChange={(e) => setEmbeddingCommandDraft(e.target.value)}
                   onBlur={handleEmbeddingCommandSave}
-                  placeholder="python tools/clip_embed.py"
+                  placeholder="python tools/embed_general.py"
                   className="flex-1 px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
                 />
                 <button

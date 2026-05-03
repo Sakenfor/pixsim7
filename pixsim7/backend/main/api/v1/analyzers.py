@@ -181,6 +181,8 @@ class AnalyzerInstanceCreate(BaseModel):
     enabled: bool = True
     priority: int = 0
     on_ingest: bool = False
+    embedder_id: Optional[str] = None
+    is_primary: bool = False
 
 
 class AnalyzerInstanceUpdate(BaseModel):
@@ -193,6 +195,8 @@ class AnalyzerInstanceUpdate(BaseModel):
     enabled: Optional[bool] = None
     priority: Optional[int] = None
     on_ingest: Optional[bool] = None
+    embedder_id: Optional[str] = None
+    is_primary: Optional[bool] = None
 
 
 class AnalyzerInstanceResponse(BaseModel):
@@ -207,6 +211,8 @@ class AnalyzerInstanceResponse(BaseModel):
     enabled: bool
     priority: int
     on_ingest: bool
+    embedder_id: Optional[str] = None
+    is_primary: bool = False
     created_at: str
     updated_at: str
 
@@ -853,6 +859,8 @@ async def list_analyzer_instances(
                 enabled=instance.enabled,
                 priority=instance.priority,
                 on_ingest=instance.on_ingest,
+                embedder_id=instance.embedder_id,
+                is_primary=instance.is_primary,
                 created_at=instance.created_at.isoformat() if instance.created_at else "",
                 updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
             )
@@ -883,25 +891,15 @@ async def create_analyzer_instance(
             enabled=data.enabled,
             priority=data.priority,
             on_ingest=data.on_ingest,
+            embedder_id=data.embedder_id,
+            is_primary=data.is_primary,
         )
     except AnalyzerInstanceConfigError as e:
         raise HTTPException(status_code=400, detail=f"Invalid instance config: {e.message}")
 
     await db.commit()
 
-    return AnalyzerInstanceResponse(
-        id=instance.id,
-        analyzer_id=instance.analyzer_id or "",
-        provider_id=instance.provider_id,
-        model_id=instance.model_id,
-        label=instance.label,
-        description=instance.description,
-        config=_mask_instance_config(instance.config),
-        enabled=instance.enabled,
-        priority=instance.priority,
-        created_at=instance.created_at.isoformat() if instance.created_at else "",
-        updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
-    )
+    return _instance_to_response(instance)
 
 
 @router.get("/analyzer-instances/{instance_id}", response_model=AnalyzerInstanceResponse)
@@ -921,19 +919,7 @@ async def get_analyzer_instance(
     if not instance:
         raise HTTPException(status_code=404, detail="Analyzer instance not found")
 
-    return AnalyzerInstanceResponse(
-        id=instance.id,
-        analyzer_id=instance.analyzer_id or "",
-        provider_id=instance.provider_id,
-        model_id=instance.model_id,
-        label=instance.label,
-        description=instance.description,
-        config=_mask_instance_config(instance.config),
-        enabled=instance.enabled,
-        priority=instance.priority,
-        created_at=instance.created_at.isoformat() if instance.created_at else "",
-        updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
-    )
+    return _instance_to_response(instance)
 
 
 @router.patch("/analyzer-instances/{instance_id}", response_model=AnalyzerInstanceResponse)
@@ -963,19 +949,7 @@ async def update_analyzer_instance(
 
     await db.commit()
 
-    return AnalyzerInstanceResponse(
-        id=instance.id,
-        analyzer_id=instance.analyzer_id or "",
-        provider_id=instance.provider_id,
-        model_id=instance.model_id,
-        label=instance.label,
-        description=instance.description,
-        config=_mask_instance_config(instance.config),
-        enabled=instance.enabled,
-        priority=instance.priority,
-        created_at=instance.created_at.isoformat() if instance.created_at else "",
-        updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
-    )
+    return _instance_to_response(instance)
 
 
 @router.delete("/analyzer-instances/{instance_id}", status_code=204)
@@ -1009,6 +983,25 @@ def _mask_instance_config(config: dict) -> dict:
         if isinstance(key, str) and len(key) > 8:
             masked["api_key"] = f"{'*' * (len(key) - 4)}{key[-4:]}"
     return masked
+
+
+def _instance_to_response(instance) -> AnalyzerInstanceResponse:
+    return AnalyzerInstanceResponse(
+        id=instance.id,
+        analyzer_id=instance.analyzer_id or "",
+        provider_id=instance.provider_id,
+        model_id=instance.model_id,
+        label=instance.label,
+        description=instance.description,
+        config=_mask_instance_config(instance.config),
+        enabled=instance.enabled,
+        priority=instance.priority,
+        on_ingest=instance.on_ingest,
+        embedder_id=instance.embedder_id,
+        is_primary=instance.is_primary,
+        created_at=instance.created_at.isoformat() if instance.created_at else "",
+        updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
+    )
 
 
 _ALLOWED_POINT_GROUPS = {"prompt", "asset", "system"}

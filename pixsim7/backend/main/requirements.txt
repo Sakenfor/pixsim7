@@ -43,8 +43,8 @@ passlib[bcrypt]==1.7.4  # Password hashing
 python-multipart>=0.0.6  # Form data parsing
 
 # ===== ML / Embeddings =====
-torch>=2.0  # PyTorch (for CLIP embeddings)
-open-clip-torch>=2.24.0  # CLIP model for visual similarity search
+torch>=2.0  # PyTorch (for visual embeddings)
+transformers>=4.45  # SigLIP-2 / general vision-language model loader
 
 # ===== File Handling =====
 pillow==10.2.0  # Image processing

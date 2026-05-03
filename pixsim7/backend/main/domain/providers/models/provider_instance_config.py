@@ -110,6 +110,20 @@ class ProviderInstanceConfig(SQLModel, table=True):
         description="Auto-run during asset ingestion (analyzer kind only)"
     )
 
+    # Embedder identity (asset:embedding analyzer kind only)
+    embedder_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Names the vector space this instance writes to (asset:embedding only)"
+    )
+
+    # Primary flag — only one per (kind, owner_user_id) at a time
+    is_primary: bool = Field(
+        default=False,
+        description="Default instance for its kind (e.g., similarity-search default embedder)"
+    )
+
     # Priority for sorting in UI (higher = shown first)
     priority: int = Field(
         default=0,

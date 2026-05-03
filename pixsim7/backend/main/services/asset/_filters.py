@@ -68,3 +68,4 @@ class AssetSearchFilters:
     # Similarity
     similar_to: Optional[int] = None
     similarity_threshold: Optional[float] = None
+    embedder_id: Optional[str] = None

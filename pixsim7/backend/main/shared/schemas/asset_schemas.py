@@ -116,8 +116,9 @@ class AssetSearchRequest(BaseModel):
 
     asset_ids: list[int] | None = Field(None, description="Whitelist of asset IDs to include")
 
-    similar_to: int | None = Field(None, description="Asset ID for visual similarity search (uses CLIP embeddings)")
+    similar_to: int | None = Field(None, description="Asset ID for visual similarity search")
     similarity_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Min similarity 0-1, default 0.3")
+    embedder_id: str | None = Field(None, description="Embedder space to search in; defaults to user's primary")
 
     prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
 

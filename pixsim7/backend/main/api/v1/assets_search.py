@@ -94,6 +94,7 @@ def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
         group_key=request.group_key,
         similar_to=request.similar_to,
         similarity_threshold=request.similarity_threshold,
+        embedder_id=request.embedder_id,
     )
 
 

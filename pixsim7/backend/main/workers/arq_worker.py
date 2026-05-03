@@ -233,10 +233,10 @@ async def startup(ctx: dict) -> None:
     register_default_providers()
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
 
-    # Bind automation protocol locator — harmless in main worker (no automation
-    # callers today) but future-proofs any route handler that ends up here.
-    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
-    bind_automation_capabilities()
+    # Bind all sibling-package capabilities registered for this host. Single
+    # source of truth: backend/main/capability_registry.py.
+    from pixsim7.backend.main.capability_registry import bind_for_host
+    bind_for_host("main_worker")
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_analysis")
     logger.info("worker_component_registered", component="process_derivatives")
@@ -347,6 +347,12 @@ async def shutdown(ctx: dict) -> None:
     except Exception as e:
         logger.warning("worker_shutdown_account_event_error", error=str(e))
 
+    try:
+        from pixsim7.backend.main.capability_registry import shutdown_for_host
+        await shutdown_for_host("main_worker")
+    except Exception as e:
+        logger.warning("worker_shutdown_capabilities_error", error=str(e))
+
     await _drain_arq_pool(ctx)
 
     try:
@@ -446,10 +452,10 @@ async def automation_startup(ctx: dict) -> None:
     await _load_persisted_system_config_for_worker()
     register_default_providers()
 
-    # Bind automation protocol locator — callers in this worker process
-    # (process_automation, loops, queue_pending_executions) need the adapters.
-    from pixsim7.backend.main.automation_adapters import bind_automation_capabilities
-    bind_automation_capabilities()
+    # Bind all sibling-package capabilities registered for this host. Single
+    # source of truth: backend/main/capability_registry.py.
+    from pixsim7.backend.main.capability_registry import bind_for_host
+    bind_for_host("automation_worker")
 
     logger.info("worker_component_registered", component="process_automation", queue=AUTOMATION_QUEUE_NAME)
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")

@@ -545,9 +545,14 @@ class AssetIngestionService:
 
             for instance in instances:
                 try:
+                    is_embedding = instance.analyzer_id == "asset:embedding"
                     command = instance.config.get("command") if instance.config else None
 
-                    if command:
+                    # Embedding analyzers always queue through arq + the
+                    # long-lived daemon now; the inline path stays for other
+                    # command-based analyzers that need to run synchronously
+                    # inside the upload request.
+                    if command and not is_embedding:
                         await self._run_inline_analysis(
                             asset=asset,
                             local_path=local_path,
@@ -562,6 +567,7 @@ class AssetIngestionService:
                             asset_id=asset.id,
                             analyzer_id=instance.analyzer_id,
                             enqueue=True,
+                            embedder_id=instance.embedder_id,
                         )
 
                 except Exception as e:
