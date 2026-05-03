@@ -26,6 +26,8 @@ import * as React from 'react';
 import { debugFlags } from '@lib/utils/debugFlags';
 import { logEvent } from '@lib/utils/logging';
 
+import { useActionShortcutOverridesStore } from './actionShortcutOverridesStore';
+
 // Re-export modules
 export { ROUTES, buildRoute, navigateTo } from './routeConstants';
 export { PluginCapabilityAdapter, createPluginCapabilityAdapter } from './pluginAdapter';
@@ -331,9 +333,19 @@ export function useNavRoutes() {
  */
 export function useActions() {
   const actions = useAllActions();
+  const shortcutOverrides = useActionShortcutOverridesStore((state) => state.shortcutOverrides);
   return React.useMemo(
-    () => actions.filter((action) => !action.enabled || action.enabled()),
-    [actions]
+    () =>
+      actions
+        .filter((action) => !action.enabled || action.enabled())
+        .map((action) => {
+          const override = shortcutOverrides[action.id];
+          if (override === undefined || override === action.shortcut) {
+            return action;
+          }
+          return { ...action, shortcut: override };
+        }),
+    [actions, shortcutOverrides]
   );
 }
 
@@ -348,7 +360,18 @@ export function useAllActions() {
  * Hook to get a specific action by ID
  */
 export function useAction(id: string) {
-  return useCapabilitySnapshot(() => capabilityRegistry.getAction(id));
+  const action = useCapabilitySnapshot(() => capabilityRegistry.getAction(id));
+  const shortcutOverride = useActionShortcutOverridesStore((state) => state.shortcutOverrides[id]);
+
+  return React.useMemo(() => {
+    if (!action) {
+      return action;
+    }
+    if (shortcutOverride === undefined || shortcutOverride === action.shortcut) {
+      return action;
+    }
+    return { ...action, shortcut: shortcutOverride };
+  }, [action, shortcutOverride]);
 }
 
 /**
