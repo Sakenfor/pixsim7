@@ -38,6 +38,7 @@ def _make_generation(
     gen.updated_at = None
     gen.started_at = None
     gen.completed_at = None
+    gen.cancel_requested_at = None
     return gen
 
 
@@ -92,6 +93,23 @@ async def test_cancel_processing_deferred():
 
     assert gen.deferred_action == "cancel"
     assert gen.status == GenerationStatus.PROCESSING  # NOT cancelled yet
+
+
+@pytest.mark.asyncio
+async def test_cancel_processing_stamps_cancel_requested_at():
+    """Cancel on a PROCESSING generation persists a UTC timestamp so the
+    poller's grace period survives worker restarts."""
+    gen = _make_generation(status="processing")
+    svc = _make_lifecycle(gen)
+    user = _make_user()
+
+    before = datetime.now(timezone.utc)
+    await svc.cancel_generation(1, user)
+    after = datetime.now(timezone.utc)
+
+    assert isinstance(gen.cancel_requested_at, datetime)
+    assert gen.cancel_requested_at.tzinfo is not None
+    assert before <= gen.cancel_requested_at <= after
 
 
 @pytest.mark.asyncio

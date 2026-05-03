@@ -121,6 +121,29 @@ logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
 
 
+# Cancel grace period: time the poller waits — after a deferred cancel was
+# requested — for the current provider poll to reach a terminal status before
+# forcefully transitioning to CANCELLED.  The reference timestamp lives on
+# Generation.cancel_requested_at so the timer survives worker restarts.
+
+# Operation classes for grace-period selection.  Image ops finish in seconds;
+# video ops can legitimately run for a minute+ so deserve more slack.
+_IMAGE_OP_TYPES = frozenset({
+    "text_to_image",
+    "image_to_image",
+    "image_edit",
+    "image_composite",
+    "frame_extraction",
+})
+_VIDEO_OP_TYPES = frozenset({
+    "text_to_video",
+    "image_to_video",
+    "video_extend",
+    "video_transition",
+    "video_modify",
+})
+
+
 def _is_partner_interrupted_filter(status_result: Any, generation: Any) -> bool:
     """Detect Pixverse fal-proxied partner-interrupt (video_status=8 on grok-imagine,
     happyhorse-1.0, etc.).
@@ -155,10 +178,28 @@ def _is_partner_interrupted_filter(status_result: Any, generation: Any) -> bool:
         return False
 
 
-# Grace period before honouring a deferred cancel on a PROCESSING generation.
-# Gives the provider time to finish so we don't lose completed results.
-_CANCEL_GRACE_PERIOD_SEC = 120
-_cancel_first_seen: dict[int, float] = {}  # generation_id -> monotonic timestamp
+def _cancel_grace_period_for(operation_type: Any) -> int:
+    """Cancel grace period (seconds) keyed by operation class.
+
+    Image ops (i2i/t2i/edit) get a short window so cancel is responsive on
+    fast generations; video ops get a longer window so near-complete runs
+    can finish naturally.  Anything else (e.g., FUSION) falls back to the
+    default.
+    """
+    from pixsim7.backend.main.services.generation.worker_settings import get_worker_settings
+    ws = get_worker_settings()
+    op_value: str | None = None
+    if operation_type is not None:
+        op_value = getattr(operation_type, "value", None) or str(operation_type)
+    if op_value in _IMAGE_OP_TYPES:
+        value = getattr(ws, "image_op_cancel_grace_period_seconds", None)
+        if isinstance(value, int) and value > 0:
+            return value
+    if op_value in _VIDEO_OP_TYPES:
+        value = getattr(ws, "video_op_cancel_grace_period_seconds", None)
+        if isinstance(value, int) and value > 0:
+            return value
+    return int(getattr(ws, "cancel_grace_period_seconds", 30) or 30)
 
 # In-flight guard: prevents overlapping poll cycles from processing
 # the same generation concurrently (important at ≤2s poll intervals).
@@ -310,24 +351,13 @@ async def _finalize_generation_billing_best_effort(
         )
 
 
-_CANCEL_DICT_MAX_SIZE = 5000
 _MODERATION_RECHECK_MAX_SIZE = 5000
 
 
 def _prune_transient_poll_backoff(*, now_mono: float) -> None:
-    """Prune backoff dicts plus cancel-grace and moderation-recheck dicts."""
+    """Prune backoff dicts plus moderation-recheck dict."""
     _prune_poll_backoff_dicts(now_mono=now_mono)
 
-    # Prune stale cancel-grace entries (generation finished or was never polled again).
-    cancel_stale = now_mono - _CANCEL_GRACE_PERIOD_SEC - _TRANSIENT_POLL_PRUNE_STALE_SEC
-    stale_cancel = [gid for gid, ts in _cancel_first_seen.items() if ts <= cancel_stale]
-    for gid in stale_cancel:
-        _cancel_first_seen.pop(gid, None)
-    # Hard cap on cancel dict
-    if len(_cancel_first_seen) > _CANCEL_DICT_MAX_SIZE:
-        sorted_gids = sorted(_cancel_first_seen, key=_cancel_first_seen.get)  # type: ignore[arg-type]
-        for gid in sorted_gids[: len(_cancel_first_seen) - _CANCEL_DICT_MAX_SIZE]:
-            _cancel_first_seen.pop(gid, None)
     # Hard cap on moderation recheck dict
     if len(_moderation_recheck) > _MODERATION_RECHECK_MAX_SIZE:
         sorted_aids = sorted(
@@ -515,42 +545,86 @@ async def _handle_processing_status(
     missing_provider_job: bool,
 ) -> _PollGenerationResult:
     """PROCESSING status — honour deferred cancel after grace period, else keep polling."""
-    if generation.deferred_action == "cancel" or generation.id in _cancel_first_seen:
-        generation_model = await db.get(Generation, generation.id)
-        if generation_model and generation_model.deferred_action == "cancel":
-            now_mono = time.monotonic()
-            first_seen = _cancel_first_seen.setdefault(generation.id, now_mono)
-            elapsed = now_mono - first_seen
-            if elapsed < _CANCEL_GRACE_PERIOD_SEC:
-                logger.info(
-                    "generation_cancel_grace_period",
-                    generation_id=generation.id,
-                    elapsed_sec=round(elapsed, 1),
-                    grace_remaining_sec=round(_CANCEL_GRACE_PERIOD_SEC - elapsed, 1),
-                )
-            else:
-                logger.info(
-                    "generation_cancel_while_provider_processing",
-                    generation_id=generation.id,
-                    grace_elapsed_sec=round(elapsed, 1),
-                )
-                _cancel_first_seen.pop(generation.id, None)
-                generation_model.deferred_action = None
-                await db.commit()
-                await account_service.release_account(account.id)
-                await generation_service.update_status(
-                    generation.id, GenerationStatus.CANCELLED,
-                )
-                return _PollGenerationResult(
-                    generation_id=generation.id,
-                    outcome='failed',
-                    missing_provider_job=missing_provider_job,
-                )
+    if await _maybe_finalize_deferred_cancel(
+        db,
+        generation=generation,
+        account=account,
+        generation_service=generation_service,
+        account_service=account_service,
+    ):
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='failed',
+            missing_provider_job=missing_provider_job,
+        )
     return _PollGenerationResult(
         generation_id=generation.id,
         outcome='still_processing',
         missing_provider_job=missing_provider_job,
     )
+
+
+async def _maybe_finalize_deferred_cancel(
+    db: AsyncSession,
+    *,
+    generation: _ProcessingGenerationSnapshot,
+    account: ProviderAccount,
+    generation_service: GenerationService,
+    account_service: AccountService,
+) -> bool:
+    """Honour a deferred cancel once the per-provider grace period elapses.
+
+    Reads ``Generation.cancel_requested_at`` (persisted at cancel time) so the
+    grace timer survives worker restarts.  Returns True iff cancel was
+    finalized — the account slot was released and the generation transitioned
+    to CANCELLED.  Returns False when no cancel is pending or the grace
+    period has not yet elapsed (caller continues normal polling).
+    """
+    if generation.deferred_action != "cancel":
+        return False
+    generation_model = await db.get(Generation, generation.id)
+    if not (generation_model and generation_model.deferred_action == "cancel"):
+        return False
+    now_utc = datetime.now(timezone.utc)
+    cancel_requested_at = generation_model.cancel_requested_at
+    if cancel_requested_at is None:
+        # Pre-migration row or backfill miss — stamp now so the timer starts
+        # ticking and survives the next worker restart.
+        generation_model.cancel_requested_at = now_utc
+        await db.commit()
+        cancel_requested_at = now_utc
+    elif cancel_requested_at.tzinfo is None:
+        cancel_requested_at = cancel_requested_at.replace(tzinfo=timezone.utc)
+    elapsed = (now_utc - cancel_requested_at).total_seconds()
+    op_type = getattr(generation_model, "operation_type", None) or generation.operation_type
+    grace_sec = _cancel_grace_period_for(op_type)
+    op_log = getattr(op_type, "value", None) or (str(op_type) if op_type is not None else None)
+    if elapsed < grace_sec:
+        logger.info(
+            "generation_cancel_grace_period",
+            generation_id=generation.id,
+            operation_type=op_log,
+            provider_id=generation_model.provider_id,
+            elapsed_sec=round(elapsed, 1),
+            grace_period_sec=grace_sec,
+            grace_remaining_sec=round(grace_sec - elapsed, 1),
+        )
+        return False
+    logger.info(
+        "generation_cancel_while_provider_processing",
+        generation_id=generation.id,
+        operation_type=op_log,
+        provider_id=generation_model.provider_id,
+        grace_elapsed_sec=round(elapsed, 1),
+        grace_period_sec=grace_sec,
+    )
+    generation_model.deferred_action = None
+    await db.commit()
+    await account_service.release_account(account.id)
+    await generation_service.update_status(
+        generation.id, GenerationStatus.CANCELLED,
+    )
+    return True
 
 
 async def _handle_provider_check_error(
@@ -566,6 +640,22 @@ async def _handle_provider_check_error(
     missing_provider_job: bool,
 ) -> _PollGenerationResult:
     """ProviderError from check_status: classify as transient/non-transient and retry-or-fail."""
+    # Honour a deferred cancel even when the provider check is erroring —
+    # otherwise a cancel could wait indefinitely for a clean poll if the
+    # provider is consistently returning auth/transient errors.
+    if await _maybe_finalize_deferred_cancel(
+        db,
+        generation=generation,
+        account=account,
+        generation_service=generation_service,
+        account_service=account_service,
+    ):
+        return _PollGenerationResult(
+            generation_id=generation.id,
+            outcome='failed',
+            missing_provider_job=missing_provider_job,
+        )
+
     if _is_transient_provider_poll_error(error):
         failure_count, delay_sec = _record_transient_poll_backoff(
             transient_backoff_key or str(generation.id),
@@ -1086,7 +1176,6 @@ async def _poll_single_generation(
 
                 # Handle status
                 if status_result.status == ProviderStatus.COMPLETED:
-                    _cancel_first_seen.pop(generation.id, None)
                     # If a cancel was requested while we polled, honour the
                     # completion anyway — the provider already generated the
                     # result and the user should receive it.  Clear the
@@ -1306,7 +1395,6 @@ async def _poll_single_generation(
                     ProviderStatus.FILTERED,
                     ProviderStatus.CANCELLED,
                 }:
-                    _cancel_first_seen.pop(generation.id, None)
                     # Re-check: generation may have a deferred cancel or
                     # been cancelled while we polled
                     generation_model = await db.get(Generation, generation.id)

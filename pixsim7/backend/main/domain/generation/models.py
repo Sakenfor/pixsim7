@@ -155,6 +155,11 @@ class Generation(SQLModel, table=True):
                     "'pause' or 'cancel'. Checked by the status poller and "
                     "auto-retry handler when the current attempt finishes.",
     )
+    cancel_requested_at: Optional[datetime] = Field(
+        default=None,
+        description="When a deferred cancel was requested. Persisted so the "
+                    "status poller's grace period survives worker restarts.",
+    )
     attempt_id: int = Field(
         default=0,
         index=True,

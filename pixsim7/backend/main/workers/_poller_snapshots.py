@@ -72,16 +72,25 @@ class _ProcessingGenerationSnapshot:
     started_at: datetime | None
     attempt_id: int
     deferred_action: str | None = None
+    provider_id: str | None = None
+    cancel_requested_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row: tuple[Any, ...]) -> "_ProcessingGenerationSnapshot | None":
         generation_id, account_id, operation_type, started_at, attempt_id = row[:5]
         deferred_action = row[5] if len(row) > 5 else None
+        provider_id = row[6] if len(row) > 6 else None
+        cancel_requested_at = row[7] if len(row) > 7 else None
         if generation_id is None:
             return None
         started_ts: datetime | None = started_at if isinstance(started_at, datetime) else None
         if started_ts is not None and started_ts.tzinfo is None:
             started_ts = started_ts.replace(tzinfo=timezone.utc)
+        cancel_ts: datetime | None = (
+            cancel_requested_at if isinstance(cancel_requested_at, datetime) else None
+        )
+        if cancel_ts is not None and cancel_ts.tzinfo is None:
+            cancel_ts = cancel_ts.replace(tzinfo=timezone.utc)
         parsed_attempt_id = 0
         try:
             parsed_attempt_id = int(attempt_id or 0)
@@ -100,6 +109,8 @@ class _ProcessingGenerationSnapshot:
             started_at=started_ts,
             attempt_id=parsed_attempt_id,
             deferred_action=str(deferred_action) if deferred_action else None,
+            provider_id=str(provider_id) if provider_id else None,
+            cancel_requested_at=cancel_ts,
         )
 
 
@@ -401,6 +412,13 @@ def _map_submit_error_to_generation_error_code(submission: ProviderSubmission) -
     if not isinstance(submission.response, dict):
         return None
 
+    raw_error_code = str(submission.response.get("error_code") or "").strip().lower()
+    if raw_error_code:
+        try:
+            return GenerationErrorCode(raw_error_code).value
+        except ValueError:
+            pass
+
     error_type = str(submission.response.get("error_type") or "").strip()
     error_text = str(
         submission.response.get("error_message")
@@ -468,6 +486,8 @@ async def _load_processing_generation_snapshots(
             Generation.started_at,
             Generation.attempt_id,
             Generation.deferred_action,
+            Generation.provider_id,
+            Generation.cancel_requested_at,
         )
         .where(Generation.status == GenerationStatus.PROCESSING)
         .order_by(Generation.started_at)
@@ -488,6 +508,8 @@ async def _load_processing_generation_snapshot(
             Generation.started_at,
             Generation.attempt_id,
             Generation.deferred_action,
+            Generation.provider_id,
+            Generation.cancel_requested_at,
         )
         .where(Generation.id == generation_id)
         .where(Generation.status == GenerationStatus.PROCESSING)

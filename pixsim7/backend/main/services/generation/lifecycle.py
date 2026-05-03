@@ -254,9 +254,13 @@ class GenerationLifecycleService:
             except Exception as e:
                 logger.error(f"Failed to cancel generation on provider: {e}")
 
-            # Deferred cancel — poller owns account release and final transition
+            # Deferred cancel — poller owns account release and final transition.
+            # Persist cancel_requested_at so the poller's grace period survives
+            # worker restarts (was previously tracked in an in-memory dict).
+            now = datetime.now(timezone.utc)
             generation.deferred_action = "cancel"
-            generation.updated_at = datetime.now(timezone.utc)
+            generation.cancel_requested_at = now
+            generation.updated_at = now
             await self.db.commit()
             await self.db.refresh(generation)
             logger.info(f"Generation {generation_id} flagged for cancel after current attempt")

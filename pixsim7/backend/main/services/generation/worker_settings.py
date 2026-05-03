@@ -75,6 +75,34 @@ class GenerationWorkerSettings(SettingsBase):
         description="Base cooldown after provider concurrent-limit errors for Pixverse image_to_image operations",
     )
 
+    # ── Cancel Grace Period ───────────────────────────────────────────────
+    # Time the status poller waits — after a deferred cancel is requested —
+    # for the current provider poll to reach a terminal status (COMPLETED or
+    # FAILED) before forcefully transitioning to CANCELLED.  Tuned per
+    # operation class because image ops (i2i / t2i / edit) finish in seconds
+    # while video ops can legitimately run for a minute or more.
+
+    cancel_grace_period_seconds: int = Field(
+        30, ge=1, le=600,
+        description="Default cancel grace period when no operation-class override applies",
+    )
+    image_op_cancel_grace_period_seconds: int = Field(
+        15, ge=1, le=600,
+        description=(
+            "Cancel grace period for image operations (text_to_image, "
+            "image_to_image, image_edit, image_composite, frame_extraction). "
+            "Most image ops finish within 5–15s; one poll cycle of slack."
+        ),
+    )
+    video_op_cancel_grace_period_seconds: int = Field(
+        60, ge=1, le=600,
+        description=(
+            "Cancel grace period for video operations (text_to_video, "
+            "image_to_video, video_extend, video_transition, video_modify). "
+            "Longer to allow near-complete generations to finish naturally."
+        ),
+    )
+
     # ── Dispatch Stagger ──────────────────────────────────────────────────
 
     dispatch_stagger_per_slot_seconds: float = Field(
