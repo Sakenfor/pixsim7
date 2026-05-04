@@ -51,6 +51,8 @@ export type { CompositionPackagesResponse } from './composition';
 export { KNOWN_KINDS, getConceptKinds, getConcepts, getInfluenceRegions, getParts, getPoses, getRoles, isKnownConceptKind } from './concepts';
 export type { ConceptKind, ConceptKindInfo, ConceptKindsResponse, ConceptResponse, ConceptsListResponse, KnownConceptKind } from './concepts';
 export { clearPendingDialogue, executeInteraction, executePendingDialogue, getAllInteractions, getAvailableInteractions, getPendingDialogue, listInteractions } from './interactions';
+export { previewMoodState, previewUnifiedMood, unifiedMoodToMoodState } from './npcMood';
+export type { PreviewMoodEmotionalState, PreviewMoodRelationshipValues, PreviewMoodRequest, UnifiedMoodResponse } from './npcMood';
 export { buildSocialContext, cancelGeneration, createGeneration, deleteGeneration, getGeneration, listGenerations, patchGenerationPrompt, retryGeneration, validateGenerationConfig } from './generations';
 export type { CreateGenerationRequest, GenerateContentRequest, GenerateContentResponse, GenerationListResponse, GenerationNodeConfig, GenerationNodeConfigSchema, GenerationResponse, GenerationSocialContext, GenerationStatus, ListGenerationsQuery, OperationType, PlayerContextSnapshot, SceneRef } from './generations';
 export { getGenerationOperationMetadata } from './generationOperations';
