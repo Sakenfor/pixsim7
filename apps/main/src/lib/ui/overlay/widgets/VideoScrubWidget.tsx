@@ -1171,29 +1171,33 @@ export function VideoScrubWidgetRenderer({
       className={`absolute inset-0 cursor-pointer ${className}`}
       style={gestureActive ? { pointerEvents: 'none' } : undefined}
     >
-      {/* Video element for scrubbing - src only set on hover to avoid eager
-          CDN fetches that 404 before provider propagation completes. */}
+      {/* Video element for scrubbing - only mounted when a decoder slot is
+          attached, so Chrome can fully release per-element native buffers
+          (decoder state, audio pipeline, metadata) on unmount. Setting
+          src=undefined on a persistent <video> doesn't free those. */}
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
-      <video
-        ref={videoRef}
-        data-hovering={isHovering}
-        data-video-loaded={isVideoLoaded}
-        data-keep-paused={keepSrcWhilePaused}
-        data-video-slot={hasVideoDecoderSlot ? 'granted' : 'waiting'}
-        data-duration={videoDuration}
-        data-show-timeline={showTimeline ? 'true' : 'false'}
-        src={shouldAttachVideoSrc ? effectiveUrl : undefined}
-        preload={shouldAttachVideoSrc ? 'metadata' : 'none'}
-        muted={hoverSound && isHovering ? false : muted}
-        crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
-        onLoadedMetadata={handleLoadedMetadata}
-        onTimeUpdate={handleTimeUpdate}
-        onError={handleError}
-        className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
-          isVideoLoaded && shouldAttachVideoSrc ? 'opacity-100' : 'opacity-0'
-        }`}
-        {...videoProps}
-      />
+      {shouldAttachVideoSrc && (
+        <video
+          ref={videoRef}
+          data-hovering={isHovering}
+          data-video-loaded={isVideoLoaded}
+          data-keep-paused={keepSrcWhilePaused}
+          data-video-slot={hasVideoDecoderSlot ? 'granted' : 'waiting'}
+          data-duration={videoDuration}
+          data-show-timeline={showTimeline ? 'true' : 'false'}
+          src={effectiveUrl}
+          preload="metadata"
+          muted={hoverSound && isHovering ? false : muted}
+          crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
+          onLoadedMetadata={handleLoadedMetadata}
+          onTimeUpdate={handleTimeUpdate}
+          onError={handleError}
+          className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-150 ${
+            isVideoLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
+          {...videoProps}
+        />
+      )}
 
       {/* Timeline scrubber */}
       {showTimeline && isHovering && videoDuration > 0 && (
