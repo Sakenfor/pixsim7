@@ -41,6 +41,10 @@ interface ProposeResponse {
   proposed: number;
 }
 
+interface PruneResponse {
+  deleted: number;
+}
+
 const STATUS_FILTERS = [
   { id: '', label: 'All' },
   { id: 'pending', label: 'Pending' },
@@ -68,7 +72,9 @@ export function VocabularyCandidatesPanel() {
   const [minFrequency, setMinFrequency] = useState<number>(2);
   const [loading, setLoading] = useState(false);
   const [proposing, setProposing] = useState(false);
+  const [pruning, setPruning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTag, setEditTag] = useState('');
 
@@ -118,6 +124,30 @@ export function VocabularyCandidatesPanel() {
       setError(message);
     } finally {
       setProposing(false);
+    }
+  }, [api, refresh]);
+
+  const prune = useCallback(async () => {
+    if (!window.confirm(
+      'Drop low-signal pending candidates older than 30 days with frequency < 3? Reviewer state on accepted/rejected/blocklisted rows is preserved.'
+    )) {
+      return;
+    }
+    setPruning(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const resp = await api.post<PruneResponse>('/dev/vocab/candidates/prune', {
+        max_frequency: 3,
+        min_age_days: 30,
+      });
+      setNotice(`Pruned ${resp.deleted} stale candidate${resp.deleted === 1 ? '' : 's'}.`);
+      await refresh();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+    } finally {
+      setPruning(false);
     }
   }, [api, refresh]);
 
@@ -181,6 +211,15 @@ export function VocabularyCandidatesPanel() {
               <Icon name="sparkles" size={12} className="inline mr-1" />
               {proposing ? 'Proposing…' : 'Propose batch (LLM)'}
             </button>
+            <button
+              onClick={prune}
+              disabled={pruning}
+              title="Drop pending candidates older than 30 days with frequency < 3"
+              className="px-2.5 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+            >
+              <Icon name="trash" size={12} className="inline mr-1" />
+              {pruning ? 'Pruning…' : 'Cleanup'}
+            </button>
           </div>
         </div>
 
@@ -218,6 +257,18 @@ export function VocabularyCandidatesPanel() {
       {error && (
         <div className="p-2 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 text-xs border-b border-rose-200 dark:border-rose-900/40">
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-xs border-b border-emerald-200 dark:border-emerald-900/40 flex items-center justify-between">
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="text-emerald-700 dark:text-emerald-300 hover:opacity-70"
+          >
+            <Icon name="x" size={12} />
+          </button>
         </div>
       )}
 

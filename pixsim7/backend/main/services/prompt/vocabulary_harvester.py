@@ -10,9 +10,11 @@ Failures are logged and swallowed so harvest never blocks the calling flow.
 """
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import Any, Iterable, Optional
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -27,6 +29,47 @@ logger = get_logger()
 SAMPLE_CONTEXT_LIMIT = 5
 SAMPLE_CONTEXT_MAX_LEN = 240
 TERM_MAX_LEN = 128
+
+# Quality-gate thresholds — drop terms that look like noise before they hit the table.
+HARVEST_TERM_MAX_LEN = 40       # longer = prompt fragment, not vocab
+HARVEST_TERM_MIN_LEN = 2        # very short tokens are usually parser slop
+HARVEST_MAX_UNDERSCORES = 2     # >2 underscores = phrase fragment / proper noun
+_TERM_HAS_ALPHA_RE = re.compile(r"[a-z]")
+
+# Articles, prepositions, and quantifiers that signal a phrase fragment when
+# they appear as the first underscored token (e.g. ``the_gorilla_watson``,
+# ``at_the_edge``, ``every_element_contributes``).
+_HARVEST_LEADING_STOPWORDS = frozenset({
+    "the", "a", "an",
+    "at", "of", "in", "on", "to", "by", "for", "from", "with", "into", "onto",
+    "every", "each", "some", "any",
+    "and", "or", "but",
+    "is", "are", "was", "were",
+})
+
+
+def _is_harvestable_term(term: str) -> bool:
+    """Coarse quality filter applied before a term enters the candidate table.
+
+    Rejects:
+      - too short / too long
+      - phrase fragments with too many underscores (e.g. ``the_gorilla_watson_x``)
+      - phrase fragments starting with an article/preposition (e.g. ``the_gorilla``)
+      - tokens with no alphabetic characters (pure digits / punctuation)
+    """
+    if not term:
+        return False
+    if len(term) < HARVEST_TERM_MIN_LEN or len(term) > HARVEST_TERM_MAX_LEN:
+        return False
+    if term.count("_") > HARVEST_MAX_UNDERSCORES:
+        return False
+    if not _TERM_HAS_ALPHA_RE.search(term):
+        return False
+    # Leading stopword + underscore = phrase fragment, not vocabulary.
+    head, _sep, _rest = term.partition("_")
+    if _sep and head in _HARVEST_LEADING_STOPWORDS:
+        return False
+    return True
 
 
 def _extract_unresolved(candidates: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -50,7 +93,7 @@ def _extract_unresolved(candidates: Iterable[dict[str, Any]]) -> dict[str, dict[
             if not isinstance(kw, str):
                 continue
             term = kw.strip().lower()[:TERM_MAX_LEN]
-            if not term:
+            if not _is_harvestable_term(term):
                 continue
             entry = out.setdefault(term, {"role": role, "contexts": []})
             if snippet and len(entry["contexts"]) < SAMPLE_CONTEXT_LIMIT:
@@ -127,3 +170,47 @@ async def _upsert_term(
         if ctx not in contexts and len(contexts) < SAMPLE_CONTEXT_LIMIT:
             contexts.append(ctx)
     existing.sample_contexts = contexts
+
+
+# ── Pruning ───────────────────────────────────────────────────────────────
+
+
+# Default prune thresholds: a pending term seen fewer than 3 times AND not
+# bumped in the last 30 days is almost certainly long-tail noise.
+PRUNE_MAX_FREQUENCY_DEFAULT = 3
+PRUNE_MIN_AGE_DAYS_DEFAULT = 30
+
+
+async def prune_pending_candidates(
+    db: AsyncSession,
+    *,
+    max_frequency: int = PRUNE_MAX_FREQUENCY_DEFAULT,
+    min_age_days: int = PRUNE_MIN_AGE_DAYS_DEFAULT,
+) -> int:
+    """Delete low-signal pending candidates.
+
+    Only ``pending`` rows are pruned — reviewer state on
+    accepted / rejected / blocklisted rows is always preserved.
+
+    A row is dropped iff:
+        frequency < max_frequency  AND  last_seen older than min_age_days
+
+    Returns the number of rows deleted.
+    """
+    cutoff = utcnow() - timedelta(days=max(0, min_age_days))
+    stmt = (
+        delete(VocabularyCandidate)
+        .where(VocabularyCandidate.status == "pending")
+        .where(VocabularyCandidate.frequency < max_frequency)
+        .where(VocabularyCandidate.last_seen < cutoff)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    deleted = int(result.rowcount or 0)
+    logger.info(
+        "vocabulary_prune_complete",
+        deleted=deleted,
+        max_frequency=max_frequency,
+        min_age_days=min_age_days,
+    )
+    return deleted

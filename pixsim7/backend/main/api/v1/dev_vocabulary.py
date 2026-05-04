@@ -26,6 +26,11 @@ from sqlmodel import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.prompt.vocabulary_candidate import VocabularyCandidate
+from pixsim7.backend.main.services.prompt.vocabulary_harvester import (
+    PRUNE_MAX_FREQUENCY_DEFAULT,
+    PRUNE_MIN_AGE_DAYS_DEFAULT,
+    prune_pending_candidates,
+)
 from pixsim7.backend.main.services.prompt.vocabulary_proposer import (
     fetch_pending_batch,
     propose_for_batch,
@@ -91,6 +96,23 @@ class ReviewRequest(BaseModel):
         default=None,
         description="Required for action='remap'; ignored otherwise",
     )
+
+
+class PruneRequest(BaseModel):
+    max_frequency: int = Field(
+        default=PRUNE_MAX_FREQUENCY_DEFAULT,
+        ge=1,
+        description="Drop pending rows with frequency < this",
+    )
+    min_age_days: int = Field(
+        default=PRUNE_MIN_AGE_DAYS_DEFAULT,
+        ge=0,
+        description="Drop pending rows whose last_seen is older than this many days",
+    )
+
+
+class PruneResponse(BaseModel):
+    deleted: int
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -190,6 +212,24 @@ async def propose_candidates(
 
     proposed = await propose_for_batch(db, rows, user_id=_reviewer_id(user))
     return ProposeResponse(batch_size=len(rows), proposed=proposed)
+
+
+@router.post("/candidates/prune", response_model=PruneResponse)
+async def prune_candidates(
+    payload: PruneRequest,
+    db: DatabaseSession,
+    _user: CurrentUser,
+) -> PruneResponse:
+    """Drop low-signal pending candidates older than the cutoff.
+
+    Reviewer state on accepted / rejected / blocklisted rows is preserved.
+    """
+    deleted = await prune_pending_candidates(
+        db,
+        max_frequency=payload.max_frequency,
+        min_age_days=payload.min_age_days,
+    )
+    return PruneResponse(deleted=deleted)
 
 
 @router.patch("/candidates/{candidate_id}", response_model=CandidateResponse)
