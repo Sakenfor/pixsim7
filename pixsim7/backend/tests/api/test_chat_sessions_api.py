@@ -142,8 +142,13 @@ class TestListChatSessions:
             last_plan_id="identity-refactor",
             last_contract_id="plans.management",
         )
-        # First execute is the placeholder prune UPDATE, second is the SELECT.
-        db.execute_results = [_ExecuteResult(scalars=[]), _ExecuteResult(scalars=[s])]
+        # First two executes are prune UPDATEs (placeholder + idle mcp-auto),
+        # third is the SELECT.
+        db.execute_results = [
+            _ExecuteResult(scalars=[]),
+            _ExecuteResult(scalars=[]),
+            _ExecuteResult(scalars=[s]),
+        ]
 
         app = _app(db)
         async with _client(app) as c:

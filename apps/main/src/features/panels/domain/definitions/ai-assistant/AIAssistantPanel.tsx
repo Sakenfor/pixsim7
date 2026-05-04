@@ -420,9 +420,19 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     }
 
     // Auto-inject token: mint one for the active profile and include it.
+    // Tag with scope_key + chat_session_id so the MCP server's log_work can
+    // attribute work_summaries to this exact tab/session instead of guessing
+    // by profile (which cross-attributes when multiple tabs share a profile).
     if (tab.injectToken && resolvedProfileId) {
       try {
-        const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${resolvedProfileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
+        const tokenParams: Record<string, unknown> = { hours: 24, scope: 'dev' };
+        if (typeof body.scope_key === 'string') tokenParams.scope_key = body.scope_key;
+        if (tab.sessionId) tokenParams.chat_session_id = tab.sessionId;
+        const res = await pixsimClient.post<{ access_token: string }>(
+          `/dev/agent-profiles/${resolvedProfileId}/token`,
+          null,
+          { params: tokenParams },
+        );
         body.user_token = res.access_token;
       } catch (err) {
         console.warn('[ai-assistant] Token mint failed for profile', resolvedProfileId, err);
@@ -912,11 +922,6 @@ export function AIAssistantPanel() {
 
   const closeTab = useCallback((tabId: string) => {
     const s = store.getState();
-    const tab = s.tabs.find((t) => t.id === tabId);
-    // Archive the server session so it moves to "archived" in resume picker
-    if (tab?.sessionId) {
-      pixsimClient.delete(`/meta/agents/chat-sessions/${tab.sessionId}`).catch(() => {});
-    }
     if (activeTabId === tabId) {
       const remaining = s.tabs.filter((t) => t.id !== tabId);
       s.setActiveTab(remaining[0]?.id ?? null);

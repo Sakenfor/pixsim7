@@ -38,6 +38,12 @@ interface ChatMessage {
   timestamp: Date;
   /** Present when this message records a resolved confirmation prompt */
   confirmation?: ChatMessageConfirmation;
+  /**
+   * Reconstructed at fetch time from server-side activity (e.g. work_summary
+   * entries). Synthetic messages are excluded from PATCH and localStorage
+   * persistence — they re-materialize on every fetchServerMessages call.
+   */
+  synthetic?: boolean;
 }
 
 interface ChatTab {
@@ -392,7 +398,7 @@ function loadTabMessages(tabId: string): ChatMessage[] {
  * ChatMessage fields (thinkingLog, confirmation) unlike the server payload.
  */
 function toPersistableLocalPayload(messages: ChatMessage[]): ChatMessage[] {
-  return messages.filter((m) => m.role !== 'error').slice(-50);
+  return messages.filter((m) => m.role !== 'error' && !m.synthetic).slice(-50);
 }
 
 function persistTabMessages(tabId: string, messages: ChatMessage[]) {
@@ -483,7 +489,7 @@ function toPersistableServerPayload(messages: ChatMessage[]): Array<{
   timestamp: string;
 }> {
   return messages
-    .filter((m) => m.role !== 'error')
+    .filter((m) => m.role !== 'error' && !m.synthetic)
     .slice(-50)
     .map((m) => ({
       role: m.role,
@@ -800,9 +806,11 @@ export const useAssistantChatStore = hmrSingleton(
 
 /** Fetch messages from server for a resumed session, with localStorage fallback.
  *
- * For MCP/CLI sessions the server returns no chat messages but includes
- * recent work_summary entries under `activity` — we synthesize those
- * into system-role messages so the resumed tab shows usable context.
+ * Work summaries (`activity`) are synthesized as system messages and prepended
+ * before the chat messages — for MCP/CLI sessions they're the only context, and
+ * for chat-source sessions they're a useful recap of agent-logged work. They're
+ * marked `synthetic: true` so they don't get PATCHed back to the server or
+ * written to localStorage (re-materialized fresh on each fetch).
  */
 export async function fetchServerMessages(
   sessionId: string,
@@ -821,31 +829,39 @@ export async function fetchServerMessages(
       activity?: SessionActivityEntry[] | null;
     }>(`/meta/agents/chat-sessions/${sessionId}`);
     const raw = res?.messages;
-    if (Array.isArray(raw) && raw.length > 0) {
-      return raw.map((m) => ({
-        role: m.role as ChatMessage['role'],
-        text: m.text as string,
-        duration_ms: m.duration_ms as number | undefined,
-        timestamp: new Date(m.timestamp as string),
-      }));
-    }
-
     const activity = res?.activity;
+
+    const chat: ChatMessage[] = Array.isArray(raw)
+      ? raw.map((m) => ({
+          role: m.role as ChatMessage['role'],
+          text: m.text as string,
+          duration_ms: m.duration_ms as number | undefined,
+          timestamp: new Date(m.timestamp as string),
+        }))
+      : [];
+
+    const synthesized: ChatMessage[] = [];
     if (Array.isArray(activity) && activity.length > 0) {
-      const synthesized: ChatMessage[] = [{
+      const headerLabel = chat.length > 0 ? 'Work summaries on this session' : 'Resumed CLI session';
+      synthesized.push({
         role: 'system',
-        text: `Resumed CLI session — ${activity.length} prior work summ${activity.length === 1 ? 'ary' : 'aries'}`,
+        text: `${headerLabel} — ${activity.length} entr${activity.length === 1 ? 'y' : 'ies'}`,
         timestamp: activity[0].timestamp ? new Date(activity[0].timestamp) : new Date(),
-      }];
+        synthetic: true,
+      });
       for (const entry of activity) {
         const header = entry.plan_id ? `[plan:${entry.plan_id}] ` : '';
         synthesized.push({
           role: 'system',
           text: `${header}${entry.detail || '(no detail)'}`,
           timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date(),
+          synthetic: true,
         });
       }
-      return synthesized;
+    }
+
+    if (chat.length > 0 || synthesized.length > 0) {
+      return [...synthesized, ...chat];
     }
 
     console.warn(`[ai-assistant] Session ${sessionId}: server returned ${raw === null ? 'null' : 'empty'} messages`);

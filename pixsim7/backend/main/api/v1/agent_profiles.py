@@ -265,7 +265,7 @@ async def agent_observability(
     profiles = (await db.execute(stmt)).scalars().all()
     profile_ids = [p.id for p in profiles]
 
-    # 2. Load recent sessions grouped by profile (last 10 per profile)
+    # 2. Load recent sessions grouped by profile (last 30 per profile)
     sessions_by_profile: dict[str, list[ChatSessionSummary]] = {}
     if profile_ids:
         sess_stmt = (
@@ -273,7 +273,7 @@ async def agent_observability(
             .where(ChatSession.profile_id.in_(profile_ids))
             .where(ChatSession.status == "active")
             .order_by(ChatSession.last_used_at.desc())
-            .limit(200)  # reasonable cap
+            .limit(600)  # 30 sessions × ~20 profiles headroom
         )
         sessions = (await db.execute(sess_stmt)).scalars().all()
         session_ids = [s.id for s in sessions]
@@ -298,7 +298,7 @@ async def agent_observability(
             pid = s.profile_id
             if pid and pid not in sessions_by_profile:
                 sessions_by_profile[pid] = []
-            if pid and len(sessions_by_profile[pid]) < 10:
+            if pid and len(sessions_by_profile[pid]) < 30:
                 sessions_by_profile[pid].append(ChatSessionSummary(
                     id=s.id,
                     engine=s.engine,
@@ -673,9 +673,17 @@ async def mint_profile_token(
     principal: CurrentUser,
     hours: int = Query(default=24, ge=1, le=168),
     scope: str = Query(default="dev"),
+    scope_key: Optional[str] = Query(default=None, description="Tab/plan scope (e.g. tab:tab-XYZ) for log_work attribution"),
+    chat_session_id: Optional[str] = Query(default=None, description="Existing chat session id; log_work calls land directly on this session"),
     db: AsyncSession = Depends(get_database),
 ):
-    """Mint a token using this profile's stable agent_id."""
+    """Mint a token using this profile's stable agent_id.
+
+    Optional ``scope_key`` and ``chat_session_id`` baked into JWT claims let
+    the MCP server attribute ``log_work`` to the calling tab's session
+    instead of guessing the most-recent-for-profile (which cross-attributes
+    when multiple tabs share a profile).
+    """
     profile = await db.get(AgentProfile, profile_id)
     if not profile or not _profile_visible_to_principal(profile, principal):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
@@ -693,6 +701,8 @@ async def mint_profile_token(
         on_behalf_of=effective_user_id,
         run_id=run_id,
         ttl=timedelta(hours=hours),
+        scope_key=scope_key,
+        chat_session_id=chat_session_id,
     )
 
     claims = decode_access_token(token)

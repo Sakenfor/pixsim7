@@ -323,7 +323,11 @@ async def test_generate_cli_token_falls_back_to_generated_cli_profile(monkeypatc
 @pytest.mark.asyncio
 async def test_list_chat_sessions_prunes_empty_placeholders_by_default():
     db = AsyncMock()
-    db.execute = AsyncMock(side_effect=[SimpleNamespace(rowcount=3), _ScalarResult([])])
+    db.execute = AsyncMock(side_effect=[
+        SimpleNamespace(rowcount=3),  # placeholder prune
+        SimpleNamespace(rowcount=0),  # idle mcp-auto prune
+        _ScalarResult([]),            # main list select
+    ])
 
     result = await list_chat_sessions(
         engine="claude",
@@ -335,7 +339,7 @@ async def test_list_chat_sessions_prunes_empty_placeholders_by_default():
     )
 
     assert result == {"sessions": []}
-    assert db.execute.await_count == 2  # prune update + list select
+    assert db.execute.await_count == 3  # placeholder prune + idle prune + list select
     db.commit.assert_awaited_once()
 
 

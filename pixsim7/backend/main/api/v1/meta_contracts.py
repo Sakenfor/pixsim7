@@ -1885,7 +1885,33 @@ async def list_chat_sessions(
         if engine:
             prune_stmt = prune_stmt.where(ChatSession.engine == engine)
         prune_result = await db.execute(prune_stmt)
-        if (getattr(prune_result, "rowcount", 0) or 0) > 0:
+
+        # Archive mcp/mcp-auto rows that never produced any work — empty
+        # message_count, no agent_activity_log rows, idle for > 24h. The
+        # auto-register path creates one per process and they otherwise
+        # accumulate forever.
+        activity_subq = (
+            select(AgentActivityLog.session_id)
+            .where(AgentActivityLog.session_id == ChatSession.id)
+            .exists()
+        )
+        idle_cutoff = utcnow() - timedelta(hours=24)
+        idle_prune_stmt = (
+            update(ChatSession)
+            .where(ChatSession.status == "active")
+            .where(ChatSession.source.in_(["mcp", "mcp-auto"]))
+            .where(ChatSession.message_count == 0)
+            .where(ChatSession.last_used_at < idle_cutoff)
+            .where(~activity_subq)
+            .values(status="archived")
+        )
+        if user:
+            idle_prune_stmt = idle_prune_stmt.where(or_(ChatSession.user_id == user.id, ChatSession.user_id == 0))
+        if engine:
+            idle_prune_stmt = idle_prune_stmt.where(ChatSession.engine == engine)
+        idle_prune_result = await db.execute(idle_prune_stmt)
+
+        if (getattr(prune_result, "rowcount", 0) or 0) > 0 or (getattr(idle_prune_result, "rowcount", 0) or 0) > 0:
             await db.commit()
 
     stmt = (
@@ -1940,9 +1966,10 @@ async def get_chat_session(
     Looks up first by primary key, then falls back to ``cli_session_id``
     so the frontend can resolve pasted Claude/Codex CLI resume hashes.
 
-    For MCP/CLI sessions (no stored chat messages), also returns recent
-    work_summary activity so the frontend can render them as context
-    when resuming.
+    Returns recent work_summary activity for any source — chat-source
+    sessions can also accumulate work_summaries when the agent calls
+    ``log_work`` mid-conversation, and the frontend surfaces them
+    alongside the chat messages.
     """
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
@@ -1956,27 +1983,25 @@ async def get_chat_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    activity: List[Dict[str, Any]] = []
+    rows = (await db.execute(
+        select(AgentActivityLog)
+        .where(AgentActivityLog.session_id == session.id)
+        .where(AgentActivityLog.action == "work_summary")
+        .order_by(AgentActivityLog.timestamp.asc())
+        .limit(20)
+    )).scalars().all()
+    activity: List[Dict[str, Any]] = [
+        {
+            "action": r.action,
+            "detail": r.detail,
+            "plan_id": r.plan_id,
+            "contract_id": r.contract_id,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "metadata": r.extra if isinstance(r.extra, dict) else None,
+        }
+        for r in rows
+    ]
     session_source = getattr(session, "source", None)
-    if session_source in ("mcp", "mcp-auto"):
-        rows = (await db.execute(
-            select(AgentActivityLog)
-            .where(AgentActivityLog.session_id == session_id)
-            .where(AgentActivityLog.action == "work_summary")
-            .order_by(AgentActivityLog.timestamp.asc())
-            .limit(20)
-        )).scalars().all()
-        activity = [
-            {
-                "action": r.action,
-                "detail": r.detail,
-                "plan_id": r.plan_id,
-                "contract_id": r.contract_id,
-                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-                "metadata": r.extra if isinstance(r.extra, dict) else None,
-            }
-            for r in rows
-        ]
 
     return {
         "id": session.id,

@@ -483,7 +483,7 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
   const load = useCallback(() => {
     if (fetched) return;
     setLoading(true);
-    const params: Record<string, unknown> = { limit: 15, include_empty: false };
+    const params: Record<string, unknown> = { limit: 30, include_empty: false };
     if (profileId) params.profile_id = profileId;
     pixsimClient.get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params })
       .then((r) => setSessions((r.sessions || []).filter((s) => s.message_count > 0)))

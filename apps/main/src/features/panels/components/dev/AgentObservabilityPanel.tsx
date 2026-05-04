@@ -2269,8 +2269,10 @@ function AgentsView({ focusAgentId }: { focusAgentId?: string } = {}) {
                   {/* Sessions */}
                   {sessions.length > 0 && (
                     <div className="px-3 py-1.5">
-                      <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Sessions</div>
-                      <div className="space-y-1">
+                      <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">
+                        Sessions{sessions.length >= 6 ? ` (${sessions.length})` : ''}
+                      </div>
+                      <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
                         {sessions.map((s) => {
                           const isActiveHeartbeat = data?.active_session_ids?.includes(s.id) ?? false;
                           const isIdleHeartbeat = (data as any)?.idle_session_ids?.includes(s.id) ?? false;

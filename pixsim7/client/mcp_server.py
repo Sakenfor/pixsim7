@@ -712,6 +712,18 @@ def _extract_profile_from_token(token: str) -> str | None:
     return claims.get("profile_id") or claims.get("agent_id")
 
 
+def _extract_chat_session_id_from_token(token: str) -> str | None:
+    """Extract bound chat_session_id claim, if the token was minted for a tab."""
+    val = _decode_token_claims(token).get("chat_session_id")
+    return val.strip() if isinstance(val, str) and val.strip() else None
+
+
+def _extract_scope_key_from_token(token: str) -> str | None:
+    """Extract scope_key claim (e.g. tab:tab-XYZ or plan:foo) from a tab-bound token."""
+    val = _decode_token_claims(token).get("scope_key")
+    return val.strip() if isinstance(val, str) and val.strip() else None
+
+
 def _normalize_profile_id(profile_id: str | None) -> str | None:
     from pixsim7.common.scope_helpers import normalize_profile_id
     return normalize_profile_id(profile_id, extra_sentinels=frozenset({"agent"}))
@@ -959,8 +971,13 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
 
     agent_type = _extract_agent_type(token)
     profile_id = _normalize_profile_id(_extract_profile_from_token(token))
+    # Tab-bound tokens carry the calling chat session id directly — use it
+    # over auto-register/bridge fallback so log_work doesn't cross-attribute
+    # to another tab when multiple sessions share a profile.
+    token_session_id = _extract_chat_session_id_from_token(token)
+    token_scope_key = _extract_scope_key_from_token(token)
     explicit_session = (arguments.get("session_id") or "").strip() or None
-    session_id = explicit_session or _registered_session_id or "unregistered"
+    session_id = explicit_session or token_session_id or _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
 
     # Bridge-managed: read the chat session ID from the sidecar file written
@@ -970,7 +987,10 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
         if sidecar_id:
             session_id = sidecar_id
         else:
-            scope_key_hint = f"plan:{plan_id}" if plan_id else None
+            scope_key_hint = (
+                f"plan:{plan_id}" if plan_id
+                else token_scope_key  # tab:tab-XYZ from token claims
+            )
             _bridge_session_cache.pop(
                 ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(scope_key_hint)),
                 None,
