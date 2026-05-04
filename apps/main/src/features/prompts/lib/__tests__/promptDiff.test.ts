@@ -66,4 +66,19 @@ describe('diffPromptWithRanges', () => {
     expect(added[0].to).toBeDefined();
     expect(next.slice(added[0].from!, added[0].to!)).toBe('n');
   });
+
+  it('keeps connected insertions contiguous inside a single token', () => {
+    const prev = 'MOTIONS';
+    const next = 'MOTIONS_ONTO_SOMETHING';
+
+    const segments = diffPromptWithRanges(prev, next, { precision: 'fine' });
+    const added = segments.filter((segment) => segment.type === 'add');
+    const removed = segments.filter((segment) => segment.type === 'remove');
+
+    expect(added.map((segment) => segment.text)).toEqual(['_ONTO_SOMETHING']);
+    expect(removed).toHaveLength(0);
+    expect(added[0].from).toBeDefined();
+    expect(added[0].to).toBeDefined();
+    expect(next.slice(added[0].from!, added[0].to!)).toBe('_ONTO_SOMETHING');
+  });
 });

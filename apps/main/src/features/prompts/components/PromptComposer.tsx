@@ -611,6 +611,33 @@ export function PromptComposer({
     history.snapshot(valueRef.current);
   }, [history]);
 
+  const applyGhostRangeReplacement = useCallback(
+    (payload: { from: number; to: number; replaceWith: string }) => {
+      const current = valueRef.current;
+      const safeFrom = Math.max(0, Math.min(current.length, payload.from));
+      const safeTo = Math.max(safeFrom, Math.min(current.length, payload.to));
+      const next =
+        current.slice(0, safeFrom) +
+        payload.replaceWith +
+        current.slice(safeTo);
+
+      onChangeRef.current(next);
+
+      const caret = safeFrom + payload.replaceWith.length;
+      requestAnimationFrame(() => {
+        const textarea = promptTextareaRef.current;
+        if (!textarea) return;
+        textarea.focus();
+        try {
+          textarea.setSelectionRange(caret, caret);
+        } catch {
+          // No-op: best-effort caret placement.
+        }
+      });
+    },
+    [],
+  );
+
   // Debounced snapshot: captures typing pauses (600ms idle)
   useEffect(() => {
     if (undoingRef.current) {
@@ -1699,6 +1726,7 @@ export function PromptComposer({
               precision={ghostDiffPrecision}
               onSuppress={setGhostSuppressed}
               onRemovedSegments={setGhostRemoved}
+              onReplaceRange={applyGhostRangeReplacement}
             />
             <ReferencePicker
               ref={referencePickerRef}

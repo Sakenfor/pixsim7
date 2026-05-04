@@ -16,6 +16,10 @@ export interface DiffSegmentWithRange extends DiffSegment {
   from?: number;
   /** Offset in the "next" string where this segment ends (keep/add only). */
   to?: number;
+  /** Offset in the "prev" string where this segment starts, when known. */
+  prevFrom?: number;
+  /** Offset in the "prev" string where this segment ends, when known. */
+  prevTo?: number;
 }
 
 export interface DiffPromptRangeOptions {
@@ -193,11 +197,97 @@ function refineRunWithCharDiff(
   prevText: string,
   nextText: string,
   nextOffset: number,
+  prevOffset: number,
 ): DiffSegmentWithRange[] {
+  // Fast path for pure insertion/deletion inside a token.
+  // LCS char-diff can over-fragment repeated patterns (e.g. MOTIONS -> MOTIONS_ONTO...),
+  // so we use stable prefix/suffix anchoring when only one middle side changed.
+  const maxShared = Math.min(prevText.length, nextText.length);
+  let prefix = 0;
+  while (prefix < maxShared && prevText[prefix] === nextText[prefix]) {
+    prefix += 1;
+  }
+
+  let suffix = 0;
+  while (
+    suffix < maxShared - prefix &&
+    prevText[prevText.length - 1 - suffix] === nextText[nextText.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+
+  const prevMiddle = prevText.slice(prefix, prevText.length - suffix);
+  const nextMiddle = nextText.slice(prefix, nextText.length - suffix);
+  const isPureMiddleInsertion = prevMiddle.length === 0 && nextMiddle.length > 0;
+  const isPureMiddleDeletion = nextMiddle.length === 0 && prevMiddle.length > 0;
+
+  if (isPureMiddleInsertion || isPureMiddleDeletion) {
+    const refined: DiffSegmentWithRange[] = [];
+    let cursor = nextOffset;
+    let prevCursor = prevOffset;
+
+    if (prefix > 0) {
+      refined.push({
+        type: 'keep',
+        text: nextText.slice(0, prefix),
+        from: cursor,
+        to: cursor + prefix,
+        prevFrom: prevCursor,
+        prevTo: prevCursor + prefix,
+      });
+      cursor += prefix;
+      prevCursor += prefix;
+    }
+
+    if (nextMiddle.length > 0) {
+      refined.push({
+        type: 'add',
+        text: nextMiddle,
+        from: cursor,
+        to: cursor + nextMiddle.length,
+        prevFrom: prevCursor,
+        prevTo: prevCursor,
+      });
+      cursor += nextMiddle.length;
+    }
+
+    if (prevMiddle.length > 0) {
+      refined.push({
+        type: 'remove',
+        text: prevMiddle,
+        prevFrom: prevCursor,
+        prevTo: prevCursor + prevMiddle.length,
+      });
+      prevCursor += prevMiddle.length;
+    }
+
+    if (suffix > 0) {
+      refined.push({
+        type: 'keep',
+        text: nextText.slice(nextText.length - suffix),
+        from: cursor,
+        to: cursor + suffix,
+        prevFrom: prevCursor,
+        prevTo: prevCursor + suffix,
+      });
+    }
+
+    return refined;
+  }
+
   // Safety guard: avoid expensive char-level DP on very large runs.
   const MAX_BLOCK_CHARS = 600;
   if (prevText.length * nextText.length > MAX_BLOCK_CHARS * MAX_BLOCK_CHARS) {
-    return [{ type: 'add', text: nextText, from: nextOffset, to: nextOffset + nextText.length }];
+    return [
+      {
+        type: 'add',
+        text: nextText,
+        from: nextOffset,
+        to: nextOffset + nextText.length,
+        prevFrom: prevOffset,
+        prevTo: prevOffset + prevText.length,
+      },
+    ];
   }
 
   const raw = diffArrays(prevText.split(''), nextText.split(''));
@@ -205,15 +295,43 @@ function refineRunWithCharDiff(
   const refined: DiffSegmentWithRange[] = [];
 
   let cursor = nextOffset;
+  let prevCursor = prevOffset;
   for (const segment of charSegments) {
     if (segment.type === 'remove') {
-      refined.push(segment);
+      const from = prevCursor;
+      const to = prevCursor + segment.text.length;
+      refined.push({
+        type: 'remove',
+        text: segment.text,
+        prevFrom: from,
+        prevTo: to,
+      });
+      prevCursor = to;
       continue;
     }
 
     const from = cursor;
     const to = cursor + segment.text.length;
-    refined.push({ type: segment.type, text: segment.text, from, to });
+    if (segment.type === 'keep') {
+      refined.push({
+        type: 'keep',
+        text: segment.text,
+        from,
+        to,
+        prevFrom: prevCursor,
+        prevTo: prevCursor + segment.text.length,
+      });
+      prevCursor += segment.text.length;
+    } else {
+      refined.push({
+        type: 'add',
+        text: segment.text,
+        from,
+        to,
+        prevFrom: prevCursor,
+        prevTo: prevCursor,
+      });
+    }
     cursor = to;
   }
 
@@ -365,7 +483,7 @@ export function diffPromptWithRanges(
         const nextBlock = next.slice(blockFrom, blockTo);
 
         if (prevBlock.length > 0 && nextBlock.length > 0) {
-          refined.push(...refineRunWithCharDiff(prevBlock, nextBlock, blockFrom));
+          refined.push(...refineRunWithCharDiff(prevBlock, nextBlock, blockFrom, prevFrom));
           i = j;
           continue;
         }

@@ -1,15 +1,8 @@
 /**
- * PromptGhostDiff — diff-highlight backdrop for the prompt textarea.
+ * PromptGhostDiff - diff-highlight backdrop for the prompt textarea.
  *
- * Renders coloured spans behind transparent textarea text to show what
- * changed relative to a comparison snapshot.  Green = added, red +
- * strikethrough = removed, unchanged text is invisible.
- *
- * Opacity of the colour washes is driven by `stepDistance` so recent changes
- * are vivid and older ones fade out (exponential decay).
- *
- * Scroll sync, font-metric matching, and scrollbar-width compensation are
- * delegated to the shared `TextareaBackdrop` primitive.
+ * Green spans represent additions in current text.
+ * Red dot markers represent deletions from comparison text.
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
@@ -22,48 +15,32 @@ import {
 
 import { TextareaBackdrop } from './TextareaBackdrop';
 
-// ── Opacity helpers ─────────────────────────────────────────────────────────
-
 const OPACITY_MAX = 0.55;
 const OPACITY_MIN = 0.08;
 const DECAY = 0.75;
 
-/** Map history step distance → [0..1] opacity for diff highlight washes. */
 function ghostOpacity(stepDistance: number): number {
   if (stepDistance <= 0) return 0;
   return OPACITY_MIN + (OPACITY_MAX - OPACITY_MIN) * DECAY ** (stepDistance - 1);
 }
 
-/** Above this changed-ratio we suppress the overlay — diff is too noisy. */
 const MAX_DIFF_RATIO = 0.6;
 
-// ── Types ───────────────────────────────────────────────────────────────────
-
 export interface GhostDiffSource {
-  /** The text to compare the current value against */
   comparisonText: string;
-  /** How many history steps separate current from the comparison entry */
   stepDistance: number;
 }
 
 export interface PromptGhostDiffProps {
-  /** Current prompt value (the "after" side of the diff) */
   value: string;
-  /** Comparison source — null hides the ghost */
   source: GhostDiffSource | null;
-  /** Ref to the textarea element for scroll sync and dimension matching */
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  /** Must match the textarea's variant so line-heights align. */
   variant?: 'default' | 'compact';
-  /** Called when diff is suppressed (too big). Host can show a badge. */
   onSuppress?: (suppressed: boolean) => void;
-  /** Called with the removed-segment text list so the host can surface it
-      out-of-band (badge, tooltip, etc) — removes aren't rendered inline. */
   onRemovedSegments?: (removed: string[]) => void;
+  onReplaceRange?: (payload: { from: number; to: number; replaceWith: string }) => void;
   precision?: DiffPromptRangeOptions['precision'];
 }
-
-// ── Component ───────────────────────────────────────────────────────────────
 
 export function PromptGhostDiff({
   value,
@@ -72,20 +49,16 @@ export function PromptGhostDiff({
   variant = 'default',
   onSuppress,
   onRemovedSegments,
+  onReplaceRange,
   precision = 'coarse',
 }: PromptGhostDiffProps) {
-  // ── Diff computation ──
   const segments: DiffSegmentWithRange[] = useMemo(() => {
     if (!source) return [];
     return diffPromptWithRanges(source.comparisonText, value, { precision });
   }, [source, value, precision]);
 
-  const hasChanges = useMemo(
-    () => segments.some((s) => s.type !== 'keep'),
-    [segments],
-  );
+  const hasChanges = useMemo(() => segments.some((s) => s.type !== 'keep'), [segments]);
 
-  /** Fraction of segments that changed. Used to suppress noisy diffs. */
   const diffRatio = useMemo(() => {
     if (segments.length === 0) return 0;
     const changed = segments.filter((s) => s.type !== 'keep').length;
@@ -94,7 +67,6 @@ export function PromptGhostDiff({
 
   const isTooNoisy = diffRatio > MAX_DIFF_RATIO;
 
-  // Notify host of suppression state so it can show a badge
   const lastSuppressedRef = useRef(false);
   useLayoutEffect(() => {
     const suppressed = !!source && hasChanges && isTooNoisy;
@@ -104,12 +76,11 @@ export function PromptGhostDiff({
     }
   }, [source, hasChanges, isTooNoisy, onSuppress]);
 
-  // Surface removed segments out-of-band — they aren't rendered inline
-  // (would push alignment), so host widgets can show them as a badge or tooltip.
   const removedSegments = useMemo(
     () => segments.filter((s) => s.type === 'remove').map((s) => s.text),
     [segments],
   );
+
   const lastRemovedSigRef = useRef<string>('');
   useLayoutEffect(() => {
     const sig = removedSegments.join('\x1f');
@@ -123,7 +94,8 @@ export function PromptGhostDiff({
   const active = !!source && hasChanges && opacity > 0 && !isTooNoisy;
 
   const addRanges = useMemo(() => {
-    const ranges = segments
+    if (!source) return [] as Array<{ from: number; to: number; compareText: string }>;
+    return segments
       .filter(
         (segment): segment is DiffSegmentWithRange & { from: number; to: number } =>
           segment.type === 'add' &&
@@ -131,49 +103,94 @@ export function PromptGhostDiff({
           typeof segment.to === 'number' &&
           segment.from < segment.to,
       )
-      .map((segment) => ({ from: segment.from, to: segment.to }))
+      .map((segment) => {
+        const compareText =
+          typeof segment.prevFrom === 'number' && typeof segment.prevTo === 'number'
+            ? source.comparisonText.slice(segment.prevFrom, segment.prevTo)
+            : '';
+        return { from: segment.from, to: segment.to, compareText };
+      })
       .sort((a, b) => a.from - b.from);
+  }, [segments, source]);
 
-    if (ranges.length <= 1) return ranges;
-
-    // Coalesce overlaps/adjacent ranges so we render a minimal chunk set.
-    const merged: Array<{ from: number; to: number }> = [ranges[0]];
-    for (let i = 1; i < ranges.length; i += 1) {
-      const current = ranges[i];
-      const last = merged[merged.length - 1];
-      if (current.from <= last.to) {
-        last.to = Math.max(last.to, current.to);
+  const removeMarkers = useMemo(() => {
+    const markers: Array<{ at: number; text: string }> = [];
+    let cursor = 0;
+    for (const segment of segments) {
+      if (segment.type === 'remove') {
+        markers.push({ at: cursor, text: segment.text });
+        continue;
+      }
+      if (typeof segment.to === 'number') {
+        cursor = segment.to;
+      } else if (typeof segment.from === 'number') {
+        cursor = segment.from + segment.text.length;
       } else {
-        merged.push(current);
+        cursor += segment.text.length;
       }
     }
-    return merged;
+    return markers;
   }, [segments]);
 
   const renderedChunks = useMemo(() => {
-    // Render against the exact current text, slicing by add ranges. This
-    // preserves all whitespace/newlines and prevents overlay drift.
-    if (!active || addRanges.length === 0) {
+    if (!active || (addRanges.length === 0 && removeMarkers.length === 0)) {
       return value ? [{ type: 'keep' as const, text: value }] : [];
     }
 
-    const chunks: Array<{ type: 'keep' | 'add'; text: string }> = [];
+    const chunks: Array<
+      | { type: 'keep'; text: string }
+      | { type: 'add'; text: string; from: number; to: number; compareText: string }
+      | { type: 'remove'; at: number; text: string }
+    > = [];
+
     let cursor = 0;
-    for (const range of addRanges) {
-      if (cursor < range.from) {
-        chunks.push({ type: 'keep', text: value.slice(cursor, range.from) });
+    let addIndex = 0;
+    let removeIndex = 0;
+
+    while (addIndex < addRanges.length || removeIndex < removeMarkers.length) {
+      const nextAddFrom =
+        addIndex < addRanges.length ? addRanges[addIndex].from : Number.POSITIVE_INFINITY;
+      const nextRemoveAt =
+        removeIndex < removeMarkers.length
+          ? removeMarkers[removeIndex].at
+          : Number.POSITIVE_INFINITY;
+      const nextPos = Math.min(nextAddFrom, nextRemoveAt);
+
+      if (cursor < nextPos) {
+        chunks.push({ type: 'keep', text: value.slice(cursor, nextPos) });
+        cursor = nextPos;
       }
-      chunks.push({ type: 'add', text: value.slice(range.from, range.to) });
-      cursor = range.to;
+
+      while (removeIndex < removeMarkers.length && removeMarkers[removeIndex].at === nextPos) {
+        chunks.push({
+          type: 'remove',
+          at: removeMarkers[removeIndex].at,
+          text: removeMarkers[removeIndex].text,
+        });
+        removeIndex += 1;
+      }
+
+      while (addIndex < addRanges.length && addRanges[addIndex].from === nextPos) {
+        const range = addRanges[addIndex];
+        chunks.push({
+          type: 'add',
+          text: value.slice(range.from, range.to),
+          from: range.from,
+          to: range.to,
+          compareText: range.compareText,
+        });
+        cursor = Math.max(cursor, range.to);
+        addIndex += 1;
+      }
     }
+
     if (cursor < value.length) {
       chunks.push({ type: 'keep', text: value.slice(cursor) });
     }
-    return chunks.filter((chunk) => chunk.text.length > 0);
-  }, [active, addRanges, value]);
 
-  // Removed segments are surfaced out-of-band. Inline rendering uses exact
-  // slices of the current text so whitespace/layout always stays aligned.
+    return chunks.filter((chunk) => chunk.text.length > 0);
+  }, [active, addRanges, removeMarkers, value]);
+
   return (
     <TextareaBackdrop textareaRef={textareaRef} active={active} variant={variant}>
       {renderedChunks.map((chunk, i) => {
@@ -181,15 +198,47 @@ export function PromptGhostDiff({
           return (
             <span
               key={i}
-              className="text-transparent rounded-sm"
+              className="text-transparent rounded-sm pointer-events-auto cursor-pointer"
               style={{ backgroundColor: `rgba(34, 197, 94, ${opacity})` }}
+              title={
+                chunk.compareText.length > 0
+                  ? `Compare: ${chunk.compareText}\nClick to replace this chunk`
+                  : 'Compare: (empty)\nClick to remove this chunk'
+              }
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onReplaceRange?.({
+                  from: chunk.from,
+                  to: chunk.to,
+                  replaceWith: chunk.compareText,
+                });
+              }}
             >
               {chunk.text}
             </span>
           );
         }
 
-        // 'keep' — occupies space but invisible (matches textarea flow)
+        if (chunk.type === 'remove') {
+          return (
+            <span
+              key={i}
+              className="relative inline-block w-0 overflow-visible pointer-events-auto cursor-pointer align-middle"
+              title={`Removed: ${chunk.text}\nClick to restore this chunk`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onReplaceRange?.({
+                  from: chunk.at,
+                  to: chunk.at,
+                  replaceWith: chunk.text,
+                });
+              }}
+            >
+              <span className="absolute -left-1 top-[0.7em] -translate-y-1/2 w-2 h-2 rounded-full bg-red-500 shadow-sm ring-1 ring-white/80 dark:ring-neutral-900/80" />
+            </span>
+          );
+        }
+
         return (
           <span key={i} className="text-transparent">
             {chunk.text}
