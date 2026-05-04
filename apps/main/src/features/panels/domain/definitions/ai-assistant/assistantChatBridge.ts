@@ -130,6 +130,14 @@ function appendHeartbeat(log: ThinkingEntry[], action: string, detail: string): 
  */
 const STALE_TIMEOUT_S = 90;
 
+/**
+ * Backend can answer 'task_not_found' before the bridge has reconnected and
+ * reported its in-flight task_ids. Retry a few times before surfacing the
+ * error so the user doesn't see a spurious failure during a backend restart.
+ */
+const RECONNECT_RETRY_MAX = 3;
+const RECONNECT_RETRY_DELAY_MS = 6_000;
+
 // ── Inflight task persistence (survives page reload / HMR full-reload) ──
 
 const INFLIGHT_KEY = 'ai-assistant:inflight';
@@ -208,6 +216,8 @@ class AssistantChatBridge {
   private _wsPingTimer: ReturnType<typeof setInterval> | null = null;
   private _wsConnecting = false;
   private _wsToken: string | null = null;
+  /** task_not_found retry counters keyed by tab id. Reset on new send / successful result. */
+  private _reconnectRetries = new Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }>();
 
   constructor() {
     this._staleTimer = setInterval(() => this._checkStale(), 15_000);
@@ -487,6 +497,7 @@ class AssistantChatBridge {
         thinkingLog: request.thinkingLog,
         reconnected: data.reconnected as boolean | undefined,
       };
+      this._clearReconnectRetry(tabId);
       // Persist result to localStorage so it survives full page reload
       // even if the component hasn't consumed it yet.
       saveCompletedResult(tabId, request.result);
@@ -513,19 +524,82 @@ class AssistantChatBridge {
       appendHeartbeat(request.thinkingLog, 'awaiting_input', request.pendingConfirmation.title);
       this._notify();
     } else if (type === 'error') {
+      // task_not_found can race with bridge reconnect after a backend restart.
+      // The bridge may not have reported its in-flight task_ids yet; retry a
+      // few times before surfacing the error so the user doesn't see a
+      // spurious failure during a routine backend restart.
+      const errorCode = data.error_code as string | undefined;
+      if (
+        errorCode === 'task_not_found'
+        && request.taskId
+        && (request.status === 'pending' || request.status === 'streaming')
+        && this._scheduleReconnectRetry(request)
+      ) {
+        return;
+      }
+
       request.status = 'error';
       request.activity = null;
       request.result = {
         ok: false,
         error: (data.error as string) || 'Unknown error',
-        error_code: data.error_code as string | undefined,
+        error_code: errorCode,
         error_details: data.error_details as Record<string, unknown> | undefined,
         thinkingLog: request.thinkingLog,
       };
+      this._clearReconnectRetry(tabId);
       saveCompletedResult(tabId, request.result);
       this._persistInflight();
       this._notify();
     }
+  }
+
+  /** Try to schedule another reconnect attempt for a still-inflight request.
+   *  Returns true if a retry was scheduled (caller should NOT surface the error),
+   *  false if attempts are exhausted (caller proceeds with normal error handling). */
+  private _scheduleReconnectRetry(request: BridgeRequest): boolean {
+    const tabId = request.tabId;
+    const taskId = request.taskId;
+    if (!taskId) return false;
+
+    const state = this._reconnectRetries.get(tabId) ?? { attempts: 0, timer: null };
+    if (state.attempts >= RECONNECT_RETRY_MAX) return false;
+    state.attempts += 1;
+    if (state.timer) clearTimeout(state.timer);
+
+    request.activity = `Reconnecting (${state.attempts}/${RECONNECT_RETRY_MAX})...`;
+    request._lastActivity = Date.now();
+    this._notify();
+
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      // Bail out if the request was completed/cancelled in the meantime.
+      const cur = this._requests.get(tabId);
+      if (!cur || cur._consumed) return;
+      if (cur.status !== 'pending' && cur.status !== 'streaming') return;
+      if (cur.taskId !== taskId) return;
+      this._ensureWs().then((ok) => {
+        if (!ok || this._ws?.readyState !== WebSocket.OPEN) {
+          this._scheduleReconnect();
+          return;
+        }
+        cur._lastActivity = Date.now();
+        this._ws.send(JSON.stringify({
+          type: 'reconnect',
+          tab_id: tabId,
+          task_id: taskId,
+          ...(cur.bridgeSessionId ? { bridge_session_id: cur.bridgeSessionId } : {}),
+        }));
+      });
+    }, RECONNECT_RETRY_DELAY_MS);
+    this._reconnectRetries.set(tabId, state);
+    return true;
+  }
+
+  private _clearReconnectRetry(tabId: string): void {
+    const state = this._reconnectRetries.get(tabId);
+    if (state?.timer) clearTimeout(state.timer);
+    this._reconnectRetries.delete(tabId);
   }
 
   // ── SSE fallback (same as original implementation) ──
@@ -629,6 +703,7 @@ class AssistantChatBridge {
   async send(tabId: string, body: Record<string, unknown>): Promise<void> {
     // Abort any existing request for this tab
     this._requests.get(tabId)?.abort.abort();
+    this._clearReconnectRetry(tabId);
 
     const abort = new AbortController();
     const bridgeSessionId = typeof body.bridge_session_id === 'string' && body.bridge_session_id
@@ -667,6 +742,7 @@ class AssistantChatBridge {
   cancel(tabId: string): void {
     // SSE path: abort the fetch
     this._requests.get(tabId)?.abort.abort();
+    this._clearReconnectRetry(tabId);
     // WS path: send cancel to server so it stops the dispatch task
     if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) {
       this._ws.send(JSON.stringify({ type: 'cancel', tab_id: tabId }));

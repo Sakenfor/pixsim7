@@ -422,10 +422,80 @@ class RemoteCommandBridge:
             pass
 
     def update_bridge_pool_status(self, bridge_client_id: str, status: Dict[str, Any]) -> None:
-        """Update pool status for a connected bridge client."""
+        """Update pool status for a connected bridge client.
+
+        Also re-registers any in-flight task IDs the bridge reports. This is
+        what lets a frontend re-attach to a running task after the backend
+        was restarted: the bridge survives the outage, reports its currently
+        running task_ids on reconnect, and we rebuild the dispatch state so
+        ``_handle_reconnect`` can stream heartbeats and the eventual result.
+        """
         agent = self._agents.get(bridge_client_id)
-        if agent:
-            agent.pool_status = status
+        if not agent:
+            return
+        agent.pool_status = status
+
+        active_tasks = status.get("active_tasks") if isinstance(status, dict) else None
+        if isinstance(active_tasks, list):
+            for entry in active_tasks:
+                if not isinstance(entry, dict):
+                    continue
+                tid = str(entry.get("task_id") or "").strip()
+                if not tid:
+                    continue
+                self._register_active_task_from_bridge(
+                    task_id=tid,
+                    agent=agent,
+                    bridge_session_id=entry.get("bridge_session_id"),
+                    action=str(entry.get("action") or ""),
+                    detail=str(entry.get("detail") or ""),
+                )
+
+    def _register_active_task_from_bridge(
+        self,
+        *,
+        task_id: str,
+        agent: RemoteAgent,
+        bridge_session_id: Optional[str] = None,
+        action: str = "",
+        detail: str = "",
+    ) -> None:
+        """Re-register an in-flight task reported by a reconnecting bridge.
+
+        Idempotent: re-registers only if the task isn't already known and
+        hasn't already been completed. Creates a pending future so a future
+        ``resolve_task`` (when the bridge sends the eventual result) can
+        wake any reconnect handler currently awaiting it.
+        """
+        if task_id in self._completed_results:
+            return  # already finished — bridge will replay; nothing to wait on
+        if task_id in self._active_tasks:
+            return  # already tracked
+
+        self._active_tasks[task_id] = {
+            "_ts": datetime.now(timezone.utc),
+            "bridge_id": agent.bridge_id,
+            "bridge_client_id": agent.bridge_client_id,
+            "user_id": agent.user_id,
+            "action": action,
+            "detail": detail,
+        }
+        agent.current_task_ids.add(task_id)
+
+        if task_id not in self._pending_tasks:
+            try:
+                loop = asyncio.get_event_loop()
+                self._pending_tasks[task_id] = loop.create_future()
+            except RuntimeError:
+                # No running loop (e.g. unit tests) — skip future creation;
+                # resolve_task is still safe and will populate _completed_results.
+                pass
+
+        logger.info(
+            "remote_task_recovered_from_handshake",
+            task_id=task_id,
+            bridge_client_id=agent.bridge_client_id,
+        )
 
     def update_bridge_models(
         self,

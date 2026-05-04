@@ -75,6 +75,10 @@ class Bridge:
         self._connected = False
         self._tasks_handled = 0
         self._buffered_results: dict[str, dict] = {}  # task_id -> result msg (buffer for WS failures)
+        # In-flight tasks the bridge is currently processing. Reported in
+        # pool_status so a restarted backend can rebuild its _active_tasks
+        # and let frontend reconnects re-attach to running work.
+        self._inflight_tasks: dict[str, dict] = {}  # task_id -> {bridge_session_id, started_at, action, detail}
         self._mcp_config_path: Optional[str] = None
         self._token_file: Optional[TokenFile] = None
         self._system_prompt: Optional[str] = None
@@ -364,6 +368,18 @@ class Bridge:
             "total": len(self._pool._sessions),
             "engines": [e.split("/")[-1].split("\\")[-1] for e in self._pool._engines],
             "sessions": [s.to_dict() for s in self._pool.sessions],
+            # Surface in-flight task_ids so a restarted backend can rebuild
+            # its _active_tasks state and accept frontend reconnects for them.
+            "active_tasks": [
+                {
+                    "task_id": tid,
+                    "bridge_session_id": info.get("bridge_session_id"),
+                    "started_at": info.get("started_at"),
+                    "action": info.get("action", ""),
+                    "detail": info.get("detail", ""),
+                }
+                for tid, info in self._inflight_tasks.items()
+            ],
         }))
 
     async def _idle_heartbeat_loop(self, ws) -> None:
@@ -887,6 +903,15 @@ class Bridge:
         meta = self._extract_task_meta(msg)
         get_logger().info("task_received", task=task_id[:8], type=task_type, engine=meta["engine"], model=meta["model"])
 
+        # Register inflight so pool_status reports it on (re)connect.
+        import time as _time_inflight
+        self._inflight_tasks[task_id] = {
+            "bridge_session_id": meta.get("bridge_session_id"),
+            "started_at": _time_inflight.time(),
+            "action": "processing_task",
+            "detail": "",
+        }
+
         # Set in-process dispatch session so MCP tools (log_work) can
         # resolve the correct chat session without file I/O races.
         from pixsim7.client.mcp_server import set_dispatch_session
@@ -1008,6 +1033,13 @@ class Bridge:
                 nonlocal last_detail
                 if detail:
                     last_detail = detail[:200]
+                # Mirror onto inflight record so reconnect handshakes carry
+                # the latest action/detail without an extra heartbeat hop.
+                inflight = self._inflight_tasks.get(task_id)
+                if inflight is not None:
+                    inflight["action"] = event_type or inflight.get("action", "")
+                    if detail:
+                        inflight["detail"] = detail[:200]
                 asyncio.ensure_future(send_progress(event_type, detail))
 
             # ── Tool gate: intercept built-in tool_use events ──
@@ -1108,6 +1140,11 @@ class Bridge:
                 # WS dead — buffer error for replay on reconnect
                 self._buffered_results[task_id] = error_msg
                 get_logger().warning("ws_dead_buffered_error", task=task_id[:8])
+        finally:
+            # Whatever happened — success, buffered, or error — the bridge is
+            # no longer actively running this task. Drop it so the next
+            # pool_status reflects reality.
+            self._inflight_tasks.pop(task_id, None)
 
     @staticmethod
     def _read_local_images(image_paths: list[dict]) -> list[dict]:

@@ -95,7 +95,13 @@ async def _wait_for_replayed_result(
     *,
     bridge: Any,
 ) -> Dict[str, Any] | None:
-    """Wait briefly for a bridge replayed result to land in completed cache."""
+    """Wait briefly for a bridge replayed result to land in completed cache.
+
+    Also returns early (with the sentinel ``{"_status": "active"}``) if the
+    task is rebuilt into the bridge's ``_active_tasks`` mid-wait — which
+    happens when a reconnecting bridge reports it via ``pool_status``. The
+    caller then switches to streaming mode instead of polling further.
+    """
     wait_s = max(float(_RECONNECT_REPLAY_WAIT_S), 0.0)
     if wait_s <= 0:
         return None
@@ -108,6 +114,8 @@ async def _wait_for_replayed_result(
         cached = bridge.get_completed_result(task_id)
         if cached:
             return cached
+        if task_id in getattr(bridge, "_active_tasks", {}):
+            return {"_status": "active"}
         await asyncio.sleep(poll_s)
     return None
 
@@ -627,6 +635,93 @@ async def _handle_message(
         })
 
 
+async def _stream_active_task(
+    websocket: WebSocket,
+    *,
+    tab_id: str,
+    task_id: str,
+    bridge: Any,
+) -> bool:
+    """Stream heartbeats and the eventual result for an in-flight task.
+
+    Returns True if a terminal message (result or stream-failure error) was
+    sent on this WS, False if there was nothing to wait on (no future).
+    """
+    hb_queue: asyncio.Queue = asyncio.Queue(maxsize=64)
+    bridge._heartbeat_queues[task_id] = hb_queue
+    future = bridge._pending_tasks.get(task_id)
+
+    await websocket.send_json({
+        "type": "heartbeat", "tab_id": tab_id,
+        "action": "reconnected", "detail": "Reattached to active task",
+        "task_id": task_id,
+    })
+
+    if not (future and not future.done()):
+        bridge._heartbeat_queues.pop(task_id, None)
+        return False
+
+    try:
+        timeout = 600  # generous reconnect timeout
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                break
+
+            if future.done():
+                result = future.result()
+                response_text = extract_response_text(result)
+                await websocket.send_json({
+                    "type": "result",
+                    "tab_id": tab_id,
+                    "ok": True,
+                    "response": response_text,
+                    "bridge_session_id": result.get("bridge_session_id"),
+                    "reconnected": True,
+                })
+                return True
+
+            hb_wait = asyncio.ensure_future(hb_queue.get())
+            done, _ = await asyncio.wait(
+                [hb_wait, future],
+                timeout=min(remaining, 10),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if hb_wait in done:
+                hb = hb_wait.result()
+                deadline = asyncio.get_event_loop().time() + timeout
+                await websocket.send_json({
+                    "type": "heartbeat", "tab_id": tab_id,
+                    "action": hb.get("action", ""),
+                    "detail": hb.get("detail", ""),
+                })
+            else:
+                hb_wait.cancel()
+
+            if future in done:
+                result = future.result()
+                response_text = extract_response_text(result)
+                await websocket.send_json({
+                    "type": "result",
+                    "tab_id": tab_id,
+                    "ok": True,
+                    "response": response_text,
+                    "bridge_session_id": result.get("bridge_session_id"),
+                    "reconnected": True,
+                })
+                return True
+    except Exception as e:
+        await websocket.send_json({
+            "type": "error", "tab_id": tab_id,
+            **_error_payload(f"Reconnect stream failed: {e}", code="reconnect_stream_failed"),
+        })
+        return True
+    finally:
+        bridge._heartbeat_queues.pop(task_id, None)
+    return True
+
+
 async def _handle_reconnect(
     websocket: WebSocket,
     data: Dict[str, Any],
@@ -664,86 +759,16 @@ async def _handle_reconnect(
         })
         return
 
-    # Check if task is still active — create a new heartbeat queue to reattach
+    # Active task — either still alive from this backend instance or rebuilt
+    # from a reconnecting bridge's pool_status handshake.
     if task_id in remote_cmd_bridge._active_tasks:
-        hb_queue: asyncio.Queue = asyncio.Queue(maxsize=64)
-        remote_cmd_bridge._heartbeat_queues[task_id] = hb_queue
+        if await _stream_active_task(
+            websocket, tab_id=tab_id, task_id=task_id, bridge=remote_cmd_bridge,
+        ):
+            return
 
-        # Also check if there's a pending future we can await
-        future = remote_cmd_bridge._pending_tasks.get(task_id)
-
-        await websocket.send_json({
-            "type": "heartbeat", "tab_id": tab_id,
-            "action": "reconnected", "detail": "Reattached to active task",
-            "task_id": task_id,
-        })
-
-        if future and not future.done():
-            # Stream heartbeats until result arrives
-            try:
-                timeout = 600  # generous reconnect timeout
-                deadline = asyncio.get_event_loop().time() + timeout
-                while True:
-                    remaining = deadline - asyncio.get_event_loop().time()
-                    if remaining <= 0:
-                        break
-
-                    if future.done():
-                        result = future.result()
-                        response_text = extract_response_text(result)
-                        await websocket.send_json({
-                            "type": "result",
-                            "tab_id": tab_id,
-                            "ok": True,
-                            "response": response_text,
-                            "bridge_session_id": result.get("bridge_session_id"),
-                            "reconnected": True,
-                        })
-                        return
-
-                    hb_wait = asyncio.ensure_future(hb_queue.get())
-                    done, _ = await asyncio.wait(
-                        [hb_wait, future],
-                        timeout=min(remaining, 10),
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    if hb_wait in done:
-                        hb = hb_wait.result()
-                        deadline = asyncio.get_event_loop().time() + timeout
-                        await websocket.send_json({
-                            "type": "heartbeat", "tab_id": tab_id,
-                            "action": hb.get("action", ""),
-                            "detail": hb.get("detail", ""),
-                        })
-                    else:
-                        hb_wait.cancel()
-
-                    if future in done:
-                        result = future.result()
-                        response_text = extract_response_text(result)
-                        await websocket.send_json({
-                            "type": "result",
-                            "tab_id": tab_id,
-                            "ok": True,
-                            "response": response_text,
-                            "bridge_session_id": result.get("bridge_session_id"),
-                            "reconnected": True,
-                        })
-                        return
-            except Exception as e:
-                err = _error_payload(
-                    f"Reconnect stream failed: {e}",
-                    code="reconnect_stream_failed",
-                )
-                await websocket.send_json({
-                    "type": "error", "tab_id": tab_id,
-                    **err,
-                })
-            finally:
-                remote_cmd_bridge._heartbeat_queues.pop(task_id, None)
-        return
-
-    # Backend may have restarted while the bridge still has buffered result.
+    # Backend may have restarted while the bridge still has buffered result
+    # (or is mid-flight and about to report it via pool_status).
     connected_count = getattr(remote_cmd_bridge, "connected_count", 0)
     if isinstance(connected_count, int) and connected_count > 0:
         await websocket.send_json({
@@ -754,7 +779,14 @@ async def _handle_reconnect(
             "detail": "Waiting for bridge replay",
         })
         replayed = await _wait_for_replayed_result(task_id, bridge=remote_cmd_bridge)
-        if replayed:
+        if replayed and replayed.get("_status") == "active":
+            # Bridge rebuilt the task into _active_tasks during the wait —
+            # switch to streaming the live result.
+            if await _stream_active_task(
+                websocket, tab_id=tab_id, task_id=task_id, bridge=remote_cmd_bridge,
+            ):
+                return
+        elif replayed:
             response_text = extract_response_text(replayed)
             await websocket.send_json({
                 "type": "result",
