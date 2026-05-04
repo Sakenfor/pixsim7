@@ -42,7 +42,19 @@ export function usePanelCatalogBootstrap(
   const onInitializeErrorRef = useRef(onInitializeError);
   onInitializeErrorRef.current = onInitializeError;
   const [catalogVersion, setCatalogVersion] = useState(0);
-  const [initializationComplete, setInitializationComplete] = useState(() => !enabled);
+
+  // When the caller asks for a specific set of panels and they are all
+  // already registered (typical for the inner QuickGen host whose panels
+  // were registered by the outer viewer bootstrap), start fully initialized
+  // so consumers don't flicker through an empty placeholder while the async
+  // no-op initialize() round-trips.
+  const allPanelsAlreadyRegistered =
+    enabled &&
+    normalizedPanelIds.length > 0 &&
+    normalizedPanelIds.every((id) => panelSelectors.has(id));
+  const [initializationComplete, setInitializationComplete] = useState(
+    () => !enabled || allPanelsAlreadyRegistered,
+  );
 
   useEffect(() => {
     if (!enabled) {
@@ -51,7 +63,12 @@ export function usePanelCatalogBootstrap(
     }
 
     let cancelled = false;
-    setInitializationComplete(false);
+    const fastPathReady =
+      normalizedPanelIds.length > 0 &&
+      normalizedPanelIds.every((id) => panelSelectors.has(id));
+    if (!fastPathReady) {
+      setInitializationComplete(false);
+    }
     const bumpVersion = () => {
       if (cancelled) return;
       setCatalogVersion((version) => version + 1);

@@ -187,7 +187,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     );
 
     if (showLoadingPlaceholder) {
-      return <div className={className ?? 'h-full w-full'} />;
+      return <QuickGenSkeleton className={className} isMobile={isMobile} panelCount={panels.length} />;
     }
 
     if (isMobile) {
@@ -253,3 +253,35 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
 );
 
 QuickGenPanelHost.displayName = 'QuickGenPanelHost';
+
+function QuickGenSkeleton({
+  className,
+  isMobile,
+  panelCount,
+}: {
+  className?: string;
+  isMobile: boolean;
+  panelCount: number;
+}) {
+  const panes = Math.max(1, Math.min(panelCount || 3, 4));
+  const containerClass = isMobile
+    ? 'h-full w-full flex flex-col gap-1 p-1 animate-pulse'
+    : 'h-full w-full flex gap-1 p-1 animate-pulse';
+
+  return (
+    <div
+      className={className ?? 'h-full w-full'}
+      role="status"
+      aria-label="Loading generation panels"
+    >
+      <div className={containerClass}>
+        {Array.from({ length: panes }).map((_, i) => (
+          <div
+            key={i}
+            className="flex-1 min-h-0 rounded bg-neutral-200/70 dark:bg-neutral-800/60"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

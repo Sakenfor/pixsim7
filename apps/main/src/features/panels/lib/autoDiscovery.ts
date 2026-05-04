@@ -201,48 +201,72 @@ export async function autoRegisterPanels(
     );
   }
 
-  for (const [path, loadModule] of candidateModules) {
-    try {
-      const panel = await loadDiscoveredPanel(path, loadModule);
-      if (!panel) {
-        if (verbose) {
-          console.log(`[PanelAutoDiscovery] Skipping ${path} (no default panel export)`);
-        }
-        continue;
-      }
-
-      // Filter by context if specified
-      if (!panelMatchesContexts(panel.contexts, filterContexts)) {
-        if (verbose) {
-          console.log(
-            `[PanelAutoDiscovery] Skipping ${panel.definition.id} (context mismatch)`
-          );
-        }
-        continue;
-      }
-
-      if (inFlightPanelRegistrations.has(panel.definition.id)) {
-        if (verbose) {
-          console.log(
-            `[PanelAutoDiscovery] Skipping ${panel.definition.id} (registration in progress)`,
-          );
-        }
-        continue;
-      }
-
-      inFlightPanelRegistrations.add(panel.definition.id);
+  // Phase 1: Load all candidate modules in parallel. The dynamic imports are
+  // independent network/parse work, so fanning them out collapses what was a
+  // serial import waterfall (~30+ panel modules x one round-trip each in dev)
+  // into a single parallel batch.
+  const loaded = await Promise.all(
+    candidateModules.map(async ([path, loadModule]) => {
       try {
-        // Check if already registered
-        if (panelSelectors.has(panel.definition.id as any)) {
-          if (verbose) {
-            console.log(
-              `[PanelAutoDiscovery] Skipping ${panel.definition.id} (already registered)`
-            );
-          }
-          continue;
-        }
+        const panel = await loadDiscoveredPanel(path, loadModule);
+        return { path, panel, error: null as Error | null };
+      } catch (error) {
+        return {
+          path,
+          panel: null,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+    }),
+  );
 
-        // Register the panel via the plugin runtime
+  // Phase 2: Decide which panels to register; track failures and skips.
+  const toRegister: DiscoveredPanel[] = [];
+  for (const { path, panel, error } of loaded) {
+    if (error) {
+      failed.push({ path, error });
+      console.error(`[PanelAutoDiscovery] Failed to load panel from ${path}:`, error);
+      continue;
+    }
+    if (!panel) {
+      if (verbose) {
+        console.log(`[PanelAutoDiscovery] Skipping ${path} (no default panel export)`);
+      }
+      continue;
+    }
+    if (!panelMatchesContexts(panel.contexts, filterContexts)) {
+      if (verbose) {
+        console.log(
+          `[PanelAutoDiscovery] Skipping ${panel.definition.id} (context mismatch)`
+        );
+      }
+      continue;
+    }
+    if (inFlightPanelRegistrations.has(panel.definition.id)) {
+      if (verbose) {
+        console.log(
+          `[PanelAutoDiscovery] Skipping ${panel.definition.id} (registration in progress)`,
+        );
+      }
+      continue;
+    }
+    if (panelSelectors.has(panel.definition.id as any)) {
+      if (verbose) {
+        console.log(
+          `[PanelAutoDiscovery] Skipping ${panel.definition.id} (already registered)`
+        );
+      }
+      continue;
+    }
+    inFlightPanelRegistrations.add(panel.definition.id);
+    toRegister.push(panel);
+  }
+
+  // Phase 3: Register concurrently — each call only touches its own plugin id,
+  // and the in-flight set above already guards against duplicate registration.
+  await Promise.all(
+    toRegister.map(async (panel) => {
+      try {
         await registerPluginDefinition({
           id: panel.definition.id,
           family: 'workspace-panel',
@@ -258,21 +282,20 @@ export async function autoRegisterPanels(
             `[PanelAutoDiscovery] Registered ${panel.definition.id} from ${panel.sourcePath}`
           );
         }
+      } catch (error) {
+        failed.push({
+          path: panel.sourcePath,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+        console.error(
+          `[PanelAutoDiscovery] Failed to register panel from ${panel.sourcePath}:`,
+          error
+        );
       } finally {
         inFlightPanelRegistrations.delete(panel.definition.id);
       }
-    } catch (error) {
-      failed.push({
-        path,
-        error: error instanceof Error ? error : new Error(String(error)),
-      });
-
-      console.error(
-        `[PanelAutoDiscovery] Failed to register panel from ${path}:`,
-        error
-      );
-    }
-  }
+    }),
+  );
 
   const duration = performance.now() - startTime;
 
