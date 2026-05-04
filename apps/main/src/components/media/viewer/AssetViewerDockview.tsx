@@ -383,7 +383,7 @@ export function AssetViewerDockview({
   }, [dockviewApiVersion, viewerPanelIds, floatingViewerPanelIds]);
 
   if (showLoadingPlaceholder) {
-    return <div className={className ?? "h-full w-full"} />;
+    return <AssetViewerSkeleton className={className} />;
   }
 
   if (isMobile) {
@@ -421,5 +421,25 @@ export function AssetViewerDockview({
       resolvePanelTitle={(panelId) => panelSelectors.get(panelId)?.title ?? panelId}
       resolvePanelPosition={resolveViewerPanelPosition}
     />
+  );
+}
+
+function AssetViewerSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={className ?? 'h-full w-full'}
+      role="status"
+      aria-label="Loading asset viewer"
+    >
+      <div className="h-full w-full flex flex-col gap-1 p-1 animate-pulse">
+        {/* Media preview placeholder (~70%) */}
+        <div className="flex-[7] rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+        {/* Bottom row: generate + metadata placeholders (~30%) */}
+        <div className="flex-[3] flex gap-1 min-h-0">
+          <div className="flex-1 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+          <div className="flex-1 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+        </div>
+      </div>
+    </div>
   );
 }
