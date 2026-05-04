@@ -2,6 +2,8 @@
  * SettingsPanel for QuickGenerate.
  * Split from QuickGeneratePanels.tsx.
  */
+import { Suspense, lazy } from 'react';
+
 import { useDockviewId } from '@lib/dockview';
 
 import {
@@ -16,7 +18,6 @@ import {
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import {
-  GenerationSettingsPanel,
   GenerationSourceToggle,
 } from '@features/generation';
 import {
@@ -29,6 +30,31 @@ import { useQuickGenerateController } from '@features/prompts';
 import { OPERATION_METADATA } from '@/types/operations';
 
 import type { QuickGenPanelContext, QuickGenPanelProps } from './quickGenPanelTypes';
+
+// GenerationSettingsPanel is the heaviest piece in the quickgen tree
+// (~1.2k lines + cost estimates, model dropdowns, mask picker, etc).
+// Lazy-loading it lets quickgen-settings register and the prompt/asset
+// panels render without waiting for this chunk to download.
+const GenerationSettingsPanel = lazy(() =>
+  import('./GenerationSettingsPanel').then((m) => ({
+    default: m.GenerationSettingsPanel,
+  })),
+);
+
+function GenerationSettingsPanelFallback() {
+  return (
+    <div
+      className="h-full w-full p-2 flex flex-col gap-2 animate-pulse"
+      role="status"
+      aria-label="Loading generation settings"
+    >
+      <div className="h-8 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+      <div className="h-8 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+      <div className="h-24 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+      <div className="h-10 mt-auto rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+    </div>
+  );
+}
 
 
 /**
@@ -99,22 +125,24 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   if (useDefaultPanel) {
     return (
       <div className="h-full w-full p-2 min-h-0 overflow-hidden">
-        <GenerationSettingsPanel
-          showOperationType={resolvedSettings.showOperationType}
-          showProvider={resolvedSettings.showProvider}
-          showPresets={resolvedSettings.showInputSets}
-          generating={controller.generating}
-          canGenerate={canGenerate}
-          onGenerate={controller.generate}
-          error={controller.error}
-          targetProviderId={targetProviderId}
-          queueProgress={controller.queueProgress}
-          onGenerateBurst={(count) => controller.generate({ count })}
-          onGenerateSequentialBurst={controller.generateSequentialBurst}
-          onGenerateEach={(fanoutOptions) => controller.generateEach({ fanoutOptions })}
-          onGenerateCurrentOnly={controller.generateCurrentOnly}
-          sourceToggle={sourceToggle}
-        />
+        <Suspense fallback={<GenerationSettingsPanelFallback />}>
+          <GenerationSettingsPanel
+            showOperationType={resolvedSettings.showOperationType}
+            showProvider={resolvedSettings.showProvider}
+            showPresets={resolvedSettings.showInputSets}
+            generating={controller.generating}
+            canGenerate={canGenerate}
+            onGenerate={controller.generate}
+            error={controller.error}
+            targetProviderId={targetProviderId}
+            queueProgress={controller.queueProgress}
+            onGenerateBurst={(count) => controller.generate({ count })}
+            onGenerateSequentialBurst={controller.generateSequentialBurst}
+            onGenerateEach={(fanoutOptions) => controller.generateEach({ fanoutOptions })}
+            onGenerateCurrentOnly={controller.generateCurrentOnly}
+            sourceToggle={sourceToggle}
+          />
+        </Suspense>
       </div>
     );
   }
