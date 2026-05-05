@@ -17,13 +17,15 @@ import '@features/generation/stores.registrations'
 // not delivered into a routing-less manager.
 import '@features/generation/hooks/useGenerationWebSocket'
 
-import { configureKVStorage } from '@pixsim7/game.engine'
+import { configureKVStorage, configureMetricPreviewApi } from '@pixsim7/game.engine'
+import { getAuthTokenProvider } from '@pixsim7/shared.auth.core'
 
 import { registerModules, moduleRegistry } from '@app/modules'
 
 import App from './App.tsx'
 import { initializeConsole } from './lib/dev/console'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
+import { API_BASE_URL } from './lib/api/client'
 import { initWebLogger, logEvent } from './lib/utils/logging'
 
 import '@lib/dockview' // Register auto-context menu presets
@@ -63,6 +65,21 @@ try {
 } catch {
   // Ignore storage access errors (e.g. restricted browser contexts).
 }
+
+// Wire the engine's metric preview helpers (previewUnifiedMood,
+// previewReputationBand, etc.) to an authed fetch. Without this, callers like
+// useUnifiedMood throw "fetch not configured".
+configureMetricPreviewApi({
+  baseUrl: API_BASE_URL,
+  fetch: async (input, init) => {
+    const token = await Promise.resolve(getAuthTokenProvider().getAccessToken())
+    const headers = new Headers(init?.headers)
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    return fetch(input, { ...init, headers })
+  },
+})
 
 async function initializeDevDiagnostics() {
   if (!import.meta.env.DEV) {

@@ -19,10 +19,11 @@ import { Button, Panel } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import type { InteractionHistoryEntry } from '@features/interactions';
+import { unifiedMoodToMoodState } from '@features/interactions/lib/moodAdapter';
 
 import { NpcInteractionPanel } from '@/components/game/panels/NpcInteractionPanel';
 import { useInteractionSuggestions } from '@/hooks/useInteractionSuggestions';
-import { useNpcMoodPreview } from '@/hooks/useNpcMoodPreview';
+import { useUnifiedMood } from '@/hooks/useUnifiedMood';
 import './InteractionComponentsDemo.css';
 
 // Mock data
@@ -195,31 +196,35 @@ export function InteractionComponentsDemo() {
   const [liveSessionId, setLiveSessionId] = useState('101');
   const [liveNpcId, setLiveNpcId] = useState('1');
 
-  const parsedWorldId = useLiveData ? Number(liveWorldId) || null : null;
-  const parsedSessionId = useLiveData ? Number(liveSessionId) || null : null;
-  const parsedNpcId = useLiveData ? Number(liveNpcId) || null : null;
+  const parsedWorldId = useLiveData ? Number(liveWorldId) || 0 : 0;
+  const parsedSessionId = useLiveData ? Number(liveSessionId) || 0 : 0;
+  const parsedNpcId = useLiveData ? Number(liveNpcId) || 0 : 0;
 
-  const liveMood = useNpcMoodPreview({
+  // useUnifiedMood skips fetching when any required id is falsy.
+  const liveMood = useUnifiedMood({
     worldId: parsedWorldId,
     npcId: parsedNpcId,
     sessionId: parsedSessionId,
-    autoFetch: useLiveData,
   });
 
   const liveSuggestions = useInteractionSuggestions({
-    worldId: parsedWorldId,
-    sessionId: parsedSessionId,
-    npcId: parsedNpcId,
+    worldId: parsedWorldId || null,
+    sessionId: parsedSessionId || null,
+    npcId: parsedNpcId || null,
     autoFetch: useLiveData,
   });
 
-  const panelMood = useLiveData ? liveMood.mood ?? undefined : mockMood;
+  const liveMoodState = useLiveData && liveMood.data
+    ? unifiedMoodToMoodState(liveMood.data)
+    : undefined;
+
+  const panelMood = useLiveData ? liveMoodState : mockMood;
   const panelSuggestions = useLiveData ? liveSuggestions.suggestions : mockSuggestions;
   const panelChains = useLiveData ? [] : mockChains;
   const panelChainStates = useLiveData ? {} : mockChainStates;
   const panelHistory = useLiveData ? [] : mockHistory;
-  const panelNpcId = parsedNpcId ?? 1;
-  const panelSessionId = parsedSessionId ?? 101;
+  const panelNpcId = parsedNpcId || 1;
+  const panelSessionId = parsedSessionId || 101;
   const panelNpcName = useLiveData ? `NPC #${panelNpcId}` : 'Sarah';
 
   const liveError = liveMood.error ?? liveSuggestions.error;
@@ -322,7 +327,6 @@ export function InteractionComponentsDemo() {
                   size="sm"
                   variant="secondary"
                   onClick={() => {
-                    void liveMood.refetch();
                     void liveSuggestions.refetch();
                   }}
                   disabled={liveLoading}
@@ -337,7 +341,7 @@ export function InteractionComponentsDemo() {
                 Error: {liveError.message}
               </p>
             )}
-            {useLiveData && !liveError && !liveLoading && !liveMood.mood && (
+            {useLiveData && !liveError && !liveLoading && !liveMood.data && (
               <p className="demo-live-hint">
                 No mood returned yet. Pick valid IDs and Refetch.
               </p>
