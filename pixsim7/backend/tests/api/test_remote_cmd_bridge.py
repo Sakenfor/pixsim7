@@ -480,3 +480,207 @@ class TestBridgeStatusEvents:
         assert call.args[0] == "bridge:status_changed"
         assert call.args[1]["connected"] == 0
         assert call.args[1]["reason"] == "agent_disconnected"
+
+
+# ── Bridge-side ChatSession persistence (resolve_task) ───────────
+
+
+class TestResolveTaskPersistence:
+    """``resolve_task`` schedules ``_store_session_response`` so the agent's
+    reply lands in ChatSession the moment the bridge has it — regardless of
+    whether the originating WS handler is still alive.
+
+    These tests verify the *scheduling* side (correct args, skip conditions);
+    the actual DB write is exercised in test_store_session_response.py.
+    """
+
+    @pytest.mark.asyncio
+    async def test_persists_when_result_has_session_id(self):
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "What is 2+2?",
+            "user_id": 1,
+        }
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {
+            "ok": True,
+            "response": "Four.",
+            "bridge_session_id": "sess-abc",
+            "duration_ms": 250,
+        }
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            bridge.resolve_task("task-1", result)
+            # Let the scheduled task run.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        store_mock.assert_awaited_once()
+        kwargs = store_mock.await_args.kwargs
+        assert kwargs["session_id"] == "sess-abc"
+        assert kwargs["user_message"] == "What is 2+2?"
+        assert kwargs["assistant_response"] == "Four."
+        assert kwargs["duration_ms"] == 250
+
+    @pytest.mark.asyncio
+    async def test_skips_persistence_without_session_id(self):
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "anything",
+        }
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {"ok": True, "response": "Hi"}  # no bridge_session_id
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            bridge.resolve_task("task-1", result)
+            await asyncio.sleep(0)
+
+        store_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_persistence_on_error_result(self):
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "Hello",
+        }
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {
+            "ok": False,
+            "error": "agent crashed",
+            "bridge_session_id": "sess-abc",
+        }
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            bridge.resolve_task("task-1", result)
+            await asyncio.sleep(0)
+
+        store_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_persistence_when_response_text_empty(self):
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "Hello",
+        }
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {"ok": True, "response": "   ", "bridge_session_id": "sess-abc"}
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            bridge.resolve_task("task-1", result)
+            await asyncio.sleep(0)
+
+        store_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_persists_even_when_no_ws_handler_awaiting(self):
+        """The whole point: no future, no _handle_message task, but the
+        result still reaches ChatSession via the bridge-side schedule."""
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "Hello",
+        }
+        # NB: no entry in _pending_tasks — simulates _handle_message having died
+        # before the result arrived (HMR / WS drop / backend restart).
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {"ok": True, "response": "Hi", "bridge_session_id": "sess-abc"}
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            resolved = bridge.resolve_task("task-1", result)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        # No future to resolve, so the return is False — but persistence still
+        # ran. That's the whole fix.
+        assert resolved is False
+        store_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_persists_with_empty_prompt_for_handshake_replay(self):
+        """Tasks rebuilt from `pool_status` after backend restart have no
+        prompt (the bridge handshake doesn't carry it). The assistant text
+        still needs to land — `_store_session_response` skips the user-turn
+        append when prompt is empty."""
+        bridge = RemoteCommandBridge()
+        bridge._active_tasks["task-1"] = {
+            "_ts": datetime.now(timezone.utc),
+            "prompt": "",  # handshake-replayed
+        }
+        agent = _make_agent(task_id="task-1")
+        bridge._agents["test-agent"] = agent
+
+        result = {"ok": True, "response": "Hi", "bridge_session_id": "sess-abc"}
+
+        with patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._store_session_response",
+            new=AsyncMock(),
+        ) as store_mock:
+            bridge.resolve_task("task-1", result)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        store_mock.assert_awaited_once()
+        assert store_mock.await_args.kwargs["user_message"] == ""
+        assert store_mock.await_args.kwargs["assistant_response"] == "Hi"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_streaming_stashes_prompt(self):
+        """``dispatch_task_streaming`` must put the prompt into ``_active_tasks``
+        so ``resolve_task`` can recover it without plumbing through WS."""
+        bridge = RemoteCommandBridge()
+        ws = AsyncMock()
+        agent = RemoteAgent(
+            bridge_client_id="a1",
+            websocket=ws,
+            agent_type="claude-cli",
+        )
+        bridge._agents["a1"] = agent
+
+        # Drive the generator just far enough to register the active task.
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "Hello world", "engine": "claude"},
+            timeout=5,
+            bridge_client_id="a1",
+        )
+        try:
+            # First step: send_json + register task. We don't need to await
+            # full completion — we just need the registration side-effect.
+            await asyncio.wait_for(gen.__anext__(), timeout=1)
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+        finally:
+            await gen.aclose()
+
+        # Exactly one active task was registered, with the prompt stashed.
+        assert len(bridge._active_tasks) == 1
+        (task_info,) = bridge._active_tasks.values()
+        assert task_info["prompt"] == "Hello world"

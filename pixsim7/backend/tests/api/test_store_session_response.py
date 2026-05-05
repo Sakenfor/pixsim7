@@ -187,6 +187,68 @@ class TestDeduplication:
         assert session.messages[2]["text"] == "Second question"
 
 
+    @pytest.mark.asyncio
+    async def test_skips_when_assistant_tail_already_matches(self):
+        """Second call with the same assistant text no-ops — bridge-side
+        and WS-side persistence can both fire for the same reply, and the
+        dedupe guard prevents a double-append."""
+        existing = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00"},
+            {"role": "assistant", "text": "Hi there!", "timestamp": "2026-04-01T00:00:01"},
+        ]
+        session = _make_session(messages=existing)
+        db = _mock_db(session)
+        with _patch_db(db):
+            # Same user_message + assistant_response as the existing tail.
+            await _store_session_response("sess-1", "Hello", "Hi there!")
+
+        # Tail unchanged, no new entries appended.
+        assert len(session.messages) == 2
+        assert session.messages[1]["text"] == "Hi there!"
+        # commit should NOT run on the dedupe path.
+        db.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_assistant_dedupe_does_not_block_different_response(self):
+        """Same user_message but different assistant_response still appends —
+        dedupe is keyed strictly on the assistant text."""
+        existing = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00"},
+            {"role": "assistant", "text": "Hi", "timestamp": "2026-04-01T00:00:01"},
+        ]
+        session = _make_session(messages=existing)
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Different reply")
+
+        # New assistant turn appended (user dedupes — last text already "Hello"
+        # would skip, but the previous tail isn't "Hello", it's "Hi", so the
+        # branch taken depends on the user-dedupe key. We only assert the
+        # assistant entry made it through.)
+        assert any(
+            m.get("role") == "assistant" and m.get("text") == "Different reply"
+            for m in session.messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_user_append_when_prompt_empty(self):
+        """Handshake-replayed tasks lose the original prompt; passing empty
+        string must not append a `{role: user, text: ""}` row."""
+        existing = [
+            {"role": "user", "text": "First", "timestamp": "2026-04-01T00:00:00"},
+        ]
+        session = _make_session(messages=existing)
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "", "Reply")
+
+        # Existing user + new assistant only — no empty user row injected.
+        assert len(session.messages) == 2
+        assert session.messages[0]["text"] == "First"
+        assert session.messages[1]["role"] == "assistant"
+        assert session.messages[1]["text"] == "Reply"
+
+
 # ── Cap at 50 ────────────────────────────────────────────────────
 
 

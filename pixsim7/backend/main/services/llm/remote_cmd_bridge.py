@@ -479,6 +479,10 @@ class RemoteCommandBridge:
             "user_id": agent.user_id,
             "action": action,
             "detail": detail,
+            # Handshake-replayed tasks don't carry the original prompt; leave
+            # empty so resolve_task's bridge-side persistence falls back to a
+            # placeholder user_message rather than missing the row entirely.
+            "prompt": "",
         }
         agent.current_task_ids.add(task_id)
 
@@ -642,6 +646,10 @@ class RemoteCommandBridge:
             "user_id": agent.user_id,
             "action": "",
             "detail": "",
+            # Stash the user prompt so resolve_task can persist the user+
+            # assistant pair to ChatSession the moment the agent replies, even
+            # if no WS handler is alive to await the future.
+            "prompt": str(task_payload.get("prompt") or ""),
         }
 
         # Create future for the result
@@ -787,6 +795,10 @@ class RemoteCommandBridge:
             "user_id": agent.user_id,
             "action": "",
             "detail": "",
+            # Stash the user prompt so resolve_task can persist the user+
+            # assistant pair to ChatSession the moment the agent replies, even
+            # if this WS handler dies before consuming the future.
+            "prompt": str(task_payload.get("prompt") or ""),
         }
 
         loop = asyncio.get_event_loop()
@@ -900,11 +912,29 @@ class RemoteCommandBridge:
                 agent.active_tasks = max(0, agent.active_tasks - 1)
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
-        """Called when a remote agent sends back a task result."""
+        """Called when a remote agent sends back a task result.
+
+        Bridge-side persistence: schedules a fire-and-forget write of the
+        user+assistant pair to ``ChatSession.messages`` the moment the result
+        arrives, independent of whether any WS handler is alive to receive it.
+        This is the single canonical durability path — every other consumer
+        (live ``_handle_message``, reconnect, replay, drain) becomes a redundant
+        safety net rather than the only chance to capture the reply.
+        """
+        # Stash the prompt before _active_tasks.pop strips the entry; we need it
+        # for the fire-and-forget persist below.
+        task_info = self._active_tasks.get(task_id) or {}
+
         # Cache result for reconnect (even if SSE dropped)
         self._completed_results[task_id] = (result, time.monotonic())
         self._active_tasks.pop(task_id, None)
         self._gc_completed()
+
+        # Persist to ChatSession the instant the bridge has the reply. Routed
+        # via asyncio task so resolve_task itself stays sync (called from WS
+        # handlers + tests). Skips silently if there's no running loop (unit
+        # tests calling resolve_task directly) or no session_id on the result.
+        self._schedule_session_persistence(task_info, result)
 
         # Clean up agent tracking (may be stale from dropped SSE)
         for agent in self._agents.values():
@@ -1054,6 +1084,80 @@ class RemoteCommandBridge:
         """Get and remove a cached completed result."""
         entry = self._completed_results.pop(task_id, None)
         return entry[0] if entry else None
+
+    def _schedule_session_persistence(
+        self,
+        task_info: Dict[str, Any],
+        result: Dict[str, Any],
+    ) -> None:
+        """Fire-and-forget write of the user+assistant pair to ChatSession.
+
+        Called from ``resolve_task`` so the assistant reply lands in the DB
+        the moment the bridge has it — no dependence on a WS handler being
+        alive. Silently skips when:
+          * no running event loop (unit tests calling resolve_task directly),
+          * the result has no ``bridge_session_id`` (caller had no session),
+          * the result has no extractable response text (error / cancel).
+
+        Imports are local because the bridge module is imported very early
+        during app startup and we don't want to pull the meta-contracts /
+        ORM graph into that path.
+        """
+        if not isinstance(result, dict):
+            return
+        if result.get("error") or not result.get("ok", True):
+            # Errors/cancellations are reported on the wire but we don't want
+            # them in ChatSession.messages (transient). The error path keeps
+            # using the WS handler's existing reporting.
+            return
+
+        try:
+            from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
+        except Exception:
+            return
+
+        response_text = extract_response_text(result)
+        if not response_text:
+            return
+
+        session_id = result.get("bridge_session_id") or task_info.get("bridge_session_id")
+        if not session_id:
+            return
+
+        prompt = str(task_info.get("prompt") or "")
+        duration_ms = result.get("duration_ms")
+        try:
+            duration_ms = int(duration_ms) if duration_ms is not None else None
+        except (TypeError, ValueError):
+            duration_ms = None
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            return  # no loop — tests; the live _handle_message path still covers normal runs
+
+        async def _persist() -> None:
+            try:
+                from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                await _store_session_response(
+                    session_id=str(session_id),
+                    user_message=prompt,
+                    assistant_response=response_text,
+                    duration_ms=duration_ms,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "bridge_persist_session_response_failed",
+                    session_id=str(session_id),
+                    error=str(exc),
+                )
+
+        try:
+            loop.create_task(_persist())
+        except RuntimeError:
+            # Loop closed between get_event_loop and create_task — extremely
+            # rare; nothing to do, the cached result still lets reconnect work.
+            pass
 
     # Results older than this are evicted regardless of cache size.
     _COMPLETED_TTL_S = 300  # 5 minutes

@@ -623,10 +623,16 @@ class TestWsChatMultiplex:
 
 
 class TestDrainLateResult:
-    """_drain_late_result: persist late agent results, fall back to placeholder."""
+    """_drain_late_result: detect late arrivals (no longer persists itself —
+    bridge-side ``resolve_task`` does that now), fall back to placeholder
+    when the grace window expires with nothing to detect.
+    """
 
     @pytest.mark.asyncio
-    async def test_persists_late_result_when_cache_hit(self):
+    async def test_skips_placeholder_when_late_result_lands(self):
+        """When the agent reply arrives within the drain window, the drain
+        exits without writing the placeholder. Persistence of the real reply
+        is done by ``bridge.resolve_task`` — not by the drain itself."""
         from pixsim7.backend.main.api.v1.ws_chat import _drain_late_result
 
         bridge = MagicMock()
@@ -636,11 +642,23 @@ class TestDrainLateResult:
             {"response": "late answer", "bridge_session_id": "sess-late"},
         ]
         store_mock = AsyncMock()
+        fake_db = AsyncMock()
+        fake_db.commit = AsyncMock()
+
+        class _Ctx:
+            async def __aenter__(self):
+                return fake_db
+            async def __aexit__(self, *args):
+                pass
 
         with (
             patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_DRAIN_S", 5.0),
             patch("pixsim7.backend.main.api.v1.ws_chat._LATE_RESULT_POLL_S", 0.01),
             patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", store_mock),
+            patch(
+                "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+                _Ctx,
+            ),
         ):
             await _drain_late_result(
                 task_id="task-late",
@@ -651,11 +669,11 @@ class TestDrainLateResult:
                 timeout_s=900,
             )
 
-        store_mock.assert_awaited_once()
-        call = store_mock.await_args
-        assert call.kwargs["session_id"] == "sess-late"
-        assert call.kwargs["user_message"] == "my question"
-        assert call.kwargs["assistant_response"] == "late answer"
+        # Drain detected arrival → returned without writing placeholder.
+        # It does NOT call _store_session_response (that's resolve_task's job
+        # — exercised in test_remote_cmd_bridge.py).
+        store_mock.assert_not_awaited()
+        fake_db.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_writes_placeholder_when_grace_expires(self):

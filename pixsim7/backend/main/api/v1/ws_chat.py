@@ -218,13 +218,17 @@ async def _drain_late_result(
     dispatch_started_at: float,
     timeout_s: int,
 ) -> None:
-    """Watch the bridge result cache for a late-arriving result after a
-    dispatch timeout, persist it via _store_session_response if it lands.
-    If the grace window expires with no result, persist a placeholder
-    system message so the timeline reflects the lost turn instead of
-    leaving a silent gap.
+    """Watch for a late-arriving result after a dispatch timeout; if the grace
+    window expires with no result, write an "abandoned" placeholder so the
+    user's timeline reflects the lost turn instead of a silent gap.
+
+    Persistence of late-arriving real results is now handled by the bridge
+    itself (``resolve_task`` schedules ``_store_session_response`` the moment
+    the agent reply lands). The drain therefore only needs to detect arrival
+    so it can skip the placeholder; the dedupe in ``_store_session_response``
+    keeps things idempotent if both ever fire.
     """
-    import time as _time  # local — keep module-level imports lean
+    del dispatch_started_at  # retained in signature for caller/tests; no longer used
 
     if not session_id:
         # Without a session id we have nowhere to persist; nothing to do.
@@ -241,30 +245,13 @@ async def _drain_late_result(
         except Exception:
             cached = None
         if cached:
-            response_text = extract_response_text(cached)
-            cli_session_id = cached.get("bridge_session_id") or session_id
-            if response_text and cli_session_id:
-                duration_ms = int((_time.monotonic() - dispatch_started_at) * 1000)
-                try:
-                    from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
-                    await _store_session_response(
-                        session_id=cli_session_id,
-                        user_message=user_message,
-                        assistant_response=response_text,
-                        duration_ms=duration_ms,
-                    )
-                    logger.info(
-                        "ws_chat_drain_persisted",
-                        task_id=task_id,
-                        session_id=cli_session_id,
-                        duration_ms=duration_ms,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "ws_chat_drain_persist_failed",
-                        task_id=task_id,
-                        error=str(exc),
-                    )
+            # resolve_task already scheduled persistence on the loop — nothing
+            # to do here. Log so operators can correlate timeout-with-late-arrival.
+            logger.info(
+                "ws_chat_drain_late_arrival",
+                task_id=task_id,
+                session_id=session_id,
+            )
             return
         await asyncio.sleep(_LATE_RESULT_POLL_S)
 
@@ -554,10 +541,17 @@ async def _handle_message(
                             error=str(exc),
                         )
 
-                    # Persist the response BEFORE sending the WS result so a
-                    # backend HMR/restart between WS-send and the DB write
-                    # cannot lose the assistant message. Frontend still gets
-                    # the result; we just guarantee durability first.
+                    # Belt-and-suspenders durability:
+                    #   * Bridge-side `resolve_task` already scheduled a
+                    #     fire-and-forget `_store_session_response` the moment
+                    #     the agent's reply hit the bridge — that's the one
+                    #     path that survives this WS handler dying.
+                    #   * This awaited call provides strict ordering for the
+                    #     live happy path (DB committed BEFORE WS-send), so a
+                    #     fast frontend reload that re-fetches immediately
+                    #     after seeing the result will find the row populated.
+                    # `_store_session_response` has an assistant-tail dedupe
+                    # so the second call no-ops when both paths fire.
                     if response_text:
                         from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
                         try:

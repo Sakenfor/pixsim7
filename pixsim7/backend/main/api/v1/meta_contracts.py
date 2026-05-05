@@ -2601,8 +2601,22 @@ async def _store_session_response(
                 )
                 return
             msgs: list = list(session.messages or [])
+            # Idempotency guard: with bridge-side persistence in resolve_task
+            # plus the legacy WS-handler call site, this function can be invoked
+            # twice for the same reply. If the tail already matches, no-op so
+            # we don't append a duplicate assistant turn.
+            if (
+                msgs
+                and isinstance(msgs[-1], dict)
+                and msgs[-1].get("role") == "assistant"
+                and msgs[-1].get("text") == assistant_response
+            ):
+                return
             now = utcnow().isoformat()
-            if not msgs or msgs[-1].get("text") != user_message:
+            # Skip the user-turn append when caller passed an empty prompt
+            # (handshake-replayed tasks lose the prompt at backend restart) or
+            # when the same user text already terminates the log.
+            if user_message and (not msgs or msgs[-1].get("text") != user_message):
                 msgs.append({"role": "user", "text": user_message, "timestamp": now})
             entry: dict = {"role": "assistant", "text": assistant_response, "timestamp": now}
             if duration_ms is not None:
