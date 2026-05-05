@@ -14,7 +14,7 @@ import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { filterPanelsByPrefs } from '@features/docks';
 import { useDockPanelPrefs, useDockState, useDockUiStore } from '@features/docks/stores';
-import type { DockPosition } from '@features/docks/stores';
+import type { DockPosition, LockMode } from '@features/docks/stores';
 import { usePanelCatalogBootstrap } from '@features/panels';
 import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
 import type { PanelHostDockviewRef } from '@features/panels/components/host/PanelHostDockview';
@@ -28,7 +28,7 @@ import { useDockBehavior } from './hooks/useDockBehavior';
 export function ControlCenterDock() {
   // Store selectors
   const open = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
-  const pinned = useDockState(DOCK_IDS.controlCenter, (dock) => dock.pinned);
+  const lockMode = useDockState(DOCK_IDS.controlCenter, (dock) => dock.lockMode);
   const height = useDockState(DOCK_IDS.controlCenter, (dock) => dock.size);
   const enabledModules = useDockPanelPrefs(DOCK_IDS.controlCenter, (prefs) => prefs);
   const dockPosition = useDockState(DOCK_IDS.controlCenter, (dock) => dock.dockPosition);
@@ -52,7 +52,7 @@ export function ControlCenterDock() {
   );
 
   const setDockOpen = useDockUiStore((s) => s.setDockOpen);
-  const toggleDockPinned = useDockUiStore((s) => s.setDockPinned);
+  const setDockLockModeRaw = useDockUiStore((s) => s.setDockLockMode);
   const setDockSize = useDockUiStore((s) => s.setDockSize);
   const setDockPositionRaw = useDockUiStore((s) => s.setDockPosition);
   const setDockFloatingPosition = useDockUiStore((s) => s.setDockFloatingPosition);
@@ -62,9 +62,9 @@ export function ControlCenterDock() {
     (value: boolean) => setDockOpen(DOCK_IDS.controlCenter, value),
     [setDockOpen],
   );
-  const setPinned = useCallback(
-    (value: boolean) => toggleDockPinned(DOCK_IDS.controlCenter, value),
-    [toggleDockPinned],
+  const setLockMode = useCallback(
+    (value: LockMode) => setDockLockModeRaw(DOCK_IDS.controlCenter, value),
+    [setDockLockModeRaw],
   );
   const setHeight = useCallback(
     (value: number) => setDockSize(DOCK_IDS.controlCenter, value),
@@ -123,7 +123,7 @@ export function ControlCenterDock() {
     dockPosition,
     retractedMode,
     open,
-    pinned,
+    lockMode,
     height,
     setOpen,
     setHeight,
@@ -269,8 +269,8 @@ export function ControlCenterDock() {
         <DockToolbar
           dockPosition={dockPosition}
           onDockPositionChange={setDockPosition}
-          pinned={pinned}
-          onPinnedToggle={() => setPinned(!pinned)}
+          lockMode={lockMode}
+          onLockModeChange={setLockMode}
           navigate={navigate}
         />
 

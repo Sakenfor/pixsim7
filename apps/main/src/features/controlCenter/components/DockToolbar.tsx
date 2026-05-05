@@ -7,7 +7,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { ExpandableButtonGroup, Popover, useOrientation } from '@pixsim7/shared.ui';
+import { Popover, useOrientation } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useMemo, useState, useRef } from 'react';
 
@@ -19,6 +19,7 @@ import {
   useDockUiStore,
   type DockPosition,
   type LayoutBehavior,
+  type LockMode,
   type RetractedMode,
 } from '@features/docks/stores';
 import { NotificationTicker, ContentModerationWarning } from '@features/generation';
@@ -46,10 +47,10 @@ interface DockToolbarProps {
   dockPosition: DockPosition;
   /** Callback when dock position changes */
   onDockPositionChange: (position: DockPosition) => void;
-  /** Whether dock is pinned */
-  pinned: boolean;
-  /** Callback to toggle pinned state */
-  onPinnedToggle: () => void;
+  /** Current lock mode (auto / open / closed) */
+  lockMode: LockMode;
+  /** Callback when lock mode changes */
+  onLockModeChange: (lockMode: LockMode) => void;
   /** Navigation function */
   navigate: (path: string) => void;
   /** Quick navigation items (defaults to DEFAULT_QUICK_NAV) */
@@ -58,23 +59,50 @@ interface DockToolbarProps {
   showQuickNav?: boolean;
 }
 
+/** Tri-state cycle: auto → open → closed → auto */
+const LOCK_MODE_CYCLE: Record<LockMode, LockMode> = {
+  auto: 'open',
+  open: 'closed',
+  closed: 'auto',
+};
+
+const LOCK_MODE_META: Record<LockMode, { icon: string; title: string; bg: string }> = {
+  auto: {
+    icon: '📍',
+    title: 'Auto: reveals on edge hover, hides on leave (click to lock open)',
+    bg: 'hover:bg-accent-subtle',
+  },
+  open: {
+    icon: '📌',
+    title: 'Locked open: stays open (click to lock closed)',
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+  },
+  closed: {
+    icon: '🔒',
+    title: 'Locked closed: stays retracted, no auto-reveal (click to return to auto)',
+    bg: 'bg-sky-100 dark:bg-sky-900/30',
+  },
+};
+
 export function DockToolbar({
   dockPosition,
   onDockPositionChange,
-  pinned,
-  onPinnedToggle,
+  lockMode,
+  onLockModeChange,
   navigate,
   quickNavItems = DEFAULT_QUICK_NAV,
   showQuickNav = true,
 }: DockToolbarProps) {
-  // Smart expand direction based on dock position
-  const expandDirection = useMemo(() => {
+  // Smart popover placement for the position-selector flyout.
+  // The selector lives at the inner edge of the dock toolbar, so we want the
+  // flyout to open *into* the screen rather than off it.
+  const positionPickerPlacement = useMemo(() => {
     switch (dockPosition) {
-      case 'top': return 'down';
-      case 'bottom': return 'up';
-      case 'left': return 'right';
-      case 'right': return 'left';
-      default: return 'up';
+      case 'top': return 'bottom' as const;
+      case 'bottom': return 'top' as const;
+      case 'left': return 'right' as const;
+      case 'right': return 'left' as const;
+      default: return 'top' as const;
     }
   }, [dockPosition]);
 
@@ -93,6 +121,10 @@ export function DockToolbar({
   // Dropdown state
   const [showDropdown, setShowDropdown] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Position-picker popover state
+  const [showPositionPicker, setShowPositionPicker] = useState(false);
+  const positionTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Store actions for inline settings
   const triggerDockLayoutReset = useDockUiStore((s) => s.triggerDockLayoutReset);
@@ -247,18 +279,17 @@ export function DockToolbar({
 
       {/* Inline Quick Actions */}
       <div className="flex items-center gap-1">
+        {/* Lock-mode tri-state cycle: auto (📍) → open (📌) → closed (🔒) → auto */}
         <button
-          onClick={onPinnedToggle}
+          onClick={() => onLockModeChange(LOCK_MODE_CYCLE[lockMode])}
           className={clsx(
             'text-xs px-1.5 py-0.5 rounded transition-colors',
-            pinned
-              ? 'bg-amber-100 dark:bg-amber-900/30'
-              : 'hover:bg-accent-subtle'
+            LOCK_MODE_META[lockMode].bg,
           )}
-          title={pinned ? 'Unpin' : 'Pin'}
-          aria-pressed={pinned}
+          title={LOCK_MODE_META[lockMode].title}
+          aria-label={`Lock mode: ${lockMode}`}
         >
-          {pinned ? '📌' : '📍'}
+          {LOCK_MODE_META[lockMode].icon}
         </button>
         <button
           onClick={collapseDock}
@@ -300,61 +331,69 @@ export function DockToolbar({
           </div>
         )}
 
-        {/* Dock Position Selector */}
-        <ExpandableButtonGroup
-          trigger={
-            <button
-              className={clsx(
-                'text-xs border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95',
-                isVertical ? 'p-1' : 'px-2 py-1'
-              )}
-              aria-label={`Dock position: ${dockPosition}`}
-            >
-              {positionIcon}
-            </button>
-          }
-          direction={expandDirection}
-          hoverDelay={200}
-          offset={6}
-          {...(!isVertical && { contentClassName: 'right-0' })}
+        {/* Dock Position Selector — Popover (portaled) so it escapes the dock's
+            overflow-hidden container. Click-triggered for discoverability. */}
+        <button
+          ref={positionTriggerRef}
+          onClick={() => setShowPositionPicker((v) => !v)}
+          className={clsx(
+            'text-xs border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95',
+            isVertical ? 'p-1' : 'px-2 py-1'
+          )}
+          aria-label={`Dock position: ${dockPosition}`}
+          aria-haspopup="menu"
+          aria-expanded={showPositionPicker}
         >
-          <div className={clsx(
-            'flex gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700',
-            isVertical ? 'flex-col items-center' : 'items-center'
-          )}>
+          {positionIcon}
+        </button>
+        <Popover
+          anchor={positionTriggerRef.current}
+          placement={positionPickerPlacement}
+          align="center"
+          offset={6}
+          open={showPositionPicker}
+          onClose={() => setShowPositionPicker(false)}
+          triggerRef={positionTriggerRef}
+        >
+          <div
+            className={clsx(
+              'flex gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700',
+              isVertical ? 'flex-col items-center' : 'items-center'
+            )}
+          >
             <PositionButton
               position="top"
               icon="⬆"
               currentPosition={dockPosition}
-              onClick={onDockPositionChange}
+              onClick={(p) => { onDockPositionChange(p); setShowPositionPicker(false); }}
             />
             <PositionButton
               position="left"
               icon="⬅"
               currentPosition={dockPosition}
-              onClick={onDockPositionChange}
+              onClick={(p) => { onDockPositionChange(p); setShowPositionPicker(false); }}
             />
             <PositionButton
               position="floating"
               icon="⊡"
               currentPosition={dockPosition}
-              onClick={onDockPositionChange}
+              onClick={(p) => { onDockPositionChange(p); setShowPositionPicker(false); }}
               variant="purple"
             />
             <PositionButton
               position="right"
               icon="➡"
               currentPosition={dockPosition}
-              onClick={onDockPositionChange}
+              onClick={(p) => { onDockPositionChange(p); setShowPositionPicker(false); }}
             />
             <PositionButton
               position="bottom"
               icon="⬇"
               currentPosition={dockPosition}
-              onClick={onDockPositionChange}
+              onClick={(p) => { onDockPositionChange(p); setShowPositionPicker(false); }}
             />
           </div>
-        </ExpandableButtonGroup>
+        </Popover>
       </div>
     </div>
   );

@@ -38,11 +38,11 @@ describe('dockUiStore', () => {
     let dock = getDockStateSnapshot(useDockUiStore.getState(), DOCK_ID);
     expect(dock.open).toBe(true);
 
-    store.setDockPinned(DOCK_ID, false);
+    store.setDockLockMode(DOCK_ID, 'auto');
     store.setDockPosition(DOCK_ID, 'top');
     dock = getDockStateSnapshot(useDockUiStore.getState(), DOCK_ID);
     expect(dock.open).toBe(true);
-    expect(dock.pinned).toBe(true);
+    expect(dock.lockMode).toBe('open');
   });
 
   it('updates layout reset trigger for the dock', () => {

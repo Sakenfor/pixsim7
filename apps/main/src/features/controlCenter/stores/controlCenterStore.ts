@@ -9,12 +9,13 @@ import {
   useDockUiStore,
   type DockPosition,
   type LayoutBehavior,
+  type LockMode,
   type RetractedMode,
 } from '@features/docks/stores';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 
-export type { DockPosition, LayoutBehavior, RetractedMode };
+export type { DockPosition, LayoutBehavior, LockMode, RetractedMode };
 
 export type ControlModule =
   | 'quickGenerate'
@@ -41,7 +42,7 @@ export interface ControlCenterActions {
 
   setOpen: (open: boolean) => void;
   toggleOpen: () => void;
-  setPinned: (pinned: boolean) => void;
+  setLockMode: (lockMode: LockMode) => void;
   setHeight: (size: number) => void;
   setDockPosition: (position: DockPosition) => void;
   setLayoutBehavior: (behavior: LayoutBehavior) => void;
@@ -122,8 +123,8 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         useDockUiStore.getState().toggleDockOpen(CONTROL_CENTER_DOCK_ID);
       },
 
-      setPinned: (pinned) => {
-        useDockUiStore.getState().setDockPinned(CONTROL_CENTER_DOCK_ID, pinned);
+      setLockMode: (lockMode) => {
+        useDockUiStore.getState().setDockLockMode(CONTROL_CENTER_DOCK_ID, lockMode);
       },
 
       setHeight: (size) => {

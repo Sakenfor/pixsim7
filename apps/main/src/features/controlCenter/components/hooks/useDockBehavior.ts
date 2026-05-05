@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 
-import type { DockPosition, RetractedMode } from '@features/docks/stores';
+import type { DockPosition, LockMode, RetractedMode } from '@features/docks/stores';
 
 import {
   REVEAL_STRIP_THRESHOLD,
@@ -26,8 +26,13 @@ interface UseDockBehaviorOptions {
   retractedMode: RetractedMode;
   /** Whether the dock is currently open */
   open: boolean;
-  /** Whether the dock is pinned (won't auto-hide) */
-  pinned: boolean;
+  /**
+   * Lock mode controls automatic edge gestures:
+   * - `auto`   — reveal on edge dwell, hide on mouse leave
+   * - `open`   — stays open; suppresses auto-hide
+   * - `closed` — stays retracted; suppresses auto-reveal (manual click still opens)
+   */
+  lockMode: LockMode;
   /** Current height/width of the dock */
   height: number;
   /** Callback to set open state */
@@ -80,7 +85,7 @@ export function useDockBehavior({
   dockPosition,
   retractedMode,
   open,
-  pinned,
+  lockMode,
   height,
   setOpen,
   setHeight,
@@ -124,7 +129,8 @@ export function useDockBehavior({
     const leaveBuffer = retractedMode === 'peek' ? TOOLBAR_HEIGHT : LEAVE_BUFFER_THRESHOLD;
 
     function onMouseLeave(e: MouseEvent) {
-      if (pinned) return;
+      // Locked-open: suppress auto-hide entirely.
+      if (lockMode === 'open') return;
 
       const winH = window.innerHeight;
       const winW = window.innerWidth;
@@ -143,12 +149,16 @@ export function useDockBehavior({
 
     node.addEventListener('mouseleave', onMouseLeave);
     return () => node.removeEventListener('mouseleave', onMouseLeave);
-  }, [pinned, setOpen, dockPosition, retractedMode, dockRef]);
+  }, [lockMode, setOpen, dockPosition, retractedMode, dockRef]);
 
   // Reveal strip hover to open (disabled for floating mode).
   // Uses a dwell timer so quick mouse pass-bys don't trigger open.
+  // Locked-closed mode bypasses this effect entirely — the user has explicitly
+  // asked CC to stay out of the way; manual click on the container/peek toolbar
+  // remains the only path to open.
   useEffect(() => {
     if (dockPosition === 'floating') return;
+    if (lockMode === 'closed') return;
 
     const threshold = REVEAL_STRIP_THRESHOLD;
     let dwellTimer: ReturnType<typeof setTimeout> | null = null;
@@ -211,7 +221,7 @@ export function useDockBehavior({
       window.removeEventListener('mousemove', onMove);
       clearDwell();
     };
-  }, [setOpen, dockPosition, retractedMode, dockRef]);
+  }, [setOpen, dockPosition, retractedMode, dockRef, lockMode]);
 
   // Keyboard resize support
   useEffect(() => {

@@ -8,13 +8,21 @@ import { exposeStoreForDebugging, manuallyRehydrateStore } from '@lib/utils/zust
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
 export type LayoutBehavior = 'overlay' | 'push';
 export type RetractedMode = 'hidden' | 'peek';
+/**
+ * How the dock responds to mouse-edge gestures.
+ * - `auto`   → reveals on edge dwell, hides on mouse leave (default)
+ * - `open`   → stays open; ignores leave (formerly "pinned")
+ * - `closed` → stays retracted; ignores reveal-strip dwell. Manual click on the
+ *              container/peek toolbar still opens it (escape hatch).
+ */
+export type LockMode = 'auto' | 'open' | 'closed';
 
 export interface DockUiState {
   dockPosition: DockPosition;
   layoutBehavior: LayoutBehavior;
   retractedMode: RetractedMode;
   open: boolean;
-  pinned: boolean;
+  lockMode: LockMode;
   size: number;
   floatingPosition: { x: number; y: number };
   floatingSize: { width: number; height: number };
@@ -88,7 +96,7 @@ export function createDefaultDockUiState(dockId: string): DockUiState {
     layoutBehavior: 'overlay',
     retractedMode: 'hidden',
     open: false,
-    pinned: false,
+    lockMode: 'auto',
     size: profile.horizontal.defaultSize,
     floatingPosition,
     floatingSize: {
@@ -154,7 +162,12 @@ function hydrateFromLegacyControlCenter(
         ? legacyState.retractedMode
         : defaults.retractedMode,
     open: typeof legacyState.open === 'boolean' ? legacyState.open : defaults.open,
-    pinned: typeof legacyState.pinned === 'boolean' ? legacyState.pinned : defaults.pinned,
+    lockMode:
+      legacyState.lockMode === 'auto' ||
+      legacyState.lockMode === 'open' ||
+      legacyState.lockMode === 'closed'
+        ? (legacyState.lockMode as LockMode)
+        : defaults.lockMode,
     size:
       typeof legacyState.height === 'number'
         ? clamp(legacyState.height, sizeRange.min, sizeRange.max)
@@ -194,14 +207,21 @@ function getInitialDockState(): Record<string, DockUiState> {
 }
 
 function resolveDock(state: Record<string, DockUiState>, dockId: string): DockUiState {
-  return state[dockId] ?? createDefaultDockUiState(dockId);
+  const dock = state[dockId];
+  if (!dock) return createDefaultDockUiState(dockId);
+  // Defense against stale persisted shapes (e.g. backend user-prefs that
+  // pre-date a field rename). Cheap; runs on every selector read.
+  if (dock.lockMode !== 'auto' && dock.lockMode !== 'open' && dock.lockMode !== 'closed') {
+    return { ...dock, lockMode: 'auto' };
+  }
+  return dock;
 }
 
 export interface DockUiStoreState {
   docks: Record<string, DockUiState>;
   setDockOpen: (dockId: string, open: boolean) => void;
   toggleDockOpen: (dockId: string) => void;
-  setDockPinned: (dockId: string, pinned: boolean) => void;
+  setDockLockMode: (dockId: string, lockMode: LockMode) => void;
   setDockPosition: (dockId: string, position: DockPosition) => void;
   setDockLayoutBehavior: (dockId: string, behavior: LayoutBehavior) => void;
   setDockRetractedMode: (dockId: string, mode: RetractedMode) => void;
@@ -254,14 +274,14 @@ export const useDockUiStore = create<DockUiStoreState>()(
           };
         }),
 
-      setDockPinned: (dockId, pinned) =>
+      setDockLockMode: (dockId, lockMode) =>
         set((state) => {
           const current = resolveDock(state.docks, dockId);
-          if (current.pinned === pinned) return state;
+          if (current.lockMode === lockMode) return state;
           return {
             docks: {
               ...state.docks,
-              [dockId]: { ...current, pinned },
+              [dockId]: { ...current, lockMode },
             },
           };
         }),
@@ -290,7 +310,9 @@ export const useDockUiStore = create<DockUiStoreState>()(
           if (position === 'floating' || wasFloating) {
             next.open = true;
             if (wasFloating && position !== 'floating') {
-              next.pinned = true;
+              // When un-floating, lock open so the dock doesn't immediately
+              // auto-hide as the user moves their mouse away.
+              next.lockMode = 'open';
             }
           }
 
