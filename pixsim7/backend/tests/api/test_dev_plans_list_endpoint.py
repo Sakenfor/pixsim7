@@ -165,12 +165,15 @@ class TestDevPlansListEndpoint:
 
         assert response.status_code == 200
         plan = response.json()["plans"][0]
+        # Heavyweight fields stripped:
         assert plan["checkpoints"] is None
         assert plan["codePaths"] == []
         assert plan["companions"] == []
         assert plan["handoffs"] == []
-        assert plan["dependsOn"] == []
         assert plan["phases"] == []
+        # Graph-topology fields preserved (needed by plan-graph view):
+        assert plan["tags"] == ["policy"]
+        assert plan["dependsOn"] == ["plan-dep"]
 
     @pytest.mark.asyncio
     async def test_registry_supports_q_and_compact(self):
@@ -197,10 +200,12 @@ class TestDevPlansListEndpoint:
         assert len(body["plans"]) == 1
         entry = body["plans"][0]
         assert entry["id"] == "plan-policy-v2"
+        # Heavyweight fields stripped from compact registry entries:
         assert entry["codePaths"] == []
         assert entry["companions"] == []
         assert entry["handoffs"] == []
-        assert entry["dependsOn"] == []
         assert entry["phases"] == []
-        assert entry["tags"] == []
         assert entry["manifestHash"] == ""
+        # Graph-topology fields preserved:
+        assert entry["tags"] == []
+        assert entry["dependsOn"] == ["plan-dep"]

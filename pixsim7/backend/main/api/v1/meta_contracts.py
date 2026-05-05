@@ -39,6 +39,9 @@ from pixsim7.backend.main.services.meta.contract_registry import (
 from pixsim7.backend.main.services.meta.agent_sessions import (
     agent_session_registry,
 )
+from pixsim7.backend.main.services.docs.plan_authoring_policy import (
+    evaluate_work_summary_policy,
+)
 from pixsim7.backend.main.services.docs.policy_engine import (
     DOMAIN_POLICY_REGISTRY,
     PolicyEngine,
@@ -518,6 +521,7 @@ class AgentHeartbeatResponse(BaseModel):
     session_id: str
     status: str
     acknowledged: bool = True
+    warnings: List[str] = Field(default_factory=list)
 
 
 class AgentSessionsResponse(BaseModel):
@@ -567,9 +571,36 @@ async def agent_heartbeat(
         ))
         await db.commit()
 
+    # Soft-validate work_summary entries against the plan-authoring contract.
+    # `metadata.next` should be populated when logging on an active plan so the
+    # next session can pick up the baton (PlansPanel + AI chat consume it).
+    warnings: List[str] = []
+    if payload.action == "work_summary" and payload.plan_id:
+        from types import SimpleNamespace
+        from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry
+        plan_status_stmt = (
+            select(Document.status)
+            .join(PlanRegistry, PlanRegistry.document_id == Document.id)
+            .where(PlanRegistry.id == payload.plan_id)
+        )
+        plan_status = (await db.execute(plan_status_stmt)).scalar_one_or_none()
+        # Heartbeats from log_work always represent an agent principal; pass a
+        # synthetic principal so the rule's applies_to_principal_types matches.
+        agent_principal = SimpleNamespace(
+            principal_type="agent",
+            source=f"agent:{payload.session_id}",
+        )
+        _, work_summary_warnings = evaluate_work_summary_policy(
+            payload,
+            principal=agent_principal,
+            plan_status=plan_status,
+        )
+        warnings.extend(work_summary_warnings)
+
     return AgentHeartbeatResponse(
         session_id=session.session_id,
         status=session.status,
+        warnings=warnings,
     )
 
 

@@ -87,6 +87,58 @@ async def test_update_plan_rejects_invalid_target_shape() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_plan_accepts_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+    doc = SimpleNamespace(
+        title="Plan A",
+        status="active",
+        owner="unassigned",
+        summary="",
+        markdown="# Plan A",
+        visibility="public",
+        namespace="dev/plans",
+        tags=["existing"],
+        revision=1,
+        updated_at=None,
+    )
+    plan = SimpleNamespace(
+        id="plan-a",
+        stage="proposed",
+        priority="normal",
+        task_scope="plan",
+        plan_type="feature",
+        target=None,
+        checkpoints=[],
+        code_paths=[],
+        companions=[],
+        handoffs=[],
+        depends_on=[],
+        scope="active",
+        updated_at=None,
+    )
+    bundle = PlanBundle(plan=plan, doc=doc)
+    db = SimpleNamespace(commit=AsyncMock())
+
+    monkeypatch.setattr(plan_write, "_ensure_bundle", AsyncMock(return_value=bundle))
+    monkeypatch.setattr(plan_write, "record_plan_revision", AsyncMock(return_value=SimpleNamespace(revision=2)))
+    monkeypatch.setattr(plan_write, "_emit_plan_notification", AsyncMock())
+    monkeypatch.setattr(plan_write.settings, "plans_db_only_mode", True)
+
+    from pixsim7.backend.main.shared.actor import RequestPrincipal
+    principal = RequestPrincipal(id=1, username="test", source="user:1")
+
+    result = await plan_write.update_plan(
+        db,
+        "plan-a",
+        {"tags": ["existing", "lane:platform"]},
+        principal=principal,
+    )
+
+    assert doc.tags == ["existing", "lane:platform"]
+    assert [c["field"] for c in result.changes] == ["tags"]
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_update_plan_allows_removed_status_for_soft_delete(monkeypatch: pytest.MonkeyPatch) -> None:
     doc = SimpleNamespace(
         title="Plan A",

@@ -56,7 +56,7 @@ PLANS_DIR = "docs/plans"
 
 # Fields that can be updated via the API.
 # Doc fields go to Document, plan fields go to PlanRegistry.
-DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility", "namespace"})
+DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility", "namespace", "tags"})
 
 # Plan-specific list fields (JSON columns holding List[str]).
 # Single source of truth — add new list fields here only.

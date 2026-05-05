@@ -69,6 +69,92 @@ import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './Engi
 import { SessionItem } from './SessionItem';
 
 // =============================================================================
+// Plan-context injection — pulls latest work_summary entries for a plan and
+// injects `next` + recent `decisions` into a tab's customInstructions so the
+// new chat resumes the prior session's hand-off instead of starting blind.
+// =============================================================================
+
+interface PlanWorkSummaryEntry {
+  detail: string;
+  timestamp: string;
+  agent_type?: string | null;
+  metadata?: {
+    next?: string;
+    decisions?: string[];
+    blockers?: string[];
+  } | null;
+}
+
+async function injectPlanContext(tabId: string, planId: string): Promise<void> {
+  try {
+    const res = await pixsimClient.get<{ entries: PlanWorkSummaryEntry[] }>(
+      '/meta/agents/history',
+      { params: { plan_id: planId, action: 'work_summary', limit: 5 } },
+    );
+    const entries = (res.entries ?? []).filter((e) => e.metadata);
+    if (entries.length === 0) return;
+
+    const latest = entries[0];
+    const latestNext = latest.metadata?.next?.trim();
+
+    const seenDecisions = new Set<string>();
+    const decisions: string[] = [];
+    for (const e of entries) {
+      for (const d of e.metadata?.decisions ?? []) {
+        const key = d.trim();
+        if (!key || seenDecisions.has(key)) continue;
+        seenDecisions.add(key);
+        decisions.push(key);
+        if (decisions.length >= 5) break;
+      }
+      if (decisions.length >= 5) break;
+    }
+
+    const seenBlockers = new Set<string>();
+    const blockers: string[] = [];
+    for (const e of entries) {
+      for (const b of e.metadata?.blockers ?? []) {
+        const key = b.trim();
+        if (!key || seenBlockers.has(key)) continue;
+        seenBlockers.add(key);
+        blockers.push(key);
+      }
+    }
+
+    if (!latestNext && decisions.length === 0 && blockers.length === 0) return;
+
+    const time = new Date(latest.timestamp).toISOString().slice(0, 10);
+    const actor = latest.agent_type || 'agent';
+    const lines: string[] = [
+      `## Recent context for plan \`${planId}\``,
+      '',
+      'Loaded automatically from the plan\'s most recent work_summary entries.',
+    ];
+    if (latestNext) {
+      lines.push('', `### Latest next-up (logged ${time} by ${actor})`, latestNext);
+    }
+    if (decisions.length > 0) {
+      lines.push('', '### Recent decisions');
+      for (const d of decisions) lines.push(`- ${d}`);
+    }
+    if (blockers.length > 0) {
+      lines.push('', '### Open blockers');
+      for (const b of blockers) lines.push(`- ${b}`);
+    }
+    const preamble = lines.join('\n');
+
+    const store = useAssistantChatStore.getState();
+    const tab = store.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const existing = tab.customInstructions?.trim() ?? '';
+    const merged = existing ? `${preamble}\n\n${existing}` : preamble;
+    store.updateTab(tabId, { customInstructions: merged });
+  } catch {
+    // Non-critical — continue without injected context.
+  }
+}
+
+// =============================================================================
 // Tab Chat View — one per tab, owns its own message state
 // =============================================================================
 
@@ -1004,6 +1090,11 @@ export function AIAssistantPanel() {
       s.addTab(newTab);
       s.setActiveTab(id);
       s.setDraft(id, `@plan:${planId} `);
+
+      // Fire-and-forget: fetch the most recent work_summaries for this plan
+      // and inject latest `next` + recent `decisions` into customInstructions
+      // so the new chat picks up where the previous session left off.
+      void injectPlanContext(id, planId);
     };
     window.addEventListener(OPEN_PLAN_CHAT_EVENT, handler);
     return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);

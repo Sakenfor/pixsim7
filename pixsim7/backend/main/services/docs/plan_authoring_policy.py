@@ -12,8 +12,9 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-04-16.1"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-05.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
+PLAN_SUMMARY_MAX_LENGTH = 280
 logger = get_logger()
 
 PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
@@ -89,6 +90,40 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "message": "Provide summary and code_paths for stronger assignment context.",
     },
     {
+        "id": "plans.create.summary.max_length",
+        "endpoint_id": "plans.create",
+        "field": "summary",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            f"Plan summary must be at most {PLAN_SUMMARY_MAX_LENGTH} characters. "
+            "Long-form content (audit findings, decisions, scope notes) belongs in "
+            "the markdown body, not in summary. Summary is shown in list cards "
+            "and graph tooltips and must stay scannable."
+        ),
+        "constraint": {"type": "string_max_length", "max": PLAN_SUMMARY_MAX_LENGTH},
+        "message": (
+            f"summary must be at most {PLAN_SUMMARY_MAX_LENGTH} characters. "
+            "Move overflow into the markdown body."
+        ),
+    },
+    {
+        "id": "plans.update.summary.max_length",
+        "endpoint_id": "plans.update",
+        "field": "summary",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            f"Plan summary must be at most {PLAN_SUMMARY_MAX_LENGTH} characters. "
+            "Only enforced when summary is included in the PATCH payload."
+        ),
+        "constraint": {"type": "string_max_length", "max": PLAN_SUMMARY_MAX_LENGTH},
+        "message": (
+            f"summary must be at most {PLAN_SUMMARY_MAX_LENGTH} characters. "
+            "Move overflow into the markdown body."
+        ),
+    },
+    {
         "id": "plans.create.companions_as_documents_suggested",
         "endpoint_id": "plans.create",
         "field": "companions",
@@ -136,6 +171,25 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "message": (
             "append_evidence test_suite refs must exist in the test registry. "
             "Run /api/v1/dev/testing/sync first if suites are missing."
+        ),
+    },
+    {
+        "id": "plans.work_summary.next_advisory",
+        "endpoint_id": "plans.work_summary",
+        "field": "metadata.next",
+        "level": "suggested",
+        "applies_to_principal_types": ["agent", "service"],
+        "description": (
+            "When logging a work_summary scoped to an active plan, populate "
+            "metadata.next with concrete next-up guidance. The value surfaces "
+            "in the Plans panel header and is auto-injected as context when "
+            "the next agent session opens a chat on the plan, so writing it "
+            "well shortens hand-off time."
+        ),
+        "constraint": {"type": "work_summary_next_when_active"},
+        "message": (
+            "Include metadata.next when logging a work_summary on an active plan "
+            "— it seeds the next session's context."
         ),
     },
 ]
@@ -296,6 +350,29 @@ def _constraint_string_required_non_empty(
     return []
 
 
+def _constraint_string_max_length(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    del payload, context
+    if value is None:
+        return []
+    if not isinstance(value, str):
+        return []
+    try:
+        max_length = int(constraint.get("max", 0))
+    except (TypeError, ValueError):
+        return []
+    if max_length <= 0 or len(value) <= max_length:
+        return []
+    rule_message = _normalize_rule_message(rule, field_name)
+    return [f"{rule_message} (got {len(value)} chars)"]
+
+
 def _constraint_advisory(
     value: Any,
     field_name: str,
@@ -314,12 +391,41 @@ def _constraint_advisory(
     return []
 
 
+def _constraint_work_summary_next_when_active(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    """Fire when an agent's work_summary on an active plan omits metadata.next.
+
+    Skips silently if there is no plan_id (non-plan-scoped work) or if the
+    plan's status is not active (parked/done/blocked plans don't need a hand-off).
+    """
+    del value, constraint
+    plan_id = _get_payload_field(payload, "plan_id")
+    if not isinstance(plan_id, str) or not plan_id.strip():
+        return []
+    plan_status = context.get("plan_status")
+    if isinstance(plan_status, str) and plan_status.strip().lower() != "active":
+        return []
+    metadata = _get_payload_field(payload, "metadata")
+    next_value = metadata.get("next") if isinstance(metadata, dict) else None
+    if isinstance(next_value, str) and next_value.strip():
+        return []
+    return [_normalize_rule_message(rule, field_name)]
+
+
 CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
     "array_min_items": _constraint_array_min_items,
     "array_items_required_keys": _constraint_array_items_required_keys,
     "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
     "string_required_non_empty": _constraint_string_required_non_empty,
+    "string_max_length": _constraint_string_max_length,
     "advisory": _constraint_advisory,
+    "work_summary_next_when_active": _constraint_work_summary_next_when_active,
 }
 
 
@@ -474,3 +580,22 @@ def validate_plan_progress_policy(
         known_test_suite_ids=known_test_suite_ids,
     )
     return violations
+
+
+def evaluate_work_summary_policy(
+    payload: Any,
+    principal: Any,
+    *,
+    plan_status: Optional[str] = None,
+) -> tuple[List[str], List[str]]:
+    """Return policy violations and warnings for plans.work_summary.
+
+    Pass ``plan_status`` so the rules can skip non-active plans where a
+    hand-off note isn't expected.
+    """
+    return validate_policy(
+        "plans.work_summary",
+        payload,
+        principal,
+        constraint_context={"plan_status": plan_status},
+    )

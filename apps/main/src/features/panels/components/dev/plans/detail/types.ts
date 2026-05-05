@@ -476,6 +476,7 @@ export const PLAN_TYPE_ICONS: Record<string, string> = {
   proposal: 'fileText',
   strategy: 'target',
   reference: 'library',
+  umbrella: 'layers',
 };
 
 export const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {

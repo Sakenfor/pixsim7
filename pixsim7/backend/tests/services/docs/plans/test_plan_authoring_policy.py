@@ -25,7 +25,9 @@ def test_constraint_registry_exposes_known_validators() -> None:
     assert "array_items_required_keys" in policy.CONSTRAINT_VALIDATORS
     assert "evidence_test_suite_refs_exist" in policy.CONSTRAINT_VALIDATORS
     assert "string_required_non_empty" in policy.CONSTRAINT_VALIDATORS
+    assert "string_max_length" in policy.CONSTRAINT_VALIDATORS
     assert "advisory" in policy.CONSTRAINT_VALIDATORS
+    assert "work_summary_next_when_active" in policy.CONSTRAINT_VALIDATORS
 
 
 def test_validate_policy_create_enforces_required_rule_for_agent() -> None:
@@ -155,3 +157,137 @@ def test_validate_policy_surfaces_suggested_warnings() -> None:
 
     assert violations == []
     assert any("Provide summary and code_paths" in warning for warning in warnings)
+
+
+def test_create_rejects_summary_over_max_length() -> None:
+    payload = SimpleNamespace(
+        id="long-summary-plan",
+        checkpoints=[{"id": "cp-1", "label": "Step 1"}],
+        summary="x" * (policy.PLAN_SUMMARY_MAX_LENGTH + 1),
+        companions=[],
+        code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert any("summary must be at most" in v for v in violations)
+    assert any(f"got {policy.PLAN_SUMMARY_MAX_LENGTH + 1} chars" in v for v in violations)
+
+
+def test_create_accepts_summary_at_max_length() -> None:
+    payload = SimpleNamespace(
+        id="ok-summary-plan",
+        checkpoints=[{"id": "cp-1", "label": "Step 1"}],
+        summary="x" * policy.PLAN_SUMMARY_MAX_LENGTH,
+        companions=[],
+        code_paths=["src/"],
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations, _warnings = policy.validate_policy("plans.create", payload, principal)
+
+    assert not any("summary must be at most" in v for v in violations)
+
+
+def test_update_rejects_summary_over_max_length_when_present() -> None:
+    payload = {"summary": "x" * (policy.PLAN_SUMMARY_MAX_LENGTH + 50)}
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert any("summary must be at most" in v for v in violations)
+
+
+def test_update_skips_summary_rule_when_summary_not_in_payload() -> None:
+    payload = {"status": "active"}
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert not any("summary must be at most" in v for v in violations)
+
+
+def test_update_accepts_short_summary() -> None:
+    payload = {"summary": "A short, scannable summary."}
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    violations = policy.validate_plan_update_policy(payload, principal)
+
+    assert not any("summary must be at most" in v for v in violations)
+
+
+def test_work_summary_warns_when_next_missing_on_active_plan() -> None:
+    payload = SimpleNamespace(
+        action="work_summary",
+        plan_id="some-plan",
+        metadata={"decisions": ["chose A over B"]},
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    violations, warnings = policy.evaluate_work_summary_policy(
+        payload, principal, plan_status="active",
+    )
+
+    assert violations == []
+    assert any("metadata.next" in w for w in warnings)
+
+
+def test_work_summary_silent_when_next_present() -> None:
+    payload = SimpleNamespace(
+        action="work_summary",
+        plan_id="some-plan",
+        metadata={"next": "Pick up Phase 2 by adding the migration"},
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    _, warnings = policy.evaluate_work_summary_policy(
+        payload, principal, plan_status="active",
+    )
+
+    assert not any("metadata.next" in w for w in warnings)
+
+
+def test_work_summary_silent_for_done_plan() -> None:
+    payload = SimpleNamespace(
+        action="work_summary",
+        plan_id="finished-plan",
+        metadata={},
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    _, warnings = policy.evaluate_work_summary_policy(
+        payload, principal, plan_status="done",
+    )
+
+    assert not any("metadata.next" in w for w in warnings)
+
+
+def test_work_summary_silent_when_no_plan_id() -> None:
+    payload = SimpleNamespace(
+        action="work_summary",
+        plan_id=None,
+        metadata={},
+    )
+    principal = SimpleNamespace(principal_type="agent", source="agent:test")
+
+    _, warnings = policy.evaluate_work_summary_policy(
+        payload, principal, plan_status=None,
+    )
+
+    assert not any("metadata.next" in w for w in warnings)
+
+
+def test_work_summary_does_not_apply_to_user_principal() -> None:
+    payload = SimpleNamespace(
+        action="work_summary",
+        plan_id="some-plan",
+        metadata={},
+    )
+    principal = SimpleNamespace(principal_type="user", source="user:1")
+
+    _, warnings = policy.evaluate_work_summary_policy(
+        payload, principal, plan_status="active",
+    )
+
+    assert not any("metadata.next" in w for w in warnings)

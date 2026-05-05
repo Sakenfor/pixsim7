@@ -14,6 +14,7 @@ CANONICAL_PLAN_TYPES: tuple[str, ...] = (
     "task",
     "strategy",
     "reference",
+    "umbrella",
 )
 
 CANONICAL_PLAN_STATUSES: tuple[str, ...] = (

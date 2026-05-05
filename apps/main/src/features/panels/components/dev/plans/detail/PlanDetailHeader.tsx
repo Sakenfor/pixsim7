@@ -17,6 +17,7 @@ import { navigateToAssistantWithPlan } from '@features/workspace/lib/openPanel';
 
 import { getCheckpointPointProgress } from '../PlanCheckpointList';
 
+import { LatestNextUp } from './LatestNextUp';
 import { ClickableBadge } from './shared';
 import type { AgentSessionSnapshot, PlanChildSummary, PlanDetail, PlanStageOptionEntry } from './types';
 import {
@@ -214,6 +215,7 @@ export function PlanDetailHeader({
           </button>
         </div>
         <div className="text-sm text-neutral-500 dark:text-neutral-400">{detail.summary}</div>
+        <LatestNextUp planId={detail.id} />
         {lastResult && (
           <div className={`text-xs mt-1 ${lastResult.startsWith('Failed') ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
             {lastResult}
