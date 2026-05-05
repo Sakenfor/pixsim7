@@ -9,6 +9,7 @@ import { blockPrimitivesDebugTool } from './blockPrimitivesDebug';
 import { inventoryTool } from './inventory';
 import { moodDebugTool } from './moodDebug';
 import { npcBrainDebugTool } from './npcBrainDebug';
+import { npcInteractionTool } from './npcInteraction';
 import { npcPresenceDebugTool } from './npcPresenceDebug';
 import { questLogTool } from './questLog';
 import { relationshipDashboardTool } from './relationshipDashboard';
@@ -29,6 +30,7 @@ export {
   sessionFlagsDebugTool,
   turnHistoryDebugTool,
   npcBrainDebugTool,
+  npcInteractionTool,
   worldManifestDebugTool,
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
@@ -46,6 +48,7 @@ export const builtInWorldTools = [
   sessionFlagsDebugTool,
   turnHistoryDebugTool,
   npcBrainDebugTool,
+  npcInteractionTool,
   worldManifestDebugTool,
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
