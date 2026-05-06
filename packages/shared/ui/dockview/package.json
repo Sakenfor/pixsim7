@@ -23,6 +23,7 @@
     "dockview": "^4.11.0",
     "dockview-core": "^4.11.0",
     "@pixsim7/shared.dockview.core": "workspace:*",
+    "@pixsim7/shared.ui": "workspace:*",
     "@pixsim7/shared.ui.panels": "workspace:*"
   },
   "peerDependencies": {

@@ -162,7 +162,7 @@ export function GraphSelector<T extends GraphItem = GraphItem>({
           {showMenu && (
             <div
               className={clsx(
-                'absolute right-0 top-full mt-1 z-50',
+                'absolute right-0 top-full mt-1 z-dropdown',
                 'bg-white dark:bg-neutral-800 rounded-lg shadow-lg',
                 'border border-neutral-200 dark:border-neutral-700',
                 'py-1 min-w-[140px]'
