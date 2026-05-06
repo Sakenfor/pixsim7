@@ -29,7 +29,6 @@ import {
   scheduleAssetsForHashing,
 } from '../lib/localHashing';
 import { extractUploadError } from '../lib/uploadActions';
-import { useAssetViewerStore } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import {
   useLocalFolders,
@@ -195,9 +194,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // preview setting so a mode switch doesn't flash stale images on mount.
   const [previews, setPreviews] = useState<Record<string, string>>(
     () => {
-      const wantOriginal = previewMode === 'original'
-        || (previewMode === 'gallery-settings'
-            && useAssetViewerStore.getState().settings.preferOriginal);
+      const wantOriginal = previewMode === 'original';
       const entries: [string, string][] = [];
       globalBlobUrlCache.forEach((entry, key) => {
         if (entry.original === wantOriginal) {
@@ -929,13 +926,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Resolve whether to use original file directly (skip thumbnail generation).
   // For images only — videos always need a generated thumbnail frame.
   const shouldUseOriginal = useCallback((asset: LocalAsset): boolean => {
-    const mode = previewModeRef.current;
-    if (mode === 'original') return asset.kind === 'image';
-    if (mode === 'gallery-settings') {
-      const { preferOriginal } = useAssetViewerStore.getState().settings;
-      return preferOriginal && asset.kind === 'image';
-    }
-    return false; // 'thumbnail' mode
+    return previewModeRef.current === 'original' && asset.kind === 'image';
   }, []);
 
   // Drain pending preview waiters so stale loads don't monopolise I/O.

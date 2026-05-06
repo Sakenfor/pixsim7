@@ -7,10 +7,9 @@ import type { LocalGroupBy } from '../lib/localGroupEngine';
 /**
  * How local folder image previews are loaded in the gallery.
  * - 'thumbnail': Generate 400px cached thumbnails (default, lower memory)
- * - 'original': Show original files directly via blob URL (fastest load, more memory)
- * - 'gallery-settings': Follow the main Gallery Quality settings (qualityMode / preferOriginal)
+ * - 'original': Show original files directly via blob URL (fastest first load, more RAM)
  */
-export type LocalPreviewMode = 'thumbnail' | 'original' | 'gallery-settings';
+export type LocalPreviewMode = 'thumbnail' | 'original';
 
 export interface LocalFolderSettingsState {
   /** Auto-hash assets when selecting a folder in the tree */

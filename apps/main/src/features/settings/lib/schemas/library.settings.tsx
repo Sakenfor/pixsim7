@@ -66,13 +66,6 @@ const displayTab: SettingTab = {
             { value: 'auto', label: 'Auto (preview when available)' },
           ],
         },
-        {
-          id: 'preferOriginal',
-          type: 'toggle',
-          label: 'Use Original Sources',
-          description: 'Skip thumbnails/previews and load original images directly. Best when displaying large thumbnails.',
-          defaultValue: false,
-        },
       ],
     },
     {
@@ -84,12 +77,11 @@ const displayTab: SettingTab = {
           id: 'lf_previewMode',
           type: 'select',
           label: 'Preview Mode',
-          description: 'Thumbnails are cached and use less memory. Original shows the file directly (fastest first load). Gallery Settings follows the Gallery source settings above.',
+          description: 'Thumbnails are cached and use less memory. Original shows the file directly (fastest first load, more RAM).',
           defaultValue: 'thumbnail',
           options: [
             { value: 'thumbnail', label: 'Generate Thumbnails (400px, cached)' },
             { value: 'original', label: 'Original Images (fastest, more memory)' },
-            { value: 'gallery-settings', label: 'Use Gallery Settings' },
           ],
         },
       ],
@@ -449,7 +441,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
   // Gallery settings (local)
   const qualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
-  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
   const updateGallerySettings = useAssetViewerStore((s) => s.updateSettings);
 
   // Media settings (local)
@@ -506,7 +497,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
       // Gallery settings
       if (fieldId === 'qualityMode') return qualityMode;
-      if (fieldId === 'preferOriginal') return preferOriginal;
 
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
@@ -550,10 +540,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Gallery settings
       if (fieldId === 'qualityMode') {
         updateGallerySettings({ qualityMode: value as GalleryQualityMode });
-        return;
-      }
-      if (fieldId === 'preferOriginal') {
-        updateGallerySettings({ preferOriginal: value as boolean });
         return;
       }
 
@@ -613,7 +599,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       'similarity.upload.phashThreshold': uploadChecks.phashThreshold,
       deleteFromProvider,
       qualityMode,
-      preferOriginal,
       preventDiskCache,
       groupMultiLayout: gallerySettings.groupMultiLayout ?? 'stack',
       lf_autoHashOnSelect,

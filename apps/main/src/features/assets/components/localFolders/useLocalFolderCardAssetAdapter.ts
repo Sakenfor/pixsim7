@@ -23,12 +23,18 @@ function mergeLinkedWithLocal(
   // immediately after a library save (still being generated) — using its URL
   // here causes a flicker of 404 retries in useMediaThumbnail. Local previews
   // are loaded lazily from the file system handle and are always faster.
+  //
+  // Note on remoteUrl: `buildLocalAssetModel` sets fallbackAsset.remoteUrl to
+  // the backend `/api/v1/assets/<id>/file` once an asset is uploaded — the
+  // full original. Prefer the local blob preview here so useMediaThumbnail's
+  // error-fallback paths don't promote a 18 MP original into a card thumb.
+  const localThumbBlob = fallbackAsset.previewUrl ?? fallbackAsset.thumbnailUrl;
   const merged: AssetModel = {
     ...linkedAsset,
     previewUrl: fallbackAsset.previewUrl,
     thumbnailUrl: fallbackAsset.thumbnailUrl,
     fileUrl: fallbackAsset.fileUrl ?? linkedAsset.fileUrl,
-    remoteUrl: fallbackAsset.remoteUrl ?? linkedAsset.remoteUrl,
+    remoteUrl: localThumbBlob ?? fallbackAsset.remoteUrl ?? linkedAsset.remoteUrl,
     localPath: fallbackAsset.localPath ?? linkedAsset.localPath,
     sha256: fallbackAsset.sha256 ?? linkedAsset.sha256,
     description: linkedAsset.description ?? fallbackAsset.description,

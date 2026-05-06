@@ -74,8 +74,6 @@ export interface ViewerSettings {
   loopVideos: boolean;
   /** Gallery quality mode for thumbnail loading */
   qualityMode: GalleryQualityMode;
-  /** Use original source instead of generated thumbnails/previews (for large display sizes) */
-  preferOriginal: boolean;
   /** Auto-navigate to newest asset when scope head changes */
   followLatest: boolean;
   /**
@@ -146,7 +144,6 @@ const defaultSettings: ViewerSettings = {
   showMetadata: false,
   loopVideos: true,
   qualityMode: 'auto',
-  preferOriginal: false,
   followLatest: true,
   scopeLocked: false,
 };

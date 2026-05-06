@@ -118,7 +118,6 @@ export function useMediaThumbnailFull(
   const [retryTrigger, setRetryTrigger] = useState(0);
   const globalPreventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const galleryQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
-  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
 
   const preventDiskCache = options?.preventDiskCache ?? globalPreventDiskCache;
 
@@ -126,14 +125,13 @@ export function useMediaThumbnailFull(
   const shouldPreferPreview = options?.preferPreview ??
     (galleryQualityMode === 'preview' || galleryQualityMode === 'auto');
 
-  // Select URL with fallback chain:
-  // - If preferOriginal is enabled, use remoteUrl directly (skips derivatives)
-  // - Otherwise: preview (if preferred) → thumbnail → preview (fallback)
-  const selectedUrl = preferOriginal && remoteUrl
-    ? remoteUrl
-    : shouldPreferPreview && previewUrl
-      ? previewUrl
-      : (thumbUrl || previewUrl);
+  // Select URL with fallback chain: preview (if preferred) → thumbnail → preview.
+  // The viewer loads originals via `useAuthenticatedMedia(fullUrl)` directly,
+  // so this hook never needs to upgrade to remoteUrl — that path used to lag
+  // on local folders whose linked AssetModel has remoteUrl=/api/v1/assets/<id>/file.
+  const selectedUrl = shouldPreferPreview && previewUrl
+    ? previewUrl
+    : (thumbUrl || previewUrl);
 
   const retryCountRef = useRef(0);
   const exhaustionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
