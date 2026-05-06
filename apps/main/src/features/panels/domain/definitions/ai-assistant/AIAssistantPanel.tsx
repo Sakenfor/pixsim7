@@ -256,8 +256,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           // rather than the live agent stream.
           st.setMessages(tab.id, [
             ...current,
-            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
-            ...recovery.recoveredAssistantTail,
+            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date(), recovered: true },
+            ...recovery.recoveredAssistantTail.map((m) => ({ ...m, recovered: true })),
           ]);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
@@ -391,8 +391,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           }
           st.setMessages(tab.id, [
             ...curr,
-            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date() },
-            ...recovered,
+            { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date(), recovered: true },
+            ...recovered.map((m) => ({ ...m, recovered: true })),
           ]);
           chatBridge.ack(tab.id);
         }).catch(showError);

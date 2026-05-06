@@ -337,12 +337,17 @@ export function MessageBubble({
   const showAssistantIcon = msg.role === 'assistant' || msg.role === 'error';
 
   if (msg.role === 'system') {
+    const isRecoveryHeader = msg.recovered;
     return (
       <div className="flex justify-center">
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800/50 text-[10px] text-neutral-500 dark:text-neutral-400">
+        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] ${
+          isRecoveryHeader
+            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400/60 dark:border-amber-600/60'
+            : 'bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400'
+        }`}>
           {msg.confirmation
             ? <ResolvedConfirmationBadge title={msg.confirmation.title} toolName={msg.confirmation.toolName} resolved={msg.confirmation.resolved} />
-            : <><Icon name="refreshCw" size={9} /><span>{msg.text}</span></>
+            : <><Icon name={isRecoveryHeader ? 'history' : 'refreshCw'} size={9} /><span>{msg.text}</span></>
           }
         </div>
       </div>
@@ -355,6 +360,7 @@ export function MessageBubble({
       <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
         msg.role === 'user' ? 'bg-accent text-white'
           : msg.role === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+          : msg.recovered ? 'bg-amber-50/60 dark:bg-amber-900/10 text-neutral-900 dark:text-neutral-100 border border-dashed border-amber-400/70 dark:border-amber-600/60'
           : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
       }`}>
         {msg.role === 'assistant' && msg.thinkingLog && msg.thinkingLog.length > 0 && (

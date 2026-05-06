@@ -44,6 +44,12 @@ interface ChatMessage {
    * persistence — they re-materialize on every fetchServerMessages call.
    */
   synthetic?: boolean;
+  /**
+   * Restored from server transcript after a backend restart / reconnect
+   * timeout. Rendered with a distinct outline so the user can tell it
+   * came from reconciliation rather than the live agent stream.
+   */
+  recovered?: boolean;
 }
 
 interface ChatTab {
@@ -376,6 +382,9 @@ function parseMessages(raw: string | null): ChatMessage[] {
       }
       if (m.confirmation && typeof m.confirmation === 'object') {
         msg.confirmation = m.confirmation as ChatMessageConfirmation;
+      }
+      if (m.recovered === true) {
+        msg.recovered = true;
       }
       return msg;
     });
