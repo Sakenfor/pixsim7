@@ -78,6 +78,16 @@ export function Dropdown({
   triggerRef,
 }: DropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Reflect open state on the trigger for assistive tech.
+  useEffect(() => {
+    const trigger = triggerRef?.current;
+    if (!trigger) return;
+    if (!trigger.hasAttribute('aria-haspopup')) trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }, [isOpen, triggerRef]);
 
   // Handle click outside to close
   useEffect(() => {
@@ -89,7 +99,7 @@ export function Dropdown({
         dropdownRef.current && !dropdownRef.current.contains(target) &&
         !(triggerRef?.current && triggerRef.current.contains(target))
       ) {
-        onClose();
+        onCloseRef.current();
       }
     };
 
@@ -102,7 +112,59 @@ export function Dropdown({
       clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose, triggerRef]);
+  }, [isOpen, closeOnOutsideClick, triggerRef]);
+
+  // Move focus to the first item on open, restore to trigger on close.
+  useEffect(() => {
+    if (!isOpen) return;
+    const root = dropdownRef.current;
+    if (!root) return;
+    const items = root.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])');
+    items[0]?.focus();
+    return () => {
+      triggerRef?.current?.focus();
+    };
+  }, [isOpen, triggerRef]);
+
+  // Keyboard navigation: Arrow keys move focus between items, Escape closes,
+  // Home/End jump to first/last.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const root = dropdownRef.current;
+    if (!root) return;
+    const items = Array.from(
+      root.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
+    );
+    if (items.length === 0) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        items[(currentIndex + 1 + items.length) % items.length].focus();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        items[(currentIndex - 1 + items.length) % items.length].focus();
+        break;
+      case 'Home':
+        e.preventDefault();
+        items[0].focus();
+        break;
+      case 'End':
+        e.preventDefault();
+        items[items.length - 1].focus();
+        break;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+        break;
+      case 'Tab':
+        // Tab dismisses the menu and lets focus move naturally.
+        onCloseRef.current();
+        break;
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -122,6 +184,9 @@ export function Dropdown({
   const dropdown = (
     <div
       ref={dropdownRef}
+      role="menu"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
       className={clsx(
         'bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-dropdown',
         modeClass,
@@ -197,10 +262,12 @@ export function DropdownItem({
 
   return (
     <button
+      type="button"
+      role="menuitem"
       onClick={onClick}
       disabled={disabled}
       className={clsx(
-        'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2',
+        'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-accent',
         disabled
           ? 'opacity-50 cursor-not-allowed'
           : variantClasses[variant],
@@ -218,7 +285,7 @@ export function DropdownItem({
  * DropdownDivider — divider between dropdown items
  */
 export function DropdownDivider() {
-  return <div className="border-t dark:border-neutral-700 my-1" />;
+  return <div role="separator" className="border-t dark:border-neutral-700 my-1" />;
 }
 
 /**
