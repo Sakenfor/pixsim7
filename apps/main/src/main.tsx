@@ -11,6 +11,10 @@ import { pruneOrphans as pruneStoreOrphans } from '@lib/stores'
 // bootstrap sees them. Keep these modules tiny — no React / heavy deps.
 import '@features/generation/stores.registrations'
 
+// Side-effect import: registers built-in ticker sources (generations, etc.)
+// before the first <Ticker /> mounts. See `stores-registry-canon`.
+import '@features/ticker/sources.registrations'
+
 // Side-effect import: registers the generation feature's WS routing
 // listener (job:* / asset:*) against the shared lib-level wsManager.
 // Must run before any subscriber opens the connection so messages are

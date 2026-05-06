@@ -45,7 +45,7 @@ export { QuickGenWidget } from './components/QuickGenWidget';
 export type { QuickGenWidgetProps, QuickGenWidgetRenderContext } from './components/QuickGenWidget';
 export { ContentModerationWarning } from './components/ContentModerationWarning';
 export type { ContentModerationWarningProps } from './components/ContentModerationWarning';
-export { NotificationTicker } from './components/NotificationTicker';
+// NotificationTicker has moved to `@features/ticker` — see Ticker + GenerationActivityIndicator.
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';
