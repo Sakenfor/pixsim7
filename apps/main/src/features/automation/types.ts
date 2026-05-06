@@ -91,6 +91,22 @@ export enum ActionType {
   CALL_PRESET = 'call_preset',
 }
 
+// Live preset usage signals derived from /automation/presets/stats.
+// Not stored on the preset row — see backend `PresetStats` for the rationale.
+export interface PresetReference {
+  id: number;
+  name: string;
+}
+
+export interface PresetStats {
+  /** Other presets that invoke this one via call_preset. */
+  referenced_by: PresetReference[];
+  /** Direct (top-level) execution count from automation_executions. */
+  run_count: number;
+  /** Most recent `started_at` from those executions, ISO string or null. */
+  last_run_at: string | null;
+}
+
 // Match modes for string comparison in element selectors
 export enum MatchMode {
   EXACT = 'exact',

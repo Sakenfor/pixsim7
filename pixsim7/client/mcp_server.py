@@ -135,12 +135,31 @@ _request_profile_id: contextvars.ContextVar[str | None] = contextvars.ContextVar
 
 # In-process dispatch session — set by the bridge before each dispatch so
 # the MCP server can resolve the correct chat session without file I/O.
+#
+# ContextVar (not module global) so concurrent dispatches in the same bridge
+# process — e.g. two chat tabs each running their own agent — don't stomp on
+# each other's session id. Each asyncio task that calls `set_dispatch_session`
+# gets its own copy; nested tool calls inherit the caller's context.
+#
+# The legacy module global `_dispatch_session_id` is retained as a coarse
+# fallback for code paths that don't run inside the dispatch's task context
+# (rare; mostly defensive).
+_dispatch_session_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_dispatch_session_ctx", default=None,
+)
 _dispatch_session_id: str | None = None
 
 
 def set_dispatch_session(session_id: str | None) -> None:
-    """Set the active chat session for the current dispatch (bridge in-process)."""
+    """Set the active chat session for the current dispatch (bridge in-process).
+
+    Sets both the per-task ContextVar (preferred — scoped to the calling task
+    and any tasks it spawns) and the module global (fallback for code paths
+    outside the dispatch's task tree). MCP tool handlers read the ContextVar
+    first, then fall back to the global.
+    """
     global _dispatch_session_id
+    _dispatch_session_ctx.set(session_id)
     _dispatch_session_id = session_id
 
 
@@ -873,14 +892,20 @@ def _read_session_sidecar() -> str | None:
 
     Resolution order:
     1. Per-request contextvar (HTTP mode — set from X-Chat-Session-Id header)
-    2. In-process dispatch session (bridge sets before each dispatch — no file I/O)
-    3. ``{PIXSIM_TOKEN_FILE}.session`` — STDIO mode (pool writes per-session sidecar)
+    2. Per-dispatch contextvar (bridge in-process — task-scoped, no race)
+    3. Module global dispatch id (legacy fallback for non-task contexts)
+    4. ``{PIXSIM_TOKEN_FILE}.session`` — STDIO mode (pool writes per-session sidecar)
     """
     # HTTP mode: per-request header (cleanest path — no file I/O)
     ctx_session = _request_session_id.get()
     if ctx_session:
         return ctx_session
-    # Bridge in-process dispatch (same process, no I/O race)
+    # Bridge in-process dispatch (task-scoped — survives parallel dispatches)
+    dispatch_ctx = _dispatch_session_ctx.get()
+    if dispatch_ctx:
+        return dispatch_ctx
+    # Legacy module-global fallback (only used when the caller isn't in the
+    # dispatch's task tree; primarily a safety net during refactors).
     if _dispatch_session_id:
         return _dispatch_session_id
     # STDIO fallback: per-session sidecar
@@ -979,6 +1004,22 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
     explicit_session = (arguments.get("session_id") or "").strip() or None
     session_id = explicit_session or token_session_id or _registered_session_id or "unregistered"
     plan_id = (arguments.get("plan_id") or "").strip() or None
+
+    # Defensive fallback: if we resolved to a stale auto-registered "mcp-*"
+    # session id but the bridge has set a per-dispatch chat session, prefer
+    # the dispatch id. Covers the historical bug where an MCP process ran
+    # without PIXSIM_BRIDGE_MANAGED, auto-registered an mcp-{hash} row, and
+    # then forever attributed work_summary entries to that orphan instead
+    # of the actual chat session it was answering.
+    if (
+        not explicit_session
+        and not token_session_id
+        and isinstance(session_id, str)
+        and session_id.startswith("mcp-")
+    ):
+        sidecar_id = _read_session_sidecar()
+        if sidecar_id and not sidecar_id.startswith("mcp-"):
+            session_id = sidecar_id
 
     # Bridge-managed: read the chat session ID from the sidecar file written
     # by the bridge pool. Falls back to API-based resolution if file is absent.

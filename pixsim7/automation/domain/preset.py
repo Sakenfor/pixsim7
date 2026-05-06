@@ -7,6 +7,13 @@ from enum import Enum
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, Text
 
+from pixsim7.common.ownership import (
+    OwnershipPolicy,
+    OwnershipScope,
+    SHARED_FLAG,
+    SYSTEM_FLAG,
+)
+
 
 class ActionType(str, Enum):
     CLICK_COORDS = "click_coords"
@@ -71,14 +78,14 @@ class AppActionPreset(SQLModel, table=True):
     created_at: Optional[datetime] = Field(default=None)
     updated_at: Optional[datetime] = Field(default=None)
 
-    def can_edit(self, user_id: int, is_superuser: bool = False) -> bool:
-        if is_superuser:
-            return True
-        if self.is_system:
-            return False
-        return self.owner_id == user_id
 
-    def can_view(self, user_id: int) -> bool:
-        if self.is_shared or self.is_system:
-            return True
-        return self.owner_id == user_id
+# Single source of truth for preset access control. Endpoints call the
+# `assert_can_*` / `apply_visibility_filter` / `gate_admin_only_writes`
+# helpers in pixsim7.common.ownership against this policy — no per-endpoint
+# inline checks. Adding a new flag (e.g. `is_archived`) is just a new
+# `AccessFlag(...)` entry in this tuple.
+PRESET_POLICY = OwnershipPolicy(
+    scope=OwnershipScope.USER,
+    owner_field="owner_id",
+    access_flags=(SYSTEM_FLAG, SHARED_FLAG),
+)

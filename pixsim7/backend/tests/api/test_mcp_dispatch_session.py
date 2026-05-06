@@ -236,3 +236,175 @@ class TestAutoRegisterIdempotency:
 
         assert mod._registered_session_id is None
         assert proxy_calls == []
+
+
+class TestDispatchSessionContextVar:
+    """ContextVar isolation — concurrent dispatches in the same bridge process
+    must not stomp on each other's session id. Without per-task scoping, two
+    chat tabs running their agents in parallel would race on the module global
+    and tool calls from either turn could resolve to either id."""
+
+    def teardown_method(self):
+        set_dispatch_session(None)
+
+    @pytest.mark.asyncio
+    async def test_parallel_dispatches_keep_separate_ids(self):
+        """Two parallel tasks each call set_dispatch_session(); each task's
+        own _read_session_sidecar() must return its own id, not the other's.
+        This is the regression guard for the concurrent-tabs case."""
+        import asyncio
+
+        from pixsim7.client.mcp_server import _read_session_sidecar, set_dispatch_session
+
+        observed: dict[str, str | None] = {}
+
+        async def dispatch(name: str, session_id: str) -> None:
+            set_dispatch_session(session_id)
+            # Yield to let the other task interleave its set_dispatch_session.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            observed[name] = _read_session_sidecar()
+
+        await asyncio.gather(
+            dispatch("A", "session-A"),
+            dispatch("B", "session-B"),
+        )
+
+        # Each task's own read returns its own id — no cross-contamination.
+        assert observed["A"] == "session-A"
+        assert observed["B"] == "session-B"
+
+    def test_global_fallback_when_no_task_context(self):
+        """A read from the module-global thread (no task context) still returns
+        the most-recently-set value via the legacy global. Not the primary path,
+        just the safety net."""
+        import pixsim7.client.mcp_server as mod
+        from pixsim7.client.mcp_server import _read_session_sidecar, set_dispatch_session
+
+        # Confirm the global side-effect is still wired up.
+        set_dispatch_session("global-fallback-sess")
+        assert mod._dispatch_session_id == "global-fallback-sess"
+        # A direct read in the same task picks up the ContextVar value
+        # (which set_dispatch_session also wrote).
+        assert _read_session_sidecar() == "global-fallback-sess"
+
+
+class TestLogWorkMcpStarFallback:
+    """Defensive fallback in `_handle_log_work`: if `_registered_session_id`
+    starts with `mcp-` (auto-registered orphan) but a per-dispatch chat
+    session is set, prefer the dispatch id. Covers the bug where work_summary
+    entries got attributed to a parallel `mcp-{hash}` row instead of the
+    actual chat session the agent was answering for."""
+
+    def setup_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._registered_session_id = None
+        set_dispatch_session(None)
+
+    def teardown_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._registered_session_id = None
+        set_dispatch_session(None)
+
+    @pytest.mark.asyncio
+    async def test_mcp_star_prefers_dispatch_session(self):
+        """When _registered_session_id is mcp-* AND a real chat session is
+        on the dispatch ContextVar, log_work routes to the chat session."""
+        import pixsim7.client.mcp_server as mod
+
+        mod._registered_session_id = "mcp-deadbeef12345678"
+        set_dispatch_session("019df49e-real-chat-session")
+
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status_code = 200
+            def json(self):  # noqa: D401 — match httpx interface
+                return {"ok": True}
+
+        async def fake_post(path, headers=None, json=None):  # noqa: A002 — match httpx
+            captured["path"] = path
+            captured["json"] = json
+            return _Resp()
+
+        class _Client:
+            post = staticmethod(fake_post)
+
+        # Token with no chat_session_id claim — forces the resolution chain
+        # into _registered_session_id territory.
+        fake_token = "header.eyJzdWIiOiIxIn0.sig"  # base64 of {"sub":"1"}
+
+        with patch.object(mod, "_get_token", lambda: fake_token), \
+             patch.object(mod, "_get_client", lambda: _Client()):
+            await mod._handle_log_work({"summary": "test"})
+
+        assert captured.get("path") == "/api/v1/meta/agents/heartbeat"
+        body = captured.get("json") or {}
+        assert body.get("session_id") == "019df49e-real-chat-session", (
+            "log_work must route to the dispatch chat session, not the mcp-* orphan"
+        )
+
+    @pytest.mark.asyncio
+    async def test_mcp_star_keeps_orphan_when_no_dispatch(self):
+        """When no dispatch session is set, the mcp-* id is still used —
+        the fallback only fires when a better id is available."""
+        import pixsim7.client.mcp_server as mod
+
+        mod._registered_session_id = "mcp-deadbeef12345678"
+        set_dispatch_session(None)
+
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status_code = 200
+            def json(self):
+                return {"ok": True}
+
+        async def fake_post(path, headers=None, json=None):  # noqa: A002
+            captured["json"] = json
+            return _Resp()
+
+        class _Client:
+            post = staticmethod(fake_post)
+
+        fake_token = "header.eyJzdWIiOiIxIn0.sig"
+
+        with patch.object(mod, "_get_token", lambda: fake_token), \
+             patch.object(mod, "_get_client", lambda: _Client()):
+            await mod._handle_log_work({"summary": "test"})
+
+        body = captured.get("json") or {}
+        # No dispatch, no override — keeps the mcp-* id (existing behavior).
+        assert body.get("session_id") == "mcp-deadbeef12345678"
+
+    @pytest.mark.asyncio
+    async def test_explicit_session_id_wins_over_fallback(self):
+        """Caller-provided session_id always wins, even when an mcp-* id and
+        a dispatch id are both present."""
+        import pixsim7.client.mcp_server as mod
+
+        mod._registered_session_id = "mcp-deadbeef12345678"
+        set_dispatch_session("dispatch-sess")
+
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status_code = 200
+            def json(self):
+                return {"ok": True}
+
+        async def fake_post(path, headers=None, json=None):  # noqa: A002
+            captured["json"] = json
+            return _Resp()
+
+        class _Client:
+            post = staticmethod(fake_post)
+
+        fake_token = "header.eyJzdWIiOiIxIn0.sig"
+
+        with patch.object(mod, "_get_token", lambda: fake_token), \
+             patch.object(mod, "_get_client", lambda: _Client()):
+            await mod._handle_log_work({"summary": "test", "session_id": "explicit-id"})
+
+        body = captured.get("json") or {}
+        assert body.get("session_id") == "explicit-id"

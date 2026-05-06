@@ -1,120 +1,38 @@
-"""Ownership policy helpers for access control and scoping."""
+"""Ownership policy helpers for access control and scoping.
+
+The abstract primitives (``OwnershipPolicy``, ``OwnershipScope``,
+``AccessFlag``, …) live in :mod:`pixsim7.common.ownership` so sibling
+packages (``pixsim7/automation/``, …) can import them without depending on
+main backend. This module re-exports them for legacy call-site stability,
+and adds the *game-domain* access assertions (``assert_world_access``,
+``assert_session_access``) that need ``GameWorld`` / ``GameSession``.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game.core.models import GameSession, GameWorld
 
-
-class OwnershipScope(str, Enum):
-    """Ownership scope for an entity."""
-    GLOBAL = "global"
-    USER = "user"
-    WORLD = "world"
-    SESSION = "session"
-
-
-@dataclass(frozen=True)
-class OwnershipPolicy:
-    """Policy describing how an entity is owned and who can access it."""
-    scope: OwnershipScope
-    owner_field: Optional[str] = None
-    world_field: Optional[str] = None
-    session_field: Optional[str] = None
-    requires_admin: bool = False
-
-
-def _is_admin(user: Any) -> bool:
-    if user is None:
-        return False
-    if hasattr(user, "is_admin") and callable(user.is_admin):
-        return bool(user.is_admin())
-    return bool(getattr(user, "is_admin", False))
-
-
-def assert_can_access(
-    *,
-    user: Any,
-    policy: OwnershipPolicy,
-    owner_id: Optional[int] = None,
-    world_id: Optional[int] = None,
-    session_id: Optional[int] = None,
-) -> None:
-    """Raise HTTP 403 if user cannot access the resource."""
-    if policy.requires_admin and not _is_admin(user):
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    if policy.scope == OwnershipScope.GLOBAL:
-        return
-
-    if policy.scope == OwnershipScope.USER:
-        user_id = getattr(user, "id", None)
-        if owner_id is None and user_id is None:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        if owner_id is not None and owner_id != getattr(user, "id", None):
-            raise HTTPException(status_code=403, detail="Access denied")
-        return
-
-    if policy.scope == OwnershipScope.WORLD:
-        if world_id is None:
-            raise HTTPException(status_code=400, detail="world_id required")
-        return
-
-    if policy.scope == OwnershipScope.SESSION:
-        if session_id is None:
-            raise HTTPException(status_code=400, detail="session_id required")
-        return
-
-
-def apply_ownership_filter(
-    query: Any,
-    *,
-    model: Any,
-    policy: OwnershipPolicy,
-    user: Any,
-    owner_id: Optional[int] = None,
-    world_id: Optional[int] = None,
-    session_id: Optional[int] = None,
-):
-    """Apply ownership filters to a SQLAlchemy query."""
-    if policy.requires_admin and not _is_admin(user):
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    if policy.scope == OwnershipScope.GLOBAL:
-        return query
-
-    conditions = []
-    if policy.scope == OwnershipScope.USER:
-        if policy.owner_field and owner_id is not None:
-            conditions.append(getattr(model, policy.owner_field) == owner_id)
-        elif policy.owner_field:
-            user_id = getattr(user, "id", None)
-            if user_id is None:
-                raise HTTPException(status_code=401, detail="Authentication required")
-            conditions.append(getattr(model, policy.owner_field) == user_id)
-
-    if policy.scope == OwnershipScope.WORLD:
-        if world_id is None:
-            raise HTTPException(status_code=400, detail="world_id required")
-        if policy.world_field and world_id is not None:
-            conditions.append(getattr(model, policy.world_field) == world_id)
-
-    if policy.scope == OwnershipScope.SESSION:
-        if session_id is None:
-            raise HTTPException(status_code=400, detail="session_id required")
-        if policy.session_field and session_id is not None:
-            conditions.append(getattr(model, policy.session_field) == session_id)
-
-    if conditions:
-        return query.where(and_(*conditions))
-
-    return query
+# Re-export the abstract primitives — legacy imports keep working.
+from pixsim7.common.ownership import (
+    AccessFlag,
+    OwnershipPolicy,
+    OwnershipScope,
+    PUBLIC_FLAG,
+    SHARED_FLAG,
+    SYSTEM_FLAG,
+    apply_ownership_filter,
+    apply_visibility_filter,
+    assert_can_access,
+    assert_can_edit,
+    assert_can_view,
+    gate_admin_only_writes,
+)
+# Internal — used below by the game-domain assertions.
+from pixsim7.common.ownership import _is_admin
 
 
 async def assert_world_access(
@@ -153,3 +71,23 @@ async def assert_session_access(
         raise HTTPException(status_code=403, detail="session_access_denied")
 
     return session
+
+
+__all__ = [
+    # Re-exports from pixsim7.common.ownership:
+    "OwnershipScope",
+    "OwnershipPolicy",
+    "AccessFlag",
+    "SYSTEM_FLAG",
+    "SHARED_FLAG",
+    "PUBLIC_FLAG",
+    "assert_can_access",
+    "apply_ownership_filter",
+    "apply_visibility_filter",
+    "assert_can_view",
+    "assert_can_edit",
+    "gate_admin_only_writes",
+    # Game-domain assertions defined here:
+    "assert_world_access",
+    "assert_session_access",
+]

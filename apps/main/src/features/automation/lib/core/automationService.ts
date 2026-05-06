@@ -1,12 +1,3 @@
-import type {
-  AndroidDevice,
-  AppActionPreset,
-  AutomationExecution,
-  ExecutionLoop,
-  DeviceScanResult,
-  ActionDefinition,
-  PresetVariable,
-} from '../../types';
 import {
   listDevices as apiListDevices,
   scanDevices as apiScanDevices,
@@ -38,6 +29,20 @@ import type {
   AutomationExecution as ApiAutomationExecution,
   ExecutionLoop as ApiExecutionLoop,
 } from '@lib/api/automation';
+import { API_BASE_URL } from '@lib/api/client';
+import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { authService } from '@lib/auth';
+
+import type {
+  AndroidDevice,
+  AppActionPreset,
+  AutomationExecution,
+  ExecutionLoop,
+  DeviceScanResult,
+  ActionDefinition,
+  PresetVariable,
+  PresetStats,
+} from '../../types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -218,6 +223,26 @@ class AutomationService {
   async getPresets(): Promise<AppActionPreset[]> {
     const presets = await apiListPresets();
     return presets.map(toAppActionPreset);
+  }
+
+  /**
+   * Fetch live usage stats for all presets, keyed by preset id. Computed
+   * server-side from preset actions JSON + the executions table — never
+   * stored on the preset row. See backend PresetStats for the contract.
+   * Uses fetch directly since this endpoint isn't yet in the orval-generated
+   * client; regen will replace this with a typed wrapper.
+   */
+  async getPresetStats(): Promise<Record<number, PresetStats>> {
+    const token = authService.getStoredToken();
+    const headers = withCorrelationHeaders(
+      token ? { Authorization: `Bearer ${token}` } : undefined,
+      'automation:preset-stats',
+    );
+    const resp = await fetch(`${API_BASE_URL}/automation/presets/stats`, { headers });
+    if (!resp.ok) {
+      throw new Error(`[automation] Failed to load preset stats: ${resp.status}`);
+    }
+    return (await resp.json()) as Record<number, PresetStats>;
   }
 
   async getPreset(id: number): Promise<AppActionPreset> {

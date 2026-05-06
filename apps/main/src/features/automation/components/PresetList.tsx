@@ -1,16 +1,22 @@
-import { useState, useEffect } from 'react';
-import { type AppActionPreset } from '../types';
-import { automationService } from '../lib/core';
-import { getAccounts } from '@features/providers';
 import { Button, Panel, ConfirmModal, Modal, Select, useToast } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import { getAccounts } from '@features/providers';
+
+import { useConfirmModal } from '@/hooks/useModal';
+
+import { automationService } from '../lib/core';
+import { type AppActionPreset, type PresetStats } from '../types';
+
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';
-import { useConfirmModal } from '@/hooks/useModal';
+
 
 type View = 'list' | 'create' | 'edit';
 
 export function PresetList() {
   const [presets, setPresets] = useState<AppActionPreset[]>([]);
+  const [presetStats, setPresetStats] = useState<Record<number, PresetStats>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>('list');
@@ -29,8 +35,18 @@ export function PresetList() {
     try {
       setLoading(true);
       setError(null);
-      const data = await automationService.getPresets();
+      // Stats failure is non-fatal — cards just show 0 refs/runs rather than
+      // blocking the whole list. Presets are the primary data, stats are a
+      // sidecar enhancement.
+      const [data, stats] = await Promise.all([
+        automationService.getPresets(),
+        automationService.getPresetStats().catch((err) => {
+          console.warn('Error loading preset stats:', err);
+          return {} as Record<number, PresetStats>;
+        }),
+      ]);
       setPresets(data);
+      setPresetStats(stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load presets');
       console.error('Error loading presets:', err);
@@ -258,6 +274,7 @@ export function PresetList() {
                   <PresetCard
                     key={preset.id}
                     preset={preset}
+                    stats={presetStats[preset.id]}
                     onRun={handleRun}
                     onCopy={handleCopy}
                     onEdit={(p) => {
@@ -282,6 +299,7 @@ export function PresetList() {
                   <PresetCard
                     key={preset.id}
                     preset={preset}
+                    stats={presetStats[preset.id]}
                     onRun={handleRun}
                     onCopy={handleCopy}
                     onEdit={(p) => {
@@ -306,6 +324,7 @@ export function PresetList() {
                   <PresetCard
                     key={preset.id}
                     preset={preset}
+                    stats={presetStats[preset.id]}
                     onRun={handleRun}
                     onCopy={handleCopy}
                     onEdit={(p) => {

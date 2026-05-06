@@ -4,14 +4,19 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE_URL } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { authService } from '@lib/auth';
+import { isAdminUser } from '@lib/auth/userRoles';
+
 
 import { automationService } from '@features/automation';
 import { getAccounts } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
 
+import { useAuthStore } from '@/stores/authStore';
+
 import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, type AndroidDevice, ActionType } from '../types';
 
 import { ActionBuilder } from './ActionBuilder';
+import { CategorySelect } from './CategorySelect';
 import { VariablesEditor } from './VariablesEditor';
 
 
@@ -122,6 +127,12 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [description, setDescription] = useState(preset?.description ?? '');
   const [category, setCategory] = useState(preset?.category ?? '');
   const [isShared, setIsShared] = useState(preset?.is_shared ?? false);
+  // Admin-only: promote/demote a preset to system-wide. Backend silently
+  // ignores this field for non-admins, but we also hide the control so it
+  // doesn't visibly fail.
+  const [isSystem, setIsSystem] = useState(preset?.is_system ?? false);
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = isAdminUser(currentUser);
   const [variables, setVariables] = useState<PresetVariable[]>(preset?.variables ?? []);
   const [actions, setActions] = useState<ActionDefinition[]>(preset?.actions ?? []);
   const [saving, setSaving] = useState(false);
@@ -328,11 +339,25 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
 
     setLoadingUi(true);
     try {
-      // Get first available device (or we could add device selection)
+      // Honor the device dropdown: if the user picked a specific device, use
+      // that one; otherwise (Auto) fall back to the first online device.
+      // Re-fetch so we pick up freshly-online devices without forcing the
+      // user to refresh, but still match against the currently-selected id.
       const devices = await automationService.getDevices();
-      const device = devices.find(d => d.status === 'online') || devices[0];
+      const device =
+        testDeviceId !== 'auto'
+          ? devices.find((d) => d.id === testDeviceId)
+          : devices.find((d) => d.status === 'online') || devices[0];
       if (!device) {
-        toast.error('No device available');
+        toast.error(
+          testDeviceId !== 'auto'
+            ? 'Selected device is no longer available'
+            : 'No device available',
+        );
+        return;
+      }
+      if (testDeviceId !== 'auto' && device.status !== 'online') {
+        toast.error(`Device "${device.name}" is ${device.status}`);
         return;
       }
 
@@ -380,7 +405,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
     } finally {
       setLoadingUi(false);
     }
-  }, [testAccountId, accounts, uiFilter, toast]);
+  }, [testAccountId, testDeviceId, accounts, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -402,6 +427,11 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         description: description.trim() || undefined,
         category: category.trim() || undefined,
         is_shared: isShared,
+        // Always include is_system — backend gates it admin-only, so the
+        // round-trip preserves the existing value for non-admins (they
+        // can't edit a system preset via this form anyway, since the card
+        // hides the Edit button for them).
+        is_system: isSystem,
         variables: variables.length > 0 ? variables : undefined,
         actions,
       });
@@ -453,17 +483,15 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Category
               </label>
-              <input
-                type="text"
+              <CategorySelect
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g., Gaming, Social, Utility"
+                onChange={setCategory}
                 className={inputClass}
               />
             </div>
 
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 pt-7">
+            <div className="pt-7 space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                 <input
                   type="checkbox"
                   checked={isShared}
@@ -472,6 +500,20 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
                 />
                 Share with others
               </label>
+              {isAdmin && (
+                <label
+                  className="flex items-center gap-2 text-sm font-medium text-purple-700 dark:text-purple-300"
+                  title="Admin-only. System presets are seeded/curated globally and visible to everyone."
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSystem}
+                    onChange={(e) => setIsSystem(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+                  />
+                  ⚙️ Make system-wide
+                </label>
+              )}
             </div>
           </div>
         </div>
@@ -896,15 +938,14 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Category
             </label>
-            <input
-              type="text"
+            <CategorySelect
               value={newPresetCategory}
-              onChange={(e) => setNewPresetCategory(e.target.value)}
-              placeholder="Snippet"
+              onChange={setNewPresetCategory}
               className={inputClass}
+              allowEmpty={false}
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Use "Snippet" for reusable action sequences
+              "Snippet" marks reusable action sequences callable via Call Preset.
             </p>
           </div>
 

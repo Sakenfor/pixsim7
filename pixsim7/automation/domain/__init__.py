@@ -19,7 +19,7 @@ Enums:
 from .device import AndroidDevice, DeviceType, ConnectionMethod, DeviceStatus
 from .agent import DeviceAgent
 from .pairing_request import PairingRequest
-from .preset import AppActionPreset, ActionType
+from .preset import AppActionPreset, ActionType, PRESET_POLICY
 from .execution import AutomationExecution, AutomationStatus
 from .execution_loop import (
     ExecutionLoop,
@@ -38,6 +38,7 @@ __all__ = [
     "DeviceStatus",
     "AppActionPreset",
     "ActionType",
+    "PRESET_POLICY",
     "AutomationExecution",
     "AutomationStatus",
     "ExecutionLoop",

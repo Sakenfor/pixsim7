@@ -12,7 +12,23 @@ from pixsim7.backend.main.infrastructure.database.session import (
     get_automation_db,
     get_db,
 )
-from pixsim7.automation.domain import AndroidDevice, DeviceAgent, DeviceStatus, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
+from pixsim7.automation.domain import (
+    AndroidDevice,
+    DeviceAgent,
+    DeviceStatus,
+    ExecutionLoop,
+    LoopStatus,
+    AppActionPreset,
+    AutomationExecution,
+    AutomationStatus,
+    PRESET_POLICY,
+)
+from pixsim7.common.ownership import (
+    apply_visibility_filter,
+    assert_can_edit,
+    assert_can_view,
+    gate_admin_only_writes,
+)
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.automation.services import ExecutionLoopService
 from pixsim7.automation.services.device_sync_service import DeviceSyncService
@@ -54,6 +70,27 @@ class TestActionsResponse(BaseModel):
     task_id: Optional[str] = None
     actions_count: Optional[int] = None
     message: Optional[str] = None  # Used when status="skipped"
+
+
+class PresetReference(BaseModel):
+    """A preset that calls another preset (one entry of `referenced_by`)."""
+    id: int
+    name: str
+
+
+class PresetStats(BaseModel):
+    """Per-preset usage signals derived live; never stored on the preset row.
+
+    `referenced_by` is a static reverse-lookup over the actions JSON — answers
+    "which other presets invoke this one via call_preset?". `run_count` and
+    `last_run_at` come from `automation_executions` and only count rows that
+    actually started (i.e. ignore queued-but-never-ran rows). Nested
+    call_preset invocations don't get their own execution row, so this
+    naturally counts only direct/top-level runs — which matches the UX intent.
+    """
+    referenced_by: List[PresetReference] = []
+    run_count: int = 0
+    last_run_at: Optional[datetime] = None
 
 
 class ClearExecutionsResponse(BaseModel):
@@ -331,47 +368,169 @@ async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_automation_d
 
 @router.get("/presets", response_model=List[AppActionPreset])
 async def list_presets(
+    user: CurrentUser,
     provider_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_automation_db)
+    db: AsyncSession = Depends(get_automation_db),
 ):
     """
-    List all presets, optionally filtered by provider.
+    List presets visible to the current user, optionally filtered by provider.
 
-    If provider_id is specified, only returns presets where:
-    - app_package contains the provider_id (case-insensitive), OR
-    - tags array contains the provider_id
+    Visibility (enforced by ``apply_visibility_filter`` against ``PRESET_POLICY``):
+      - Admins: every preset.
+      - Everyone else: own + ``is_shared`` + ``is_system``.
+
+    If ``provider_id`` is specified, additionally narrows to presets whose
+    ``app_package`` contains it (case-insensitive) OR whose ``tags`` array
+    contains it.
     """
     query = select(AppActionPreset)
 
     if provider_id:
-        # Filter by app_package containing provider_id OR tags containing provider_id
         from sqlalchemy import or_, func
         from sqlalchemy.dialects.postgresql import JSONB
         provider_lower = provider_id.lower()
         query = query.where(
             or_(
                 func.lower(AppActionPreset.app_package).contains(provider_lower),
-                cast(AppActionPreset.tags, JSONB).contains([provider_id])
+                cast(AppActionPreset.tags, JSONB).contains([provider_id]),
             )
         )
+
+    query = apply_visibility_filter(
+        query, model=AppActionPreset, policy=PRESET_POLICY, user=user
+    )
 
     result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.post("/presets", response_model=AppActionPreset)
-async def create_preset(preset: AppActionPreset, db: AsyncSession = Depends(get_automation_db)):
+async def create_preset(
+    preset: AppActionPreset,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
+):
+    """Create a new preset. Owner is always the creator; admin-only flags
+    (e.g. ``is_system``) are silently stripped for non-admins."""
+    gate_admin_only_writes(preset, user=user, policy=PRESET_POLICY, existing=None)
+    preset.owner_id = user.id
     db.add(preset)
     await db.commit()
     await db.refresh(preset)
     return preset
 
 
+def _walk_call_preset_targets(actions: Optional[List[Dict[str, Any]]]):
+    """Yield `preset_id` int for every `call_preset` action in `actions`,
+    recursing into nested `params.actions` / `params.else_actions` used by
+    if_*/repeat control-flow actions."""
+    if not actions:
+        return
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        params = action.get("params") or {}
+        if action.get("type") == "call_preset":
+            target = params.get("preset_id")
+            if isinstance(target, int) and target > 0:
+                yield target
+        # Recurse into both branch arrays without caring which control-flow
+        # action they belong to — keeps this future-proof for new nesting types.
+        for nested_key in ("actions", "else_actions"):
+            nested = params.get(nested_key)
+            if isinstance(nested, list):
+                yield from _walk_call_preset_targets(nested)
+
+
+@router.get("/presets/stats", response_model=Dict[int, PresetStats])
+async def get_preset_stats(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
+):
+    """Per-preset usage signals (refs + runs) computed live.
+
+    Visibility-filtered to match the list endpoint — a non-admin only sees
+    stats for presets they could load via GET /presets, and ``referenced_by``
+    entries are limited to parent presets they can also see. Without this,
+    private preset names would leak through ``referenced_by[child].name``.
+
+    Two passes:
+      1. Reverse-lookup ``referenced_by`` from actions JSON across visible
+         presets only.
+      2. Aggregate ``automation_executions`` for visible preset ids; only
+         rows where execution actually started count as runs.
+    """
+    from sqlalchemy import func
+
+    # 1) Load just-enough columns for every *visible* preset.
+    visible_q = select(
+        AppActionPreset.id,
+        AppActionPreset.name,
+        AppActionPreset.actions,
+        AppActionPreset.owner_id,
+        AppActionPreset.is_system,
+        AppActionPreset.is_shared,
+    )
+    visible_q = apply_visibility_filter(
+        visible_q, model=AppActionPreset, policy=PRESET_POLICY, user=user
+    )
+    rows = (await db.execute(visible_q)).all()
+    visible_ids = {row.id for row in rows}
+
+    # 2) Inverse-call index — both parent and child must be visible to be
+    # included. Iterating only over visible rows means invisible parents
+    # never contribute names; the `child_id in visible_ids` guard means
+    # invisible children are dropped from referenced_by lists too.
+    referenced_by: Dict[int, List[PresetReference]] = {row.id: [] for row in rows}
+    for parent in rows:
+        for child_id in _walk_call_preset_targets(parent.actions):
+            if child_id in visible_ids and child_id != parent.id:
+                referenced_by[child_id].append(
+                    PresetReference(id=parent.id, name=parent.name)
+                )
+
+    # 3) Run aggregates for visible ids only. Skip the query entirely if
+    # nothing's visible — `IN ()` is a SQL nuisance.
+    run_stats: Dict[int, tuple[int, Optional[datetime]]] = {}
+    if visible_ids:
+        exec_q = await db.execute(
+            select(
+                AutomationExecution.preset_id,
+                func.count(AutomationExecution.id).label("run_count"),
+                func.max(AutomationExecution.started_at).label("last_run_at"),
+            )
+            .where(AutomationExecution.preset_id.in_(visible_ids))
+            .where(AutomationExecution.started_at.is_not(None))
+            .group_by(AutomationExecution.preset_id)
+        )
+        run_stats = {
+            row.preset_id: (int(row.run_count or 0), row.last_run_at)
+            for row in exec_q.all()
+        }
+
+    # 4) Combine. Visible presets without executions get zeros so the
+    # frontend renders uniformly.
+    result: Dict[int, PresetStats] = {}
+    for preset_id, refs in referenced_by.items():
+        runs, last = run_stats.get(preset_id, (0, None))
+        result[preset_id] = PresetStats(
+            referenced_by=refs,
+            run_count=runs,
+            last_run_at=last,
+        )
+    return result
+
+
 @router.get("/presets/{preset_id}", response_model=AppActionPreset)
-async def get_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
+async def get_preset(
+    preset_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
+):
     preset = await db.get(AppActionPreset, preset_id)
     if not preset:
         raise HTTPException(status_code=404, detail="Preset not found")
+    assert_can_view(preset, user=user, policy=PRESET_POLICY)
     return preset
 
 
@@ -379,26 +538,25 @@ async def get_preset(preset_id: int, db: AsyncSession = Depends(get_automation_d
 async def update_preset(
     preset_id: int,
     updated_data: AppActionPreset,
-    db: AsyncSession = Depends(get_automation_db)
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
 ):
-    """
-    Update an existing preset.
+    """Update an existing preset.
 
-    System presets cannot be modified - they must be copied first.
+    Access:
+      - ``assert_can_edit`` blocks non-admins on rows whose flags lock writes
+        to admin (``is_system``) and on rows the user doesn't own.
+      - ``gate_admin_only_writes`` preserves existing admin-only flag values
+        for non-admin payloads (e.g. a non-admin can't promote their own
+        preset to ``is_system`` via PUT).
     """
-    # Get existing preset
     preset = await db.get(AppActionPreset, preset_id)
     if not preset:
         raise HTTPException(status_code=404, detail="Preset not found")
 
-    # Prevent modification of system presets
-    if preset.is_system:
-        raise HTTPException(
-            status_code=403,
-            detail="System presets cannot be modified. Please copy it first."
-        )
+    assert_can_edit(preset, user=user, policy=PRESET_POLICY)
+    gate_admin_only_writes(updated_data, user=user, policy=PRESET_POLICY, existing=preset)
 
-    # Update fields
     preset.name = updated_data.name
     preset.description = updated_data.description
     preset.app_package = updated_data.app_package
@@ -406,6 +564,7 @@ async def update_preset(
     preset.tags = updated_data.tags
     preset.actions = updated_data.actions
     preset.is_shared = updated_data.is_shared
+    preset.is_system = updated_data.is_system  # gate above already sanitised
 
     await db.commit()
     await db.refresh(preset)
@@ -413,22 +572,17 @@ async def update_preset(
 
 
 @router.delete("/presets/{preset_id}")
-async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
-    """
-    Delete a preset.
-
-    System presets cannot be deleted.
-    """
+async def delete_preset(
+    preset_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
+):
+    """Delete a preset. Same write-gate as update."""
     preset = await db.get(AppActionPreset, preset_id)
     if not preset:
         raise HTTPException(status_code=404, detail="Preset not found")
 
-    # Prevent deletion of system presets
-    if preset.is_system:
-        raise HTTPException(
-            status_code=403,
-            detail="System presets cannot be deleted."
-        )
+    assert_can_edit(preset, user=user, policy=PRESET_POLICY)
 
     await db.delete(preset)
     await db.commit()
@@ -436,28 +590,37 @@ async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_automatio
 
 
 @router.post("/presets/{preset_id}/copy", response_model=AppActionPreset)
-async def copy_preset(preset_id: int, db: AsyncSession = Depends(get_automation_db)):
-    """
-    Copy a preset (including system presets) to create a new user-editable preset.
+async def copy_preset(
+    preset_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_automation_db),
+):
+    """Copy a preset (including system or shared sources) to a new
+    user-editable preset.
 
-    The copied preset will:
-    - Have the same actions and configuration as the source
-    - Be marked as is_system=False (user preset)
-    - Have " (Copy)" appended to the name
+    Anyone who can *view* the source can copy it — that's the whole point
+    of system/shared visibility. The copy:
+      - Owned by the copier (was previously left ``owner_id=NULL`` — bug).
+      - ``is_system=False`` and ``is_shared=False`` — copies start private.
+      - ``cloned_from_id`` set so lineage is queryable.
+      - Preserves source ``category`` so it lands in the right bucket.
     """
-    # Get source preset
     source = await db.get(AppActionPreset, preset_id)
     if not source:
         raise HTTPException(status_code=404, detail="Preset not found")
+    assert_can_view(source, user=user, policy=PRESET_POLICY)
 
-    # Create new preset with copied data
     new_preset = AppActionPreset(
         name=f"{source.name} (Copy)",
         description=source.description,
         app_package=source.app_package,
+        category=source.category,
         tags=source.tags.copy() if source.tags else [],
         actions=source.actions.copy() if source.actions else [],
-        is_system=False,  # Always make copies non-system
+        is_system=False,
+        is_shared=False,
+        owner_id=user.id,
+        cloned_from_id=source.id,
     )
 
     db.add(new_preset)

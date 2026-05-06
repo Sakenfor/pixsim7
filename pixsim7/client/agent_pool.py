@@ -563,6 +563,22 @@ class AgentPool:
                         f.write(chat_session_id)
                 except OSError:
                     pass
+            # Set the in-process dispatch session BEFORE send_message so MCP
+            # tool calls made *during* the agent's turn (log_work, anything
+            # else hitting the bridge HTTP MCP) resolve to the correct chat
+            # session id. Previously this was set only after send_message
+            # returned, which meant tool calls during the turn fell back to
+            # the auto-registered "mcp-{hash}" session and silently mis-
+            # attributed work_summary entries to a parallel orphan row.
+            try:
+                from pixsim7.client.mcp_server import set_dispatch_session
+                # On first turn of a new session, chat_session_id may be None;
+                # set it anyway so we explicitly clear any stale id from a
+                # previous dispatch (avoids cross-attribution).
+                set_dispatch_session(chat_session_id)
+            except ImportError:
+                pass
+
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress, tool_gate=tool_gate)
             # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
@@ -574,9 +590,10 @@ class AgentPool:
                         f.write(post_session_id)
                 except OSError:
                     pass
-            # Update in-process dispatch session so late MCP tool calls
-            # (e.g. log_work after first turn) resolve to the correct session.
-            if post_session_id:
+            # Refresh the in-process dispatch session with the post-turn id
+            # in case this was the first turn (cli_session_id only known now)
+            # — tools called by *follow-up* turns then see the correct id.
+            if post_session_id and post_session_id != chat_session_id:
                 try:
                     from pixsim7.client.mcp_server import set_dispatch_session
                     set_dispatch_session(post_session_id)
