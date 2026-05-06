@@ -48,10 +48,17 @@ export function useViewerScopeSync(
   const unregisterScope = useAssetViewerStore((s) => s.unregisterScope);
   const lastRegisteredRef = useRef<{ scopeId: string; label: string; assets: ViewerAsset[] } | null>(null);
 
-  // Sync scope data when it changes (registerScope upserts)
+  // Sync scope data when it changes (registerScope upserts).
+  // When `enabled` flips to false after a prior registration, actively
+  // unregister so the scope drops out of the dropdown — otherwise a stale
+  // entry hangs around (e.g. a MiniGallery that starts in non-probes mode
+  // then narrows to a probe filter — the global probes feed should win alone).
   useEffect(() => {
     if (!enabled || assets.length === 0) {
-      lastRegisteredRef.current = null;
+      if (lastRegisteredRef.current) {
+        unregisterScope(lastRegisteredRef.current.scopeId);
+        lastRegisteredRef.current = null;
+      }
       return;
     }
 
@@ -67,7 +74,7 @@ export function useViewerScopeSync(
 
     registerScope(scopeId, label, assets);
     lastRegisteredRef.current = { scopeId, label, assets };
-  }, [enabled, scopeId, label, assets, registerScope]);
+  }, [enabled, scopeId, label, assets, registerScope, unregisterScope]);
 
   // Unregister on unmount or when scopeId changes
   useEffect(() => {

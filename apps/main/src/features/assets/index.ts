@@ -60,6 +60,8 @@ export { useRecentScope } from './hooks/useRecentScope';
 
 export { useHistoryScope } from './hooks/useHistoryScope';
 
+export { useProbesScope } from './hooks/useProbesScope';
+
 export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
 
 export { useFilterMetadata } from './hooks/useFilterMetadata';

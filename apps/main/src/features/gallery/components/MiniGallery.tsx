@@ -516,12 +516,16 @@ function MiniGalleryContent({
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
-  // Register mini-gallery scope for viewer navigation (use allItems for full navigation)
+  // Register mini-gallery scope for viewer navigation (use allItems for full navigation).
+  // When this gallery is filtered to probes, defer to the canonical app-level
+  // `useProbesScope` (App.tsx) — it stays live across panel close/reopen via
+  // `assetEvents`, so we don't want to clobber it with a panel-tied snapshot.
   const viewerItems = useMemo(() => toViewerAssets(allItems), [allItems]);
   const miniScopeLabel = resolvedSourceLabel
     ? `${resolvedSourceLabel} (${allItems.length})`
     : `Gallery (${allItems.length})`;
-  useViewerScopeSync('mini-gallery', miniScopeLabel, viewerItems, isViewerOpen);
+  const isProbesGallery = (filters as Record<string, unknown>).asset_kind === 'probe';
+  useViewerScopeSync('mini-gallery', miniScopeLabel, viewerItems, isViewerOpen && !isProbesGallery);
 
   // Track which assets are currently being resolved
   const [resolvingIds, setResolvingIds] = useState<Set<number>>(new Set());

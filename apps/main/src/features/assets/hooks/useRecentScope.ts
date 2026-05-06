@@ -2,88 +2,39 @@
  * useRecentScope
  *
  * Always-available "Recent" navigation scope for the media viewer.
- * Subscribes to asset creation/deletion events and maintains a session-scoped
- * list of recently created assets (generations, uploads, captures).
+ * Subscribes to asset creation/update/deletion events and maintains a
+ * session-scoped list of recently created assets (generations, uploads,
+ * captures). Bootstraps from the server on first mount so the scope
+ * isn't empty after a fresh page load.
  *
- * Must be mounted exactly once at app level — `media-preview` panels support
- * multiple instances, so registering from inside a panel would cause one
- * instance's unmount cleanup to wipe the scope while siblings are still alive.
+ * Must be mounted exactly once at app level — see `createCachedScopeHook`.
  */
-
-import { useEffect, useMemo, useState } from 'react';
-
-import { hmrSingleton } from '@lib/utils';
 
 import { assetEvents } from '../lib/assetEvents';
 import { fromAssetResponse, toViewerAsset } from '../models/asset';
-import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
 
-import { useViewerScopeSync } from './useAssetViewer';
+import { bootstrapFromFilters, createCachedScopeHook } from './createCachedScopeHook';
 
-const RECENT_CAP = 100;
-
-interface RecentCache {
-  assets: ViewerAsset[];
-  version: number;
-}
-
-const recentCache = hmrSingleton<RecentCache>('viewer:recentAssetsCache', () => ({
-  assets: [],
-  version: 0,
-}));
-
-function prependToCache(va: ViewerAsset): void {
-  recentCache.assets = [va, ...recentCache.assets.filter((a) => a.id !== va.id)].slice(0, RECENT_CAP);
-  recentCache.version++;
-}
-
-function removeFromCache(id: string | number): void {
-  const before = recentCache.assets.length;
-  recentCache.assets = recentCache.assets.filter((a) => a.id !== id);
-  if (recentCache.assets.length !== before) recentCache.version++;
-}
-
-function updateInCache(va: ViewerAsset): void {
-  const idx = recentCache.assets.findIndex((a) => a.id === va.id);
-  if (idx >= 0) {
-    recentCache.assets[idx] = va;
-    recentCache.version++;
-  }
-}
-
-export function useRecentScope(): void {
-  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
-  const [cacheVersion, setCacheVersion] = useState(recentCache.version);
-
-  useEffect(() => {
+export const useRecentScope = createCachedScopeHook({
+  scopeId: 'recent',
+  cacheKey: 'viewer:recentAssetsCache',
+  cap: 100,
+  label: (n) => `Recent (${n})`,
+  bootstrap: () => bootstrapFromFilters({ sort: 'new' }, 100),
+  subscribe: ({ prepend, update, remove }) => {
     const unsubCreate = assetEvents.subscribe((response) => {
-      const model = fromAssetResponse(response);
-      const va = toViewerAsset(model);
-      prependToCache(va);
-      setCacheVersion(recentCache.version);
+      prepend(toViewerAsset(fromAssetResponse(response)));
     });
-
-    const unsubDelete = assetEvents.subscribeToDeletes((assetId) => {
-      removeFromCache(assetId);
-      setCacheVersion(recentCache.version);
-    });
-
     const unsubUpdate = assetEvents.subscribeToUpdates((response) => {
-      const model = fromAssetResponse(response);
-      const va = toViewerAsset(model);
-      updateInCache(va);
-      setCacheVersion(recentCache.version);
+      update(toViewerAsset(fromAssetResponse(response)));
     });
-
+    const unsubDelete = assetEvents.subscribeToDeletes((assetId) => {
+      remove(assetId);
+    });
     return () => {
       unsubCreate();
-      unsubDelete();
       unsubUpdate();
+      unsubDelete();
     };
-  }, []);
-
-  const snapshot = useMemo(() => [...recentCache.assets], [cacheVersion]);
-
-  const label = `Recent (${snapshot.length})`;
-  useViewerScopeSync('recent', label, snapshot, isViewerOpen && snapshot.length > 0);
-}
+  },
+});

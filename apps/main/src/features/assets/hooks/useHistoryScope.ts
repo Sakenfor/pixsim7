@@ -6,50 +6,17 @@
  * via the `viewerOpenEvents` bus. Navigation prev/next does NOT push, so the
  * scope only reflects deliberate user opens.
  *
- * Must be mounted exactly once at app level — same singleton constraint as
- * `useRecentScope`.
+ * Must be mounted exactly once at app level — see `createCachedScopeHook`.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-
-import { hmrSingleton } from '@lib/utils';
-
 import { viewerOpenEvents } from '../lib/viewerOpenEvents';
-import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
 
-import { useViewerScopeSync } from './useAssetViewer';
+import { createCachedScopeHook } from './createCachedScopeHook';
 
-const HISTORY_CAP = 50;
-
-interface HistoryCache {
-  assets: ViewerAsset[];
-  version: number;
-}
-
-const historyCache = hmrSingleton<HistoryCache>('viewer:historyAssetsCache', () => ({
-  assets: [],
-  version: 0,
-}));
-
-function pushToHistory(va: ViewerAsset): void {
-  historyCache.assets = [va, ...historyCache.assets.filter((a) => a.id !== va.id)].slice(0, HISTORY_CAP);
-  historyCache.version++;
-}
-
-export function useHistoryScope(): void {
-  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
-  const [cacheVersion, setCacheVersion] = useState(historyCache.version);
-
-  useEffect(() => {
-    const unsub = viewerOpenEvents.subscribe((asset) => {
-      pushToHistory(asset);
-      setCacheVersion(historyCache.version);
-    });
-    return unsub;
-  }, []);
-
-  const snapshot = useMemo(() => [...historyCache.assets], [cacheVersion]);
-
-  const label = `History (${snapshot.length})`;
-  useViewerScopeSync('history', label, snapshot, isViewerOpen && snapshot.length > 0);
-}
+export const useHistoryScope = createCachedScopeHook({
+  scopeId: 'history',
+  cacheKey: 'viewer:historyAssetsCache',
+  cap: 50,
+  label: (n) => `History (${n})`,
+  subscribe: ({ prepend }) => viewerOpenEvents.subscribe(prepend),
+});
