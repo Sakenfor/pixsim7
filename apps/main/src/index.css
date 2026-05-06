@@ -416,6 +416,32 @@ input {
   }
 }
 
+/* ── Probe pack reflow ──────────────────────────────────────────────
+ * When the action row is too narrow to fit [gear | Go | Probe] on a
+ * single line, the Probe pack jumps onto its own line above Go (and
+ * below Each, since Each is a sibling row in the parent flex-col).
+ *
+ * Implementation: the action row is `flex-wrap`. We give the Probe
+ * pack `order: -1` so it lays out first, and we inject a zero-height
+ * `::before` pseudo with `flex-basis: 100%` (order: 0, so it sits
+ * right after Probe but before gear/Go). The pseudo eats the rest of
+ * its line, forcing gear/Go to wrap onto the next row.
+ *
+ * This keeps the Probe wrapper content-sized — the yellow probeMode
+ * ring hugs the buttons instead of stretching across empty space. */
+
+@container (max-width: 280px) {
+  .gen-panel-action-row .gen-panel-probe-pack {
+    order: -1;
+  }
+  .gen-panel-action-row::before {
+    content: '';
+    flex-basis: 100%;
+    height: 0;
+    order: 0;
+  }
+}
+
 /* ── Thin overlay scrollbar ─────────────────────────────────────────── */
 /* Nearly invisible until hovered; use `.thin-scrollbar` on any overflow container */
 .thin-scrollbar {

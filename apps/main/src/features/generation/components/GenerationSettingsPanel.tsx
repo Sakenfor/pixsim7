@@ -296,10 +296,9 @@ export function GenerationSettingsPanel({
 
   // Probe mode — when on, Go/Each/CurrentOnly fire with ephemeral=true so the
   // resulting assets land as asset_kind='probe' (excluded from gallery + QuickGen
-  // history). Sticky toggle: stays on for a probing session until the user flips
-  // it back. Persisted per scope (not per operation), since "I'm probing right
-  // now" is a session-wide state.
-  const [probeMode, setProbeMode] = usePersistedScopeState('probeMode', false);
+  // history). Sticky toggle per (scope × operation): probing video doesn't flip
+  // image generation into probe mode, since cost/intent differ by op.
+  const [probeMode, setProbeMode] = usePersistedScopeState(`probeMode:${operationType}`, false);
   // Optional preset id: when probe mode is on AND a preset is selected, the
   // preset's params merge as paramOverrides on top of the hardcoded probe
   // defaults (duration=5 for video). null = use hardcoded defaults only.
@@ -396,10 +395,10 @@ export function GenerationSettingsPanel({
   const workbench = useGenerationWorkbench({ operationType });
 
   // Map of param name → value that probe-mode will override at submit time.
-  // Only includes entries that *differ* from the current dynamicParams — used
-  // to render inline override indicators on individual param controls (e.g.
-  // a "→5s" badge on the duration dropdown). Returns null when probe is off
-  // or there are no diffs, so consumers can early-out cheaply.
+  // Only includes entries that *differ* from the current dynamicParams. Param
+  // controls render the override value directly (WYSIWYG), with an amber ring
+  // signalling "probe is showing this, not your saved value." Returns null
+  // when probe is off or there are no diffs, so consumers can early-out cheaply.
   // Declared after `workbench` to avoid a TDZ error.
   const probeOverrides = useMemo<Record<string, unknown> | null>(() => {
     if (!probeMode) return null;
@@ -418,6 +417,20 @@ export function GenerationSettingsPanel({
     }
     return hasAny ? out : null;
   }, [probeMode, operationType, probePresetParams, workbench.dynamicParams]);
+
+  // Editing a probe-overridden param drops probe mode and applies the edit to
+  // the user's real saved value. Rationale: with WYSIWYG override display the
+  // user is "editing what they see," and probe is a preview, not a settings
+  // layer the user can tweak in place.
+  const handleProbeAwareParamChange = useCallback(
+    (name: string, value: any) => {
+      if (probeMode && probeOverrides && probeOverrides[name] !== undefined) {
+        setProbeMode(false);
+      }
+      workbench.handleParamChange(name, value);
+    },
+    [probeMode, probeOverrides, setProbeMode, workbench.handleParamChange],
+  );
 
   const modelProviderId = useProviderIdForModel(
     workbench.dynamicParams?.model as string | undefined
@@ -774,7 +787,7 @@ export function GenerationSettingsPanel({
           <GenerationParamControls
             paramSpecs={filteredParamSpecs}
             values={workbench.dynamicParams}
-            onChange={workbench.handleParamChange}
+            onChange={handleProbeAwareParamChange}
             generating={generating}
             unlimitedModels={unlimitedModels}
             promotedModels={promotedModels}
@@ -826,7 +839,7 @@ export function GenerationSettingsPanel({
             </div>
           )}
 
-          <div className="flex items-stretch gap-1.5 min-w-0">
+          <div className="gen-panel-action-row flex flex-wrap items-stretch gap-1.5 min-w-0">
             {/* Advanced settings gear icon */}
             <div className="flex-shrink-0">
               <AdvancedSettingsPopover
@@ -988,7 +1001,12 @@ export function GenerationSettingsPanel({
               Each / Current fire with ephemeral=true so resulting assets land
               as asset_kind='probe' (excluded from gallery + QuickGen history).
               Hardcoded fallback when no preset is bound: duration=5 for video. */}
-          <div className="flex-shrink-0 flex">
+          <div
+            className={clsx(
+              'gen-panel-probe-pack flex-shrink-0 flex rounded-lg',
+              probeMode && 'ring-2 ring-amber-300',
+            )}
+          >
             <button
               type="button"
               onClick={() => setProbeMode((v) => !v)}
@@ -998,7 +1016,7 @@ export function GenerationSettingsPanel({
                 'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold inline-flex items-center gap-1',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 probeMode
-                  ? 'text-white bg-amber-500 ring-2 ring-amber-300 hover:bg-amber-600'
+                  ? 'text-white bg-amber-600 hover:bg-amber-700'
                   : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
               )}
               style={{ transition: 'none', animation: 'none' }}
@@ -1020,7 +1038,7 @@ export function GenerationSettingsPanel({
                 'relative px-2 py-1.5 border-l border-white/20 inline-flex items-center justify-center',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 probeMode
-                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  ? 'text-white bg-amber-600 hover:bg-amber-700'
                   : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
               )}
               style={{ transition: 'none', animation: 'none' }}
@@ -1049,7 +1067,7 @@ export function GenerationSettingsPanel({
                 'px-1 py-1.5 rounded-r-lg border-l border-white/20 inline-flex items-center justify-center',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 probeMode
-                  ? 'text-white bg-amber-500 hover:bg-amber-600'
+                  ? 'text-white bg-amber-600 hover:bg-amber-700'
                   : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700/60 hover:bg-neutral-200 dark:hover:bg-neutral-700',
               )}
               style={{ transition: 'none', animation: 'none' }}
