@@ -338,10 +338,25 @@ export function ControlCenterDock() {
   }
 
   // Docked mode: use fixed positioning with edge-based reveal
-  // When retracted, a tap/click anywhere on the container opens the dock.
+  // When retracted, a tap/click on bare container area opens the dock.
   // This is the only reveal path on touch devices (useDockBehavior uses
-  // mousemove/mouseleave exclusively).
-  const handleContainerClick = !open ? () => setOpen(true) : undefined;
+  // mousemove/mouseleave exclusively). We deliberately skip clicks that
+  // originated on interactive children — in `peek` retracted mode the
+  // toolbar buttons (lock toggle, collapse, nav, etc.) are visible and
+  // must operate without un-retracting the dock.
+  const handleContainerClick = !open
+    ? (e: React.MouseEvent<HTMLDivElement>) => {
+        const target = e.target as HTMLElement | null;
+        if (
+          target?.closest(
+            'button, a, input, select, textarea, label, [role="button"], [role="menuitem"], [role="checkbox"]'
+          )
+        ) {
+          return;
+        }
+        setOpen(true);
+      }
+    : undefined;
   return (
     <div
       ref={dockRef}
