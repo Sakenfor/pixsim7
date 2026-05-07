@@ -76,6 +76,13 @@ export interface TickerSource {
 
 const sources = new Map<string, TickerSource>();
 const listeners = new Set<() => void>();
+/**
+ * Cached snapshot for `useSyncExternalStore`. Must keep the SAME reference
+ * between mutations or React will treat every render as a store change and
+ * re-render-loop ("getSnapshot should be cached" warning → max-update-depth).
+ * Invalidated to `null` on every register/unregister; rebuilt lazily.
+ */
+let cachedSnapshot: TickerSource[] | null = null;
 
 /**
  * Register (or replace) a ticker source. Idempotent on identical refs.
@@ -104,9 +111,16 @@ export function getTickerSource(id: string): TickerSource | undefined {
   return sources.get(id);
 }
 
-/** Snapshot of the registered sources, suitable for `useSyncExternalStore`. */
+/**
+ * Snapshot of the registered sources, suitable for `useSyncExternalStore`.
+ * Returns a CACHED array; same reference until a register/unregister
+ * invalidates it. Do not mutate the returned array.
+ */
 export function listTickerSources(): TickerSource[] {
-  return Array.from(sources.values());
+  if (cachedSnapshot === null) {
+    cachedSnapshot = Array.from(sources.values());
+  }
+  return cachedSnapshot;
 }
 
 /**
@@ -125,9 +139,11 @@ export function subscribeToTickerRegistry(cb: () => void): () => void {
 export function __resetTickerRegistryForTest(): void {
   sources.clear();
   listeners.clear();
+  cachedSnapshot = null;
 }
 
 function notify(): void {
+  cachedSnapshot = null;
   for (const cb of listeners) {
     try {
       cb();

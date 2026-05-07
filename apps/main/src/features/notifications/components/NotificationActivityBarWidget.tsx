@@ -8,93 +8,14 @@ import { Badge, useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
+import { useNotifications, type NotificationItem } from '../hooks/useNotifications';
 import { navigateToAgentProfile, navigateToPlan } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
-
-// ── Types ────────────────────────────────────────────────────────
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  body: string | null;
-  category: string;
-  severity: string;
-  source: string;
-  actorName: string | null;
-  refType: string | null;
-  refId: string | null;
-  broadcast: boolean;
-  read: boolean;
-  createdAt: string;
-}
-
-interface NotificationListResponse {
-  notifications: NotificationItem[];
-  unreadCount: number;
-}
-
-const NOTIFICATION_WIDGET_POLL_HEADERS = { 'X-Client-Surface': 'widget:notifications-activity-bar' } as const;
-
-// ── Hooks ────────────────────────────────────────────────────────
-
-function useNotifications() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-    setLoading(true);
-    try {
-      const res = await pixsimClient.get<NotificationListResponse>('/notifications?limit=20', {
-        headers: NOTIFICATION_WIDGET_POLL_HEADERS,
-      });
-      setNotifications(res.notifications);
-      setUnreadCount(res.unreadCount);
-    } catch {
-      // silent fail
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const interval = setInterval(refresh, 15_000);
-    return () => clearInterval(interval);
-  }, [refresh]);
-
-  const markRead = useCallback(
-    async (id: string) => {
-      try {
-        await pixsimClient.patch(`/notifications/${id}/read`, {});
-        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-        setUnreadCount((c) => Math.max(0, c - 1));
-      } catch {
-        // silent
-      }
-    },
-    [],
-  );
-
-  const markAllRead = useCallback(async () => {
-    try {
-      await pixsimClient.post('/notifications/mark-all-read', {});
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch {
-      // silent
-    }
-  }, []);
-
-  return { notifications, unreadCount, loading, refresh, markRead, markAllRead };
-}
 
 // ── Severity/Category styling ────────────────────────────────────
 
