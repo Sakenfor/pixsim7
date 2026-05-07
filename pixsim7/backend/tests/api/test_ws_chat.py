@@ -176,6 +176,133 @@ class TestWsChatMessage:
                 assert "No bridge available" in data["error"]
                 assert data["error_code"] == "bridge_unavailable"
 
+    def test_engine_mismatch_returns_structured_error(self):
+        """Codex tab dispatched while only Claude bridge is connected
+        must return a precise `bridge_engine_unavailable` error instead
+        of silently running on Claude and mislabelling the row."""
+        app = _app()
+        client = TestClient(app)
+        claude_agent = _make_agent()
+        claude_agent.agent_type = "claude-cli"
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+
+        # Mirror the real bridge filter: engine-specific lookup misses,
+        # but a generic lookup still returns the Claude agent so the
+        # handler can name what's actually connected.
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
+
+        def _get_available(*, user_id=None, agent_type=None):
+            if agent_type and normalize_engine(agent_type) == "codex":
+                return None
+            return claude_agent
+
+        mock_bridge.get_available_agent.side_effect = _get_available
+
+        patches = _debug_patches(user_id=1, token="tok")
+        with patches[0], patches[1], patches[2], patch(_BRIDGE, mock_bridge):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t1", "message": "hello",
+                    "engine": "codex",
+                }))
+                data = json.loads(ws.receive_text())
+                assert data["type"] == "result"
+                assert data["ok"] is False
+                assert data["error_code"] == "bridge_engine_unavailable"
+                assert "codex" in data["error"]
+                assert "claude" in data["error"]  # diagnostic names what IS connected
+
+    def test_persisted_engine_uses_agent_type_not_request(self):
+        """When the request says `engine='claude'` but the agent is
+        actually `claude-cli`, the persisted ChatSession.engine should
+        be the normalized `claude` (from agent_type), not the raw
+        request value. Same row no matter where the value came from."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        agent.agent_type = "claude-cli"
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "result", "ok": True,
+                "response": "Hello!",
+                "bridge_session_id": "sess-engine-check",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db = MagicMock()
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        mock_resolve_profile = AsyncMock(return_value=None)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t1", "message": "hello",
+                    "engine": "claude",
+                }))
+                json.loads(ws.receive_text())  # result
+
+        assert mock_upsert.call_count == 1
+        # Persisted as the normalized form, not "claude-cli" or any oddity.
+        assert mock_upsert.call_args.kwargs["engine"] == "claude"
+
+    def test_missing_engine_field_falls_back_to_agent_type(self):
+        """A WS payload that forgets to include `engine` no longer silently
+        defaults to "claude" — instead the agent's actual type wins."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        agent.agent_type = "codex-cli"
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "result", "ok": True,
+                "response": "ok",
+                "bridge_session_id": "sess-default",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db = MagicMock()
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        mock_resolve_profile = AsyncMock(return_value=None)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t1", "message": "hello",
+                    # NB: no `engine` field — pre-fix this would default to claude
+                }))
+                json.loads(ws.receive_text())
+
+        assert mock_upsert.call_count == 1
+        assert mock_upsert.call_args.kwargs["engine"] == "codex"
+
     def test_dispatch_error_propagates_structured_code(self):
         app = _app()
         client = TestClient(app)
@@ -720,6 +847,10 @@ class TestDrainLateResult:
         assert fake_session.messages[0]["text"] == "lonely question"
         assert fake_session.messages[1]["role"] == "system"
         assert "did not respond within 900s" in fake_session.messages[1]["text"]
+        # Structured terminal marker — the frontend's responseLost
+        # detection treats this as a definitive answer to the user turn
+        # so the rose chip stops firing once a turn is abandoned.
+        assert fake_session.messages[1]["kind"] == "abandoned"
         fake_db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio

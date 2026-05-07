@@ -42,6 +42,26 @@ BRIDGE_STATUS_CHANGED = register_event_type(
 )
 
 
+def normalize_engine(value: Optional[str]) -> Optional[str]:
+    """Reduce an engine identifier to its canonical short form.
+
+    Bridges register with ``agent_type`` like ``claude-cli`` / ``codex-cli``
+    (the literal CLI binary name) while WS requests carry the user-facing
+    ``engine`` like ``claude`` / ``codex``. The match has to tolerate that
+    suffix or every engine-filtered lookup would miss every real bridge.
+
+    Module-level (not a method) so callers can use it without holding a
+    bridge instance — the WS chat handler in particular uses it on the
+    request side before it has resolved an agent.
+    """
+    v = (value or "").strip().lower()
+    if not v:
+        return None
+    if v.endswith("-cli"):
+        v = v[:-4]
+    return v or None
+
+
 class RemoteTaskError(RuntimeError):
     """Structured task failure propagated from remote bridge clients."""
 
@@ -340,20 +360,41 @@ class RemoteCommandBridge:
                 count += 1
         return count
 
-    def get_available_agent(self, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
+    def get_available_agent(
+        self,
+        user_id: Optional[int] = None,
+        agent_type: Optional[str] = None,
+    ) -> Optional[RemoteAgent]:
         """Get a connected agent with remaining capacity.
 
         Resolution order:
         1. User's own bridge (if user_id provided and user has one)
         2. Shared/admin bridge — least-loaded (fewest active tasks)
+
+        When ``agent_type`` is given, only agents matching that engine
+        (e.g. "claude", "codex") are eligible. The match is normalized so
+        ``claude`` matches a bridge registered as ``claude-cli`` (and
+        vice-versa). This prevents silently running a Codex chat tab on
+        a Claude bridge and labelling the result as the wrong engine.
+        ``agent_type=None`` keeps the legacy any-engine behavior for
+        callers that don't care.
         """
+        wanted = normalize_engine(agent_type)
+
+        def _matches(a: "RemoteAgent") -> bool:
+            if a.busy:
+                return False
+            if wanted is None:
+                return True
+            return normalize_engine(a.agent_type) == wanted
+
         if user_id is not None:
             # First try user's own bridge
             for agent in self._agents.values():
-                if not agent.busy and agent.user_id == user_id:
+                if _matches(agent) and agent.user_id == user_id:
                     return agent
         # Fall back to shared bridges, pick least-loaded
-        shared = [a for a in self._agents.values() if not a.busy and a.user_id is None]
+        shared = [a for a in self._agents.values() if _matches(a) and a.user_id is None]
         if shared:
             return min(shared, key=lambda a: a.active_tasks)
         return None

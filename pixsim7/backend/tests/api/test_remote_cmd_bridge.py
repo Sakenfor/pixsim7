@@ -305,6 +305,66 @@ class TestAgentRouting:
         assert bridge.get_agent_by_bridge_id("bridge-user", user_id=2) is None
         assert bridge.get_agent_by_bridge_id("bridge-shared", user_id=2) is shared_agent
 
+    def test_agent_type_filter_matches(self):
+        """When `agent_type='codex'`, only codex bridges are returned.
+        Bridges register as `claude-cli` / `codex-cli`; the filter normalizes
+        the `-cli` suffix so the user-facing form matches."""
+        bridge = RemoteCommandBridge()
+        claude = _make_agent(agent_id="claude")
+        claude.agent_type = "claude-cli"
+        codex = _make_agent(agent_id="codex")
+        codex.agent_type = "codex-cli"
+        bridge._agents["claude"] = claude
+        bridge._agents["codex"] = codex
+
+        assert bridge.get_available_agent(agent_type="codex") is codex
+        assert bridge.get_available_agent(agent_type="claude") is claude
+
+    def test_agent_type_filter_returns_none_when_unmatched(self):
+        """Codex requested but only Claude connected — must NOT silently
+        fall back. The WS handler decides whether to surface a structured
+        error or downgrade; the bridge just refuses to mismatch."""
+        bridge = RemoteCommandBridge()
+        claude = _make_agent(agent_id="claude")
+        claude.agent_type = "claude-cli"
+        bridge._agents["claude"] = claude
+
+        assert bridge.get_available_agent(agent_type="codex") is None
+        # Without filter, the existing claude agent is fine.
+        assert bridge.get_available_agent() is claude
+
+    def test_agent_type_none_keeps_legacy_behavior(self):
+        """`agent_type=None` (default) means any-engine, preserving the
+        pre-filter behavior so callers that don't care still work."""
+        bridge = RemoteCommandBridge()
+        claude = _make_agent(agent_id="claude")
+        claude.agent_type = "claude-cli"
+        bridge._agents["claude"] = claude
+
+        assert bridge.get_available_agent() is claude
+        assert bridge.get_available_agent(agent_type=None) is claude
+
+    def test_agent_type_filter_case_insensitive(self):
+        """Engine names are normalized to lowercase on both sides."""
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a")
+        agent.agent_type = "Codex-CLI"  # mixed-case stored
+        bridge._agents["a"] = agent
+
+        assert bridge.get_available_agent(agent_type="codex") is agent
+        assert bridge.get_available_agent(agent_type="CODEX") is agent
+
+    def test_agent_type_filter_handles_no_suffix(self):
+        """Bridges that report bare engine names (no `-cli` suffix) still
+        match — the suffix strip is permissive in both directions."""
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a")
+        agent.agent_type = "claude"  # bare, not "claude-cli"
+        bridge._agents["a"] = agent
+
+        assert bridge.get_available_agent(agent_type="claude") is agent
+        assert bridge.get_available_agent(agent_type="claude-cli") is agent
+
 
 class TestDisconnect:
     """Agent disconnect — cleanup and pending task failure."""

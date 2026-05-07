@@ -50,6 +50,13 @@ interface ChatMessage {
    * came from reconciliation rather than the live agent stream.
    */
   recovered?: boolean;
+  /**
+   * Structured marker for system messages with semantic meaning.
+   * Currently only `'abandoned'` (set by the backend's drain placeholder
+   * when the agent never replied). Drives `responseLost` so the rose
+   * chip stops firing once a turn has been definitively given up on.
+   */
+  kind?: 'abandoned';
 }
 
 interface ChatTab {
@@ -269,9 +276,15 @@ function getAssistantTailGap(
 
 /**
  * True when the server's transcript contains the given user text but no
- * assistant message follows it. Indicates the assistant response was either
- * never generated, never sent, or never persisted — i.e., genuinely lost,
- * not merely "not yet synced".
+ * assistant message — and no terminal abandoned marker — follows it.
+ * Indicates the assistant response was either never generated, never sent,
+ * or never persisted — i.e., genuinely lost, not merely "not yet synced".
+ *
+ * The abandoned marker (`{role: 'system', kind: 'abandoned'}`, written by
+ * the backend's drain placeholder when the agent never replied within the
+ * grace window) is treated as a definitive answer: the turn is closed,
+ * just unsuccessfully. Without this, the rose "response lost / check again"
+ * chip would stay on forever for abandoned turns.
  */
 function serverHasUnansweredUserTurn(
   userText: string,
@@ -280,7 +293,9 @@ function serverHasUnansweredUserTurn(
   for (let i = serverMessages.length - 1; i >= 0; i -= 1) {
     if (serverMessages[i].role === 'user' && serverMessages[i].text === userText) {
       for (let j = i + 1; j < serverMessages.length; j += 1) {
-        if (serverMessages[j].role === 'assistant') return false;
+        const m = serverMessages[j];
+        if (m.role === 'assistant') return false;
+        if (m.role === 'system' && m.kind === 'abandoned') return false;
       }
       return true;
     }
@@ -385,6 +400,9 @@ function parseMessages(raw: string | null): ChatMessage[] {
       }
       if (m.recovered === true) {
         msg.recovered = true;
+      }
+      if (m.kind === 'abandoned') {
+        msg.kind = 'abandoned';
       }
       return msg;
     });
@@ -496,16 +514,29 @@ function toPersistableServerPayload(messages: ChatMessage[]): Array<{
   text: string;
   duration_ms?: number;
   timestamp: string;
+  kind?: 'abandoned';
 }> {
   return messages
     .filter((m) => m.role !== 'error' && !m.synthetic)
     .slice(-50)
-    .map((m) => ({
-      role: m.role,
-      text: m.text,
-      duration_ms: m.duration_ms,
-      timestamp: m.timestamp.toISOString(),
-    }));
+    .map((m) => {
+      const out: {
+        role: ChatMessage['role'];
+        text: string;
+        duration_ms?: number;
+        timestamp: string;
+        kind?: 'abandoned';
+      } = {
+        role: m.role,
+        text: m.text,
+        duration_ms: m.duration_ms,
+        timestamp: m.timestamp.toISOString(),
+      };
+      // Round-trip the abandoned marker so a frontend-side PATCH after
+      // reconciliation doesn't strip the backend's terminal flag.
+      if (m.kind === 'abandoned') out.kind = 'abandoned';
+      return out;
+    });
 }
 
 function persistSessionMessages(sessionId: string, messages: ChatMessage[]) {
@@ -841,12 +872,19 @@ export async function fetchServerMessages(
     const activity = res?.activity;
 
     const chat: ChatMessage[] = Array.isArray(raw)
-      ? raw.map((m) => ({
-          role: m.role as ChatMessage['role'],
-          text: m.text as string,
-          duration_ms: m.duration_ms as number | undefined,
-          timestamp: new Date(m.timestamp as string),
-        }))
+      ? raw.map((m) => {
+          const msg: ChatMessage = {
+            role: m.role as ChatMessage['role'],
+            text: m.text as string,
+            duration_ms: m.duration_ms as number | undefined,
+            timestamp: new Date(m.timestamp as string),
+          };
+          // Carry the `kind` marker forward so abandoned-turn detection
+          // (responseLost) and any kind-aware rendering keep working
+          // after a server-fetched reload.
+          if (m.kind === 'abandoned') msg.kind = 'abandoned';
+          return msg;
+        })
       : [];
 
     const synthesized: ChatMessage[] = [];

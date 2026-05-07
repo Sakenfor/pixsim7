@@ -282,6 +282,12 @@ async def _drain_late_result(
                 msgs.append({"role": "user", "text": user_message, "timestamp": now})
             msgs.append({
                 "role": "system",
+                # Structured terminal marker: the frontend's responseLost
+                # detection treats `kind: "abandoned"` as a definitive answer
+                # to the unresolved user turn so the rose chip stops firing.
+                # Plain text is preserved for legacy renderers / UIs that
+                # haven't been taught about the kind field yet.
+                "kind": "abandoned",
                 "text": f"Agent did not respond within {timeout_s}s — response abandoned.",
                 "timestamp": now,
             })
@@ -324,7 +330,35 @@ async def _handle_message(
         })
         return
 
-    agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
+    # Engine match: pick a bridge that actually serves the requested engine.
+    # Without this filter, a Codex tab dispatched to a Claude bridge would
+    # silently run on Claude and the resulting ChatSession row would be
+    # labelled with whatever the request claimed — masking the mismatch.
+    requested_engine = (data.get("engine") or "").strip().lower() or None
+    agent = remote_cmd_bridge.get_available_agent(
+        user_id=user_id,
+        agent_type=requested_engine,
+    )
+    if not agent and requested_engine:
+        # Engine-specific lookup failed — check whether a different-engine
+        # bridge is available so we can return a precise diagnosis instead
+        # of the generic "no bridge".
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
+        any_agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
+        if any_agent:
+            connected_engine = (
+                normalize_engine(any_agent.agent_type)
+                or (any_agent.agent_type or "unknown")
+            )
+            await websocket.send_json({
+                "type": "result", "tab_id": tab_id, "ok": False,
+                **_error_payload(
+                    f"No bridge available for engine '{requested_engine}'. "
+                    f"Connected bridge runs '{connected_engine}'.",
+                    code="bridge_engine_unavailable",
+                ),
+            })
+            return
     if not agent:
         agents = remote_cmd_bridge.get_agents(user_id=user_id)
         if not agents:
@@ -338,8 +372,16 @@ async def _handle_message(
             return
         agent = min(agents, key=lambda a: a.active_tasks)
 
-    # Resolve profile + system prompt
-    engine = data.get("engine", "claude")
+    # Resolve profile + system prompt.
+    # Engine-from-request is the user's intent; agent.agent_type is the
+    # ground truth (the bridge that actually answers). Prefer the agent's
+    # normalized type when persisting so a missing/wrong `engine` field
+    # on the WS payload can't silently mislabel the ChatSession row.
+    # `agent_type` is registered as `claude-cli` / `codex-cli`; strip the
+    # `-cli` suffix so the persisted value matches the user-facing form.
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
+    _agent_engine = normalize_engine(agent.agent_type)
+    engine = _agent_engine or (data.get("engine") or "").strip().lower() or "claude"
     model = data.get("model")
     assistant_id_raw = data.get("assistant_id")
     assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw

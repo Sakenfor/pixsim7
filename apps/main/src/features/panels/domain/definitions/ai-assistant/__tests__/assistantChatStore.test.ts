@@ -526,6 +526,41 @@ describe('Assistant Chat Store', () => {
       expect(status.diverged).toBe(false);
       expect(status.responseLost).toBe(false);
     });
+
+    it('does not mark responseLost when server has an abandoned-marker system message after the user turn', () => {
+      // Backend's _drain_late_result writes `{role: 'system', kind: 'abandoned'}`
+      // when the agent never replied within the grace window. That's a terminal
+      // answer (just unsuccessful) so the rose chip must stop firing.
+      const abandonedSys: ChatMessage = {
+        role: 'system',
+        text: 'Agent did not respond within 900s — response abandoned.',
+        kind: 'abandoned',
+        timestamp: new Date(),
+      };
+      const status = evaluateTranscriptRecovery(
+        [makeMsg('user', 'why did this fail?')],
+        [
+          makeMsg('user', 'why did this fail?'),
+          abandonedSys,
+        ],
+      );
+      expect(status.responseLost).toBe(false);
+    });
+
+    it('still marks responseLost on bare system messages without kind', () => {
+      // Existing system messages on the server (e.g. "Bridge disconnected"
+      // banners persisted from prior runs, or legacy abandoned placeholders
+      // written before the kind marker shipped) must NOT short-circuit
+      // responseLost detection — only the structured marker counts.
+      const status = evaluateTranscriptRecovery(
+        [makeMsg('user', 'why did this fail?')],
+        [
+          makeMsg('user', 'why did this fail?'),
+          makeMsg('system', 'Bridge disconnected'),
+        ],
+      );
+      expect(status.responseLost).toBe(true);
+    });
   });
 
   describe('unread tracking', () => {
