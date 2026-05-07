@@ -5,8 +5,9 @@
  * structure with optional sidebar, toolbar, and header areas.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { clsx } from 'clsx';
+import { ResizeDivider, useResizeHandle } from '@pixsim7/shared.ui';
 import { EditorToolbar } from './EditorToolbar';
 import type { EditorShellProps, EditorShellLayout } from '../types';
 
@@ -62,49 +63,20 @@ export function EditorShell({
 
   // Sidebar resize state
   const [sidebarWidth, setSidebarWidth] = useState(layout.sidebarWidth);
-  const isResizing = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Handle resize drag
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current || !containerRef.current) return;
-
-      const containerRect = containerRef.current.getBoundingClientRect();
-      let newWidth: number;
-
-      if (layout.sidebarPosition === 'right') {
-        newWidth = containerRect.right - e.clientX;
-      } else {
-        newWidth = e.clientX - containerRect.left;
-      }
-
-      // Clamp to reasonable bounds
-      newWidth = Math.max(200, Math.min(600, newWidth));
-      setSidebarWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      isResizing.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [layout.sidebarPosition]);
+  const { isDragging: isResizing, handleMouseDown: handleResizeStart } = useResizeHandle({
+    orientation: 'vertical',
+    onResize: ({ position }) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const raw = layout.sidebarPosition === 'right'
+        ? rect.right - position
+        : position - rect.left;
+      setSidebarWidth(Math.max(200, Math.min(600, raw)));
+    },
+  });
 
   // Build layout classes
   const showSidebar = layout.showSidebar && sidebar;
@@ -144,9 +116,10 @@ export function EditorShell({
               {sidebar}
             </SidebarPanel>
             {layout.resizableSidebar && (
-              <ResizeHandle
-                position="left"
-                onResizeStart={handleResizeStart}
+              <ResizeDivider
+                orientation="vertical"
+                onMouseDown={handleResizeStart}
+                isDragging={isResizing}
               />
             )}
           </>
@@ -161,9 +134,10 @@ export function EditorShell({
         {showSidebar && layout.sidebarPosition === 'right' && (
           <>
             {layout.resizableSidebar && (
-              <ResizeHandle
-                position="right"
-                onResizeStart={handleResizeStart}
+              <ResizeDivider
+                orientation="vertical"
+                onMouseDown={handleResizeStart}
+                isDragging={isResizing}
               />
             )}
             <SidebarPanel
@@ -244,24 +218,6 @@ function SidebarPanel({
         {children}
       </div>
     </div>
-  );
-}
-
-interface ResizeHandleProps {
-  position: 'left' | 'right';
-  onResizeStart: (e: React.MouseEvent) => void;
-}
-
-function ResizeHandle({ position, onResizeStart }: ResizeHandleProps) {
-  return (
-    <div
-      className={clsx(
-        'w-1 cursor-col-resize hover:bg-blue-500/50 transition-colors',
-        position === 'left' && 'border-r border-neutral-200 dark:border-neutral-700',
-        position === 'right' && 'border-l border-neutral-200 dark:border-neutral-700'
-      )}
-      onMouseDown={onResizeStart}
-    />
   );
 }
 

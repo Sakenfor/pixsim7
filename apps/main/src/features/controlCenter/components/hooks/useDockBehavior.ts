@@ -5,7 +5,9 @@
  * Handles edge detection, auto-hide on mouse leave, and keyboard resize.
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+
+import { useResizeHandle } from '@pixsim7/shared.ui';
 
 import type { DockPosition, RetractedMode } from '@features/docks/stores';
 
@@ -86,12 +88,10 @@ export function useDockBehavior({
   setHeight,
   dockRef,
 }: UseDockBehaviorOptions): UseDockBehaviorReturn {
-  // Track dragging state (used for visual feedback on resize handle)
-  const [dragging, setDragging] = useState(false);
-
   // Use refs to avoid re-creating event listeners on every state change
   const openRef = useRef(open);
   const heightRef = useRef(height);
+  const startHeightRef = useRef(height);
 
   useEffect(() => {
     openRef.current = open;
@@ -229,44 +229,27 @@ export function useDockBehavior({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [setHeight]);
 
-  // Start resize handler
+  // For 'right' and 'bottom' docks, dragging towards the dock shrinks it;
+  // for 'left' and 'top', dragging away from the dock grows it. Encode as a
+  // sign multiplier on the delta.
+  const sign = dockPosition === 'right' || dockPosition === 'bottom' ? -1 : 1;
+  const orientation = dockPosition === 'left' || dockPosition === 'right'
+    ? 'vertical'
+    : 'horizontal';
+
+  const { isDragging: dragging, handleMouseDown } = useResizeHandle({
+    orientation,
+    onResize: ({ delta }) => {
+      setHeight(clampSize(startHeightRef.current + sign * delta));
+    },
+  });
+
   const startResize = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
-      setDragging(true);
-
-      const startY = e.clientY;
-      const startX = e.clientX;
-      const startH = height;
-      const pos = dockPosition;
-
-      function onMove(ev: MouseEvent) {
-        if (pos === 'left') {
-          const dx = ev.clientX - startX;
-          setHeight(clampSize(startH + dx));
-        } else if (pos === 'right') {
-          const dx = startX - ev.clientX;
-          setHeight(clampSize(startH + dx));
-        } else if (pos === 'top') {
-          const dy = ev.clientY - startY;
-          setHeight(clampSize(startH + dy));
-        } else {
-          // bottom
-          const dy = startY - ev.clientY;
-          setHeight(clampSize(startH + dy));
-        }
-      }
-
-      function onUp() {
-        setDragging(false);
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      }
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      startHeightRef.current = heightRef.current;
+      handleMouseDown(e);
     },
-    [height, dockPosition, setHeight, clampSize]
+    [handleMouseDown]
   );
 
   return {
