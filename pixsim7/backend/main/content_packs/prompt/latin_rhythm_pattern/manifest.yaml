@@ -1,0 +1,16 @@
+id: latin-rhythm-pattern
+title: Latin Rhythm Pattern
+description: 'Latin phrase enhancers for rhythmic / temporal motion structure: single carrier, counter (opposing rhythms), nested (sub-pulse inside a carrier), or layered (cooperating rhythms). Composes with per-domain packs (hip / breath / voice) that supply the body referent. Introduces the rhythm_layering axis.'
+matrix_presets:
+  - label: Layering by Rhythm Quality
+    query:
+      row_key: tag:rhythm_layering
+      col_key: tag:rhythm_quality
+      package_name: latin_rhythm_pattern
+      include_empty: true
+  - label: Layering by Register
+    query:
+      row_key: tag:rhythm_layering
+      col_key: tag:register
+      package_name: latin_rhythm_pattern
+      include_empty: true
