@@ -15,6 +15,7 @@ export {
   promptImporterPageModule,
   blockFitPageModule,
   devToolsPanelModule,
+  diagnosticsPageModule,
 } from '@features/devtools/routes';
 export { npcBrainLabModule } from '@features/brainTools/routes';
 export { pluginManagerModule } from '@features/plugins/routes';

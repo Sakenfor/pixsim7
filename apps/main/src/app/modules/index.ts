@@ -26,6 +26,7 @@ import {
   promptImporterPageModule,
   blockFitPageModule,
   devToolsPanelModule,
+  diagnosticsPageModule,
   pluginManagerModule,
   overlayConfigModule,
   assetDetailModule,
@@ -68,6 +69,7 @@ export function registerModules() {
   moduleRegistry.register(promptImporterPageModule);
   moduleRegistry.register(blockFitPageModule);
   moduleRegistry.register(devToolsPanelModule);
+  moduleRegistry.register(diagnosticsPageModule);
   moduleRegistry.register(assetDetailModule);
   moduleRegistry.register(generationPageModule);
   moduleRegistry.register(pluginManagerModule);

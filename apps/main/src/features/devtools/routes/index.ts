@@ -8,6 +8,7 @@ const CodegenDevPage = lazy(() => import('./pages/CodegenDevPage').then(m => ({ 
 const DevPromptImporterPage = lazy(() => import('./pages/DevPromptImporterPage').then(m => ({ default: m.DevPromptImporterPage })));
 const BlockFitDevPage = lazy(() => import('./pages/BlockFitDevPage').then(m => ({ default: m.BlockFitDevPage })));
 const DevToolsPage = lazy(() => import('./pages/DevToolsPage').then(m => ({ default: m.DevToolsPage })));
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })));
 
 const openCodegenAction: ActionDefinition = {
   id: 'codegen.open',
@@ -87,6 +88,24 @@ export const devToolsPanelModule = defineModule({
     featureId: 'dev-tools',
     featurePrimary: true,
     component: DevToolsPage,
+  },
+});
+
+export const diagnosticsPageModule = defineModule({
+  id: 'testing-diagnostics-page',
+  name: 'Testing · Diagnostics',
+  updatedAt: '2026-05-07T00:00:00Z',
+  changeNote: 'Admin-only diagnostic test runner under /dev/testing/diagnostics — sister to the read-only pytest catalog at /dev/testing.',
+  featureHighlights: ['Run server-side diagnostics from the browser; live phase strip + observations + transitions mirror the Rich --pretty CLI output.'],
+  page: {
+    route: '/dev/testing/diagnostics',
+    icon: 'flask',
+    iconColor: 'text-cyan-500',
+    description: 'Admin-only diagnostic test runner with live event stream',
+    category: 'development',
+    featureId: 'testing-diagnostics',
+    hidden: true,
+    component: DiagnosticsPage,
   },
 });
 
