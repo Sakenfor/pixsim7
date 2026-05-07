@@ -11,6 +11,7 @@
  * register it via `sources.registrations.ts`.
  */
 
+import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import {
   useEffect,
@@ -33,6 +34,8 @@ import {
   useTickerSettingsStore,
 } from '../stores/tickerSettingsStore';
 
+import { NewsSourcesPicker } from './NewsSourcesPicker';
+
 /** Default event TTL when the source doesn't specify one (ms). */
 const DEFAULT_TTL = 60_000;
 /** Marquee scroll speed in pixels/second. */
@@ -50,13 +53,29 @@ function useRegisteredSources(): TickerSource[] {
 }
 
 interface TickerProps {
-  /** Override the marquee width (e.g. for narrow surfaces). Default: 12rem. */
+  /**
+   * Override the marquee width with an explicit value (e.g. for narrow
+   * surfaces). When omitted, the ticker is greedy: flex-grows to fill
+   * available horizontal space within `min-w-[14rem]` … `max-w-[48rem]`.
+   * Pass an explicit value to opt out of the greedy layout.
+   */
   width?: CSSProperties['width'];
   /** Optional className for the outer wrapper. */
   className?: string;
+  /**
+   * Where the source-picker popover should open relative to its chevron
+   * trigger. Default `'bottom'`. When the ticker lives on a bottom-edge
+   * surface (e.g. CC docked at screen bottom), pass `'top'` so the popover
+   * floats up into the screen rather than off the bottom of the viewport.
+   */
+  sourcePickerPlacement?: 'top' | 'bottom' | 'left' | 'right';
 }
 
-export function Ticker({ width, className }: TickerProps) {
+export function Ticker({
+  width,
+  className,
+  sourcePickerPlacement = 'bottom',
+}: TickerProps) {
   const sources = useRegisteredSources();
   const enabledSources = useTickerSettingsStore((s) => s.enabledSources);
 
@@ -64,8 +83,10 @@ export function Ticker({ width, className }: TickerProps) {
   const [expanded, setExpanded] = useState(true);
   const [paused, setPaused] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
   const tickerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const chevronRef = useRef<HTMLButtonElement>(null);
 
   // Which sources are currently active (after settings + registry).
   const activeSources = useMemo(
@@ -170,24 +191,68 @@ export function Ticker({ width, className }: TickerProps) {
     return () => cancelAnimationFrame(animationFrame);
   }, [expanded, paused, events.length]);
 
-  if (events.length === 0) return null;
+  // We DON'T early-return when `events.length === 0` — the chevron must
+  // remain reachable so the user can enable a source for the first time
+  // (chicken-and-egg: no events yet because no source is on yet). The
+  // marquee itself still only renders when there's something to scroll.
+  const hasEvents = events.length > 0;
+
+  // Greedy layout: when no explicit `width` is given, the wrapper takes
+  // remaining horizontal space (`flex-1 min-w-0`) and the marquee inside
+  // grows to fill it within sensible bounds. With an explicit width, fall
+  // back to the legacy fixed-size layout for surfaces that need it.
+  const greedy = width == null;
 
   return (
-    <div className={clsx('flex items-center gap-1', className)}>
+    <div
+      className={clsx(
+        'flex items-center gap-1',
+        greedy && 'flex-1 min-w-0',
+        className,
+      )}
+    >
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="text-xs px-1.5 py-0.5 rounded transition-colors hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30"
+        className="text-xs px-1.5 py-0.5 rounded transition-colors hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30 flex-shrink-0"
         title={expanded ? 'Collapse news ticker' : 'Expand news ticker'}
         aria-label={expanded ? 'Collapse news ticker' : 'Expand news ticker'}
       >
         📢
       </button>
 
-      {expanded && (
+      {/* Chevron — quick toggle for which sources feed the ticker. */}
+      <button
+        ref={chevronRef}
+        onClick={() => setShowSourcePicker((v) => !v)}
+        className="text-[10px] px-1 py-0.5 rounded transition-colors hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30 flex-shrink-0 text-neutral-500 dark:text-neutral-400"
+        title="Choose news sources"
+        aria-label="Choose news sources"
+        aria-haspopup="menu"
+        aria-expanded={showSourcePicker}
+      >
+        ▾
+      </button>
+      <Popover
+        anchor={chevronRef.current}
+        placement={sourcePickerPlacement}
+        align="start"
+        offset={4}
+        open={showSourcePicker}
+        onClose={() => setShowSourcePicker(false)}
+        triggerRef={chevronRef}
+        className="w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1"
+      >
+        <NewsSourcesPicker />
+      </Popover>
+
+      {expanded && hasEvents && (
         <div
           ref={tickerRef}
-          className="relative overflow-hidden h-5 bg-neutral-100/50 dark:bg-neutral-800/50 rounded text-[10px]"
-          style={{ width: width ?? '12rem' }}
+          className={clsx(
+            'relative overflow-hidden h-5 bg-neutral-100/50 dark:bg-neutral-800/50 rounded text-[10px]',
+            greedy && 'flex-1 min-w-[14rem] max-w-[48rem]',
+          )}
+          style={greedy ? undefined : { width }}
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
         >

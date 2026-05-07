@@ -9,7 +9,7 @@
 
 import { Popover, useOrientation } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useMemo, useState, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useState, useRef } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -26,12 +26,8 @@ import { ContentModerationWarning } from '@features/generation';
 import { DOCK_IDS } from '@features/panels/lib/panelIds';
 import {
   GenerationActivityIndicator,
+  NewsSourcesPicker,
   Ticker,
-  isSourceEnabled,
-  listTickerSources,
-  subscribeToTickerRegistry,
-  useTickerSettingsStore,
-  type TickerSource,
 } from '@features/ticker';
 
 /** Quick navigation item configuration */
@@ -287,7 +283,7 @@ export function DockToolbar({
           <div className="border-t border-neutral-200 dark:border-neutral-700 my-1"></div>
 
           {/* News sources — registry-driven; one checkbox per registered source. */}
-          <NewsSourcesSection />
+          <NewsSourcesPicker />
         </Popover>
       </div>
 
@@ -315,11 +311,15 @@ export function DockToolbar({
         </button>
       </div>
 
-      {/* News ticker (horizontal only) — generic, source-driven via registry. */}
+      {/* News ticker (horizontal only) — generic, source-driven via registry.
+          When CC is bottom-docked, open the source-picker upward into the
+          screen rather than off the bottom of the viewport. */}
       {!isVertical && (
         <>
           <GenerationActivityIndicator />
-          <Ticker />
+          <Ticker
+            sourcePickerPlacement={dockPosition === 'bottom' ? 'top' : 'bottom'}
+          />
         </>
       )}
 
@@ -476,70 +476,3 @@ function PositionButton({
   );
 }
 
-/**
- * News sources section — lists every registered ticker source with a
- * checkbox. The list is reactive: registering a new source from elsewhere
- * (e.g. a future plugin) appears here automatically without touching this
- * file.
- */
-function NewsSourcesSection() {
-  const sources = useSyncExternalStore(
-    subscribeToTickerRegistry,
-    listTickerSources,
-    listTickerSources,
-  );
-  const enabledSources = useTickerSettingsStore((s) => s.enabledSources);
-  const setSourceEnabled = useTickerSettingsStore((s) => s.setSourceEnabled);
-
-  if (sources.length === 0) return null;
-
-  return (
-    <>
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-        News sources
-      </div>
-      {sources.map((source) => (
-        <NewsSourceRow
-          key={source.id}
-          source={source}
-          enabled={isSourceEnabled({ enabledSources }, source)}
-          onToggle={(next) => setSourceEnabled(source.id, next)}
-        />
-      ))}
-    </>
-  );
-}
-
-function NewsSourceRow({
-  source,
-  enabled,
-  onToggle,
-}: {
-  source: TickerSource;
-  enabled: boolean;
-  onToggle: (next: boolean) => void;
-}) {
-  return (
-    <label
-      className="px-3 py-1.5 flex items-start gap-2 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700"
-      title={source.description}
-    >
-      <input
-        type="checkbox"
-        checked={enabled}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-accent focus:ring-accent"
-      />
-      <span className="flex-1 min-w-0">
-        <span className="block text-xs text-neutral-700 dark:text-neutral-200">
-          {source.label}
-        </span>
-        {source.description && (
-          <span className="block text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-            {source.description}
-          </span>
-        )}
-      </span>
-    </label>
-  );
-}

@@ -13,6 +13,7 @@
 
 export { Ticker } from './components/Ticker';
 export { GenerationActivityIndicator } from './components/GenerationActivityIndicator';
+export { NewsSourcesPicker } from './components/NewsSourcesPicker';
 
 export {
   registerTickerSource,
