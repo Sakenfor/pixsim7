@@ -47,7 +47,9 @@ from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
+from rich.spinner import Spinner
 from rich.table import Table
+from rich.text import Text
 
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     has_retrievable_pixverse_media_url,
@@ -279,6 +281,7 @@ def _ts() -> str:
 # ── Live-dashboard state + helpers (used when --pretty is set) ───────────
 
 _state: dict = {
+    "phase": "init",
     "job_id": None,
     "t0": None,
     "latest_gv": {},
@@ -287,6 +290,16 @@ _state: dict = {
     "timeline": None,
 }
 _live: Optional[Live] = None
+
+# Phase strip rendered at the top of the dashboard (key, label, accent).
+# Active phase shows a spinner; past phases get a ✓; future phases dim.
+_PHASES: list[tuple[str, str, str]] = [
+    ("init",          "Init",          "blue"),
+    ("submitting",    "Submitting",    "cyan"),
+    ("polling",       "Polling",       "yellow"),
+    ("post_terminal", "Post-terminal", "magenta"),
+    ("done",          "Done",          "green"),
+]
 
 
 def _log(*args, **kwargs) -> None:
@@ -300,6 +313,38 @@ def _log(*args, **kwargs) -> None:
 def _elapsed() -> float:
     t0 = _state.get("t0")
     return 0.0 if t0 is None else time.monotonic() - t0
+
+
+def _phase_strip() -> Table:
+    """One-row grid: each phase rendered as past (✓) / active (spinner) / future (dim)."""
+    current = _state.get("phase", "init")
+    cells: list = []
+    found_current = False
+    for i, (key, label, color) in enumerate(_PHASES):
+        if i > 0:
+            cells.append(Text("→", style="dim"))
+        if key == current:
+            if current == "done":
+                cells.append(Text(f"✓ {label}", style=f"bold {color}"))
+            else:
+                cells.append(
+                    Spinner("dots", text=Text(label, style=f"bold {color}"))
+                )
+            found_current = True
+        elif found_current:
+            cells.append(Text(label, style="dim"))
+        else:
+            cells.append(Text(f"✓ {label}", style=color))
+    grid = Table.grid(padding=(0, 1))
+    for _ in cells:
+        grid.add_column(no_wrap=True)
+    grid.add_row(*cells)
+    return grid
+
+
+def _set_phase(name: str) -> None:
+    _state["phase"] = name
+    _refresh_live()
 
 
 def _build_renderable() -> Group:
@@ -316,6 +361,14 @@ def _build_renderable() -> Group:
         f"[bold]Model:[/] {MODEL} ({QUALITY})   "
         f"[bold]Elapsed:[/] {_elapsed():5.1f}s",
         border_style="cyan",
+    )
+
+    phase_panel = Panel(
+        _phase_strip(),
+        title="Phase",
+        title_align="left",
+        border_style="dim",
+        padding=(0, 1),
     )
 
     def _url_tag(snap: dict) -> str:
@@ -373,7 +426,7 @@ def _build_renderable() -> Group:
         trans_tbl.add_row("first real thumb (get)",    _fmt_t(timeline.t_first_thumbnail_get))
         trans_tbl.add_row("first real thumb (list)",   _fmt_t(timeline.t_first_thumbnail_list))
 
-    return Group(header, state_tbl, trans_tbl)
+    return Group(header, phase_panel, state_tbl, trans_tbl)
 
 
 def _refresh_live() -> None:
@@ -581,6 +634,7 @@ async def _head_probe_monitor(
 
 async def main() -> tuple[_Timeline, str, list[str], list[str]]:
     client = await _build_client()
+    _set_phase("submitting")
     _log(
         f"[{_ts()}] Logged in. Submitting i2v job "
         f"({TEST_MODE} mode, model={MODEL}, quality={QUALITY}, dur={DURATION}s)..."
@@ -602,7 +656,7 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
     _state["job_id"] = job_id
     _state["t0"] = t0
     _state["timeline"] = timeline
-    _refresh_live()
+    _set_phase("polling")
     stop_event = asyncio.Event()
 
     async with httpx.AsyncClient(
@@ -760,6 +814,7 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
         # customer_video_last_frame_url some seconds AFTER the video file
         # itself appears).  Also keeps HEAD-probing in background.
         if (timeline.last_real_url or terminal) and not was_filtered:
+            _set_phase("post_terminal")
             _log(
                 f"\n[{_ts()}] Post-terminal monitoring (get_video + list_videos "
                 f"+ HEAD) for up to {POST_TERMINAL_PROBE_SEC}s — watching for "
@@ -805,6 +860,7 @@ async def main() -> tuple[_Timeline, str, list[str], list[str]]:
                     # Give HEAD-probe another chance but we have what we need.
                     break
 
+        _set_phase("done")
         stop_event.set()
         await probe_task
 
@@ -817,8 +873,8 @@ async def _entry() -> None:
         with Live(
             _build_renderable(),
             console=_console,
-            refresh_per_second=2,
-            auto_refresh=False,
+            refresh_per_second=4,
+            auto_refresh=True,
             transient=True,
         ) as live:
             _live = live
