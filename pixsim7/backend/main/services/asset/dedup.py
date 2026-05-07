@@ -13,6 +13,9 @@ from sqlalchemy import select, or_
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 
 async def find_existing_by_candidate_ids(
@@ -53,7 +56,23 @@ async def find_existing_by_candidate_ids(
         Asset.provider_asset_id.in_(valid_ids),
     )
     result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+    matches = result.scalars().all()
+    if not matches:
+        return None
+    if len(matches) > 1:
+        # Multiple Asset rows match different candidate IDs in the same set
+        # (e.g. Pixverse numeric ID + UUID for the same logical asset that
+        # ended up creating two rows). Prefer the lowest-ID (oldest) row and
+        # log so it can be reconciled.
+        logger.warning(
+            "dedup_multiple_candidate_id_matches",
+            provider_id=provider_id,
+            user_id=user_id,
+            candidate_ids=valid_ids,
+            matched_asset_ids=[a.id for a in matches],
+        )
+        matches.sort(key=lambda a: a.id)
+    return matches[0]
 
 
 async def find_existing_by_url(

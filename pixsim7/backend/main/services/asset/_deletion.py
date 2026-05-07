@@ -191,10 +191,12 @@ class AssetDeletionMixin:
         """
         Attempt to delete asset from provider using snapshotted values (best effort).
 
-        Designed to run as a background task after the DB commit, so it uses
-        plain values instead of an ORM asset object.
+        Designed to run as a background task after the DB commit. Opens its own
+        session because the request-scoped session has already been closed by
+        FastAPI dependency teardown by the time this runs.
         """
         from pixsim7.backend.main.domain.providers.models import ProviderAccount
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
         try:
             from pixsim7.backend.main.services.provider.provider_service import registry
@@ -216,21 +218,22 @@ class AssetDeletionMixin:
                 )
                 return
 
-            account = await self.db.get(ProviderAccount, provider_account_id)
-            if not account:
-                logger.warning(
-                    "provider_delete_account_not_found",
-                    asset_id=asset_id,
-                    provider_account_id=provider_account_id,
-                )
-                return
+            async with get_async_session() as db:
+                account = await db.get(ProviderAccount, provider_account_id)
+                if not account:
+                    logger.warning(
+                        "provider_delete_account_not_found",
+                        asset_id=asset_id,
+                        provider_account_id=provider_account_id,
+                    )
+                    return
 
-            await provider.delete_asset(
-                account=account,
-                provider_asset_id=provider_asset_id,
-                media_type=media_type,
-                media_metadata=media_metadata,
-            )
+                await provider.delete_asset(
+                    account=account,
+                    provider_asset_id=provider_asset_id,
+                    media_type=media_type,
+                    media_metadata=media_metadata,
+                )
 
             logger.info(
                 "provider_delete_success",
