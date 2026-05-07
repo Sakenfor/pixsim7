@@ -1,0 +1,22 @@
+id: latin-canine-pin-dynamics
+title: Latin Canine Pin Dynamics
+description: Curated Latin phrase enhancers for canine-coded pinning, mounting, and restraint. Leans poetic, drawing on the lupine/molossus register of jaws, fangs, claws, weight, and pack hierarchy.
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_canine_pin_dynamics
+      include_empty: true
+  - label: Motion Type by Register
+    query:
+      row_key: tag:motion_type
+      col_key: tag:register
+      package_name: latin_canine_pin_dynamics
+      include_empty: true
+  - label: Canine Archetype by Intensity
+    query:
+      row_key: tag:canine_archetype
+      col_key: tag:intensity
+      package_name: latin_canine_pin_dynamics
+      include_empty: true
