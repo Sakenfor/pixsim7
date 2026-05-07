@@ -11,6 +11,8 @@
 
 import React, { useState } from 'react';
 
+import { StatusPill, type StatusTone } from '@pixsim7/shared.ui';
+
 import type { IntimacySceneConfig } from '@lib/registries';
 
 import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
@@ -304,35 +306,30 @@ export function GenerationPreviewPanel({
   );
 }
 
-/**
- * Status badge component
- */
-function StatusBadge({
-  status,
-}: {
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
-}) {
-  const colors = {
-    pending: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
-    queued: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300',
-    processing: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
-    completed: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
-    failed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
-    cancelled: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
-  };
+type PreviewStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
-  const icons = {
-    pending: '⏳',
-    queued: '⏳',
-    processing: '⚙️',
-    completed: '✓',
-    failed: '✗',
-    cancelled: '🚫',
-  };
+const STATUS_TONES: Record<PreviewStatus, StatusTone> = {
+  pending: 'neutral',
+  queued: 'warning',
+  processing: 'info',
+  completed: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
+};
 
+const STATUS_ICONS: Record<PreviewStatus, string> = {
+  pending: '⏳',
+  queued: '⏳',
+  processing: '⚙️',
+  completed: '✓',
+  failed: '✗',
+  cancelled: '🚫',
+};
+
+function StatusBadge({ status }: { status: PreviewStatus }) {
   return (
-    <span className={`px-2 py-1 rounded text-xs font-medium ${colors[status]}`}>
-      {icons[status]} {status}
-    </span>
+    <StatusPill tone={STATUS_TONES[status]} shape="square" size="sm">
+      {STATUS_ICONS[status]} {status}
+    </StatusPill>
   );
 }

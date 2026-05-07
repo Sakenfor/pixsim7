@@ -23,6 +23,12 @@ export interface StatusPillProps {
   /** Render a leading colored dot matching the tone. */
   dot?: boolean;
   size?: 'xs' | 'sm';
+  /**
+   * Corner shape. `pill` (default) is fully rounded; `square` uses a small
+   * radius for tabular/dense layouts where matching adjacent text columns
+   * reads cleaner than a full pill.
+   */
+  shape?: 'pill' | 'square';
   className?: string;
 }
 
@@ -35,12 +41,13 @@ const TONE_CLASSES: Record<StatusTone, { bg: string; text: string; dot: string }
   muted:   { bg: 'bg-transparent',                      text: 'text-neutral-500 dark:text-neutral-400', dot: 'bg-neutral-400' },
 };
 
-export function StatusPill({ tone, children, dot, size = 'xs', className }: StatusPillProps) {
+export function StatusPill({ tone, children, dot, size = 'xs', shape = 'pill', className }: StatusPillProps) {
   const c = TONE_CLASSES[tone];
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium whitespace-nowrap',
+        'inline-flex items-center gap-1 px-2 py-0.5 font-medium whitespace-nowrap',
+        shape === 'pill' ? 'rounded-full' : 'rounded',
         c.bg, c.text,
         size === 'xs' ? 'text-[10px]' : 'text-xs',
         className,
