@@ -169,6 +169,15 @@ async def _generate_video_thumbnail(
 
 # ── Previews ──────────────────────────────────────────────────────────────
 
+# Below this source dimension we skip preview generation entirely — the asset
+# uses just the thumbnail (320).  Threshold is independent of ``preview_size``
+# so bumping the preview cap doesn't silently strip previews from medium-res
+# sources.  PIL.thumbnail() never upscales, so an 800×800 source with a
+# preview cap of 1600 produces an 800×800 preview (re-encoded for size
+# savings vs the original).
+_MIN_PREVIEW_SOURCE_SIZE = 800
+
+
 async def generate_preview(
     asset: "Asset", local_path: str, settings: "MediaSettings",
 ) -> None:
@@ -205,14 +214,17 @@ async def _generate_image_preview(
         # Handle EXIF orientation
         img = ImageOps.exif_transpose(img)
 
-        # Skip preview generation for low-quality images (avoid upscaling)
+        # Skip preview generation only when source is too small to add value
+        # over the thumbnail.  Decoupled from ``preview_size`` so bumping the
+        # cap doesn't strip previews from medium-res sources (e.g. 1024×1024
+        # AI-generated content with a 1600 cap — preview stays at 1024).
         max_dimension = max(img.size)
-        if max_dimension < preview_size[0]:
+        if max_dimension < _MIN_PREVIEW_SOURCE_SIZE:
             logger.debug(
                 "skip_image_preview_low_quality",
                 asset_id=asset.id,
                 resolution=f"{img.size[0]}x{img.size[1]}",
-                reason=f"Image resolution ({max_dimension}px) is lower than preview size ({preview_size[0]}px)",
+                reason=f"Image resolution ({max_dimension}px) below preview source threshold ({_MIN_PREVIEW_SOURCE_SIZE}px)",
             )
             return
 
@@ -264,15 +276,16 @@ async def _generate_video_preview(
 
     preview_size = settings.preview_size
 
-    # Skip preview generation for low-quality videos (avoid upscaling)
+    # Skip preview generation only when source is too small to add value
+    # over the thumbnail.  See _MIN_PREVIEW_SOURCE_SIZE comment above.
     if asset.width and asset.height:
         max_dimension = max(asset.width, asset.height)
-        if max_dimension < preview_size[0]:
+        if max_dimension < _MIN_PREVIEW_SOURCE_SIZE:
             logger.debug(
                 "skip_video_preview_low_quality",
                 asset_id=asset.id,
                 resolution=f"{asset.width}x{asset.height}",
-                reason=f"Video resolution ({max_dimension}p) is lower than preview size ({preview_size[0]}px)",
+                reason=f"Video resolution ({max_dimension}p) below preview source threshold ({_MIN_PREVIEW_SOURCE_SIZE}px)",
             )
             return
 

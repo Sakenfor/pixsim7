@@ -89,8 +89,14 @@ class MediaSettings(SettingsBase):
         ),
     )
     preview_size: list[int] = Field(
-        default_factory=lambda: [800, 800],
-        description="Preview dimensions [width, height]",
+        default_factory=lambda: [1600, 1600],
+        description=(
+            "Preview dimensions [width, height].  Sized to comfortably cover "
+            "large gallery cards (~360 CSS px) on retina/HiDPI displays "
+            "(headroom ≥ 1.5×).  Sub-MIN_PREVIEW_SOURCE_SIZE sources skip "
+            "preview generation; everything else is capped to fit within this "
+            "box without upscaling (PIL.thumbnail behavior)."
+        ),
     )
     preview_quality: int = Field(
         92,

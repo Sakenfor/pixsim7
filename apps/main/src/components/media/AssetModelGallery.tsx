@@ -17,9 +17,9 @@ import { getAssetDisplayUrls } from '@features/assets';
 import {
   AssetGallery,
   type AssetUploadState,
-  type GalleryCardSizePreset,
   type GroupSection,
 } from './AssetGallery';
+import type { GalleryCardSizePreset } from './cardSizePresets';
 import type { MediaCardActions, MediaCardBadgeConfig } from './MediaCard';
 
 export interface AssetModelGalleryProps {

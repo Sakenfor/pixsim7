@@ -21,6 +21,7 @@ import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiL
 import { pixsimClient } from '@/lib/api';
 import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferences';
 
+import { DisplaySettingsPreview } from '../../components/shared/DisplaySettingsPreview';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
@@ -54,6 +55,15 @@ const displayTab: SettingTab = {
       title: 'Gallery',
       description: 'Thumbnail quality and loading for remote/cloud provider assets.',
       fields: [
+        // Live preview at the top of the group — shows what each tier looks
+        // like on real card sizes for the current display, so the dropdown
+        // below has visible feedback instead of being blind.
+        {
+          id: 'gallery-display-preview',
+          type: 'custom',
+          label: '',
+          component: DisplaySettingsPreview,
+        },
         {
           id: 'qualityMode',
           type: 'select',
@@ -62,7 +72,7 @@ const displayTab: SettingTab = {
           defaultValue: 'auto',
           options: [
             { value: 'thumbnail', label: 'Thumbnails (320px, fastest)' },
-            { value: 'preview', label: 'Previews (800px, best quality)' },
+            { value: 'preview', label: 'Previews (1600px, best quality)' },
             { value: 'auto', label: 'Auto (preview when available)' },
           ],
         },

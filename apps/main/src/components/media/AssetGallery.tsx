@@ -31,12 +31,14 @@ import type { ReactNode } from 'react';
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 
 import { Icons } from '@lib/icons';
+
 import type { AssetModel } from '@features/assets';
 
 import { useLazyPreview } from '@/hooks/useLazyPreview';
 
 import { MasonryGrid } from '../layout/MasonryGrid';
 
+import { CARD_SIZE_PRESETS, type GalleryCardSizePreset } from './cardSizePresets';
 import { MediaCard } from './MediaCard';
 import type { MediaCardActions, MediaCardBadgeConfig } from './MediaCard';
 
@@ -46,16 +48,9 @@ import type { MediaCardActions, MediaCardBadgeConfig } from './MediaCard';
  */
 export type AssetUploadState = 'idle' | 'uploading' | 'success' | 'error';
 
-/**
- * Size presets for gallery cards.
- */
-export type GalleryCardSizePreset = 'small' | 'medium' | 'large' | 'custom';
-
-const CARD_SIZE_PRESETS: Record<Exclude<GalleryCardSizePreset, 'custom'>, number> = {
-  small: 180,
-  medium: 260,
-  large: 360,
-};
+// Card size presets live in their own module (./cardSizePresets) so this
+// file only exports components — required for Fast Refresh
+// (react-refresh/only-export-components).
 
 const DEFAULT_RESOLVE_PREVIEW_URL = (_asset: unknown, url: string | undefined) => url;
 
