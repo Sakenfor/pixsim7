@@ -55,7 +55,14 @@ export function ContextBar({
   onRetry,
 }: ContextBarProps) {
   const chips: React.ReactNode[] = [];
-  const resumeSessionId = poolSession?.cli_session_id?.trim() || null;
+  // Prefer the live pool-session id (mirrors the in-flight CLI process), but
+  // fall back to the tab's persisted sessionId so the binding is still
+  // visible after a backend/bridge restart — the live pool_sessions map is
+  // rebuilt only on the next dispatch, but the frontend already knows the
+  // resume id (tab.sessionId == cli_session_id) and sends it on next send.
+  const liveResumeId = poolSession?.cli_session_id?.trim() || null;
+  const resumeSessionId = liveResumeId || (tab.sessionId?.trim() || null);
+  const resumeIsLive = !!liveResumeId;
 
   // Plan scope
   if (tab.planId) {
@@ -164,15 +171,27 @@ export function ContextBar({
     );
   }
 
-  // Internal CLI resume session ID (used by Claude/Codex --resume)
+  // Internal CLI resume session ID (used by Claude/Codex --resume).
+  // Cyan when live (pool session active in the bridge), dimmed when bound
+  // but not live yet — happens right after a backend restart, before the
+  // next dispatch rebuilds the pool entry. The session is still resumable;
+  // we just don't have live token/cost info to attach yet.
   if (resumeSessionId) {
     chips.push(
       <button
         key="agent-session"
         type="button"
         onClick={() => { void navigator.clipboard.writeText(resumeSessionId); }}
-        className="inline-flex items-center gap-0.5 text-cyan-400 hover:text-cyan-300 transition-colors"
-        title={`Internal resume session: ${resumeSessionId}\nClick to copy`}
+        className={`inline-flex items-center gap-0.5 transition-colors ${
+          resumeIsLive
+            ? 'text-cyan-400 hover:text-cyan-300'
+            : 'text-cyan-400/50 hover:text-cyan-400/70'
+        }`}
+        title={
+          resumeIsLive
+            ? `Internal resume session: ${resumeSessionId}\nClick to copy`
+            : `Bound resume session: ${resumeSessionId}\nNot live in the bridge — will resume on next message.\nClick to copy`
+        }
       >
         <Icon name="hash" size={9} />
         <span>{resumeSessionId.slice(0, 8)}</span>
