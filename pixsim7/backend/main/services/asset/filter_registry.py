@@ -1018,7 +1018,8 @@ def register_default_asset_filters() -> None:
         )
     )
 
-    # -- Signal-based quality filters (populated by scripts/scan_suspicious_videos.py) --
+    # -- Signal-based quality filters (populated by the ingest scanner and the
+    # `scan-suspicious-videos` diagnostic at /dev/testing/diagnostics) --
     # media_metadata is JSON (not JSONB) — cast then use the -> / ->> operators.
     # SQLAlchemy subscript on cast() emits raw [] which Postgres rejects, so use op().
     _signal_metrics = cast(Asset.media_metadata, JSONB).op("->")("signal_metrics")

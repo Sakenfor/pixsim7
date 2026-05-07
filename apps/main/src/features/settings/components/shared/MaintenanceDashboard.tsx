@@ -28,10 +28,10 @@ import { useNavigate } from 'react-router-dom';
 
 import { BACKEND_BASE } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
+import { useAsyncTask, useAsyncTaskStore } from '@lib/asyncTask';
 import { authService } from '@lib/auth';
 import { Icon, type IconName } from '@lib/icons';
 
-import { useAsyncTask, useAsyncTaskStore } from '@lib/asyncTask';
 
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
@@ -536,11 +536,13 @@ function SignalBreakdown({ stats }: { stats: SignalScanStats }) {
         })}
       </div>
 
-      {/* CTA — only when there's a flagged set worth validating. The triage
-          surface confirms/overrides the heuristic, which is the only path to
-          improving its accuracy over time. */}
-      {stats.broken > 0 && (
-        <div className="pt-1">
+      {/* CTA row — primary "Open triage" only when there's a flagged set;
+          quiet "Open in diagnostic" cross-link is always shown for admins
+          who want a parameterized scan with a live event stream + run
+          history.  Both surfaces share the same scoring engine and write
+          to the same media_metadata.signal_metrics field. */}
+      <div className="flex flex-wrap items-center gap-3 pt-1">
+        {stats.broken > 0 && (
           <Button
             onClick={() => navigate('/assets/signal-triage')}
             variant="outline"
@@ -551,8 +553,16 @@ function SignalBreakdown({ stats }: { stats: SignalScanStats }) {
               <Icon name="arrowRight" size={12} />
             </span>
           </Button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={() => navigate('/dev/testing/diagnostics?id=scan-suspicious-videos')}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
+          title="Run scan-suspicious-videos as a parameterized diagnostic with a live event stream"
+        >
+          Open in diagnostic →
+        </button>
+      </div>
     </section>
   );
 }
