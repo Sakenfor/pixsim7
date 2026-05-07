@@ -419,7 +419,7 @@ export function useQuickGenerateController() {
   // pass `ephemeral: false` to opt out of probe even with the toggle on.
   // Held in a ref so useCallback-wrapped paths (generateEach,
   // generateSequentialBurst) don't capture stale state.
-  const [probeMode] = usePersistedScopeState('probeMode', false);
+  const [probeMode] = usePersistedScopeState(`probeMode:${operationType}`, false);
   const [probePresetId] = usePersistedScopeState<string | null>(
     `probePresetId:${operationType}`,
     null,
