@@ -14,12 +14,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { AssetModel } from '@features/assets';
+import type { AssetModel, ServerMediaSettings } from '@features/assets';
 import { useAssets, useAssetViewerStore, useMediaSettingsStore } from '@features/assets';
 
 import { CARD_SIZE_PRESETS } from '@/components/media/cardSizePresets';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
+import { pixsimClient } from '@/lib/api';
 
 
 type Tier = 'thumb' | 'preview' | 'original';
@@ -289,10 +290,26 @@ function SamplePicker({ current, recent, onPick }: SamplePickerProps) {
 export function DisplaySettingsPreview() {
   const dpr = useDevicePixelRatio();
 
+  // Self-fetch /media/settings when the store is empty — the panel renders
+  // through SettingFieldRenderer and can paint before the parent settings
+  // adapter's effect runs, which is where the canonical fetch lives.
+  // Without this, the panel would silently render with stale defaults that
+  // don't match the real server config.
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
-  const configuredThumbSize = serverSettings?.thumbnail_size?.[0] ?? 320;
-  const configuredPreviewSize = serverSettings?.preview_size?.[0] ?? 800;
-  const generatePreviews = serverSettings?.generate_previews ?? false;
+  const serverSettingsLoading = useMediaSettingsStore((s) => s.serverSettingsLoading);
+  const setServerSettings = useMediaSettingsStore((s) => s.setServerSettings);
+  const setServerSettingsLoading = useMediaSettingsStore((s) => s.setServerSettingsLoading);
+  useEffect(() => {
+    if (serverSettings || serverSettingsLoading) return;
+    setServerSettingsLoading(true);
+    pixsimClient
+      .get<ServerMediaSettings>('/media/settings')
+      .then((s) => setServerSettings(s))
+      .catch((err) => {
+        console.warn('[DisplaySettingsPreview] /media/settings fetch failed', err);
+      })
+      .finally(() => setServerSettingsLoading(false));
+  }, [serverSettings, serverSettingsLoading, setServerSettings, setServerSettingsLoading]);
 
   const setQualityMode = useAssetViewerStore((s) => s.updateSettings);
   const currentQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
@@ -325,6 +342,18 @@ export function DisplaySettingsPreview() {
 
   const [tier, setTier] = useState<Tier>('preview');
 
+  // Server settings drive the served-px stat lines and the recommendation
+  // banner — wait for them rather than rendering with stale defaults.
+  if (!serverSettings) {
+    return (
+      <div className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 p-3 text-[11px] text-neutral-600 dark:text-neutral-400">
+        {serverSettingsLoading
+          ? 'Loading server settings…'
+          : 'Server settings unavailable. Refresh, or check that the backend is reachable.'}
+      </div>
+    );
+  }
+
   if (!sample) {
     const stillLoading = hiResQuery.loading || anyImageQuery.loading;
     return (
@@ -335,6 +364,13 @@ export function DisplaySettingsPreview() {
       </div>
     );
   }
+
+  // Past both guards: serverSettings + sample are non-null.  Pull the
+  // configured derivative sizes straight from the server response so we
+  // never display stale numbers.
+  const configuredThumbSize = serverSettings.thumbnail_size?.[0] ?? 320;
+  const configuredPreviewSize = serverSettings.preview_size?.[0] ?? 1600;
+  const generatePreviews = serverSettings.generate_previews ?? true;
 
   const screen = typeof window !== 'undefined' ? window.screen : null;
   const screenLabel = screen ? `${screen.width}×${screen.height}` : '';
