@@ -1,0 +1,22 @@
+id: latin-canine-mouthing-dynamics
+title: Latin Canine Mouthing Dynamics
+description: 'Curated Latin phrase enhancers for canine mouthing: open or closed jaw cradling a wrist, forearm, hair, or shoulder without biting down. Threat-as-touch — the fangs are present, the bite withheld. Sibling to latin_canine_scruff_dynamics; pair the two for anchor + cradle scenes.'
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_canine_mouthing_dynamics
+      include_empty: true
+  - label: Mouth Target by Bite State
+    query:
+      row_key: tag:mouth_target
+      col_key: tag:bite_state
+      package_name: latin_canine_mouthing_dynamics
+      include_empty: true
+  - label: Bite State by Register
+    query:
+      row_key: tag:bite_state
+      col_key: tag:register
+      package_name: latin_canine_mouthing_dynamics
+      include_empty: true

@@ -1,0 +1,22 @@
+id: latin-canine-paw-pin-dynamics
+title: Latin Canine Paw Pin Dynamics
+description: 'Curated Latin phrase enhancers for single-point canine paw placement — shoulder, wrist, hair, hip, ankle, garment. Distinct from latin_canine_pin_dynamics (full-body crush): the paw here marks, anchors, or denies movement rather than pressing the captive flat. Pairs naturally with latin_canine_scruff_dynamics and latin_canine_mouthing_dynamics for partial-pin scenes.'
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_canine_paw_pin_dynamics
+      include_empty: true
+  - label: Paw Target by Claim Type
+    query:
+      row_key: tag:paw_target
+      col_key: tag:claim_type
+      package_name: latin_canine_paw_pin_dynamics
+      include_empty: true
+  - label: Claim Type by Register
+    query:
+      row_key: tag:claim_type
+      col_key: tag:register
+      package_name: latin_canine_paw_pin_dynamics
+      include_empty: true
