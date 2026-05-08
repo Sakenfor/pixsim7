@@ -96,6 +96,71 @@ const displayTab: SettingTab = {
         },
       ],
     },
+    // ------------------------------------------------------------------
+     // Server-side derivative generation — controls what the worker
+     // produces during ingestion.  Lives on the Display tab (not Downloads)
+     // because the live preview panel above visualises the effects, and
+     // because conceptually these are about *how images render in the UI*,
+     // not about whether assets get downloaded at all.
+     // ------------------------------------------------------------------
+     {
+       id: 'derivatives',
+       title: 'Derivatives',
+       description: 'What the ingestion worker generates and at what quality. Changes affect new uploads; run tools/backfill_preview_derivatives.py to update existing assets after a size change.',
+       fields: [
+         {
+           id: 'generate_thumbnails',
+           type: 'toggle',
+           label: 'Generate Thumbnails',
+           description: 'Create 320px thumbnails for fast list/grid loading. Required for the thumbnail tier above.',
+           defaultValue: true,
+         },
+         {
+           id: 'generate_previews',
+           type: 'toggle',
+           label: 'Generate Previews',
+           description: 'Create higher-quality preview images for sharper gallery display. Required for the preview tier above.',
+           defaultValue: true,
+         },
+         {
+           id: 'preview_size_px',
+           type: 'select',
+           label: 'Preview Size',
+           description: 'Maximum width/height for generated previews. Larger covers high-DPR displays; sources smaller than this stay native (no upscaling).',
+           defaultValue: '1600',
+           options: [
+             { value: '1024', label: '1024 px (lighter, good for low-DPR)' },
+             { value: '1280', label: '1280 px' },
+             { value: '1600', label: '1600 px (default — covers retina × large cards)' },
+             { value: '2048', label: '2048 px (4K-ready)' },
+             { value: '2560', label: '2560 px (heaviest)' },
+           ],
+           showWhen: (values) => !!values['generate_previews'],
+         },
+         {
+           id: 'thumbnail_quality',
+           type: 'range',
+           label: 'Thumbnail Quality',
+           description: 'JPEG compression for thumbnails. Lower = smaller files, more artefacts.',
+           defaultValue: 85,
+           min: 60,
+           max: 100,
+           step: 1,
+           showWhen: (values) => !!values['generate_thumbnails'],
+         },
+         {
+           id: 'preview_quality',
+           type: 'range',
+           label: 'Preview Quality',
+           description: 'JPEG compression for previews. 92 is a good balance of size and detail.',
+           defaultValue: 92,
+           min: 70,
+           max: 100,
+           step: 1,
+           showWhen: (values) => !!values['generate_previews'],
+         },
+       ],
+     },
     {
       id: 'gallery-grouping',
       title: 'Gallery Grouping',
@@ -237,38 +302,10 @@ const downloadsTab: SettingTab = {
           description: 'Serve media from local storage instead of provider CDN when available.',
           defaultValue: true,
         },
-        {
-          id: 'generate_thumbnails',
-          type: 'toggle',
-          label: 'Generate Thumbnails',
-          description: 'Create thumbnails for images and videos during ingestion.',
-          defaultValue: true,
-        },
-        {
-          id: 'thumbnail_quality',
-          type: 'number',
-          label: 'Thumbnail JPEG Quality',
-          description: 'Compression quality for generated thumbnails (1-100). Lower uses less disk space.',
-          defaultValue: 85,
-          min: 60,
-          max: 100,
-        },
-        {
-          id: 'generate_previews',
-          type: 'toggle',
-          label: 'Generate Previews',
-          description: 'Create higher-quality preview images (800x800) for better gallery display.',
-          defaultValue: true,
-        },
-        {
-          id: 'preview_quality',
-          type: 'number',
-          label: 'Preview JPEG Quality',
-          description: 'Compression quality for generated previews (1-100). Higher preserves more detail.',
-          defaultValue: 92,
-          min: 70,
-          max: 100,
-        },
+        // Note: derivative generation toggles (generate_thumbnails,
+        // generate_previews, *_quality, preview_size_px) live on the
+        // Display tab → Derivatives group, alongside the live preview
+        // panel that visualises their effects.
       ],
     },
     {
@@ -520,6 +557,14 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'lf_hashChunkSize') return lf_hashChunkSize;
       if (fieldId === 'lf_previewMode') return lf_previewMode;
 
+      // Synthetic field: preview_size_px presents the [W, H] tuple as a
+      // single dropdown value (the width — H is always equal in our
+      // generator).  See the matching set() branch below.
+      if (fieldId === 'preview_size_px') {
+        const px = serverSettings?.preview_size?.[0];
+        return px != null ? String(px) : '1600';
+      }
+
       // Server settings
       if (serverSettings && fieldId in serverSettings) {
         return serverSettings[fieldId as keyof ServerMediaSettings];
@@ -583,6 +628,26 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
         return;
       }
 
+      // Synthetic preview_size_px → [W, H] tuple round-trip.  Square boxes
+      // only — the worker resizes "fit within" so a square cap covers any
+      // aspect ratio.
+      if (fieldId === 'preview_size_px') {
+        const px = parseInt(value as string, 10);
+        if (!Number.isFinite(px) || px <= 0) return;
+        if (!serverSettings) return;
+        const tuple: [number, number] = [px, px];
+        const updatedSettings = { ...serverSettings, preview_size: tuple };
+        setServerSettings(updatedSettings);
+        updateServerSetting('preview_size', tuple)
+          .then((newSettings) => setServerSettings(newSettings))
+          .catch((error) => {
+            console.error('Failed to update preview_size:', error);
+            setServerSettings(serverSettings);
+            setServerSettingsError(error.message);
+          });
+        return;
+      }
+
       // Server settings - update optimistically and sync to backend
       if (serverSettings && fieldId in serverSettings) {
         // Optimistic update
@@ -616,6 +681,8 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       lf_hashChunkSize,
       lf_previewMode,
       ...(serverSettings ?? {}),
+      // Synthetic field surfaced on the Derivatives group as a dropdown.
+      preview_size_px: serverSettings?.preview_size?.[0]?.toString() ?? '1600',
     }),
   };
 }

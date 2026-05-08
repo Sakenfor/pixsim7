@@ -400,8 +400,8 @@ export function DisplaySettingsPreview() {
       {!generatePreviews && (
         <div className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded px-2 py-1">
           ℹ Server-side preview generation is OFF (`generate_previews=false`).
-          The preview tier falls back to thumbnails for every asset.  Enable it
-          under Library → Storage to use this tier meaningfully.
+          The preview tier falls back to thumbnails for every asset.  Toggle
+          "Generate Previews" in the Derivatives group below to use this tier.
         </div>
       )}
 
