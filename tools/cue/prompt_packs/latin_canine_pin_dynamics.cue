@@ -12,6 +12,305 @@ package promptpacks
 // nape, weight on shoulders).  Poetic variants draw on the classical
 // predator-prey tradition through a canine lens — wolf and prey, mastiff
 // and earth, the silence kept by the jaw.
+//
+// Authoring shape: typed-taxonomy + comprehension with register × intensity
+// coupling.  Technical describes the physics of holding (moderate-to-
+// absolute force).  Poetic spans the full range from subtle (silence in
+// the throat) to absolute (the world goes still beneath the mastiff).
+
+// ── Shared latin enhancer enums ────────────────────────────────────────
+#LatinRegisterValues:  ["technical", "poetic"]
+#LatinIntensityValues: ["subtle", "moderate", "firm", "absolute"]
+#LatinFormValues:      ["predication", "noun_phrase"]
+
+// ── Pack-specific enums ────────────────────────────────────────────────
+#CanineArchetypeValues:  ["lupus", "canis", "molossus", "catulus", "catula", "grex", "generic"]
+#PinMotionTypeValues:    ["pin", "press", "hold", "grip", "mount", "surround", "immobilize", "restrain"]
+#PinAppliesToValues:     ["full_body", "upper_body", "torso", "limbs", "neck"]
+
+// ── Register-axis shapes ───────────────────────────────────────────────
+// Technical describes the physics of holding (no subtle mechanics — a
+// "subtle" pin is a contradiction in mechanics).  Poetic spans the full
+// range, including subtle (the silence between teeth) and absolute (the
+// world goes still beneath the mastiff).
+
+#TechnicalPinTags: {
+	register:         "technical"
+	intensity:        "moderate" | "firm" | "absolute"
+	motion_type:      or(#PinMotionTypeValues)
+	applies_to:       or(#PinAppliesToValues)
+	canine_archetype: or(#CanineArchetypeValues)
+	latin_form:       or(#LatinFormValues)
+}
+
+#PoeticPinTags: {
+	register:         "poetic"
+	intensity:        or(#LatinIntensityValues)
+	motion_type:      or(#PinMotionTypeValues)
+	applies_to:       or(#PinAppliesToValues)
+	canine_archetype: or(#CanineArchetypeValues)
+	latin_form:       or(#LatinFormValues)
+}
+
+#PinVariantTags: #TechnicalPinTags | #PoeticPinTags
+
+#PinVariant: {
+	text: string
+	tags: #PinVariantTags
+}
+
+// ── Variant taxonomy ───────────────────────────────────────────────────
+
+#Variants: [string]: #PinVariant
+
+#Variants: {
+	// ── technical register — canine mechanics ──────────────────────────
+	canis_praedam_ungulis_premit: {
+		text: "canis praedam ungulis premit"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "press"
+			applies_to:       "full_body"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	lupus_collum_dentibus_tenet: {
+		text: "lupus collum dentibus tenet"
+		tags: {
+			register:         "technical"
+			intensity:        "absolute"
+			motion_type:      "hold"
+			applies_to:       "neck"
+			canine_archetype: "lupus"
+			latin_form:       "predication"
+		}
+	}
+	molossus_victum_ad_terram_fixit: {
+		text: "molossus victum ad terram fixit"
+		tags: {
+			register:         "technical"
+			intensity:        "absolute"
+			motion_type:      "pin"
+			applies_to:       "full_body"
+			canine_archetype: "molossus"
+			latin_form:       "predication"
+		}
+	}
+	fauces_cervicem_circumdant: {
+		text: "fauces cervicem circumdant"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "grip"
+			applies_to:       "neck"
+			canine_archetype: "generic"
+			latin_form:       "predication"
+		}
+	}
+	pondus_canis_super_humeros_incumbit: {
+		text: "pondus canis super humeros incumbit"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "press"
+			applies_to:       "upper_body"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	catulus_dorso_vincti_insidet: {
+		text: "catulus dorso vincti insidet"
+		tags: {
+			register:         "technical"
+			intensity:        "moderate"
+			motion_type:      "mount"
+			applies_to:       "torso"
+			canine_archetype: "catulus"
+			latin_form:       "predication"
+		}
+	}
+	dentes_nuchae_imprimuntur: {
+		text: "dentes nuchae imprimuntur"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "grip"
+			applies_to:       "neck"
+			canine_archetype: "generic"
+			latin_form:       "predication"
+		}
+	}
+	ungues_lateribus_haerent: {
+		text: "ungues lateribus haerent"
+		tags: {
+			register:         "technical"
+			intensity:        "moderate"
+			motion_type:      "grip"
+			applies_to:       "torso"
+			canine_archetype: "generic"
+			latin_form:       "predication"
+		}
+	}
+	grex_vinctum_circumdat: {
+		text: "grex vinctum circumdat"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "surround"
+			applies_to:       "full_body"
+			canine_archetype: "grex"
+			latin_form:       "predication"
+		}
+	}
+	crus_inter_genua_canis_premitur: {
+		text: "crus inter genua canis premitur"
+		tags: {
+			register:         "technical"
+			intensity:        "firm"
+			motion_type:      "press"
+			applies_to:       "limbs"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	// ── poetic register — predator-prey through a canine lens ──────────
+	lupus_non_dimittit_quod_cepit: {
+		text: "lupus non dimittit quod cepit"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "hold"
+			applies_to:       "full_body"
+			canine_archetype: "lupus"
+			latin_form:       "predication"
+		}
+	}
+	sub_fauce_lupina_anima_quiescit: {
+		text: "sub fauce lupina anima quiescit"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "immobilize"
+			applies_to:       "full_body"
+			canine_archetype: "lupus"
+			latin_form:       "noun_phrase"
+		}
+	}
+	canis_dominus_victus_humus: {
+		text: "canis dominus, victus humus"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "pin"
+			applies_to:       "full_body"
+			canine_archetype: "canis"
+			latin_form:       "noun_phrase"
+		}
+	}
+	praeda_sub_molosso_silet: {
+		text: "praeda sub molosso silet"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "pin"
+			applies_to:       "full_body"
+			canine_archetype: "molossus"
+			latin_form:       "predication"
+		}
+	}
+	nox_canina_super_victum_cadit: {
+		text: "nox canina super victum cadit"
+		tags: {
+			register:         "poetic"
+			intensity:        "firm"
+			motion_type:      "press"
+			applies_to:       "full_body"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	spiritus_inter_dentes_manet: {
+		text: "spiritus inter dentes manet"
+		tags: {
+			register:         "poetic"
+			intensity:        "subtle"
+			motion_type:      "hold"
+			applies_to:       "neck"
+			canine_archetype: "generic"
+			latin_form:       "predication"
+		}
+	}
+	corpus_canino_pondere_consecratur: {
+		text: "corpus canino pondere consecratur"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "press"
+			applies_to:       "full_body"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	pectus_terrae_dorsum_cani_datur: {
+		text: "pectus terrae, dorsum cani datur"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "pin"
+			applies_to:       "torso"
+			canine_archetype: "canis"
+			latin_form:       "predication"
+		}
+	}
+	silentium_fauce_custoditur: {
+		text: "silentium fauce custoditur"
+		tags: {
+			register:         "poetic"
+			intensity:        "moderate"
+			motion_type:      "hold"
+			applies_to:       "neck"
+			canine_archetype: "generic"
+			latin_form:       "predication"
+		}
+	}
+	humilitas_victi_sub_cane_perfecta: {
+		text: "humilitas victi sub cane perfecta"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "immobilize"
+			applies_to:       "full_body"
+			canine_archetype: "canis"
+			latin_form:       "noun_phrase"
+		}
+	}
+	ungula_lupi_terram_cum_corpore_tenet: {
+		text: "ungula lupi terram cum corpore tenet"
+		tags: {
+			register:         "poetic"
+			intensity:        "absolute"
+			motion_type:      "pin"
+			applies_to:       "full_body"
+			canine_archetype: "lupus"
+			latin_form:       "predication"
+		}
+	}
+	dens_fidelis_vinctum_tenax: {
+		text: "dens fidelis, vinctum tenax"
+		tags: {
+			register:         "poetic"
+			intensity:        "firm"
+			motion_type:      "grip"
+			applies_to:       "neck"
+			canine_archetype: "generic"
+			latin_form:       "noun_phrase"
+		}
+	}
+}
+
+// ── Pack ───────────────────────────────────────────────────────────────
 
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
@@ -36,271 +335,10 @@ pack: #PromptBlockPackV1 & {
 					domain: ["pin", "restraint", "canine", "animal_dynamics"]
 				}
 				variants: [
-					// ── technical register — canine mechanics ──────────────────────
-					{
-						key:  "canis_praedam_ungulis_premit"
-						text: "canis praedam ungulis premit"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "press"
-							applies_to:       "full_body"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "lupus_collum_dentibus_tenet"
-						text: "lupus collum dentibus tenet"
-						tags: {
-							register:         "technical"
-							intensity:        "absolute"
-							motion_type:      "hold"
-							applies_to:       "neck"
-							canine_archetype: "lupus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "molossus_victum_ad_terram_fixit"
-						text: "molossus victum ad terram fixit"
-						tags: {
-							register:         "technical"
-							intensity:        "absolute"
-							motion_type:      "pin"
-							applies_to:       "full_body"
-							canine_archetype: "molossus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "fauces_cervicem_circumdant"
-						text: "fauces cervicem circumdant"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "grip"
-							applies_to:       "neck"
-							canine_archetype: "generic"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "pondus_canis_super_humeros_incumbit"
-						text: "pondus canis super humeros incumbit"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "press"
-							applies_to:       "upper_body"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "catulus_dorso_vincti_insidet"
-						text: "catulus dorso vincti insidet"
-						tags: {
-							register:         "technical"
-							intensity:        "moderate"
-							motion_type:      "mount"
-							applies_to:       "torso"
-							canine_archetype: "catulus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "dentes_nuchae_imprimuntur"
-						text: "dentes nuchae imprimuntur"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "grip"
-							applies_to:       "neck"
-							canine_archetype: "generic"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "ungues_lateribus_haerent"
-						text: "ungues lateribus haerent"
-						tags: {
-							register:         "technical"
-							intensity:        "moderate"
-							motion_type:      "grip"
-							applies_to:       "torso"
-							canine_archetype: "generic"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "grex_vinctum_circumdat"
-						text: "grex vinctum circumdat"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "surround"
-							applies_to:       "full_body"
-							canine_archetype: "grex"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "crus_inter_genua_canis_premitur"
-						text: "crus inter genua canis premitur"
-						tags: {
-							register:         "technical"
-							intensity:        "firm"
-							motion_type:      "press"
-							applies_to:       "limbs"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					// ── poetic register — predator-prey through a canine lens ──────
-					{
-						key:  "lupus_non_dimittit_quod_cepit"
-						text: "lupus non dimittit quod cepit"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "hold"
-							applies_to:       "full_body"
-							canine_archetype: "lupus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "sub_fauce_lupina_anima_quiescit"
-						text: "sub fauce lupina anima quiescit"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "immobilize"
-							applies_to:       "full_body"
-							canine_archetype: "lupus"
-							latin_form:       "noun_phrase"
-						}
-					},
-					{
-						key:  "canis_dominus_victus_humus"
-						text: "canis dominus, victus humus"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "pin"
-							applies_to:       "full_body"
-							canine_archetype: "canis"
-							latin_form:       "noun_phrase"
-						}
-					},
-					{
-						key:  "praeda_sub_molosso_silet"
-						text: "praeda sub molosso silet"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "pin"
-							applies_to:       "full_body"
-							canine_archetype: "molossus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "nox_canina_super_victum_cadit"
-						text: "nox canina super victum cadit"
-						tags: {
-							register:         "poetic"
-							intensity:        "firm"
-							motion_type:      "press"
-							applies_to:       "full_body"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "spiritus_inter_dentes_manet"
-						text: "spiritus inter dentes manet"
-						tags: {
-							register:         "poetic"
-							intensity:        "subtle"
-							motion_type:      "hold"
-							applies_to:       "neck"
-							canine_archetype: "generic"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "corpus_canino_pondere_consecratur"
-						text: "corpus canino pondere consecratur"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "press"
-							applies_to:       "full_body"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "pectus_terrae_dorsum_cani_datur"
-						text: "pectus terrae, dorsum cani datur"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "pin"
-							applies_to:       "torso"
-							canine_archetype: "canis"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "silentium_fauce_custoditur"
-						text: "silentium fauce custoditur"
-						tags: {
-							register:         "poetic"
-							intensity:        "moderate"
-							motion_type:      "hold"
-							applies_to:       "neck"
-							canine_archetype: "generic"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "humilitas_victi_sub_cane_perfecta"
-						text: "humilitas victi sub cane perfecta"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "immobilize"
-							applies_to:       "full_body"
-							canine_archetype: "canis"
-							latin_form:       "noun_phrase"
-						}
-					},
-					{
-						key:  "ungula_lupi_terram_cum_corpore_tenet"
-						text: "ungula lupi terram cum corpore tenet"
-						tags: {
-							register:         "poetic"
-							intensity:        "absolute"
-							motion_type:      "pin"
-							applies_to:       "full_body"
-							canine_archetype: "lupus"
-							latin_form:       "predication"
-						}
-					},
-					{
-						key:  "dens_fidelis_vinctum_tenax"
-						text: "dens fidelis, vinctum tenax"
-						tags: {
-							register:         "poetic"
-							intensity:        "firm"
-							motion_type:      "grip"
-							applies_to:       "neck"
-							canine_archetype: "generic"
-							latin_form:       "noun_phrase"
-						}
+					for slug, v in #Variants {
+						key:  slug
+						text: v.text
+						tags: v.tags
 					},
 				]
 			}
