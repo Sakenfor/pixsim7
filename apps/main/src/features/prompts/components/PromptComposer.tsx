@@ -72,8 +72,8 @@ import {
   PromptCompareSideBySide,
   type CompareSource,
 } from './PromptCompareSideBySide';
+import { PromptAnalysisLayout } from './PromptAnalysisLayout';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
-import { ShadowSidePanel } from './ShadowSidePanel';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 
@@ -934,46 +934,60 @@ export function PromptComposer({
       shadowAnalysis.result?.tokens,
     ],
   );
-  const cmExtensions = useMemo(
-    () => {
-      const exts = [
-        ghostDiffExtension(cmGhostConfig, {
-          onSuppress: setGhostSuppressed,
-          onRemovedSegments: setGhostRemoved,
-        }),
-        cmRefInput.extension,
-        tagPillExtension(),
-        operatorEditExtension(cmShadowTokenLines, {
-          onOperatorClick: (operator, anchor) => {
-            setCmOperatorPopover({ operator, anchor });
-          },
-        }),
-      ];
-      // Install when either role candidates or structural token lines are
-      // present — token lines alone (no role matches) still give us
-      // header/relation line decorations.
-      if (cmShadowCandidates.length > 0 || (cmShadowTokenLines && cmShadowTokenLines.length > 0)) {
-        exts.push(shadowAnalysisExtension(
-          { candidates: cmShadowCandidates, roleColors: promptRoleColors, tokenLines: cmShadowTokenLines },
-          {
-            onCandidateClick: (candidate, anchor) => {
-              setCmShadowPopover({ anchor, candidate });
-            },
-          },
-        ));
-      }
-      return exts;
-    },
+  // Base extensions — stable, do not depend on legend emphasis. The shadow
+  // analysis extension is appended per-render inside `buildCmExtensions`
+  // because its `emphasizedRole` arg flows from PromptAnalysisLayout's
+  // hover/pin state and changes outside this useMemo's dep frame.
+  const cmExtensionsBase = useMemo(
+    () => [
+      ghostDiffExtension(cmGhostConfig, {
+        onSuppress: setGhostSuppressed,
+        onRemovedSegments: setGhostRemoved,
+      }),
+      cmRefInput.extension,
+      tagPillExtension(),
+      operatorEditExtension(cmShadowTokenLines, {
+        onOperatorClick: (operator, anchor) => {
+          setCmOperatorPopover({ operator, anchor });
+        },
+      }),
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       cmGhostConfig?.comparisonText,
       cmGhostConfig?.stepDistance,
       cmGhostConfig?.precision,
-      cmShadowCandidates,
       cmShadowTokenLines,
-      promptRoleColors,
       cmRefInput.extension,
     ],
+  );
+  const hasShadowExt =
+    cmShadowCandidates.length > 0 ||
+    (cmShadowTokenLines !== undefined && cmShadowTokenLines.length > 0);
+  const buildCmExtensions = useCallback(
+    (emphasizedRole: string | null) => {
+      if (!hasShadowExt) return cmExtensionsBase;
+      // Install when either role candidates or structural token lines are
+      // present — token lines alone (no role matches) still give us
+      // header/relation line decorations.
+      return [
+        ...cmExtensionsBase,
+        shadowAnalysisExtension(
+          {
+            candidates: cmShadowCandidates,
+            roleColors: promptRoleColors,
+            tokenLines: cmShadowTokenLines,
+            emphasizedRole,
+          },
+          {
+            onCandidateClick: (candidate, anchor) => {
+              setCmShadowPopover({ anchor, candidate });
+            },
+          },
+        ),
+      ];
+    },
+    [cmExtensionsBase, hasShadowExt, cmShadowCandidates, cmShadowTokenLines, promptRoleColors],
   );
 
   const {
@@ -1612,119 +1626,140 @@ export function PromptComposer({
 
       {mode === 'text' ? (
         useCodemirror ? (
-          <div className="flex-1 min-h-0 flex">
-            <div
-              ref={referencePickerContainerRef}
-              className="relative flex flex-col flex-1 min-w-0"
-            >
-              <PromptEditor
-                value={value}
-                onChange={onChange}
-                maxChars={maxChars}
-                placeholder={placeholder}
-                disabled={disabled}
-                variant={variant}
-                showCounter={showCounter}
-                resizable={resizable}
-                minHeight={minHeight}
-                transparent={!!ghostSource}
-                className="flex-1 min-h-0"
-                extensions={cmExtensions}
-                editorRef={promptEditorRef}
-              />
-              <ReferencePicker
-                ref={referencePickerRef}
-                visible={cmRefInput.active && cmRefInput.anchor !== null}
-                query={cmRefInput.query}
-                items={references.items}
-                onSelect={handleCmReferenceSelect}
-                onClose={cmRefInput.dismiss}
-                disallowedTypes={['plan', 'world', 'project']}
-                className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
-                style={cmRefInput.anchor ?? undefined}
-              />
-              <Popover
-                anchor={cmShadowPopover?.anchor ?? null}
-                placement="bottom"
-                align="start"
-                offset={6}
-                open={!!cmShadowPopover}
-                onClose={() => setCmShadowPopover(null)}
-              >
-                {cmShadowPopover && (
-                  <ShadowAnalysisPopover
-                    candidate={cmShadowPopover.candidate}
-                    roleColors={promptRoleColors}
+          // CM editor — always wrapped in PromptAnalysisLayout so the
+          // legend's hover/pin emphasis can dim non-matching candidates.
+          // Side panel toggles with the shadow setting; legend is hidden
+          // here because the side panel + per-span hover tooltips already
+          // give richer surfaces than a chip row would.
+          <div className="flex-1 min-h-0">
+            <PromptAnalysisLayout
+              analysis={shadowAnalysis}
+              layout="side-by-side"
+              showLegend={false}
+              showSidePanel={showShadow && autoAnalyze}
+              renderEditor={({ emphasizedRole }) => (
+                <div
+                  ref={referencePickerContainerRef}
+                  className="relative flex flex-col h-full min-w-0"
+                >
+                  <PromptEditor
+                    value={value}
+                    onChange={onChange}
+                    maxChars={maxChars}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    variant={variant}
+                    showCounter={showCounter}
+                    resizable={resizable}
+                    minHeight={minHeight}
+                    transparent={!!ghostSource}
+                    className="flex-1 min-h-0"
+                    extensions={buildCmExtensions(emphasizedRole)}
+                    editorRef={promptEditorRef}
                   />
-                )}
-              </Popover>
-              <Popover
-                anchor={cmOperatorPopover?.anchor ?? null}
-                placement="bottom"
-                align="start"
-                offset={6}
-                open={!!cmOperatorPopover}
-                onClose={() => setCmOperatorPopover(null)}
-              >
-                {cmOperatorPopover && (() => {
-                  const op = cmOperatorPopover.operator;
-                  const recipe = matchRecipe(relationRecipes.recipes, {
-                    line_kind: op.context,
-                    prev_kind: op.prevKind,
-                    next_kind: op.nextKind,
-                  });
-                  // Match by raw op so `===>` finds the `>` entry via the
-                  // last-char fallback inside matchOperator.
-                  const recipeOp = matchOperator(recipe, op.raw);
-                  return (
-                    <OperatorEditPopover
-                      operator={op}
-                      swapTargets={operatorVocabulary.swapTargets}
-                      maxRunLength={operatorVocabulary.maxRunLength}
-                      recipe={recipe}
-                      recipeOp={recipeOp}
-                      onCancel={() => setCmOperatorPopover(null)}
-                      onApply={(newOp, newRun) => {
-                        const view = promptEditorRef.current;
-                        if (view) {
-                          view.dispatch({
-                            changes: {
-                              from: op.from,
-                              to: op.to,
-                              insert: newOp.repeat(newRun),
-                            },
-                          });
-                        }
-                        setCmOperatorPopover(null);
-                      }}
-                    />
-                  );
-                })()}
-              </Popover>
-            </div>
-            {showShadow && autoAnalyze && (
-              <ShadowSidePanel analysis={shadowAnalysis} />
-            )}
+                  <ReferencePicker
+                    ref={referencePickerRef}
+                    visible={cmRefInput.active && cmRefInput.anchor !== null}
+                    query={cmRefInput.query}
+                    items={references.items}
+                    onSelect={handleCmReferenceSelect}
+                    onClose={cmRefInput.dismiss}
+                    disallowedTypes={['plan', 'world', 'project']}
+                    className="absolute w-72 max-h-[320px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl ring-1 ring-black/5 dark:ring-white/5 z-float-overlay-popover"
+                    style={cmRefInput.anchor ?? undefined}
+                  />
+                  <Popover
+                    anchor={cmShadowPopover?.anchor ?? null}
+                    placement="bottom"
+                    align="start"
+                    offset={6}
+                    open={!!cmShadowPopover}
+                    onClose={() => setCmShadowPopover(null)}
+                  >
+                    {cmShadowPopover && (
+                      <ShadowAnalysisPopover
+                        candidate={cmShadowPopover.candidate}
+                        roleColors={promptRoleColors}
+                      />
+                    )}
+                  </Popover>
+                  <Popover
+                    anchor={cmOperatorPopover?.anchor ?? null}
+                    placement="bottom"
+                    align="start"
+                    offset={6}
+                    open={!!cmOperatorPopover}
+                    onClose={() => setCmOperatorPopover(null)}
+                  >
+                    {cmOperatorPopover && (() => {
+                      const op = cmOperatorPopover.operator;
+                      const recipe = matchRecipe(relationRecipes.recipes, {
+                        line_kind: op.context,
+                        prev_kind: op.prevKind,
+                        next_kind: op.nextKind,
+                      });
+                      // Match by raw op so `===>` finds the `>` entry via the
+                      // last-char fallback inside matchOperator.
+                      const recipeOp = matchOperator(recipe, op.raw);
+                      return (
+                        <OperatorEditPopover
+                          operator={op}
+                          swapTargets={operatorVocabulary.swapTargets}
+                          maxRunLength={operatorVocabulary.maxRunLength}
+                          recipe={recipe}
+                          recipeOp={recipeOp}
+                          onCancel={() => setCmOperatorPopover(null)}
+                          onApply={(newOp, newRun) => {
+                            const view = promptEditorRef.current;
+                            if (view) {
+                              view.dispatch({
+                                changes: {
+                                  from: op.from,
+                                  to: op.to,
+                                  insert: newOp.repeat(newRun),
+                                },
+                              });
+                            }
+                            setCmOperatorPopover(null);
+                          }}
+                        />
+                      );
+                    })()}
+                  </Popover>
+                </div>
+              )}
+            />
           </div>
         ) : showShadow && autoAnalyze ? (
-          <div className="flex-1 min-h-0 flex">
-            <div className="flex-1 min-w-0">
-              <ShadowTextarea
-                value={value}
-                onChange={onChange}
-                candidates={shadowAnalysis.result?.candidates ?? []}
-                maxChars={maxChars}
-                placeholder={placeholder}
-                disabled={disabled}
-                variant={variant}
-                showCounter={showCounter}
-                resizable={resizable}
-                minHeight={minHeight}
-              />
-            </div>
-            <ShadowSidePanel analysis={shadowAnalysis} />
+          // Textarea engine + shadow on — share the same layout primitive.
+          // ShadowTextarea consumes `emphasizedRole` so legend hovers dim
+          // non-matching candidates inside the backdrop layer.
+          <div className="flex-1 min-h-0">
+            <PromptAnalysisLayout
+              analysis={shadowAnalysis}
+              layout="side-by-side"
+              showLegend={false}
+              renderEditor={({ emphasizedRole }) => (
+                <ShadowTextarea
+                  value={value}
+                  onChange={onChange}
+                  candidates={shadowAnalysis.result?.candidates ?? []}
+                  emphasizedRole={emphasizedRole}
+                  maxChars={maxChars}
+                  placeholder={placeholder}
+                  disabled={disabled}
+                  variant={variant}
+                  showCounter={showCounter}
+                  resizable={resizable}
+                  minHeight={minHeight}
+                />
+              )}
+            />
           </div>
         ) : (
+          // Plain textarea (no analysis) — left untouched. ShadowTextarea
+          // can't host the ghost-diff overlay or the @-reference picker,
+          // so this branch keeps the simpler PromptInput stack.
           <div
             ref={referencePickerContainerRef}
             className="relative flex flex-col flex-1 min-h-0"

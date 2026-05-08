@@ -53,6 +53,9 @@ export interface ShadowTextareaProps {
   showCounter?: boolean;
   resizable?: boolean;
   minHeight?: number;
+  /** When set, candidates whose role !== emphasizedRole render at reduced
+   *  opacity. Threaded from PromptAnalysisLayout's legend hover/pin state. */
+  emphasizedRole?: string | null;
   /** Called when hover enters/leaves a candidate span */
   onCandidateHover?: (candidate: PromptBlockCandidate | null) => void;
   /** Called when a candidate span is clicked */
@@ -220,6 +223,7 @@ export function ShadowTextarea({
   showCounter = true,
   resizable = false,
   minHeight,
+  emphasizedRole = null,
   onCandidateHover,
   onCandidateClick,
 }: ShadowTextareaProps) {
@@ -395,6 +399,7 @@ export function ShadowTextarea({
             roleColors={promptRoleColors}
             mode="backdrop"
             hoveredSpanIdx={hoveredSpanIdx}
+            emphasizedRole={emphasizedRole}
           />
         </TextareaBackdrop>
 
