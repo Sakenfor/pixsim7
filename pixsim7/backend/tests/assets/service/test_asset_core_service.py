@@ -84,7 +84,7 @@ async def test_delete_asset_uses_owner_id_and_deletes_storage_after_commit() -> 
     requester.id = 1
 
     service.get_asset_for_user = AsyncMock(return_value=asset)
-    service._delete_from_provider = AsyncMock()
+    service._delete_from_provider_by_snapshot = AsyncMock()
 
     commit_done = {"value": False}
 

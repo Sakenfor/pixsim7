@@ -6,7 +6,6 @@ Manages user asset quotas, storage tracking, and hash-based deduplication.
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from datetime import datetime, timezone
 
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import SyncStatus
@@ -69,6 +68,10 @@ class AssetQuotaService:
         """
         Find asset by SHA256 hash (for deduplication).
 
+        Pure finder: callers are responsible for updating ``last_accessed_at``
+        and committing. Committing here would force-flush any unrelated
+        pending changes in the same session.
+
         Args:
             sha256: SHA256 hash to search for
             user_id: User ID (scoped to user's assets)
@@ -79,8 +82,8 @@ class AssetQuotaService:
         Example:
             >>> existing = await asset_service.find_asset_by_hash(sha256, user.id)
             >>> if existing:
-            >>>     # Reuse existing asset, update last_accessed_at
             >>>     existing.last_accessed_at = datetime.now(timezone.utc)
+            >>>     await db.commit()
         """
         result = await self.db.execute(
             select(Asset).where(
@@ -88,14 +91,7 @@ class AssetQuotaService:
                 Asset.user_id == user_id
             )
         )
-        asset = result.scalar_one_or_none()
-
-        if asset:
-            # Update last accessed time for LRU tracking
-            asset.last_accessed_at = datetime.now(timezone.utc)
-            await self.db.commit()
-
-        return asset
+        return result.scalar_one_or_none()
 
     async def find_similar_by_phash(
         self,
@@ -133,8 +129,6 @@ class AssetQuotaService:
                 best_dist = dist
 
         if best and best_dist <= max_distance:
-            best.last_accessed_at = datetime.now(timezone.utc)
-            await self.db.commit()
             return best
 
         return None
