@@ -94,6 +94,9 @@ import './GeneralSettings';
 import './UnifiedPanelsSettings';
 import './PluginsSettings';
 import './AnalyzersSettings';
+// TickerSettings — registry-derived list of news sources, each with its
+// own self-declared schema fields. Doesn't fit the static schema shape.
+import './TickerSettings';
 // WidgetPresetsSettings — now a sub-section of Workspace (see UnifiedPanelsSettings.tsx)
 import './ProfilesSettings';
 import './BackupSettings';

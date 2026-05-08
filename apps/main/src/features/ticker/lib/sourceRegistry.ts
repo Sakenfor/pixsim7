@@ -48,6 +48,40 @@ export interface TickerEvent {
   pinned?: boolean;
 }
 
+/**
+ * Field types a source can declare in its `settingsSchema`. Intentionally
+ * narrow — the Ticker settings module renders these inline. If you need
+ * something richer (custom React, conditional groups), promote the source's
+ * settings to its own settings module instead.
+ */
+export type TickerSettingField =
+  | {
+      type: 'toggle';
+      id: string;
+      label: string;
+      description?: string;
+      defaultValue: boolean;
+    }
+  | {
+      type: 'number';
+      id: string;
+      label: string;
+      description?: string;
+      defaultValue: number;
+      min?: number;
+      max?: number;
+      step?: number;
+      suffix?: string;
+    }
+  | {
+      type: 'select';
+      id: string;
+      label: string;
+      description?: string;
+      defaultValue: string;
+      options: ReadonlyArray<{ value: string; label: string }>;
+    };
+
 export interface TickerSource {
   /** Stable, kebab-case id — namespaced is fine (`notifications:plan`). */
   id: string;
@@ -72,6 +106,23 @@ export interface TickerSource {
    * on first render.
    */
   initial?: () => Promise<TickerEvent[]>;
+  /**
+   * Optional self-declared settings, rendered in the main Settings panel
+   * under the Ticker module. Values are persisted in
+   * `tickerSettingsStore.sourceSettings[source.id]` keyed by field id and
+   * read by the source via `getSourceSettings(state, source.id, defaults)`.
+   */
+  settingsSchema?: ReadonlyArray<TickerSettingField>;
+  /**
+   * Defaults merged in when reading via `getSourceSettings`. Should match
+   * the `defaultValue`s declared in `settingsSchema`. Held separately so
+   * sources can read settings without re-deriving defaults from the schema.
+   *
+   * Typed as `object` (not `Record<string, unknown>`) so sources can supply
+   * a typed interface without needing an explicit index signature. The
+   * settings module casts to `Record<string, unknown>` at the renderer.
+   */
+  defaultSettings?: object;
 }
 
 const sources = new Map<string, TickerSource>();

@@ -23,6 +23,7 @@ export {
   subscribeToTickerRegistry,
   type TickerEvent,
   type TickerSource,
+  type TickerSettingField,
 } from './lib/sourceRegistry';
 
 export {

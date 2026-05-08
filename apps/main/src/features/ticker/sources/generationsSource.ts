@@ -16,14 +16,83 @@ import type { GenerationStatus } from '@features/generation/models';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 
 import type { TickerEvent, TickerSource } from '../lib/sourceRegistry';
+import {
+  getSourceSettings,
+  useTickerSettingsStore,
+} from '../stores/tickerSettingsStore';
 
 const SOURCE_ID = 'generations';
+
+interface GenerationsSourceSettings {
+  /** Emit a "started" event when a new generation enters an active status. */
+  showStarted: boolean;
+  /** Emit a "processing…" event when a generation transitions into processing. */
+  showProcessing: boolean;
+  /** Emit a "completed ✓" event on completion. */
+  showCompleted: boolean;
+  /** Emit a "failed" event with truncated error. */
+  showFailed: boolean;
+}
+
+const DEFAULT_SETTINGS: GenerationsSourceSettings = {
+  showStarted: true,
+  showProcessing: true,
+  showCompleted: true,
+  showFailed: true,
+};
+
+/**
+ * Read current per-source settings from the global store. Called per emit;
+ * cheap because zustand state access is sync and the helper just merges
+ * defaults. We intentionally don't subscribe — settings changes only need
+ * to apply to *future* events, and the next state-diff tick will pick them
+ * up naturally.
+ */
+function readSettings(): GenerationsSourceSettings {
+  return getSourceSettings(
+    useTickerSettingsStore.getState(),
+    SOURCE_ID,
+    DEFAULT_SETTINGS,
+  );
+}
 
 export const generationsSource: TickerSource = {
   id: SOURCE_ID,
   label: 'Live generations',
   description: 'Status updates for in-flight generations (started / completed / failed)',
   defaultEnabled: true,
+
+  settingsSchema: [
+    {
+      type: 'toggle',
+      id: 'showStarted',
+      label: 'Show "started"',
+      description: 'Announce when a generation enters an active status.',
+      defaultValue: true,
+    },
+    {
+      type: 'toggle',
+      id: 'showProcessing',
+      label: 'Show "processing"',
+      description: 'Announce the transition into processing.',
+      defaultValue: true,
+    },
+    {
+      type: 'toggle',
+      id: 'showCompleted',
+      label: 'Show "completed"',
+      description: 'Announce successful completions.',
+      defaultValue: true,
+    },
+    {
+      type: 'toggle',
+      id: 'showFailed',
+      label: 'Show "failed"',
+      description: 'Announce failures with a truncated error snippet.',
+      defaultValue: true,
+    },
+  ],
+  defaultSettings: DEFAULT_SETTINGS,
 
   subscribe(emit) {
     // Seed the prev-status map with whatever's already in the store at
@@ -38,6 +107,9 @@ export const generationsSource: TickerSource = {
     const unsubscribe = useGenerationsStore.subscribe((state) => {
       const now = Date.now();
       const next = new Map<number, GenerationStatus>();
+      // Read settings once per tick — the user can't change them mid-tick
+      // and it keeps the per-status branches cheap to skip.
+      const settings = readSettings();
 
       state.generations.forEach((gen, id) => {
         const prevStatus = prev.get(id);
@@ -49,6 +121,7 @@ export const generationsSource: TickerSource = {
         let event: TickerEvent | null = null;
 
         if (!prevStatus && isActiveStatus(currentStatus)) {
+          if (!settings.showStarted) return;
           event = {
             id: `gen-${id}-started-${now}`,
             sourceId: SOURCE_ID,
@@ -64,6 +137,7 @@ export const generationsSource: TickerSource = {
           currentStatus === 'processing' &&
           prevStatus !== 'processing'
         ) {
+          if (!settings.showProcessing) return;
           event = {
             id: `gen-${id}-processing-${now}`,
             sourceId: SOURCE_ID,
@@ -75,6 +149,7 @@ export const generationsSource: TickerSource = {
             timestamp: now,
           };
         } else if (currentStatus === 'completed') {
+          if (!settings.showCompleted) return;
           event = {
             id: `gen-${id}-completed-${now}`,
             sourceId: SOURCE_ID,
@@ -86,6 +161,7 @@ export const generationsSource: TickerSource = {
             timestamp: now,
           };
         } else if (currentStatus === 'failed') {
+          if (!settings.showFailed) return;
           const errMsg = gen.errorMessage ?? '';
           const errSnippet = errMsg
             ? errMsg.slice(0, 30) + (errMsg.length > 30 ? '…' : '')
