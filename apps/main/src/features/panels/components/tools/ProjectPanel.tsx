@@ -231,6 +231,7 @@ function formatEntityCategoryValue(item: { count: number; sample: string[] }): s
 type SettingsChildId = 'save' | 'load';
 type InventoryChildId = 'overview' | `category:${string}`;
 type SectionId =
+  | 'dashboard'
   | 'settings'
   | 'saved-projects'
   | 'inventory'
@@ -240,6 +241,7 @@ type SectionId =
   | 'debug';
 
 const SECTION_NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard' },
   {
     id: 'settings',
     label: 'Settings',
@@ -282,6 +284,52 @@ function getInventoryChildLabel(
   return categories.find((category) => category.key === key)?.label ?? key;
 }
 
+const DASHBOARD_TOOLS = [
+  { id: 'game-world', label: 'World', description: 'Locations & hotspots', categoryKey: 'locations' },
+  { id: 'scene-management', label: 'Scenes', description: 'Scene builder', categoryKey: 'scenes' },
+  { id: 'character-creator', label: 'Characters', description: 'Create & edit NPCs', categoryKey: 'npcs' },
+  { id: 'npc-brain-lab', label: 'Brain Lab', description: 'NPC behaviors', categoryKey: null },
+  { id: 'interaction-studio', label: 'Interactions', description: 'Interaction design', categoryKey: null },
+  { id: 'routine-graph', label: 'Routines', description: 'NPC routine graphs', categoryKey: null },
+  { id: 'gallery', label: 'Assets', description: 'Browse & manage assets', categoryKey: null },
+  { id: 'quick-generate', label: 'Generate', description: 'AI generation', categoryKey: null },
+  { id: 'game-theming', label: 'Theming', description: 'Visual theme', categoryKey: null },
+  { id: 'hud-designer', label: 'HUD', description: 'HUD & UI design', categoryKey: null },
+] as const;
+
+function ProjectDashboard({ categories }: { categories: ProjectInventoryEntityCategory[] }) {
+  const countFor = (key: string | null) => {
+    if (!key) return null;
+    return categories.find((c) => c.key === key)?.count ?? null;
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="font-semibold text-neutral-700 dark:text-neutral-300">Tools</div>
+      <div className="grid grid-cols-2 gap-2">
+        {DASHBOARD_TOOLS.map((tool) => {
+          const count = countFor(tool.categoryKey);
+          return (
+            <button
+              key={tool.id}
+              onClick={() => openWorkspacePanel(tool.id)}
+              className="flex flex-col items-start gap-0.5 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 p-2 text-left transition-colors"
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="font-medium text-neutral-800 dark:text-neutral-200 text-xs">{tool.label}</span>
+                {count !== null && (
+                  <span className="text-neutral-400 dark:text-neutral-500 text-xs">{count}</span>
+                )}
+              </div>
+              <span className="text-neutral-400 dark:text-neutral-500 text-xs leading-tight">{tool.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -297,7 +345,7 @@ export function ProjectPanel() {
     DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled,
   );
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
-  const [activeSection, setActiveSection] = useState<SectionId>('settings');
+  const [activeSection, setActiveSection] = useState<SectionId>('dashboard');
   const [activeSettingsChild, setActiveSettingsChild] = useState<SettingsChildId>('save');
   const [activeInventoryChild, setActiveInventoryChild] =
     useState<InventoryChildId>('overview');
@@ -1439,6 +1487,10 @@ export function ProjectPanel() {
                 </div>
               )}
             </>
+          )}
+
+          {activeSection === 'dashboard' && (
+            <ProjectDashboard categories={inventoryAllCategories} />
           )}
 
           {activeSection === 'debug' && (
