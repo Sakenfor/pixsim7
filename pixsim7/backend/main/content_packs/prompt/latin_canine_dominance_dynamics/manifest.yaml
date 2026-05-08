@@ -1,0 +1,22 @@
+id: latin-canine-dominance-dynamics
+title: Latin Canine Dominance Dynamics
+description: 'Curated Latin phrase enhancers for canine-coded dominance: bared fangs, raised hackles, throat-growl, fixed gaze, looming presence. Biped-safe vocabulary; works for werewolves, gnolls, beastfolk, or any canine-flavored character.'
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_canine_dominance_dynamics
+      include_empty: true
+  - label: Modality by Register
+    query:
+      row_key: tag:modality
+      col_key: tag:register
+      package_name: latin_canine_dominance_dynamics
+      include_empty: true
+  - label: Canine Archetype by Modality
+    query:
+      row_key: tag:canine_archetype
+      col_key: tag:modality
+      package_name: latin_canine_dominance_dynamics
+      include_empty: true
