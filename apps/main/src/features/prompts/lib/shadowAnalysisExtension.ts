@@ -23,6 +23,9 @@ export interface ShadowAnalysisConfig {
   candidates: PromptBlockCandidate[];
   roleColors?: Record<string, string>;
   tokenLines?: PromptTokenLine[];
+  /** When set, candidates whose role !== emphasizedRole render at reduced
+   *  opacity (matches PromptHighlightedSpans). Drives legend emphasis. */
+  emphasizedRole?: string | null;
 }
 
 export interface ShadowAnalysisCallbacks {
@@ -81,23 +84,30 @@ function buildDecorations(
 
   const builder = new RangeSetBuilder<Decoration>();
 
+  const emphasizedRole = config.emphasizedRole ?? null;
   for (const { from, to, candidate } of positioned) {
     if (from >= to || from < 0 || to > docLength) continue;
 
     const hex = getPromptRoleHex(candidate.role, config.roleColors);
     const { r, g, b } = hexToRgb(hex);
     const conf = candidate.confidence ?? 1;
-    const opacity = 0.4 + 0.6 * Math.min(1, Math.max(0, conf));
+    // Legend emphasis: dim non-matching roles to ×0.3.
+    const isDimmed = emphasizedRole != null && candidate.role !== emphasizedRole;
+    const dimFactor = isDimmed ? 0.3 : 1;
+    const opacity = (0.4 + 0.6 * Math.min(1, Math.max(0, conf))) * dimFactor;
     const bgAlpha = (opacity * 0.25).toFixed(2);
 
+    const borderAlpha = dimFactor.toFixed(2);
     const mark = Decoration.mark({
       attributes: {
         // Resting style: underline only. The bg color is exposed as a custom
         // property so the hover rule in the theme can fade it in without us
-        // re-emitting per-role styles in CSS.
+        // re-emitting per-role styles in CSS. The underline alpha mirrors
+        // the dim factor so emphasised + non-emphasised roles read clearly
+        // against each other.
         style: [
           `--cm-shadow-bg: rgba(${r},${g},${b},${bgAlpha})`,
-          `border-bottom: 2px solid ${hex}`,
+          `border-bottom: 2px solid rgba(${r},${g},${b},${borderAlpha})`,
           'border-radius: 2px',
           'cursor: pointer',
         ].join(';'),

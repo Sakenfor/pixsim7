@@ -27,20 +27,19 @@ import {
 
 import {
   getPromptRoleBadgeClass,
-  getPromptRoleHex,
-  getPromptRoleInlineClasses,
   getPromptRoleLabel,
 } from '@/lib/promptRoleUi';
 
 import { buildCandidateSpans } from '../lib/buildCandidateSpans';
 import {
-  parsePrimitiveMatch,
   parsePrimitiveProjection,
   type PrimitiveProjectionHypothesis,
 } from '../lib/parsePrimitiveMatch';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
+import { PromptHighlightedSpans } from './PromptHighlightedSpans';
+import { PromptSpanTooltip } from './PromptSpanTooltip';
 import { TextareaBackdrop } from './TextareaBackdrop';
 
 export interface ShadowTextareaProps {
@@ -61,7 +60,8 @@ export interface ShadowTextareaProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Span Tooltip
+// Span Tooltip — extracted to ./PromptSpanTooltip so the inspector
+// (PromptInlineViewer) renders identical metadata.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TooltipData {
@@ -70,85 +70,8 @@ interface TooltipData {
   y: number;
 }
 
-function SpanTooltip({
-  data,
-  roleColors,
-}: {
-  data: TooltipData;
-  roleColors?: Record<string, string>;
-}) {
-  const { candidate, x, y } = data;
-  const pm = parsePrimitiveMatch(candidate);
-
-  return (
-    <div
-      className={clsx(
-        'fixed z-[100] px-2.5 py-1.5 rounded-lg shadow-lg border text-xs',
-        'bg-neutral-900/95 dark:bg-neutral-100/95',
-        'text-white dark:text-neutral-900',
-        'border-neutral-700 dark:border-neutral-300',
-        'pointer-events-none max-w-[280px]',
-      )}
-      style={{ left: x, top: y + 12 }}
-    >
-      {/* Role + category */}
-      <div className="flex items-center gap-1.5">
-        <span
-          className={clsx(
-            'w-2 h-2 rounded-full flex-shrink-0',
-            getPromptRoleBadgeClass(candidate.role, roleColors),
-          )}
-        />
-        <span className="font-medium">
-          {getPromptRoleLabel(candidate.role)}
-        </span>
-        {candidate.category && (
-          <span className="text-neutral-400 dark:text-neutral-500">
-            / {candidate.category}
-          </span>
-        )}
-      </div>
-
-      {/* Confidence */}
-      {typeof candidate.confidence === 'number' && (
-        <div className="mt-0.5 text-neutral-400 dark:text-neutral-500">
-          Confidence: {Math.round(candidate.confidence * 100)}%
-        </div>
-      )}
-
-      {/* Primitive match */}
-      {pm && (
-        <div className="mt-1 pt-1 border-t border-neutral-700 dark:border-neutral-300 flex items-center gap-1.5">
-          <span className="text-violet-400 dark:text-violet-600 font-mono">
-            {pm.block_id}
-          </span>
-          <span
-            className={clsx(
-              'tabular-nums',
-              pm.score >= 0.8
-                ? 'text-green-400 dark:text-green-600'
-                : pm.score >= 0.6
-                  ? 'text-yellow-400 dark:text-yellow-600'
-                  : 'text-neutral-400 dark:text-neutral-500',
-            )}
-          >
-            {Math.round(pm.score * 100)}%
-          </span>
-        </div>
-      )}
-
-      {/* Matched keywords */}
-      {candidate.matched_keywords && candidate.matched_keywords.length > 0 && (
-        <div className="mt-0.5 text-neutral-400 dark:text-neutral-500 truncate">
-          Keywords: {candidate.matched_keywords.join(', ')}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Span Popover — click a span to see hypotheses
+// Span Popover — click a span to see hypotheses (composer-only)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PopoverState {
@@ -463,50 +386,16 @@ export function ShadowTextarea({
     <div className={clsx('flex flex-col h-full')}>
       <div className="relative flex-1" style={{ minHeight: `${effectiveMinHeight}px` }}>
         {/* Highlight backdrop — scroll-sync, font metrics, and scrollbar
-            compensation are handled by TextareaBackdrop. */}
+            compensation are handled by TextareaBackdrop. The actual span
+            rendering (colors, opacity, underline, hover ring) lives in
+            PromptHighlightedSpans, which is shared with PromptInlineViewer. */}
         <TextareaBackdrop textareaRef={textareaRef} active={hasHighlights} variant={variant}>
-          {spans.map((span, idx) => {
-            if (!span.candidate) {
-              return (
-                <span key={idx} className="text-transparent">
-                  {span.text}
-                </span>
-              );
-            }
-
-            const { bg } = getPromptRoleInlineClasses(
-              span.candidate.role,
-              promptRoleColors,
-            );
-            const hex = getPromptRoleHex(
-              span.candidate.role,
-              promptRoleColors,
-            );
-            const isHovered = hoveredSpanIdx === idx;
-
-            // Confidence-based opacity: 90% confidence → full, 50% → faded
-            const conf = span.candidate.confidence ?? 1;
-            const opacity = 0.4 + 0.6 * Math.min(1, Math.max(0, conf));
-
-            return (
-              <span
-                key={idx}
-                data-span-idx={idx}
-                className={clsx(
-                  'rounded-sm text-transparent cursor-pointer',
-                  bg,
-                  isHovered && 'ring-1 ring-current',
-                )}
-                style={{
-                  pointerEvents: 'auto',
-                  opacity: isHovered ? Math.max(opacity, 0.9) : opacity,
-                  borderBottom: `2px solid ${hex}`,
-                }}
-              >
-                {span.text}
-              </span>
-            );
-          })}
+          <PromptHighlightedSpans
+            spans={spans}
+            roleColors={promptRoleColors}
+            mode="backdrop"
+            hoveredSpanIdx={hoveredSpanIdx}
+          />
         </TextareaBackdrop>
 
         {/* Editable textarea on top */}
@@ -536,7 +425,12 @@ export function ShadowTextarea({
 
         {/* Hover tooltip — hide when popover is open */}
         {tooltip && !popover && (
-          <SpanTooltip data={tooltip} roleColors={promptRoleColors} />
+          <PromptSpanTooltip
+            candidate={tooltip.candidate}
+            x={tooltip.x}
+            y={tooltip.y}
+            roleColors={promptRoleColors}
+          />
         )}
 
         {/* Click popover — hypotheses picker */}

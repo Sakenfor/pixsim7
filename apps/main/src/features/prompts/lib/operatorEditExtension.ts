@@ -186,14 +186,24 @@ function operatorClickHandler(callbacks: OperatorEditCallbacks) {
 }
 
 const operatorTheme = EditorView.baseTheme({
+  // ── Resting style: persistent indication ──────────────────────────────────
+  // Without a rest style, operators look identical to surrounding text and
+  // structure only becomes visible on hover — which makes the chain layer
+  // feel "missing" until you happen to mouse over an operator. A subtle
+  // purple bg + colored glyph keeps `<`, `=`, `===>`, `:` discoverable at a
+  // glance while staying out of the way of prose text.
   '.cm-prompt-op': {
     cursor: 'pointer',
     borderRadius: '2px',
-    transition: 'background-color 100ms ease',
+    padding: '0 1px',
+    backgroundColor: 'rgba(168, 85, 247, 0.08)',
+    color: 'rgba(126, 34, 206, 0.95)',
+    fontWeight: '600',
+    transition: 'background-color 100ms ease, outline-color 100ms ease',
   },
   '.cm-prompt-op:hover': {
-    backgroundColor: 'rgba(168, 85, 247, 0.18)',
-    outline: '1px solid rgba(168, 85, 247, 0.5)',
+    backgroundColor: 'rgba(168, 85, 247, 0.22)',
+    outline: '1px solid rgba(168, 85, 247, 0.55)',
   },
 });
 

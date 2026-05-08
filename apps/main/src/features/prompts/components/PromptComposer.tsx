@@ -54,6 +54,7 @@ import {
 } from '../lib/promptAnalysisCache';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
+import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import { tagPillExtension } from '../lib/tagPillExtension';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
@@ -880,32 +881,58 @@ export function PromptComposer({
         precision: ghostDiffPrecision,
       }
     : null;
-  // Freshness guard: candidates/tokens are character-positioned against the
-  // analyzed prompt. While the user is typing, the doc has shifted but the
+  // Freshness guard: while the user is typing, the doc has shifted but the
   // analysis hasn't re-run yet — positions are stale and drift compounds
-  // further down the doc. Clear them when the analyzed prompt doesn't match.
+  // further down the doc. Clear them when the analyzed core doesn't match
+  // the current trimmed value.
   //
-  // The hook trims the prompt before sending (`analyzedPrompt = value.trim()`),
-  // and candidate positions are relative to the trimmed text. So the guard
-  // compares the trimmed forms — and additionally requires no leading
-  // whitespace, because leading whitespace would shift positions and they'd
-  // mis-align in the editor (positions are relative to trim-start).
+  // Position frames (these differ between the two payloads — the backend
+  // analyzer strips text before invoking the analyser, but `_tokenize_prompt`
+  // runs on the original text):
+  //   - candidates: positions are relative to `value.trim()` (analyser side)
+  //   - tokens.lines: positions are relative to the ORIGINAL value
+  //                   (tokeniser side) — already include leading-ws offset
+  //
+  // So we shift candidates by `leadingShift`, but leave tokens.lines alone.
+  // We don't bail out for leading whitespace — the side panel doesn't and
+  // it's right not to: as long as the trimmed core matches, both payloads
+  // are valid for the current doc.
   const shadowResultIsFresh =
     !!shadowAnalysis.result &&
-    value === value.trimStart() &&
-    shadowAnalysis.result.analyzedPrompt === value.trimEnd();
+    shadowAnalysis.result.analyzedPrompt === value.trim();
+  const leadingShift = value.length - value.trimStart().length;
   const cmShadowCandidates = useMemo(
-    () =>
-      useCodemirror && showShadow && autoAnalyze && shadowResultIsFresh
-        ? (shadowAnalysis.result?.candidates ?? EMPTY_SHADOW_CANDIDATES)
-        : EMPTY_SHADOW_CANDIDATES,
-    [useCodemirror, showShadow, autoAnalyze, shadowResultIsFresh, shadowAnalysis.result?.candidates],
+    () => {
+      if (!useCodemirror || !showShadow || !autoAnalyze || !shadowResultIsFresh) {
+        return EMPTY_SHADOW_CANDIDATES;
+      }
+      const raw = shadowAnalysis.result?.candidates ?? EMPTY_SHADOW_CANDIDATES;
+      return leadingShift === 0 ? raw : shiftCandidates(raw, leadingShift);
+    },
+    [
+      useCodemirror,
+      showShadow,
+      autoAnalyze,
+      shadowResultIsFresh,
+      shadowAnalysis.result?.candidates,
+      leadingShift,
+    ],
   );
   const cmShadowTokenLines = useMemo(
-    () => useCodemirror && showShadow && autoAnalyze && shadowResultIsFresh
-      ? shadowAnalysis.result?.tokens?.lines
-      : undefined,
-    [useCodemirror, showShadow, autoAnalyze, shadowResultIsFresh, shadowAnalysis.result?.tokens],
+    () => {
+      if (!useCodemirror || !showShadow || !autoAnalyze || !shadowResultIsFresh) {
+        return undefined;
+      }
+      // tokens are already in original-text frame; no shift needed.
+      return shadowAnalysis.result?.tokens?.lines;
+    },
+    [
+      useCodemirror,
+      showShadow,
+      autoAnalyze,
+      shadowResultIsFresh,
+      shadowAnalysis.result?.tokens,
+    ],
   );
   const cmExtensions = useMemo(
     () => {

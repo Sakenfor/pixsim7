@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 
 import { getAssetGenerationContext } from '@lib/api/assets';
@@ -5,30 +6,35 @@ import { Icon } from '@lib/icons';
 
 import { CAP_ASSET_SELECTION, useCapability } from '@features/contextHub';
 import type { AssetSelection } from '@features/contextHub';
+import { PromptAnalysisLayout } from '@features/prompts/components/PromptAnalysisLayout';
+import { PromptCodeMirrorViewer } from '@features/prompts/components/PromptCodeMirrorViewer';
 import { PromptInlineViewer } from '@features/prompts/components/PromptInlineViewer';
-import type { PromptBlockCandidate } from '@features/prompts/types';
-
-import { useApi } from '@/hooks/useApi';
-
-interface AnalyzeResponse {
-  analysis?: { candidates?: PromptBlockCandidate[] };
-}
+import { useShadowAnalysis } from '@features/prompts/hooks/useShadowAnalysis';
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
 export function PromptBoxPanel() {
   const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
   const assetId = selection?.asset?.id ?? null;
-  const api = useApi();
+  const defaultAnalyzer = usePromptSettingsStore((s) => s.defaultAnalyzer);
+  const viewerEngine = usePromptSettingsStore((s) => s.viewerEngine);
+  const setViewerEngine = usePromptSettingsStore((s) => s.setViewerEngine);
 
   const [prompt, setPrompt] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<PromptBlockCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastRequestIdRef = useRef(0);
 
+  // Fetch the asset's stored prompt; analysis itself is delegated to
+  // useShadowAnalysis so we share the cache + analyzer choice with the
+  // main composer (otherwise the inspector and the editor can render
+  // different highlights for the same text).
+  // ViewerAsset.id is `string | number` to cover local-folder assets, but
+  // the backend context endpoint only knows numeric IDs — narrow before fetching.
+  const numericAssetId = typeof assetId === 'number' ? assetId : null;
+
   useEffect(() => {
-    if (!assetId) {
+    if (numericAssetId === null) {
       setPrompt(null);
-      setCandidates([]);
       setError(null);
       setLoading(false);
       return;
@@ -40,34 +46,27 @@ export function PromptBoxPanel() {
 
     (async () => {
       try {
-        const ctx = await getAssetGenerationContext(assetId);
+        const ctx = await getAssetGenerationContext(numericAssetId);
         if (requestId !== lastRequestIdRef.current) return;
-
         const text = (ctx as { final_prompt?: string }).final_prompt ?? '';
         setPrompt(text);
-
-        if (text.trim()) {
-          try {
-            const analysis = await api.post<AnalyzeResponse>('/prompts/analyze', { text });
-            if (requestId !== lastRequestIdRef.current) return;
-            setCandidates(analysis?.analysis?.candidates ?? []);
-          } catch {
-            if (requestId === lastRequestIdRef.current) setCandidates([]);
-          }
-        } else {
-          setCandidates([]);
-        }
       } catch {
         if (requestId === lastRequestIdRef.current) {
           setPrompt(null);
-          setCandidates([]);
           setError('No prompt metadata available for this asset.');
         }
       } finally {
         if (requestId === lastRequestIdRef.current) setLoading(false);
       }
     })();
-  }, [assetId, api]);
+  }, [numericAssetId]);
+
+  const analysis = useShadowAnalysis(prompt ?? '', {
+    enabled: !!prompt && prompt.trim().length > 0,
+    analyzerId: defaultAnalyzer,
+  });
+
+  const tokenLines = analysis.result?.tokens?.lines;
 
   if (!assetId) {
     return <EmptyState icon="image">Focus an asset in the viewer to inspect its prompt.</EmptyState>;
@@ -82,10 +81,95 @@ export function PromptBoxPanel() {
     return <EmptyState icon="fileText">This asset has no prompt on record.</EmptyState>;
   }
 
+  // PromptAnalysisLayout owns the side panel + legend + emphasis state.
+  // We only need to render the editor surface; emphasizedRole is threaded
+  // back to us so the chosen role pops while others dim.
+  const candidates = analysis.result?.candidates ?? [];
+
   return (
-    <div className="h-full overflow-auto p-3">
-      <PromptInlineViewer prompt={prompt} candidates={candidates} showLegend />
+    <div className="flex h-full flex-col">
+      <PanelHeader engine={viewerEngine} onEngineChange={setViewerEngine} />
+      <div className="flex-1 min-h-0">
+        <PromptAnalysisLayout
+          analysis={analysis}
+          layout="side-by-side"
+          renderEditor={({ emphasizedRole }) => (
+            <div className="h-full overflow-auto p-3">
+              {viewerEngine === 'codemirror' ? (
+                <PromptCodeMirrorViewer
+                  prompt={prompt}
+                  candidates={candidates}
+                  tokenLines={tokenLines}
+                  emphasizedRole={emphasizedRole}
+                />
+              ) : (
+                <PromptInlineViewer
+                  prompt={prompt}
+                  candidates={candidates}
+                  emphasizedRole={emphasizedRole}
+                />
+              )}
+            </div>
+          )}
+        />
+      </div>
     </div>
+  );
+}
+
+function PanelHeader({
+  engine,
+  onEngineChange,
+}: {
+  engine: 'inline' | 'codemirror';
+  onEngineChange: (next: 'inline' | 'codemirror') => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1 px-2 py-1 border-b border-neutral-200 dark:border-neutral-800 text-xs">
+      <span className="mr-auto text-neutral-500 dark:text-neutral-400">Prompt</span>
+      <EngineButton
+        active={engine === 'inline'}
+        onClick={() => onEngineChange('inline')}
+        title="Inline view — DOM spans, lightweight"
+      >
+        Inline
+      </EngineButton>
+      <EngineButton
+        active={engine === 'codemirror'}
+        onClick={() => onEngineChange('codemirror')}
+        title="CodeMirror view — full structural decorations"
+      >
+        CM
+      </EngineButton>
+    </div>
+  );
+}
+
+function EngineButton({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={clsx(
+        'px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
+        active
+          ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100'
+          : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

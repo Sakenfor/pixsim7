@@ -28,6 +28,11 @@ export interface PromptSettings {
   // Editor engine: 'textarea' (default) or 'codemirror'
   editorEngine: 'textarea' | 'codemirror';
 
+  // Viewer engine for the read-only prompt-box panel: 'inline' (DOM spans,
+  // current default) or 'codemirror' (read-only PromptEditor with the same
+  // shadow/operator extensions QuickGen uses, for structure parity).
+  viewerEngine: 'inline' | 'codemirror';
+
   // Diff highlight granularity for ghost-diff overlay and side-by-side view.
   // 'coarse' = clause/sentence-level; 'fine' = word-level (inspection-grade).
   ghostDiffPrecision: 'coarse' | 'fine';
@@ -42,6 +47,7 @@ export interface PromptSettings {
 interface PromptSettingsStore extends PromptSettings {
   // Actions
   setEditorEngine: (value: PromptSettings['editorEngine']) => void;
+  setViewerEngine: (value: PromptSettings['viewerEngine']) => void;
   setGhostDiffPrecision: (value: PromptSettings['ghostDiffPrecision']) => void;
   setAutoAnalyze: (value: boolean) => void;
   setDefaultAnalyzer: (value: string) => void;
@@ -66,6 +72,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
   editorEngine: 'codemirror',
+  viewerEngine: 'inline',
   ghostDiffPrecision: 'coarse',
   blocksLayout: 'stacked',
   semanticEnabled: false,
@@ -80,6 +87,7 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
       ...DEFAULT_SETTINGS,
 
       setEditorEngine: (value) => set({ editorEngine: value }),
+      setViewerEngine: (value) => set({ viewerEngine: value }),
       setGhostDiffPrecision: (value) => set({ ghostDiffPrecision: value }),
       setAutoAnalyze: (value) => set({ autoAnalyze: value }),
       setDefaultAnalyzer: (value) => set({ defaultAnalyzer: value }),

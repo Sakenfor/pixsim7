@@ -1,26 +1,27 @@
 /**
  * PromptInlineViewer Component
  *
- * Displays prompt text with inline span-based highlighting by role/category.
- * Uses position data from prompt analysis to create colored text candidates.
- *
- * Features:
- * - Color-coded spans by role (character, action, setting, mood, etc.)
- * - Hover tooltips showing candidate metadata (role, category)
- * - Fallback to plain text if no position data available
+ * Read-only inspector that displays prompt text with inline span-based
+ * highlighting by role/category. Shares its visual treatment and tooltip with
+ * the editable ShadowTextarea via PromptHighlightedSpans + PromptSpanTooltip
+ * — the only difference is that this viewer renders the text visibly and uses
+ * native pointer events (no transparent backdrop / no editor on top).
  *
  * Naming:
  * - PromptBlockCandidate = transient parsed output from API (not stored in DB)
  * - PromptBlock = stored entity in database (different from this)
  */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
 import { buildCandidateSpans } from '../lib/buildCandidateSpans';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
+
+import { PromptHighlightedSpans } from './PromptHighlightedSpans';
+import { PromptSpanTooltip } from './PromptSpanTooltip';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -43,15 +44,19 @@ export interface PromptInlineViewerProps {
   className?: string;
   /** Click handler for candidate spans */
   onCandidateClick?: (candidate: PromptCandidateDisplay) => void;
+  /** When set, candidates of other roles render dimmed. */
+  emphasizedRole?: string | null;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
+
+interface TooltipState {
+  candidate: PromptCandidateDisplay;
+  x: number;
+  y: number;
+}
 
 export function PromptInlineViewer({
   prompt,
@@ -59,94 +64,78 @@ export function PromptInlineViewer({
   showLegend = false,
   className = '',
   onCandidateClick,
+  emphasizedRole = null,
 }: PromptInlineViewerProps) {
-  const [hoveredCandidate, setHoveredCandidate] = useState<PromptCandidateDisplay | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [hoveredSpanIdx, setHoveredSpanIdx] = useState<number | null>(null);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
   const spans = useMemo(() => buildCandidateSpans(prompt, candidates), [prompt, candidates]);
 
-  // Get unique roles present in candidates
+  // Unique roles present in candidates (drives the legend).
   const presentRoles = useMemo(() => {
     const roles = new Set<string>();
     for (const candidate of candidates) {
-      if (candidate.role) {
-        roles.add(candidate.role);
-      }
+      if (candidate.role) roles.add(candidate.role);
     }
     return Array.from(roles);
   }, [candidates]);
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent, candidate: PromptCandidateDisplay) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setHoveredCandidate(candidate);
-    setTooltipPos({ x: rect.left, y: rect.bottom + 4 });
+  const handleSpanEnter = useCallback(
+    (event: React.MouseEvent<HTMLSpanElement>, candidate: PromptCandidateDisplay) => {
+      const target = event.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const idxAttr = target.dataset.spanIdx;
+      if (idxAttr) setHoveredSpanIdx(Number.parseInt(idxAttr, 10));
+      setTooltip({ candidate, x: rect.left, y: rect.bottom });
+    },
+    [],
+  );
+
+  const handleSpanLeave = useCallback(() => {
+    setHoveredSpanIdx(null);
+    setTooltip(null);
   }, []);
 
-  const handleMouseLeave = useCallback(() => {
-    setHoveredCandidate(null);
-    setTooltipPos(null);
-  }, []);
+  const handleSpanClick = useCallback(
+    (_event: React.MouseEvent<HTMLSpanElement>, candidate: PromptCandidateDisplay) => {
+      onCandidateClick?.(candidate);
+    },
+    [onCandidateClick],
+  );
 
   return (
     <div className={`relative ${className}`}>
-      {/* Prompt text with inline highlights */}
       <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
-        {spans.map((span, idx) => {
-          if (!span.candidate) {
-            // Gap text - no styling
-            return <span key={idx}>{span.text}</span>;
-          }
-
-          const style = getPromptRoleInlineClasses(span.candidate.role, promptRoleColors);
-
-          return (
-            <span
-              key={idx}
-              className={`
-                inline rounded-sm px-0.5 py-px cursor-pointer transition-colors
-                ${style.bg} ${style.hover}
-              `}
-              onMouseEnter={(e) => handleMouseEnter(e, span.candidate!)}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => onCandidateClick?.(span.candidate!)}
-            >
-              {span.text}
-            </span>
-          );
-        })}
+        <PromptHighlightedSpans
+          spans={spans}
+          roleColors={promptRoleColors}
+          mode="visible"
+          hoveredSpanIdx={hoveredSpanIdx}
+          emphasizedRole={emphasizedRole}
+          onSpanEnter={handleSpanEnter}
+          onSpanLeave={handleSpanLeave}
+          onSpanClick={onCandidateClick ? handleSpanClick : undefined}
+        />
       </div>
 
-      {/* Tooltip */}
-      {hoveredCandidate && tooltipPos && (
-        <div
-          className="fixed z-50 px-2 py-1 text-xs bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded shadow-lg pointer-events-none"
-          style={{ left: tooltipPos.x, top: tooltipPos.y }}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${getPromptRoleBadgeClass(hoveredCandidate.role, promptRoleColors)}`}
-            />
-            <span className="font-medium">{getPromptRoleLabel(hoveredCandidate.role)}</span>
-            {hoveredCandidate.category && (
-              <span className="text-neutral-400 dark:text-neutral-500">
-                / {hoveredCandidate.category}
-              </span>
-            )}
-          </div>
-        </div>
+      {tooltip && (
+        <PromptSpanTooltip
+          candidate={tooltip.candidate}
+          x={tooltip.x}
+          y={tooltip.y}
+          offsetY={4}
+          roleColors={promptRoleColors}
+        />
       )}
 
-      {/* Legend */}
       {showLegend && presentRoles.length > 0 && (
         <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
           <div className="flex flex-wrap gap-3 text-xs">
             {presentRoles.map((role) => (
               <div key={role} className="flex items-center gap-1.5">
                 <span className={`w-2.5 h-2.5 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
-                <span className="text-neutral-600 dark:text-neutral-400">
-                  {getPromptRoleLabel(role)}
-                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">{getPromptRoleLabel(role)}</span>
               </div>
             ))}
           </div>
@@ -193,22 +182,22 @@ export function PromptCandidateList({ candidates, onCandidateClick }: PromptCand
           return (
             <div key={role}>
               <div className="flex items-center gap-2 mb-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
-              <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 capitalize">
-                {getPromptRoleLabel(role)}
-              </span>
-            </div>
-            <div className="space-y-1 ml-4">
-              {roleCandidates.map((candidate, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onCandidateClick?.(candidate)}
-                  className={`
-                    w-full text-left px-2 py-1 text-sm rounded
-                    ${inlineClasses.bg} ${inlineClasses.hover}
-                    transition-colors cursor-pointer
-                  `}
-                >
+                <span className={`w-2.5 h-2.5 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
+                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 capitalize">
+                  {getPromptRoleLabel(role)}
+                </span>
+              </div>
+              <div className="space-y-1 ml-4">
+                {roleCandidates.map((candidate, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onCandidateClick?.(candidate)}
+                    className={`
+                      w-full text-left px-2 py-1 text-sm rounded
+                      ${inlineClasses.bg} ${inlineClasses.hover}
+                      transition-colors cursor-pointer
+                    `}
+                  >
                     <span className="line-clamp-2">{candidate.text}</span>
                   </button>
                 ))}

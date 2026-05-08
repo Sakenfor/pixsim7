@@ -48,6 +48,27 @@ export {
 } from './components/PromptInlineViewer';
 
 export {
+  PromptHighlightedSpans,
+  type PromptHighlightedSpansProps,
+  type PromptHighlightMode,
+} from './components/PromptHighlightedSpans';
+
+export {
+  PromptSpanTooltip,
+  type PromptSpanTooltipProps,
+} from './components/PromptSpanTooltip';
+
+export {
+  PromptRoleLegend,
+  type PromptRoleLegendProps,
+} from './components/PromptRoleLegend';
+
+export {
+  PromptAnalysisLayout,
+  type PromptAnalysisLayoutProps,
+} from './components/PromptAnalysisLayout';
+
+export {
   PromptComposer,
   type PromptComposerProps,
 } from './components/PromptComposer';
