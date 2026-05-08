@@ -124,3 +124,10 @@ signatures:
     required_params: [pose, hands, gaze]
     required_refs: []
     allowed_modalities: [image, video]
+
+  - id: subject.repro_organ.v1
+    op_namespace: subject.repro_organ
+    requires_variant_template: false
+    required_params: [organ_class, state, visibility, presentation]
+    required_refs: []
+    allowed_modalities: [image, video]

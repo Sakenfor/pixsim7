@@ -49,6 +49,12 @@ package promptpacks
 #BodyRegionValues:   ["arms", "upper_body", "full_body", "hands", "head"]
 #MannerQualityValues: ["gentle", "tender", "firm", "sharp", "fluid", "hesitant", "deliberate", "languid", "urgent", "playful", "cautious", "abrupt", "neutral"]
 #MannerDelayValues:   ["none", "brief", "moderate", "long"]
+#OrganClassValues:        ["insertive", "receptive", "neutral", "cloacal", "none"]
+#OrganStateValues:        ["flaccid", "slightly_erect", "fully_erect", "receptive", "post_use", "neutral"]
+#OrganVisibilityValues:   ["visible", "clothed", "obscured", "implied"]
+#OrganPresentationValues: ["forward", "dropped", "sheathed", "tucked", "exposed", "concealed"]
+#OrganSizeValues:         ["small", "medium", "large", "very_large", "unspecified"]
+#OrganSurfaceValues:      ["smooth", "wrinkled", "textured", "ridged", "glossy", "matte", "natural"]
 
 #SubjectActionParams: [
 	{

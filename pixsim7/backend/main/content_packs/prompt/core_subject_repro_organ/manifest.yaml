@@ -1,0 +1,22 @@
+id: core-subject-repro-organ
+title: Core Subject Reproductive Organ
+description: Universal subject reproductive-organ primitive. Op-style pack with enum params (organ_class, state, visibility, presentation, size, surface) covering human / creature / anthro / hybrid morphologies through a single op signature. Variants are preset combinations; free-form detail flows through the optional descriptor_text param at op resolution. Pairs with latin_repro_organ as Latin overlay.
+matrix_presets:
+  - label: Organ Class by State
+    query:
+      row_key: tag:organ_class
+      col_key: tag:organ_state
+      package_name: core_subject_repro_organ
+      include_empty: true
+  - label: Visibility by Presentation
+    query:
+      row_key: tag:organ_visibility
+      col_key: tag:organ_presentation
+      package_name: core_subject_repro_organ
+      include_empty: true
+  - label: Size by Organ Class
+    query:
+      row_key: tag:organ_size
+      col_key: tag:organ_class
+      package_name: core_subject_repro_organ
+      include_empty: true
