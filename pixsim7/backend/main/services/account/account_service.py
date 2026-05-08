@@ -284,6 +284,44 @@ def _account_priority_delta(account: ProviderAccount, *, operation_type: str | N
     return delta
 
 
+def _account_has_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
+    """True when ``model`` is in the account's plan-unlimited list.
+
+    PixVerse Pro plans rotate which models don't consume credits; the list is
+    synced into ``provider_metadata.unlimited_image_models`` (legacy key:
+    ``plan_unlimited_image_models``). Account selection uses this as a
+    top-tier preference: if account A has the chosen model unlimited and
+    account B doesn't, A wins regardless of base priority — picking the paid
+    account when a free one is available is never the right call. Compared
+    via the same alias normalizer the routing patterns use so canonical IDs
+    (``seedream-4.0``) and operator shorthand (``seedream-4``) match.
+    """
+    if not model:
+        return False
+
+    metadata = getattr(account, "provider_metadata", None)
+    if not isinstance(metadata, dict):
+        return False
+
+    candidates: list[str] = []
+    for key in ("unlimited_image_models", "plan_unlimited_image_models"):
+        raw = metadata.get(key)
+        if isinstance(raw, (list, tuple, set)):
+            candidates.extend(str(item) for item in raw if item)
+
+    if not candidates:
+        return False
+
+    target = _normalize_route_model_token(model)
+    if target == "*":
+        return False
+
+    for entry in candidates:
+        if _normalize_route_model_token(entry) == target:
+            return True
+    return False
+
+
 def _total_credits_subquery():
     """Correlated subquery yielding sum(amount) of all credits for the
     outer ProviderAccount row, coalesced to 0 when no credit rows exist."""
@@ -579,8 +617,13 @@ class AccountService:
             raise NoAccountAvailableError(provider_id)
 
         if operation_type is not None or model is not None:
+            # Same tiering as select_and_reserve_account: unlimited-model
+            # match outranks base priority. Keeps the fail-fast probe in
+            # sync with the live selector so the UI's cost preview reflects
+            # the account that will actually be used.
             available_accounts.sort(
                 key=lambda a: (
+                    -1 if _account_has_unlimited_model(a, model) else 0,
                     -(
                         int(getattr(a, "priority", 0) or 0)
                         + _account_priority_delta(a, operation_type=operation_type, model=model)
@@ -590,7 +633,7 @@ class AccountService:
                 )
             )
 
-        # Return first match (sorted by routing-aware priority, then credit/lru)
+        # Return first match (sorted by unlimited-tier, routing-aware priority, credit/lru)
         return available_accounts[0]
 
     async def reserve_account(self, account_id: int) -> ProviderAccount:
@@ -821,7 +864,12 @@ class AccountService:
                 # SQL ORDER BY already enforces the contract; return as-is.
                 return [row[0] for row in rows], 0
 
-            scored: list[tuple[int, int, datetime, ProviderAccount]] = []
+            # Score tuple: (unlimited_match, effective_priority, credits, last_used).
+            # ``unlimited_match`` is the top tier — if any candidate has the
+            # chosen model in its plan-unlimited list it strictly outranks
+            # accounts that would consume credits, regardless of base
+            # priority or pre-filter mode.
+            scored: list[tuple[int, int, int, datetime, ProviderAccount]] = []
             filtered_out = 0
             for candidate, total_credits in rows:
                 if not _account_matches_routing(
@@ -838,18 +886,21 @@ class AccountService:
                     operation_type=operation_type,
                     model=model,
                 )
+                unlimited_match = 1 if _account_has_unlimited_model(candidate, model) else 0
                 credits_value = int(total_credits or 0)
                 last_used = candidate.last_used or datetime.min.replace(tzinfo=timezone.utc)
-                scored.append((effective_priority, credits_value, last_used, candidate))
+                scored.append(
+                    (unlimited_match, effective_priority, credits_value, last_used, candidate)
+                )
 
             if not scored:
                 return [], filtered_out
 
             if prefer_high_credits:
-                scored.sort(key=lambda item: (-item[1], -item[0], item[2]))
+                scored.sort(key=lambda item: (-item[0], -item[2], -item[1], item[3]))
             else:
-                scored.sort(key=lambda item: (-item[0], item[1], item[2]))
-            return [item[3] for item in scored], filtered_out
+                scored.sort(key=lambda item: (-item[0], -item[1], item[2], item[3]))
+            return [item[4] for item in scored], filtered_out
 
         async def _try_reserve(candidates):
             """Walk ranked candidates, atomically reserving the first one that

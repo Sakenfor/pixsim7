@@ -27,6 +27,7 @@ import pytest
 from pixsim7.backend.main.domain import AccountStatus
 from pixsim7.backend.main.services.account.account_service import (
     AccountService,
+    _account_has_unlimited_model,
     _account_matches_routing,
     _account_priority_delta,
     _iter_route_patterns,
@@ -484,6 +485,135 @@ async def test_select_and_reserve_walks_to_next_candidate_on_race_loss(
     )
 
     assert selected.id == runner_up.id
+
+
+# ---------------------------------------------------------------------------
+# Unlimited-model tier — beats base priority and the high-credits fallback
+# ---------------------------------------------------------------------------
+
+
+def test_account_has_unlimited_model_matches_canonical_id() -> None:
+    account = _make_account(metadata={"unlimited_image_models": ["seedream-4.0"]})
+    assert _account_has_unlimited_model(account, "seedream-4.0") is True
+
+
+def test_account_has_unlimited_model_matches_via_alias_normalization() -> None:
+    """Operator shorthand (``seedream-4``) should hit a stored canonical entry."""
+    account = _make_account(metadata={"unlimited_image_models": ["seedream-4.0"]})
+    assert _account_has_unlimited_model(account, "seedream-4") is True
+
+
+def test_account_has_unlimited_model_accepts_legacy_metadata_key() -> None:
+    account = _make_account(metadata={"plan_unlimited_image_models": ["qwen-image"]})
+    assert _account_has_unlimited_model(account, "qwen-image") is True
+
+
+def test_account_has_unlimited_model_returns_false_when_model_missing() -> None:
+    account = _make_account(metadata={"unlimited_image_models": ["qwen-image"]})
+    assert _account_has_unlimited_model(account, "seedream-4.0") is False
+    assert _account_has_unlimited_model(account, None) is False
+
+
+def test_account_has_unlimited_model_returns_false_without_metadata() -> None:
+    assert _account_has_unlimited_model(_make_account(), "seedream-4.0") is False
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_unlimited_model_beats_higher_priority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Account with the chosen model in plan_unlimited_image_models wins over
+    a higher-priority account that would consume credits."""
+    paid_high_priority = _make_account(account_id=1, priority=99)
+    free_low_priority = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"unlimited_image_models": ["seedream-4.0"]},
+    )
+    rows = [(paid_high_priority, 9000), (free_low_priority, 50)]
+
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(free_low_priority,)])])
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="seedream-4.0",
+    )
+
+    assert selected.id == free_low_priority.id
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_unlimited_wins_in_high_cost_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even on the high-credits-first fallback path (stale credit snapshot,
+    expensive op) the unlimited tier still ranks first."""
+    rich_paid = _make_account(account_id=1, priority=0)
+    cheap_unlimited = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"unlimited_image_models": ["seedream-4.0"]},
+    )
+
+    # 1st execute (pre-filter scan) → empty (forces fallback).
+    # 2nd execute (fallback scan, prefer_high_credits=True) → both rows.
+    # 3rd execute (atomic reserve on winner) → cheap_unlimited.
+    db = _FakeDb(
+        results=[
+            _FakeResult([]),
+            _FakeResult([(rich_paid, 9000), (cheap_unlimited, 5)]),
+            _FakeResult([(cheap_unlimited,)]),
+        ]
+    )
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="seedream-4.0",
+        min_credits=10,
+    )
+
+    assert selected.id == cheap_unlimited.id
+
+
+@pytest.mark.asyncio
+async def test_select_account_probe_prefers_unlimited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fail-fast probe (``select_account``) mirrors the live selector so
+    the UI's cost preview reflects the account that will actually be used.
+
+    Uses ``ignore_availability=True`` to match how the creation-time probe
+    is invoked — that path only calls ``has_any_credits`` and the sort key
+    helpers, so we don't need to stub the full availability surface.
+    """
+    paid_high_priority = _make_account(account_id=1, priority=99)
+    paid_high_priority.has_any_credits = lambda: True
+    paid_high_priority.get_total_credits = lambda: 9000
+
+    free_low_priority = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"unlimited_image_models": ["seedream-4.0"]},
+    )
+    free_low_priority.has_any_credits = lambda: True
+    free_low_priority.get_total_credits = lambda: 50
+
+    # ``scalars().all()`` in the fake returns rows verbatim — pass bare accounts.
+    db = _FakeDb(results=[_FakeResult([paid_high_priority, free_low_priority])])
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="seedream-4.0",
+        ignore_availability=True,
+    )
+
+    assert selected.id == free_low_priority.id
 
 
 @pytest.mark.asyncio
