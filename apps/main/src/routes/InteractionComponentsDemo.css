@@ -74,6 +74,62 @@
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.demo-live-toggle {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.demo-live-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.demo-live-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.demo-live-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.demo-live-fields input {
+  width: 90px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+}
+
+.demo-live-error {
+  margin: 0;
+  color: rgba(255, 120, 120, 0.95);
+  font-size: 13px;
+}
+
+.demo-live-hint {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  font-style: italic;
+}
+
 .panel-container {
   display: flex;
   justify-content: center;

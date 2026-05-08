@@ -19,8 +19,11 @@ import { Button, Panel } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import type { InteractionHistoryEntry } from '@features/interactions';
+import { unifiedMoodToMoodState } from '@features/interactions/lib/moodAdapter';
 
 import { NpcInteractionPanel } from '@/components/game/panels/NpcInteractionPanel';
+import { useInteractionSuggestions } from '@/hooks/useInteractionSuggestions';
+import { useUnifiedMood } from '@/hooks/useUnifiedMood';
 import './InteractionComponentsDemo.css';
 
 // Mock data
@@ -188,6 +191,44 @@ const mockHistory: InteractionHistoryEntry[] = [
 export function InteractionComponentsDemo() {
   const [showPanel, setShowPanel] = useState(true);
   const [showPendingDialogue, setShowPendingDialogue] = useState(true);
+  const [useLiveData, setUseLiveData] = useState(false);
+  const [liveWorldId, setLiveWorldId] = useState('1');
+  const [liveSessionId, setLiveSessionId] = useState('101');
+  const [liveNpcId, setLiveNpcId] = useState('1');
+
+  const parsedWorldId = useLiveData ? Number(liveWorldId) || 0 : 0;
+  const parsedSessionId = useLiveData ? Number(liveSessionId) || 0 : 0;
+  const parsedNpcId = useLiveData ? Number(liveNpcId) || 0 : 0;
+
+  // useUnifiedMood skips fetching when any required id is falsy.
+  const liveMood = useUnifiedMood({
+    worldId: parsedWorldId,
+    npcId: parsedNpcId,
+    sessionId: parsedSessionId,
+  });
+
+  const liveSuggestions = useInteractionSuggestions({
+    worldId: parsedWorldId || null,
+    sessionId: parsedSessionId || null,
+    npcId: parsedNpcId || null,
+    autoFetch: useLiveData,
+  });
+
+  const liveMoodState = useLiveData && liveMood.data
+    ? unifiedMoodToMoodState(liveMood.data)
+    : undefined;
+
+  const panelMood = useLiveData ? liveMoodState : mockMood;
+  const panelSuggestions = useLiveData ? liveSuggestions.suggestions : mockSuggestions;
+  const panelChains = useLiveData ? [] : mockChains;
+  const panelChainStates = useLiveData ? {} : mockChainStates;
+  const panelHistory = useLiveData ? [] : mockHistory;
+  const panelNpcId = parsedNpcId || 1;
+  const panelSessionId = parsedSessionId || 101;
+  const panelNpcName = useLiveData ? `NPC #${panelNpcId}` : 'Sarah';
+
+  const liveError = liveMood.error ?? liveSuggestions.error;
+  const liveLoading = liveMood.loading || liveSuggestions.loading;
 
   return (
     <div className="interaction-demo">
@@ -245,29 +286,90 @@ export function InteractionComponentsDemo() {
               {showPendingDialogue ? 'Hide' : 'Show'} Pending Dialogue
             </Button>
           </div>
+
+          <div className="demo-live-toggle">
+            <label className="demo-live-checkbox">
+              <input
+                type="checkbox"
+                checked={useLiveData}
+                onChange={(e) => setUseLiveData(e.target.checked)}
+              />
+              <span>Use live data (mood + suggestions)</span>
+            </label>
+
+            {useLiveData && (
+              <div className="demo-live-fields">
+                <label>
+                  World ID
+                  <input
+                    type="number"
+                    value={liveWorldId}
+                    onChange={(e) => setLiveWorldId(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Session ID
+                  <input
+                    type="number"
+                    value={liveSessionId}
+                    onChange={(e) => setLiveSessionId(e.target.value)}
+                  />
+                </label>
+                <label>
+                  NPC ID
+                  <input
+                    type="number"
+                    value={liveNpcId}
+                    onChange={(e) => setLiveNpcId(e.target.value)}
+                  />
+                </label>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void liveSuggestions.refetch();
+                  }}
+                  disabled={liveLoading}
+                >
+                  {liveLoading ? 'Loading…' : 'Refetch'}
+                </Button>
+              </div>
+            )}
+
+            {useLiveData && liveError && (
+              <p className="demo-live-error">
+                Error: {liveError.message}
+              </p>
+            )}
+            {useLiveData && !liveError && !liveLoading && !liveMood.data && (
+              <p className="demo-live-hint">
+                No mood returned yet. Pick valid IDs and Refetch.
+              </p>
+            )}
+          </div>
         </Panel>
 
         {showPanel && (
           <div className="panel-container">
             <NpcInteractionPanel
-              npcId={1}
-              npcName="Sarah"
-              sessionId={101}
+              npcId={panelNpcId}
+              npcName={panelNpcName}
+              sessionId={panelSessionId}
               showPendingDialogue={showPendingDialogue}
               onDialogueExecuted={() => {
                 setShowPendingDialogue(false);
               }}
-              mood={mockMood}
-              suggestions={mockSuggestions}
+              mood={panelMood}
+              suggestions={panelSuggestions}
               onSuggestionSelect={(interaction) => {
                 alert(`Clicked suggestion: ${interaction.label}`);
               }}
-              activeChains={mockChains}
-              chainStates={mockChainStates}
+              activeChains={panelChains}
+              chainStates={panelChainStates}
               onChainStepClick={(chainId, stepId) => {
                 alert(`Clicked chain step: ${chainId} / ${stepId}`);
               }}
-              history={mockHistory}
+              history={panelHistory}
               onClose={() => setShowPanel(false)}
             />
           </div>
