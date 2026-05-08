@@ -31,6 +31,11 @@ export interface PopoverProps {
   closeOnEscape?: boolean;
   /** Trigger element ref — excluded from click-outside detection */
   triggerRef?: React.RefObject<HTMLElement | null>;
+  /**
+   * What kind of popup the trigger opens, used to set `aria-haspopup` on the
+   * trigger when `triggerRef` is provided. Defaults to 'dialog'.
+   */
+  triggerHasPopup?: 'dialog' | 'menu' | 'listbox' | 'tree' | 'grid';
   /** Clamp content within viewport bounds (default: true) */
   clamp?: boolean;
   /** Minimum margin from viewport edges when clamping, in px (default: 8) */
@@ -57,6 +62,7 @@ export function Popover({
   closeOnClickOutside = true,
   closeOnEscape = true,
   triggerRef,
+  triggerHasPopup = 'dialog',
   clamp = true,
   viewportMargin,
   children,
@@ -66,6 +72,18 @@ export function Popover({
   onMouseLeave,
 }: PopoverProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Reflect open state on the trigger for assistive tech.
+  useEffect(() => {
+    const trigger = triggerRef?.current;
+    if (!trigger) return;
+    if (!trigger.hasAttribute('aria-haspopup')) {
+      trigger.setAttribute('aria-haspopup', triggerHasPopup);
+    }
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }, [open, triggerRef, triggerHasPopup]);
 
   // Click-outside dismissal
   useEffect(() => {
@@ -78,7 +96,7 @@ export function Popover({
         !contentRef.current.contains(target) &&
         !(triggerRef?.current && triggerRef.current.contains(target))
       ) {
-        onClose();
+        onCloseRef.current();
       }
     };
 
@@ -88,7 +106,7 @@ export function Popover({
       clearTimeout(tid);
       document.removeEventListener('mousedown', handler);
     };
-  }, [open, closeOnClickOutside, triggerRef, onClose]);
+  }, [open, closeOnClickOutside, triggerRef]);
 
   // Escape key dismissal
   useEffect(() => {
@@ -97,22 +115,22 @@ export function Popover({
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, closeOnEscape, onClose]);
+  }, [open, closeOnEscape]);
 
   // Dismiss on scroll/resize so the popover doesn't lag behind a moving anchor.
   // Scrolls originating inside the popover content itself are ignored.
   useEffect(() => {
     if (!open) return;
 
-    const dismiss = () => onClose();
+    const dismiss = () => onCloseRef.current();
     const handleScroll = (e: Event) => {
       if (contentRef.current && contentRef.current.contains(e.target as Node)) return;
-      onClose();
+      onCloseRef.current();
     };
     window.addEventListener('resize', dismiss);
     // Capture-phase scroll listener catches scrolls in any container
@@ -121,7 +139,7 @@ export function Popover({
       window.removeEventListener('resize', dismiss);
       document.removeEventListener('scroll', handleScroll, true);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

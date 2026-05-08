@@ -62,11 +62,15 @@ export function useResizablePanels({
   // Keep refs for event handlers
   const widthsRef = useRef(widths);
   const panelsRef = useRef(panels);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     widthsRef.current = widths;
     panelsRef.current = panels;
   }, [widths, panels]);
+
+  // Ensure listeners are removed if the component unmounts mid-drag.
+  useEffect(() => () => cleanupRef.current?.(), []);
 
   // Save to storage when widths change
   useEffect(() => {
@@ -137,15 +141,21 @@ export function useResizablePanels({
         });
       };
 
+      const teardown = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        cleanupRef.current = null;
+      };
+
       const onUp = () => {
         setDragging(false);
         setDraggingIndex(-1);
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
+        teardown();
       };
 
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
+      cleanupRef.current = teardown;
     },
     [clampWidth]
   );

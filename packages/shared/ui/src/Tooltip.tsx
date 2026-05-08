@@ -46,6 +46,16 @@ const VARIANT_STYLES = {
   success: 'bg-green-900/95 border-green-700 text-green-100',
 };
 
+// Arrow colour matches the bubble background so the arrow visually merges
+// with the body. Only one side is actually visible per position — the other
+// three are forced transparent via ARROW_STYLES.
+const ARROW_VARIANT_STYLES = {
+  default: 'border-gray-900/95',
+  info: 'border-blue-900/95',
+  warning: 'border-orange-900/95',
+  success: 'border-green-900/95',
+};
+
 const POSITION_STYLES = {
   top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
   bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
@@ -112,31 +122,13 @@ export function Tooltip({
           )}
         </div>
       </div>
-      {/* Arrow */}
+      {/* Arrow — colour first, then transparent overrides for the 3 unused sides */}
       <div
         className={clsx(
-          'absolute w-0 h-0',
-          'border-4',
+          'absolute w-0 h-0 border-4',
+          ARROW_VARIANT_STYLES[variant],
           ARROW_STYLES[position]
         )}
-        style={{
-          borderTopColor: variant === 'default' ? '#374151' :
-                         variant === 'info' ? '#1e3a8a' :
-                         variant === 'warning' ? '#7c2d12' :
-                         '#14532d',
-          borderBottomColor: variant === 'default' ? '#374151' :
-                            variant === 'info' ? '#1e3a8a' :
-                            variant === 'warning' ? '#7c2d12' :
-                            '#14532d',
-          borderLeftColor: variant === 'default' ? '#374151' :
-                          variant === 'info' ? '#1e3a8a' :
-                          variant === 'warning' ? '#7c2d12' :
-                          '#14532d',
-          borderRightColor: variant === 'default' ? '#374151' :
-                           variant === 'info' ? '#1e3a8a' :
-                           variant === 'warning' ? '#7c2d12' :
-                           '#14532d',
-        }}
       />
     </div>
   );

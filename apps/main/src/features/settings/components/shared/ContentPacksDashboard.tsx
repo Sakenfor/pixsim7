@@ -6,7 +6,7 @@
  * no longer on disk).
  */
 
-import { Button } from '@pixsim7/shared.ui';
+import { Button, StatusPill, type StatusTone } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState } from 'react';
 
 import { BACKEND_BASE } from '@lib/api/client';
@@ -84,17 +84,17 @@ function Spinner({ className = 'w-3.5 h-3.5' }: { className?: string }) {
 // Status badge
 // ---------------------------------------------------------------------------
 
-function StatusBadge({ status }: { status: ContentPackInfo['status'] }) {
-  const styles = {
-    active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    orphaned: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    disk_only: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-  };
+const STATUS_TONES: Record<ContentPackInfo['status'], StatusTone> = {
+  active: 'success',
+  orphaned: 'danger',
+  disk_only: 'neutral',
+};
 
+function StatusBadge({ status }: { status: ContentPackInfo['status'] }) {
   return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${styles[status]}`}>
+    <StatusPill tone={STATUS_TONES[status]} shape="square" size="xs">
       {status === 'disk_only' ? 'disk only' : status}
-    </span>
+    </StatusPill>
   );
 }
 

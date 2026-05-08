@@ -107,7 +107,7 @@ export function BranchSelector({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 left-0 right-0 min-w-[180px] bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[240px] overflow-y-auto">
+        <div className="absolute z-dropdown mt-1 left-0 right-0 min-w-[180px] bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[240px] overflow-y-auto">
           {onCreateBranch && (
             <div className="px-2 py-1.5 border-b border-neutral-200 dark:border-neutral-700">
               <form

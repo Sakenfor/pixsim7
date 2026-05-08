@@ -6,6 +6,7 @@
  */
 
 import { createPortal } from 'react-dom';
+import { Z } from '@pixsim7/shared.ui';
 import type { DropZone } from './useDragToDock';
 
 export interface DropZoneOverlayProps {
@@ -112,7 +113,7 @@ export function DropZoneOverlay({
         width,
         height,
         pointerEvents: 'none',
-        zIndex: 10099, // Z.floatDropZone — keep in sync with packages/shared/ui/src/zIndex.ts
+        zIndex: Z.floatDropZone,
       }}
       data-drop-zone-overlay
     >

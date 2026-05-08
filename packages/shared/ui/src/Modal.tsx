@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 
+import { useFocusTrap } from './hooks/useFocusTrap';
 import { Z } from './zIndex';
 
 export interface ModalProps {
@@ -22,6 +23,8 @@ export function Modal({
   showClose = true,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Lock body scroll before paint to avoid scrollbar-jump (modal shifts right
   // when the scrollbar disappears). Compensate with padding so layout doesn't shift.
@@ -40,22 +43,17 @@ export function Modal({
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen) {
-      modalRef.current?.focus();
-    }
-  }, [isOpen]);
+  // Trap focus inside the dialog and restore it on close.
+  useFocusTrap({ active: isOpen, containerRef: modalRef });
 
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
+      if (e.key === 'Escape') onCloseRef.current();
     };
-
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
