@@ -1,0 +1,220 @@
+version: 1.0.0
+package_name: core_subject_repro_organ
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: repro_organ
+    block_schema:
+      id_prefix: core.subject.repro_organ
+      mode: hybrid
+      category: character_anatomy
+      capabilities:
+        - subject.repro_organ
+      text_template: '{variant}'
+      tags:
+        modifier_family: repro_organ
+        modality_support: both
+        temporal: neutral
+      op:
+        op_id: subject.repro_organ.set
+        signature_id: subject.repro_organ.v1
+        modalities:
+          - both
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+        params:
+          - key: organ_class
+            type: enum
+            default: neutral
+            enum:
+              - insertive
+              - receptive
+              - neutral
+              - cloacal
+              - none
+            tag_key: organ_class
+          - key: state
+            type: enum
+            default: neutral
+            enum:
+              - flaccid
+              - slightly_erect
+              - fully_erect
+              - receptive
+              - post_use
+              - neutral
+            tag_key: organ_state
+          - key: visibility
+            type: enum
+            default: visible
+            enum:
+              - visible
+              - clothed
+              - obscured
+              - implied
+            tag_key: organ_visibility
+          - key: presentation
+            type: enum
+            default: forward
+            enum:
+              - forward
+              - dropped
+              - sheathed
+              - tucked
+              - exposed
+              - concealed
+            tag_key: organ_presentation
+          - key: size
+            type: enum
+            default: unspecified
+            enum:
+              - small
+              - medium
+              - large
+              - very_large
+              - unspecified
+            tag_key: organ_size
+          - key: surface
+            type: enum
+            default: natural
+            enum:
+              - smooth
+              - wrinkled
+              - textured
+              - ridged
+              - glossy
+              - matte
+              - natural
+            tag_key: organ_surface
+          - key: subject_ref
+            type: ref
+            required: false
+            ref_capability: subject
+        default_args:
+          organ_class: neutral
+          state: neutral
+          visibility: visible
+          presentation: forward
+          size: unspecified
+          surface: natural
+      variants:
+        - key: insertive_flaccid_visible
+          text: flaccid male reproductive organ, fully visible and dropped softly against the body, natural skin tone, foreskin gathered loosely over the glans tip, anatomically grounded and unmistakable
+          op_args:
+            organ_class: insertive
+            state: flaccid
+            visibility: visible
+            presentation: dropped
+            size: unspecified
+            surface: natural
+        - key: insertive_slightly_erect_small_forward
+          text: small slightly erect male reproductive organ, approximately 3 cm length and 1 cm girth, sized forward, consistent realistic shaft body with wrinkled rough foreskin near the distal end clearly separating the shaft from a glossy distinct bulbous glans tip, very small visible urethral opening at the glans apex, firm and unmistakable
+          op_args:
+            organ_class: insertive
+            state: slightly_erect
+            visibility: visible
+            presentation: forward
+            size: small
+            surface: wrinkled
+        - key: insertive_slightly_erect_medium_forward
+          text: medium slightly erect male reproductive organ, approximately 8 cm length and 2 cm girth, sized forward and slightly elevated from the base, realistic shaft texture with foreskin gathered toward the distal end, glossy bulbous glans tip distinct from the shaft body, small visible urethral opening at the apex, firm and unmistakable
+          op_args:
+            organ_class: insertive
+            state: slightly_erect
+            visibility: visible
+            presentation: forward
+            size: medium
+            surface: natural
+        - key: insertive_fully_erect_medium_forward
+          text: fully erect medium-sized male reproductive organ, approximately 14 cm length and 3 cm girth, fully forward and elevated from the base, smooth taut shaft surface, foreskin retracted to expose a glossy bulbous glans, clearly visible urethral opening at the apex, firm and unmistakable
+          op_args:
+            organ_class: insertive
+            state: fully_erect
+            visibility: visible
+            presentation: forward
+            size: medium
+            surface: smooth
+        - key: insertive_fully_erect_large_forward
+          text: fully erect large male reproductive organ, approximately 20 cm length and 4 cm girth, fully forward and elevated above the base, smooth taut shaft body, foreskin fully retracted, prominent glossy bulbous glans tip, clearly visible urethral opening at the apex, firm and unmistakable
+          op_args:
+            organ_class: insertive
+            state: fully_erect
+            visibility: visible
+            presentation: forward
+            size: large
+            surface: smooth
+        - key: insertive_sheathed
+          text: male reproductive organ in sheathed presentation, retracted within an outer sheath of skin, only the tip emerging slightly, surrounding skin or fur smooth, anatomically grounded and unmistakable
+          op_args:
+            organ_class: insertive
+            state: neutral
+            visibility: visible
+            presentation: sheathed
+            size: unspecified
+            surface: natural
+        - key: insertive_clothed_implied
+          text: male reproductive organ implied through clothing, visible bulge against the fabric without direct exposure, anatomically grounded position
+          op_args:
+            organ_class: insertive
+            state: neutral
+            visibility: clothed
+            presentation: concealed
+            size: unspecified
+            surface: natural
+        - key: receptive_neutral_visible
+          text: female reproductive anatomy, fully visible, vertical slit-form vulvar opening centered between the thighs, clearly defined outer and inner labial folds, small visible clitoral hood at the upper junction, smooth flesh-toned external surface transitioning to soft inner mucosa, anatomically grounded and unmistakable
+          op_args:
+            organ_class: receptive
+            state: neutral
+            visibility: visible
+            presentation: exposed
+            size: unspecified
+            surface: smooth
+        - key: receptive_aroused_visible
+          text: female reproductive anatomy in aroused receptive state, fully visible, slightly swollen vulvar opening with clearly defined outer and inner labial folds parted to reveal glossy inner mucosa, small visible clitoral hood at the upper junction, glistening surface slightly pinker than the surrounding skin, anatomically grounded and unmistakable
+          op_args:
+            organ_class: receptive
+            state: receptive
+            visibility: visible
+            presentation: exposed
+            size: unspecified
+            surface: glossy
+        - key: receptive_clothed_implied
+          text: female reproductive anatomy implied through clothing, visible contour against the fabric without direct exposure, anatomically grounded position
+          op_args:
+            organ_class: receptive
+            state: neutral
+            visibility: clothed
+            presentation: concealed
+            size: unspecified
+            surface: natural
+        - key: cloacal_visible
+          text: single cloacal opening, slit-form, posterior placement between the thighs, smooth surrounding flesh slightly pinker at the aperture, anatomically grounded and unmistakable
+          op_args:
+            organ_class: cloacal
+            state: neutral
+            visibility: visible
+            presentation: exposed
+            size: unspecified
+            surface: smooth
+        - key: neutral_concealed
+          text: reproductive anatomy concealed or obscured from view, no direct visibility, smooth modest contour, anatomically grounded position
+          op_args:
+            organ_class: neutral
+            state: neutral
+            visibility: obscured
+            presentation: concealed
+            size: unspecified
+            surface: natural
+        - key: none
+          text: no reproductive organ visible, smooth flat anatomy in the genital region, no aperture or protrusion present
+          op_args:
+            organ_class: none
+            state: neutral
+            visibility: obscured
+            presentation: concealed
+            size: unspecified
+            surface: natural

@@ -1,0 +1,22 @@
+id: latin-canine-scruff-dynamics
+title: Latin Canine Scruff Dynamics
+description: 'Curated Latin phrase enhancers for canine partial-pin dynamics: held at the nape, throat, or jaw while the body remains free to wriggle, kick, or play. The mock-freedom tease of the scruff hold — captive on one tether, the rest of her loosed beneath. Biped-safe; pairs with latin_canine_pin_dynamics for full-restraint counterpoint.'
+matrix_presets:
+  - label: Register by Intensity
+    query:
+      row_key: tag:register
+      col_key: tag:intensity
+      package_name: latin_canine_scruff_dynamics
+      include_empty: true
+  - label: Captive State by Register
+    query:
+      row_key: tag:captive_state
+      col_key: tag:register
+      package_name: latin_canine_scruff_dynamics
+      include_empty: true
+  - label: Anchor Point by Captive State
+    query:
+      row_key: tag:anchor_point
+      col_key: tag:captive_state
+      package_name: latin_canine_scruff_dynamics
+      include_empty: true
