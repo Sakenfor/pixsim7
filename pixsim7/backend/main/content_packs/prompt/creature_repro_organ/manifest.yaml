@@ -1,0 +1,22 @@
+id: creature-repro-organ
+title: Creature Reproductive Organ (English)
+description: 'English-language reproductive-anatomy descriptors for direct prompt injection. Creature-generic: insertive / receptive / cloacal morphologies, measurement-aware, surface-detailing. Composable atoms (dimensions, orientation, state, shaft surface, foreskin, glans, urethral opening, vulvar morphology, cloacal, surroundings) meant to be chained like hand-written anatomical clauses. Establishes the creature_* pack family — English baseline anatomy, with latin_repro_organ available as Latin-language overlay or species-narrowing pass.'
+matrix_presets:
+  - label: Organ Class by Descriptor Type
+    query:
+      row_key: tag:organ_class
+      col_key: tag:descriptor_type
+      package_name: creature_repro_organ
+      include_empty: true
+  - label: Anatomical Part by Descriptor Type
+    query:
+      row_key: tag:anatomical_part
+      col_key: tag:descriptor_type
+      package_name: creature_repro_organ
+      include_empty: true
+  - label: Specificity by Organ Class
+    query:
+      row_key: tag:specificity
+      col_key: tag:organ_class
+      package_name: creature_repro_organ
+      include_empty: true
