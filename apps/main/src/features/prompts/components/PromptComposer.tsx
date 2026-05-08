@@ -37,6 +37,8 @@ import { CAP_ASSET, CAP_ASSET_SELECTION, useCapability, type AssetSelection } fr
 import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
+import { searchBlocks } from '@lib/api/blockTemplates';
+
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
@@ -53,6 +55,7 @@ import {
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
 import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
+import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import { tagPillExtension } from '../lib/tagPillExtension';
@@ -347,6 +350,76 @@ export function PromptComposer({
     anchor: HTMLElement;
     candidate: PromptBlockCandidate;
   } | null>(null);
+  // Tracks the block_id currently being fetched after a hypothesis accept,
+  // so the popover can show a pending indicator and disable the row list.
+  // Phase 0 of plan:op-runtime-span-popover.
+  const [cmShadowAcceptPending, setCmShadowAcceptPending] = useState<string | null>(null);
+
+  /**
+   * Phase 0 (plan:op-runtime-span-popover): replace the candidate's span
+   * with the canonical text of the accepted primitive hypothesis.
+   *
+   * Flow: fetch the primitive by block_id (searchBlocks `q` matches block_id
+   * or text — we filter for an exact block_id match), then dispatch a CM
+   * transaction replacing [start_pos, end_pos) with the primitive's text.
+   * The candidate positions are already in editor-frame here because
+   * `cmShadowCandidates` runs `shiftCandidates(raw, leadingShift)` upstream.
+   *
+   * This is the read-then-write seam the popover gains in Phase 0; later
+   * phases stack the op-param "Adjust" tab and live-block markers on top.
+   */
+  const handleAcceptHypothesis = useCallback(
+    async (hyp: PrimitiveProjectionHypothesis) => {
+      const popover = cmShadowPopover;
+      if (!popover) return;
+      const candidate = popover.candidate;
+      if (typeof candidate.start_pos !== 'number' || typeof candidate.end_pos !== 'number') {
+        return;
+      }
+      const view = promptEditorRef.current;
+      if (!view) return;
+      // Guard against stale ranges: the editor doc may have changed since
+      // the popover opened. If our range is out of bounds, drop the action.
+      const docLen = view.state.doc.length;
+      if (candidate.start_pos < 0 || candidate.end_pos > docLen || candidate.start_pos >= candidate.end_pos) {
+        setCmShadowPopover(null);
+        return;
+      }
+
+      setCmShadowAcceptPending(hyp.block_id);
+      try {
+        // `q` searches block_id and text; ask for a small page and pick the
+        // exact block_id match. `searchBlocks` doesn't expose a direct
+        // by-block-id route today; this is the cheapest read path.
+        const matches = await searchBlocks({ q: hyp.block_id, limit: 5 });
+        const exact = matches.find((b) => b.block_id === hyp.block_id);
+        if (!exact || !exact.text) {
+          // Surface as a no-op for now; Phase 1 will expose a proper
+          // block-schema endpoint that's lookup-friendly.
+          setCmShadowPopover(null);
+          return;
+        }
+        view.dispatch({
+          changes: {
+            from: candidate.start_pos,
+            to: candidate.end_pos,
+            insert: exact.text,
+          },
+        });
+        setCmShadowPopover(null);
+      } catch (err) {
+        // Keep the popover open so the user can retry with a different
+        // hypothesis if a transient fetch fails.
+        logEvent('WARNING', 'prompt_composer_shadow_popover_accept_failed', {
+          block_id: hyp.block_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setCmShadowAcceptPending(null);
+      }
+    },
+    [cmShadowPopover],
+  );
 
   // --- Operator edit popover (CM path) ---
   const [cmOperatorPopover, setCmOperatorPopover] = useState<{
@@ -1680,6 +1753,8 @@ export function PromptComposer({
                       <ShadowAnalysisPopover
                         candidate={cmShadowPopover.candidate}
                         roleColors={promptRoleColors}
+                        onAccept={handleAcceptHypothesis}
+                        pendingBlockId={cmShadowAcceptPending}
                       />
                     )}
                   </Popover>

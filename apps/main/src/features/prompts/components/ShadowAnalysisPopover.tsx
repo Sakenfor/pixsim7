@@ -8,19 +8,31 @@ import type { PromptBlockCandidate } from '../types';
 function HypothesisRow({
   hyp,
   isSelected,
+  onAccept,
+  isPending,
+  isDisabled,
 }: {
   hyp: PrimitiveProjectionHypothesis;
   isSelected: boolean;
+  onAccept?: (hyp: PrimitiveProjectionHypothesis) => void;
+  isPending?: boolean;
+  isDisabled?: boolean;
 }) {
-  return (
-    <div
-      className={clsx(
-        'flex items-center gap-2 px-2 py-1.5 rounded text-xs',
-        isSelected
-          ? 'bg-violet-100 dark:bg-violet-900/40'
-          : 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-      )}
-    >
+  const interactive = !!onAccept && !isDisabled;
+  // Phase 0: clickable rows that swap the span text for the primitive's
+  // canonical text. When onAccept is absent the popover stays read-only.
+  const className = clsx(
+    'flex items-center gap-2 px-2 py-1.5 rounded text-xs w-full text-left',
+    isSelected
+      ? 'bg-violet-100 dark:bg-violet-900/40'
+      : interactive
+        ? 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+        : '',
+    interactive && 'cursor-pointer',
+    isDisabled && 'opacity-50 cursor-wait',
+  );
+  const inner = (
+    <>
       <span
         className={clsx(
           'font-mono truncate flex-1',
@@ -41,27 +53,54 @@ function HypothesisRow({
               : 'text-neutral-500',
         )}
       >
-        {Math.round(hyp.score * 100)}%
+        {isPending ? '…' : `${Math.round(hyp.score * 100)}%`}
       </span>
       {isSelected && (
         <span className="text-violet-500 flex-shrink-0" title="Selected match">
           &#x2713;
         </span>
       )}
-    </div>
+    </>
   );
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        className={className}
+        // Preserve focus so the popover doesn't dismiss before the click
+        // resolves; mirrors the canon for buttons inside portaled popovers.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onAccept?.(hyp)}
+        disabled={isDisabled}
+        title={`Replace span with "${hyp.block_id}"`}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 export interface ShadowAnalysisPopoverProps {
   candidate: PromptBlockCandidate;
   roleColors?: Record<string, string>;
+  /** When provided, hypothesis rows become clickable and fire onAccept with
+   *  the chosen hypothesis. Phase 0 of the op-runtime-span-popover plan. */
+  onAccept?: (hyp: PrimitiveProjectionHypothesis) => void;
+  /** When set, the matching hypothesis row shows a pending indicator and the
+   *  whole list is disabled (single in-flight accept at a time). */
+  pendingBlockId?: string | null;
 }
 
 export function ShadowAnalysisPopover({
   candidate,
   roleColors,
+  onAccept,
+  pendingBlockId,
 }: ShadowAnalysisPopoverProps) {
   const projection = parsePrimitiveProjection(candidate);
+  const isPending = !!pendingBlockId;
 
   return (
     <div
@@ -103,6 +142,9 @@ export function ShadowAnalysisPopover({
               key={hyp.block_id}
               hyp={hyp}
               isSelected={i === projection.selected_index}
+              onAccept={onAccept}
+              isPending={pendingBlockId === hyp.block_id}
+              isDisabled={isPending}
             />
           ))}
         </div>
