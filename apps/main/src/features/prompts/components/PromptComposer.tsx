@@ -432,7 +432,7 @@ export function PromptComposer({
    * only consume the prose.
    */
   const handleAcceptOpOutput = useCallback(
-    (text: string, _overlay: unknown) => {
+    (text: string, overlay: { source_op: string; block_id: string }) => {
       const popover = cmShadowPopover;
       if (!popover) return;
       const candidate = popover.candidate;
@@ -454,6 +454,16 @@ export function PromptComposer({
           to: candidate.end_pos,
           insert: text,
         },
+      });
+      // Phase 2b pickup point: the overlay carries source_op + op_params
+      // + op_refs provenance. For now we log it as a soft pickup point so
+      // it's discoverable when Phase 2b adds persistence into the prompt's
+      // block_overlay. logEvent rather than console so it flows through
+      // the project's logging stack.
+      logEvent('INFO', 'prompt_composer_op_accept', {
+        source_op: overlay.source_op,
+        block_id: overlay.block_id,
+        text_length: text.length,
       });
       setCmShadowPopover(null);
     },
