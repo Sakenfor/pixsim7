@@ -9,11 +9,14 @@
 import { useMemo } from 'react';
 
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
+import { buildAddToSetWidget, buildSetIndicatorWidget } from '@lib/ui/overlay';
 import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
+import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
+import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import { createDefaultMediaCardWidgets } from '../mediaCardWidgets';
@@ -55,6 +58,23 @@ export function useOverlayWidgetsForAsset({
 }: UseOverlayWidgetsForAssetOptions): UseOverlayWidgetsForAssetResult {
   const getVisibility = useOverlayWidgetSettingsStore((s) => s.getContextVisibility);
 
+  // Mirror the gallery's active-manual-set affordance. RemoteGallerySource
+  // injects buildAddToSetWidget / buildSetIndicatorWidget per card via
+  // customWidgets; the viewer reads the same stores directly so the "+ to
+  // active set" button (or the green check when the asset is already in the
+  // set) shows up wherever an asset is rendered.
+  const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
+  const sets = useAssetSetStore((s) => s.sets);
+  const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
+  const activeManualSet = useMemo<ManualAssetSet | undefined>(
+    () => {
+      if (!activeManualSetId) return undefined;
+      const found = sets.find((s) => s.id === activeManualSetId);
+      return found?.kind === 'manual' ? found : undefined;
+    },
+    [activeManualSetId, sets],
+  );
+
   return useMemo(() => {
     if (!asset) {
       return { overlayConfig: EMPTY_CONFIG, overlayData: EMPTY_DATA };
@@ -83,6 +103,24 @@ export function useOverlayWidgetsForAsset({
       (widget): widget is OverlayWidget<MediaCardOverlayData> =>
         widget !== null && widget.id !== 'video-scrubber',
     );
+
+    if (activeManualSet) {
+      const isInSet = activeManualSet.assetIds.includes(asset.id);
+      if (isInSet) {
+        candidates.push(
+          buildSetIndicatorWidget({
+            tooltip: `In active set: ${activeManualSet.name}`,
+          }) as OverlayWidget<MediaCardOverlayData>,
+        );
+      } else {
+        candidates.push(
+          buildAddToSetWidget(
+            () => addAssetsToSet(activeManualSet.id, [asset.id]),
+            { tooltip: `Add to active set: ${activeManualSet.name}` },
+          ) as OverlayWidget<MediaCardOverlayData>,
+        );
+      }
+    }
 
     const widgets = applyMediaOverlayPolicyChain(candidates, {
       context: 'viewer',
@@ -126,5 +164,5 @@ export function useOverlayWidgetsForAsset({
     };
 
     return { overlayConfig, overlayData };
-  }, [asset, getVisibility]);
+  }, [asset, getVisibility, activeManualSet, addAssetsToSet]);
 }

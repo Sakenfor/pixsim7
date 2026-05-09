@@ -64,7 +64,9 @@ export const DEFAULT_OVERLAY_VISIBILITY: OverlayVisibilitySettings = {
   },
   viewer: {
     'favorite-toggle': 'always',
-    'quick-tag': 'hidden',
+    // Quick-tag mirrors the gallery: visible on hover so the viewer can
+    // manage tags without bouncing back to the gallery card.
+    'quick-tag': 'hover',
     'generation-button-group': 'hover',
   },
 };
@@ -196,7 +198,7 @@ export const useOverlayWidgetSettingsStore = create<OverlayWidgetSettingsState>(
     }),
     {
       name: 'overlay-widget-settings',
-      version: 3,
+      version: 4,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           // v1 -> v2: add contextVisibility
@@ -219,6 +221,21 @@ export const useOverlayWidgetSettingsStore = create<OverlayWidgetSettingsState>(
           persisted = {
             ...persisted,
             contextVisibility: cleaned,
+          };
+        }
+        if (version < 4) {
+          // v3 -> v4: viewer.quick-tag default flipped from 'hidden' to 'hover'
+          // so the viewer surfaces the same tag manager the gallery cards do.
+          // Drop the persisted entry only when it still matches the old default;
+          // any explicit user customisation is preserved.
+          const cv = persisted?.contextVisibility ?? DEFAULT_OVERLAY_VISIBILITY;
+          const viewer = { ...((cv as Record<string, Record<string, unknown>>).viewer ?? {}) };
+          if (viewer['quick-tag'] === 'hidden') {
+            delete viewer['quick-tag'];
+          }
+          persisted = {
+            ...persisted,
+            contextVisibility: { ...cv, viewer },
           };
         }
         return persisted as OverlayWidgetSettingsState;
