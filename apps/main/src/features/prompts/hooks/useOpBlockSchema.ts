@@ -86,8 +86,3 @@ export function useOpBlockSchema(blockId: string | null | undefined): UseOpBlock
   }
   return { schema: entry.value, loading: false, error: null };
 }
-
-/** Test/maintenance helper — clears the module-level cache. */
-export function __resetOpBlockSchemaCache(): void {
-  cache.clear();
-}
