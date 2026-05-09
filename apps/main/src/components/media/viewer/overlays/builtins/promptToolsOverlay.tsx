@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
+import { useEdgeInset } from '@lib/layout/edgeInsets';
+
 import type { ViewerAsset } from '@features/assets';
 import {
   PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
@@ -126,6 +128,10 @@ function useViewerQuickGenScopeId(): string {
 }
 
 export function PromptToolsOverlayMain({ asset }: MediaOverlayComponentProps) {
+  // Publish left-sidebar width (460px). Largest sidebar in the toolset —
+  // makes sure left-anchored badges (info popover, warnings) clear it.
+  useEdgeInset('prompt-tools-sidebar', 'left', 460, true, 0, true);
+
   const sessionScopeId = useViewerQuickGenScopeId();
   const useSessionStore = useMemo(
     () => getGenerationSessionStore(sessionScopeId),

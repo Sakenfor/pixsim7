@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 import { useViewerGestures, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
+import { EdgeInsetsScope } from '@lib/layout/edgeInsets';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { useAssetViewerStore } from '@features/assets';
@@ -47,7 +48,23 @@ function pushUniquePositiveId(target: number[], value: unknown): void {
   }
 }
 
-export function MediaPanel({ context }: MediaPanelProps) {
+/**
+ * Outer wrapper that opens an `EdgeInsetsScope` for the asset viewer panel.
+ * Tool overlays (mask, capture, annotation, prompt-tools) publish their
+ * sidebar width to this scoped registry; `useOverlayWidgetsForAsset` reads
+ * the resulting left inset and shifts left-anchored badges past the active
+ * sidebar so they don't sit underneath it. Splitting the component is what
+ * makes the inner hook calls see the scope via React context.
+ */
+export function MediaPanel(props: MediaPanelProps) {
+  return (
+    <EdgeInsetsScope scope="asset-viewer">
+      <MediaPanelInner {...props} />
+    </EdgeInsetsScope>
+  );
+}
+
+function MediaPanelInner({ context }: MediaPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 

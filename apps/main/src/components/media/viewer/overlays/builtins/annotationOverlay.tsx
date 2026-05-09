@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
+import { useEdgeInset } from '@lib/layout/edgeInsets';
+
 import { useAssetRegionStore } from '@features/mediaViewer';
 
 import type { ViewState } from '@/components/interactive-surface';
@@ -21,6 +23,10 @@ export function AnnotationOverlayMain({ asset, settings, viewState, onViewStateC
     () => viewState ? { zoom: viewState.zoom, pan: viewState.pan, fitMode: viewState.fitMode as ViewState['fitMode'] } : undefined,
     [viewState],
   );
+
+  // Publish left-sidebar width (Tailwind w-56 = 224px) so the viewer's
+  // left-anchored badges shift past the sidebar while annotation is active.
+  useEdgeInset('annotation-sidebar', 'left', 224, true, 0, true);
 
   return (
     <div className="absolute inset-0 flex bg-surface-inset">

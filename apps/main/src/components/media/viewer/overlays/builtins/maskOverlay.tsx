@@ -9,6 +9,7 @@
  */
 
 import { buildMaskFilename, buildMaskUploadContext } from '@pixsim7/shared.media.core';
+import { AssetId } from '@pixsim7/shared.types';
 import { PanelShell, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -17,12 +18,12 @@ import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
 import { Icon } from '@lib/icons';
+import { useEdgeInset } from '@lib/layout/edgeInsets';
 // import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { useAssets, useLocalFolders, type AssetModel, type ViewerAsset } from '@features/assets';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
-import { AssetId } from '@pixsim7/shared.types';
 import { useGenerationSettingsStore, getRegisteredSettingsStores } from '@features/generation';
 // import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
 
@@ -434,6 +435,11 @@ function renderMaskComposite(
 export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponentProps) {
   const toast = useToast();
   const store = useMaskOverlayStore;
+
+  // Publish the left-sidebar width (Tailwind w-32 = 128px) into the asset
+  // viewer's edge-insets scope so badges anchored at top-left/bottom-left
+  // get pushed past the sidebar instead of sitting underneath it.
+  useEdgeInset('mask-sidebar', 'left', 128, true, 0, true);
 
   // Resolve authenticated image URL
   const imageUrl = asset.fullUrl || asset.url;

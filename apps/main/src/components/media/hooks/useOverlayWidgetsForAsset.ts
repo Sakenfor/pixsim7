@@ -8,8 +8,9 @@
 
 import { useMemo } from 'react';
 
+import { useContentInset } from '@lib/layout/edgeInsets';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
-import { buildAddToSetWidget, buildSetIndicatorWidget } from '@lib/ui/overlay';
+import { buildAddToSetWidget, buildSetIndicatorWidget, isOverlayPosition } from '@lib/ui/overlay';
 import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
@@ -53,6 +54,39 @@ const EMPTY_DATA: MediaCardOverlayData = {
   remoteUrl: '',
 };
 
+/**
+ * Shift any left-anchored widget rightward by `leftInset` pixels so it
+ * doesn't sit underneath an active tool sidebar. The right side and
+ * center-anchored widgets are left alone — they're either far from the
+ * sidebar (top-right favorites/quick-tag/status) or get covered by the
+ * tool's full-area `Main` regardless (bottom-center generation pill).
+ */
+function shiftLeftAnchoredWidgets<TData>(
+  widgets: OverlayWidget<TData>[],
+  leftInset: number,
+): OverlayWidget<TData>[] {
+  if (leftInset <= 0) return widgets;
+  return widgets.map((widget) => {
+    if (!isOverlayPosition(widget.position)) return widget;
+    const anchor = widget.position.anchor;
+    if (anchor !== 'top-left' && anchor !== 'center-left' && anchor !== 'bottom-left') {
+      return widget;
+    }
+    const currentX = widget.position.offset?.x ?? 0;
+    const shiftedX =
+      typeof currentX === 'number'
+        ? currentX + leftInset
+        : `calc(${currentX} + ${leftInset}px)`;
+    return {
+      ...widget,
+      position: {
+        ...widget.position,
+        offset: { x: shiftedX, y: widget.position.offset?.y ?? 0 },
+      },
+    };
+  });
+}
+
 export function useOverlayWidgetsForAsset({
   asset,
 }: UseOverlayWidgetsForAssetOptions): UseOverlayWidgetsForAssetResult {
@@ -74,6 +108,12 @@ export function useOverlayWidgetsForAsset({
     },
     [activeManualSetId, sets],
   );
+
+  // Push semantics: left inset = sum of currently-active tool sidebars in
+  // this viewer's EdgeInsetsScope. Used to shift left-anchored badges past
+  // the active sidebar instead of letting them sit underneath it. Resolves
+  // to 0 outside any scope, so non-viewer surfaces are unaffected.
+  const leftInset = useContentInset('left');
 
   return useMemo(() => {
     if (!asset) {
@@ -122,10 +162,13 @@ export function useOverlayWidgetsForAsset({
       }
     }
 
-    const widgets = applyMediaOverlayPolicyChain(candidates, {
-      context: 'viewer',
-      getVisibility,
-    });
+    const widgets = applyMediaOverlayPolicyChain(
+      shiftLeftAnchoredWidgets(candidates, leftInset),
+      {
+        context: 'viewer',
+        getVisibility,
+      },
+    );
 
     const overlayConfig: OverlayConfiguration = {
       id: 'asset-overlay-viewer',
@@ -164,5 +207,5 @@ export function useOverlayWidgetsForAsset({
     };
 
     return { overlayConfig, overlayData };
-  }, [asset, getVisibility, activeManualSet, addAssetsToSet]);
+  }, [asset, getVisibility, activeManualSet, addAssetsToSet, leftInset]);
 }

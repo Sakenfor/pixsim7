@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 
 import { Icon } from '@lib/icons';
+import { useEdgeInset } from '@lib/layout/edgeInsets';
 
 import { useCaptureRegionStore } from '@features/mediaViewer';
 
@@ -31,6 +32,9 @@ export function CaptureOverlayMain({
     () => viewState ? { zoom: viewState.zoom, pan: viewState.pan, fitMode: viewState.fitMode as ViewState['fitMode'] } : undefined,
     [viewState],
   );
+
+  // Publish left-sidebar width (Tailwind w-36 = 144px).
+  useEdgeInset('capture-sidebar', 'left', 144, true, 0, true);
 
   return (
     <div className="absolute inset-0 flex bg-surface-inset">
