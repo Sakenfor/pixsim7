@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+ 
 import { isOverlayPosition, type OverlayPolicyStep, type OverlayWidget } from '@lib/ui/overlay';
 import {
   CONFIGURABLE_WIDGET_IDS,
@@ -29,7 +29,6 @@ export interface ApplyConfigurableOverlayPolicyOptions {
   context: OverlayContextId;
   getVisibility: (context: OverlayContextId, widgetId: ConfigurableWidgetId) => WidgetVisibilityMode;
   useCompactPositions?: boolean;
-  skipInfoPopoverInCompact?: boolean;
   suppressGenerationButtonGroup?: boolean;
 }
 
@@ -37,7 +36,6 @@ export const CONFIGURABLE_WIDGET_POLICY_ID = 'configurable-widgets' as const;
 
 export interface ConfigurableWidgetPolicyParams {
   useCompactPositions?: boolean;
-  skipInfoPopoverInCompact?: boolean;
   suppressGenerationButtonGroup?: boolean;
 }
 
@@ -61,9 +59,6 @@ function resolveConfigurablePolicyParams(
   const next: ConfigurableWidgetPolicyParams = { ...(defaults ?? {}) };
   if (typeof rawParams.useCompactPositions === 'boolean') {
     next.useCompactPositions = rawParams.useCompactPositions;
-  }
-  if (typeof rawParams.skipInfoPopoverInCompact === 'boolean') {
-    next.skipInfoPopoverInCompact = rawParams.skipInfoPopoverInCompact;
   }
   if (typeof rawParams.suppressGenerationButtonGroup === 'boolean') {
     next.suppressGenerationButtonGroup = rawParams.suppressGenerationButtonGroup;
@@ -117,7 +112,6 @@ export function applyConfigurableOverlayPolicy<TData>(
     context,
     getVisibility,
     useCompactPositions = false,
-    skipInfoPopoverInCompact = false,
     suppressGenerationButtonGroup = false,
   }: ApplyConfigurableOverlayPolicyOptions,
 ): OverlayWidget<TData>[] {
@@ -126,9 +120,6 @@ export function applyConfigurableOverlayPolicy<TData>(
   return widgets
     .filter((widget) => {
       if (suppressGenerationButtonGroup && widget.id === 'generation-button-group') {
-        return false;
-      }
-      if (skipInfoPopoverInCompact && isCompact && widget.id === 'info-popover') {
         return false;
       }
       if (!isConfigurableWidgetId(widget.id)) {
@@ -231,7 +222,6 @@ registerMediaOverlayPolicy({
       context: runtime.context,
       getVisibility: runtime.getVisibility,
       useCompactPositions: params.useCompactPositions,
-      skipInfoPopoverInCompact: params.skipInfoPopoverInCompact,
       suppressGenerationButtonGroup: params.suppressGenerationButtonGroup,
     });
   },

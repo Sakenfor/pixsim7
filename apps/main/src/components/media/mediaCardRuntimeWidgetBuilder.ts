@@ -17,7 +17,6 @@ interface MediaCardRuntimeWidgetFactories {
   createDurationWidget: MediaCardWidgetFactory;
   createProviderWidget: MediaCardWidgetFactory;
   createVideoScrubber: MediaCardWidgetFactory;
-  createInfoPopover: MediaCardWidgetFactory;
   createGenerationButtonGroup: MediaCardWidgetFactory;
   createGenerationActionModeBadge: MediaCardWidgetFactory;
   createModelFamilyWidget: MediaCardWidgetFactory;
@@ -45,7 +44,6 @@ export function buildMediaCardRuntimeWidgets(
     createDurationWidget,
     createProviderWidget,
     createVideoScrubber,
-    createInfoPopover,
     createGenerationButtonGroup,
     createGenerationActionModeBadge,
     createModelFamilyWidget,
@@ -67,7 +65,6 @@ export function buildMediaCardRuntimeWidgets(
     createDurationWidget(props),
     createProviderWidget(props),
     createVideoScrubber(props),
-    createInfoPopover(props),
     createQuickAddButton(),
     createGenerationActionModeBadge(props),
     createGenerationButtonGroup(props),

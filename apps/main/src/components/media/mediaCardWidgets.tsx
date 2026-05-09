@@ -18,12 +18,10 @@ import {
   BADGE_SLOT,
   BADGE_PRIORITY,
   createVideoScrubWidget,
-  createTooltipWidget,
 } from '@lib/ui/overlay';
 import {
   getOverlayWidgetSettings,
   type VideoScrubWidgetSettings,
-  type TooltipWidgetSettings,
 } from '@lib/widgets';
 
 import type { AssetWarning } from '@features/assets/lib/assetWarnings';
@@ -129,11 +127,118 @@ export interface MediaCardOverlayData {
   warnings?: AssetWarning[];
 }
 
+interface PrimaryIconWidgetProps {
+  /** Tooltip string; small native title shown on hover. */
+  tooltip: string;
+  /** Tailwind ring/background classes. */
+  badgeClassName: string;
+  /** Whether clicking the icon should open the InfoPopoverContent. */
+  popoverEnabled: boolean;
+}
+
 /**
- * Create primary media type icon widget (top-left)
+ * Click-to-open primary icon. Hovers show the small native title;
+ * clicks toggle the rich Info/Tags popover. Folds the legacy bottom-left
+ * "i" widget into the same trigger so the top-left media icon is the
+ * single info entry point on every surface.
+ */
+function PrimaryIconContent({
+  data,
+  widgetProps,
+}: {
+  data: MediaCardOverlayData;
+  widgetProps: PrimaryIconWidgetProps;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const { tooltip, badgeClassName, popoverEnabled } = widgetProps;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen]);
+
+  const iconName = MEDIA_TYPE_ICON[data.mediaType];
+
+  // When popover is disabled (e.g. minimal preset's skipTagsTooltip), render
+  // a non-interactive div so the icon stays decoration-only and click events
+  // pass through to the underlying card.
+  if (!popoverEnabled) {
+    return (
+      <div
+        className={`cq-btn-md inline-flex items-center justify-center rounded-full shadow-sm ${badgeClassName}`}
+        title={tooltip}
+      >
+        <Icon name={iconName} size={12} className="text-neutral-700 dark:text-neutral-300" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((v) => !v);
+        }}
+        className={`cq-btn-md inline-flex items-center justify-center rounded-full shadow-sm cursor-pointer hover:animate-hover-pop ${badgeClassName}`}
+        title={tooltip}
+      >
+        <Icon name={iconName} size={12} className="text-neutral-700 dark:text-neutral-300" />
+      </button>
+      {isOpen && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="bottom"
+          align="start"
+          offset={4}
+          className="z-popover"
+        >
+          <div
+            ref={popoverRef}
+            className="min-w-[220px] max-w-[300px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InfoPopoverContent data={data} />
+          </div>
+        </PortalFloat>
+      )}
+    </>
+  );
+}
+
+/**
+ * Create primary media type icon widget (top-left).
+ *
+ * Click opens the Info/Tags popover (formerly the bottom-left "i" button).
+ * The status ring + media-type icon visual is unchanged; we just upgrade
+ * the trigger from a static badge to a click-to-open custom widget so the
+ * gallery and viewer can share one info entry point.
  */
 export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
-  const { mediaType, providerStatus, hashStatus, badgeConfig, uploadState, contextMenuAsset } = props;
+  const { mediaType, providerStatus, hashStatus, badgeConfig, uploadState, contextMenuAsset, presetCapabilities } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
   // MediaStatusBadge keys used by MEDIA_STATUS_ICON.
@@ -188,20 +293,37 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
     ringColor = 'ring-neutral-400';
   }
 
-  return createBadgeWidget({
+  const badgeClassName = hasRing
+    ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
+    : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm';
+
+  // Popover is suppressed when:
+  //  - the preset opts out (skipTagsTooltip — minimalist surfaces)
+  //  - the surface explicitly hides tags overlay (showTagsInOverlay=false)
+  // In both cases the icon stays decoration-only.
+  const popoverEnabled =
+    !presetCapabilities?.skipTagsTooltip &&
+    badgeConfig?.showTagsInOverlay !== false;
+
+  const widgetProps: PrimaryIconWidgetProps = {
+    tooltip,
+    badgeClassName,
+    popoverEnabled,
+  };
+
+  return {
     id: 'primary-icon',
+    type: 'custom' as const,
     position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
     stackGroup: 'badges-tl',
-    variant: 'icon',
-    icon: MEDIA_TYPE_ICON[mediaType],
-    color: 'gray',
-    shape: 'circle',
-    tooltip,
-    className: hasRing
-      ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
-      : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
+    visibility: { trigger: 'always' },
     priority: BADGE_PRIORITY.info,
-  });
+    interactive: popoverEnabled,
+    handlesOwnInteraction: popoverEnabled,
+    render: (data: MediaCardOverlayData) => (
+      <PrimaryIconContent data={data} widgetProps={widgetProps} />
+    ),
+  };
 }
 
 /** Abbreviate a provider ID to 2 chars for badge display */
@@ -939,46 +1061,12 @@ function InfoPopoverContent({ data }: { data: MediaCardOverlayData }) {
   );
 }
 
-/**
- * Create info popover widget (bottom-left)
- * Tabbed popover showing generation info and tags
- * Settings are read from overlayWidgetSettingsStore for user customization
- */
-export function createInfoPopover(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { badgeConfig, presetCapabilities } = props;
-
-  // Skip if preset capabilities indicate no tags tooltip
-  if (presetCapabilities?.skipTagsTooltip) {
-    return null;
-  }
-
-  if (!badgeConfig?.showTagsInOverlay) {
-    return null;
-  }
-
-  // Get user-customized settings (merged with defaults)
-  const settings = getOverlayWidgetSettings<TooltipWidgetSettings>('tooltip');
-
-  return createTooltipWidget({
-    id: 'info-popover',
-    position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-    visibility: { trigger: 'hover-container' },
-    content: (data) => ({
-      custom: <InfoPopoverContent data={data} />,
-    }),
-    trigger: {
-      type: 'icon',
-      icon: 'info',
-      className: '!bg-accent/20 !text-accent',
-    },
-    placement: settings.placement,
-    showArrow: settings.showArrow,
-    delay: settings.delay,
-    maxWidth: 300,
-    rich: true,
-    priority: BADGE_PRIORITY.action,
-  });
-}
+// createInfoPopover removed: the bottom-left "i" widget was folded into
+// createPrimaryIconWidget so the top-left media-type icon serves as the
+// single info entry point on every surface (gallery + viewer + compact).
+// The Info/Tags popover content (`InfoPopoverContent` above) is now reached
+// by clicking the primary icon, and continues to be embedded in the
+// top-right status menu's info section.
 
 /**
  * Create favorite toggle widget (top-right, below status)
@@ -1371,7 +1459,6 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createDurationWidget,
     createProviderWidget,
     createVideoScrubber,
-    createInfoPopover,
     createGenerationButtonGroup,
     createGenerationActionModeBadge,
     createModelFamilyWidget,

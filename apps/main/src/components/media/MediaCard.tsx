@@ -765,11 +765,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     // (primary-icon, status-menu, queue-status, model-family, duration,
     // provider, generation-action-mode-badge, …) crowds the small card and
     // conflicts with picker widgets at the same anchors.
+    // Compact picker cards keep only the slim hand-picked widget set
+    // CompactAssetCard rendered. The primary-icon widget owns the info
+    // popover trigger now, so the legacy 'info-popover' id is no longer
+    // listed here.
     const COMPACT_ALLOWED_WIDGET_IDS = new Set([
       'favorite-toggle',
       'quick-tag',
       'generation-button-group',
-      'info-popover',
       'version-badge',
     ]);
     const defaultWidgets = isCompact
@@ -839,16 +842,15 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       };
     }
 
-    if (presetCapabilities.skipUploadButton || presetCapabilities.skipTagsTooltip) {
+    if (presetCapabilities.skipUploadButton) {
       result = {
         ...result,
-        widgets: result.widgets.filter((w) => {
-          if (presetCapabilities.skipUploadButton && w.id === 'upload-button') return false;
-          if (presetCapabilities.skipTagsTooltip && w.id === 'info-popover') return false;
-          return true;
-        }),
+        widgets: result.widgets.filter((w) => w.id !== 'upload-button'),
       };
     }
+    // skipTagsTooltip is now respected inside createPrimaryIconWidget itself
+    // (the icon stays decoration-only when the preset opts out), so no
+    // widget-level filter is needed here.
 
     // Suppress hover scrub when the picker workflow opts out (or uses click-to-play).
     const scrubSuppressed = layout?.enableHoverPreview === false || layout?.clickToPlay === true;

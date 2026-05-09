@@ -13,12 +13,12 @@ import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
-import { isFavoriteAsset, toggleFavoriteTag } from '@features/assets/lib/favoriteTag';
+import { isFavoriteAsset } from '@features/assets/lib/favoriteTag';
 
-import type { MediaCardResolvedProps } from '../MediaCard';
 import type { MediaCardOverlayData } from '../mediaCardWidgets';
 import { createDefaultMediaCardWidgets } from '../mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
+import { resolveMediaCardOverlayProps } from '../resolveMediaCardOverlayProps';
 
 export interface UseOverlayWidgetsForAssetOptions {
   /** The asset to build widgets for (null = return empty config) */
@@ -63,20 +63,16 @@ export function useOverlayWidgetsForAsset({
     const baseProps = mediaCardPropsFromAsset(asset);
     const isFavorite = isFavoriteAsset(asset);
 
-    const resolvedProps: MediaCardResolvedProps = {
-      ...baseProps,
-      contextMenuAsset: asset,
+    // Route through resolveMediaCardOverlayProps so the viewer inherits the
+    // canonical badge defaults (showStatusIcon, showTagsInOverlay, …) instead
+    // of hand-rolling its own subset and silently drifting from the gallery.
+    const resolvedProps = resolveMediaCardOverlayProps(asset, {
       isFavorite,
-      onToggleFavorite: () => toggleFavoriteTag(asset),
-      badgeConfig: {
-        showTagsInOverlay: true,
-        showGenerationBadge: true,
-      },
       presetCapabilities: {
         showsGenerationMenu: true,
         showsQuickGenerate: true,
       },
-    };
+    });
 
     // The video-scrubber widget is suppressed in the viewer because it
     // renders its own absolutely-positioned <video object-cover> which
@@ -115,7 +111,7 @@ export function useOverlayWidgetsForAsset({
       videoSrc: baseProps.mediaType === 'video' ? baseProps.remoteUrl ?? undefined : undefined,
       durationSec: baseProps.durationSec,
       isFavorite,
-      onToggleFavorite: () => toggleFavoriteTag(asset),
+      onToggleFavorite: resolvedProps.onToggleFavorite,
       sourceGenerationId: asset.sourceGenerationId ?? undefined,
       hasGenerationContext: asset.hasGenerationContext ?? false,
       prompt: asset.prompt ?? undefined,

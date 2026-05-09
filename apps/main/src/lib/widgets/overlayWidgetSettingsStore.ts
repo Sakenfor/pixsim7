@@ -32,12 +32,17 @@ export type WidgetVisibilityMode = 'always' | 'hover' | 'hidden';
 /** Surface contexts where overlay widgets can appear */
 export type OverlayContextId = 'gallery' | 'compact' | 'viewer';
 
-/** Widget IDs that support per-context visibility configuration */
+/**
+ * Widget IDs that support per-context visibility configuration.
+ *
+ * Note: 'info-popover' was retired when the bottom-left "i" widget was folded
+ * into the top-left primary-icon (clicking the media-type icon now opens the
+ * Info/Tags popover). v3 of the persisted store drops the field cleanly.
+ */
 export type ConfigurableWidgetId =
   | 'favorite-toggle'
   | 'quick-tag'
-  | 'generation-button-group'
-  | 'info-popover';
+  | 'generation-button-group';
 
 /** Full visibility settings map: context -> widget -> mode */
 export type OverlayVisibilitySettings = Record<
@@ -51,19 +56,16 @@ export const DEFAULT_OVERLAY_VISIBILITY: OverlayVisibilitySettings = {
     'favorite-toggle': 'always',
     'quick-tag': 'always',
     'generation-button-group': 'hover',
-    'info-popover': 'hover',
   },
   compact: {
     'favorite-toggle': 'hover',
     'quick-tag': 'hidden',
     'generation-button-group': 'hidden',
-    'info-popover': 'hidden',
   },
   viewer: {
     'favorite-toggle': 'always',
     'quick-tag': 'hidden',
     'generation-button-group': 'hover',
-    'info-popover': 'hover',
   },
 };
 
@@ -72,7 +74,6 @@ export const CONFIGURABLE_WIDGET_IDS: ConfigurableWidgetId[] = [
   'favorite-toggle',
   'quick-tag',
   'generation-button-group',
-  'info-popover',
 ];
 
 /** Human-readable labels for widget IDs */
@@ -80,7 +81,6 @@ export const WIDGET_LABELS: Record<ConfigurableWidgetId, string> = {
   'favorite-toggle': 'Favorite',
   'quick-tag': 'Quick Tag',
   'generation-button-group': 'Generation Bar',
-  'info-popover': 'Info Popover',
 };
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -196,13 +196,29 @@ export const useOverlayWidgetSettingsStore = create<OverlayWidgetSettingsState>(
     }),
     {
       name: 'overlay-widget-settings',
-      version: 2,
+      version: 3,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           // v1 -> v2: add contextVisibility
           return {
             ...persisted,
             contextVisibility: { ...DEFAULT_OVERLAY_VISIBILITY },
+          };
+        }
+        if (version < 3) {
+          // v2 -> v3: 'info-popover' widget retired (folded into primary-icon
+          // click trigger). Drop the persisted entry from every context so the
+          // settings UI doesn't render a stale row.
+          const cv = persisted?.contextVisibility ?? DEFAULT_OVERLAY_VISIBILITY;
+          const cleaned: Record<string, Record<string, unknown>> = {};
+          for (const [ctx, widgets] of Object.entries(cv)) {
+            const w = { ...(widgets as Record<string, unknown>) };
+            delete w['info-popover'];
+            cleaned[ctx] = w;
+          }
+          persisted = {
+            ...persisted,
+            contextVisibility: cleaned,
           };
         }
         return persisted as OverlayWidgetSettingsState;
