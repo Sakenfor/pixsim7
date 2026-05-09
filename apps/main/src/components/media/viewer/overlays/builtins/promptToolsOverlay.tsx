@@ -22,6 +22,7 @@ import {
   type PromptToolsApplyPayload,
 } from '@features/prompts/components/PromptToolsPanel';
 
+import { OverlaySidePanel } from '../shared/OverlaySidePanel';
 import type { MediaOverlayComponentProps } from '../types';
 
 import { useMaskOverlayStore } from './maskOverlayStore';
@@ -252,16 +253,21 @@ export function PromptToolsOverlayMain({ asset }: MediaOverlayComponentProps) {
     setUiState(PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY, runContextPatch);
   }, [promptText, setPrompt, setUiState]);
 
+  // Outer wrapper stays `pointer-events-none` so the right-hand side lets
+  // media/click-through reach the underlying MediaDisplay (unlike mask /
+  // annotate / capture which deliberately occlude the media). The left
+  // sidebar uses the same OverlaySidePanel shell those tools use so the
+  // background tone, border, and scrollbar styling all match.
   return (
     <div className="absolute inset-0 pointer-events-none flex">
-      <div className="pointer-events-auto h-full w-[460px] border-r border-th/10 bg-surface-inset overflow-y-auto thin-scrollbar">
+      <OverlaySidePanel className="w-[460px] pointer-events-auto">
         <PromptToolsPanel
           promptText={promptText}
           disabled={generating}
           runContextSeed={runContextSeed}
           onApply={handleApply}
         />
-      </div>
+      </OverlaySidePanel>
       <div className="flex-1" />
     </div>
   );
