@@ -29,6 +29,12 @@ export { createLocalFolderHashesApi } from './localFolderHashes';
 export { createLogsApi } from './logs';
 export { createPluginsApi } from './plugins';
 export { createPromptsApi } from './prompts';
+export { createPromptOperationsApi } from './promptOperations';
+export type {
+  OpExecuteRequest,
+  OpExecuteResponse,
+  OpExecuteOverlayEntry,
+} from './promptOperations';
 export { createProvidersApi } from './providers';
 export { createTagsApi } from './tags';
 export { createUserPreferencesApi } from './userPreferences';

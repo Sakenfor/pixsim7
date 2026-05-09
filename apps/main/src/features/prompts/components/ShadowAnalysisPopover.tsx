@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { useState, type ReactNode } from 'react';
 
+import type { OpExecuteOverlayEntry } from '@lib/api/promptOperations';
+
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
 import { parsePrimitiveProjection, type PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
@@ -93,6 +95,10 @@ export interface ShadowAnalysisPopoverProps {
   /** When set, the matching hypothesis row shows a pending indicator and the
    *  whole list is disabled (single in-flight accept at a time). */
   pendingBlockId?: string | null;
+  /** Phase 2: replaces the candidate's span with the executor's resolved
+   *  prose. Receives `(text, overlay)` so the host can stamp provenance
+   *  into the prompt's persisted block_overlay (Phase 2b will consume it). */
+  onAcceptOpOutput?: (text: string, overlay: OpExecuteOverlayEntry) => void;
 }
 
 type PopoverTab = 'matches' | 'adjust';
@@ -128,6 +134,7 @@ export function ShadowAnalysisPopover({
   roleColors,
   onAccept,
   pendingBlockId,
+  onAcceptOpOutput,
 }: ShadowAnalysisPopoverProps) {
   const projection = parsePrimitiveProjection(candidate);
   const isPending = !!pendingBlockId;
@@ -187,7 +194,11 @@ export function ShadowAnalysisPopover({
       )}
 
       {activeTab === 'adjust' && selectedHypothesis ? (
-        <ShadowAnalysisPopoverAdjustTab blockId={selectedHypothesis.block_id} />
+        <ShadowAnalysisPopoverAdjustTab
+          blockId={selectedHypothesis.block_id}
+          currentSpanText={candidate.text}
+          onAccept={onAcceptOpOutput}
+        />
       ) : projection && projection.hypotheses.length > 0 ? (
         <div className="p-1.5 max-h-[200px] overflow-y-auto">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400 px-2 py-1">

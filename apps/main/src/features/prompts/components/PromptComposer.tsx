@@ -419,6 +419,47 @@ export function PromptComposer({
     [cmShadowPopover],
   );
 
+  /**
+   * Phase 2 (plan:op-runtime-span-popover): replace the candidate's span
+   * with the executor's resolved prose. Mirrors handleAcceptHypothesis
+   * but skips the schema fetch — the AdjustTab already has the text from
+   * the live executor preview.
+   *
+   * The overlay arg carries source_op / op_params / op_refs provenance.
+   * Phase 2b will stamp it into the prompt's persisted block_overlay so
+   * later passes (re-tweak, the live-blocks decision gate) can identify
+   * op-derived spans without re-deriving from text alone. For now we
+   * only consume the prose.
+   */
+  const handleAcceptOpOutput = useCallback(
+    (text: string, _overlay: unknown) => {
+      const popover = cmShadowPopover;
+      if (!popover) return;
+      const candidate = popover.candidate;
+      if (typeof candidate.start_pos !== 'number' || typeof candidate.end_pos !== 'number') return;
+      const view = promptEditorRef.current;
+      if (!view) return;
+      const docLen = view.state.doc.length;
+      if (
+        candidate.start_pos < 0 ||
+        candidate.end_pos > docLen ||
+        candidate.start_pos >= candidate.end_pos
+      ) {
+        setCmShadowPopover(null);
+        return;
+      }
+      view.dispatch({
+        changes: {
+          from: candidate.start_pos,
+          to: candidate.end_pos,
+          insert: text,
+        },
+      });
+      setCmShadowPopover(null);
+    },
+    [cmShadowPopover],
+  );
+
   // --- Operator edit popover (CM path) ---
   const [cmOperatorPopover, setCmOperatorPopover] = useState<{
     anchor: HTMLElement;
@@ -1752,6 +1793,7 @@ export function PromptComposer({
                         candidate={cmShadowPopover.candidate}
                         roleColors={promptRoleColors}
                         onAccept={handleAcceptHypothesis}
+                        onAcceptOpOutput={handleAcceptOpOutput}
                         pendingBlockId={cmShadowAcceptPending}
                       />
                     )}

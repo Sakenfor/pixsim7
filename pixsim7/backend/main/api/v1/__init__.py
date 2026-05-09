@@ -36,6 +36,7 @@ __all__ = [
     "dev_vocabulary",
     "prompt_packs",
     "prompt_tools",
+    "prompt_operations",
     "dev_sql",
 ]
 
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
         dev_vocabulary,
         prompt_packs,
         prompt_tools,
+        prompt_operations,
         generations,
         llm_cache,
         npc_state,
