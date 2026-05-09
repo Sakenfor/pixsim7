@@ -37,7 +37,7 @@ import { CAP_ASSET, CAP_ASSET_SELECTION, useCapability, type AssetSelection } fr
 import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
-import { searchBlocks } from '@lib/api/blockTemplates';
+import { getBlockSchema } from '@lib/api/blockTemplates';
 
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
@@ -388,14 +388,12 @@ export function PromptComposer({
 
       setCmShadowAcceptPending(hyp.block_id);
       try {
-        // `q` searches block_id and text; ask for a small page and pick the
-        // exact block_id match. `searchBlocks` doesn't expose a direct
-        // by-block-id route today; this is the cheapest read path.
-        const matches = await searchBlocks({ q: hyp.block_id, limit: 5 });
-        const exact = matches.find((b) => b.block_id === hyp.block_id);
-        if (!exact || !exact.text) {
-          // Surface as a no-op for now; Phase 1 will expose a proper
-          // block-schema endpoint that's lookup-friendly.
+        // Phase 1: direct by-block-id lookup via the schema endpoint.
+        // (Phase 0 first shipped this with a searchBlocks q-string filter;
+        // the new endpoint gives a clean lookup + opens the door to the
+        // op Adjust tab without a second fetch.)
+        const schema = await getBlockSchema(hyp.block_id);
+        if (!schema.text) {
           setCmShadowPopover(null);
           return;
         }
@@ -403,7 +401,7 @@ export function PromptComposer({
           changes: {
             from: candidate.start_pos,
             to: candidate.end_pos,
-            insert: exact.text,
+            insert: schema.text,
           },
         });
         setCmShadowPopover(null);

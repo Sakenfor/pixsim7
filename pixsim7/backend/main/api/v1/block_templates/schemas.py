@@ -205,6 +205,62 @@ class BlockResponse(BaseModel):
         from_attributes = True
 
 
+# ===== Block Schema Response (Op runtime — Phase 1) =====
+# A purpose-built shape for the prompt-composer span popover's Adjust tab.
+# Returns just enough to drive an OpParamField renderer + ref binders without
+# making the popover do BlockResponse-shaped projections itself.
+
+
+class BlockOpRefSchema(BaseModel):
+    """A ref binding declared by an op-backed block."""
+    key: str
+    capability: str
+    required: bool = False
+    many: bool = False
+    description: Optional[str] = None
+
+
+class BlockOpParamSchema(BaseModel):
+    """A single parameter declared by an op-backed block."""
+    key: str
+    type: Literal["string", "number", "integer", "boolean", "enum", "ref"]
+    required: bool = False
+    description: Optional[str] = None
+    enum: Optional[List[str]] = None
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    ref_capability: Optional[str] = None
+    tag_key: Optional[str] = None
+    default: Optional[Any] = None
+
+
+class BlockOpSchema(BaseModel):
+    """Op declaration unpacked from BlockPrimitive.block_metadata.op."""
+    op_id: str
+    signature_id: Optional[str] = None
+    modalities: List[str] = Field(default_factory=list)
+    refs: List[BlockOpRefSchema] = Field(default_factory=list)
+    params: List[BlockOpParamSchema] = Field(default_factory=list)
+    args: Dict[str, Any] = Field(default_factory=dict)
+    ref_bindings: Dict[str, str] = Field(default_factory=dict)
+
+
+class BlockSchemaResponse(BaseModel):
+    """Lookup response for `GET /blocks/by-block-id/{block_id}/schema`.
+
+    `op` is null for surface-mode primitives (the common case for
+    raw-primitive blocks). When present it carries everything the Adjust tab
+    needs to render param widgets and ref binders.
+    """
+    block_id: str
+    category: Optional[str] = None
+    composition_role: Optional[str] = None
+    text: str = ""
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    block_mode: Optional[str] = None
+    op: Optional[BlockOpSchema] = None
+
+
 class UpsertPrimitiveBlockRequest(BaseModel):
     category: str = Field(..., min_length=1, max_length=64)
     text: str = Field(..., min_length=1)

@@ -69,6 +69,11 @@ export type {
   ContentPackMatrixPreset,
   PromptBlockResponse,
   BlockRoleSummary,
+  BlockSchemaResponse,
+  BlockOpSchema,
+  BlockOpParamSchema,
+  BlockOpParamType,
+  BlockOpRefSchema,
 } from './blockTemplates';
 
 export type {

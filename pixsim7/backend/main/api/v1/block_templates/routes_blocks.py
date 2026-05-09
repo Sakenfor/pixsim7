@@ -35,6 +35,10 @@ from pixsim7.backend.main.services.prompt.block.vocabulary_governance import (
 from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from .schemas import (
     BlockResponse,
+    BlockSchemaResponse,
+    BlockOpSchema,
+    BlockOpParamSchema,
+    BlockOpRefSchema,
     UpsertPrimitiveBlockRequest,
     UpsertPrimitiveBlockResponse,
     BlockCatalogRowResponse,
@@ -127,6 +131,156 @@ async def search_blocks(
         blocks = list(result.scalars().all())
 
     return [_to_block_response(b) for b in blocks]
+
+
+def _coerce_op_param(raw: Any) -> Optional[BlockOpParamSchema]:
+    """Project a raw op-param dict (from block_metadata.op.params) into the
+    response shape, dropping malformed entries silently. Compile-time
+    validation already rejects bad shapes; this guard is for hand-edited or
+    legacy rows."""
+    if not isinstance(raw, dict):
+        return None
+    key = raw.get("key")
+    type_value = raw.get("type")
+    if not isinstance(key, str) or not isinstance(type_value, str):
+        return None
+    type_value = type_value.strip().lower()
+    if type_value not in {"string", "number", "integer", "boolean", "enum", "ref"}:
+        return None
+    enum_value = raw.get("enum")
+    enum_list: Optional[List[str]] = None
+    if isinstance(enum_value, list):
+        enum_list = [str(item) for item in enum_value if isinstance(item, str)]
+    minimum = raw.get("minimum") if isinstance(raw.get("minimum"), (int, float)) else None
+    maximum = raw.get("maximum") if isinstance(raw.get("maximum"), (int, float)) else None
+    ref_capability = raw.get("ref_capability") if isinstance(raw.get("ref_capability"), str) else None
+    tag_key = raw.get("tag_key") if isinstance(raw.get("tag_key"), str) else None
+    description = raw.get("description") if isinstance(raw.get("description"), str) else None
+    required = bool(raw.get("required", False))
+    return BlockOpParamSchema(
+        key=key.strip(),
+        type=type_value,  # type: ignore[arg-type]
+        required=required,
+        description=description,
+        enum=enum_list,
+        minimum=minimum,
+        maximum=maximum,
+        ref_capability=ref_capability,
+        tag_key=tag_key,
+        default=None,
+    )
+
+
+def _coerce_op_ref(raw: Any) -> Optional[BlockOpRefSchema]:
+    if not isinstance(raw, dict):
+        return None
+    key = raw.get("key")
+    capability = raw.get("capability")
+    if not isinstance(key, str) or not isinstance(capability, str):
+        return None
+    return BlockOpRefSchema(
+        key=key.strip(),
+        capability=capability.strip(),
+        required=bool(raw.get("required", False)),
+        many=bool(raw.get("many", False)),
+        description=raw.get("description") if isinstance(raw.get("description"), str) else None,
+    )
+
+
+def _project_block_op_schema(metadata: Any, args: Dict[str, Any]) -> Optional[BlockOpSchema]:
+    """Project block_metadata.op into the response shape, threading the
+    per-variant resolved args back as `default` on each matching param."""
+    if not isinstance(metadata, dict):
+        return None
+    op_id = metadata.get("op_id")
+    if not isinstance(op_id, str) or not op_id.strip():
+        return None
+    signature_id = metadata.get("signature_id") if isinstance(metadata.get("signature_id"), str) else None
+    modalities_raw = metadata.get("modalities") or []
+    modalities = [str(m) for m in modalities_raw if isinstance(m, str)] if isinstance(modalities_raw, list) else []
+    refs = [r for r in (_coerce_op_ref(item) for item in (metadata.get("refs") or [])) if r is not None]
+    params = [p for p in (_coerce_op_param(item) for item in (metadata.get("params") or [])) if p is not None]
+    # Backfill defaults from the variant's resolved op_args so the popover
+    # shows the variant's preset values (the user can then tweak from there).
+    for param in params:
+        if param.key in args:
+            param.default = args[param.key]
+    ref_bindings_raw = metadata.get("ref_bindings") or {}
+    ref_bindings: Dict[str, str] = {}
+    if isinstance(ref_bindings_raw, dict):
+        for k, v in ref_bindings_raw.items():
+            if isinstance(k, str) and isinstance(v, str):
+                ref_bindings[k] = v
+    return BlockOpSchema(
+        op_id=op_id.strip(),
+        signature_id=signature_id,
+        modalities=modalities,
+        refs=refs,
+        params=params,
+        args={k: v for k, v in args.items()} if isinstance(args, dict) else {},
+        ref_bindings=ref_bindings,
+    )
+
+
+@router.get(
+    "/blocks/by-block-id/{block_id}/schema",
+    response_model=BlockSchemaResponse,
+    summary="Block schema for op-runtime UIs (Phase 1)",
+)
+async def get_block_schema_by_block_id(block_id: str):
+    """Return a block's id/text/tags plus its op declaration (if any).
+
+    Surfaces the data the prompt-composer span popover needs to render the
+    'Adjust' tab without taking on full BlockResponse projection logic. For
+    surface-mode primitives `op` is null. For hybrid/op blocks `op` carries
+    the param schema (with per-variant defaults backfilled), ref bindings,
+    and signature reference for downstream validation.
+
+    Phase 1 of plan:op-runtime-span-popover.
+    """
+    normalized_block_id = str(block_id or "").strip()
+    if not normalized_block_id:
+        raise HTTPException(status_code=400, detail="block_id_required")
+
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(
+            select(BlockPrimitive).where(BlockPrimitive.block_id == normalized_block_id)
+        )
+        block = result.scalar_one_or_none()
+
+    if block is None:
+        raise HTTPException(status_code=404, detail="block_not_found")
+
+    metadata = block.block_metadata if isinstance(block.block_metadata, dict) else {}
+    op_metadata = metadata.get("op") if isinstance(metadata, dict) else None
+    op_args = op_metadata.get("args") if isinstance(op_metadata, dict) else {}
+    if not isinstance(op_args, dict):
+        op_args = {}
+    block_mode = metadata.get("mode") if isinstance(metadata, dict) else None
+
+    raw_role = getattr(block, "role", None)
+    inferred = infer_composition_role(
+        role=raw_role,
+        category=getattr(block, "category", None),
+        tags=block.tags if isinstance(block.tags, dict) else {},
+    )
+    composition_role = (
+        raw_role.strip()
+        if isinstance(raw_role, str) and raw_role.strip()
+        else inferred.role_id
+    )
+
+    return BlockSchemaResponse(
+        block_id=block.block_id,
+        category=getattr(block, "category", None),
+        composition_role=composition_role,
+        text=str(getattr(block, "text", "") or ""),
+        tags=block.tags if isinstance(block.tags, dict) else {},
+        block_mode=block_mode if isinstance(block_mode, str) else None,
+        op=_project_block_op_schema(op_metadata, op_args),
+    )
 
 
 @router.put("/blocks/by-block-id/{block_id}", response_model=UpsertPrimitiveBlockResponse)

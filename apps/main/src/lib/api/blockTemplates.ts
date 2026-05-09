@@ -48,6 +48,11 @@ export type {
   TemplateSlotPackageCount,
   PromptBlockResponse,
   BlockRoleSummary,
+  BlockSchemaResponse,
+  BlockOpSchema,
+  BlockOpParamSchema,
+  BlockOpParamType,
+  BlockOpRefSchema,
 } from '@pixsim7/shared.api.client/domains';
 
 const blockTemplatesApi = createBlockTemplatesApi(pixsimClient);
@@ -69,6 +74,7 @@ export const getContentPackInventory = blockTemplatesApi.getContentPackInventory
 export const purgeOrphanedPacks = blockTemplatesApi.purgeOrphanedPacks;
 export const adoptOrphanedPack = blockTemplatesApi.adoptOrphanedPack;
 export const searchBlocks = blockTemplatesApi.searchBlocks;
+export const getBlockSchema = blockTemplatesApi.getBlockSchema;
 export const listBlockRoles = blockTemplatesApi.listBlockRoles;
 export const listBlockTagFacets = blockTemplatesApi.listBlockTagFacets;
 export const getBlockCatalog = blockTemplatesApi.getBlockCatalog;

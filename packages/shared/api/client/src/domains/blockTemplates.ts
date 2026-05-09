@@ -136,6 +136,55 @@ export interface BlockRoleSummary {
   count: number;
 }
 
+// ─── Block schema (op-runtime, Phase 1) ──────────────────────────────────
+// Purpose-built shape for the prompt-composer span popover's Adjust tab.
+// Returned by `GET /block-templates/blocks/by-block-id/{block_id}/schema`.
+
+export type BlockOpParamType = 'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'ref';
+
+export interface BlockOpParamSchema {
+  key: string;
+  type: BlockOpParamType;
+  required: boolean;
+  description: string | null;
+  enum: readonly string[] | null;
+  minimum: number | null;
+  maximum: number | null;
+  ref_capability: string | null;
+  tag_key: string | null;
+  /** Per-variant default surfaced from `block_metadata.op.args[key]`. */
+  default: unknown;
+}
+
+export interface BlockOpRefSchema {
+  key: string;
+  capability: string;
+  required: boolean;
+  many: boolean;
+  description: string | null;
+}
+
+export interface BlockOpSchema {
+  op_id: string;
+  signature_id: string | null;
+  modalities: readonly string[];
+  refs: readonly BlockOpRefSchema[];
+  params: readonly BlockOpParamSchema[];
+  args: Record<string, unknown>;
+  ref_bindings: Record<string, string>;
+}
+
+export interface BlockSchemaResponse {
+  block_id: string;
+  category: string | null;
+  composition_role: string | null;
+  text: string;
+  tags: Record<string, unknown>;
+  block_mode: string | null;
+  /** Null for surface-mode primitives. */
+  op: BlockOpSchema | null;
+}
+
 export interface BlockCatalogRow {
   id: string;
   block_id: string;
@@ -534,6 +583,14 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
         { params: query },
       );
       return [...response];
+    },
+
+    async getBlockSchema(blockId: string): Promise<BlockSchemaResponse> {
+      // Phase 1 of plan:op-runtime-span-popover. Direct lookup that returns
+      // the block's op declaration (or null) for the popover's Adjust tab.
+      return client.get<BlockSchemaResponse>(
+        `/block-templates/blocks/by-block-id/${encodeURIComponent(blockId)}/schema`,
+      );
     },
 
     async listBlockRoles(packageName?: string): Promise<BlockRoleSummary[]> {

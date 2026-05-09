@@ -1,9 +1,11 @@
 import clsx from 'clsx';
+import { useState, type ReactNode } from 'react';
 
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
 import { parsePrimitiveProjection, type PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import type { PromptBlockCandidate } from '../types';
+import { ShadowAnalysisPopoverAdjustTab } from './ShadowAnalysisPopoverAdjustTab';
 
 function HypothesisRow({
   hyp,
@@ -93,6 +95,34 @@ export interface ShadowAnalysisPopoverProps {
   pendingBlockId?: string | null;
 }
 
+type PopoverTab = 'matches' | 'adjust';
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={clsx(
+        'flex-1 px-2 py-1 text-[11px] font-medium border-b-2',
+        active
+          ? 'border-violet-500 text-violet-700 dark:text-violet-300'
+          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ShadowAnalysisPopover({
   candidate,
   roleColors,
@@ -101,6 +131,19 @@ export function ShadowAnalysisPopover({
 }: ShadowAnalysisPopoverProps) {
   const projection = parsePrimitiveProjection(candidate);
   const isPending = !!pendingBlockId;
+
+  const selectedHypothesis =
+    projection &&
+    projection.selected_index !== null &&
+    projection.selected_index >= 0 &&
+    projection.selected_index < projection.hypotheses.length
+      ? projection.hypotheses[projection.selected_index]
+      : null;
+  // Adjust tab is only meaningful when the selected match is op-backed.
+  // Phase 1: surface the tab; Phase 2 wires the executor and turns the
+  // disabled "Generate & insert" button live.
+  const adjustAvailable = !!selectedHypothesis?.op?.op_id;
+  const [activeTab, setActiveTab] = useState<PopoverTab>('matches');
 
   return (
     <div
@@ -132,7 +175,20 @@ export function ShadowAnalysisPopover({
         </div>
       </div>
 
-      {projection && projection.hypotheses.length > 0 ? (
+      {adjustAvailable && (
+        <div className="flex border-b border-neutral-200 dark:border-neutral-700">
+          <TabButton active={activeTab === 'matches'} onClick={() => setActiveTab('matches')}>
+            Matches
+          </TabButton>
+          <TabButton active={activeTab === 'adjust'} onClick={() => setActiveTab('adjust')}>
+            Adjust
+          </TabButton>
+        </div>
+      )}
+
+      {activeTab === 'adjust' && selectedHypothesis ? (
+        <ShadowAnalysisPopoverAdjustTab blockId={selectedHypothesis.block_id} />
+      ) : projection && projection.hypotheses.length > 0 ? (
         <div className="p-1.5 max-h-[200px] overflow-y-auto">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400 px-2 py-1">
             Matches ({projection.hypotheses.length})
