@@ -2,9 +2,9 @@
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Lint staged TS/TSX files via lint-staged in each workspace that has an
-# ESLint config. apps/launcher and packages/* are intentionally not linted on
-# commit — they have no eslint config (lint-staged would just no-op, but
-# keeping the list explicit makes the gap visible).
+# ESLint config. packages/* are intentionally not linted on commit — they
+# have no eslint configs (lint-staged would just no-op, but keeping the list
+# explicit makes the gap visible).
 #
 # Subshells `(cd ...)` localize the directory change; the script's working
 # directory stays at repo root for the openapi check below.
@@ -12,6 +12,7 @@
 LINT_FAIL=0
 (cd apps/main     && pnpm exec lint-staged --relative) || LINT_FAIL=1
 (cd apps/devtools && pnpm exec lint-staged --relative) || LINT_FAIL=1
+(cd apps/launcher && pnpm exec lint-staged --relative) || LINT_FAIL=1
 if [ $LINT_FAIL -ne 0 ]; then
   echo ""
   echo "✗ lint-staged reported errors. Commit aborted."
