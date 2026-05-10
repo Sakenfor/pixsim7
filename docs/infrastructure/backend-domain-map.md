@@ -116,10 +116,10 @@ Android device automation, execution loops, and preset management.
 
 | Layer | Current Location |
 |-------|------------------|
-| Domain Models | `pixsim7/backend/main/domain/automation/` |
-| Services | `pixsim7/backend/main/services/automation/` |
+| Domain Models | `pixsim7/automation/domain/` |
+| Services | `pixsim7/automation/services/` |
 | API Routes | `pixsim7/backend/main/routes/automation/`, `routes/device_agents/` |
-| Workers | `pixsim7/backend/main/workers/automation.py` |
+| Workers | `pixsim7/automation/workers/automation.py` |
 
 ### Key Components
 

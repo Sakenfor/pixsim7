@@ -20,19 +20,35 @@ from pixsim7.backend.automation import (
 
 ## Architecture
 
+Automation lives as a backend-sibling package — see plan `automation-package-extraction` (Phases 1–2 shipped). The package owns its own DB engine + alembic chain (`alembic_automation.ini`). Cross-DB FKs to `provider_accounts` / `users` were dropped; integers are reconciled via the `AccountLookup` / `PathRegistry` protocols in `pixsim7/automation/protocols/`.
+
 ```
-pixsim7/backend/main/
-├── domain/automation/     # Domain models
-│   ├── device.py          # AndroidDevice, DeviceStatus
-│   ├── agent.py           # DeviceAgent
-│   ├── preset.py          # AppActionPreset
-│   ├── execution.py       # AutomationExecution
-│   └── execution_loop.py  # ExecutionLoop, history
-├── services/automation/   # Business logic
+pixsim7/automation/                 # Sibling package — no backend imports
+├── domain/
+│   ├── device.py                   # AndroidDevice, DeviceStatus
+│   ├── agent.py                    # DeviceAgent
+│   ├── preset.py                   # AppActionPreset
+│   ├── execution.py                # AutomationExecution
+│   ├── execution_loop.py           # ExecutionLoop, history
+│   └── pairing_request.py          # PairingRequest
+├── services/                       # Business logic
 │   ├── execution_loop_service.py
-│   └── device_pool_service.py
-├── routes/automation/     # API endpoints
-└── workers/automation.py  # Background executor
+│   ├── device_pool_service.py
+│   ├── device_sync_service.py      # Ad-watching detection (see plan automation-ad-detection)
+│   ├── adb.py                      # ADB shell wrapper, dumpsys parsing
+│   └── action_executor.py
+├── workers/automation.py           # Background executor
+└── protocols/                      # Inversion-of-control surface
+    ├── account_lookup.py
+    ├── provider_metadata_lookup.py
+    ├── job_queue.py
+    └── path_registry.py
+
+pixsim7/backend/
+├── automation.py                   # Re-export facade — keep importing from here
+├── main/api/v1/automation.py       # HTTP routes
+├── main/api/v1/device_agents.py    # Pairing + remote-agent routes
+└── main/automation_adapters.py     # Backend-side protocol implementations
 ```
 
 ## Key Types
@@ -241,7 +257,7 @@ for entry in history:
 The automation worker processes pending executions:
 
 ```python
-# workers/automation.py
+# pixsim7/automation/workers/automation.py
 async def process_automation_queue():
     while True:
         # Get next pending execution
@@ -321,8 +337,8 @@ async def regression_test_loop():
 
 ### Adding New Action Types
 
-1. Add enum value to `ActionType` in `domain/automation/preset.py`
-2. Add handler in worker: `workers/automation.py`
+1. Add enum value to `ActionType` in `pixsim7/automation/domain/preset.py`
+2. Add handler in worker: `pixsim7/automation/workers/automation.py`
 3. Update preset validation
 
 ### Custom Execution Modes

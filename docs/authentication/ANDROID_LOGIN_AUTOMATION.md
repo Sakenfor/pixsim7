@@ -40,16 +40,16 @@ Worker: process_automation()
 ### Key Files
 
 **Domain Models:**
-- `pixsim7/backend/main/domain/automation/execution.py:27` - `AutomationExecution.account_id`
-- `pixsim7/backend/main/domain/automation/execution.py:55` - `AutomationExecution.execution_context`
-- `pixsim7/backend/main/domain/automation/device.py:60` - `AndroidDevice.assigned_account_id`
+- `pixsim7/automation/domain/execution.py:27` - `AutomationExecution.account_id`
+- `pixsim7/automation/domain/execution.py:55` - `AutomationExecution.execution_context`
+- `pixsim7/automation/domain/device.py:60` - `AndroidDevice.assigned_account_id`
 - `pixsim7/backend/main/domain/account.py` - `ProviderAccount.password` (newly added)
 
 **Execution Logic:**
-- `pixsim7/backend/main/workers/automation.py:23-131` - `process_automation()` worker task
-- `pixsim7/backend/main/workers/automation.py:73` - ExecutionContext creation with variables
-- `pixsim7/backend/main/services/automation/action_executor.py:51-57` - Variable substitution logic
-- `pixsim7/backend/main/services/automation/action_executor.py:117-249` - Action execution
+- `pixsim7/automation/workers/automation.py:23-131` - `process_automation()` worker task
+- `pixsim7/automation/workers/automation.py:73` - ExecutionContext creation with variables
+- `pixsim7/automation/services/action_executor.py:51-57` - Variable substitution logic
+- `pixsim7/automation/services/action_executor.py:117-249` - Action execution
 
 **API Endpoints:**
 - `pixsim7/backend/main/api/v1/automation.py:282-330` - `execute_preset_for_account()`
@@ -59,7 +59,7 @@ Worker: process_automation()
 
 ### Phase 1: Auto-Inject Account Credentials
 
-**File**: `pixsim7/backend/main/workers/automation.py:23-131`
+**File**: `pixsim7/automation/workers/automation.py:23-131`
 
 **Modification**: After fetching execution (line 37), fetch the account and inject credentials into context.
 
@@ -311,7 +311,7 @@ tail -f logs/worker.log | grep credentials_injected
 
 ```python
 import pytest
-from pixsim7.backend.main.workers.automation import process_automation
+from pixsim7.automation.workers.automation import process_automation
 from pixsim7.backend.main.domain import ProviderAccount, AutomationExecution, AppActionPreset
 
 @pytest.mark.asyncio
@@ -575,9 +575,9 @@ WHERE email = 'holyfruit12@hotmail.com';
 
 **Last Updated**: 2025-11-17
 **Related Files**:
-- `pixsim7/backend/main/workers/automation.py` (process_automation)
-- `pixsim7/backend/main/services/automation/action_executor.py` (variable substitution)
-- `pixsim7/backend/main/domain/automation/execution.py` (AutomationExecution model)
-- `pixsim7/backend/main/domain/automation/device.py` (AndroidDevice model)
+- `pixsim7/automation/workers/automation.py` (process_automation)
+- `pixsim7/automation/services/action_executor.py` (variable substitution)
+- `pixsim7/automation/domain/execution.py` (AutomationExecution model)
+- `pixsim7/automation/domain/device.py` (AndroidDevice model)
 - `pixsim7/backend/main/api/v1/automation.py` (automation endpoints)
 - `docs/PASSWORD_SUPPORT_FOR_AUTO_REFRESH.md` (password storage implementation)

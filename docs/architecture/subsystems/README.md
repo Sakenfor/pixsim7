@@ -95,13 +95,13 @@ UI Components read cached values
 
 | Layer | File | Purpose |
 |-------|------|---------|
-| Backend | `pixsim7/backend/main/domain/automation/preset.py` | Preset model |
-| Backend | `pixsim7/backend/main/domain/automation/execution_loop.py` | Loop scheduling |
-| Backend | `pixsim7/backend/main/services/automation/action_executor.py` | Action execution |
-| Backend | `pixsim7/backend/main/services/automation/device_pool_service.py` | LRU device assignment |
-| Backend | `pixsim7/backend/main/services/automation/execution_loop_service.py` | Loop processing |
+| Backend | `pixsim7/automation/domain/preset.py` | Preset model |
+| Backend | `pixsim7/automation/domain/execution_loop.py` | Loop scheduling |
+| Backend | `pixsim7/automation/services/action_executor.py` | Action execution |
+| Backend | `pixsim7/automation/services/device_pool_service.py` | LRU device assignment |
+| Backend | `pixsim7/automation/services/execution_loop_service.py` | Loop processing |
 | Backend | `pixsim7/backend/main/api/v1/automation.py` | API routes |
-| Backend | `pixsim7/backend/main/workers/automation.py` | ARQ task |
+| Backend | `pixsim7/automation/workers/automation.py` | ARQ task |
 | Frontend | `apps/main/src/features/automation/lib/core/automationService.ts` | API wrapper |
 | Frontend | `apps/main/src/features/automation/components/ActionBuilder.tsx` | Action editor |
 

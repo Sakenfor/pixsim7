@@ -54,7 +54,7 @@ export const automationModule = defineModule({
       backend: [
         'pixsim7.backend.main.api.v1.automation',
         'pixsim7.backend.main.api.v1.device_agents',
-        'pixsim7.backend.main.services.automation',
+        'pixsim7.automation.services',
       ],
     },
   },
