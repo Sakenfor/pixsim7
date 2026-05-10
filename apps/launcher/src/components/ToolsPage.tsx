@@ -293,7 +293,12 @@ function CodegenSection() {
       sections={sections}
       activeSectionId={nav.activeSectionId}
       activeChildId={nav.activeChildId}
-      onSelectSection={nav.selectSection}
+      // Use `navigate` instead of `selectSection`: the latter auto-routes to
+      // the first child of any section that has children, which prevents the
+      // user from ever selecting an EXPANDABLE_PARENT (e.g., `openapi`) itself.
+      // `navigate` clears `activeChildId` for top-level ids, so the parent
+      // task lands in the detail pane as expected.
+      onSelectSection={nav.navigate}
       onSelectChild={nav.selectChild}
       expandedSectionIds={nav.expandedSectionIds}
       onToggleExpand={nav.toggleExpand}
@@ -784,7 +789,7 @@ function DatabasesSection() {
       activeSectionId={nav.activeSectionId}
       onSelectSection={nav.selectSection}
       sidebarTitle="Databases"
-      sidebarWidth="w-44"
+      sidebarWidth="w-52"
       variant="dark"
       resizable
       persistKey="launcher-databases-sidebar"
@@ -798,117 +803,120 @@ function DatabasesSection() {
             {/* Header */}
             <div className="space-y-0.5">
               <div className="text-sm font-semibold text-gray-100">{selected.label}</div>
-              <div className="text-[10px] text-gray-500 font-mono truncate select-text">{selected.db_url}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="flex-1 text-[10px] text-gray-500 font-mono truncate select-text">{selected.db_url}</span>
+                <CopyButton text={selected.db_url} />
+              </div>
             </div>
 
             {/* Health panel */}
             <HealthPanel dbId={selected.id} />
 
             {/* Migrations panel */}
-            <div className="border border-border rounded">
-              <div className="px-2 py-1.5 border-b border-border flex items-center justify-between">
-                <span className="text-[11px] font-medium text-gray-300">Migrations</span>
-                <Button size="xs" variant="ghost" onClick={() => refreshStatus(selected.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
+            <div className="border border-border rounded p-2 space-y-2">
+              <SectionHeader
+                trailing={
+                  <Button size="xs" variant="ghost" onClick={() => refreshStatus(selected.id)} className="text-gray-400" title="Refresh status">&#x21bb;</Button>
+                }
+              >
+                Migrations
+              </SectionHeader>
+              <div className="text-[11px]">
+                <span className="text-gray-500">Current:</span>{' '}
+                <span className="text-gray-200 font-mono">{selectedStatus?.current_revision ?? '…'}</span>
               </div>
-              <div className="p-2 space-y-2">
-                <div className="text-[11px]">
-                  <span className="text-gray-500">Current:</span>{' '}
-                  <span className="text-gray-200 font-mono">{selectedStatus?.current_revision ?? '…'}</span>
+              {selectedStatus?.pending && selectedStatus.pending.length > 0 && (
+                <div className="text-[11px] space-y-0.5">
+                  <div className="text-amber-400">{selectedStatus.pending.length} pending:</div>
+                  {selectedStatus.pending.slice(0, 5).map((p) => (
+                    <div key={p.revision} className="font-mono text-gray-300 truncate">
+                      <span className="text-gray-500">{p.revision.slice(0, 10)}</span>
+                      {p.message ? ` — ${p.message}` : ''}
+                    </div>
+                  ))}
+                  {selectedStatus.pending.length > 5 && (
+                    <div className="text-gray-500">…and {selectedStatus.pending.length - 5} more</div>
+                  )}
                 </div>
-                {selectedStatus?.pending && selectedStatus.pending.length > 0 && (
-                  <div className="text-[11px] space-y-0.5">
-                    <div className="text-amber-400">{selectedStatus.pending.length} pending:</div>
-                    {selectedStatus.pending.slice(0, 5).map((p) => (
-                      <div key={p.revision} className="font-mono text-gray-300 truncate">
-                        <span className="text-gray-500">{p.revision.slice(0, 10)}</span>
-                        {p.message ? ` — ${p.message}` : ''}
-                      </div>
-                    ))}
-                    {selectedStatus.pending.length > 5 && (
-                      <div className="text-gray-500">…and {selectedStatus.pending.length - 5} more</div>
-                    )}
-                  </div>
-                )}
-                {selectedStatus?.pending_error && (
-                  <div className="text-[11px] text-red-400 whitespace-pre-wrap break-words select-text">
-                    {selectedStatus.pending_error}
-                  </div>
-                )}
-                <div className="flex gap-1.5 flex-wrap">
-                  <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" disabled={dbBusy} onClick={() => runMigration('upgrade', selected.id)}>Upgrade</Button>
-                  <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" disabled={dbBusy} onClick={() => runMigration('downgrade', selected.id)}>Down</Button>
-                  <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" disabled={dbBusy} onClick={() => runMigration('stamp', selected.id)}>Stamp</Button>
-                  <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" disabled={dbBusy} onClick={() => runMigration('merge', selected.id)}>Merge</Button>
+              )}
+              {selectedStatus?.pending_error && (
+                <div className="text-[11px] text-red-400 whitespace-pre-wrap break-words select-text">
+                  {selectedStatus.pending_error}
                 </div>
-                {lastMigResult && busy?.kind !== 'backup' && <ResultBox result={lastMigResult} />}
+              )}
+              <div className="flex gap-1.5 flex-wrap">
+                <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" disabled={dbBusy} onClick={() => runMigration('upgrade', selected.id)}>Upgrade</Button>
+                <Button size="xs" className="bg-amber-700 hover:bg-amber-600 text-white" disabled={dbBusy} onClick={() => runMigration('downgrade', selected.id)}>Down</Button>
+                <Button size="xs" className="bg-blue-700 hover:bg-blue-600 text-white" disabled={dbBusy} onClick={() => runMigration('stamp', selected.id)}>Stamp</Button>
+                <Button size="xs" className="bg-purple-700 hover:bg-purple-600 text-white" disabled={dbBusy} onClick={() => runMigration('merge', selected.id)}>Merge</Button>
               </div>
+              {lastMigResult && busy?.kind !== 'backup' && <ResultBox result={lastMigResult} />}
             </div>
 
             {/* Squash wizard */}
             <SquashPanel dbId={selected.id} />
 
             {/* Backups panel */}
-            <div className="border border-border rounded">
-              <div className="px-2 py-1.5 border-b border-border flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-gray-300">Backups</span>
-                  <StatusPill tone={backupModeTone} dot size="xs">{backupModeLabel}</StatusPill>
-                </div>
-                <Button size="xs" variant="ghost" onClick={refreshBackupsList} className="text-gray-400" title="Refresh list">&#x21bb;</Button>
+            <div className="border border-border rounded p-2 space-y-2">
+              <SectionHeader
+                trailing={
+                  <span className="flex items-center gap-1.5">
+                    <StatusPill tone={backupModeTone} dot size="xs">{backupModeLabel}</StatusPill>
+                    <Button size="xs" variant="ghost" onClick={refreshBackupsList} className="text-gray-400" title="Refresh list">&#x21bb;</Button>
+                  </span>
+                }
+              >
+                Backups
+              </SectionHeader>
+              {selectedInfo?.mode === 'unavailable' && selectedInfo.reason && (
+                <div className="text-[11px] text-amber-400 whitespace-pre-wrap">{selectedInfo.reason}</div>
+              )}
+              <div>
+                <Button
+                  size="xs"
+                  className="bg-green-700 hover:bg-green-600 text-white"
+                  disabled={dbBusy || !canBackup}
+                  onClick={() => runBackup(selected.id)}
+                >
+                  {busy?.dbId === selected.id && busy.kind === 'backup' ? 'Backing up…' : 'Backup now'}
+                </Button>
               </div>
-              <div className="p-2 space-y-2">
-                {selectedInfo?.mode === 'unavailable' && selectedInfo.reason && (
-                  <div className="text-[11px] text-amber-400 whitespace-pre-wrap">{selectedInfo.reason}</div>
-                )}
-                <div>
-                  <Button
-                    size="xs"
-                    className="bg-green-700 hover:bg-green-600 text-white"
-                    disabled={dbBusy || !canBackup}
-                    onClick={() => runBackup(selected.id)}
-                  >
-                    {busy?.dbId === selected.id && busy.kind === 'backup' ? 'Backing up…' : 'Backup now'}
-                  </Button>
-                </div>
-                {lastBackupResult && (
-                  <div
-                    className={`p-2 rounded text-[11px] ${
-                      lastBackupResult.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
-                    }`}
-                  >
-                    {lastBackupResult.ok ? (
-                      <div>
-                        <span className="font-mono">{lastBackupResult.filename}</span>
-                        {typeof lastBackupResult.size_bytes === 'number' && ` (${formatBytes(lastBackupResult.size_bytes)})`}
-                        {lastBackupResult.mode && <span className="text-gray-500"> · {lastBackupResult.mode}</span>}
-                      </div>
-                    ) : (
-                      <div className="whitespace-pre-wrap select-text">{lastBackupResult.error}</div>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
-                    Existing ({selectedBackups.length})
-                  </div>
-                  {selectedBackups.length === 0 ? (
-                    <div className="text-[11px] text-gray-500 italic">None yet.</div>
-                  ) : (
-                    <div className="space-y-1">
-                      {selectedBackups.map((b) => (
-                        <div
-                          key={b.path}
-                          className="text-[10px] font-mono bg-surface-raised border border-border rounded px-2 py-1 flex items-center justify-between gap-2"
-                        >
-                          <span className="truncate text-gray-300">{b.filename}</span>
-                          <span className="text-gray-500 shrink-0">
-                            {formatBytes(b.size_bytes)} · {b.created_at.replace('T', ' ')}
-                          </span>
-                        </div>
-                      ))}
+              {lastBackupResult && (
+                <div
+                  className={`p-2 rounded text-[11px] ${
+                    lastBackupResult.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                  }`}
+                >
+                  {lastBackupResult.ok ? (
+                    <div>
+                      <span className="font-mono">{lastBackupResult.filename}</span>
+                      {typeof lastBackupResult.size_bytes === 'number' && ` (${formatBytes(lastBackupResult.size_bytes)})`}
+                      {lastBackupResult.mode && <span className="text-gray-500"> · {lastBackupResult.mode}</span>}
                     </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap select-text">{lastBackupResult.error}</div>
                   )}
                 </div>
+              )}
+              <div>
+                <SectionHeader className="mb-1">Existing ({selectedBackups.length})</SectionHeader>
+                {selectedBackups.length === 0 ? (
+                  <div className="text-[11px] text-gray-500 italic">None yet.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {selectedBackups.map((b) => (
+                      <div
+                        key={b.path}
+                        className="text-[10px] font-mono bg-surface-raised border border-border rounded px-2 py-1 flex items-center justify-between gap-2"
+                      >
+                        <span className="truncate text-gray-300">{b.filename}</span>
+                        <span className="text-gray-500 shrink-0">
+                          {formatBytes(b.size_bytes)} · {b.created_at.replace('T', ' ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </>
