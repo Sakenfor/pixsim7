@@ -52,6 +52,9 @@ from pixsim7.backend.main.api.v1.plans.schemas import (
     PlanRequestCreateRequest,
     PlanParticipantEntry,
     PlanSourceSnippetLine,
+    PlanTodoSummary,
+    OpenCheckpoint,
+    OpenSummary,
     validate_plan_id as _validate_plan_id,
 )
 from pixsim7.backend.main.services.docs.plan_stages import (
@@ -104,6 +107,12 @@ def _bundle_to_summary(
         list_fields["depends_on"] = list(plan.depends_on or [])
     else:
         list_fields = {f: getattr(plan, f, None) or [] for f in PLAN_LIST_FIELDS}
+    # Always populate open_summary — small payload, high-leverage signal.
+    # See OpenSummary docstring: declared near the top of PlanSummary so
+    # callers see open-work counts even when checkpoints/markdown later in
+    # the JSON get truncated.
+    open_summary = _compute_open_summary(plan.checkpoints or [])
+
     return PlanSummary(
         id=plan.id,
         document_id=doc.id,
@@ -116,6 +125,7 @@ def _bundle_to_summary(
         priority=plan.priority,
         summary=doc.summary or "",
         scope=plan.scope,
+        open_summary=open_summary,
         plan_type=plan.plan_type,
         visibility=doc.visibility,
         namespace=doc.namespace,
@@ -127,6 +137,65 @@ def _bundle_to_summary(
         active_review_round_count=review_counts[1] if review_counts else 0,
         children=child_entries,
         **list_fields,
+    )
+
+
+def _compute_open_summary(
+    checkpoints: List[Any],
+    *,
+    max_open_checkpoints: int = 8,
+) -> Optional[OpenSummary]:
+    """Compute the open-work aggregate for a list of checkpoint dicts.
+
+    Shared by ``_bundle_to_summary`` (PlanSummary.open_summary) and
+    ``_bundle_to_todo_summary`` (the equivalent flat fields on
+    PlanTodoSummary). Returns ``None`` only when the input is empty — an
+    all-done plan returns an OpenSummary with zero counts so consumers can
+    distinguish "all complete" from "no checkpoints declared".
+
+    Open is computed from ``points_done < points_total`` only. ``status``
+    is ignored — a checkpoint marked ``status: "done"`` but still underwater
+    on points is correctly counted as open.
+    """
+    if not checkpoints:
+        return None
+
+    open_entries: List[OpenCheckpoint] = []
+    open_points = 0
+    total_points = 0
+
+    for cp in checkpoints:
+        if not isinstance(cp, dict):
+            continue
+        done, total = _derive_checkpoint_points(cp)
+        if total is not None:
+            total_points += total
+
+        if total and done < total:
+            open_points += (total - done)
+            last_update = cp.get("last_update") if isinstance(cp.get("last_update"), dict) else None
+            last_at = last_update.get("at") if last_update else None
+            last_note = last_update.get("note") if last_update else None
+            open_entries.append(OpenCheckpoint(
+                id=str(cp.get("id") or ""),
+                label=str(cp.get("label") or ""),
+                status=str(cp.get("status") or "pending"),
+                points_done=done,
+                points_total=total,
+                last_update_at=str(last_at) if last_at else None,
+                last_note=_truncate_note(last_note),
+            ))
+
+    open_entries.sort(
+        key=lambda c: (c.last_update_at or "", c.id),
+        reverse=True,
+    )
+
+    return OpenSummary(
+        open_points=open_points,
+        total_points=total_points,
+        open_checkpoint_count=len(open_entries),
+        open_checkpoints=open_entries[:max_open_checkpoints],
     )
 
 
@@ -2403,21 +2472,250 @@ def _checkpoint_int(value: Any) -> Optional[int]:
 
 
 def _derive_checkpoint_points(checkpoint: Dict[str, Any]) -> tuple[int, Optional[int]]:
-    """Resolve points from explicit fields, or fall back to step checkboxes."""
+    """Resolve checkpoint progress points.
+
+    Precedence (per authoring contract ``2026-05-10.1``):
+      1. ``steps[]`` is the canonical signal when present and non-empty.
+         ``points_total`` becomes ``len(steps)``; ``points_done`` becomes
+         the count of completed steps. Explicit ``points_*`` fields are
+         overridden so the two sources of truth cannot drift silently.
+      2. Bare explicit ``points_*`` (no steps, or empty steps list) — the
+         "early-stage / not yet decomposed" path — pass through as-is.
+
+    A warning is logged on the rare case where both sources disagree, so the
+    author sees the override in the backend log and can clean up stale data.
+    """
     points_done = _checkpoint_int(checkpoint.get("points_done"))
     points_total = _checkpoint_int(checkpoint.get("points_total"))
 
     steps = checkpoint.get("steps")
-    if isinstance(steps, list):
+    if isinstance(steps, list) and steps:
         step_dicts = [s for s in steps if isinstance(s, dict)]
-        if points_total is None:
-            points_total = len(step_dicts)
-        if points_done is None:
-            points_done = sum(1 for s in step_dicts if bool(s.get("done")))
+        steps_total = len(step_dicts)
+        steps_done = sum(1 for s in step_dicts if bool(s.get("done")))
+
+        if (
+            (points_total is not None and points_total != steps_total)
+            or (points_done is not None and points_done != steps_done)
+        ):
+            logger.warning(
+                "checkpoint %r has both steps[] and explicit points_*; "
+                "steps win (steps=%d/%d, explicit=%s/%s) — drop the "
+                "explicit fields or update them to match.",
+                checkpoint.get("id"),
+                steps_done, steps_total,
+                points_done, points_total,
+            )
+
+        points_total = steps_total
+        points_done = steps_done
 
     if points_done is None:
         points_done = 0
     return points_done, points_total
+
+
+# ── TODO summary + activity-delta helpers ───────────────────────
+
+_NOTE_TRUNCATE_CHARS = 240
+
+
+def _truncate_note(text: Optional[str], n: int = _NOTE_TRUNCATE_CHARS) -> Optional[str]:
+    if text is None:
+        return None
+    s = str(text)
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _bundle_to_todo_summary(
+    b: PlanBundle,
+    *,
+    max_open_checkpoints: int = 8,
+) -> Optional[PlanTodoSummary]:
+    """Per-plan open-work summary, or None when nothing is open.
+
+    "Open" is computed from ``points_done < points_total`` — checkpoint
+    ``status`` is rarely flipped from "pending" in practice, so it cannot
+    be used as the completion signal. Checkpoints with no point budget
+    (total is None or 0) are not counted as open.
+
+    ``last_touched_at`` is the max of ``plan.updated_at`` and any
+    ``checkpoint.last_update.at`` — datetime-precise, unlike the
+    date-granularity ``last_updated`` field on ``PlanSummary``.
+    """
+    doc, plan = b.doc, b.plan
+    checkpoints = plan.checkpoints or []
+
+    open_entries: List[OpenCheckpoint] = []
+    open_points = 0
+    total_points = 0
+    most_recent_at: Optional[str] = None
+    most_recent_note: Optional[str] = None
+
+    for cp in checkpoints:
+        if not isinstance(cp, dict):
+            continue
+        done, total = _derive_checkpoint_points(cp)
+        if total is not None:
+            total_points += total
+
+        last_update = cp.get("last_update") if isinstance(cp.get("last_update"), dict) else None
+        last_at = last_update.get("at") if last_update else None
+        last_note = last_update.get("note") if last_update else None
+        if last_at and (most_recent_at is None or str(last_at) > most_recent_at):
+            most_recent_at = str(last_at)
+            most_recent_note = last_note
+
+        if total and done < total:
+            open_points += (total - done)
+            open_entries.append(OpenCheckpoint(
+                id=str(cp.get("id") or ""),
+                label=str(cp.get("label") or ""),
+                status=str(cp.get("status") or "pending"),
+                points_done=done,
+                points_total=total,
+                last_update_at=str(last_at) if last_at else None,
+                last_note=_truncate_note(last_note),
+            ))
+
+    if open_points == 0 and not open_entries:
+        return None
+
+    plan_updated = plan.updated_at or doc.updated_at
+    plan_updated_iso = plan_updated.isoformat() if plan_updated else ""
+    candidates = [v for v in (most_recent_at, plan_updated_iso) if v]
+    last_touched = max(candidates) if candidates else ""
+
+    open_entries.sort(
+        key=lambda c: (c.last_update_at or "", c.id),
+        reverse=True,
+    )
+    truncated = open_entries[:max_open_checkpoints]
+
+    return PlanTodoSummary(
+        plan_id=plan.id,
+        title=doc.title,
+        stage=_normalize_stage_for_response(plan.stage),
+        status=doc.status,
+        owner=doc.owner,
+        priority=plan.priority,
+        parent_id=plan.parent_id,
+        tags=list(doc.tags or []),
+        last_touched_at=last_touched,
+        open_points=open_points,
+        total_points=total_points,
+        open_checkpoint_count=len(open_entries),
+        open_checkpoints=truncated,
+        recent_note=_truncate_note(most_recent_note),
+    )
+
+
+def _compute_checkpoint_delta(
+    old_raw: Optional[str],
+    new_raw: Optional[str],
+) -> Optional[List[Dict[str, Any]]]:
+    """Diff two checkpoint-array JSON strings into a compact per-checkpoint delta.
+
+    Used by ``get_activity`` (C-lite) to replace the giant ``old_value`` /
+    ``new_value`` strings (5–10 KB per event) with just what changed.
+
+    Returns:
+        - ``None`` if both inputs are missing / unparseable / produce no delta
+          (caller should leave ``checkpoint_delta`` unset and keep the raw
+          old/new values for audit fidelity in that pathological case).
+        - ``List[Dict]`` of compact delta records otherwise. Each record is a
+          plain dict that validates against the ``CheckpointDelta`` schema.
+    """
+    def _parse(raw: Optional[str]) -> List[Dict[str, Any]]:
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+        return [c for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+
+    old_list = _parse(old_raw)
+    new_list = _parse(new_raw)
+    if not old_list and not new_list:
+        return None
+
+    by_id_old = {str(c.get("id")): c for c in old_list if c.get("id")}
+    by_id_new = {str(c.get("id")): c for c in new_list if c.get("id")}
+
+    deltas: List[Dict[str, Any]] = []
+
+    # Added checkpoints
+    for cp_id in by_id_new.keys() - by_id_old.keys():
+        cp = by_id_new[cp_id]
+        done, total = _derive_checkpoint_points(cp)
+        deltas.append({
+            "checkpoint_id": cp_id,
+            "kind": "added",
+            "points_done_after": done,
+            "points_total_after": total,
+            "status_after": cp.get("status"),
+        })
+
+    # Removed checkpoints
+    for cp_id in by_id_old.keys() - by_id_new.keys():
+        cp = by_id_old[cp_id]
+        done, total = _derive_checkpoint_points(cp)
+        deltas.append({
+            "checkpoint_id": cp_id,
+            "kind": "removed",
+            "points_done_before": done,
+            "points_total_before": total,
+            "status_before": cp.get("status"),
+        })
+
+    # Modified checkpoints
+    for cp_id in by_id_old.keys() & by_id_new.keys():
+        old_cp = by_id_old[cp_id]
+        new_cp = by_id_new[cp_id]
+        old_done, old_total = _derive_checkpoint_points(old_cp)
+        new_done, new_total = _derive_checkpoint_points(new_cp)
+        old_status = old_cp.get("status")
+        new_status = new_cp.get("status")
+        old_label = old_cp.get("label")
+        new_label = new_cp.get("label")
+
+        old_lu = old_cp.get("last_update") if isinstance(old_cp.get("last_update"), dict) else None
+        new_lu = new_cp.get("last_update") if isinstance(new_cp.get("last_update"), dict) else None
+        old_at = (old_lu or {}).get("at")
+        new_at = (new_lu or {}).get("at")
+        new_note = (new_lu or {}).get("note") if new_lu else None
+
+        unchanged = (
+            (old_done, old_total, old_status, old_label) == (new_done, new_total, new_status, new_label)
+            and old_at == new_at
+        )
+        if unchanged:
+            continue
+
+        if old_status != new_status:
+            kind = "status"
+        elif (old_done, old_total) != (new_done, new_total):
+            kind = "progressed"
+        elif old_label != new_label:
+            kind = "renamed"
+        else:
+            # Only thing that changed was last_update (timestamp / note).
+            kind = "noted"
+
+        deltas.append({
+            "checkpoint_id": cp_id,
+            "kind": kind,
+            "points_done_before": old_done,
+            "points_done_after": new_done,
+            "points_total_before": old_total,
+            "points_total_after": new_total,
+            "status_before": old_status,
+            "status_after": new_status,
+            "note": _truncate_note(new_note),
+        })
+
+    return deltas if deltas else None
 
 
 EVIDENCE_KINDS = (

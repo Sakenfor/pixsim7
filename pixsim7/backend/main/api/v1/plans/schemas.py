@@ -85,6 +85,25 @@ class Checkpoint(ApiModel):
         return out
 
 
+class CheckpointDelta(ApiModel):
+    """Compact delta for a single checkpoint between two activity snapshots.
+
+    Emitted on activity / event entries where ``field == "checkpoints"`` so
+    the client sees what actually changed without having to diff two large
+    JSON blobs inline. ``old_value``/``new_value`` are dropped on those
+    entries when this delta is populated — saves ~5–10 KB per event.
+    """
+    checkpoint_id: str
+    kind: Literal["added", "removed", "progressed", "noted", "status", "renamed"] = "noted"
+    points_done_before: Optional[int] = None
+    points_done_after: Optional[int] = None
+    points_total_before: Optional[int] = None
+    points_total_after: Optional[int] = None
+    status_before: Optional[str] = None
+    status_after: Optional[str] = None
+    note: Optional[str] = None  # truncated to ~240 chars by the route handler
+
+
 # ── Validation helpers (used by schema validators) ───────────────
 
 _PLAN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
@@ -110,6 +129,41 @@ class PlanChildSummary(ApiModel):
     priority: str
 
 
+class OpenCheckpoint(ApiModel):
+    """A checkpoint with open work — surfaced by ``plans.todo_summary`` and
+    inlined into ``PlanSummary.open_summary`` so it's visible even when the
+    full ``checkpoints`` list gets truncated downstream.
+
+    Open is computed as ``points_done < points_total`` (not from ``status``,
+    which is rarely flipped from "pending" in practice).
+    """
+    id: str
+    label: str
+    status: str = "pending"
+    points_done: int = 0
+    points_total: Optional[int] = None
+    last_update_at: Optional[str] = None
+    last_note: Optional[str] = None  # truncated to ~240 chars
+
+
+class OpenSummary(ApiModel):
+    """Aggregate open-work signal for a plan.
+
+    Lives near the top of ``PlanSummary`` so it survives downstream payload
+    truncation. The list mirrors what ``plans.todo_summary`` exposes, but is
+    capped (``open_checkpoints`` truncated to ~8) to keep list responses
+    small; consumers can fetch the full plan via ``plans.detail`` if needed.
+
+    Always computed from ``points_done < points_total``, ignoring checkpoint
+    ``status`` — so a checkpoint marked ``status: "done"`` but still
+    underwater on points is correctly counted as open.
+    """
+    open_points: int = 0
+    total_points: int = 0
+    open_checkpoint_count: int = 0
+    open_checkpoints: List[OpenCheckpoint] = Field(default_factory=list)
+
+
 class PlanSummary(ApiModel):
     """Compact plan entry for list responses."""
     id: str
@@ -123,6 +177,9 @@ class PlanSummary(ApiModel):
     priority: str
     summary: str
     scope: str
+    # Open-work signal — positioned high in the schema so it survives
+    # response truncation. See OpenSummary docstring.
+    open_summary: Optional[OpenSummary] = None
     plan_type: str = "feature"
     visibility: str = "public"
     namespace: Optional[str] = None
@@ -199,6 +256,9 @@ class PlanEventEntry(ApiModel):
     field: Optional[str] = None
     old_value: Optional[str] = None
     new_value: Optional[str] = None
+    # See ``PlanActivityEntry.checkpoint_delta`` — same C-lite trim is
+    # applied to this per-plan event log.
+    checkpoint_delta: Optional[List[CheckpointDelta]] = None
     commit_sha: Optional[str] = None
     actor: Optional[str] = None
     timestamp: str
@@ -725,6 +785,11 @@ class PlanActivityEntry(ApiModel):
     field: Optional[str] = None
     old_value: Optional[str] = None
     new_value: Optional[str] = None
+    # Populated for ``field == "checkpoints"`` events; replaces the giant
+    # JSON-blob old/new strings with a per-checkpoint structured diff. When
+    # present, ``old_value`` and ``new_value`` are set to None on the same
+    # entry to keep payloads small. ``None`` on non-checkpoint events.
+    checkpoint_delta: Optional[List[CheckpointDelta]] = None
     commit_sha: Optional[str] = None
     actor: Optional[str] = None
     timestamp: str
@@ -732,6 +797,37 @@ class PlanActivityEntry(ApiModel):
 
 class PlanActivityResponse(ApiModel):
     events: List[PlanActivityEntry] = Field(default_factory=list)
+
+
+# ── TODO summary (open-work view) ────────────────────────────────
+
+class PlanTodoSummary(ApiModel):
+    """Per-plan open-work summary."""
+    plan_id: str
+    title: str
+    stage: str
+    status: str
+    owner: str
+    priority: str
+    parent_id: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    # ISO datetime, max(plan.updated_at, max(checkpoint.last_update.at)).
+    # Datetime-precise — distinguishes plans touched on the same day.
+    last_touched_at: str = ""
+    open_points: int = 0
+    total_points: int = 0
+    open_checkpoint_count: int = 0
+    # Capped (default 8) to keep payloads small; full detail via plans.detail.
+    open_checkpoints: List[OpenCheckpoint] = Field(default_factory=list)
+    # Most-recent checkpoint note across the plan, truncated to ~240 chars.
+    recent_note: Optional[str] = None
+
+
+class PlanTodoSummaryResponse(ApiModel):
+    version: str = "1"
+    generated_at: str = ""
+    plans: List[PlanTodoSummary] = Field(default_factory=list)
+    total: int = 0
 
 
 class SyncResultResponse(ApiModel):
