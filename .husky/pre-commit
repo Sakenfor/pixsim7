@@ -1,19 +1,42 @@
 #!/usr/bin/env sh
 
-# Lint staged files
-cd apps/main && pnpm exec lint-staged --relative
-
-# OpenAPI types freshness check (warning only - requires running backend)
-# Uncomment the following to enable blocking check in CI:
-# cd "$OLDPWD" && pnpm openapi:check || exit 1
+# ─────────────────────────────────────────────────────────────────────────────
+# Lint staged TS/TSX files via lint-staged in each workspace that has an
+# ESLint config. apps/launcher and packages/* are intentionally not linted on
+# commit — they have no eslint config (lint-staged would just no-op, but
+# keeping the list explicit makes the gap visible).
 #
-# For now, just warn if the check fails (doesn't block commit)
-cd "$OLDPWD"
-if pnpm openapi:check 2>/dev/null; then
-  echo "✓ OpenAPI types are up-to-date"
-else
+# Subshells `(cd ...)` localize the directory change; the script's working
+# directory stays at repo root for the openapi check below.
+# ─────────────────────────────────────────────────────────────────────────────
+LINT_FAIL=0
+(cd apps/main     && pnpm exec lint-staged --relative) || LINT_FAIL=1
+(cd apps/devtools && pnpm exec lint-staged --relative) || LINT_FAIL=1
+if [ $LINT_FAIL -ne 0 ]; then
   echo ""
-  echo "⚠️  OpenAPI types may be stale (or backend not running)"
-  echo "   Run 'pnpm openapi:gen' if you've changed the backend API."
-  echo ""
+  echo "✗ lint-staged reported errors. Commit aborted."
+  exit 1
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenAPI types freshness check — only when API-relevant files are staged.
+# Stays warning-only locally because the backend may not be running. CI can
+# enforce blocking via the same `pnpm openapi:check` against a known-up env.
+#
+# Watched paths:
+#   - pixsim7/backend/main/api/**/*.py    : route definitions + schemas
+#   - pixsim7/backend/main/domain/**/*.py : models referenced by routes
+#   - tools/codegen/generate-openapi-types.ts, manifest.ts : the generator
+#   - packages/shared/api/model/          : generated client lives here
+# Backend services/ and tests/ are intentionally excluded — schema-irrelevant.
+# ─────────────────────────────────────────────────────────────────────────────
+if git diff --cached --name-only | grep -qE '^(pixsim7/backend/main/(api|domain)/.*\.py|tools/codegen/(generate-openapi|manifest)|packages/shared/api/model/)'; then
+  if pnpm openapi:check; then
+    echo "✓ OpenAPI types are up-to-date"
+  else
+    echo ""
+    echo "⚠️  OpenAPI types may be stale (or backend not running)."
+    echo "   Run 'pnpm openapi:gen' if you've changed the backend API."
+    echo ""
+  fi
 fi
