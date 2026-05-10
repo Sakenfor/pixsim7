@@ -1759,6 +1759,7 @@ export function PromptComposer({
               layout="side-by-side"
               showLegend={false}
               showSidePanel={showShadow && autoAnalyze}
+              surfaceId="composer"
               renderEditor={({ emphasizedRole }) => (
                 <div
                   ref={referencePickerContainerRef}
@@ -1864,6 +1865,7 @@ export function PromptComposer({
               analysis={shadowAnalysis}
               layout="side-by-side"
               showLegend={false}
+              surfaceId="composer"
               renderEditor={({ emphasizedRole }) => (
                 <ShadowTextarea
                   value={value}

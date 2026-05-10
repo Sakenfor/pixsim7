@@ -93,6 +93,7 @@ export function PromptBoxPanel() {
         <PromptAnalysisLayout
           analysis={analysis}
           layout="side-by-side"
+          surfaceId="promptBox"
           renderEditor={({ emphasizedRole }) => (
             <div className="h-full overflow-auto p-3">
               {viewerEngine === 'codemirror' ? (

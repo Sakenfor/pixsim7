@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { useSidebarCollapse } from './hooks/useSidebarCollapse';
+import { useUiCollapsed } from './hooks/useUiCollapsed';
 import { useResizeHandle } from './hooks/useResizeHandle';
 import { ResizeDivider } from './ResizeDivider';
 
@@ -70,7 +70,7 @@ export function SidebarPaneShell({
   autoHideTitle = true,
   detachable,
 }: SidebarPaneShellProps) {
-  const internal = useSidebarCollapse(persistKey, defaultCollapsed);
+  const internal = useUiCollapsed(persistKey, defaultCollapsed);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [hasExternalTitle, setHasExternalTitle] = useState(false);
 

@@ -5,9 +5,9 @@
  * Uses DisclosureSection for collapsible nested categories.
  * Collapses to a thin strip with a sparkles icon toggle.
  */
-import { DisclosureSection } from '@pixsim7/shared.ui';
+import { DisclosureSection, useUiCollapsed } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -27,6 +27,13 @@ import type { PromptBlockCandidate } from '../types';
 
 export interface ShadowSidePanelProps {
   analysis: ShadowAnalysisState;
+  /**
+   * Stable surface id ('promptBox', 'composer', …) used to derive the
+   * `useUiCollapsed` keys for both the outer collapse-to-strip toggle and
+   * each inner DisclosureSection. Lets every host keep its own remembered
+   * state so the panel follows whatever dock/float renders it.
+   */
+  surfaceId: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,9 +203,15 @@ function getSequenceRoleLabel(role: string): string {
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
+export function ShadowSidePanel({ analysis, surfaceId }: ShadowSidePanelProps) {
   const { result, loading, refresh } = analysis;
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
+  // Persist collapsed state per-surface so prompt-box and composer remember
+  // independently across reloads / dock moves. Backed by the shared
+  // useUiCollapsed primitive — keys follow the `<domain>:<surface>:<element>`
+  // convention so future shadow-related toggles can extend the same prefix.
+  const keyPrefix = `shadow:${surfaceId}`;
+  const { collapsed, setCollapsed } = useUiCollapsed(keyPrefix, false);
   const candidates = result?.candidates ?? [];
   const sequenceContext = result?.sequenceContext;
   const sequenceRole = sequenceContext?.role_in_sequence ?? 'unspecified';
@@ -207,7 +220,6 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
     typeof sequenceContext?.confidence === 'number'
       ? Math.round(sequenceContext.confidence * 100)
       : null;
-  const [collapsed, setCollapsed] = useState(false);
 
   const primitiveMatches = useMemo(
     () => extractPrimitiveMatches(candidates),
@@ -349,6 +361,7 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
         {Object.entries(grouped).map(([role, roleCandidates]) => (
           <DisclosureSection
             key={role}
+            persistKey={`${keyPrefix}:role:${role}`}
             label={
               <SectionLabel
                 dotClass={getPromptRoleBadgeClass(role, promptRoleColors)}
@@ -373,6 +386,7 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
           <>
             <div className="h-px bg-neutral-200 dark:bg-neutral-700 mx-0.5 my-1" />
             <DisclosureSection
+              persistKey={`${keyPrefix}:matches`}
               label={
                 <SectionLabel
                   dotClass="bg-violet-500"
@@ -401,6 +415,7 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
           <>
             <div className="h-px bg-neutral-200 dark:bg-neutral-700 mx-0.5 my-1" />
             <DisclosureSection
+              persistKey={`${keyPrefix}:structure`}
               label={
                 <SectionLabel
                   dotClass="bg-sky-500"

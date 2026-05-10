@@ -7,6 +7,7 @@
 
 import * as React from 'react';
 import { useDisclosure } from './useDisclosure';
+import { useUiCollapsed } from '../hooks/useUiCollapsed';
 import clsx from 'clsx';
 
 export interface DisclosureSectionProps {
@@ -42,6 +43,13 @@ export interface DisclosureSectionProps {
   fillHeight?: boolean;
   /** Badge/count element rendered after the label */
   badge?: React.ReactNode;
+  /**
+   * When set, open/closed state is persisted across remounts and reloads
+   * via the shared `useUiCollapsed` store. Use stable colon-separated keys
+   * (e.g. `'shadow:promptBox:roles'`). Ignored if `isOpen` (controlled
+   * mode) is also provided — controlled state wins.
+   */
+  persistKey?: string;
 }
 
 /**
@@ -71,18 +79,36 @@ export function DisclosureSection({
   actionsWhenOpen = false,
   fillHeight = false,
   badge,
+  persistKey,
 }: DisclosureSectionProps) {
+  // Local (transient) state when neither controlled nor persisted.
   const disclosure = useDisclosure({
     defaultOpen,
     onToggle,
   });
 
-  // Support controlled mode
-  const isOpen = controlledIsOpen ?? disclosure.isOpen;
+  // Persisted state. The shared store thinks in collapse-semantics, so we
+  // invert: a section that should default to open stores `collapsed=false`
+  // until the user toggles it. Always called to satisfy the rules-of-hooks
+  // contract; the result is just ignored when persistKey is undefined.
+  const persisted = useUiCollapsed(persistKey, !defaultOpen);
+
+  // Resolution order: controlled prop > persistKey store > local state.
+  const controlled = controlledIsOpen !== undefined;
+  const isOpen = controlled
+    ? (controlledIsOpen as boolean)
+    : persistKey != null
+      ? !persisted.collapsed
+      : disclosure.isOpen;
+
   const handleToggle = () => {
     if (disabled) return;
-    if (controlledIsOpen !== undefined) {
-      onToggle?.(!isOpen);
+    const next = !isOpen;
+    if (controlled) {
+      onToggle?.(next);
+    } else if (persistKey != null) {
+      persisted.setCollapsed(!next);
+      onToggle?.(next);
     } else {
       disclosure.toggle();
     }

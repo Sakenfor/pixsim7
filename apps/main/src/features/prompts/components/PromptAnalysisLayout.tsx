@@ -42,6 +42,12 @@ export interface PromptAnalysisLayoutProps {
   showLegend?: boolean;
   /** Optional class on the outer container. */
   className?: string;
+  /**
+   * Stable surface id for ShadowSidePanel collapsed-state persistence.
+   * Threaded through to ShadowSidePanel and used as the prefix for all
+   * `useUiCollapsed` keys it owns.
+   */
+  surfaceId: string;
 }
 
 export function PromptAnalysisLayout({
@@ -51,6 +57,7 @@ export function PromptAnalysisLayout({
   showSidePanel = true,
   showLegend = true,
   className,
+  surfaceId,
 }: PromptAnalysisLayoutProps) {
   // Emphasis state — hover previews, click pins. Effective role =
   // hover override (transient) or pinned role (sticky).
@@ -77,7 +84,7 @@ export function PromptAnalysisLayout({
         </div>
         {showSidePanel && (
           <div className="flex-shrink-0 max-h-[40%] overflow-auto border-t border-neutral-200 dark:border-neutral-800">
-            <ShadowSidePanel analysis={analysis} />
+            <ShadowSidePanel analysis={analysis} surfaceId={surfaceId} />
           </div>
         )}
         {showLegend && (
@@ -109,7 +116,7 @@ export function PromptAnalysisLayout({
             />
           )}
         </div>
-        {showSidePanel && <ShadowSidePanel analysis={analysis} />}
+        {showSidePanel && <ShadowSidePanel analysis={analysis} surfaceId={surfaceId} />}
       </div>
     </div>
   );
