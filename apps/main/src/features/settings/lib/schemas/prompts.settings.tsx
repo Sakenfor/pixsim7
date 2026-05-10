@@ -48,13 +48,13 @@ const extractionTab: SettingTab = {
   groups: [
     {
       id: 'block-extraction',
-      description: 'Configure how meaningful blocks are extracted from prompts and stored in ActionBlockDB.',
+      description: 'Configure how meaningful blocks are extracted from prompts and stored in the block primitives library.',
       fields: [
         {
           id: 'autoExtractBlocks',
           type: 'toggle',
           label: 'Auto-extract blocks',
-          description: 'Automatically create ActionBlockDB entries for meaningful blocks',
+          description: 'Automatically create block-primitive entries for meaningful blocks',
           defaultValue: false,
         },
         {
@@ -68,19 +68,6 @@ const extractionTab: SettingTab = {
             { value: '3', label: '3+ tags (extract fewer, high-quality)' },
           ],
           defaultValue: '2',
-          disabled: (values) => !values.autoExtractBlocks,
-        },
-        {
-          id: 'defaultCurationStatus',
-          type: 'select',
-          label: 'Default Curation Status',
-          description: 'Initial status for auto-extracted blocks',
-          options: [
-            { value: 'raw', label: 'Raw (needs review)' },
-            { value: 'reviewed', label: 'Reviewed (vetted but not curated)' },
-            { value: 'curated', label: 'Curated (production-ready)' },
-          ],
-          defaultValue: 'raw',
           disabled: (values) => !values.autoExtractBlocks,
         },
       ],
@@ -252,7 +239,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     autoAnalyze,
     autoExtractBlocks,
     extractionThreshold,
-    defaultCurationStatus,
     promptRoleColors,
     semanticEnabled,
     semanticModelId,
@@ -261,7 +247,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     setAutoAnalyze,
     setAutoExtractBlocks,
     setExtractionThreshold,
-    setDefaultCurationStatus,
     setPromptRoleColor,
     setSemanticEnabled,
     setSemanticModelId,
@@ -279,7 +264,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
         case 'autoAnalyze': return autoAnalyze;
         case 'autoExtractBlocks': return autoExtractBlocks;
         case 'extractionThreshold': return extractionThreshold.toString();
-        case 'defaultCurationStatus': return defaultCurationStatus;
         case 'semanticEnabled': return semanticEnabled;
         case 'semanticModelId': return semanticModelId;
         case 'semanticThreshold': return semanticThreshold;
@@ -297,7 +281,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
         case 'autoAnalyze': setAutoAnalyze(value); break;
         case 'autoExtractBlocks': setAutoExtractBlocks(value); break;
         case 'extractionThreshold': setExtractionThreshold(parseInt(value, 10)); break;
-        case 'defaultCurationStatus': setDefaultCurationStatus(value); break;
         case 'semanticEnabled': setSemanticEnabled(value); break;
         case 'semanticModelId': setSemanticModelId(value); break;
         case 'semanticThreshold': setSemanticThreshold(value); break;
@@ -308,7 +291,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       autoAnalyze,
       autoExtractBlocks,
       extractionThreshold: extractionThreshold.toString(),
-      defaultCurationStatus,
       promptRoleColors,
       semanticEnabled,
       semanticModelId,

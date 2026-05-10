@@ -17,7 +17,6 @@ export interface PromptSettings {
   // Block extraction settings
   autoExtractBlocks: boolean;
   extractionThreshold: number;
-  defaultCurationStatus: 'raw' | 'reviewed' | 'curated';
 
   // Prompt role appearance
   promptRoleColors: Record<string, string>;
@@ -53,7 +52,6 @@ interface PromptSettingsStore extends PromptSettings {
   setDefaultAnalyzer: (value: string) => void;
   setAutoExtractBlocks: (value: boolean) => void;
   setExtractionThreshold: (value: number) => void;
-  setDefaultCurationStatus: (value: PromptSettings['defaultCurationStatus']) => void;
   setPromptRoleColor: (roleId: string, color: string) => void;
   setPromptRoleColors: (colors: Record<string, string>) => void;
   setBlocksLayout: (value: PromptSettings['blocksLayout']) => void;
@@ -69,7 +67,6 @@ const DEFAULT_SETTINGS: PromptSettings = {
   defaultAnalyzer: DEFAULT_PROMPT_ANALYZER_ID,
   autoExtractBlocks: false,
   extractionThreshold: 2,
-  defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
   editorEngine: 'codemirror',
   viewerEngine: 'inline',
@@ -93,7 +90,6 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
       setDefaultAnalyzer: (value) => set({ defaultAnalyzer: value }),
       setAutoExtractBlocks: (value) => set({ autoExtractBlocks: value }),
       setExtractionThreshold: (value) => set({ extractionThreshold: value }),
-      setDefaultCurationStatus: (value) => set({ defaultCurationStatus: value }),
       setPromptRoleColor: (roleId, color) =>
         set((state) => ({
           promptRoleColors: {

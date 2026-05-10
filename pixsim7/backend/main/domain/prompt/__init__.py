@@ -12,8 +12,6 @@ Models:
 
 Enums:
 - PromptSegmentRole: baseline role IDs (dynamic roles are registered at runtime)
-- BlockSourceType: library, parsed, ai_extracted, user_created, etc.
-- CurationStatus: raw, reviewed, curated
 - BlockKind: single_state, transition
 - ComplexityLevel: simple, moderate, complex, very_complex
 - PromptSourceType: versioned, inline, generated, unknown
@@ -22,8 +20,6 @@ Enums:
 # Enums
 from .enums import (
     PromptSegmentRole,
-    BlockSourceType,
-    CurationStatus,
     BlockKind,
     ComplexityLevel,
     PromptSourceType,
@@ -49,8 +45,6 @@ from .feedback import PromptVariantFeedback
 __all__ = [
     # Enums
     "PromptSegmentRole",
-    "BlockSourceType",
-    "CurationStatus",
     "BlockKind",
     "ComplexityLevel",
     "PromptSourceType",

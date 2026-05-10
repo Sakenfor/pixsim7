@@ -202,8 +202,6 @@ File: `domain/prompt/enums.py`
 | Enum | Values | Purpose |
 |------|--------|---------|
 | `PromptSegmentRole` | character, action, setting, mood, romance, camera, other | Block role classification |
-| `BlockSourceType` | library, parsed, ai_extracted, user_created, migrated, imported | Provenance tracking |
-| `CurationStatus` | raw, reviewed, curated | Quality lifecycle |
 | `BlockKind` | single_state, transition | Block type for generation |
 | `ComplexityLevel` | simple, moderate, complex, very_complex | Char-count tiers |
 | `BlockIntent` | generate, preserve, modify, add, remove | How block applies to input |

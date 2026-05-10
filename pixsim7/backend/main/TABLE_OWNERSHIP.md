@@ -127,8 +127,7 @@
 |-------|-------|----------|-----------------|
 | `prompt_families` | `PromptFamily` | — | `game_world_id`, `npc_id`, `scene_id` (no FK) |
 | `prompt_versions` | `PromptVersion` | `prompt_families.id` | — |
-| `prompt_blocks` | `PromptBlock` | — | — |
-| `prompt_version_blocks` | `PromptVersionBlock` | `prompt_versions.id`, `prompt_blocks.id` | — |
+| `prompt_version_blocks` | `PromptVersionBlock` | `prompt_versions.id` | `block_id` (string soft-ref into `pixsim7_blocks.block_primitives.block_id`) |
 | `prompt_variant_feedback` | `PromptVariantFeedback` | `prompt_versions.id`, `assets.id`, `generations.id`, `users.id` | — |
 | `block_templates` | `BlockTemplate` | `users.id` (`owner_user_id`) | — |
 

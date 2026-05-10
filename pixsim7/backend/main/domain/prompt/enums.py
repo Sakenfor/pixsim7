@@ -22,23 +22,6 @@ class PromptSegmentRole(str, Enum):
     OTHER = "other"
 
 
-class BlockSourceType(str, Enum):
-    """How a PromptBlock was created."""
-    LIBRARY = "library"           # From curated block library
-    PARSED = "parsed"             # Auto-extracted by parser
-    AI_EXTRACTED = "ai_extracted" # Extracted by LLM
-    USER_CREATED = "user_created" # Manually created by user
-    MIGRATED = "migrated"         # Imported from legacy system
-    IMPORTED = "imported"         # Imported from external source
-
-
-class CurationStatus(str, Enum):
-    """Block lifecycle/curation status."""
-    RAW = "raw"           # Just extracted, unreviewed
-    REVIEWED = "reviewed" # Human reviewed but not finalized
-    CURATED = "curated"   # Production-ready
-
-
 class BlockKind(str, Enum):
     """Type of block for generation."""
     SINGLE_STATE = "single_state"  # Static pose/scene

@@ -1,6 +1,14 @@
 """
 Action Block Node Resolver.
 
+NOTE: "action block" here is a *narrative-graph* concept — an ``ActionBlockNode``
+is a chunk of action in a scene/branching graph (see ``domain/narrative/schema.py``
+and ``domain/narrative/action_blocks/types_unified.py``). It is unrelated to the
+retired prompt-domain "action_blocks" naming, which has been replaced by
+``BlockPrimitive`` (see ``domain/blocks/models.py``). This resolver consumes
+``BlockPrimitive`` candidates from ``pixsim7_blocks`` to fill the slots of an
+``ActionBlockNode``.
+
 Resolves ActionBlockNode into executable sequences using the primitives-first
 planner -> compiler -> resolver pipeline.
 
