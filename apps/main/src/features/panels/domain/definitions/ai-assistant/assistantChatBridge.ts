@@ -470,6 +470,20 @@ class AssistantChatBridge {
         request.taskId = data.task_id as string;
         this._persistInflight();
       }
+      // Capture bridge_session_id as soon as the agent surfaces it (during
+      // streaming, well before the final `result` event). Without this the
+      // panel can't reconcile with server state until the result lands —
+      // mid-turn HMR/reload of a brand-new session loses the only handle
+      // tier-3 reconcile and tier-4 backend tail recovery can use.
+      const incomingSessionId = data.bridge_session_id;
+      if (
+        typeof incomingSessionId === 'string'
+        && incomingSessionId
+        && request.bridgeSessionId !== incomingSessionId
+      ) {
+        request.bridgeSessionId = incomingSessionId;
+        this._persistInflight();
+      }
       request._lastActivity = Date.now();
       // Skip idle session keepalives — they are not task activity
       if (action === 'cli_session' || detail === 'idle') {

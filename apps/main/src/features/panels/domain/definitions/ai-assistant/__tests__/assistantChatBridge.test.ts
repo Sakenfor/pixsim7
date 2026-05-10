@@ -297,6 +297,46 @@ describe('AssistantChatBridge', () => {
       expect(bridge.get('tab-1')!.taskId).toBe('first');
     });
 
+    it('captures bridge_session_id from heartbeat (mid-turn, before result)', async () => {
+      // Brand-new turn: client sends without bridge_session_id; the agent
+      // resolves cli_session_id during streaming and surfaces it via a
+      // heartbeat carrying bridge_session_id. The bridge must capture it
+      // onto the request so first-message HMR recovery has a handle.
+      const ws = await connectAndSend('tab-1', { message: 'hi' });
+
+      expect(bridge.get('tab-1')!.bridgeSessionId).toBeUndefined();
+
+      ws.simulateMessage({
+        type: 'heartbeat',
+        tab_id: 'tab-1',
+        action: 'processing_task',
+        detail: 'Working...',
+        task_id: 'task-1',
+        bridge_session_id: 'sess-resolved',
+      });
+
+      expect(bridge.get('tab-1')!.bridgeSessionId).toBe('sess-resolved');
+
+      // Subsequent heartbeats with same session_id should be a no-op.
+      ws.simulateMessage({
+        type: 'heartbeat',
+        tab_id: 'tab-1',
+        action: 'processing_task',
+        detail: 'Still working...',
+        bridge_session_id: 'sess-resolved',
+      });
+      expect(bridge.get('tab-1')!.bridgeSessionId).toBe('sess-resolved');
+
+      // INFLIGHT_KEY should now carry the session id so a full reload can
+      // restore it onto the rebuilt BridgeRequest (and the panel can mirror
+      // it onto tab.sessionId).
+      const inflightRaw = localStorage.getItem('ai-assistant:inflight');
+      expect(inflightRaw).toBeTruthy();
+      const entries = JSON.parse(inflightRaw!) as Array<{ tabId: string; bridgeSessionId?: string }>;
+      const entry = entries.find((e) => e.tabId === 'tab-1');
+      expect(entry?.bridgeSessionId).toBe('sess-resolved');
+    });
+
     it('handles error messages', async () => {
       const ws = await connectAndSend('tab-1', { message: 'hi' });
 

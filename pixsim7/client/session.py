@@ -610,6 +610,18 @@ class AgentCmdSession:
                     if parsed.model:
                         self.cli_model = parsed.model
                     self._log.debug("session_identified", cli_session=self.cli_session_id, model=self.cli_model)
+                    # Surface the freshly-assigned cli_session_id to the bridge
+                    # ASAP via the progress callback. Without this, brand-new
+                    # sessions only learn their bridge_session_id when the final
+                    # `result` event arrives — meaning a mid-turn HMR/reload
+                    # loses the only handle the panel can use to reconcile with
+                    # server state. The bridge special-cases this event type to
+                    # stamp the id onto every subsequent heartbeat.
+                    if on_progress and self.cli_session_id:
+                        try:
+                            on_progress("session_resolved", self.cli_session_id)
+                        except Exception:
+                            self._log.debug("session_resolved_progress_failed", exc_info=True)
 
                 elif parsed.kind == "result":
                     if parsed.text:
