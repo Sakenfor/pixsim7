@@ -39,6 +39,17 @@ CREATE TABLE provider_credits (
 """
 
 
+_ACCOUNT_STATUS_ENUM_DDL = """
+CREATE TYPE accountstatus AS ENUM (
+    'ACTIVE',
+    'EXHAUSTED',
+    'ERROR',
+    'DISABLED',
+    'RATE_LIMITED'
+)
+"""
+
+
 _PROVIDER_ACCOUNTS_DDL = """
 CREATE TABLE provider_accounts (
     id SERIAL PRIMARY KEY,
@@ -57,7 +68,7 @@ CREATE TABLE provider_accounts (
     total_videos_generated INTEGER NOT NULL DEFAULT 0,
     total_videos_failed INTEGER NOT NULL DEFAULT 0,
     failure_streak INTEGER NOT NULL DEFAULT 0,
-    status VARCHAR NOT NULL DEFAULT 'ACTIVE',
+    status accountstatus NOT NULL DEFAULT 'ACTIVE',
     last_error VARCHAR NULL,
     last_used TIMESTAMP NULL,
     cooldown_until TIMESTAMP NULL,
@@ -111,6 +122,7 @@ async def schema() -> AsyncIterator[str]:
         async with admin_engine.begin() as conn:
             await conn.execute(text(f'CREATE SCHEMA "{schema_name}"'))
             await conn.execute(text(f'SET LOCAL search_path TO "{schema_name}"'))
+            await conn.execute(text(_ACCOUNT_STATUS_ENUM_DDL))
             await conn.execute(text(_PROVIDER_ACCOUNTS_DDL))
             await conn.execute(text(_PROVIDER_CREDITS_DDL))
 

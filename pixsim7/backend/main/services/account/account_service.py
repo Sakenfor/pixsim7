@@ -7,7 +7,7 @@ import re
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from pixsim_logging import get_logger
@@ -322,6 +322,58 @@ def _account_has_unlimited_model(account: ProviderAccount, model: str | None) ->
     return False
 
 
+def _account_unlimited_model_sql_clause(model: str | None):
+    """SQL counterpart of ``_account_has_unlimited_model``: a WHERE clause
+    that's true for accounts whose ``provider_metadata.{unlimited_image_models,
+    plan_unlimited_image_models}`` lists contain ``model``.
+
+    Used to bypass the credit pre-filter — without this, an account whose
+    stored credits are below ``min_credits`` is silently dropped at the SQL
+    level even when the requested model is unlimited for that account, and
+    the unlimited tier in ``_rank_candidates`` never gets to see it.
+
+    Implementation: ``->>`` returns the JSON array's text form (e.g.
+    ``["seedream-4.0","qwen-image"]``) and we LIKE-match the JSON-quoted
+    variant against it. We expand ``model`` through ``_ROUTE_MODEL_ALIAS_MAP``
+    so that operator shorthand (``seedream-4``) matches a stored canonical
+    entry (``seedream-4.0``) and vice-versa, mirroring what the Python helper
+    does. Scoping to those two specific keys keeps the LIKE from matching
+    against unrelated metadata strings.
+
+    Returns ``None`` when ``model`` is missing or wildcard so the caller can
+    skip OR-ing it in.
+    """
+    if not model:
+        return None
+    canonical = _normalize_route_model_token(model)
+    if canonical == "*":
+        return None
+
+    # Variants: canonical token + every alias that maps to it. Without this,
+    # an account that stores ``"seedream-4"`` won't match a request for
+    # ``"seedream-4.0"`` even though they're the same model to the ranker.
+    variants = {canonical}
+    for alias, mapped in _ROUTE_MODEL_ALIAS_MAP.items():
+        if mapped == canonical:
+            variants.add(alias)
+
+    unlimited_text = ProviderAccount.provider_metadata.op("->>")(
+        "unlimited_image_models"
+    )
+    plan_unlimited_text = ProviderAccount.provider_metadata.op("->>")(
+        "plan_unlimited_image_models"
+    )
+
+    clauses = []
+    for variant in variants:
+        # JSON serializes strings with double-quotes, so a raw match against
+        # the array's text form is unambiguous about element boundaries.
+        pattern = f'%"{variant}"%'
+        clauses.append(unlimited_text.like(pattern))
+        clauses.append(plan_unlimited_text.like(pattern))
+    return or_(*clauses)
+
+
 def _total_credits_subquery():
     """Correlated subquery yielding sum(amount) of all credits for the
     outer ProviderAccount row, coalesced to 0 when no credit rows exist."""
@@ -575,21 +627,36 @@ class AccountService:
         # Filter by required credits (in Python, since credits are in related table)
         available_accounts = []
         for account in accounts:
+            # Unlimited bypass: when the model doesn't consume credits for
+            # this account, every credit gate below must be skipped — both
+            # ``has_any_credits`` (folded into ``is_available``) and the
+            # explicit ``has_sufficient_credits`` check. Otherwise an
+            # account with the model in its plan-unlimited list but a zero
+            # stored balance falls out before the unlimited tier sort below
+            # can rank it. Same root cause as the SQL pre-filter issue
+            # ``_account_unlimited_model_sql_clause`` fixes in
+            # ``select_and_reserve_account``.
+            unlimited = _account_has_unlimited_model(account, model)
+
             if ignore_availability:
                 # Structural eligibility only: status + any credits.
                 # Cooldown/concurrency/daily-limit are transient and the
                 # worker handles them via retry-queue deferral.
                 if account.status != AccountStatus.ACTIVE:
                     continue
-                if not account.has_any_credits():
+                if not unlimited and not account.has_any_credits():
                     continue
             else:
-                # Check basic availability (status, concurrency, cooldown)
-                if not account.is_available():
+                if unlimited:
+                    # Skip the credit half of is_available() — operational
+                    # gates (status, cooldown, daily, concurrency) still
+                    # apply.
+                    if not account.is_operationally_available():
+                        continue
+                elif not account.is_available():
                     continue
 
-            # If required_credits specified, check if account has sufficient credits
-            if required_credits is not None:
+            if required_credits is not None and not unlimited:
                 if not account.has_sufficient_credits(required_credits):
                     continue
 
@@ -793,6 +860,14 @@ class AccountService:
         # a provider refund that hasn't been synced).  If it eliminates all
         # candidates we retry without it and let the live verify_credits
         # check handle correctness.
+        #
+        # Unlimited-bypass: an account that has the chosen model in its
+        # ``plan_unlimited_image_models`` list doesn't consume credits for
+        # this request, so the credit-amount gate must not exclude it.
+        # Otherwise the unlimited tier in ``_rank_candidates`` never gets a
+        # chance to defend it (the fallback only triggers when the filter
+        # excludes *everyone*; one passing paid account is enough to lose
+        # the unlimited account silently).
         _applied_credit_filter = False
         normalized_credit_types: list[str] = []
         if min_credits is not None and min_credits > 0:
@@ -810,6 +885,9 @@ class AccountService:
                 )
 
             _credit_filter = ProviderAccount.id.in_(credit_filter_query)
+            unlimited_bypass = _account_unlimited_model_sql_clause(model)
+            if unlimited_bypass is not None:
+                _credit_filter = or_(_credit_filter, unlimited_bypass)
             _applied_credit_filter = True
         prefer_high_credits = bool(
             min_credits is not None
