@@ -185,6 +185,99 @@ async def test_unlimited_bypass_uses_legacy_metadata_key(make_session):
     assert selected.id == unlimited_id
 
 
+async def test_discounted_account_wins_when_paid_passes_credit_prefilter(make_session):
+    """Same SQL pre-filter symmetry as the unlimited bypass: a partially
+    discounted account with credits below the model's *base* cost would
+    silently fail the SQL filter (which sizes to the base cost) even though
+    the actual cost on this account is lower. The discount tier should
+    still pick it.
+    """
+    session = await make_session()
+
+    paid_id = await _insert_account(session, email="paid@test", priority=99)
+    discounted_id = await _insert_account(
+        session,
+        email="discounted@test",
+        priority=0,
+        metadata={"promotion_discounts": {"v6": 0.7}},
+    )
+
+    await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)
+    # Below ``min_credits=10`` (base cost) but the discounted account only
+    # actually needs 7 — pre-filter would drop it without the bypass.
+    await _insert_credit(session, account_id=discounted_id, credit_type="image", amount=8)
+
+    service = AccountService(db=session)
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+        min_credits=10,
+    )
+
+    assert selected.id == discounted_id
+
+
+async def test_discount_bypass_matches_model_via_alias_normalization(make_session):
+    """promotion_discounts dict keyed by canonical id must still match a
+    request that arrives as shorthand."""
+    session = await make_session()
+
+    paid_id = await _insert_account(session, email="paid@test", priority=99)
+    discounted_id = await _insert_account(
+        session,
+        email="discounted@test",
+        priority=0,
+        metadata={"promotion_discounts": {"seedream-4.0": 0.5}},
+    )
+
+    await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)
+    await _insert_credit(session, account_id=discounted_id, credit_type="image", amount=0)
+
+    service = AccountService(db=session)
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="seedream-4",  # shorthand
+        min_credits=10,
+    )
+
+    assert selected.id == discounted_id
+
+
+async def test_unlimited_outranks_discount_at_pre_filter_level(make_session):
+    """End-to-end pin of tier ordering: unlimited > discount > full price.
+    A fully-free promo on a higher-priority account loses to a structurally
+    unlimited account."""
+    session = await make_session()
+
+    free_promo_id = await _insert_account(
+        session,
+        email="promo@test",
+        priority=99,
+        metadata={"promotion_discounts": {"v6": 0.0}},
+    )
+    unlimited_id = await _insert_account(
+        session,
+        email="unlimited@test",
+        priority=0,
+        metadata={"unlimited_image_models": ["v6"]},
+    )
+
+    await _insert_credit(session, account_id=free_promo_id, credit_type="image", amount=5000)
+    await _insert_credit(session, account_id=unlimited_id, credit_type="image", amount=0)
+
+    service = AccountService(db=session)
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+        min_credits=10,
+    )
+
+    assert selected.id == unlimited_id
+
+
 async def test_select_account_probe_bypasses_credit_gate_for_unlimited(make_session):
     """The fail-fast probe (``select_account``) had the same bug in Python
     form: ``has_sufficient_credits`` would drop the unlimited account
@@ -213,3 +306,31 @@ async def test_select_account_probe_bypasses_credit_gate_for_unlimited(make_sess
     )
 
     assert selected.id == unlimited_id
+
+
+async def test_select_account_probe_bypasses_credit_gate_for_discount(make_session):
+    """Same Python-side bypass for the probe path with a partial discount —
+    an account whose stored credits are below the base cost still wins
+    because the actual cost on this account is lower."""
+    session = await make_session()
+
+    paid_id = await _insert_account(session, email="paid@test", priority=99)
+    discounted_id = await _insert_account(
+        session,
+        email="discounted@test",
+        priority=0,
+        metadata={"promotion_discounts": {"v6": 0.7}},
+    )
+
+    await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)
+    await _insert_credit(session, account_id=discounted_id, credit_type="image", amount=8)
+
+    service = AccountService(db=session)
+    selected = await service.select_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+        required_credits=10,
+    )
+
+    assert selected.id == discounted_id

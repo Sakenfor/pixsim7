@@ -374,6 +374,85 @@ def _account_unlimited_model_sql_clause(model: str | None):
     return or_(*clauses)
 
 
+def _account_discount_factor(account: ProviderAccount, model: str | None) -> float:
+    """Active promo multiplier for ``model`` on this account, ``1.0`` if none.
+
+    Reads ``provider_metadata.promotion_discounts`` — a model-id-keyed dict
+    written by ``pixverse_promotions.persist_promotions_on_account`` and
+    consumed by ``pixverse._account_promotion_discounts`` for billing math
+    (see ``provider/adapters/pixverse.py``). Values are multipliers in
+    ``[0.0, 1.0)``: ``0.7`` is 30% off, ``0.0`` is a fully-free promo.
+
+    Used as a sort tier between unlimited and base priority — when two
+    accounts both lack the model in their unlimited list, prefer whichever
+    has the deeper discount. Mirrors ``_account_has_unlimited_model`` in
+    shape and uses the same alias normalizer so shorthand and canonical
+    stored ids match.
+
+    Anything outside ``[0.0, 1.0)`` (incl. non-numeric values, ``1.0``
+    itself) is treated as "no discount" — defensive against stale or
+    malformed metadata.
+    """
+    if not model:
+        return 1.0
+    metadata = getattr(account, "provider_metadata", None)
+    if not isinstance(metadata, dict):
+        return 1.0
+    discounts = metadata.get("promotion_discounts")
+    if not isinstance(discounts, dict) or not discounts:
+        return 1.0
+    target = _normalize_route_model_token(model)
+    if target == "*":
+        return 1.0
+    for model_id, multiplier in discounts.items():
+        if not isinstance(multiplier, (int, float)) or isinstance(multiplier, bool):
+            continue
+        if multiplier < 0.0 or multiplier >= 1.0:
+            continue
+        if _normalize_route_model_token(model_id) == target:
+            return float(multiplier)
+    return 1.0
+
+
+def _account_discount_sql_clause(model: str | None):
+    """SQL counterpart of ``_account_discount_factor``: clause that's true
+    when an active promo for ``model`` exists in the account's
+    ``provider_metadata.promotion_discounts`` dict.
+
+    Same purpose as ``_account_unlimited_model_sql_clause`` but for the
+    discount tier — the per-model cost on this account is below base price
+    (possibly zero), so the credit pre-filter (sized to the *base* cost via
+    ``_required_generation_credit_hint``) would over-eagerly drop it.
+    Bypassing lets the discount tier rank it and the live ``verify_credits``
+    catch genuinely-empty accounts.
+
+    LIKE pattern ``%"variant":%`` matches a JSON object key — promo dict
+    values are floats (``{"v6": 0.7}``), so the colon disambiguates a key
+    match from a value or substring match. Variants are expanded through
+    ``_ROUTE_MODEL_ALIAS_MAP`` for the same shorthand/canonical reason.
+    """
+    if not model:
+        return None
+    canonical = _normalize_route_model_token(model)
+    if canonical == "*":
+        return None
+
+    variants = {canonical}
+    for alias, mapped in _ROUTE_MODEL_ALIAS_MAP.items():
+        if mapped == canonical:
+            variants.add(alias)
+
+    discounts_text = ProviderAccount.provider_metadata.op("->>")(
+        "promotion_discounts"
+    )
+
+    clauses = []
+    for variant in variants:
+        pattern = f'%"{variant}":%'
+        clauses.append(discounts_text.like(pattern))
+    return or_(*clauses)
+
+
 def _total_credits_subquery():
     """Correlated subquery yielding sum(amount) of all credits for the
     outer ProviderAccount row, coalesced to 0 when no credit rows exist."""
@@ -627,16 +706,17 @@ class AccountService:
         # Filter by required credits (in Python, since credits are in related table)
         available_accounts = []
         for account in accounts:
-            # Unlimited bypass: when the model doesn't consume credits for
-            # this account, every credit gate below must be skipped — both
-            # ``has_any_credits`` (folded into ``is_available``) and the
-            # explicit ``has_sufficient_credits`` check. Otherwise an
-            # account with the model in its plan-unlimited list but a zero
-            # stored balance falls out before the unlimited tier sort below
-            # can rank it. Same root cause as the SQL pre-filter issue
-            # ``_account_unlimited_model_sql_clause`` fixes in
-            # ``select_and_reserve_account``.
+            # Credit-bypass tiers:
+            #   - unlimited: model never consumes credits on this account.
+            #   - discount (factor < 1.0): effective cost is below base, so
+            #     the base-cost credit gate would over-eagerly drop accounts
+            #     that could in fact afford the run. Same root cause as the
+            #     SQL pre-filter issue ``_account_unlimited_model_sql_clause``
+            #     fixes in ``select_and_reserve_account``. Live verify_credits
+            #     catches genuinely-empty accounts downstream.
             unlimited = _account_has_unlimited_model(account, model)
+            discount_factor = _account_discount_factor(account, model)
+            cheaper_than_base = unlimited or discount_factor < 1.0
 
             if ignore_availability:
                 # Structural eligibility only: status + any credits.
@@ -644,10 +724,10 @@ class AccountService:
                 # worker handles them via retry-queue deferral.
                 if account.status != AccountStatus.ACTIVE:
                     continue
-                if not unlimited and not account.has_any_credits():
+                if not cheaper_than_base and not account.has_any_credits():
                     continue
             else:
-                if unlimited:
+                if cheaper_than_base:
                     # Skip the credit half of is_available() — operational
                     # gates (status, cooldown, daily, concurrency) still
                     # apply.
@@ -656,7 +736,7 @@ class AccountService:
                 elif not account.is_available():
                     continue
 
-            if required_credits is not None and not unlimited:
+            if required_credits is not None and not cheaper_than_base:
                 if not account.has_sufficient_credits(required_credits):
                     continue
 
@@ -684,13 +764,14 @@ class AccountService:
             raise NoAccountAvailableError(provider_id)
 
         if operation_type is not None or model is not None:
-            # Same tiering as select_and_reserve_account: unlimited-model
-            # match outranks base priority. Keeps the fail-fast probe in
+            # Same tiering as select_and_reserve_account: unlimited beats
+            # discount beats base priority. Keeps the fail-fast probe in
             # sync with the live selector so the UI's cost preview reflects
             # the account that will actually be used.
             available_accounts.sort(
                 key=lambda a: (
                     -1 if _account_has_unlimited_model(a, model) else 0,
+                    _account_discount_factor(a, model),
                     -(
                         int(getattr(a, "priority", 0) or 0)
                         + _account_priority_delta(a, operation_type=operation_type, model=model)
@@ -700,7 +781,7 @@ class AccountService:
                 )
             )
 
-        # Return first match (sorted by unlimited-tier, routing-aware priority, credit/lru)
+        # Return first match (sorted by unlimited, discount, routing-aware priority, credit/lru)
         return available_accounts[0]
 
     async def reserve_account(self, account_id: int) -> ProviderAccount:
@@ -888,6 +969,12 @@ class AccountService:
             unlimited_bypass = _account_unlimited_model_sql_clause(model)
             if unlimited_bypass is not None:
                 _credit_filter = or_(_credit_filter, unlimited_bypass)
+            # Same reasoning as unlimited: a discounted account's effective
+            # cost is below base, so the base-cost credit gate would
+            # over-eagerly drop accounts that could in fact afford the run.
+            discount_bypass = _account_discount_sql_clause(model)
+            if discount_bypass is not None:
+                _credit_filter = or_(_credit_filter, discount_bypass)
             _applied_credit_filter = True
         prefer_high_credits = bool(
             min_credits is not None
@@ -942,12 +1029,25 @@ class AccountService:
                 # SQL ORDER BY already enforces the contract; return as-is.
                 return [row[0] for row in rows], 0
 
-            # Score tuple: (unlimited_match, effective_priority, credits, last_used).
-            # ``unlimited_match`` is the top tier — if any candidate has the
-            # chosen model in its plan-unlimited list it strictly outranks
-            # accounts that would consume credits, regardless of base
-            # priority or pre-filter mode.
-            scored: list[tuple[int, int, int, datetime, ProviderAccount]] = []
+            # Score tuple:
+            #   (unlimited_match, discount_factor, effective_priority,
+            #    credits, last_used, candidate)
+            #
+            # Tiering, top-down:
+            #   1. ``unlimited_match`` — model is in account's plan-unlimited
+            #      list; doesn't consume credits at all. Strictly outranks
+            #      everything else regardless of base priority or credits.
+            #   2. ``discount_factor`` — active per-model promo multiplier
+            #      ([0.0, 1.0); ``1.0`` = no promo). Lower is better; a
+            #      half-price account beats a full-price account at every
+            #      lower-tier setting.
+            #   3. ``effective_priority`` — operator-set base priority plus
+            #      any routing-rule delta.
+            #   4. credits — drain cheap accounts first by default; flipped
+            #      when ``prefer_high_credits`` for the stale-snapshot
+            #      fallback path.
+            #   5. ``last_used`` — LRU tiebreaker.
+            scored: list[tuple[int, float, int, int, datetime, ProviderAccount]] = []
             filtered_out = 0
             for candidate, total_credits in rows:
                 if not _account_matches_routing(
@@ -965,20 +1065,32 @@ class AccountService:
                     model=model,
                 )
                 unlimited_match = 1 if _account_has_unlimited_model(candidate, model) else 0
+                discount_factor = _account_discount_factor(candidate, model)
                 credits_value = int(total_credits or 0)
                 last_used = candidate.last_used or datetime.min.replace(tzinfo=timezone.utc)
                 scored.append(
-                    (unlimited_match, effective_priority, credits_value, last_used, candidate)
+                    (
+                        unlimited_match,
+                        discount_factor,
+                        effective_priority,
+                        credits_value,
+                        last_used,
+                        candidate,
+                    )
                 )
 
             if not scored:
                 return [], filtered_out
 
             if prefer_high_credits:
-                scored.sort(key=lambda item: (-item[0], -item[2], -item[1], item[3]))
+                scored.sort(
+                    key=lambda item: (-item[0], item[1], -item[3], -item[2], item[4])
+                )
             else:
-                scored.sort(key=lambda item: (-item[0], -item[1], item[2], item[3]))
-            return [item[4] for item in scored], filtered_out
+                scored.sort(
+                    key=lambda item: (-item[0], item[1], -item[2], item[3], item[4])
+                )
+            return [item[5] for item in scored], filtered_out
 
         async def _try_reserve(candidates):
             """Walk ranked candidates, atomically reserving the first one that

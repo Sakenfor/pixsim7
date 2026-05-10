@@ -27,6 +27,7 @@ import pytest
 from pixsim7.backend.main.domain import AccountStatus
 from pixsim7.backend.main.services.account.account_service import (
     AccountService,
+    _account_discount_factor,
     _account_has_unlimited_model,
     _account_matches_routing,
     _account_priority_delta,
@@ -614,6 +615,189 @@ async def test_select_account_probe_prefers_unlimited(
     )
 
     assert selected.id == free_low_priority.id
+
+
+# ---------------------------------------------------------------------------
+# Discount tier — promotion_discounts beats base priority, loses to unlimited
+# ---------------------------------------------------------------------------
+
+
+def test_account_discount_factor_returns_one_without_metadata() -> None:
+    assert _account_discount_factor(_make_account(), "seedream-4.0") == 1.0
+
+
+def test_account_discount_factor_returns_one_without_promotion_dict() -> None:
+    account = _make_account(metadata={"plan_off_peak": 1})
+    assert _account_discount_factor(account, "seedream-4.0") == 1.0
+
+
+def test_account_discount_factor_returns_multiplier_for_active_promo() -> None:
+    account = _make_account(metadata={"promotion_discounts": {"v6": 0.7}})
+    assert _account_discount_factor(account, "v6") == 0.7
+
+
+def test_account_discount_factor_matches_via_alias_normalization() -> None:
+    """Operator passes ``seedream-4``; promo dict stores canonical id."""
+    account = _make_account(metadata={"promotion_discounts": {"seedream-4.0": 0.5}})
+    assert _account_discount_factor(account, "seedream-4") == 0.5
+
+
+def test_account_discount_factor_returns_one_for_unrelated_model() -> None:
+    account = _make_account(metadata={"promotion_discounts": {"v6": 0.7}})
+    assert _account_discount_factor(account, "qwen-image") == 1.0
+
+
+def test_account_discount_factor_returns_zero_for_fully_free_promo() -> None:
+    """``0.0`` is the lowest-cost promo Pixverse exposes (fully-free)."""
+    account = _make_account(metadata={"promotion_discounts": {"happyhorse-1.0": 0.0}})
+    assert _account_discount_factor(account, "happyhorse-1.0") == 0.0
+
+
+def test_account_discount_factor_rejects_out_of_range_multipliers() -> None:
+    """``1.0`` (no discount), negative, and non-numeric values fall back to 1.0."""
+    account = _make_account(
+        metadata={
+            "promotion_discounts": {
+                "model-noop": 1.0,        # not actually a discount
+                "model-bogus": -0.5,      # nonsense value
+                "model-text": "0.7",      # string, not numeric
+                "model-bool": True,       # bool would coerce numerically; reject
+            }
+        }
+    )
+    assert _account_discount_factor(account, "model-noop") == 1.0
+    assert _account_discount_factor(account, "model-bogus") == 1.0
+    assert _account_discount_factor(account, "model-text") == 1.0
+    assert _account_discount_factor(account, "model-bool") == 1.0
+
+
+def test_account_discount_factor_returns_one_for_missing_or_wildcard_model() -> None:
+    account = _make_account(metadata={"promotion_discounts": {"v6": 0.7}})
+    assert _account_discount_factor(account, None) == 1.0
+    assert _account_discount_factor(account, "*") == 1.0
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_discount_beats_higher_priority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An account with an active promo on the chosen model outranks a
+    higher-priority full-price account, mirroring the unlimited tier one
+    level down."""
+    paid_high_priority = _make_account(account_id=1, priority=99)
+    discounted_low_priority = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"promotion_discounts": {"v6": 0.7}},
+    )
+    rows = [(paid_high_priority, 9000), (discounted_low_priority, 50)]
+
+    db = _FakeDb(
+        results=[_FakeResult(rows), _FakeResult([(discounted_low_priority,)])]
+    )
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+    )
+
+    assert selected.id == discounted_low_priority.id
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_unlimited_beats_discount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unlimited remains the strict top tier — even a fully-free promo
+    (factor 0.0) loses to an account where the model is structurally
+    unlimited, so an account that only has the promo *temporarily* doesn't
+    get burned when a structurally-unlimited account exists."""
+    free_promo = _make_account(
+        account_id=1,
+        priority=99,
+        metadata={"promotion_discounts": {"v6": 0.0}},
+    )
+    unlimited = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"unlimited_image_models": ["v6"]},
+    )
+    rows = [(free_promo, 9000), (unlimited, 50)]
+
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(unlimited,)])])
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+    )
+
+    assert selected.id == unlimited.id
+
+
+@pytest.mark.asyncio
+async def test_select_and_reserve_lower_discount_factor_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Among discounted accounts, the deeper discount (lower factor) wins."""
+    half_off = _make_account(
+        account_id=1,
+        priority=0,
+        metadata={"promotion_discounts": {"v6": 0.5}},
+    )
+    quarter_off = _make_account(
+        account_id=2,
+        priority=99,  # higher priority loses to deeper discount
+        metadata={"promotion_discounts": {"v6": 0.75}},
+    )
+    rows = [(quarter_off, 5000), (half_off, 100)]
+
+    db = _FakeDb(results=[_FakeResult(rows), _FakeResult([(half_off,)])])
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_and_reserve_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+    )
+
+    assert selected.id == half_off.id
+
+
+@pytest.mark.asyncio
+async def test_select_account_probe_prefers_discount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``select_account`` probe surfaces the same discount preference so the
+    UI cost preview matches the live selector."""
+    paid_high_priority = _make_account(account_id=1, priority=99)
+    paid_high_priority.has_any_credits = lambda: True
+    paid_high_priority.get_total_credits = lambda: 9000
+
+    discounted_low_priority = _make_account(
+        account_id=2,
+        priority=0,
+        metadata={"promotion_discounts": {"v6": 0.7}},
+    )
+    discounted_low_priority.has_any_credits = lambda: True
+    discounted_low_priority.get_total_credits = lambda: 50
+
+    db = _FakeDb(
+        results=[_FakeResult([paid_high_priority, discounted_low_priority])]
+    )
+    service = _service(db, monkeypatch)
+
+    selected = await service.select_account(
+        provider_id="pixverse",
+        operation_type="text_to_image",
+        model="v6",
+        ignore_availability=True,
+    )
+
+    assert selected.id == discounted_low_priority.id
 
 
 @pytest.mark.asyncio
