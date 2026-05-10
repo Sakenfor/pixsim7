@@ -43,7 +43,7 @@ from pixsim7.backend.main.workers.derivatives_processor import process_derivativ
 from pixsim7.backend.main.workers.ingestion_processor import process_ingestion
 from pixsim7.backend.main.workers.prompt_tagging_processor import process_prompt_tagging
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
-from pixsim7.automation.services.device_sync_service import poll_device_ads
+from pixsim7.automation.services.device_sync_service import poll_device_ads, poll_device_reconnects
 from pixsim7.backend.main.workers.health import (
     update_main_heartbeat,
     update_retry_heartbeat,
@@ -461,6 +461,7 @@ async def automation_startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
     logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
     logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
+    logger.info("worker_component_registered", component="poll_device_reconnects", schedule="*/30s")
     logger.info("worker_component_registered", component="update_automation_heartbeat", schedule="*/30s")
 
     await update_automation_heartbeat(ctx)
@@ -679,6 +680,7 @@ class AutomationWorkerSettings:
         run_automation_loops,
         queue_pending_executions,
         poll_device_ads,
+        poll_device_reconnects,
         reload_logging_config,
     ]
 
@@ -693,6 +695,9 @@ class AutomationWorkerSettings:
             second={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
             run_at_startup=True,
         ),
+        # Reconnect TCP-attached emulators every 30s — replaces launcher's
+        # ad-hoc adb-keeper service. Source of truth: AndroidDevice.instance_port.
+        cron(poll_device_reconnects, second={15, 45}, run_at_startup=True),
         # Heartbeat every 30 seconds
         cron(update_automation_heartbeat, second={0, 30}, run_at_startup=False),
         # Reload logging config from DB every 60s

@@ -459,6 +459,91 @@ class DeviceSyncService:
                 error=str(e),
             )
 
+    async def reconnect_known_devices(self) -> Dict[str, int]:
+        """Reconnect TCP-attached emulators known to the automation DB.
+
+        Replaces the launcher's ad-hoc adb-keeper service: instead of asking
+        the user to enter a parallel list of host:port endpoints, we treat
+        ``AndroidDevice.instance_port`` as the single source of truth and
+        opportunistically `adb connect 127.0.0.1:<port>` for each.
+
+        Status is NOT mutated here — the manual ``scan_and_sync`` flow owns
+        offline/online transitions and device-type detection. This is purely
+        a substrate-keepalive that keeps the ADB server seeing the emulators
+        the user has already registered, so subsequent dumpsys/scan calls
+        find them after a network blip.
+        """
+        attempted = 0
+        reconnected = 0
+        failed = 0
+
+        result = await self.db.execute(
+            select(AndroidDevice).where(
+                AndroidDevice.connection_method == ConnectionMethod.ADB,
+                AndroidDevice.instance_port.isnot(None),
+            )
+        )
+        devices = result.scalars().all()
+
+        for device in devices:
+            port = device.instance_port
+            if not port:
+                continue
+            attempted += 1
+            try:
+                if await self.adb.connect(f"127.0.0.1:{port}"):
+                    reconnected += 1
+                else:
+                    failed += 1
+            except Exception as exc:
+                # Emulator off / port blocked / adb flaky. Don't poison the
+                # batch — log at warning so it's visible if a device stops
+                # responding for an extended period.
+                failed += 1
+                logger.warning(
+                    "device_reconnect_failed",
+                    device=device.name,
+                    instance_port=port,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
+        return {"attempted": attempted, "reconnected": reconnected, "failed": failed}
+
+
+async def poll_device_reconnects(ctx: dict) -> Dict[str, int]:
+    """ARQ cron job — opportunistically reconnect known TCP-attached emulators.
+
+    Runs every 30s alongside ``poll_device_ads``. Closes the gap that used to
+    require the launcher's adb-keeper service: now the user registers a device
+    once via ``scan_and_sync`` and the automation worker keeps it connected.
+    """
+    from pixsim7.backend.main.infrastructure.database.session import get_automation_db
+
+    async for db in get_automation_db():
+        try:
+            service = DeviceSyncService(db)
+            result = await service.reconnect_known_devices()
+
+            # Log only on activity to avoid every-30s noise when no devices
+            # are registered or all are quietly online.
+            if result["failed"] > 0:
+                logger.info(
+                    "device_reconnect_cycle",
+                    attempted=result["attempted"],
+                    reconnected=result["reconnected"],
+                    failed=result["failed"],
+                )
+
+            return result
+        except Exception as e:
+            logger.error("device_reconnect_error", error=str(e))
+            return {"attempted": 0, "reconnected": 0, "failed": 0, "error": str(e)}
+        finally:
+            await db.close()
+
+    return {"attempted": 0, "reconnected": 0, "failed": 0}
+
 
 async def poll_device_ads(ctx: dict) -> Dict[str, int]:
     """
