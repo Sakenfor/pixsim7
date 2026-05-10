@@ -2,19 +2,22 @@
  * Tools page — Codegen, Migrations, Buildables, Settings.
  */
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  ActionCard, Badge, Button, DisclosureSection, Input, StatusPill,
-  type StatusTone,
+  Badge, Button, EmptyState, Input, LoadingSpinner, SectionHeader, SidebarContentLayout, StatusPill,
+  useSidebarNav,
+  type SidebarContentLayoutSection, type StatusTone,
 } from '@pixsim7/shared.ui'
 import {
-  getCodegenTasks, runCodegenTask, getBuildables, buildPackage,
+  getCodegenTasks, runCodegenTask, getCodegenOpenapiStats, getCodegenOutputStats,
+  getBuildables, buildPackage,
   getMigrationDatabases, getMigrationStatus, runMigrationAction, invalidateMigrationStatus,
   listDbBackups, backupDatabase, getBackupInfo,
   getSquashStatus, generateSquashBaseline, verifySquashBaseline, discardSquashBaseline,
   archiveOldMigrations, getDbHealth, inspectTable,
   getSettings, saveSettings,
-  type CodegenTask, type CodegenRunResult, type Buildable, type BuildResult, type BuildStatus,
+  type CodegenTask, type CodegenRunResult, type CodegenOpenapiStats, type CodegenOutputStats,
+  type Buildable, type BuildResult, type BuildStatus,
   type MigrationDatabase, type MigrationStatus, type MigrationResult,
   type DbBackupEntry, type DbBackupResult, type DbBackupInfo,
   type SquashStatus, type SquashGenerateResult, type SquashVerifyResult, type SquashArchiveResult,
@@ -97,14 +100,84 @@ function TabBuildProgress({ progress }: { progress: BuildProgress }) {
 
 // ── Codegen ──
 
-/** IDs that act as parent cards with expandable subcards (children use `{parentId}-*` naming). */
+/** IDs that act as parent rows with expandable children (children use `{parentId}-*` naming). */
 const EXPANDABLE_PARENTS = ['openapi', 'cue'] as const
+
+// Inline stroke-icon set for codegen task rows. Matches the launcher's existing
+// pattern (see ServiceIcon.tsx / DockLayout.tsx) — no external icon library.
+const codegenIcoProps = {
+  width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', strokeWidth: 1.8,
+  strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, stroke: 'currentColor',
+}
+const Ico = {
+  Cloud: () => <svg {...codegenIcoProps}><path d="M17.5 19a4.5 4.5 0 1 0-1.5-8.74A6 6 0 0 0 4 12a4 4 0 0 0 1 7h12.5z" /></svg>,
+  Image: () => <svg {...codegenIcoProps}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>,
+  Message: () => <svg {...codegenIcoProps}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
+  Gamepad: () => <svg {...codegenIcoProps}><path d="M6 11h4" /><path d="M8 9v4" /><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="18" cy="10" r="1" fill="currentColor" stroke="none" /><rect x="2" y="6" width="20" height="12" rx="4" /></svg>,
+  Activity: () => <svg {...codegenIcoProps}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>,
+  Wrench: () => <svg {...codegenIcoProps}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg>,
+  Tag: () => <svg {...codegenIcoProps}><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" /></svg>,
+  Upload: () => <svg {...codegenIcoProps}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>,
+  FileCode: () => <svg {...codegenIcoProps}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><polyline points="10 13 8 15 10 17" /><polyline points="14 13 16 15 14 17" /></svg>,
+  Beaker: () => <svg {...codegenIcoProps}><path d="M9 3v6L4 19a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-10V3" /><path d="M8 3h8" /><path d="M7 14h10" /></svg>,
+  Map: () => <svg {...codegenIcoProps}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" /></svg>,
+  Grid: () => <svg {...codegenIcoProps}><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>,
+  Plug: () => <svg {...codegenIcoProps}><path d="M9 2v6" /><path d="M15 2v6" /><path d="M6 8h12v4a6 6 0 0 1-12 0z" /><path d="M12 18v4" /></svg>,
+  Cog: () => <svg {...codegenIcoProps}><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z" /><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M4.93 4.93l1.41 1.41" /><path d="M17.66 17.66l1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M4.93 19.07l1.41-1.41" /><path d="M17.66 6.34l1.41-1.41" /></svg>,
+} as const
+
+/** Per-task-id icon. Falls back to GROUP_ICONS[task.groups[0]], then Cog. */
+const TASK_ICONS: Record<string, () => React.ReactNode> = {
+  'openapi':            Ico.Cloud,
+  'openapi-assets':     Ico.Image,
+  'openapi-prompts':    Ico.Message,
+  'openapi-game':       Ico.Gamepad,
+  'openapi-runtime':    Ico.Activity,
+  'openapi-dev':        Ico.Wrench,
+  'composition-roles':  Ico.Tag,
+  'prompt-roles':       Ico.Tag,
+  'branded':            Ico.Tag,
+  'upload-context':     Ico.Upload,
+  'cue':                Ico.FileCode,
+  'cue-projection-corpus': Ico.Beaker,
+  'app-map':            Ico.Map,
+  'ui-catalog':         Ico.Grid,
+  'plugin-codegen':     Ico.Plug,
+}
+const GROUP_ICONS: Record<string, () => React.ReactNode> = {
+  openapi:  Ico.Cloud,
+  prompt:   Ico.Message,
+  cue:      Ico.FileCode,
+  tests:    Ico.Beaker,
+  docs:     Ico.Map,
+  plugins:  Ico.Plug,
+  types:    Ico.Tag,
+}
+
+function pickTaskIcon(task: CodegenTask): () => React.ReactNode {
+  const direct = TASK_ICONS[task.id]
+  if (direct) return direct
+  for (const g of task.groups ?? []) {
+    if (GROUP_ICONS[g]) return GROUP_ICONS[g]
+  }
+  return Ico.Cog
+}
+
+/** Per-task run history kept in launcher session memory so tab-switches don't lose it. */
+type CodegenResultEntry = {
+  result: CodegenRunResult
+  ranAt: number
+  checkMode: boolean
+}
 
 function CodegenSection() {
   const [tasks, setTasks] = useState<CodegenTask[]>([])
-  const [runResult, setRunResult] = useState<CodegenRunResult | null>(null)
+  const [results, setResults] = useState<Record<string, CodegenResultEntry>>({})
   const [running, setRunning] = useState<string | null>(null)
-  const [openParents, setOpenParents] = useState<Record<string, boolean>>({})
+  const [openapiStats, setOpenapiStats] = useState<CodegenOpenapiStats | null>(null)
+  // Per-task output filesystem stats; keyed by task id, refreshed on selection
+  // and after a Run completes.
+  const [outputStats, setOutputStats] = useState<Record<string, CodegenOutputStats>>({})
 
   useEffect(() => {
     getCodegenTasks().then(setTasks)
@@ -112,127 +185,483 @@ function CodegenSection() {
     return () => clearInterval(interval)
   }, [])
 
-  const run = useCallback(async (taskId: string, check: boolean) => {
-    setRunning(taskId)
-    setRunResult(null)
-    try {
-      setRunResult(await runCodegenTask(taskId, check))
-    } finally {
-      setRunning(null)
-    }
-  }, [])
-
-  // Build parent → children map from naming convention
-  const parentChildMap = useMemo(() => {
+  // Build SidebarContentLayout sections from tasks. EXPANDABLE_PARENTS items
+  // (`openapi`, `cue`) become parent sections with their `${parentId}-*`
+  // siblings as children; every other task is a top-level section. The icon
+  // flips to a spinner while a task is running — canonical pattern from
+  // `MaintenanceDashboard.tsx:1493` (rail stays purely nav, run-state badge
+  // moves into the detail header).
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
     const childIds = new Set<string>()
-    const map: Record<string, { parent: CodegenTask | undefined; children: CodegenTask[] }> = {}
+    const childrenByParent = new Map<string, CodegenTask[]>()
     for (const parentId of EXPANDABLE_PARENTS) {
-      const parent = tasks.find((t) => t.id === parentId)
       const children = tasks.filter((t) => t.id.startsWith(`${parentId}-`))
-      if (parent || children.length) {
-        map[parentId] = { parent, children }
-        if (parent) childIds.add(parent.id)
+      if (children.length) {
+        childrenByParent.set(parentId, children)
         children.forEach((c) => childIds.add(c.id))
       }
     }
-    const regular = tasks.filter((t) => !childIds.has(t.id))
-    return { map, regular }
-  }, [tasks])
 
-  const renderTaskCard = (task: CodegenTask, opts: { nested?: boolean; parentId?: string } = {}) => {
-    const { nested, parentId } = opts
-    const dep = task.requires_service
-    const depOk = task.service_running !== false
-    const titleText = nested && parentId ? task.id.replace(new RegExp(`^${parentId}-`), '') : task.id
+    const taskIcon = (t: CodegenTask) => {
+      if (running === t.id) return <LoadingSpinner size="xs" />
+      const Icon = pickTaskIcon(t)
+      return <Icon />
+    }
 
-    const tags = !nested
-      ? task.groups.map((g) => <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>)
-      : null
+    const out: SidebarContentLayoutSection[] = []
+    // Pass 1: emit EXPANDABLE_PARENTS at the top, matching the legacy rail order
+    // (openapi + cue with their indented children grouped above the flat tasks).
+    // Mixing them inline with manifest order made the next sibling visually read
+    // as a child of the previous task.
+    const parentIdSet = new Set<string>(EXPANDABLE_PARENTS)
+    for (const parentId of EXPANDABLE_PARENTS) {
+      const t = tasks.find((tt) => tt.id === parentId)
+      if (!t) continue
+      const children = childrenByParent.get(t.id)
+      out.push({
+        id: `task:${t.id}`,
+        label: children ? `${t.id} (${children.length})` : t.id,
+        icon: taskIcon(t),
+        children: children?.map((c) => ({
+          id: `task:${c.id}`,
+          label: c.id.replace(new RegExp(`^${t.id}-`), ''),
+          icon: taskIcon(c),
+        })),
+      })
+    }
+    // Pass 2: every other task in manifest order, skipping children + parents.
+    for (const t of tasks) {
+      if (childIds.has(t.id) || parentIdSet.has(t.id)) continue
+      out.push({
+        id: `task:${t.id}`,
+        label: t.id,
+        icon: taskIcon(t),
+      })
+    }
+    return out
+  }, [tasks, running])
 
-    const depLine = dep && !nested ? (
-      <div className="mt-0.5">
+  const nav = useSidebarNav({ sections, storageKey: 'launcher-codegen-active' })
+
+  // Resolve the active task from the rail state (`task:<id>` namespace). Falls
+  // back to section id when no child is selected.
+  const activeRailId = nav.activeChildId ?? nav.activeSectionId
+  const activeTaskId = activeRailId.startsWith('task:') ? activeRailId.slice(5) : null
+  const selected = activeTaskId ? tasks.find((t) => t.id === activeTaskId) ?? null : null
+  const selectedEntry = activeTaskId ? results[activeTaskId] ?? null : null
+  const selectedIsOpenapi = !!activeTaskId && activeTaskId.startsWith('openapi')
+
+  // Fetch openapi stats lazily — only when the user looks at an openapi-* task.
+  // Backend caches for 30s; the api-client caches for 30s too, so this is cheap.
+  useEffect(() => {
+    if (!selectedIsOpenapi) return
+    let cancelled = false
+    getCodegenOpenapiStats().then((s) => { if (!cancelled) setOpenapiStats(s) })
+    return () => { cancelled = true }
+  }, [selectedIsOpenapi])
+
+  // Fetch output stats whenever a task is selected (small, fast endpoint).
+  useEffect(() => {
+    if (!activeTaskId) return
+    let cancelled = false
+    getCodegenOutputStats(activeTaskId).then((s) => {
+      if (!cancelled) setOutputStats((prev) => ({ ...prev, [activeTaskId]: s }))
+    })
+    return () => { cancelled = true }
+  }, [activeTaskId])
+
+  const navigate = nav.navigate
+  const run = useCallback(async (taskId: string, check: boolean) => {
+    setRunning(taskId)
+    navigate(`task:${taskId}`)  // focus the right pane on the task being run
+    try {
+      const r = await runCodegenTask(taskId, check)
+      setResults((prev) => ({ ...prev, [taskId]: { result: r, ranAt: Date.now(), checkMode: check } }))
+      // Re-fetch output stats — file mtimes changed if regen succeeded.
+      // (Skipped in check mode: --check writes to a tempdir and doesn't touch the canonical output.)
+      if (!check && r.ok) {
+        const s = await getCodegenOutputStats(taskId)
+        setOutputStats((prev) => ({ ...prev, [taskId]: s }))
+      }
+    } finally {
+      setRunning(null)
+    }
+  }, [navigate])
+
+  return (
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={nav.activeSectionId}
+      activeChildId={nav.activeChildId}
+      onSelectSection={nav.selectSection}
+      onSelectChild={nav.selectChild}
+      expandedSectionIds={nav.expandedSectionIds}
+      onToggleExpand={nav.toggleExpand}
+      sidebarTitle="Codegen tasks"
+      sidebarWidth="w-52"
+      variant="dark"
+      resizable
+      persistKey="launcher-codegen-sidebar"
+      contentClassName="overflow-auto p-3 min-w-0"
+      className="h-full"
+    >
+      {!selected ? (
+        <EmptyState message="Select a codegen task on the left." />
+      ) : (
+        <CodegenTaskDetail
+          task={selected}
+          entry={selectedEntry}
+          running={running === selected.id}
+          onRun={(check) => run(selected.id, check)}
+          openapiStats={selectedIsOpenapi ? openapiStats : null}
+          output={outputStats[selected.id] ?? null}
+        />
+      )}
+    </SidebarContentLayout>
+  )
+}
+
+// ── Codegen subcomponents ──
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.round(ms / 1000)}s`
+}
+
+/** Round timeouts to a coarse human label (e.g. "5m", "30s", "2.5m"). */
+function formatTimeout(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`
+  const mins = ms / 60_000
+  return Number.isInteger(mins) ? `${mins}m` : `${mins.toFixed(1)}m`
+}
+
+function formatAgo(epochMs: number, now: number): string {
+  const diff = Math.max(0, now - epochMs)
+  if (diff < 5_000) return 'just now'
+  if (diff < 60_000) return `${Math.round(diff / 1000)}s ago`
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`
+  if (diff < 7 * 86_400_000) return `${Math.round(diff / 86_400_000)}d ago`
+  return new Date(epochMs).toLocaleDateString()
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+/** Parse `--include-tags`/`--exclude-tags` CSV from a task's args list. */
+function parseTagFilters(args?: string[]): { include: string[]; exclude: string[] } {
+  const out = { include: [] as string[], exclude: [] as string[] }
+  if (!args) return out
+  for (let i = 0; i < args.length - 1; i += 1) {
+    if (args[i] === '--include-tags') {
+      out.include = args[i + 1].split(',').map((s) => s.trim()).filter(Boolean)
+    } else if (args[i] === '--exclude-tags') {
+      out.exclude = args[i + 1].split(',').map((s) => s.trim()).filter(Boolean)
+    }
+  }
+  return out
+}
+
+/** Reconstruct the `pnpm codegen` invocation for copy-paste. */
+function cliCommand(task: CodegenTask, check: boolean): string {
+  const parts = ['pnpm', 'codegen', '--', '--only', task.id]
+  if (check && task.supports_check) parts.push('--check')
+  return parts.join(' ')
+}
+
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // ignore — clipboard may be unavailable in some contexts
+    }
+  }, [text])
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      className="text-[10px] px-1.5 py-0.5 rounded bg-surface-raised hover:bg-surface-raised/70 text-gray-400 hover:text-gray-200 border border-border shrink-0"
+    >
+      {copied ? 'Copied' : label}
+    </button>
+  )
+}
+
+function CodegenTaskDetail({
+  task, entry, running, onRun, openapiStats, output,
+}: {
+  task: CodegenTask
+  entry: CodegenResultEntry | null
+  running: boolean
+  onRun: (check: boolean) => void
+  openapiStats: CodegenOpenapiStats | null
+  output: CodegenOutputStats | null
+}) {
+  const dep = task.requires_service
+  const depOk = task.service_running !== false
+  const disabled = running || !depOk
+  const tagFilters = parseTagFilters(task.args)
+  const isOpenapiScoped = task.id.startsWith('openapi-') && tagFilters.include.length > 0
+  const TitleIcon = pickTaskIcon(task)
+
+  // For openapi-scoped tasks, fold in op counts when available.
+  const tagCount = (tag: string): number | undefined => openapiStats?.per_tag?.[tag]
+  const totalScopedOps = isOpenapiScoped && openapiStats?.per_tag
+    ? tagFilters.include.reduce((sum, t) => sum + (openapiStats.per_tag![t] ?? 0), 0)
+    : null
+  // Sort tags by op count desc, with unknown tags at the end.
+  const orderedIncludeTags = isOpenapiScoped && openapiStats?.per_tag
+    ? [...tagFilters.include].sort((a, b) => (tagCount(b) ?? -1) - (tagCount(a) ?? -1))
+    : tagFilters.include
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-blue-300 shrink-0 [&>svg]:w-4 [&>svg]:h-4">
+            <TitleIcon />
+          </span>
+          <span className="text-sm font-semibold text-gray-100 font-mono">{task.id}</span>
+          {task.groups.map((g) => (
+            <Badge key={g} color="blue" className="text-[9px]">{g}</Badge>
+          ))}
+          {task.check_only && (
+            <Badge color="yellow" className="text-[9px]">check-only</Badge>
+          )}
+        </div>
+        <div className="text-[11px] text-gray-400">{task.description}</div>
+        <div className="text-[10px] text-gray-500 font-mono truncate select-text">{task.script}</div>
+        {/* Live OpenAPI schema summary — shown on the unscoped `openapi` parent
+            task (and any future openapi child without --include-tags). For
+            tag-scoped children, the per-tag breakdown is in the "Covers tags"
+            panel below, so we skip it here. */}
+        {task.id.startsWith('openapi') && tagFilters.include.length === 0 && openapiStats?.ok && (
+          <div className="text-[10px] text-gray-500">
+            Live schema: <span className="text-gray-300">{openapiStats.total_ops ?? '?'}</span> ops
+            {openapiStats.per_tag && (
+              <> · <span className="text-gray-300">{Object.keys(openapiStats.per_tag).length}</span> tags</>
+            )}
+            {openapiStats.fetched_at && (
+              <> · fetched {formatAgo(openapiStats.fetched_at * 1000, Date.now())}</>
+            )}
+          </div>
+        )}
+      </div>
+
+      {dep && (
         <StatusPill tone={depOk ? 'success' : 'warning'} dot size="xs">
           Requires {dep.label}
-          {!depOk && <span className="ml-1 text-[10px] opacity-70">- start it first</span>}
+          {!depOk && <span className="ml-1 text-[10px] opacity-70">— start it first</span>}
         </StatusPill>
-      </div>
-    ) : null
+      )}
 
-    const actions = (
-      <>
+      {/* Output filesystem stats (A1+A2+symbol-count). Surfaces only when the
+          task has a declared output path. Local-FS introspection — answers
+          "is my generated code there and is it fresh?" */}
+      {output && output.ok && output.output_path && (
+        <div className="border border-border rounded p-2 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">Output</span>
+            {!output.exists && (
+              <Badge color="orange" className="text-[9px]">not built</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+              {output.output_path}
+            </code>
+            <CopyButton text={output.output_path} />
+          </div>
+          {output.exists && (
+            <>
+              <div className="text-[10px] text-gray-400">
+                {output.kind === 'directory' ? (
+                  <>
+                    {output.file_count ?? 0} files
+                    {typeof output.total_bytes === 'number' && (
+                      <> · {formatFileSize(output.total_bytes)}</>
+                    )}
+                    {typeof output.symbol_count === 'number' && (
+                      <> · <span className="text-gray-300">{output.symbol_count.toLocaleString()} generated symbols</span></>
+                    )}
+                  </>
+                ) : (
+                  typeof output.total_bytes === 'number' && formatFileSize(output.total_bytes)
+                )}
+              </div>
+              {output.last_modified && (
+                <div className="text-[10px] text-gray-500">
+                  Last modified {formatAgo(output.last_modified * 1000, Date.now())}
+                  {output.most_recent_file && output.kind === 'directory' && (
+                    <> · <span className="font-mono text-gray-400">{output.most_recent_file}</span></>
+                  )}
+                  {/* Pair build mtime with live-schema fetch time so a fresh
+                      schema against an older build reads as a stale signal. */}
+                  {task.id.startsWith('openapi') && openapiStats?.ok && openapiStats.fetched_at && (
+                    <>
+                      {' '}· schema fetched {formatAgo(openapiStats.fetched_at * 1000, Date.now())}
+                      {openapiStats.fetched_at > output.last_modified && (
+                        <span className="ml-1 text-amber-400">(newer than build)</span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {task.check_only && output.exists && (
+            <div className="text-[10px] text-gray-500 italic">
+              Shares this output with full <span className="font-mono">openapi</span>; this task only checks a slice of it.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* What this task covers — parsed from args (#1, with op-counts from #6). */}
+      {(tagFilters.include.length > 0 || tagFilters.exclude.length > 0) && (
+        <div className="border border-border rounded p-2 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">
+              Covers {tagFilters.include.length > 0 ? 'tags' : 'all except'}
+            </span>
+            {isOpenapiScoped && (
+              <span className="text-[10px] text-gray-500">
+                {openapiStats?.ok && totalScopedOps !== null ? (
+                  <>
+                    {tagFilters.include.length} tags · {totalScopedOps} ops
+                    {openapiStats.total_ops ? (
+                      <span className="text-gray-600"> / {openapiStats.total_ops} total</span>
+                    ) : null}
+                  </>
+                ) : openapiStats && !openapiStats.ok ? (
+                  <span className="text-amber-500" title={openapiStats.error}>op-counts unavailable</span>
+                ) : (
+                  <span className="text-gray-600">loading op counts…</span>
+                )}
+              </span>
+            )}
+          </div>
+          {orderedIncludeTags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {orderedIncludeTags.map((tag) => {
+                const c = tagCount(tag)
+                const known = openapiStats?.per_tag ? c !== undefined : true
+                return (
+                  <span
+                    key={tag}
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                      known
+                        ? 'bg-surface-raised text-gray-300 border border-border'
+                        : 'bg-amber-900/30 text-amber-300 border border-amber-800/50'
+                    }`}
+                    title={!known ? 'Tag listed in manifest but not seen in live OpenAPI schema' : undefined}
+                  >
+                    {tag}
+                    {c !== undefined && <span className="ml-1 text-gray-500">{c}</span>}
+                  </span>
+                )
+              })}
+            </div>
+          )}
+          {tagFilters.exclude.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {tagFilters.exclude.map((tag) => (
+                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-red-900/20 text-red-300 border border-red-800/40">
+                  −{tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 flex-wrap">
         {task.supports_check && (
           <Button
             size="xs"
             className="bg-amber-700 hover:bg-amber-600 text-white"
-            onClick={() => run(task.id, true)}
-            disabled={!!running || !depOk}
+            onClick={() => onRun(true)}
+            disabled={disabled}
           >
-            Check
+            {running ? 'Checking…' : 'Check'}
           </Button>
         )}
-        <Button
-          size="xs"
-          className="bg-green-700 hover:bg-green-600 text-white"
-          onClick={() => run(task.id, false)}
-          disabled={!!running || !depOk}
-        >
-          {running === task.id ? 'Running...' : 'Run'}
-        </Button>
-      </>
-    )
+        {!task.check_only && (
+          <Button
+            size="xs"
+            className="bg-green-700 hover:bg-green-600 text-white"
+            onClick={() => onRun(false)}
+            disabled={disabled}
+          >
+            {running ? 'Running…' : 'Run'}
+          </Button>
+        )}
+        {task.check_only && (
+          <span className="text-[10px] text-gray-500 italic">
+            Check-only — full <span className="font-mono">openapi</span> task is the only generator.
+          </span>
+        )}
+        {task.timeout_ms && (
+          <span className="text-[10px] text-gray-500 italic">
+            · times out after {formatTimeout(task.timeout_ms)}
+          </span>
+        )}
+      </div>
 
-    return (
-      <ActionCard
-        key={task.id}
-        title={titleText}
-        description={task.description}
-        body={depLine || undefined}
-        tags={tags}
-        actions={actions}
-        indented={nested}
-        className={nested ? 'bg-surface' : undefined}
-      />
-    )
-  }
+      {/* Last-run line (#5) — only shown if this task has been run in the session. */}
+      {entry && (
+        <div className="text-[10px] text-gray-500">
+          Last {entry.checkMode ? 'check' : 'run'}: {formatAgo(entry.ranAt, Date.now())}
+          {' · '}
+          {formatDuration(entry.result.duration_ms)}
+          {entry.result.exit_code !== undefined && entry.result.exit_code !== null && (
+            <> {' · '} exit={entry.result.exit_code}</>
+          )}
+        </div>
+      )}
 
-  return (
-    <div className="p-3 space-y-2">
-      {EXPANDABLE_PARENTS.map((parentId) => {
-        const group = parentChildMap.map[parentId]
-        if (!group) return null
-
-        // No explicit parent task — flatten children under no header
-        if (!group.parent) {
-          return <Fragment key={parentId}>{group.children.map((c) => renderTaskCard(c))}</Fragment>
-        }
-
-        const isOpen = !!openParents[parentId]
-        const parentBadge = group.children.length > 0
-          ? <Badge color="gray" className="text-[9px]">{group.children.length} sub</Badge>
-          : null
-
-        return (
-          <div key={parentId} className="space-y-1">
-            {renderTaskCard(group.parent)}
-            {group.children.length > 0 && (
-              <DisclosureSection
-                label={<span className="text-[10px] text-gray-500">Subtasks</span>}
-                badge={parentBadge}
-                isOpen={isOpen}
-                onToggle={(o) => setOpenParents((p) => ({ ...p, [parentId]: o }))}
-                size="sm"
-                className="ml-5"
-              >
-                <div className="space-y-1 mt-1">
-                  {group.children.map((c) => renderTaskCard(c, { nested: true, parentId }))}
-                </div>
-              </DisclosureSection>
-            )}
+      {/* CLI snippet (#2) — what to type in a terminal. */}
+      <div className="border border-border rounded p-2 space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500">CLI</div>
+        {task.supports_check && (
+          <div className="flex items-center gap-1.5">
+            <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+              {cliCommand(task, true)}
+            </code>
+            <CopyButton text={cliCommand(task, true)} />
           </div>
-        )
-      })}
-      {parentChildMap.regular.map((task) => renderTaskCard(task))}
-      {runResult && <ResultBox result={runResult} />}
+        )}
+        {!task.check_only && (
+          <div className="flex items-center gap-1.5">
+            <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+              {cliCommand(task, false)}
+            </code>
+            <CopyButton text={cliCommand(task, false)} />
+          </div>
+        )}
+        {/* Manifest args — flags the runner appends to `script` invocation that
+            aren't visible from the user-facing CLI invocation above. Skipped
+            when there's nothing to show beyond the CLI itself. */}
+        {task.args && task.args.length > 0 && (
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <span className="text-[10px] text-gray-500 shrink-0">args</span>
+            <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+              {task.args.join(' ')}
+            </code>
+          </div>
+        )}
+      </div>
+
+      {entry?.result && <ResultBox result={entry.result} />}
     </div>
   )
 }
@@ -251,7 +680,6 @@ function DatabasesSection() {
   const [statuses, setStatuses] = useState<Record<string, MigrationStatus>>({})
   const [backupInfo, setBackupInfo] = useState<Record<string, DbBackupInfo>>({})
   const [backups, setBackups] = useState<DbBackupEntry[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState<{ dbId: string; kind: 'migration' | 'backup' } | null>(null)
   const [lastMigResult, setLastMigResult] = useState<MigrationResult | null>(null)
   const [lastBackupResult, setLastBackupResult] = useState<DbBackupResult | null>(null)
@@ -275,7 +703,7 @@ function DatabasesSection() {
     getMigrationDatabases().then((dbs) => {
       if (cancelled) return
       setDatabases(dbs)
-      if (dbs.length > 0) setSelectedId((prev) => prev ?? dbs[0].id)
+      // useSidebarNav auto-selects the first section once `sections` populates.
       dbs.forEach((db) => {
         getMigrationStatus(db.id)
           .then((s) => !cancelled && setStatuses((prev) => ({ ...prev, [db.id]: s })))
@@ -313,7 +741,27 @@ function DatabasesSection() {
     }
   }, [refreshBackupsList])
 
-  const selected = databases.find((db) => db.id === selectedId) ?? null
+  // SCL sections — flat list (databases have no children). Status dot in the
+  // icon slot mirrors the per-row colored pill: amber when there are pending
+  // migrations, green when up-to-date, gray when status hasn't loaded yet.
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
+    return databases.map((db) => {
+      const status = statuses[db.id]
+      const pending = status?.pending?.length ?? 0
+      const state = !status ? undefined : pending > 0 ? 'stale' : 'fresh'
+      return {
+        id: `db:${db.id}`,
+        label: pending > 0 ? `${db.label} (${pending} pending)` : db.label,
+        icon: <StatusDot state={state} />,
+      }
+    })
+  }, [databases, statuses])
+
+  const nav = useSidebarNav({ sections, storageKey: 'launcher-databases-active' })
+
+  // Resolve the active database from the rail state (`db:<id>` namespace).
+  const selectedId = nav.activeSectionId.startsWith('db:') ? nav.activeSectionId.slice(3) : null
+  const selected = selectedId ? databases.find((db) => db.id === selectedId) ?? null : null
   const selectedStatus = selected ? statuses[selected.id] : undefined
   const selectedInfo = selected ? backupInfo[selected.id] : undefined
   const selectedBackups = selected ? backups.filter((b) => b.db_id === selected.id) : []
@@ -331,46 +779,21 @@ function DatabasesSection() {
   const canBackup = selectedInfo?.mode === 'docker' || selectedInfo?.mode === 'local'
 
   return (
-    <div className="h-full flex min-h-0">
-      {/* Left pane: DB list */}
-      <div className="w-44 shrink-0 border-r border-border overflow-auto">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 px-2 py-1.5">Databases</div>
-        {databases.map((db) => {
-          const status = statuses[db.id]
-          const pending = status?.pending?.length ?? 0
-          const isSelected = db.id === selectedId
-          const tone: StatusTone =
-            !status ? 'muted' :
-            pending > 0 ? 'warning' :
-            'success'
-          const label =
-            !status ? '—' :
-            pending > 0 ? `${pending} pending` :
-            'ok'
-          return (
-            <button
-              key={db.id}
-              onClick={() => setSelectedId(db.id)}
-              className={`w-full text-left px-2 py-1.5 border-l-2 transition-colors ${
-                isSelected
-                  ? 'bg-surface-raised border-blue-400'
-                  : 'border-transparent hover:bg-surface-raised/50'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-1.5">
-                <span className="text-[11px] text-gray-200 truncate">{db.label}</span>
-                <StatusPill tone={tone} dot size="xs">{label}</StatusPill>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Right pane: detail */}
-      <div className="flex-1 overflow-auto p-3 space-y-4 min-w-0">
-        {!selected ? (
-          <div className="text-[11px] text-gray-500 italic">Select a database on the left.</div>
-        ) : (
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={nav.activeSectionId}
+      onSelectSection={nav.selectSection}
+      sidebarTitle="Databases"
+      sidebarWidth="w-44"
+      variant="dark"
+      resizable
+      persistKey="launcher-databases-sidebar"
+      contentClassName="overflow-auto p-3 space-y-4 min-w-0"
+      className="h-full"
+    >
+      {!selected ? (
+        <EmptyState message="Select a database on the left." />
+      ) : (
           <>
             {/* Header */}
             <div className="space-y-0.5">
@@ -490,8 +913,7 @@ function DatabasesSection() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </SidebarContentLayout>
   )
 }
 
@@ -1131,14 +1553,33 @@ function countNeedsBuild(items: Buildable[]): number {
   return n
 }
 
+/** Per-buildable run history (mirrors codegen's `results` map at line 174). */
+type BuildableResultEntry = { result: BuildResult; ranAt: number }
+
+/**
+ * Small colored dot used as the rail-row icon (left of label). Replaces the
+ * launcher-local pattern of a `StatusPill` on the right of each row, because
+ * `HierarchicalSidebarNav` keeps the rail purely nav (icon + label) — per-row
+ * state badges are the canonical pixsim7 anti-pattern. See
+ * `apps/main/src/features/settings/components/shared/MaintenanceDashboard.tsx`
+ * line 1530 for the same reasoning.
+ */
+function StatusDot({ state, building }: { state?: string; building?: boolean }) {
+  const cls = building
+    ? 'bg-blue-400 animate-pulse'
+    : state === 'fresh' ? 'bg-green-500'
+    : state === 'stale' ? 'bg-amber-400'
+    : state === 'not_built' ? 'bg-red-500'
+    : 'bg-gray-500'
+  return <span className={`inline-block w-2 h-2 rounded-full ${cls}`} />
+}
+
 function BuildablesSection({
   progress, setProgress,
 }: { progress: BuildProgress; setProgress: (p: BuildProgress) => void }) {
   const [buildables, setBuildables] = useState<Buildable[]>([])
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
-  const [buildResult, setBuildResult] = useState<BuildResult | null>(null)
+  const [results, setResults] = useState<Record<string, BuildableResultEntry>>({})
   const [lastBuiltPkg, setLastBuiltPkg] = useState<string | null>(null)
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [batch, setBatch] = useState<{ running: boolean; done: number; total: number; failed: string[] } | null>(null)
 
   // Derive "currently building single pkg" from lifted progress state
@@ -1150,29 +1591,48 @@ function BuildablesSection({
   const groups = useMemo(() => buildGroups(buildables), [buildables])
   const totalStale = useMemo(() => countNeedsBuild(buildables), [buildables])
 
-  // Default: top-level groups open; sub-groups closed.
-  useEffect(() => {
-    if (!groups.length) return
-    setOpenGroups((prev) => {
-      const next = { ...prev }
-      for (const g of groups) {
-        if (next[g.id] === undefined) next[g.id] = true
-        if (g.subgroups) {
-          for (const sg of g.subgroups) {
-            if (next[sg.id] === undefined) next[sg.id] = false
-          }
-        }
+  // Map groups → SidebarContentLayout sections. SCL is two-level (sections
+  // + children), so sub-grouped categories (packages ≥ PACKAGE_SUBGROUP_THRESHOLD)
+  // get split into virtual top-level sections labeled `category · prefix`.
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
+    const buildSection = (g: BuildableGroup, label: string): SidebarContentLayoutSection => {
+      const items = sortItems(g.items)
+      const stale = countNeedsBuild(g.items)
+      const sectionLabel = stale > 0
+        ? `${label} (${g.items.length} · ${stale} stale)`
+        : `${label} (${g.items.length})`
+      return {
+        id: g.id,
+        label: sectionLabel,
+        children: items.map((b) => ({
+          id: `b:${b.id}`,
+          label: b.title,
+          icon: <StatusDot state={b.build_status?.state} building={buildingPkg === b.package} />,
+        })),
       }
-      return next
-    })
-  }, [groups])
+    }
+    const out: SidebarContentLayoutSection[] = []
+    for (const g of groups) {
+      if (g.subgroups) {
+        for (const sg of g.subgroups) out.push(buildSection(sg, `${g.label} · ${sg.label}`))
+      } else {
+        out.push(buildSection(g, g.label))
+      }
+    }
+    return out
+  }, [groups, buildingPkg])
+
+  const nav = useSidebarNav({
+    sections,
+    storageKey: 'launcher-buildables-active',
+  })
 
   const handleBuild = useCallback(async (pkg: string) => {
     setProgress({ kind: 'single', pkg })
-    setBuildResult(null)
     setLastBuiltPkg(pkg)
     try {
-      setBuildResult(await buildPackage(pkg))
+      const r = await buildPackage(pkg)
+      setResults((prev) => ({ ...prev, [pkg]: { result: r, ranAt: Date.now() } }))
       // Force-refresh to get updated build_status
       getBuildables(true).then(setBuildables)
     } finally {
@@ -1180,10 +1640,9 @@ function BuildablesSection({
     }
   }, [setProgress])
 
-  const rebuildAllStale = useCallback(async (scope?: Buildable[]) => {
-    const pool = (scope ?? buildables).filter(isNeedsBuild)
+  const rebuildAllStale = useCallback(async () => {
+    const pool = buildables.filter(isNeedsBuild)
     if (!pool.length) return
-    setBuildResult(null)
     setBatch({ running: true, done: 0, total: pool.length, failed: [] })
     const failed: string[] = []
     for (let i = 0; i < pool.length; i++) {
@@ -1191,6 +1650,7 @@ function BuildablesSection({
       setProgress({ kind: 'batch', pkg: b.package, done: i, total: pool.length })
       try {
         const res = await buildPackage(b.package)
+        setResults((prev) => ({ ...prev, [b.package]: { result: res, ranAt: Date.now() } }))
         if (!res.ok) failed.push(b.package)
       } catch {
         failed.push(b.package)
@@ -1201,11 +1661,17 @@ function BuildablesSection({
     getBuildables(true).then(setBuildables)
   }, [buildables, setProgress])
 
-  const justBuiltLauncher = buildResult?.ok && lastBuiltPkg === '@pixsim7/launcher'
+  const lastEntry = lastBuiltPkg ? results[lastBuiltPkg] : null
+  const justBuiltLauncher = !!lastEntry?.result.ok && lastBuiltPkg === '@pixsim7/launcher'
+
+  // Resolve the active buildable from the rail child id (`b:<id>` namespace).
+  const selectedBuildableId = nav.activeChildId?.startsWith('b:') ? nav.activeChildId.slice(2) : null
+  const selected = selectedBuildableId ? buildables.find((b) => b.id === selectedBuildableId) ?? null : null
+  const selectedEntry = selected ? results[selected.package] ?? null : null
 
   return (
     <div className="h-full flex flex-col">
-      {/* Sticky toolbar + result */}
+      {/* Sticky toolbar — spans both panes (parity with codegen/databases). */}
       <div className="shrink-0 p-3 pb-0 space-y-2">
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-gray-500">
@@ -1217,14 +1683,11 @@ function BuildablesSection({
           <Button
             size="xs"
             className="bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
-            onClick={() => rebuildAllStale()}
+            onClick={rebuildAllStale}
             disabled={anyBusy || totalStale === 0}
           >
             {batch?.running ? `Building ${batch.done}/${batch.total}...` : `Rebuild stale (${totalStale})`}
           </Button>
-          <div className="flex-1" />
-          <Button size="xs" variant={viewMode === 'cards' ? 'secondary' : 'ghost'} onClick={() => setViewMode('cards')}>Cards</Button>
-          <Button size="xs" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')}>List</Button>
         </div>
 
         {batch && !batch.running && (
@@ -1239,7 +1702,6 @@ function BuildablesSection({
           </div>
         )}
 
-        {buildResult && !batch?.running && <ResultBox result={buildResult} />}
         {justBuiltLauncher && (
           <div className="flex items-center gap-2 p-2 rounded border border-blue-800/50 bg-blue-900/20 text-[11px] text-blue-200">
             <span className="flex-1">Launcher UI rebuilt - reload to apply. (Tab state will reset.)</span>
@@ -1248,154 +1710,123 @@ function BuildablesSection({
         )}
       </div>
 
-      {/* Scrollable grouped content */}
-      <div className="flex-1 overflow-y-auto p-3 pt-2 space-y-1">
-        {groups.map((group) => (
-          <GroupNode
-            key={group.id}
-            group={group}
-            openGroups={openGroups}
-            setOpen={(id, o) => setOpenGroups((prev) => ({ ...prev, [id]: o }))}
-            viewMode={viewMode}
-            buildingPkg={buildingPkg}
+      {/* Master-detail via the canonical shared.ui layout (used by 26+ files
+          in main-app, incl. CodegenDevPage). The rail collapse + drag-resize
+          + active-id persistence come for free. */}
+      <SidebarContentLayout
+        sections={sections}
+        activeSectionId={nav.activeSectionId}
+        activeChildId={nav.activeChildId}
+        onSelectSection={nav.selectSection}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
+        sidebarTitle="Buildables"
+        sidebarWidth="w-52"
+        variant="dark"
+        resizable
+        persistKey="launcher-buildables-sidebar"
+        contentClassName="overflow-auto p-3 min-w-0"
+        className="flex-1 min-h-0"
+      >
+        {!selected ? (
+          <EmptyState message="Select a buildable on the left." />
+        ) : (
+          <BuildableDetail
+            b={selected}
+            entry={selectedEntry}
+            building={buildingPkg === selected.package}
             anyBusy={anyBusy}
-            onBuild={handleBuild}
-            onRebuildStale={rebuildAllStale}
+            onBuild={() => handleBuild(selected.package)}
           />
-        ))}
-      </div>
+        )}
+      </SidebarContentLayout>
     </div>
   )
 }
 
-function GroupNode({
-  group, openGroups, setOpen, viewMode, buildingPkg, anyBusy, onBuild, onRebuildStale,
+// ── Buildables — detail pane (mirror CodegenTaskDetail at line 476) ──
+
+function BuildableDetail({
+  b, entry, building, anyBusy, onBuild,
 }: {
-  group: BuildableGroup
-  openGroups: Record<string, boolean>
-  setOpen: (id: string, open: boolean) => void
-  viewMode: 'cards' | 'list'
-  buildingPkg: string | null
+  b: Buildable
+  entry: BuildableResultEntry | null
+  building: boolean
   anyBusy: boolean
-  onBuild: (pkg: string) => void
-  onRebuildStale: (scope?: Buildable[]) => void
+  onBuild: () => void
 }) {
-  const isOpen = !!openGroups[group.id]
-  const staleCount = countNeedsBuild(group.items)
-
-  const label = (
-    <span className="flex items-center gap-1.5">
-      <span className={group.depth === 0 ? 'text-xs uppercase tracking-wide' : 'text-[11px]'}>{group.label}</span>
-      <span className="text-[10px] text-gray-500">({group.items.length})</span>
-      {staleCount > 0 && (
-        <span className="text-[10px] text-amber-400">- {staleCount} need build</span>
-      )}
-    </span>
-  )
-
-  const actions = staleCount > 0 ? (
-    <Button
-      size="xs"
-      variant="ghost"
-      className="text-amber-400 hover:text-amber-300"
-      disabled={anyBusy}
-      onClick={(e) => { e.stopPropagation(); onRebuildStale(group.items) }}
-    >
-      Rebuild stale
-    </Button>
-  ) : null
+  const statusPill = buildStateToPill(b.build_status)
+  const tags = b.tags.filter((t) => t !== b.category)
+  const status = b.build_status
 
   return (
-    <DisclosureSection
-      label={label}
-      actions={actions}
-      isOpen={isOpen}
-      onToggle={(o) => setOpen(group.id, o)}
-      size="sm"
-      className={group.depth === 1 ? 'ml-4' : ''}
-    >
-      {group.subgroups
-        ? (
-          <div className="space-y-1">
-            {group.subgroups.map((sub) => (
-              <GroupNode
-                key={sub.id}
-                group={sub}
-                openGroups={openGroups}
-                setOpen={setOpen}
-                viewMode={viewMode}
-                buildingPkg={buildingPkg}
-                anyBusy={anyBusy}
-                onBuild={onBuild}
-                onRebuildStale={onRebuildStale}
-              />
-            ))}
-          </div>
-        )
-        : (
-          <div className="space-y-1">
-            {sortItems(group.items).map((b) => (
-              <BuildableItem
-                key={b.id}
-                b={b}
-                viewMode={viewMode}
-                buildingPkg={buildingPkg}
-                anyBusy={anyBusy}
-                onBuild={onBuild}
-              />
-            ))}
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm font-semibold text-gray-100">{b.title}</span>
+          {statusPill}
+          <Badge color="blue" className="text-[9px]">{b.category}</Badge>
+          {tags.map((t) => (
+            <Badge key={t} color="blue" className="text-[9px]">{t}</Badge>
+          ))}
+        </div>
+        <div className="text-[10px] text-gray-500 font-mono select-text break-all">{b.package}</div>
+        {b.description && <div className="text-[11px] text-gray-400">{b.description}</div>}
+      </div>
+
+      {/* Source / output paths panel — same idiom as codegen Output panel (line 532). */}
+      <div className="border border-border rounded p-2 space-y-1.5">
+        <SectionHeader>Source</SectionHeader>
+        <div className="flex items-center gap-1.5">
+          <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+            {b.directory}
+          </code>
+          <CopyButton text={b.directory} />
+        </div>
+        {status?.output_dir && (
+          <>
+            <SectionHeader className="pt-1">Output</SectionHeader>
+            <div className="flex items-center gap-1.5">
+              <code className="flex-1 text-[10px] font-mono bg-surface-raised border border-border rounded px-1.5 py-1 text-gray-300 select-text break-all">
+                {status.output_dir}
+              </code>
+              <CopyButton text={status.output_dir} />
+            </div>
+          </>
+        )}
+        {status?.build_modified && (
+          <div className="text-[10px] text-gray-500">
+            Last built {formatRelativeTime(status.build_modified)}
           </div>
         )}
-    </DisclosureSection>
-  )
-}
+      </div>
 
-function BuildableItem({
-  b, viewMode, buildingPkg, anyBusy, onBuild,
-}: { b: Buildable; viewMode: 'cards' | 'list'; buildingPkg: string | null; anyBusy: boolean; onBuild: (pkg: string) => void }) {
-  const statusPill = buildStateToPill(b.build_status)
-  const tags = b.tags.filter((t) => t !== b.category).map((t) => (
-    <Badge key={t} color="blue" className="text-[9px]">{t}</Badge>
-  ))
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="xs"
+          className="bg-green-700 hover:bg-green-600 text-white"
+          onClick={onBuild}
+          disabled={anyBusy}
+        >
+          {building ? 'Building…' : 'Build'}
+        </Button>
+      </div>
 
-  const buildBtn = (
-    <Button size="xs" className="bg-green-700 hover:bg-green-600 text-white" onClick={() => onBuild(b.package)} disabled={anyBusy}>
-      {buildingPkg === b.package ? (viewMode === 'list' ? '...' : 'Building...') : 'Build'}
-    </Button>
-  )
-
-  if (viewMode === 'list') {
-    return (
-      <ActionCard
-        title={b.title}
-        status={statusPill}
-        meta={b.directory}
-        density="compact"
-        actions={buildBtn}
-        indented
-      />
-    )
-  }
-
-  const meta = (
-    <>
-      {b.directory}
-      {b.build_status?.build_modified && (
-        <span className="ml-2 text-gray-500">built {formatRelativeTime(b.build_status.build_modified)}</span>
+      {/* Last-run line — mirror codegen line 668. */}
+      {entry && (
+        <div className="text-[10px] text-gray-500">
+          Last build: {formatAgo(entry.ranAt, Date.now())}
+          {' · '}
+          {formatDuration(entry.result.duration_ms)}
+          {entry.result.exit_code !== undefined && entry.result.exit_code !== null && (
+            <> {' · '} exit={entry.result.exit_code}</>
+          )}
+        </div>
       )}
-    </>
-  )
 
-  return (
-    <ActionCard
-      title={b.title}
-      status={statusPill}
-      tags={tags}
-      description={b.description}
-      meta={meta}
-      actions={buildBtn}
-      indented
-    />
+      {entry?.result && <ResultBox result={entry.result} />}
+    </div>
   )
 }
 
