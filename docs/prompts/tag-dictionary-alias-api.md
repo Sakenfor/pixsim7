@@ -257,7 +257,7 @@ This can start in code/static config and later move to DB if needed.
 - Add `GET /block-templates/meta/blocks/tag-dictionary`
 - Backed by:
   - small static canonical registry in backend code
-  - DB usage aggregation from `PromptBlock.tags`
+  - DB usage aggregation from `BlockPrimitive.tags`
 
 ### Phase 2
 
