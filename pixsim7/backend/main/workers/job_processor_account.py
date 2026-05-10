@@ -15,6 +15,9 @@ from pixsim7.backend.main.services.account import (
     AccountService,
     apply_provider_credit_snapshot,
 )
+from pixsim7.backend.main.services.account.account_service import (
+    _account_has_unlimited_model,
+)
 from pixsim7.backend.main.services.account_event_service import AccountEventService
 
 _PIXVERSE_PROVIDER_ID = "pixverse"
@@ -372,11 +375,17 @@ def is_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
 
     Unlimited models (e.g. qwen-image on Pro plans) don't consume credits,
     so credit checks should be bypassed for them.
+
+    Delegates to the selector's canonical helper so the submit-time
+    verify_credits gate uses the same metadata-key fallback and alias
+    normalization as ``select_and_reserve_account``. Previously this was
+    a local naive ``model in unlimited`` check that missed alias
+    normalization — a request arriving as ``seedream-4`` against stored
+    canonical ``seedream-4.0`` would wrongly fall through to credit
+    verification, then potentially reject the account picked specifically
+    because it had the model unlimited.
     """
-    if not model or not account.provider_metadata:
-        return False
-    unlimited = account.provider_metadata.get("plan_unlimited_image_models") or []
-    return model in unlimited
+    return _account_has_unlimited_model(account, model)
 
 
 def _is_pinned_account(generation: Generation, account: ProviderAccount) -> bool:

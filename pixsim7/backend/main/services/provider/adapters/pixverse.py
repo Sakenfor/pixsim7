@@ -33,6 +33,9 @@ from pixsim7.backend.main.domain import (
     ProviderAccount,
     Generation,
 )
+from pixsim7.backend.main.services.account.account_service import (
+    extract_account_promotion_discounts,
+)
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
@@ -105,20 +108,19 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_moderation import 
 def _account_promotion_discounts(
     account: Optional[ProviderAccount],
 ) -> Optional[Dict[str, float]]:
-    """Return the active promotion-discount map for an account, or None.
+    """Return the active promotion-discount map for an account, or ``None``.
 
-    Reads ``account.provider_metadata['promotion_discounts']`` (written by
-    pixverse_promotions.apply_promotions_to_metadata during credit sync).
-    Returns None when no discounts are recorded so callers can use the
-    base pricing path unchanged.
+    Thin shim over ``extract_account_promotion_discounts`` that preserves
+    this adapter's existing "``None`` means use base pricing path"
+    contract — the SDK's ``estimate_video_credit_change`` distinguishes
+    ``discounts=None`` from ``discounts={}`` and our cost-preview tests
+    pin ``captured["discounts"] is None`` for the no-account case.
+
+    Validation (numeric, ``[0.0, 1.0)``, no bools) lives in the shared
+    helper; selection and billing read the same shape so they can't drift.
     """
-    if account is None:
-        return None
-    metadata = getattr(account, "provider_metadata", None) or {}
-    discounts = metadata.get("promotion_discounts")
-    if isinstance(discounts, dict) and discounts:
-        return {k: v for k, v in discounts.items() if isinstance(v, (int, float))}
-    return None
+    discounts = extract_account_promotion_discounts(account)
+    return discounts or None
 
 
 class PixverseProvider(

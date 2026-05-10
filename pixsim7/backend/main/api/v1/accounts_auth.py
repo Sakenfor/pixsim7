@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AccountSvc, DatabaseSession
+from pixsim7.backend.main.api.v1.accounts import account_to_response
 from pixsim7.backend.main.shared.schemas.account_schemas import AccountResponse
 from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token, extract_jwt_from_cookies
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -27,99 +28,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# Import _to_response helper from accounts.py
 def _to_response(account: ProviderAccount, current_user_id: int) -> AccountResponse:
-    """Convert account to response with computed fields"""
-    # Parse JWT if exists
-    jwt_expired = False
-    jwt_expires_at = None
-    if account.jwt_token:
-        jwt_info = parse_jwt_token(account.jwt_token)
-        jwt_expired = jwt_info.is_expired
-        jwt_expires_at = jwt_info.expires_at
-
-    # Build credits dict from relationship
-    credits_dict = {}
-    if account.credits:  # credits is the relationship to ProviderCredit
-        credits_dict = {c.credit_type: c.amount for c in account.credits}
-
-    # Has any OpenAPI-style key?
-    has_openapi_key = False
-    api_keys = getattr(account, "api_keys", None) or []
-    for entry in api_keys:
-        if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
-            has_openapi_key = True
-            break
-
-    # Check if Google-authenticated
-    is_google_account = False
-    provider_metadata = getattr(account, "provider_metadata", None) or {}
-    if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
-        is_google_account = True
-
-    routing_allow_patterns = [
-        str(item).strip()
-        for item in (getattr(account, "routing_allow_patterns", None) or [])
-        if str(item).strip()
-    ]
-    routing_deny_patterns = [
-        str(item).strip()
-        for item in (getattr(account, "routing_deny_patterns", None) or [])
-        if str(item).strip()
-    ]
-    raw_overrides = getattr(account, "routing_priority_overrides", None) or {}
-    routing_priority_overrides: Dict[str, int] = {}
-    if isinstance(raw_overrides, dict):
-        for key, value in raw_overrides.items():
-            normalized_key = str(key).strip()
-            if not normalized_key:
-                continue
-            try:
-                routing_priority_overrides[normalized_key] = int(value)
-            except (TypeError, ValueError):
-                continue
-
-    return AccountResponse(
-        id=account.id,
-        user_id=account.user_id,
-        email=account.email,
-        provider_id=account.provider_id,
-        nickname=account.nickname,
-        is_private=account.is_private,
-        status=account.status.value,
-        priority=int(getattr(account, "priority", 0) or 0),
-        # Auth
-        has_jwt=bool(account.jwt_token),
-        jwt_expired=jwt_expired,
-        jwt_expires_at=jwt_expires_at,
-        has_api_key_paid=has_openapi_key,
-        has_cookies=bool(account.cookies),
-        is_google_account=is_google_account,
-        # Credits (normalized) - derive total from dict for guaranteed consistency
-        credits=credits_dict,
-        total_credits=sum(credits_dict.values()),
-        # Usage
-        videos_today=account.videos_today,
-        total_videos_generated=account.total_videos_generated,
-        total_videos_failed=account.total_videos_failed,
-        success_rate=account.success_rate,
-        # Concurrency
-        max_concurrent_jobs=account.max_concurrent_jobs,
-        current_processing_jobs=account.current_processing_jobs,
-        # Plan capabilities
-        plan_tier=provider_metadata.get("plan_type", 0),
-        unlimited_image_models=provider_metadata.get("plan_unlimited_image_models", []),
-        promotions=provider_metadata.get("promotions") or {},
-        promotion_discounts=provider_metadata.get("promotion_discounts") or {},
-        routing_allow_patterns=routing_allow_patterns,
-        routing_deny_patterns=routing_deny_patterns,
-        routing_priority_overrides=routing_priority_overrides,
-        # Timing
-        last_used=account.last_used,
-        last_error=account.last_error,
-        cooldown_until=account.cooldown_until,
-        created_at=account.created_at,
-    )
+    """Auth-flow account response — delegates to the canonical converter
+    in ``accounts.py``. ``include_api_keys=False`` preserves this module's
+    historical behavior of omitting the api_keys field from auth-flow
+    responses (the local copy this replaces never set it). Flip to True
+    if/when the frontend needs api_keys here."""
+    return account_to_response(account, current_user_id, include_api_keys=False)
 
 
 async def _apply_extracted_account_data(

@@ -6,6 +6,7 @@ from pixsim7.backend.main.domain.enums import OperationType
 from pixsim7.backend.main.workers.job_processor_account import (
     has_positive_credits,
     has_sufficient_credits,
+    is_unlimited_model,
     resolve_required_credit_types,
 )
 
@@ -58,3 +59,33 @@ def test_has_positive_credits_honors_required_credit_pool() -> None:
     credits = {"web": 0, "openapi": 7}
     assert has_positive_credits(credits, required_credit_types=["web"]) is False
     assert has_positive_credits(credits, required_credit_types=["openapi"]) is True
+
+
+# ---------------------------------------------------------------------------
+# is_unlimited_model — submit-time gate, must agree with selector
+# ---------------------------------------------------------------------------
+
+
+def test_is_unlimited_model_normalizes_alias() -> None:
+    """Regression guard: ``is_unlimited_model`` must use the same alias
+    map as ``select_and_reserve_account``. Previously this was a naive
+    ``model in unlimited`` check that returned False for shorthand model
+    ids, then ``verify_credits`` would reject the very account selection
+    chose specifically for being unlimited.
+    """
+    account = SimpleNamespace(
+        provider_metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
+    )
+    # Shorthand request, canonical stored — must still match.
+    assert is_unlimited_model(account, "seedream-4") is True
+    # Sanity: canonical → canonical still works.
+    assert is_unlimited_model(account, "seedream-4.0") is True
+    # Sanity: unrelated model returns False.
+    assert is_unlimited_model(account, "qwen-image") is False
+
+
+def test_is_unlimited_model_safe_when_metadata_missing() -> None:
+    """Tolerate accounts with no metadata at all (older/test rows)."""
+    assert is_unlimited_model(SimpleNamespace(provider_metadata=None), "v6") is False
+    assert is_unlimited_model(SimpleNamespace(provider_metadata={}), "v6") is False
+    assert is_unlimited_model(SimpleNamespace(provider_metadata={"v6": 0.7}), None) is False

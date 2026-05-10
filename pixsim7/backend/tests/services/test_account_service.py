@@ -494,23 +494,18 @@ async def test_select_and_reserve_walks_to_next_candidate_on_race_loss(
 
 
 def test_account_has_unlimited_model_matches_canonical_id() -> None:
-    account = _make_account(metadata={"unlimited_image_models": ["seedream-4.0"]})
+    account = _make_account(metadata={"plan_unlimited_image_models": ["seedream-4.0"]})
     assert _account_has_unlimited_model(account, "seedream-4.0") is True
 
 
 def test_account_has_unlimited_model_matches_via_alias_normalization() -> None:
     """Operator shorthand (``seedream-4``) should hit a stored canonical entry."""
-    account = _make_account(metadata={"unlimited_image_models": ["seedream-4.0"]})
+    account = _make_account(metadata={"plan_unlimited_image_models": ["seedream-4.0"]})
     assert _account_has_unlimited_model(account, "seedream-4") is True
 
 
-def test_account_has_unlimited_model_accepts_legacy_metadata_key() -> None:
-    account = _make_account(metadata={"plan_unlimited_image_models": ["qwen-image"]})
-    assert _account_has_unlimited_model(account, "qwen-image") is True
-
-
 def test_account_has_unlimited_model_returns_false_when_model_missing() -> None:
-    account = _make_account(metadata={"unlimited_image_models": ["qwen-image"]})
+    account = _make_account(metadata={"plan_unlimited_image_models": ["qwen-image"]})
     assert _account_has_unlimited_model(account, "seedream-4.0") is False
     assert _account_has_unlimited_model(account, None) is False
 
@@ -529,7 +524,7 @@ async def test_select_and_reserve_unlimited_model_beats_higher_priority(
     free_low_priority = _make_account(
         account_id=2,
         priority=0,
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
     rows = [(paid_high_priority, 9000), (free_low_priority, 50)]
 
@@ -555,7 +550,7 @@ async def test_select_and_reserve_unlimited_wins_in_high_cost_fallback(
     cheap_unlimited = _make_account(
         account_id=2,
         priority=0,
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
 
     # 1st execute (pre-filter scan) → empty (forces fallback).
@@ -598,7 +593,7 @@ async def test_select_account_probe_prefers_unlimited(
     free_low_priority = _make_account(
         account_id=2,
         priority=0,
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
     free_low_priority.has_any_credits = lambda: True
     free_low_priority.get_total_credits = lambda: 50
@@ -722,7 +717,7 @@ async def test_select_and_reserve_unlimited_beats_discount(
     unlimited = _make_account(
         account_id=2,
         priority=0,
-        metadata={"unlimited_image_models": ["v6"]},
+        metadata={"plan_unlimited_image_models": ["v6"]},
     )
     rows = [(free_promo, 9000), (unlimited, 50)]
 

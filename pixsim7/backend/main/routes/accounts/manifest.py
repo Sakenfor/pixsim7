@@ -1,10 +1,11 @@
 """
 Provider Accounts API Routes Plugin
 
-Split into three modules for better maintainability:
+Split into four modules for better maintainability:
 - accounts: Core CRUD operations
 - accounts_auth: Authentication & session management (cookie import, re-auth, etc.)
 - accounts_credits: Credit sync & status endpoints
+- accounts_maintenance: Admin cleanups (deduplicate, cleanup state)
 """
 
 from fastapi import APIRouter
@@ -12,12 +13,14 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.api.v1.accounts import router as accounts_router
 from pixsim7.backend.main.api.v1.accounts_auth import router as auth_router
 from pixsim7.backend.main.api.v1.accounts_credits import router as credits_router
+from pixsim7.backend.main.api.v1.accounts_maintenance import router as maintenance_router
 
 # Combine all routers into one
 router = APIRouter()
 router.include_router(accounts_router)
 router.include_router(auth_router)
 router.include_router(credits_router)
+router.include_router(maintenance_router)
 
 manifest = PluginManifest(
     id="accounts",

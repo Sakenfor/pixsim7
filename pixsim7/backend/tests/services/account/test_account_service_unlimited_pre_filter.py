@@ -106,7 +106,7 @@ async def test_unlimited_account_wins_when_paid_passes_credit_prefilter(make_ses
         session,
         email="unlimited@test",
         priority=0,
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
 
     # Paid account has plenty of credits, unlimited has none.
@@ -140,7 +140,7 @@ async def test_unlimited_bypass_matches_model_via_alias_normalization(make_sessi
         email="unlimited@test",
         priority=0,
         # Stored as canonical, but request comes in as shorthand.
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
 
     await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)
@@ -151,34 +151,6 @@ async def test_unlimited_bypass_matches_model_via_alias_normalization(make_sessi
         provider_id="pixverse",
         operation_type="text_to_image",
         model="seedream-4",  # shorthand — alias map: seedream-4 -> seedream-4.0
-        min_credits=10,
-    )
-
-    assert selected.id == unlimited_id
-
-
-async def test_unlimited_bypass_uses_legacy_metadata_key(make_session):
-    """``plan_unlimited_image_models`` is the older key PixVerse syncs (see
-    ``pixverse_credits.py:675``); both must be honored by the SQL bypass
-    just as the Python ``_account_has_unlimited_model`` does."""
-    session = await make_session()
-
-    paid_id = await _insert_account(session, email="paid@test", priority=99)
-    unlimited_id = await _insert_account(
-        session,
-        email="unlimited@test",
-        priority=0,
-        metadata={"plan_unlimited_image_models": ["qwen-image"]},
-    )
-
-    await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)
-    await _insert_credit(session, account_id=unlimited_id, credit_type="image", amount=0)
-
-    service = AccountService(db=session)
-    selected = await service.select_and_reserve_account(
-        provider_id="pixverse",
-        operation_type="text_to_image",
-        model="qwen-image",
         min_credits=10,
     )
 
@@ -261,7 +233,7 @@ async def test_unlimited_outranks_discount_at_pre_filter_level(make_session):
         session,
         email="unlimited@test",
         priority=0,
-        metadata={"unlimited_image_models": ["v6"]},
+        metadata={"plan_unlimited_image_models": ["v6"]},
     )
 
     await _insert_credit(session, account_id=free_promo_id, credit_type="image", amount=5000)
@@ -291,7 +263,7 @@ async def test_select_account_probe_bypasses_credit_gate_for_unlimited(make_sess
         session,
         email="unlimited@test",
         priority=0,
-        metadata={"unlimited_image_models": ["seedream-4.0"]},
+        metadata={"plan_unlimited_image_models": ["seedream-4.0"]},
     )
 
     await _insert_credit(session, account_id=paid_id, credit_type="image", amount=9000)

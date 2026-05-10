@@ -284,17 +284,21 @@ def _account_priority_delta(account: ProviderAccount, *, operation_type: str | N
     return delta
 
 
+_UNLIMITED_IMAGE_MODELS_METADATA_KEY = "plan_unlimited_image_models"
+
+
 def _account_has_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
     """True when ``model`` is in the account's plan-unlimited list.
 
-    PixVerse Pro plans rotate which models don't consume credits; the list is
-    synced into ``provider_metadata.unlimited_image_models`` (legacy key:
-    ``plan_unlimited_image_models``). Account selection uses this as a
-    top-tier preference: if account A has the chosen model unlimited and
-    account B doesn't, A wins regardless of base priority — picking the paid
-    account when a free one is available is never the right call. Compared
-    via the same alias normalizer the routing patterns use so canonical IDs
-    (``seedream-4.0``) and operator shorthand (``seedream-4``) match.
+    PixVerse Pro plans rotate which models don't consume credits; the list
+    is synced into ``provider_metadata.plan_unlimited_image_models`` by
+    ``pixverse_credits.PixverseCreditsMixin`` during the credits poll.
+    Account selection uses this as a top-tier preference: if account A has
+    the chosen model unlimited and account B doesn't, A wins regardless of
+    base priority — picking the paid account when a free one is available
+    is never the right call. Matched via the routing-pattern alias
+    normalizer so canonical ids (``seedream-4.0``) and operator shorthand
+    (``seedream-4``) line up.
     """
     if not model:
         return False
@@ -303,29 +307,27 @@ def _account_has_unlimited_model(account: ProviderAccount, model: str | None) ->
     if not isinstance(metadata, dict):
         return False
 
-    candidates: list[str] = []
-    for key in ("unlimited_image_models", "plan_unlimited_image_models"):
-        raw = metadata.get(key)
-        if isinstance(raw, (list, tuple, set)):
-            candidates.extend(str(item) for item in raw if item)
-
-    if not candidates:
+    raw = metadata.get(_UNLIMITED_IMAGE_MODELS_METADATA_KEY)
+    if not isinstance(raw, (list, tuple, set)) or not raw:
         return False
 
     target = _normalize_route_model_token(model)
     if target == "*":
         return False
 
-    for entry in candidates:
-        if _normalize_route_model_token(entry) == target:
+    for entry in raw:
+        if not entry:
+            continue
+        if _normalize_route_model_token(str(entry)) == target:
             return True
     return False
 
 
 def _account_unlimited_model_sql_clause(model: str | None):
     """SQL counterpart of ``_account_has_unlimited_model``: a WHERE clause
-    that's true for accounts whose ``provider_metadata.{unlimited_image_models,
-    plan_unlimited_image_models}`` lists contain ``model``.
+    that's true for accounts whose
+    ``provider_metadata.plan_unlimited_image_models`` list contains
+    ``model``.
 
     Used to bypass the credit pre-filter — without this, an account whose
     stored credits are below ``min_credits`` is silently dropped at the SQL
@@ -336,12 +338,12 @@ def _account_unlimited_model_sql_clause(model: str | None):
     ``["seedream-4.0","qwen-image"]``) and we LIKE-match the JSON-quoted
     variant against it. We expand ``model`` through ``_ROUTE_MODEL_ALIAS_MAP``
     so that operator shorthand (``seedream-4``) matches a stored canonical
-    entry (``seedream-4.0``) and vice-versa, mirroring what the Python helper
-    does. Scoping to those two specific keys keeps the LIKE from matching
+    entry (``seedream-4.0``) and vice-versa, mirroring what the Python
+    helper does. Scoping to that single key keeps the LIKE from matching
     against unrelated metadata strings.
 
-    Returns ``None`` when ``model`` is missing or wildcard so the caller can
-    skip OR-ing it in.
+    Returns ``None`` when ``model`` is missing or wildcard so the caller
+    can skip OR-ing it in.
     """
     if not model:
         return None
@@ -358,59 +360,75 @@ def _account_unlimited_model_sql_clause(model: str | None):
             variants.add(alias)
 
     unlimited_text = ProviderAccount.provider_metadata.op("->>")(
-        "unlimited_image_models"
-    )
-    plan_unlimited_text = ProviderAccount.provider_metadata.op("->>")(
-        "plan_unlimited_image_models"
+        _UNLIMITED_IMAGE_MODELS_METADATA_KEY
     )
 
     clauses = []
     for variant in variants:
-        # JSON serializes strings with double-quotes, so a raw match against
-        # the array's text form is unambiguous about element boundaries.
+        # JSON serializes strings with double-quotes, so a raw match
+        # against the array's text form is unambiguous about element
+        # boundaries.
         pattern = f'%"{variant}"%'
         clauses.append(unlimited_text.like(pattern))
-        clauses.append(plan_unlimited_text.like(pattern))
     return or_(*clauses)
+
+
+def extract_account_promotion_discounts(
+    account: ProviderAccount | None,
+) -> Dict[str, float]:
+    """Validated ``provider_metadata.promotion_discounts`` map for an account.
+
+    Single source of truth for reading the per-model discount multipliers
+    that billing (``pixverse._account_promotion_discounts``) and selection
+    (``_account_discount_factor``) both consume. Both used to inline the
+    extraction with slightly different validation; centralizing keeps them
+    from drifting again as the metadata schema evolves.
+
+    Returns an empty dict when the account is missing, the metadata key is
+    absent, or every entry is malformed — callers who need to distinguish
+    "no promos" from "all-filtered" can check truthiness.
+
+    Validation: numeric (rejects bool, which Python would otherwise coerce
+    to 1/0) and within ``[0.0, 1.0)``. ``1.0`` is no discount and ``>1.0``
+    would surcharge — neither is a valid discount, both are dropped.
+    """
+    if account is None:
+        return {}
+    metadata = getattr(account, "provider_metadata", None)
+    if not isinstance(metadata, dict):
+        return {}
+    raw = metadata.get("promotion_discounts")
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(model_id): float(multiplier)
+        for model_id, multiplier in raw.items()
+        if isinstance(multiplier, (int, float))
+        and not isinstance(multiplier, bool)
+        and 0.0 <= float(multiplier) < 1.0
+    }
 
 
 def _account_discount_factor(account: ProviderAccount, model: str | None) -> float:
     """Active promo multiplier for ``model`` on this account, ``1.0`` if none.
 
-    Reads ``provider_metadata.promotion_discounts`` — a model-id-keyed dict
-    written by ``pixverse_promotions.persist_promotions_on_account`` and
-    consumed by ``pixverse._account_promotion_discounts`` for billing math
-    (see ``provider/adapters/pixverse.py``). Values are multipliers in
-    ``[0.0, 1.0)``: ``0.7`` is 30% off, ``0.0`` is a fully-free promo.
-
     Used as a sort tier between unlimited and base priority — when two
     accounts both lack the model in their unlimited list, prefer whichever
-    has the deeper discount. Mirrors ``_account_has_unlimited_model`` in
-    shape and uses the same alias normalizer so shorthand and canonical
-    stored ids match.
-
-    Anything outside ``[0.0, 1.0)`` (incl. non-numeric values, ``1.0``
-    itself) is treated as "no discount" — defensive against stale or
-    malformed metadata.
+    has the deeper discount. Validation lives in
+    ``extract_account_promotion_discounts``; this helper only adds the
+    selection-specific concern of matching the model with alias
+    normalization (so operator shorthand ``seedream-4`` hits a stored
+    canonical entry ``seedream-4.0``).
     """
     if not model:
-        return 1.0
-    metadata = getattr(account, "provider_metadata", None)
-    if not isinstance(metadata, dict):
-        return 1.0
-    discounts = metadata.get("promotion_discounts")
-    if not isinstance(discounts, dict) or not discounts:
         return 1.0
     target = _normalize_route_model_token(model)
     if target == "*":
         return 1.0
+    discounts = extract_account_promotion_discounts(account)
     for model_id, multiplier in discounts.items():
-        if not isinstance(multiplier, (int, float)) or isinstance(multiplier, bool):
-            continue
-        if multiplier < 0.0 or multiplier >= 1.0:
-            continue
         if _normalize_route_model_token(model_id) == target:
-            return float(multiplier)
+            return multiplier
     return 1.0
 
 
