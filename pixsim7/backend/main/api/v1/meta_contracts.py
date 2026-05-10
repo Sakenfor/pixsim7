@@ -851,6 +851,20 @@ class PoolSessionEntry(BaseModel):
     context_pct: Optional[float] = None
     cost_usd: Optional[float] = None
 
+class FailedEngineEntry(BaseModel):
+    """An engine that failed the bridge's start-up `--version` probe.
+
+    Surfaced by the bridge in `pool_status` so the backend / frontend can
+    distinguish "engine not advertised" (user simply didn't install codex)
+    from "engine probe failed" (codex is installed but something is wrong
+    with the binary). The reason string is opaque diagnostic — pulled from
+    `agent_pool.probe_engine` (e.g. ``binary_not_found``, ``timeout_8.0s``,
+    ``exit_-1073741819:Access denied``).
+    """
+    engine: str
+    reason: str
+
+
 class RemoteAgentEntry(BaseModel):
     bridge_client_id: str
     bridge_id: Optional[str] = None
@@ -860,6 +874,7 @@ class RemoteAgentEntry(BaseModel):
     busy: bool
     tasks_completed: int
     engines: List[str] = []
+    failed_engines: List[FailedEngineEntry] = []
     pool_sessions: List[PoolSessionEntry] = []
 
 
@@ -962,6 +977,20 @@ async def get_bridge_status(
         engines = sorted(set(pool_engines)) if pool_engines else (
             sorted({s.engine for s in pool_sessions}) if pool_sessions else [a.agent_type]
         )
+        # Pull the probe-failure diagnostic the bridge sends after its
+        # start-up `<engine> --version` checks. Missing on legacy bridges
+        # that pre-date the probe — empty list keeps responses backward
+        # compatible.
+        failed_raw = pool.get("failed_engines", []) if isinstance(pool, dict) else []
+        failed_engines: list[FailedEngineEntry] = []
+        if isinstance(failed_raw, list):
+            for entry in failed_raw:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get("engine") or "").strip()
+                reason = str(entry.get("reason") or "").strip()
+                if name:
+                    failed_engines.append(FailedEngineEntry(engine=name, reason=reason or "unknown"))
         return RemoteAgentEntry(
             bridge_client_id=a.bridge_client_id,
             bridge_id=getattr(a, "bridge_id", None),
@@ -971,6 +1000,7 @@ async def get_bridge_status(
             busy=a.busy,
             tasks_completed=a.tasks_completed,
             engines=engines,
+            failed_engines=failed_engines,
             pool_sessions=pool_sessions,
         )
 
@@ -1858,7 +1888,12 @@ async def _resolve_send_context(
             payload.assistant_id = profile.id
             if not payload.skip_persona:
                 profile_prompt = profile.system_prompt
-            if profile.model_id:
+            # Profile.model_id is a *default*, not a pin: an explicit
+            # `payload.model` (from the toolbar model dropdown / API caller)
+            # wins. Otherwise the dropdown is dead UI for any profile that
+            # has model_id set, and the only way to try a different model
+            # would be to edit the profile. Falsy ("", None) → use profile.
+            if not (payload.model or "").strip() and profile.model_id:
                 payload.model = profile.model_id
             if profile.config:
                 profile_config = profile.config
@@ -2399,11 +2434,30 @@ async def send_message_to_agent_stream(
         # Bridges exist but all at max capacity — pick least-loaded
         agent = min(agents, key=lambda a: a.active_tasks)
 
-    from pixsim7.backend.main.services.meta.agent_dispatch import build_task_payload as _build_payload
+    from pixsim7.backend.main.services.meta.agent_dispatch import (
+        build_task_payload as _build_payload,
+        resolve_default_model,
+    )
     effective_token = payload.user_token or (ctx.raw_token if ctx.raw_token and ctx.user_id is not None else None)
+    # If neither the explicit request nor the resolved profile carried a
+    # model AND the request still shows the SendMessageRequest default
+    # ("default" sentinel) — fall back to a known-good per-engine default
+    # so the bridge dispatch lands on a real model instead of silently
+    # deferring to the engine's local config.toml.
+    effective_model = (payload.model or "").strip()
+    if not effective_model or effective_model.lower() == "default":
+        try:
+            bridge_models = remote_cmd_bridge.get_available_models(agent_type=payload.engine)
+            advertised_default = next(
+                (m["id"] for m in bridge_models if m.get("is_default")),
+                None,
+            )
+        except Exception:
+            advertised_default = None
+        effective_model = advertised_default or resolve_default_model(payload.engine) or effective_model or "default"
     task_payload = _build_payload(
         prompt=payload.message,
-        model=payload.model,
+        model=effective_model,
         context=payload.context or {},
         engine=payload.engine,
         system_prompt=ctx.system_prompt,

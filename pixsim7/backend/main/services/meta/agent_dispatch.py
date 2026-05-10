@@ -23,6 +23,43 @@ METHOD_CMD = "cmd"             # via WebSocket bridge (alias)
 METHOD_API = "api"             # direct provider API call
 REMOTE_METHODS = frozenset({METHOD_REMOTE, METHOD_CMD})
 
+# ── Default model fallbacks ──────────────────────────────────────
+#
+# Used when neither the explicit request nor the resolved profile
+# specifies a model AND the bridge hasn't yet reported its model
+# catalog (the `query_models` reply comes back AFTER `thread/start`,
+# so the very first dispatch on a freshly spawned bridge can race
+# the catalog). Without this fallback the payload would carry
+# model=None / "default", and the engine would silently pick
+# whatever the user's local config.toml says — which produces the
+# "wait, why did it dispatch on the wrong model?" class of bug.
+#
+# Values are deliberately conservative — well-known stable aliases:
+#   - claude → "sonnet" : claude-cli accepts opus/sonnet/haiku as aliases.
+#   - codex  → "gpt-5.4": current default per Codex `model/list`.
+#
+# When the bridge later does report models, the per-bridge
+# `is_default` lookup wins; this is only the first-dispatch safety net.
+DEFAULT_MODELS_BY_ENGINE: Dict[str, str] = {
+    "claude": "sonnet",
+    "codex": "gpt-5.4",
+}
+
+
+def resolve_default_model(engine: Optional[str]) -> Optional[str]:
+    """Return the static default model for an engine, or None if unknown.
+
+    Mirrors `pixsim7.client.agent_pool.normalize_engine` (which strips a
+    `-cli` suffix) so this works whether the caller passes the bridge's
+    `agent_type` (`claude-cli`) or the user-facing form (`claude`).
+    """
+    v = (engine or "").strip().lower()
+    if not v:
+        return None
+    if v.endswith("-cli"):
+        v = v[:-4]
+    return DEFAULT_MODELS_BY_ENGINE.get(v)
+
 
 def build_task_payload(
     *,

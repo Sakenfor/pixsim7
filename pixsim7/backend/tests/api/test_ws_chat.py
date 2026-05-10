@@ -174,6 +174,7 @@ class TestWsChatMessage:
                 assert data["type"] == "result"
                 assert data["ok"] is False
                 assert "No bridge available" in data["error"]
+                assert "pixsim-cli" in data["error"]  # actionable recovery hint
                 assert data["error_code"] == "bridge_unavailable"
 
     def test_engine_mismatch_returns_structured_error(self):
@@ -213,6 +214,9 @@ class TestWsChatMessage:
                 assert data["error_code"] == "bridge_engine_unavailable"
                 assert "codex" in data["error"]
                 assert "claude" in data["error"]  # diagnostic names what IS connected
+                # Remediation hint must point the user at a concrete recovery
+                # path; without it the diagnostic is correct but unactionable.
+                assert "Restart" in data["error"]
 
     def test_persisted_engine_uses_agent_type_not_request(self):
         """When the request says `engine='claude'` but the agent is
@@ -435,6 +439,288 @@ class TestWsChatMessage:
         mock_resolve_profile.assert_awaited_once_with(mock_db, 7, None, agent_type="claude")
         assert mock_upsert.call_count == 1
         assert mock_upsert.call_args.kwargs["profile_id"] == "assistant:default"
+
+    def test_explicit_body_model_wins_over_profile_model_id(self):
+        """`profile.model_id` is a default, not a pin: an explicit
+        `body.model` (toolbar dropdown) must override it. Otherwise the
+        dropdown is dead UI for any profile that has a model set, and
+        the only way to try a different model is to edit the profile.
+        """
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        # Profile pins gpt-5.3-codex; explicit body.model is gpt-5.4 — explicit wins.
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id="gpt-5.3-codex",
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                    "model": "gpt-5.4",  # explicit override
+                }))
+                # Drain to result
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        assert captured["model"] == "gpt-5.4", (
+            f"explicit body.model must win over profile.model_id, got {captured['model']!r}"
+        )
+
+    def test_profile_model_id_used_when_body_model_missing(self):
+        """Sanity: profile.model_id IS still the default — it just doesn't pin."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id="gpt-5.3-codex",
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+        # Bridge doesn't advertise a default — fallback path returns no model.
+        mock_bridge.get_available_models.return_value = []
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                    # no `model` key
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        assert captured["model"] == "gpt-5.3-codex"
+
+    def test_static_default_model_used_when_bridge_catalog_empty(self):
+        """First dispatch on a fresh bridge: query_models hasn't replied yet,
+        bridge_models is empty, profile has no model_id. Without the static
+        fallback the payload would carry model=None and the engine would
+        silently use whatever local config.toml says. With it, the dispatch
+        is deterministic.
+        """
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        agent.agent_type = "codex-cli"
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+        # Bridge advertises no models (catalog race) — fallback must fire.
+        mock_bridge.get_available_models.return_value = []
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        # No profile model_id, no body.model — entire stack must rely on fallback.
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id=None,
+            config=None,
+            reasoning_effort=None,
+        )
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", AsyncMock(return_value=resolved_profile)), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        # Concrete model name, not None / "default"
+        assert captured["model"] == "gpt-5.4", f"expected static fallback, got {captured['model']!r}"
+
+    def test_bridge_advertised_default_wins_over_static_fallback(self):
+        """Once the bridge catalog lands, its is_default model wins over
+        the static fallback — the static is only the safety net for the
+        first dispatch.
+        """
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        agent.agent_type = "codex-cli"
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+        # Bridge has a different default than our static fallback —
+        # bridge wins.
+        mock_bridge.get_available_models.return_value = [
+            {"id": "gpt-5.5-codex", "is_default": True},
+            {"id": "gpt-5.4", "is_default": False},
+        ]
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id=None,
+            config=None,
+            reasoning_effort=None,
+        )
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", AsyncMock(return_value=resolved_profile)), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        assert captured["model"] == "gpt-5.5-codex"
+
+    def test_blank_body_model_falls_back_to_profile(self):
+        """Empty-string body.model must not pin to "" — treat as missing."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id="gpt-5.3-codex",
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+        mock_bridge.get_available_models.return_value = []
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                    "model": "   ",  # whitespace-only — must be treated as absent
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        assert captured["model"] == "gpt-5.3-codex"
 
     def test_unknown_assistant_id_uses_resolved_default_profile_for_session(self):
         app = _app()

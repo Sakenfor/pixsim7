@@ -54,6 +54,38 @@ def _describe_tool_for_gate(tool_name: str, tool_input: dict) -> str:
     return f"{tool_name}({json.dumps(tool_input)[:200]})"
 
 
+def _extract_token_jti(token: str) -> str:
+    """Return the first 8 chars of the JWT's `jti` claim, or "noauth".
+
+    Used to namespace per-token codex workdirs so a token rotation creates
+    a fresh workdir + config.toml — the previous one's bearer token never
+    gets reused. Falsy/unparseable inputs map to "noauth" so the caller
+    still gets a stable namespace for the empty-token case.
+
+    Mirrors the lightweight JWT decode in :py:meth:`Bridge._get_valid_token`
+    — we deliberately don't verify the signature here; this is a cache key,
+    not an auth check. The signature has already been verified backend-side
+    by the time the token reaches us.
+    """
+    if not token:
+        return "noauth"
+    try:
+        import base64 as _b64
+        segments = token.split(".")
+        if len(segments) < 2:
+            return "noauth"
+        payload_b64 = segments[1] + "=" * (-len(segments[1]) % 4)
+        claims = json.loads(_b64.urlsafe_b64decode(payload_b64))
+        jti = str(claims.get("jti") or "").strip()
+        # Strip non-alphanumeric so the jti is safe to slot into a path
+        # component (jti is base64url so this should be a no-op, but
+        # defensive in case the issuer ever changes encoding).
+        safe = "".join(ch for ch in jti if ch.isalnum())[:8]
+        return safe or "noauth"
+    except Exception:
+        return "noauth"
+
+
 class Bridge:
     """WebSocket bridge between local agent pool and pixsim backend."""
 
@@ -360,6 +392,10 @@ class Bridge:
 
     async def _send_pool_status(self, ws) -> None:
         """Send current pool session info to backend."""
+        # `engines` is the post-probe survivors list (set by AgentPool.start);
+        # `failed_engines` is the diagnostic for engines that didn't survive
+        # the start-up probe. Backend stores both so the frontend can show
+        # "codex install is broken" without waiting for a real dispatch.
         await ws.send(json.dumps({
             "type": "pool_status",
             "max_sessions": self._pool._max_sessions,
@@ -367,6 +403,10 @@ class Bridge:
             "busy": self._pool.busy_count,
             "total": len(self._pool._sessions),
             "engines": [e.split("/")[-1].split("\\")[-1] for e in self._pool._engines],
+            "failed_engines": [
+                {"engine": name, "reason": reason}
+                for name, reason in self._pool.failed_engines
+            ],
             "sessions": [s.to_dict() for s in self._pool.sessions],
             # Surface in-flight task_ids so a restarted backend can rebuild
             # its _active_tasks state and accept frontend reconnects for them.
@@ -758,6 +798,14 @@ class Bridge:
 
         This avoids touching global ~/.codex/config.toml. Each focus set gets
         an isolated workdir under the repo with its own project config layer.
+
+        The cache key includes the token's `jti` (first 8 chars) so a token
+        rotation creates a fresh workdir with a fresh config.toml — without
+        this, the previous token's bearer would be silently reused from the
+        cached file. The same jti is appended to the workdir directory name
+        so old token's workdirs become orphaned (left on disk for an external
+        cleanup pass to GC) rather than overwritten in place by a different
+        token's config — keeping concurrent bridges from racing each other.
         """
         normalized_focus = tuple(
             sorted({
@@ -766,7 +814,8 @@ class Bridge:
                 if str(contract_id or "").strip()
             })
         )
-        cache_key = (scope, normalized_focus)
+        token_ns = _extract_token_jti(token)
+        cache_key = (scope, normalized_focus, token_ns)
 
         enabled_tools: list[str] | None = None
         if focus is not None:
@@ -788,7 +837,7 @@ class Bridge:
         try:
             focus_seed = ",".join(normalized_focus) if normalized_focus else "all"
             focus_hash = hashlib.sha1(f"{scope}|{focus_seed}".encode("utf-8")).hexdigest()[:12]
-            workdir = self._repo_root / ".pixsim-codex" / f"{scope}-{focus_hash}"
+            workdir = self._repo_root / ".pixsim-codex" / f"{scope}-{focus_hash}-{token_ns}"
 
             # ── HTTP mode: shared MCP server is running ──
             if self._mcp_http_url:
@@ -1031,6 +1080,23 @@ class Bridge:
 
             def on_progress(event_type: str, detail: str):
                 nonlocal last_detail
+                # Special-case: agent client telling us the cli_session_id has
+                # been resolved (first init event of a brand-new turn). Stamp
+                # it onto hb_base so all subsequent heartbeats / keepalives
+                # carry it back to the backend WS chat — which forwards it to
+                # the panel, where it's mirrored onto tab.sessionId before the
+                # final `result` arrives. First-message HMR recovery hinges on
+                # this id reaching the panel early.
+                if event_type == "session_resolved" and detail:
+                    if not hb_base.get("bridge_session_id"):
+                        hb_base["bridge_session_id"] = detail
+                        inflight = self._inflight_tasks.get(task_id)
+                        if inflight is not None:
+                            inflight["bridge_session_id"] = detail
+                        # Flush a heartbeat now so the backend doesn't have to
+                        # wait up to 15s for the next keepalive cycle.
+                        asyncio.ensure_future(send_progress("processing_task", last_detail))
+                    return
                 if detail:
                     last_detail = detail[:200]
                 # Mirror onto inflight record so reconnect handshakes carry

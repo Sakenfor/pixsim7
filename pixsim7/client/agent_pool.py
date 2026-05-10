@@ -59,10 +59,59 @@ def _lookup_cli_session_id(bridge_session_id: str) -> str | None:
 # Known agent engines — auto-detected on startup
 KNOWN_ENGINES = ["claude", "codex"]
 
+# Maximum wall-clock seconds to wait for a `<engine> --version` probe before
+# treating the engine as broken. The probe is intentionally short — long
+# enough to absorb cold-start (npm shim, JIT, AV scan on Windows) but short
+# enough that a stuck binary doesn't gate the whole bridge from coming up.
+ENGINE_PROBE_TIMEOUT_S = 8.0
+
 
 def detect_engines() -> list[str]:
     """Return list of known engines that are installed and available."""
     return [e for e in KNOWN_ENGINES if shutil.which(e)]
+
+
+async def probe_engine(command: str, *, timeout: float = ENGINE_PROBE_TIMEOUT_S) -> tuple[bool, str]:
+    """Run `<command> --version` as a liveness check on the engine binary.
+
+    `shutil.which` only proves the file is on PATH; it doesn't catch:
+      - npm shim that points at a missing native binary,
+      - corrupted install where the binary segfaults on launch,
+      - permission/quarantine/AV blocks that silently kill the process,
+      - PATH-shadowed wrapper that prints help and exits non-zero.
+
+    A 1-shot `--version` call exercises the actual launch path and is
+    universally cheap (claude / codex both support it auth-free).
+
+    Returns ``(ok, detail)`` where ``detail`` is the version string on
+    success or a short error reason on failure (logged for diagnosis,
+    not surfaced to the user).
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            command, "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return False, "binary_not_found"
+    except OSError as e:
+        return False, f"spawn_failed:{e.__class__.__name__}"
+
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        return False, f"timeout_{timeout}s"
+
+    if proc.returncode != 0:
+        err = (stderr or stdout or b"").decode("utf-8", errors="replace").strip()
+        return False, f"exit_{proc.returncode}:{err[:120]}"
+    out = (stdout or b"").decode("utf-8", errors="replace").strip().splitlines()
+    return True, out[0] if out else "ok"
 
 
 class SessionBusyError(RuntimeError):
@@ -176,12 +225,31 @@ class AgentPool:
                 self._cli_id_map[session.cli_session_id] = session.cli_session_id
 
     async def _evict_oldest_idle(self) -> bool:
-        """Stop the oldest idle on-demand session to make room. Returns True if one was evicted."""
-        idle = [
-            s for s in self._sessions.values()
-            if s.state == SessionState.READY
-            and "-r-" in s.session_id  # only evict dynamic (resume) sessions, not initial ones
-        ]
+        """Stop the oldest idle on-demand session to make room. Returns True if one was evicted.
+
+        Every READY session is evictable. An earlier version filtered for
+        ``"-r-" in session_id`` ("dynamic resume sessions only"), guarding
+        against eviction of a pre-warmed start-time pool — but ``start()``
+        no longer creates sessions; the pool is fully on-demand. With that
+        filter, model-pinned / scoped sessions (keys like ``codex-1``,
+        ``claude-2`` — no ``-r-``) accumulated until ``MAX_SESSIONS`` was
+        hit, then every subsequent spawn raised "Max sessions reached and
+        no idle sessions to evict". Probing 10 (model, effort) variants in
+        a 30 min window was enough to brick the pool.
+
+        Cost of dropping the filter: one user tab whose session was the
+        oldest idle pays a cold-spawn (~3-5s with thread/resume) on its
+        next message. That's the definition of eviction — acceptable.
+
+        TODO(deferred): replace pure-LRU with an LRU keyed on
+        ``(engine, model, reasoning_effort)`` so consecutive uses of the
+        same param tuple reuse the existing session before considering
+        eviction. Not urgent — the current "oldest idle wins" behaviour
+        is fine until telemetry shows churn (same params → repeated cold
+        respawn). Revisit if users start reporting "switching back to a
+        model I just used feels slow".
+        """
+        idle = [s for s in self._sessions.values() if s.state == SessionState.READY]
         if not idle:
             return False
         oldest = min(idle, key=lambda s: s.stats.last_activity or s.stats.started_at or s.stats.last_activity)
@@ -439,15 +507,64 @@ class AgentPool:
     async def start(self) -> int:
         """Start the pool (no sessions — they're created on demand).
 
-        Returns number of available engines detected.
+        Self-tests every configured engine before advertising any of them
+        so the backend never sees a bridge claiming an engine whose binary
+        won't actually launch (corrupted install, AV quarantine, npm shim
+        pointing at a missing native — `shutil.which` says yes, the spawn
+        fails). Failed engines are dropped from ``self._engines``; the
+        list of failures is exposed via :attr:`failed_engines` so the
+        bridge can include it in pool_status for the frontend pill.
+
+        Returns number of engines that survived the probe.
         """
+        # Probe every configured engine in parallel. Cap the total wall
+        # clock at the per-probe timeout — failures here are common enough
+        # (especially for codex on first install) that a serial pipeline
+        # would noticeably slow bridge startup.
+        results = await asyncio.gather(
+            *(probe_engine(cmd) for cmd in self._engines),
+            return_exceptions=True,
+        )
+
+        survivors: list[str] = []
+        failures: list[tuple[str, str]] = []
+        for cmd, result in zip(self._engines, results):
+            short = cmd.split("/")[-1].split("\\")[-1]
+            if isinstance(result, BaseException):
+                failures.append((short, f"probe_raised:{result.__class__.__name__}"))
+                continue
+            ok, detail = result
+            if ok:
+                survivors.append(cmd)
+                get_logger().debug("engine_probe_ok", engine=short, version=detail)
+            else:
+                failures.append((short, detail))
+                get_logger().warning("engine_probe_failed", engine=short, reason=detail)
+
+        self._engines = survivors
+        self._failed_engines = failures
+
         # Start health monitor
         if self._auto_restart:
             self._health_task = asyncio.create_task(self._health_monitor())
 
-        engines_str = ", ".join(e.split("/")[-1].split("\\")[-1] for e in self._engines)
-        get_logger().info("pool_ready", engines=engines_str)
+        engines_str = ", ".join(e.split("/")[-1].split("\\")[-1] for e in self._engines) or "(none)"
+        if failures:
+            failed_str = ", ".join(f"{name}({reason.split(':', 1)[0]})" for name, reason in failures)
+            get_logger().warning("pool_ready_with_failures", ok=engines_str, failed=failed_str)
+        else:
+            get_logger().info("pool_ready", engines=engines_str)
         return len(self._engines)
+
+    @property
+    def failed_engines(self) -> list[tuple[str, str]]:
+        """Engines that failed the start-up probe, as (short_name, reason).
+
+        Empty until :meth:`start` runs. Surfaced in pool_status so the
+        backend / frontend can show "codex install is broken" without
+        waiting for a real dispatch to fail.
+        """
+        return list(getattr(self, "_failed_engines", []))
 
     async def stop(self) -> None:
         """Stop all sessions and the health monitor."""
@@ -659,15 +776,13 @@ class AgentPool:
                         get_logger().debug("pool_session_exited", session=session.session_id)
                         session.state = SessionState.STOPPED
 
-                # Evict idle dynamic sessions past timeout
+                # Evict idle sessions past timeout. Every on-demand session
+                # is reapable here; see ``_evict_oldest_idle`` for the full
+                # rationale on dropping the legacy ``-r-`` filter.
                 from datetime import datetime, timezone
                 now = datetime.now(timezone.utc)
                 for session in list(self._sessions.values()):
-                    if (
-                        "-r-" in session.session_id  # dynamic (resume) sessions only
-                        and session.state == SessionState.READY
-                        and session.stats.last_activity
-                    ):
+                    if session.state == SessionState.READY and session.stats.last_activity:
                         idle_secs = (now - session.stats.last_activity).total_seconds()
                         if idle_secs > IDLE_EVICT_SECONDS:
                             get_logger().debug("pool_idle_evict", session=session.session_id, idle_secs=int(idle_secs))

@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
+import { useConnectedEngines } from '@lib/agent/useConnectedEngines';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
@@ -194,6 +195,20 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const bridgeReq = chatBridge.get(tab.id);
   const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
   const activity = bridgeReq?.activity ?? null;
+
+  // Mirror bridgeSessionId onto tab.sessionId as soon as the bridge captures
+  // it (typically from the agent's first init heartbeat — well before the
+  // final result event). Without this, a HMR/reload of a brand-new chat
+  // before the result lands strands tab.sessionId at null, and every recovery
+  // path (reconcile effect, consume-effect reconnect-failure, ContextBar
+  // "check again") is gated on tab.sessionId — so the user sees a pending
+  // turn with no recovery affordance.
+  const bridgeSessionId = bridgeReq?.bridgeSessionId;
+  useEffect(() => {
+    if (bridgeSessionId && bridgeSessionId !== tab.sessionId) {
+      onUpdateTab({ sessionId: bridgeSessionId });
+    }
+  }, [bridgeSessionId, tab.sessionId, onUpdateTab]);
 
   useEffect(() => {
     if (!tab.sessionId) {
@@ -566,6 +581,31 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
   const profileDisplay = activeProfile?.label || 'General';
   const isAgentProfile = activeProfile && !activeProfile.id.startsWith('assistant:');
 
+  // Engine-health pill: surface a stale-bridge mismatch before the user sends
+  // a turn that would fail with bridge_engine_unavailable. Only meaningful for
+  // bridge-routed engines; api goes direct.
+  const {
+    engines: connectedEngines,
+    failedEngines: probeFailedEngines,
+    hasReport: enginesReported,
+  } = useConnectedEngines();
+  const isBridgeEngine = tab.engine === 'claude' || tab.engine === 'codex';
+  // Don't flash red before the first poll lands — wait for `enginesReported`.
+  const engineHealthy = !isBridgeEngine || !enginesReported || connectedEngines.has(tab.engine);
+  const engineHealthMessage = !engineHealthy
+    ? (() => {
+        const have = Array.from(connectedEngines).sort();
+        const haveSuffix = have.length > 0 ? ` (connected: ${have.join(', ')})` : '';
+        // If the bridge tried to register this engine but the probe failed,
+        // tell the user — restarting won't help if the binary is broken.
+        const probeReason = probeFailedEngines.get(tab.engine);
+        if (probeReason) {
+          return `Bridge tried to register "${tab.engine}" but the binary probe failed (${probeReason}). Reinstall or repair the "${tab.engine}" CLI; restarting the agent client alone won't recover this.`;
+        }
+        return `No "${tab.engine}" engine in any connected bridge${haveSuffix}. Restart your local agent client to re-register engines.`;
+      })()
+    : null;
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Messages */}
@@ -768,15 +808,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               className={`h-7 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                 showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
-              title={`Profile: ${profileDisplay}`}
+              title={engineHealthMessage
+                ? `Profile: ${profileDisplay}\n\n⚠ ${engineHealthMessage}`
+                : `Profile: ${profileDisplay}`}
             >
               <EngineProfileIcon
                 engine={tab.engine}
                 icon={resolveProfileIcon(tab.engine, activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare'))}
                 size={12}
+                // Health overlay on the brand circle: brand color (orange/blue)
+                // already encodes engine identity, so the ring layers a green
+                // (dispatchable) or red (broken) halo without a separate text
+                // chip. Pre-first-poll or non-bridge engines stay default.
+                health={
+                  !isBridgeEngine || !enginesReported
+                    ? 'unknown'
+                    : engineHealthy
+                      ? 'healthy'
+                      : 'unhealthy'
+                }
               />
               <span className="max-w-[60px] truncate">{profileDisplay}</span>
-              <span className="text-[8px] text-neutral-400 uppercase">{tab.engine}</span>
             </button>
 
             {showProfilePicker && (

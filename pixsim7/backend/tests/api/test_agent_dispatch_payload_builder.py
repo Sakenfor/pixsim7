@@ -75,3 +75,33 @@ class TestBuildTaskPayload:
         )
         assert "scope_key" not in payload
         assert "session_policy" not in payload
+
+
+class TestResolveDefaultModel:
+    """Static per-engine fallback used when the bridge model catalog
+    hasn't landed yet (model/list reply races first dispatch)."""
+
+    def test_known_engines(self):
+        from pixsim7.backend.main.shared.agent_dispatch import resolve_default_model
+
+        assert resolve_default_model("claude") == "sonnet"
+        assert resolve_default_model("codex") == "gpt-5.4"
+
+    def test_strips_cli_suffix(self):
+        from pixsim7.backend.main.shared.agent_dispatch import resolve_default_model
+
+        # Bridge agent_type registers as ``codex-cli`` — must still resolve.
+        assert resolve_default_model("codex-cli") == "gpt-5.4"
+        assert resolve_default_model("CLAUDE-CLI") == "sonnet"
+
+    def test_unknown_engine_returns_none(self):
+        from pixsim7.backend.main.shared.agent_dispatch import resolve_default_model
+
+        assert resolve_default_model("gemini") is None
+
+    def test_empty_input_returns_none(self):
+        from pixsim7.backend.main.shared.agent_dispatch import resolve_default_model
+
+        assert resolve_default_model("") is None
+        assert resolve_default_model(None) is None
+        assert resolve_default_model("   ") is None

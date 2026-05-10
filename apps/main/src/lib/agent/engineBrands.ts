@@ -56,4 +56,19 @@ export function getEngineBrand(engine: string | undefined | null): EngineBrand {
   return ENGINE_BRANDS[engine] ?? UNKNOWN_ENGINE;
 }
 
+/**
+ * Reduce an engine identifier to its canonical short form, mirroring the
+ * backend `normalize_engine` in `pixsim7/backend/main/services/llm/remote_cmd_bridge.py`.
+ *
+ * Bridges register engines as `claude-cli` / `codex-cli` (the literal CLI
+ * binary name) while UI tabs carry the user-facing `claude` / `codex`. Any
+ * comparison between a tab's engine and the bridge-reported engines must
+ * pass through this helper or every match misses.
+ */
+export function normalizeEngine(value: string | null | undefined): string | null {
+  const v = (value ?? '').trim().toLowerCase();
+  if (!v) return null;
+  return v.endsWith('-cli') ? v.slice(0, -4) : v;
+}
+
 export { ENGINE_BRANDS, UNKNOWN_ENGINE };

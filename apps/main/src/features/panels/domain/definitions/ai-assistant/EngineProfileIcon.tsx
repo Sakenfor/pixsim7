@@ -55,25 +55,49 @@ export function engineFromProfile(profile: UnifiedProfile | null): AgentEngine {
 // Component
 // =============================================================================
 
+/**
+ * Engine dispatch health, drawn as a thin colored ring outside the brand
+ * circle. The brand color keeps encoding engine identity (orange=claude,
+ * blue=codex); the ring overlays a status signal without competing with it.
+ *
+ *   'healthy'   — engine confirmed dispatchable (in connected bridge pool)
+ *   'unhealthy' — engine missing or probe-failed at bridge start
+ *   'unknown'   — pre-first-poll or non-bridge engine (api); no ring drawn
+ */
+export type EngineHealth = 'healthy' | 'unhealthy' | 'unknown';
+
 export function EngineProfileIcon({
   engine,
   icon,
   size = 12,
   className = '',
+  health = 'unknown',
 }: {
   engine: string | null | undefined;
   icon: IconName;
   size?: number;
   className?: string;
+  health?: EngineHealth;
 }) {
   const brand = getEngineBrand(engine);
   const style = ENGINE_ICON_STYLES[brand.badgeColor] ?? ENGINE_ICON_STYLES.gray;
   const circleSize = size + 8;
+  // Ring sits 1px outside the brand circle so the brand color stays intact
+  // and the health overlay reads as a halo rather than a recolor. Red is
+  // assertive (broken state — user must act); emerald is subtle (just a
+  // confirmation signal).
+  const healthRingClass =
+    health === 'unhealthy'
+      ? 'absolute -inset-px rounded-full ring-2 ring-red-500'
+      : health === 'healthy'
+        ? 'absolute -inset-px rounded-full ring-1 ring-emerald-400/70'
+        : null;
   return (
     <span
       className={`relative inline-flex shrink-0 items-center justify-center ${className}`}
       style={{ width: `${circleSize}px`, height: `${circleSize}px` }}
     >
+      {healthRingClass && <span className={healthRingClass} aria-hidden="true" />}
       <span className={`absolute inset-0 rounded-full border ${style.circle}`} aria-hidden="true" />
       <Icon name={icon} size={size} className={`relative z-10 ${style.icon}`} />
     </span>

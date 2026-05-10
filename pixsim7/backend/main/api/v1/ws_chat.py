@@ -354,7 +354,10 @@ async def _handle_message(
                 "type": "result", "tab_id": tab_id, "ok": False,
                 **_error_payload(
                     f"No bridge available for engine '{requested_engine}'. "
-                    f"Connected bridge runs '{connected_engine}'.",
+                    f"Connected bridge runs '{connected_engine}'. "
+                    f"Restart your local agent client to re-register the "
+                    f"'{requested_engine}' engine, or switch this tab to "
+                    f"'{connected_engine}'.",
                     code="bridge_engine_unavailable",
                 ),
             })
@@ -365,7 +368,8 @@ async def _handle_message(
             await websocket.send_json({
                 "type": "result", "tab_id": tab_id, "ok": False,
                 **_error_payload(
-                    "No bridge available for your account.",
+                    "No bridge available for your account. "
+                    "Start your local agent client (pixsim-cli) to connect a bridge.",
                     code="bridge_unavailable",
                 ),
             })
@@ -423,7 +427,12 @@ async def _handle_message(
                 resolved_profile_id = profile.id
                 if not skip_persona:
                     profile_prompt = profile.system_prompt
-                if profile.model_id:
+                # Profile.model_id is a *default*, not a pin: an explicit
+                # `data["model"]` (from the toolbar model dropdown) wins.
+                # Otherwise the dropdown is dead UI for any profile with
+                # model_id set, and the only way to try another model
+                # would be to edit the profile.
+                if not (model or "").strip() and profile.model_id:
                     model = profile.model_id
                 # Build profile_config from first-class fields + legacy config dict
                 merged_config = dict(profile.config or {})
@@ -448,6 +457,15 @@ async def _handle_message(
                 model = default_model
         except Exception:
             pass
+    # If the bridge hasn't reported its catalog yet (model/list reply races
+    # the first dispatch on a fresh bridge), fall back to a known-good
+    # static default per engine so the payload carries a real model name
+    # instead of letting the engine's local config silently decide.
+    if not model:
+        from pixsim7.backend.main.services.meta.agent_dispatch import resolve_default_model
+        fallback = resolve_default_model(engine)
+        if fallback:
+            model = fallback
 
     if custom_instructions:
         if profile_prompt:
@@ -534,6 +552,13 @@ async def _handle_message(
                 if not task_id_sent:
                     msg["task_id"] = task_id
                     task_id_sent = True
+                # Forward bridge_session_id when the agent client surfaces it —
+                # lets the frontend mirror it onto the panel tab BEFORE the
+                # final result arrives, so a mid-turn HMR/reload can still
+                # reconcile against server state via tab.sessionId.
+                upstream_session_id = event.get("bridge_session_id")
+                if isinstance(upstream_session_id, str) and upstream_session_id:
+                    msg["bridge_session_id"] = upstream_session_id
                 await websocket.send_json(msg)
             elif event.get("type") == "confirmation_request":
                 msg = {

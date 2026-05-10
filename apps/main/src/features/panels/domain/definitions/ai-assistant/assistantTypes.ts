@@ -23,8 +23,31 @@ export interface PoolSessionInfo {
   cost_usd?: number | null;
 }
 
+export interface FailedEngineEntry {
+  engine: string;
+  /** Opaque diagnostic from the bridge's startup probe (e.g. "binary_not_found", "timeout_8.0s"). */
+  reason: string;
+}
+
 export interface BridgeAgentEntry {
   bridge_client_id: string;
+  /** Bridge's primary registered agent_type, e.g. "claude-cli" / "codex-cli". */
+  agent_type?: string;
+  /**
+   * Engines this bridge has alive in its pool. Reported by the client as
+   * `["claude-cli", "codex-cli"]` etc.; suffix-stripped for comparison via
+   * `normalizeEngine`. Falls back to `[agent_type]` when the pool report
+   * hasn't landed yet.
+   */
+  engines?: string[];
+  /**
+   * Engines that failed the bridge's startup `<engine> --version` probe.
+   * Distinct from "engine not advertised" — this means the binary was
+   * configured but couldn't be launched. Surfaced in the engine-health
+   * tooltip so the user knows whether to install codex or repair an
+   * existing install.
+   */
+  failed_engines?: FailedEngineEntry[];
   pool_sessions: PoolSessionInfo[];
 }
 
