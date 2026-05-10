@@ -650,7 +650,6 @@ async def _resolve_query_blocks(
 
     plan_request = ComposerPlanRequest.from_action_selection_context(
         selection_context,
-        block_source="primitives",
         package_name=(str(package_name).strip() if package_name is not None else None),
         prefer_granular=prefer_granular,
         include_categories=include_categories,

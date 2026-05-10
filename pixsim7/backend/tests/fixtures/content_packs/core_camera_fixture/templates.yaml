@@ -7,12 +7,10 @@ templates:
     slots:
       - label: Camera Angle
         category: camera
-        block_source: primitives
         package_name: core_camera_fixture
         tags:
           all:
             vertical_angle: eye
       - label: Secondary Camera
         category: camera
-        block_source: primitives
         package_name: other_pack

@@ -102,8 +102,7 @@ class _PreviewInMemoryTemplateService(BlockTemplateService):
             if not _matches_slot_tags(tags if isinstance(tags, dict) else {}, slot):
                 continue
             if (
-                slot.get("block_source") == "primitives"
-                and slot.get("package_name")
+                slot.get("package_name")
                 and (tags if isinstance(tags, dict) else {}).get("source_pack") != slot.get("package_name")
             ):
                 continue
@@ -886,7 +885,6 @@ async def test_preview_slot_matches_handles_primitives_without_role_attribute() 
 
     result = await service.preview_slot_matches(
         slot={
-            "block_source": "primitives",
             "category": "camera",
         },
         limit=5,
@@ -914,7 +912,6 @@ async def test_preview_slot_matches_normalizes_legacy_tag_constraints_before_que
 
     result = await service.preview_slot_matches(
         slot={
-            "block_source": "primitives",
             "category": "camera",
             "tag_constraints": {"camera_angle": "low"},
         },
@@ -961,7 +958,6 @@ async def test_count_candidates_by_package_routes_primitives_to_blocks_db(monkey
     service = BlockTemplateService(SimpleNamespace())
     rows = await service.count_candidates_by_package(
         {
-            "block_source": "primitives",
             "category": "camera",
         }
     )
@@ -1053,7 +1049,6 @@ def test_build_primitive_slot_query_applies_runtime_private_scope(
     ):
         _ = service._build_primitive_slot_query(
             {
-                "block_source": "primitives",
                 "category": "camera",
             }
         )

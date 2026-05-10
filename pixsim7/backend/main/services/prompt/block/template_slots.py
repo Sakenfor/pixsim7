@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
-TEMPLATE_SLOT_SCHEMA_VERSION = 2
+TEMPLATE_SLOT_SCHEMA_VERSION = 3
 _TAG_QUERY_GROUP_ALIASES = {
     "all": "all",
     "all_of": "all",
@@ -183,15 +183,9 @@ class TemplateSlotSpec(BaseModel):
     intensity: Optional[int] = Field(default=None, ge=0, le=10)
     inherit_intensity: bool = False
     exclude_block_ids: Optional[List[UUID]] = None
-    # Primitive composition fields
-    block_source: Optional[str] = Field(
-        default="primitives",
-        description='Block source: "primitives" (blocks DB)',
-    )
-    frame: Optional[str] = Field(
-        default=None,
-        description='Spatial frame template wrapping block text, e.g. "{text} from camera-left"',
-    )
+    # Primitive composition fields. Spatial frame template wrapping block text,
+    # e.g. ``"{text} from camera-left"``.
+    frame: Optional[str] = Field(default=None)
 
 
 def _normalize_tag_group(group: Any) -> Dict[str, Any]:
@@ -335,6 +329,20 @@ def _migrate_slot_v1_to_v2(raw_slot: Dict[str, Any]) -> Dict[str, Any]:
     return migrated
 
 
+def _migrate_slot_v2_to_v3(raw_slot: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop the retired ``block_source`` field.
+
+    Originally a forward-compat seam for multi-source backends, ``block_source``
+    only ever accepted ``"primitives"`` and the runtime read path raised on any
+    other value. The vector-search seam now lives at ``find_candidates()`` itself,
+    so the field has no role. Strip it on migration; older slot specs that set
+    it are silently normalized.
+    """
+    migrated = dict(raw_slot)
+    migrated.pop("block_source", None)
+    return migrated
+
+
 def _coerce_schema_version(schema_version: Optional[int]) -> int:
     if schema_version is None:
         # Treat unspecified versions as legacy (v1) for deterministic migration.
@@ -373,6 +381,16 @@ def migrate_template_slots(raw_slots: Any, *, schema_version: Optional[int] = No
         migrated = next_slots
         version = 2
 
+    if version < 3:
+        next_slots = []
+        for slot in migrated:
+            if isinstance(slot, dict):
+                next_slots.append(_migrate_slot_v2_to_v3(slot))
+            else:
+                next_slots.append(slot)
+        migrated = next_slots
+        version = 3
+
     return migrated
 
 
@@ -388,11 +406,15 @@ def normalize_template_slot(
     migrated_raw = dict(raw)
     if schema_version is None:
         # Single-slot normalization is typically used for ad hoc preview/API input;
-        # accept legacy shapes by running the latest migration.
+        # accept legacy shapes by running the latest migration chain.
         migrated_raw = _migrate_slot_v1_to_v2(migrated_raw)
+        migrated_raw = _migrate_slot_v2_to_v3(migrated_raw)
     elif _coerce_schema_version(schema_version) < TEMPLATE_SLOT_SCHEMA_VERSION:
-        if int(schema_version) < 2:
+        version = int(schema_version)
+        if version < 2:
             migrated_raw = _migrate_slot_v1_to_v2(migrated_raw)
+        if version < 3:
+            migrated_raw = _migrate_slot_v2_to_v3(migrated_raw)
     has_explicit_slot_index = "slot_index" in migrated_raw and migrated_raw.get("slot_index") is not None
 
     try:

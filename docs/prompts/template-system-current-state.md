@@ -247,7 +247,7 @@ File: `api/v1/block_templates.py` (~530 lines)
 
 File: `services/prompt/block/template_slots.py`
 
-- **Schema version**: `TEMPLATE_SLOT_SCHEMA_VERSION = 2` (stored in `template_metadata.slot_schema_version`)
+- **Schema version**: `TEMPLATE_SLOT_SCHEMA_VERSION = 3` (stored in `template_metadata.slot_schema_version`)
 - **v1→v2 migration**: Moves legacy `tag_constraints` flat maps into canonical `tags` groups (`{all, any, not}`)
 - **Tag query aliases**: `all_of`→`all`, `any_of`→`any`, `none_of`→`not`
 - **Slot presets**: Named preset bundles (e.g. `subject_preservation` → 3 slots for pose/identity/framing lock)

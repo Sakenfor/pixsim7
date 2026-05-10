@@ -19,7 +19,6 @@ templates:
         label: Environment
         role: environment
         category: environment
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -30,7 +29,6 @@ templates:
         label: Lighting
         role: lighting
         category: light
-        block_source: primitives
         tags:
           any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -40,7 +38,6 @@ templates:
         label: Camera
         role: camera
         category: camera
-        block_source: primitives
         tags:
           any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -50,7 +47,6 @@ templates:
         label: Mood
         role: style
         category: mood
-        block_source: primitives
         tags:
           any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -74,7 +70,6 @@ templates:
         label: Environment
         role: environment
         category: environment
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -85,7 +80,6 @@ templates:
         label: Location Anchor
         role: location
         category: location
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -96,7 +90,6 @@ templates:
         label: Camera
         role: camera
         category: camera
-        block_source: primitives
         tags:
           any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -106,7 +99,6 @@ templates:
         label: Lead Pose
         role: subject
         category: character_pose
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat, actor: banana }
@@ -117,7 +109,6 @@ templates:
         label: Partner Pose
         role: subject
         category: character_pose
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat, actor: gorilla }
@@ -128,7 +119,6 @@ templates:
         label: Wardrobe
         role: style
         category: wardrobe
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -139,7 +129,6 @@ templates:
         label: Mood
         role: style
         category: mood
-        block_source: primitives
         tags:
           any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -163,7 +152,6 @@ templates:
         label: Environment
         role: environment
         category: environment
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -174,7 +162,6 @@ templates:
         label: Lighting
         role: lighting
         category: light
-        block_source: primitives
         tags:
           any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -184,7 +171,6 @@ templates:
         label: Camera
         role: camera
         category: camera
-        block_source: primitives
         tags:
           any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
         selection_strategy: uniform
@@ -194,7 +180,6 @@ templates:
         label: Location Anchor
         role: location
         category: location
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat }
@@ -205,7 +190,6 @@ templates:
         label: Lead Pose
         role: subject
         category: character_pose
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat, actor: banana }
@@ -216,7 +200,6 @@ templates:
         label: Partner Pose
         role: subject
         category: character_pose
-        block_source: primitives
         package_name: bananza_boat_demo
         tags:
           all: { world: bananza_boat, actor: gorilla }
@@ -227,7 +210,6 @@ templates:
         label: Mood
         role: style
         category: mood
-        block_source: primitives
         tags:
           any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
         selection_strategy: uniform

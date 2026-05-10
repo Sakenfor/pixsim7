@@ -380,7 +380,6 @@ class BlockTemplateService:
     ) -> List[Any]:
         """Find primitive blocks matching a slot's constraints."""
         slot = normalize_template_slot(slot)
-        self._ensure_primitive_source(slot)
         return await self._find_primitive_candidates(slot, limit)
 
     async def _find_primitive_candidates(
@@ -390,22 +389,12 @@ class BlockTemplateService:
     ) -> List[BlockPrimitive]:
         """Query block_primitives in the blocks DB for a slot."""
         slot = normalize_template_slot(slot)
-        self._ensure_primitive_source(slot)
         query = self._build_primitive_slot_query(slot)
         if limit is not None:
             query = query.limit(limit)
         async with get_async_blocks_session() as blocks_db:
             result = await blocks_db.execute(query)
             return list(result.scalars().all())
-
-    @staticmethod
-    def _ensure_primitive_source(slot: Dict[str, Any]) -> None:
-        block_source = str(slot.get("block_source") or "primitives").strip() or "primitives"
-        if block_source != "primitives":
-            raise ValueError(
-                f"Unsupported block_source '{block_source}'. "
-                "Only 'primitives' is supported."
-            )
 
     @staticmethod
     def _primitive_slot_tag_query(slot: Dict[str, Any]) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -446,7 +435,6 @@ class BlockTemplateService:
     async def count_candidates(self, slot: Dict[str, Any]) -> int:
         """Count primitive blocks matching a slot's constraints."""
         slot = normalize_template_slot(slot)
-        self._ensure_primitive_source(slot)
         base = self._build_primitive_slot_query(slot).subquery()
         async with get_async_blocks_session() as blocks_db:
             result = await blocks_db.execute(select(func.count()).select_from(base))
@@ -455,7 +443,6 @@ class BlockTemplateService:
     async def count_candidates_by_package(self, slot: Dict[str, Any]) -> List[Tuple[Optional[str], int]]:
         """Count matching primitive blocks grouped by package source."""
         slot = normalize_template_slot(slot)
-        self._ensure_primitive_source(slot)
         base = self._build_primitive_slot_query(slot).subquery()
         source_pack = func.nullif(func.jsonb_extract_path_text(base.c.tags, "source_pack"), "")
         async with get_async_blocks_session() as blocks_db:
@@ -478,7 +465,6 @@ class BlockTemplateService:
         if not tag_key:
             return []
         slot = normalize_template_slot(slot)
-        self._ensure_primitive_source(slot)
         base = self._build_primitive_slot_query(slot).subquery()
         extracted = func.jsonb_extract_path_text(base.c.tags, str(tag_key))
         async with get_async_blocks_session() as blocks_db:

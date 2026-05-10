@@ -40,7 +40,6 @@ def test_dynamic_slot_planner_builds_runtime_plan_from_action_context() -> None:
     )
     request = ComposerPlanRequest.from_action_selection_context(
         action_context,
-        block_source="primitives",
         package_name="scene_foundation",
     )
 
@@ -61,7 +60,6 @@ def test_dynamic_slot_planner_builds_runtime_plan_from_action_context() -> None:
     assert "wardrobe" in categories
 
     env_slot = next(slot for slot in plan.slots if slot["category"] == "environment")
-    assert env_slot["block_source"] == "primitives"
     assert env_slot["package_name"] == "scene_foundation"
     assert env_slot["tags"]["all"]["setting"] == "urban"
     assert env_slot["tags"]["all"]["mood"] == "serene"

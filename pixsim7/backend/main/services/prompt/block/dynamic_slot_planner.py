@@ -150,7 +150,6 @@ class ComposerPlanRequest(BaseModel):
     """Composer planning contract input."""
 
     context: ComposerContextInput = Field(default_factory=ComposerContextInput)
-    block_source: str = Field(default="primitives")
     package_name: Optional[str] = None
     prefer_granular: bool = True
     include_categories: List[str] = Field(default_factory=list)
@@ -320,7 +319,6 @@ class DynamicSlotPlanner:
                 "category": category,
                 "optional": optional,
                 "selection_strategy": "weighted_tags" if preferences else "uniform",
-                "block_source": request.block_source,
             }
             if role:
                 slot["role"] = role
