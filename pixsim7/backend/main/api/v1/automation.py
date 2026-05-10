@@ -110,6 +110,7 @@ class ResetDeviceClearedResponse(BaseModel):
     assigned_account_id: bool
     is_watching_ad: bool
     ad_session_started_at: bool
+    ad_last_seen_at: bool
 
 
 class ResetDeviceStatusResponse(BaseModel):
@@ -214,6 +215,7 @@ async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_aut
     - assigned_account_id (automation assignment)
     - is_watching_ad (ad detection flag)
     - ad_session_started_at (ad session tracking)
+    - ad_last_seen_at (sliding-window timeout anchor)
     - Sets status to ONLINE if currently BUSY
 
     Use this when a device is stuck in BUSY state after an automation
@@ -230,6 +232,7 @@ async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_aut
     device.assigned_account_id = None
     device.is_watching_ad = False
     device.ad_session_started_at = None
+    device.ad_last_seen_at = None
 
     # Only change status if it was BUSY
     if was_busy:
@@ -247,6 +250,7 @@ async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_aut
             "assigned_account_id": True,
             "is_watching_ad": True,
             "ad_session_started_at": True,
+            "ad_last_seen_at": True,
         }
     }
 

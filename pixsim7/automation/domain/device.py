@@ -73,7 +73,8 @@ class AndroidDevice(SQLModel, table=True):
     # Activity tracking (for ad detection, etc.)
     current_activity: Optional[str] = Field(default=None, max_length=255)  # Current focused activity
     is_watching_ad: bool = Field(default=False)  # True if ad SDK activity detected
-    ad_session_started_at: Optional[datetime] = Field(default=None)  # When ad watching session started
+    ad_session_started_at: Optional[datetime] = Field(default=None)  # When ad watching session started (anchor)
+    ad_last_seen_at: Optional[datetime] = Field(default=None)  # Last poll where an ad was detected (sliding window)
 
     created_at: Optional[datetime] = Field(default=None)
     updated_at: Optional[datetime] = Field(default=None)

@@ -288,24 +288,30 @@ class DeviceSyncService:
         await self.db.commit()
         return {"scanned": scanned, "added": added, "updated": updated, "offline": offline}
 
-    # How long to consider a device "in ad session" after last ad detected
+    # How long to tolerate "no ad detected" before declaring the session over.
+    # Anchored to ad_last_seen_at (sliding window), NOT ad_session_started_at —
+    # otherwise a long watching streak gets killed at the first inter-ad gap.
     AD_SESSION_TIMEOUT_SECONDS = 60
 
     async def check_device_ads(self) -> Dict[str, int]:
         """
         Check all online devices for ad activity and update their status.
 
-        Uses session-based detection:
-        - When ad detected: start session, mark device BUSY
-        - When no ad but session active within timeout: keep device BUSY (user between ads)
-        - When no ad and session expired: clear session, mark device ONLINE
+        Uses session-based detection with a sliding-window timeout:
+        - When ad detected: start session if needed, refresh ad_last_seen_at,
+          mark device BUSY.
+        - When no ad but ad_last_seen_at is within the timeout: keep BUSY
+          (user is between ads / the SDK transition isn't visible this poll).
+        - When no ad and the timeout has elapsed since ad_last_seen_at:
+          end the session, refresh credits, return device to ONLINE.
 
-        Returns dict with counts: checked, watching_ads, in_session, cleared
+        Returns dict with counts: checked, watching_ads, in_session, cleared, errors
         """
         checked = 0
         watching_ads = 0
         in_session = 0
         cleared = 0
+        errors = 0
         now = datetime.now(timezone.utc)
 
         # Get all online/busy devices (include BUSY to track ongoing sessions)
@@ -325,26 +331,30 @@ class DeviceSyncService:
                 device.current_activity = activity
 
                 if is_ad:
-                    # Ad detected - start or continue session
+                    # Ad detected - start or continue session.
                     if not device.ad_session_started_at:
                         device.ad_session_started_at = now
-                        logger.info("ad_session_started", device=device.name, adb_id=device.adb_id)
+                        logger.info("ad_session_started", device=device.name, adb_id=device.adb_id, activity=activity)
+                    device.ad_last_seen_at = now  # sliding-window anchor, refreshed every poll
                     device.is_watching_ad = True
                     if device.status != DeviceStatus.BUSY:
                         device.status = DeviceStatus.BUSY
                     watching_ads += 1
 
                 elif device.ad_session_started_at:
-                    # No ad detected, but session was active
-                    session_age = (now - device.ad_session_started_at).total_seconds()
+                    # No ad detected, but a session was active.
+                    # Anchor against ad_last_seen_at; fall back to started_at for
+                    # rows that pre-date the column (back-compat, no data migration).
+                    anchor = device.ad_last_seen_at or device.ad_session_started_at
+                    session_age = (now - anchor).total_seconds()
 
                     if session_age < self.AD_SESSION_TIMEOUT_SECONDS:
-                        # Session still active - user likely between ads
+                        # Within sliding window — user likely between ads.
                         device.is_watching_ad = False  # Not actively watching
                         # Keep device BUSY
                         in_session += 1
                     else:
-                        # Session expired - user done with ads.
+                        # Sliding window elapsed — session is over.
                         # Refresh credits for the account that was watching
                         # (ad rewards should now be reflected on the Pixverse side).
                         account_id = device.assigned_account_id
@@ -353,6 +363,7 @@ class DeviceSyncService:
 
                         device.is_watching_ad = False
                         device.ad_session_started_at = None
+                        device.ad_last_seen_at = None
                         device.assigned_account_id = None
                         if device.status == DeviceStatus.BUSY:
                             device.status = DeviceStatus.ONLINE
@@ -361,20 +372,38 @@ class DeviceSyncService:
                             device=device.name,
                             adb_id=device.adb_id,
                             refreshed_account_id=account_id,
+                            session_age_seconds=int(session_age),
                         )
                         cleared += 1
                 else:
-                    # No ad and no session - ensure clean state
-                    if device.is_watching_ad:
+                    # No ad and no session - ensure clean state.
+                    if device.is_watching_ad or device.ad_last_seen_at:
                         device.is_watching_ad = False
+                        device.ad_last_seen_at = None
                         cleared += 1
 
-            except Exception:
-                # Device might have disconnected
-                pass
+            except Exception as exc:
+                # Device might have disconnected, ADB might be flaky, dumpsys
+                # parse could have failed. Log and continue — one bad device
+                # shouldn't poison the batch — but don't stay silent: silent
+                # failures here masked the original sliding-window bug for ages.
+                errors += 1
+                logger.warning(
+                    "ad_check_failed",
+                    device=device.name,
+                    adb_id=device.adb_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
 
         await self.db.commit()
-        return {"checked": checked, "watching_ads": watching_ads, "in_session": in_session, "cleared": cleared}
+        return {
+            "checked": checked,
+            "watching_ads": watching_ads,
+            "in_session": in_session,
+            "cleared": cleared,
+            "errors": errors,
+        }
 
     async def _refresh_credits_after_ads(self, account_id: int, device_name: str) -> None:
         """Best-effort credit refresh for an account after ad session ends."""
