@@ -332,6 +332,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-chest-torso"
 	title:       "Latin Chest & Torso"
 	description: "Curated Latin phrase enhancers for chest / breast / torso contact. Balanced technical/poetic register, tagged by intensity, motion type, and applies_to (chest, breast, ribs, belly, sinus)."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

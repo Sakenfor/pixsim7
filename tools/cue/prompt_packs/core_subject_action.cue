@@ -407,6 +407,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-action"
 	title:       "Core Subject Action"
 	description: "Transitive action primitives organized by verb family: react, gesture, reach, contact, release. Domain packs (combat, romance, explicit) extend specific blocks under the same subject.action.v1 signature. Compose with core_manner for quality/intensity."
+	category:    "subject"
 	matrix_presets: [
 		{
 			label: "Action Family by Target Involvement"

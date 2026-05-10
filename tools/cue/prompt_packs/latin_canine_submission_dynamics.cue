@@ -318,6 +318,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-submission-dynamics"
 	title:       "Latin Canine Submission Dynamics"
 	description: "Curated Latin phrase enhancers for canine-coded submission: bared neck, lowered head, knee-bend, closed throat, flat hackles. Biped-safe vocabulary; pairs with latin_canine_dominance_dynamics for full hierarchy scenes."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

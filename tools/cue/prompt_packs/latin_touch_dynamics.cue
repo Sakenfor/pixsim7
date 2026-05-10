@@ -309,6 +309,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-touch-dynamics"
 	title:       "Latin Touch Dynamics"
 	description: "Curated Latin phrase enhancers for hand-gluteal contact. 50/50 technical/poetic register, tagged by intensity, motion type, and applies_to."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

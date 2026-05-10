@@ -128,6 +128,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-shot"
 	title:       "Core Shot"
 	description: "Shot size and subject count primitives."
+	category:    "camera"
 	matrix_presets: [
 		{
 			label: "Shot Variants"

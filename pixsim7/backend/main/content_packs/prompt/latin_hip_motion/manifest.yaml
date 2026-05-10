@@ -1,6 +1,7 @@
 id: latin-hip-motion
 title: Latin Hip Motion
 description: 'Latin phrase enhancers for hip and pelvic mechanics: sway, undulation, rotation, drop, figure-eight, accent. Pairs with technique variables for step patterns. rhythm_quality tag (continuous/accented/asymmetric/circular) matches phrases to temporal motion character.'
+category: latin
 matrix_presets:
   - label: Motion Type by Register
     query:

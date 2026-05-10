@@ -265,6 +265,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-pin-dynamics"
 	title:       "Latin Pin Dynamics"
 	description: "Curated Latin phrase enhancers for pinning and physical restraint. 50/50 technical/poetic, drawing on the classical predator-prey register."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

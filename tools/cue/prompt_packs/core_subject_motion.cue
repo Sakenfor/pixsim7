@@ -178,6 +178,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-motion"
 	title:       "Core Subject Motion"
 	description: "Subject movement and gaze-target primitives."
+	category:    "subject"
 	matrix_presets: [
 		{
 			label: "Subject Motion Variants"

@@ -6,19 +6,19 @@ defaults:
 blocks:
   - id: repro_organ
     block_schema:
-      id_prefix: core.subject.repro_organ
+      id_prefix: core.subject.genitalia
       mode: hybrid
       category: character_anatomy
       capabilities:
-        - subject.repro_organ
+        - subject.genitalia
       text_template: '{variant}'
       tags:
         modifier_family: repro_organ
         modality_support: both
         temporal: neutral
       op:
-        op_id: subject.repro_organ.set
-        signature_id: subject.repro_organ.v1
+        op_id: subject.genitalia.set
+        signature_id: subject.genitalia.v1
         modalities:
           - both
         refs:
@@ -27,18 +27,18 @@ blocks:
             required: false
         params:
           - key: organ_class
+            tag_key: organ_class
             type: enum
-            default: neutral
             enum:
               - insertive
               - receptive
               - neutral
               - cloacal
               - none
-            tag_key: organ_class
-          - key: state
-            type: enum
             default: neutral
+          - key: state
+            tag_key: organ_state
+            type: enum
             enum:
               - flaccid
               - slightly_erect
@@ -46,19 +46,19 @@ blocks:
               - receptive
               - post_use
               - neutral
-            tag_key: organ_state
+            default: neutral
           - key: visibility
+            tag_key: organ_visibility
             type: enum
-            default: visible
             enum:
               - visible
               - clothed
               - obscured
               - implied
-            tag_key: organ_visibility
+            default: visible
           - key: presentation
+            tag_key: organ_presentation
             type: enum
-            default: forward
             enum:
               - forward
               - dropped
@@ -66,20 +66,20 @@ blocks:
               - tucked
               - exposed
               - concealed
-            tag_key: organ_presentation
+            default: forward
           - key: size
+            tag_key: organ_size
             type: enum
-            default: unspecified
             enum:
               - small
               - medium
               - large
               - very_large
               - unspecified
-            tag_key: organ_size
+            default: unspecified
           - key: surface
+            tag_key: organ_surface
             type: enum
-            default: natural
             enum:
               - smooth
               - wrinkled
@@ -88,10 +88,10 @@ blocks:
               - glossy
               - matte
               - natural
-            tag_key: organ_surface
+            default: natural
           - key: subject_ref
-            type: ref
             required: false
+            type: ref
             ref_capability: subject
         default_args:
           organ_class: neutral

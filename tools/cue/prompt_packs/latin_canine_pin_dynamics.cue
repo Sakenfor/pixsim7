@@ -350,6 +350,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-pin-dynamics"
 	title:       "Latin Canine Pin Dynamics"
 	description: "Curated Latin phrase enhancers for canine-coded pinning, mounting, and restraint. Leans poetic, drawing on the lupine/molossus register of jaws, fangs, claws, weight, and pack hierarchy."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

@@ -33,8 +33,8 @@ blocks:
             intensity: moderate
             modality: tactile
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: anchor
+            paw_target: shoulder
             latin_form: predication
         - key: ungues_carpum_ad_terram_premunt
           text: ungues carpum ad terram premunt
@@ -43,8 +43,8 @@ blocks:
             intensity: firm
             modality: tactile
             canine_archetype: generic
-            paw_target: wrist
             claim_type: press
+            paw_target: wrist
             latin_form: predication
         - key: palma_supra_coxam_quiescit
           text: palma supra coxam quiescit
@@ -53,8 +53,8 @@ blocks:
             intensity: subtle
             modality: tactile
             canine_archetype: generic
-            paw_target: hip
             claim_type: anchor
+            paw_target: hip
             latin_form: predication
         - key: ungula_in_capillis_figitur
           text: ungula in capillis figitur
@@ -63,8 +63,8 @@ blocks:
             intensity: moderate
             modality: tactile
             canine_archetype: generic
-            paw_target: hair
             claim_type: anchor
+            paw_target: hair
             latin_form: predication
         - key: palma_manum_sub_se_claudit
           text: palma manum sub se claudit
@@ -73,8 +73,8 @@ blocks:
             intensity: firm
             modality: tactile
             canine_archetype: generic
-            paw_target: hand
             claim_type: block
+            paw_target: hand
             latin_form: predication
         - key: palma_humerum_signat_non_premit
           text: palma humerum signat, non premit
@@ -83,8 +83,8 @@ blocks:
             intensity: subtle
             modality: tactile
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: mark
+            paw_target: shoulder
             latin_form: predication
         - key: ungues_vesti_adhaerent
           text: ungues vesti adhaerent
@@ -93,8 +93,8 @@ blocks:
             intensity: subtle
             modality: tactile
             canine_archetype: generic
-            paw_target: garment
             claim_type: anchor
+            paw_target: garment
             latin_form: predication
         - key: palma_talum_terrae_figit
           text: palma talum terrae figit
@@ -103,8 +103,8 @@ blocks:
             intensity: firm
             modality: tactile
             canine_archetype: generic
-            paw_target: ankle
             claim_type: press
+            paw_target: ankle
             latin_form: predication
         - key: palma_bracchium_ne_attollatur_tenet
           text: palma bracchium ne attollatur tenet
@@ -113,8 +113,8 @@ blocks:
             intensity: moderate
             modality: tactile
             canine_archetype: generic
-            paw_target: forearm
             claim_type: block
+            paw_target: forearm
             latin_form: predication
         - key: una_ungula_sufficit_ad_tenendum
           text: una ungula sufficit ad tenendum
@@ -123,8 +123,8 @@ blocks:
             intensity: subtle
             modality: tactile
             canine_archetype: generic
-            paw_target: wrist
             claim_type: anchor
+            paw_target: wrist
             latin_form: predication
         - key: ungula_iudicans_non_opprimens
           text: ungula iudicans, non opprimens
@@ -133,8 +133,8 @@ blocks:
             intensity: moderate
             modality: visual
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: mark
+            paw_target: shoulder
             latin_form: noun_phrase
         - key: lupi_pes_humero_impositus
           text: lupi pes humero impositus
@@ -143,8 +143,8 @@ blocks:
             intensity: firm
             modality: visual
             canine_archetype: lupus
-            paw_target: shoulder
             claim_type: anchor
+            paw_target: shoulder
             latin_form: noun_phrase
         - key: signum_unguibus_impressum
           text: signum unguibus impressum
@@ -153,8 +153,8 @@ blocks:
             intensity: subtle
             modality: visual
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: mark
+            paw_target: shoulder
             latin_form: noun_phrase
         - key: levis_palma_gravior_animus
           text: levis palma, gravior animus
@@ -163,8 +163,8 @@ blocks:
             intensity: subtle
             modality: visual
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: anchor
+            paw_target: shoulder
             latin_form: noun_phrase
         - key: una_ungula_totum_vincit
           text: una ungula totum vincit
@@ -173,8 +173,8 @@ blocks:
             intensity: absolute
             modality: visual
             canine_archetype: generic
-            paw_target: wrist
             claim_type: press
+            paw_target: wrist
             latin_form: predication
         - key: terra_sub_palma_signata
           text: terra sub palma signata
@@ -183,8 +183,8 @@ blocks:
             intensity: moderate
             modality: visual
             canine_archetype: generic
-            paw_target: hand
             claim_type: mark
+            paw_target: hand
             latin_form: noun_phrase
         - key: palma_quae_permittit_et_negat
           text: palma quae permittit et negat
@@ -193,8 +193,8 @@ blocks:
             intensity: moderate
             modality: visual
             canine_archetype: generic
-            paw_target: wrist
             claim_type: block
+            paw_target: wrist
             latin_form: noun_phrase
         - key: praedam_non_tenet_sed_possidet
           text: praedam non tenet, sed possidet
@@ -203,8 +203,8 @@ blocks:
             intensity: firm
             modality: visual
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: mark
+            paw_target: shoulder
             latin_form: predication
         - key: ungues_loquuntur
           text: ungues loquuntur
@@ -213,8 +213,8 @@ blocks:
             intensity: subtle
             modality: visual
             canine_archetype: generic
-            paw_target: shoulder
             claim_type: mark
+            paw_target: shoulder
             latin_form: predication
         - key: una_palma_omnes_vias_claudit
           text: una palma omnes vias claudit
@@ -223,6 +223,6 @@ blocks:
             intensity: firm
             modality: visual
             canine_archetype: generic
-            paw_target: wrist
             claim_type: block
+            paw_target: wrist
             latin_form: predication

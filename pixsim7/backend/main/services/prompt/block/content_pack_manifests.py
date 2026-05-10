@@ -337,7 +337,16 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
             )
             parsed_presets.append({"label": label, "query": normalized_query})
 
-        manifest_id = _ensure_optional_string(value=data.get("id"), path=src, field="id")
+        # Header fields (id/title/description/version/category) are validated
+        # by the shared extractor in pack_manifest_header so per-source metadata
+        # here matches the pack-level header reader byte-for-byte.
+        # Imported lazily to avoid a circular import (pack_manifest_header imports from us).
+        from pixsim7.backend.main.services.prompt.block.pack_manifest_header import (
+            extract_header_fields,
+        )
+
+        header = extract_header_fields(data=data, src=src)
+        manifest_id = header["id"]
         if manifest_id is not None:
             if manifest_id in seen_manifest_ids:
                 raise ManifestValidationError(
@@ -350,12 +359,9 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
                 "pack_name": pack_name,
                 "source": str(src.relative_to(content_dir).as_posix()),
                 "id": manifest_id,
-                "title": _ensure_optional_string(value=data.get("title"), path=src, field="title"),
-                "description": _ensure_optional_string(
-                    value=data.get("description"),
-                    path=src,
-                    field="description",
-                ),
+                "title": header["title"],
+                "description": header["description"],
+                "category": header["category"],
                 "matrix_presets": parsed_presets,
             }
         )

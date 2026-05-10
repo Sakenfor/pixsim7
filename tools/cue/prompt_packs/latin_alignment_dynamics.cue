@@ -265,6 +265,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-alignment-dynamics"
 	title:       "Latin Alignment Dynamics"
 	description: "Curated Latin phrase enhancers for body positioning and pre-contact alignment. Covers the preparatory phase before coupling: axis orientation, angular approach, closing distance, mutual seeking."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

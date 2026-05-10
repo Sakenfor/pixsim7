@@ -161,14 +161,19 @@ def _collect_pack_primitives(pack_dir: Path) -> List[Dict[str, Any]]:
 
 
 def _parse_manifest(pack_dir: Path) -> Optional[Dict[str, Any]]:
-    """Read manifest.yaml if present. Returns None if not found."""
-    for name in ("manifest.yaml", "manifest.yml"):
-        path = pack_dir / name
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            return data if isinstance(data, dict) else None
-    return None
+    """Read manifest.yaml if present. Returns None if not found.
+
+    Delegates to the shared `read_pack_manifest_header` so primitives packs and
+    prompt packs validate identical header shape (id, title, description,
+    version, category). Returns the header as a plain dict for back-compat with
+    the existing `load_primitives_pack` result envelope.
+    """
+    from pixsim7.backend.main.services.prompt.block.pack_manifest_header import (
+        read_pack_manifest_header,
+    )
+
+    header = read_pack_manifest_header(pack_dir)
+    return header.to_dict() if header is not None else None
 
 
 # ---------------------------------------------------------------------------

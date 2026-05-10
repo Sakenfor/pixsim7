@@ -135,6 +135,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-interaction"
 	title:       "Core Subject Interaction"
 	description: "Subject-to-target interaction beat primitives."
+	category:    "subject"
 	matrix_presets: [
 		{
 			label: "Interaction by Contact"

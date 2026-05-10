@@ -384,6 +384,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-scruff-dynamics"
 	title:       "Latin Canine Scruff Dynamics"
 	description: "Curated Latin phrase enhancers for canine partial-pin dynamics: held at the nape, throat, or jaw while the body remains free to wriggle, kick, or play. The mock-freedom tease of the scruff hold — captive on one tether, the rest of her loosed beneath. Biped-safe; pairs with latin_canine_pin_dynamics for full-restraint counterpoint."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

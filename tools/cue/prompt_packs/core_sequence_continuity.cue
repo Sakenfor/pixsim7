@@ -144,6 +144,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-sequence-continuity"
 	title:       "Core Sequence Continuity"
 	description: "Sequence role/continuity primitives for initial, continuation, and transition beats."
+	category:    "continuity"
 	matrix_presets: [
 		{
 			label: "Sequence Role by Focus"

@@ -559,3 +559,75 @@ async def test_inventory_empty_when_no_packs(monkeypatch):
     assert inventory["disk_packs"] == []
     assert inventory["packs"] == {}
     assert inventory["summary"]["total_packs"] == 0
+
+
+# ── 7. Inventory surfaces pack-level category (Phase 2 of content-pack-category-field)
+
+@pytest.mark.asyncio
+async def test_inventory_surfaces_category_per_disk_pack(monkeypatch):
+    """`get_content_pack_inventory` reads `category` from each disk pack's manifest."""
+    from pixsim7.backend.main.services.prompt.block import pack_manifest_header
+
+    # camera_pack and no_cat_pack are on disk; orphan_pack only in DB rows.
+    monkeypatch.setattr(loader, "discover_content_packs", lambda: ["camera_pack", "no_cat_pack"])
+
+    # Stub the header reader: per-pack category lookup.
+    def _fake_header(pack_dir: Path):
+        name = pack_dir.name
+        if name == "camera_pack":
+            return pack_manifest_header.PackManifestHeader(category="camera")
+        if name == "no_cat_pack":
+            return pack_manifest_header.PackManifestHeader(category=None)
+        # Any other path: pretend no manifest exists.
+        return None
+
+    monkeypatch.setattr(pack_manifest_header, "read_pack_manifest_header", _fake_header)
+
+    @asynccontextmanager
+    async def _fake_blocks_session():
+        yield _MockSession([SimpleNamespace(pack="camera_pack", cnt=1), SimpleNamespace(pack="orphan_pack", cnt=2)])
+
+    monkeypatch.setattr(loader, "get_async_blocks_session", _fake_blocks_session)
+
+    main_db = _MockSession([], [])  # no templates, no characters
+    inventory = await loader.get_content_pack_inventory(main_db)
+
+    packs = inventory["packs"]
+    assert packs["camera_pack"]["status"] == "active"
+    assert packs["camera_pack"]["category"] == "camera"
+
+    assert packs["no_cat_pack"]["status"] == "disk_only"
+    assert packs["no_cat_pack"]["category"] is None
+
+    # Orphaned packs aren't on disk, so category stays None even when the reader would otherwise fire.
+    assert packs["orphan_pack"]["status"] == "orphaned"
+    assert packs["orphan_pack"]["category"] is None
+
+
+@pytest.mark.asyncio
+async def test_inventory_swallows_malformed_manifest(monkeypatch):
+    """A pack whose manifest fails parsing must not break the whole inventory call."""
+    from pixsim7.backend.main.services.prompt.block import pack_manifest_header
+
+    monkeypatch.setattr(loader, "discover_content_packs", lambda: ["broken_pack", "good_pack"])
+
+    def _fake_header(pack_dir: Path):
+        if pack_dir.name == "broken_pack":
+            raise pack_manifest_header.ManifestValidationError("bad manifest")
+        return pack_manifest_header.PackManifestHeader(category="ok")
+
+    monkeypatch.setattr(pack_manifest_header, "read_pack_manifest_header", _fake_header)
+
+    @asynccontextmanager
+    async def _fake_blocks_session():
+        yield _MockSession([])
+
+    monkeypatch.setattr(loader, "get_async_blocks_session", _fake_blocks_session)
+
+    main_db = _MockSession([], [])
+    inventory = await loader.get_content_pack_inventory(main_db)
+
+    # Both packs surface; broken_pack just has category=None, doesn't propagate the exception.
+    assert set(inventory["packs"].keys()) == {"broken_pack", "good_pack"}
+    assert inventory["packs"]["broken_pack"]["category"] is None
+    assert inventory["packs"]["good_pack"]["category"] == "ok"

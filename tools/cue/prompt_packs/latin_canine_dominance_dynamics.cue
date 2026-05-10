@@ -322,6 +322,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-dominance-dynamics"
 	title:       "Latin Canine Dominance Dynamics"
 	description: "Curated Latin phrase enhancers for canine-coded dominance: bared fangs, raised hackles, throat-growl, fixed gaze, looming presence. Biped-safe vocabulary; works for werewolves, gnolls, beastfolk, or any canine-flavored character."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

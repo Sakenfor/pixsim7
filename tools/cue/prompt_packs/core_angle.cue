@@ -123,6 +123,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-angle"
 	title:       "Core Angle"
 	description: "Vertical camera angle and roll primitives."
+	category:    "camera"
 	matrix_presets: [
 		{
 			label: "Angle Variants"

@@ -379,6 +379,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-paw-pin-dynamics"
 	title:       "Latin Canine Paw Pin Dynamics"
 	description: "Curated Latin phrase enhancers for single-point canine paw placement — shoulder, wrist, hair, hip, ankle, garment. Distinct from latin_canine_pin_dynamics (full-body crush): the paw here marks, anchors, or denies movement rather than pressing the captive flat. Pairs naturally with latin_canine_scruff_dynamics and latin_canine_mouthing_dynamics for partial-pin scenes."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

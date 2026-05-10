@@ -750,3 +750,88 @@ def test_parse_manifests_misspelled_tag_key_in_col_rejected() -> None:
             parse_manifests(root, pack_name="testpack")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ── Pack-level category (Phase 1 of content-pack-category-field) ─────────────
+
+def test_parse_manifests_reads_pack_level_category() -> None:
+    """Pack-level `category` round-trips through parse_manifests."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "core_camera",
+                "category": "camera",
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {"row_key": "role", "col_key": "role"},
+                    }
+                ],
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+        assert manifests[0]["category"] == "camera"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_category_absent_yields_none() -> None:
+    """Manifests without `category` produce category=None (not missing key)."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "core_camera",
+                "matrix_presets": [
+                    {"label": "X", "query": {"row_key": "role", "col_key": "role"}}
+                ],
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert manifests[0]["category"] is None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_category_trims_whitespace() -> None:
+    """Pack-level `category` whitespace is trimmed; blank-after-trim becomes None."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "core_camera",
+                "category": "  camera  ",
+                "matrix_presets": [
+                    {"label": "X", "query": {"row_key": "role", "col_key": "role"}}
+                ],
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert manifests[0]["category"] == "camera"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_category_non_string_raises() -> None:
+    """Non-string `category` is rejected with a clear error."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "core_camera",
+                "category": 42,
+                "matrix_presets": [
+                    {"label": "X", "query": {"row_key": "role", "col_key": "role"}}
+                ],
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="category must be a string"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

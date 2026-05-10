@@ -137,6 +137,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-pose"
 	title:       "Core Subject Pose"
 	description: "Subject pose and posture primitives."
+	category:    "subject"
 	matrix_presets: [
 		{
 			label: "Pose Variants"

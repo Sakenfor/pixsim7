@@ -163,6 +163,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-expression"
 	title:       "Core Subject Expression"
 	description: "Facial expression primitives covering primary emotion states. Compose with core_manner for quality (e.g. smile_soft + manner.tender) and core_subject_look for gaze direction."
+	category:    "expression"
 	matrix_presets: [
 		{
 			label: "Expression Variants"

@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 from uuid import uuid4
 
 import yaml
@@ -1161,11 +1161,19 @@ async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
 
     Returns a dict with:
       - disk_packs: list of pack names found on disk
-      - packs: {name: {status, blocks, templates, characters}}
+      - packs: {name: {status, category, blocks, templates, characters}}
       - summary: {orphaned_packs, total_orphaned_entities, ...}
+
+    `category` is read from each disk pack's root manifest.yaml via
+    `read_pack_manifest_header`. Orphaned packs (no longer on disk) get None.
+    Scope: prompt content packs only (CONTENT_PACKS_DIR). Primitives packs
+    are inventoried elsewhere.
     """
     from pixsim7.backend.main.domain.prompt import BlockTemplate
     from pixsim7.backend.main.domain.game.entities.character import Character
+    from pixsim7.backend.main.services.prompt.block.pack_manifest_header import (
+        read_pack_manifest_header,
+    )
 
     disk_packs = set(discover_content_packs())
 
@@ -1239,7 +1247,20 @@ async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
         else:
             status = "disk_only"
 
-        packs[name] = {"status": status, **counts}
+        # Pack-level category from disk manifest (None when orphaned or no manifest).
+        category: Optional[str] = None
+        if on_disk:
+            try:
+                header = read_pack_manifest_header(CONTENT_PACKS_DIR / name)
+                if header is not None:
+                    category = header.category
+            except Exception:
+                # Manifest is malformed — surface as no-category rather than
+                # break the whole inventory call. The /meta/content-packs/manifests
+                # endpoint will report the structured error separately.
+                category = None
+
+        packs[name] = {"status": status, "category": category, **counts}
 
     return {
         "disk_packs": sorted(disk_packs),

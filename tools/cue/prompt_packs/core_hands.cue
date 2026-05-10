@@ -109,6 +109,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-hands"
 	title:       "Core Hands"
 	description: "Hand visibility and gesture primitives."
+	category:    "hands"
 	matrix_presets: [
 		{
 			label: "Hands Variants"

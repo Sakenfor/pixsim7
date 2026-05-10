@@ -405,6 +405,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-canine-mouthing-dynamics"
 	title:       "Latin Canine Mouthing Dynamics"
 	description: "Curated Latin phrase enhancers for canine mouthing: open or closed jaw cradling a wrist, forearm, hair, or shoulder without biting down. Threat-as-touch — the fangs are present, the bite withheld. Sibling to latin_canine_scruff_dynamics; pair the two for anchor + cradle scenes."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

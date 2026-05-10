@@ -313,6 +313,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-rhythm-pattern"
 	title:       "Latin Rhythm Pattern"
 	description: "Latin phrase enhancers for rhythmic / temporal motion structure: single carrier, counter (opposing rhythms), nested (sub-pulse inside a carrier), or layered (cooperating rhythms). Composes with per-domain packs (hip / breath / voice) that supply the body referent. Introduces the rhythm_layering axis."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Layering by Rhythm Quality"

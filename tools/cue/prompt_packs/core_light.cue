@@ -130,6 +130,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-light"
 	title:       "Core Light"
 	description: "Lighting state primitives for mood and readability."
+	category:    "lighting"
 	matrix_presets: [
 		{
 			label: "Light Variants"

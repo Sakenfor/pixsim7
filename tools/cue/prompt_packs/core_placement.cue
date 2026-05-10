@@ -209,6 +209,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-placement"
 	title:       "Core Placement"
 	description: "Anchor and relative placement primitives for scene layout."
+	category:    "composition"
 	matrix_presets: [
 		{
 			label: "Placement Relations"

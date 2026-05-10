@@ -4,6 +4,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-color"
 	title:       "Core Color"
 	description: "Color grade primitives that bridge lighting and style language."
+	category:    "color"
 	matrix_presets: [
 		{
 			label: "Color Grade Variants"

@@ -178,6 +178,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-direction"
 	title:       "Core Direction"
 	description: "Direction primitives intended to be shared by movement-capable domains."
+	category:    "camera"
 	matrix_presets: [
 		{
 			label: "Direction Variants"

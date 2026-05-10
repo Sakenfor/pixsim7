@@ -285,10 +285,10 @@ pack: #PromptBlockPackV1 & {
 		{
 			id: "repro_organ"
 			block_schema: {
-				id_prefix: "core.subject.repro_organ"
+				id_prefix: "core.subject.genitalia"
 				mode:      "hybrid"
 				category:  "character_anatomy"
-				capabilities: ["subject.repro_organ"]
+				capabilities: ["subject.genitalia"]
 				text_template: "{variant}"
 				tags: {
 					modifier_family:  "repro_organ"
@@ -296,8 +296,8 @@ pack: #PromptBlockPackV1 & {
 					temporal:         "neutral"
 				}
 				op: {
-					op_id:        "subject.repro_organ.set"
-					signature_id: "subject.repro_organ.v1"
+					op_id:        "subject.genitalia.set"
+					signature_id: "subject.genitalia.v1"
 					modalities: ["both"]
 					refs: [
 						{
@@ -383,6 +383,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-repro-organ"
 	title:       "Core Subject Reproductive Organ"
 	description: "Universal subject reproductive-organ primitive. Op-style hybrid pack with enum params (organ_class, state, visibility, presentation, size, surface) covering human / creature / anthro / hybrid morphologies through a single op signature. Variants are preset combinations carrying both structured op_args and hand-tuned descriptor text. Pairs with latin_repro_organ as Latin overlay."
+	category:    "anatomy"
 	matrix_presets: [
 		{
 			label: "Organ Class by State"

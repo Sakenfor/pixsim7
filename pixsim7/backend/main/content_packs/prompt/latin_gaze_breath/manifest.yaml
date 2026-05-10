@@ -1,6 +1,7 @@
 id: latin-gaze-breath
 title: Latin Gaze & Breath
 description: Curated Latin phrase enhancers for gaze / breath / voice cues. Balanced technical/poetic register, tagged by intensity, motion type, and applies_to (eyes, gaze, mouth, ear, throat, breath).
+category: latin
 matrix_presets:
   - label: Register by Intensity
     query:

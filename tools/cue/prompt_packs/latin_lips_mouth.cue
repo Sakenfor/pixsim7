@@ -336,6 +336,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-lips-mouth"
 	title:       "Latin Lips & Mouth"
 	description: "Curated Latin phrase enhancers for oral / lip / mouth contact. Balanced technical/poetic register, tagged by intensity, motion type, and applies_to (lips, mouth, neck, ear, jawline, cheek)."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Register by Intensity"

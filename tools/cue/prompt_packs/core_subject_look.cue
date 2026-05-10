@@ -111,6 +111,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-subject-look"
 	title:       "Core Subject Look"
 	description: "Subject gaze target primitives. Compose with core_manner for gaze intensity (glance_target + manner.languid, hold_eye_contact + manner.deliberate, etc.)."
+	category:    "expression"
 	matrix_presets: [
 		{
 			label: "Look Variants by Focus"

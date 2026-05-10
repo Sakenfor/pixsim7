@@ -261,6 +261,10 @@ package promptpacks
 	id:           string
 	title?:       string
 	description?: string
+	// Optional pack-level grouping bucket (e.g. "camera", "color", "anatomy").
+	// Surfaced via /meta/content-packs/inventory; UI groups packs by it.
+	// Free-form for now; lint-checked against block categories at parse time.
+	category?: string
 	matrix_presets: [...#MatrixPreset]
 	[string]: _
 }

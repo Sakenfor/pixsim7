@@ -269,6 +269,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-breath-proximity"
 	title:       "Latin Breath Proximity"
 	description: "Latin phrase enhancers for breath near the ear. Multi-sensory: thermal (vapor warming skin), auditory (breath filling the ear canal), tactile (air pressure on neck and pinna). Tagged by sense, proximity, and breath_type."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Sense by Register"

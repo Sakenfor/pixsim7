@@ -293,6 +293,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-voice-pattern"
 	title:       "Latin Voice Pattern"
 	description: "Latin phrase enhancers for vocalization patterns: interrupted, suppressed, held, consecutive, involuntary, released, synchronised. Companion to latin_breath_pattern — reuses pattern_type, rhythm_quality, and intensity axes. New voice_type axis (moan/sigh/gasp/murmur/cry)."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Pattern Type by Voice Type"

@@ -1,6 +1,7 @@
 id: core-pov
 title: Core POV
 description: Point-of-view primitives for perspective and camera height.
+category: camera
 matrix_presets:
   - label: POV Variants
     query:

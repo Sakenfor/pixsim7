@@ -1,6 +1,7 @@
 id: core-manner
 title: Core Manner
 description: Cross-domain quality modifier describing how an action, motion, or interaction is performed. Composes with subject action, motion, interaction, and camera ops.
+category: manner
 matrix_presets:
   - label: Manner Quality by Intensity
     query:

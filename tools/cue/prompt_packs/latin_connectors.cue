@@ -267,6 +267,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "latin-connectors"
 	title:       "Latin Connectors"
 	description: "Generic Latin glue clauses (simile / temporal / consequence / anaphor) used by the composer to bridge content picks. Not standalone — interleaved into multi-clause output."
+	category:    "latin"
 	matrix_presets: [
 		{
 			label: "Connector Type by Attaches"

@@ -338,6 +338,9 @@ class ContentPackMatrixManifestResponse(BaseModel):
     id: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    # Pack-level grouping bucket (Path B taxonomy). Independent of block category.
+    # Read from root manifest.yaml via pack_manifest_header.read_pack_manifest_header.
+    category: Optional[str] = None
     matrix_presets: List[ContentPackMatrixPresetResponse] = Field(default_factory=list)
 
 

@@ -1,6 +1,7 @@
 id: latin-breath-pattern
 title: Latin Breath Pattern
 description: 'Latin phrase enhancers for breath rhythm and temporal pattern: interrupted sequences, consecutive failed attempts, held breath before release, rapid shallow succession, synchronisation. Tagged by pattern_type and rhythm_quality.'
+category: latin
 matrix_presets:
   - label: Pattern Type by Register
     query:

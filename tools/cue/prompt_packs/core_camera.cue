@@ -244,6 +244,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-camera"
 	title:       "Core Camera"
 	description: "Canonical camera motion primitives. Direction is intentionally split into core_direction."
+	category:    "camera"
 	matrix_presets: [
 		{
 			label: "Camera Motion Variants"

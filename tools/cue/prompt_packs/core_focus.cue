@@ -127,6 +127,7 @@ manifest: #PromptPackManifestV1 & {
 	id:          "core-focus"
 	title:       "Core Focus"
 	description: "Focus target, depth-of-field, and rack-focus primitives."
+	category:    "camera"
 	matrix_presets: [
 		{
 			label: "Focus Variants"
