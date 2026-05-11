@@ -14,8 +14,10 @@ import pytest
 import yaml
 
 from pixsim7.backend.main.services.prompt.block.pack_manifest_header import (
+    PACK_CATEGORY_REGISTRY,
     ManifestValidationError,
     PackManifestHeader,
+    is_known_pack_category,
     read_pack_manifest_header,
 )
 
@@ -180,3 +182,69 @@ def test_to_dict_matches_dataclass_fields() -> None:
         "version": "1",
         "category": "c",
     }
+
+
+# ── Phase 4: PACK_CATEGORY_REGISTRY lint ─────────────────────────────────────
+# Closed registry of pack-level categories (Path B taxonomy). Unknown values
+# log a warning at read time but never fail loading.
+
+def test_registry_contains_expected_buckets() -> None:
+    """Lock down the 15 known buckets so accidental removals fail a test."""
+    expected = {
+        "camera", "lighting", "composition", "color",
+        "subject", "expression", "anatomy", "hands",
+        "manner", "continuity", "latin",
+        "mood", "scene", "style", "demo",
+    }
+    assert PACK_CATEGORY_REGISTRY == expected
+
+
+def test_is_known_pack_category_truth_table() -> None:
+    assert is_known_pack_category("camera") is True
+    assert is_known_pack_category("latin") is True
+    assert is_known_pack_category("demo") is True
+    assert is_known_pack_category("camra") is False  # typo
+    assert is_known_pack_category("CAMERA") is False  # case-sensitive
+    assert is_known_pack_category("") is False
+    assert is_known_pack_category(None) is False
+
+
+def test_known_category_emits_no_warning(caplog) -> None:
+    root = _tempdir()
+    try:
+        _write_yaml(root / "manifest.yaml", {"category": "camera"})
+        with caplog.at_level("WARNING", logger="pixsim7.backend.main.services.prompt.block.pack_manifest_header"):
+            header = read_pack_manifest_header(root)
+        assert header is not None and header.category == "camera"
+        assert not any("unknown_category" in r.message for r in caplog.records)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_unknown_category_emits_warning(caplog) -> None:
+    root = _tempdir()
+    try:
+        _write_yaml(root / "manifest.yaml", {"category": "camra"})  # typo
+        with caplog.at_level("WARNING", logger="pixsim7.backend.main.services.prompt.block.pack_manifest_header"):
+            header = read_pack_manifest_header(root)
+        assert header is not None and header.category == "camra"  # still loads
+        warnings = [r for r in caplog.records if "unknown_category" in r.getMessage()]
+        assert len(warnings) == 1
+        msg = warnings[0].getMessage()
+        assert "camra" in msg
+        assert root.name in msg
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_no_category_emits_no_warning(caplog) -> None:
+    """Pack without a `category` field doesn't trigger the lint."""
+    root = _tempdir()
+    try:
+        _write_yaml(root / "manifest.yaml", {"id": "x"})
+        with caplog.at_level("WARNING", logger="pixsim7.backend.main.services.prompt.block.pack_manifest_header"):
+            header = read_pack_manifest_header(root)
+        assert header is not None and header.category is None
+        assert not any("unknown_category" in r.message for r in caplog.records)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
