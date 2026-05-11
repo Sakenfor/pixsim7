@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-05.1"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-11.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 PLAN_SUMMARY_MAX_LENGTH = 280
 logger = get_logger()
@@ -70,11 +70,27 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "level": "suggested",
         "applies_to_principal_types": ["agent", "service", "user"],
         "description": (
-            "Include points_total (and optionally points_done) for each checkpoint "
-            "to make progress accounting explicit."
+            "Make progress accounting explicit on each checkpoint. Two ways:\n"
+            "  • Preferred (decomposed work): write `steps[]` with concrete "
+            "sub-tasks; the system auto-derives points_total = len(steps) and "
+            "points_done = count(step.done). Steps win over explicit point "
+            "fields when both are present, so don't write both — keep one "
+            "source of truth.\n"
+            "  • Acceptable (early-stage / not yet decomposed): bare "
+            "`points_total` (and optionally `points_done`) as a rough size "
+            "estimate. Use a small scale (~1–8 per checkpoint); split "
+            "anything bigger into sub-checkpoints or a sub-plan rather than "
+            "raising the number.\n"
+            "Either way, downstream tools (plans.todo_summary, progress "
+            "dashboards) need a points signal — checkpoint `status` rarely "
+            "leaves 'pending' in practice and is not a reliable completion "
+            "signal."
         ),
         "constraint": {"type": "advisory"},
-        "message": "Add points_total on checkpoints to improve progress visibility.",
+        "message": (
+            "Add points_total on checkpoints to improve progress visibility "
+            "(or write steps[] for auto-derived points)."
+        ),
     },
     {
         "id": "plans.create.summary_codepaths_suggested",
@@ -156,6 +172,36 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
             "Link specific tests via checkpoint evidence: "
             "{\"kind\": \"test_suite\", \"ref\": \"<suite_id>\"}."
         ),
+    },
+    {
+        "id": "plans.create.checkpoints.status_points_consistent",
+        "endpoint_id": "plans.create",
+        "field": "checkpoints",
+        "level": "suggested",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            "A checkpoint with status='done' should also have points_done >= "
+            "points_total. The points field is the operational source of truth "
+            "used by plans.todo_summary and the openSummary block on plans.detail "
+            "— a status/points mismatch creates a data lie where the checkpoint "
+            "appears done in the UI but keeps surfacing as open work."
+        ),
+        "constraint": {"type": "checkpoint_status_points_consistent"},
+        "message": "Checkpoint status/points mismatch — see warnings for specifics.",
+    },
+    {
+        "id": "plans.update.checkpoints.status_points_consistent",
+        "endpoint_id": "plans.update",
+        "field": "checkpoints",
+        "level": "suggested",
+        "applies_to_principal_types": ["agent", "service", "user"],
+        "description": (
+            "Same rule as plans.create — applies only when the PATCH payload "
+            "includes a checkpoints array. Skipped silently for partial updates "
+            "that don't touch checkpoints."
+        ),
+        "constraint": {"type": "checkpoint_status_points_consistent"},
+        "message": "Checkpoint status/points mismatch — see warnings for specifics.",
     },
     {
         "id": "plans.progress.evidence.test_suite_refs_registered_for_automation",
@@ -391,6 +437,94 @@ def _constraint_advisory(
     return []
 
 
+def _derive_points_for_consistency_check(cp: Dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+    """Local copy of the points-derivation logic used by the consistency check.
+
+    Inlined (rather than importing helpers._derive_checkpoint_points) to avoid
+    a circular import between this module and the plans API layer. Behaviour
+    must stay aligned: steps-derived points win when steps are present.
+    """
+    steps = cp.get("steps")
+    if isinstance(steps, list) and steps:
+        total = len(steps)
+        done = sum(
+            1 for s in steps
+            if isinstance(s, dict) and bool(s.get("done"))
+        )
+        return done, total
+
+    pd_raw = cp.get("points_done")
+    pt_raw = cp.get("points_total")
+
+    def _coerce(v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    return _coerce(pd_raw), _coerce(pt_raw)
+
+
+def check_checkpoint_status_points_consistent(cp: Dict[str, Any]) -> Optional[str]:
+    """Return a warning string when a checkpoint claims status='done' while
+    points_done < points_total, else None.
+
+    The trap this catches: ``status`` on a checkpoint is rarely flipped from
+    its initial value, and there are real cases (Phase 1c on
+    automation-package-extraction, 6/8 marked done) where a checkpoint is
+    declared done while still underwater on points. The points field is the
+    operational source of truth — see ``plans.todo_summary`` and the
+    ``open_summary`` block on plans.detail — so the divergence is a write-
+    time data lie that hides open work from every read-side surfacing.
+    """
+    status = str(cp.get("status") or "").strip().lower()
+    if status != "done":
+        return None
+    done, total = _derive_points_for_consistency_check(cp)
+    if done is None or total is None or total <= 0:
+        return None
+    if done >= total:
+        return None
+    cp_id = str(cp.get("id") or "?")
+    return (
+        f"Checkpoint '{cp_id}': status='done' but points_done ({done}) < "
+        f"points_total ({total}). Either bump points_done to {total} or "
+        f"change status — the points field is the operational truth and "
+        f"this checkpoint will keep showing as open in plans.todo_summary "
+        f"and the openSummary block on plans.detail."
+    )
+
+
+def _constraint_checkpoint_status_points_consistent(
+    value: Any,
+    field_name: str,
+    rule: Dict[str, Any],
+    constraint: Dict[str, Any],
+    payload: Any,
+    context: Dict[str, Any],
+) -> List[str]:
+    """Array-payload check (plans.create / plans.update): scan each checkpoint
+    and warn on every status='done' with underwater points.
+
+    Skipped silently when ``value`` is not a list — partial updates that don't
+    touch the checkpoints array shouldn't trigger this rule.
+    """
+    del field_name, rule, constraint, payload, context
+    if not isinstance(value, list):
+        return []
+
+    warnings: List[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        msg = check_checkpoint_status_points_consistent(item)
+        if msg:
+            warnings.append(msg)
+    return warnings
+
+
 def _constraint_work_summary_next_when_active(
     value: Any,
     field_name: str,
@@ -421,6 +555,7 @@ def _constraint_work_summary_next_when_active(
 CONSTRAINT_VALIDATORS: Dict[str, ConstraintValidator] = {
     "array_min_items": _constraint_array_min_items,
     "array_items_required_keys": _constraint_array_items_required_keys,
+    "checkpoint_status_points_consistent": _constraint_checkpoint_status_points_consistent,
     "evidence_test_suite_refs_exist": _constraint_evidence_test_suite_refs_exist,
     "string_required_non_empty": _constraint_string_required_non_empty,
     "string_max_length": _constraint_string_max_length,

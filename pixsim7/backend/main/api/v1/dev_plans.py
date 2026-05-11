@@ -78,6 +78,7 @@ from pixsim7.backend.main.services.docs.plan_authoring_policy import (
     evaluate_plan_create_policy,
     evaluate_plan_update_policy,
     evaluate_plan_progress_policy,
+    check_checkpoint_status_points_consistent,
 )
 from pixsim_logging import get_logger
 
@@ -90,10 +91,12 @@ from pixsim7.backend.main.api.v1.plans.routes_review import router as _review_ro
 from pixsim7.backend.main.api.v1.plans.routes_admin import router as _admin_router
 from pixsim7.backend.main.api.v1.plans.routes_agent import router as _agent_router
 from pixsim7.backend.main.api.v1.plans.routes_coverage import router as _coverage_router
+from pixsim7.backend.main.api.v1.plans.routes_todo import router as _todo_router
 router.include_router(_review_router)
 router.include_router(_admin_router)
 router.include_router(_agent_router)
 router.include_router(_coverage_router)
+router.include_router(_todo_router)
 
 
 # ── Response models ──────────────────────────────────────────────
@@ -1268,6 +1271,15 @@ async def log_plan_progress(
         if any(not isinstance(b, dict) for b in payload.blockers):
             raise HTTPException(status_code=400, detail="blockers must be list[object]")
         checkpoint["blockers"] = payload.blockers
+
+    # Status/points consistency check on the MERGED final state. Done here
+    # (not in evaluate_plan_progress_policy) because the policy validator
+    # sees only the request payload — the actual divergence shows up only
+    # after the request is merged into the existing checkpoint dict above.
+    # Same helper as the create/update array-scan rule, applied to one row.
+    consistency_warning = check_checkpoint_status_points_consistent(checkpoint)
+    if consistency_warning:
+        progress_policy_warnings.append(consistency_warning)
 
     # ── Collect all commit SHAs from the various sources ───────────
     collected_shas: list[str] = []
