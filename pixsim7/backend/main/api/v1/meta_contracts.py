@@ -2084,74 +2084,11 @@ async def get_chat_session(
     }
 
 
-def _merge_chat_messages(
-    server_msgs: List[Any] | None,
-    client_msgs: List[Any],
-) -> List[Dict[str, Any]]:
-    """Union the client PATCH with current server state, ordered by timestamp.
-
-    Both ``_store_session_response`` (bridge-side reply persist) and
-    ``_drain_late_result`` (abandoned-turn placeholder) write directly to
-    ``ChatSession.messages`` without notifying live frontends. A naive
-    overwrite from the next debounced ``syncToServer`` would erase those
-    rows — exactly the failure mode that turned session ``b9792a1e``'s
-    ``kind:"abandoned"`` placeholder into a silent gap.
-
-    Identity is ``(role, stripped text, kind)`` — deliberately
-    **timestamp-insensitive** because the bridge writes timestamps via
-    Python's ``utcnow().isoformat()`` (``…+00:00``) while the frontend
-    appends with JS ``Date.toISOString()`` (``…Z``). Same logical event,
-    different format strings; an early version of this merge keyed on
-    timestamp and ended up keeping both copies of every assistant turn,
-    which the frontend's ``findMissingAssistantTail`` reconcile then
-    re-pasted as "Response recovered from server" duplicates with amber
-    borders. The ``kind`` discriminator preserves distinct system rows
-    (``kind:"abandoned"`` vs ad-hoc ``Bridge disconnected`` notices).
-
-    Server copy wins on collisions so backend-only fields (``kind``,
-    ``duration_ms``, …) survive. Sort is by ISO-8601 timestamp; rows
-    without one fall back to the order they appear in the merged stream.
-
-    Trade-off: two truly identical adjacent rows (same role+text+kind)
-    collapse to one — repeated ``Bridge disconnected`` notices, accidental
-    user double-sends, etc. That's the right call in practice; the
-    frontend already debounces the only realistic source (resubmits).
-    """
-    def key(m: Any) -> tuple:
-        if not isinstance(m, dict):
-            return ("", str(m), "")
-        role = m.get("role") or ""
-        text = (m.get("text") or "").strip() if isinstance(m.get("text"), str) else ""
-        kind = m.get("kind") or ""
-        return (role, text, kind)
-
-    def ts_of(m: Any) -> str:
-        if not isinstance(m, dict):
-            return ""
-        return m.get("timestamp") or ""
-
-    seen: Dict[tuple, Dict[str, Any]] = {}
-    order: List[tuple] = []
-    for m in (server_msgs or []):
-        if isinstance(m, dict):
-            k = key(m)
-            if k not in seen:
-                seen[k] = m
-                order.append(k)
-    for m in client_msgs:
-        if isinstance(m, dict):
-            k = key(m)
-            if k not in seen:
-                seen[k] = m
-                order.append(k)
-
-    def sort_key(k: tuple) -> tuple:
-        # Stable secondary sort by insertion order keeps untimestamped
-        # rows in arrival order, and breaks timestamp ties deterministically.
-        ts = ts_of(seen[k])
-        return (0 if ts else 1, ts, order.index(k))
-
-    return [seen[k] for k in sorted(order, key=sort_key)]
+# Merge helper is shared across all ChatSession.messages writers — see
+# pixsim7/backend/main/shared/chat_messages.py for the full rationale.
+# Kept as a local alias here so existing call sites in this file (and the
+# tests that monkey-patch `_merge_chat_messages`) don't need to change.
+from pixsim7.backend.main.shared.chat_messages import merge_chat_messages as _merge_chat_messages
 
 
 @router.patch("/agents/chat-sessions/{session_id}/messages")
@@ -2732,29 +2669,26 @@ async def _store_session_response(
                     session_id,
                 )
                 return
-            msgs: list = list(session.messages or [])
-            # Idempotency guard: with bridge-side persistence in resolve_task
-            # plus the legacy WS-handler call site, this function can be invoked
-            # twice for the same reply. If the tail already matches, no-op so
-            # we don't append a duplicate assistant turn.
-            if (
-                msgs
-                and isinstance(msgs[-1], dict)
-                and msgs[-1].get("role") == "assistant"
-                and msgs[-1].get("text") == assistant_response
-            ):
-                return
+            # Build the row(s) we want to land. Merge (rather than overwrite)
+            # so a concurrent frontend PATCH that lands between our read and
+            # our commit doesn't get clobbered. Duplicates are handled by the
+            # merge's (role, stripped-text, kind) identity — re-entry from the
+            # bridge persist + WS handler call sites collapses to one row.
             now = utcnow().isoformat()
-            # Skip the user-turn append when caller passed an empty prompt
-            # (handshake-replayed tasks lose the prompt at backend restart) or
-            # when the same user text already terminates the log.
-            if user_message and (not msgs or msgs[-1].get("text") != user_message):
-                msgs.append({"role": "user", "text": user_message, "timestamp": now})
+            new_rows: list[dict] = []
+            if user_message:
+                new_rows.append({"role": "user", "text": user_message, "timestamp": now})
             entry: dict = {"role": "assistant", "text": assistant_response, "timestamp": now}
             if duration_ms is not None:
                 entry["duration_ms"] = duration_ms
-            msgs.append(entry)
-            session.messages = msgs[-50:]
+            new_rows.append(entry)
+            # Refresh to minimise the window in which a frontend PATCH could
+            # commit between our initial fetch and the merge. Race isn't fully
+            # closed without SELECT FOR UPDATE, but the merge keeps both sides'
+            # rows even if a PATCH commits during our transaction.
+            await db.refresh(session, ["messages"])
+            merged = _merge_chat_messages(session.messages, new_rows)
+            session.messages = merged[-50:]
             session.last_used_at = utcnow()
             await db.commit()
     except Exception as e:

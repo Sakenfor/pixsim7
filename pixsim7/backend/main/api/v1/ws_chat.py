@@ -276,22 +276,35 @@ async def _drain_late_result(
                 logger.info("ws_chat_drain_placeholder_skip", session_id=session_id, reason="not_found")
                 return
 
-            msgs = list(session.messages or [])
+            # Merge (rather than overwrite) so a concurrent frontend PATCH
+            # landing between our initial fetch and our commit doesn't get
+            # clobbered. See pixsim7/backend/main/shared/chat_messages.py for
+            # the merge identity and rationale — this is the same race window
+            # the b9792a1e fix patched on the frontend→backend side, in the
+            # opposite direction.
+            from pixsim7.backend.main.shared.chat_messages import merge_chat_messages
+
             now = utcnow().isoformat()
-            if not msgs or msgs[-1].get("text") != user_message:
-                msgs.append({"role": "user", "text": user_message, "timestamp": now})
-            msgs.append({
-                "role": "system",
-                # Structured terminal marker: the frontend's responseLost
-                # detection treats `kind: "abandoned"` as a definitive answer
-                # to the unresolved user turn so the rose chip stops firing.
-                # Plain text is preserved for legacy renderers / UIs that
-                # haven't been taught about the kind field yet.
-                "kind": "abandoned",
-                "text": f"Agent did not respond within {timeout_s}s — response abandoned.",
-                "timestamp": now,
-            })
-            session.messages = msgs[-50:]
+            new_rows: list[dict] = [
+                {"role": "user", "text": user_message, "timestamp": now},
+                {
+                    "role": "system",
+                    # Structured terminal marker: the frontend's responseLost
+                    # detection treats `kind: "abandoned"` as a definitive answer
+                    # to the unresolved user turn so the rose chip stops firing.
+                    # Plain text is preserved for legacy renderers / UIs that
+                    # haven't been taught about the kind field yet.
+                    "kind": "abandoned",
+                    "text": f"Agent did not respond within {timeout_s}s — response abandoned.",
+                    "timestamp": now,
+                },
+            ]
+            # Refresh to pick up any concurrent frontend PATCH that committed
+            # while the drain was sleeping (it sleeps for _LATE_RESULT_DRAIN_S
+            # before reaching here — wide window).
+            await db.refresh(session, ["messages"])
+            merged = merge_chat_messages(session.messages, new_rows)
+            session.messages = merged[-50:]
             session.last_used_at = utcnow()
             await db.commit()
             logger.info("ws_chat_drain_placeholder_written", task_id=task_id, session_id=session_id)

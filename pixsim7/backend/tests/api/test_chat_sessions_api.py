@@ -73,8 +73,13 @@ class _FakeDB:
     async def commit(self):
         self.commit_count += 1
 
-    async def refresh(self, obj):
-        pass
+    async def refresh(self, obj, attribute_names=None):
+        # AsyncSession.refresh(instance, attribute_names=None) — accept the
+        # optional second positional so callers passing ["messages"] don't
+        # blow up the fake. Tests that need to simulate a concurrent PATCH
+        # committing during our transaction should monkey-patch this method
+        # to mutate `obj` to a "fresher" state before the merge runs.
+        return None
 
 
 def _make_session_obj(
@@ -549,6 +554,156 @@ class TestSaveChatSessionMessages:
         assert len(session_obj.messages) == 2
         # Server copy with duration_ms wins.
         assert session_obj.messages[1]["duration_ms"] == 4321
+
+
+class TestStoreSessionResponseMerges:
+    """Regression for the backend-only-writer half of the b9792a1e bug class.
+
+    ``_store_session_response`` is invoked by the bridge / WS handler to
+    append the agent's reply to ``ChatSession.messages``. Pre-fix it did a
+    direct read-modify-write that clobbered any concurrent frontend PATCH
+    landing in the same window. Post-fix it routes through
+    ``merge_chat_messages`` and re-fetches before merging so both sides'
+    new rows survive.
+
+    These tests stage a "concurrent PATCH" by pre-populating
+    ``session.messages`` with rows the store has no knowledge of, then
+    asserting they're still present after the store commits.
+    """
+
+    @staticmethod
+    def _make_async_session_factory(db):
+        """Patch target for `AsyncSessionLocal()` — a no-arg callable that
+        returns an async context manager yielding `db`."""
+
+        class _Ctx:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *args):
+                return None
+
+        return lambda: _Ctx()
+
+    @pytest.mark.asyncio
+    async def test_preserves_concurrent_patch_rows(self, monkeypatch):
+        """Frontend PATCHed a "Bridge disconnected" system row between the
+        bridge's task dispatch and the reply arriving. The store must keep
+        that row, not overwrite it.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        # State on disk at the moment _store_session_response runs — note
+        # the "Bridge disconnected" row was added by a frontend PATCH that
+        # raced with the bridge's reply persist.
+        session_obj.messages = [
+            {"role": "user", "text": "Hi", "timestamp": "2026-05-12T10:00:00Z"},
+            {"role": "system", "text": "Bridge disconnected", "timestamp": "2026-05-12T10:00:02Z"},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        factory = self._make_async_session_factory(db)
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            factory,
+        )
+
+        await meta_contracts._store_session_response(
+            session_id="sess-1",
+            user_message="Hi",
+            assistant_response="Hello there",
+            duration_ms=2150,
+        )
+
+        texts = [(m["role"], m.get("kind"), m["text"]) for m in session_obj.messages]
+        # The user "Hi" already on the row dedupes with the one we appended;
+        # the bridge-disconnected row survives; the assistant reply lands.
+        assert ("user", None, "Hi") in texts
+        assert ("system", None, "Bridge disconnected") in texts
+        assert ("assistant", None, "Hello there") in texts
+        # And the assistant row carries the duration_ms we passed in.
+        asst = next(m for m in session_obj.messages if m["role"] == "assistant")
+        assert asst["duration_ms"] == 2150
+
+    @pytest.mark.asyncio
+    async def test_dedupes_re_entry_same_response(self, monkeypatch):
+        """Bridge `resolve_task` + the legacy WS-handler call site can both
+        invoke `_store_session_response` for the same reply. The merge's
+        (role, stripped-text, kind) identity must collapse them to one row
+        instead of appending twice.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        # First call already landed.
+        session_obj.messages = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00Z"},
+            {"role": "assistant", "text": "A", "timestamp": "2026-05-12T10:00:05Z", "duration_ms": 1000},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        factory = self._make_async_session_factory(db)
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            factory,
+        )
+
+        # Second invocation with identical content.
+        await meta_contracts._store_session_response(
+            session_id="sess-1",
+            user_message="Q",
+            assistant_response="A",
+            duration_ms=1000,
+        )
+
+        # Still exactly two rows — no duplicate user or assistant turn.
+        roles = [m["role"] for m in session_obj.messages]
+        assert roles == ["user", "assistant"]
+        # The server-side row (with duration_ms set first) won the merge.
+        assert session_obj.messages[1]["duration_ms"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_picks_up_refresh_in_concurrent_write_window(self, monkeypatch):
+        """A frontend PATCH commits between our initial fetch and our merge.
+        `db.refresh(session, ["messages"])` is supposed to re-read the row
+        so the merge sees the fresher state. This stages that by having
+        `refresh` mutate `session.messages` to a "fresher" version.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        # State at the moment of `db.get` — the frontend hasn't synced yet.
+        session_obj.messages = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00Z"},
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        # Simulate a concurrent frontend PATCH committing during our txn —
+        # `refresh` should observe the newer state.
+        concurrent_patch_row = {
+            "role": "user", "text": "Q2 (sent fast)", "timestamp": "2026-05-12T10:00:03Z",
+        }
+
+        async def _faking_refresh(obj, attribute_names=None):
+            obj.messages = list(obj.messages) + [concurrent_patch_row]
+
+        db.refresh = _faking_refresh
+
+        factory = self._make_async_session_factory(db)
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            factory,
+        )
+
+        await meta_contracts._store_session_response(
+            session_id="sess-1",
+            user_message="Q",
+            assistant_response="A",
+        )
+
+        texts = [m["text"] for m in session_obj.messages]
+        # The "Q2 (sent fast)" row that arrived between get and merge MUST
+        # be in the final state — that's the whole point of `refresh` before merge.
+        assert "Q2 (sent fast)" in texts
+        assert "A" in texts
 
 
 class TestActiveTask:

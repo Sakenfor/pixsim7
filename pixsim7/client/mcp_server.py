@@ -136,31 +136,30 @@ _request_profile_id: contextvars.ContextVar[str | None] = contextvars.ContextVar
 # In-process dispatch session — set by the bridge before each dispatch so
 # the MCP server can resolve the correct chat session without file I/O.
 #
-# ContextVar (not module global) so concurrent dispatches in the same bridge
-# process — e.g. two chat tabs each running their own agent — don't stomp on
-# each other's session id. Each asyncio task that calls `set_dispatch_session`
-# gets its own copy; nested tool calls inherit the caller's context.
+# Strictly per-task (ContextVar): concurrent dispatches in the same bridge
+# process — e.g. two chat tabs each running their own agent — get isolated
+# values; nested tool calls inherit their caller's context.
 #
-# The legacy module global `_dispatch_session_id` is retained as a coarse
-# fallback for code paths that don't run inside the dispatch's task context
-# (rare; mostly defensive).
+# Historically a module global mirrored this value as a "safety net" for
+# code paths that lost task context. That fallback silently cross-attributed
+# log_work entries to whichever tab dispatched most recently (see
+# tools/reattach_misattached_worklog.py for the failure mode). Removed
+# 2026-05: if the dispatch ctx is gone, callers must pass `session_id`
+# explicitly or accept resolution falling through to the bridge API lookup.
 _dispatch_session_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_dispatch_session_ctx", default=None,
 )
-_dispatch_session_id: str | None = None
 
 
 def set_dispatch_session(session_id: str | None) -> None:
     """Set the active chat session for the current dispatch (bridge in-process).
 
-    Sets both the per-task ContextVar (preferred — scoped to the calling task
-    and any tasks it spawns) and the module global (fallback for code paths
-    outside the dispatch's task tree). MCP tool handlers read the ContextVar
-    first, then fall back to the global.
+    Writes the per-task ContextVar only — scoped to the calling asyncio task
+    and any tasks it spawns via the standard contextvar inheritance. Callers
+    outside that task tree must pass `session_id` explicitly; there is no
+    module-global fallback (it cross-attributed across tabs).
     """
-    global _dispatch_session_id
     _dispatch_session_ctx.set(session_id)
-    _dispatch_session_id = session_id
 
 
 # Cached contracts (fetched once, reused for filtering)
@@ -893,8 +892,11 @@ def _read_session_sidecar() -> str | None:
     Resolution order:
     1. Per-request contextvar (HTTP mode — set from X-Chat-Session-Id header)
     2. Per-dispatch contextvar (bridge in-process — task-scoped, no race)
-    3. Module global dispatch id (legacy fallback for non-task contexts)
-    4. ``{PIXSIM_TOKEN_FILE}.session`` — STDIO mode (pool writes per-session sidecar)
+    3. ``{PIXSIM_TOKEN_FILE}.session`` — STDIO mode (pool writes per-session sidecar)
+
+    A module-global fallback used to live between (2) and (3); it was
+    removed because it silently cross-attributed log_work calls to the
+    most-recently-dispatched tab whenever a caller lost task context.
     """
     # HTTP mode: per-request header (cleanest path — no file I/O)
     ctx_session = _request_session_id.get()
@@ -904,10 +906,6 @@ def _read_session_sidecar() -> str | None:
     dispatch_ctx = _dispatch_session_ctx.get()
     if dispatch_ctx:
         return dispatch_ctx
-    # Legacy module-global fallback (only used when the caller isn't in the
-    # dispatch's task tree; primarily a safety net during refactors).
-    if _dispatch_session_id:
-        return _dispatch_session_id
     # STDIO fallback: per-session sidecar
     token_file = os.environ.get("PIXSIM_TOKEN_FILE", "").strip()
     if not token_file:
@@ -927,15 +925,31 @@ async def _resolve_bridge_session_id(
     agent_type: str,
     scope_key: str | None = None,
 ) -> str | None:
-    """Look up the most recent active chat session for this engine/profile from the backend."""
+    """Look up the most recent active chat session for this engine/profile from the backend.
+
+    Caches results keyed by ``(engine, profile_id, scope_key)`` — but ONLY
+    when ``scope_key`` is set. Without a scope key, multiple tabs sharing
+    ``(engine, profile)`` would collide on a single cache entry and the
+    first-resolved session would win for all of them (cross-attribution).
+    Scope-less callers pay the resolve cost on every call; that's the
+    correct trade-off because they have no signal we could safely cache on.
+    """
     global _bridge_session_cache
     normalized_profile_id = _normalize_profile_id(profile_id)
     normalized_engine = (agent_type or "").strip() or None
     normalized_scope_key = _normalize_scope_key(scope_key)
     cache_key = (normalized_engine, normalized_profile_id, normalized_scope_key)
-    cached = _bridge_session_cache.get(cache_key)
-    if cached:
-        return cached
+    cacheable = normalized_scope_key is not None
+    if cacheable:
+        cached = _bridge_session_cache.get(cache_key)
+        if cached:
+            return cached
+
+    def _store(resolved: str) -> str:
+        if cacheable:
+            _bridge_session_cache[cache_key] = resolved
+        return resolved
+
     try:
         client = _get_client()
         params: dict[str, Any] = {"limit": 100}
@@ -956,13 +970,9 @@ async def _resolve_bridge_session_id(
                 if normalized_profile_id:
                     for session in scoped:
                         if _normalize_profile_id(session.get("profile_id")) == normalized_profile_id:
-                            resolved = session.get("id")
-                            _bridge_session_cache[cache_key] = resolved
-                            return resolved
+                            return _store(session.get("id"))
                 elif scoped:
-                    resolved = scoped[0].get("id")
-                    _bridge_session_cache[cache_key] = resolved
-                    return resolved
+                    return _store(scoped[0].get("id"))
                 # Scope was explicitly requested but no session matches it.
                 # Do NOT fall through to profile-only matching — that would
                 # attribute this work to an unrelated session (cross-contamination).
@@ -970,15 +980,11 @@ async def _resolve_bridge_session_id(
             if normalized_profile_id:
                 for session in sessions:
                     if _normalize_profile_id(session.get("profile_id")) == normalized_profile_id:
-                        resolved = session.get("id")
-                        _bridge_session_cache[cache_key] = resolved
-                        return resolved
+                        return _store(session.get("id"))
                 # Avoid cross-profile leakage when no matching profile session exists.
                 return None
             if sessions:
-                resolved = sessions[0].get("id")
-                _bridge_session_cache[cache_key] = resolved
-                return resolved
+                return _store(sessions[0].get("id"))
     except Exception:
         pass
     return None

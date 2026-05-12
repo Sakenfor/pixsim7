@@ -24,7 +24,6 @@ try:
     from pixsim7.client.mcp_server import (
         _read_session_sidecar,
         set_dispatch_session,
-        _dispatch_session_id,
         _request_session_id,
     )
     IMPORTS_AVAILABLE = True
@@ -90,21 +89,43 @@ class TestDispatchSessionResolution:
 
 
 class TestSetDispatchSession:
-    """Verify set_dispatch_session API."""
+    """Verify set_dispatch_session API — ContextVar-only, no module-global mirror.
+
+    The module global was removed because it cross-attributed log_work
+    calls to the most-recently-dispatched tab whenever a caller lost task
+    context. These tests pin the absence of that fallback.
+    """
 
     def teardown_method(self):
         set_dispatch_session(None)
 
-    def test_set_string(self):
+    def test_read_in_same_task_returns_set_value(self):
         set_dispatch_session("test-id")
-        import pixsim7.client.mcp_server as mod
-        assert mod._dispatch_session_id == "test-id"
+        assert _read_session_sidecar() == "test-id"
 
-    def test_set_none(self):
+    def test_set_none_clears_for_same_task(self):
         set_dispatch_session("something")
         set_dispatch_session(None)
+        # No PIXSIM_TOKEN_FILE → resolution falls through to None.
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PIXSIM_TOKEN_FILE", None)
+            assert _read_session_sidecar() is None
+
+    def test_no_module_global_mirror(self):
+        """Regression guard: setting from one task must not bleed into a sibling
+        task that never ran set_dispatch_session itself.
+
+        Pre-fix, set_dispatch_session also wrote a module global as a "safety
+        net," and any caller whose ContextVar happened to be at its default
+        (None) would silently read that global instead — cross-attributing
+        log_work across tabs. The fix removed the global; this asserts the
+        symbol is no longer exported."""
         import pixsim7.client.mcp_server as mod
-        assert mod._dispatch_session_id is None
+        assert not hasattr(mod, "_dispatch_session_id"), (
+            "Removed in 2026-05 to stop cross-tab log_work attribution. "
+            "If you're re-adding a fallback, make sure it's keyed per-token "
+            "(profile_id, scope_key) not a single global."
+        )
 
 
 class TestSysPathBootstrap:
@@ -274,19 +295,38 @@ class TestDispatchSessionContextVar:
         assert observed["A"] == "session-A"
         assert observed["B"] == "session-B"
 
-    def test_global_fallback_when_no_task_context(self):
-        """A read from the module-global thread (no task context) still returns
-        the most-recently-set value via the legacy global. Not the primary path,
-        just the safety net."""
-        import pixsim7.client.mcp_server as mod
+    @pytest.mark.asyncio
+    async def test_no_cross_task_leak_after_dispatch_exit(self):
+        """Regression for the mis-attributed-work_summary bug: tab A dispatches,
+        its task exits, then tab B (which never set its own dispatch session)
+        runs log_work. Tab B must NOT inherit tab A's session id.
+
+        Pre-fix this leaked via `_dispatch_session_id` (module global) — the
+        ContextVar correctly returned None in B's task, but the fallback read
+        whatever A had written. Result: B's log_work landed on A's session.
+        Now the fallback is gone, so B's _read_session_sidecar returns None
+        and resolution falls through to the bridge API lookup."""
+        import asyncio
         from pixsim7.client.mcp_server import _read_session_sidecar, set_dispatch_session
 
-        # Confirm the global side-effect is still wired up.
-        set_dispatch_session("global-fallback-sess")
-        assert mod._dispatch_session_id == "global-fallback-sess"
-        # A direct read in the same task picks up the ContextVar value
-        # (which set_dispatch_session also wrote).
-        assert _read_session_sidecar() == "global-fallback-sess"
+        async def tab_a_dispatch() -> None:
+            set_dispatch_session("session-A")
+            # Simulate A's dispatch returning. ContextVar is unwound when the
+            # task ends; module global (now removed) used to persist past this.
+            assert _read_session_sidecar() == "session-A"
+
+        async def tab_b_log_work() -> str | None:
+            # B never calls set_dispatch_session. Must not see A's value.
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("PIXSIM_TOKEN_FILE", None)
+                return _read_session_sidecar()
+
+        await asyncio.create_task(tab_a_dispatch())
+        result = await asyncio.create_task(tab_b_log_work())
+        assert result is None, (
+            f"Expected None (no cross-task leak), got {result!r} — the module "
+            "global is back."
+        )
 
 
 class TestLogWorkMcpStarFallback:
@@ -408,3 +448,97 @@ class TestLogWorkMcpStarFallback:
 
         body = captured.get("json") or {}
         assert body.get("session_id") == "explicit-id"
+
+
+class TestResolveBridgeSessionCache:
+    """Cache hygiene in `_resolve_bridge_session_id`.
+
+    The cache is keyed by `(engine, profile_id, scope_key)`. When `scope_key`
+    is `None`, multiple tabs/sessions sharing `(engine, profile)` would collide
+    on a single cache entry and the first-resolved session would win for all
+    of them (cross-attribution — the same bug class as the global we removed).
+    The fix: skip the cache entirely when `scope_key is None`."""
+
+    def setup_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._bridge_session_cache.clear()
+
+    def teardown_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._bridge_session_cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_does_not_cache_when_scope_key_is_none(self):
+        """Scope-less resolves must not populate the cache. Otherwise tab A's
+        result becomes tab B's first read on the same (engine, profile)."""
+        import pixsim7.client.mcp_server as mod
+
+        sessions_payload = {
+            "sessions": [
+                {"id": "session-A", "scope_key": "tab:tab-A", "profile_id": "profile-x"},
+            ]
+        }
+
+        class _Resp:
+            status_code = 200
+            def json(self):
+                return sessions_payload
+
+        async def fake_get(path, headers=None, params=None):  # noqa: A002
+            return _Resp()
+
+        class _Client:
+            get = staticmethod(fake_get)
+
+        with patch.object(mod, "_get_client", lambda: _Client()):
+            resolved = await mod._resolve_bridge_session_id(
+                token="ignored",
+                profile_id="profile-x",
+                agent_type="claude",
+                scope_key=None,  # <-- the case we're guarding
+            )
+
+        assert resolved == "session-A"
+        assert mod._bridge_session_cache == {}, (
+            "Scope-less resolves must not populate the cache. "
+            f"Got entries: {mod._bridge_session_cache}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_does_cache_when_scope_key_is_set(self):
+        """Sanity: with a scope key, caching is the right behavior — repeat
+        calls for the same scope should short-circuit the API."""
+        import pixsim7.client.mcp_server as mod
+
+        call_count = 0
+
+        async def fake_get(path, headers=None, params=None):  # noqa: A002
+            nonlocal call_count
+            call_count += 1
+
+            class _Resp:
+                status_code = 200
+                def json(self):
+                    return {
+                        "sessions": [
+                            {"id": "session-A", "scope_key": "tab:tab-A", "profile_id": "profile-x"},
+                        ]
+                    }
+            return _Resp()
+
+        class _Client:
+            get = staticmethod(fake_get)
+
+        with patch.object(mod, "_get_client", lambda: _Client()):
+            r1 = await mod._resolve_bridge_session_id(
+                token="ignored", profile_id="profile-x",
+                agent_type="claude", scope_key="tab:tab-A",
+            )
+            r2 = await mod._resolve_bridge_session_id(
+                token="ignored", profile_id="profile-x",
+                agent_type="claude", scope_key="tab:tab-A",
+            )
+
+        assert r1 == "session-A"
+        assert r2 == "session-A"
+        assert call_count == 1, "Second scoped call should hit the cache"
