@@ -239,7 +239,13 @@ async def lifespan(app: FastAPI):
             config_overrides={
                 'health': {
                     'base_interval': _env_float('PIXSIM_HEALTH_INTERVAL', 2.0),
-                    'http_timeout': _env_float('PIXSIM_HEALTH_TIMEOUT', 1.5),
+                    # Local backends (main-api especially) occasionally take >1.5s
+                    # to answer /health when busy with a heavy request; raise the
+                    # default so a momentary stall doesn't even register as one
+                    # failed probe. Combined with the UNHEALTHY-grace in
+                    # health_manager._handle_http_failure, this prevents false
+                    # "stopped" transitions that cascade into MCP restarts.
+                    'http_timeout': _env_float('PIXSIM_HEALTH_TIMEOUT', 3.0),
                     'adaptive_enabled': True,
                 }
             }

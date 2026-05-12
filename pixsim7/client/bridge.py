@@ -237,6 +237,28 @@ class Bridge:
         consecutive_failures = 0
         try:
             while not self._shutdown_requested:
+                # Supervise the MCP HTTP server task. If it crashed (uvicorn
+                # bind failure, internal exception) we used to keep reconnecting
+                # the WS happily while MCP tools failed with connection-refused
+                # — invisible to the user except as "MCP keeps restarting".
+                # Now we notice and relaunch. Rate-limited naturally by the WS
+                # reconnect backoff below: at most one relaunch attempt per
+                # iteration of this loop.
+                if (
+                    self._mcp_server_task is not None
+                    and self._mcp_server_task.done()
+                    and not self._mcp_server_task.cancelled()
+                ):
+                    exc = self._mcp_server_task.exception()
+                    if exc is not None:
+                        get_logger().warning(
+                            "mcp_http_server_relaunching",
+                            error=str(exc),
+                            error_type=type(exc).__name__,
+                        )
+                        self._mcp_server_task = asyncio.create_task(self._start_mcp_http_server())
+                        await asyncio.sleep(0.3)  # give uvicorn a moment to bind
+
                 try:
                     await self._connect_and_serve()
                     consecutive_failures = 0  # reset on clean disconnect
@@ -1281,7 +1303,24 @@ class Bridge:
         except Exception:
             pass
         get_logger().info("mcp_http_server_starting", port=self._mcp_http_port, url=self._mcp_http_url)
-        await server.serve()
+        try:
+            await server.serve()
+        except asyncio.CancelledError:
+            # Clean shutdown path — bubble up so the awaiter sees CancelledError.
+            raise
+        except Exception as e:
+            # Silent death of this task used to be invisible: the bridge would
+            # keep reconnecting its WS while MCP tools failed with connection-
+            # refused. Log it so the cause shows up in ai-client.log, then
+            # re-raise so the task's exception is retrievable and the
+            # supervisor in run() can relaunch us.
+            get_logger().error(
+                "mcp_http_server_crashed",
+                error=str(e),
+                error_type=type(e).__name__,
+                port=self._mcp_http_port,
+            )
+            raise
 
     def _get_gated_tools(self) -> set[str]:
         """Read the tool approval list from launcher service settings (live).

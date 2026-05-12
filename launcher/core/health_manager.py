@@ -791,12 +791,22 @@ class HealthManager:
                 self._emit_health_update(key, HealthStatus.STARTING, details=details)
             else:
                 self._emit_health_update(key, HealthStatus.STOPPED, details=details)
-        # Was healthy, now failing
+        # Was healthy, now failing — first failure flips to UNHEALTHY only.
         elif current_health == HealthStatus.HEALTHY or (
             state.status.value == 'running' and current_health == HealthStatus.STARTING
         ):
             self._emit_health_update(key, HealthStatus.UNHEALTHY, details=details)
-        # Fully stopped
+        # Already UNHEALTHY — tolerate more failures before flipping to STOPPED.
+        # A single 1-2s `/health` stall on a busy local backend (main-api hitting
+        # a slow request, ARQ worker churn, etc.) used to take the service from
+        # HEALTHY to STOPPED in just 2 probes (~2s). That false-stop made the
+        # launcher UI show the service as dead and triggered dependent-service
+        # restarts (e.g. ai-client/MCP bridge) even though the process was alive
+        # the whole time. Re-use `health_grace_attempts` as the bar — the same
+        # tolerance we already grant to STARTING services.
+        elif current_health == HealthStatus.UNHEALTHY and fc < grace and state.status.value == 'running':
+            self._emit_health_update(key, HealthStatus.UNHEALTHY, details=details)
+        # Fully stopped — exhausted grace, or process status already non-running.
         else:
             state.pid = None
             state.detected_pid = None
