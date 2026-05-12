@@ -7,8 +7,60 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { Icon, type IconName } from '@lib/icons';
 
+import type { AgentPromptType, AgentPromptChoice } from './assistantChatBridge';
 import type { ChatMessage, AgentEngine } from './assistantChatStore';
 import { EngineProfileIcon } from './EngineProfileIcon';
+
+// =============================================================================
+// Timestamp helpers (shared with AIAssistantPanel for the day divider)
+// =============================================================================
+
+/** Coerce a stored timestamp to a Date, returning null when unparseable. */
+export function toDate(value: Date | string | number | null | undefined): Date | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Format as HH:MM in the user's locale (24h). Empty string when missing. */
+export function formatMessageTime(value: Date | string | number | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return '';
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** Verbose date+time for hover tooltips. */
+export function formatMessageTitle(value: Date | string | number | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return '';
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+/** True when two Dates fall on the same calendar day in local time. */
+export function isSameLocalDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Day-divider label: "Today", "Yesterday", or a full weekday/date. */
+export function formatDayDivider(d: Date, now: Date = new Date()): string {
+  if (isSameLocalDay(d, now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameLocalDay(d, yesterday)) return 'Yesterday';
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, sameYear
+    ? { weekday: 'long', month: 'long', day: 'numeric' }
+    : { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 // =============================================================================
 // Lightweight Markdown Renderer
@@ -176,7 +228,6 @@ export function ThinkingBlock({ entries, live, userMessage }: { entries: Array<{
 // Agent Prompt Card — inline prompt from agent (approve/deny, choice, text input)
 // =============================================================================
 
-import type { AgentPromptType, AgentPromptChoice } from './assistantChatBridge';
 
 /** Live agent prompt — rendered in the sending area while agent is blocked. */
 export function ConfirmationCard({
@@ -190,6 +241,7 @@ export function ConfirmationCard({
   onApprove,
   onDeny,
   onChoice,
+  onMultiChoice,
   onTextSubmit,
 }: {
   title: string;
@@ -202,9 +254,20 @@ export function ConfirmationCard({
   onApprove: () => void;
   onDeny: () => void;
   onChoice?: (choiceId: string) => void;
+  onMultiChoice?: (choiceIds: string[]) => void;
   onTextSubmit?: (text: string) => void;
 }) {
   const [textValue, setTextValue] = useState('');
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+
+  const toggleMulti = (id: string): void => {
+    setMultiSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-2">
@@ -241,7 +304,7 @@ export function ConfirmationCard({
         </div>
       )}
 
-      {/* Multiple Choice */}
+      {/* Multiple Choice (single-select) */}
       {interactionType === 'choice' && choices && (
         <div className="space-y-1 pt-0.5">
           {choices.map((c) => (
@@ -257,6 +320,55 @@ export function ConfirmationCard({
           <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
             Cancel
           </button>
+        </div>
+      )}
+
+      {/* Multi-Select (checkboxes + Submit) */}
+      {interactionType === 'multi_choice' && choices && (
+        <div className="space-y-1 pt-0.5">
+          {choices.map((c) => {
+            const checked = multiSelected.has(c.id);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => toggleMulti(c.id)}
+                className={`w-full text-left px-3 py-1.5 rounded-md text-[11px] border transition-colors flex items-center gap-2 ${
+                  checked
+                    ? 'border-amber-400 dark:border-amber-500 bg-amber-100 dark:bg-amber-800/40'
+                    : 'border-amber-200 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-800/30'
+                }`}
+                aria-pressed={checked}
+              >
+                <span
+                  className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border text-[10px] leading-none ${
+                    checked
+                      ? 'bg-amber-500 border-amber-500 text-white'
+                      : 'border-amber-400 dark:border-amber-600 bg-white dark:bg-neutral-900'
+                  }`}
+                  aria-hidden
+                >
+                  {checked ? '✓' : ''}
+                </span>
+                <span className="flex-1">
+                  <span className="font-medium text-amber-800 dark:text-amber-200">{c.label}</span>
+                  {c.description && <span className="text-amber-600 dark:text-amber-400 ml-1.5">— {c.description}</span>}
+                </span>
+              </button>
+            );
+          })}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => onMultiChoice?.(Array.from(multiSelected))}
+              disabled={multiSelected.size === 0}
+              className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-40"
+            >
+              Submit ({multiSelected.size})
+            </button>
+            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -336,15 +448,21 @@ export function MessageBubble({
   }, [msg.text]);
   const showAssistantIcon = msg.role === 'assistant' || msg.role === 'error';
 
+  const timeLabel = formatMessageTime(msg.timestamp);
+  const timeTitle = formatMessageTitle(msg.timestamp);
+
   if (msg.role === 'system') {
     const isRecoveryHeader = msg.recovered;
     return (
       <div className="flex justify-center">
-        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] ${
-          isRecoveryHeader
-            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400/60 dark:border-amber-600/60'
-            : 'bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400'
-        }`}>
+        <div
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] ${
+            isRecoveryHeader
+              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400/60 dark:border-amber-600/60'
+              : 'bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400'
+          }`}
+          title={timeTitle || undefined}
+        >
           {msg.confirmation
             ? <ResolvedConfirmationBadge title={msg.confirmation.title} toolName={msg.confirmation.toolName} resolved={msg.confirmation.resolved} />
             : <><Icon name={isRecoveryHeader ? 'history' : 'refreshCw'} size={9} /><span>{msg.text}</span></>
@@ -368,6 +486,11 @@ export function MessageBubble({
         )}
         {msg.role === 'assistant' ? <MarkdownText text={msg.text} /> : <pre className="whitespace-pre-wrap text-xs font-sans leading-relaxed">{msg.text}</pre>}
         <div className="flex items-center gap-2 mt-1">
+          {timeLabel && (
+            <span className="text-[10px] opacity-50 tabular-nums" title={timeTitle || undefined}>
+              {timeLabel}
+            </span>
+          )}
           {msg.duration_ms != null && <span className="text-[10px] opacity-50">{(msg.duration_ms / 1000).toFixed(1)}s</span>}
           <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {msg.role === 'assistant' && (

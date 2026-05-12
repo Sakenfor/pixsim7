@@ -18,7 +18,7 @@ export interface ThinkingEntry {
   timestamp: number;
 }
 
-export type AgentPromptType = 'approve_deny' | 'choice' | 'text_input';
+export type AgentPromptType = 'approve_deny' | 'choice' | 'multi_choice' | 'text_input';
 
 export interface AgentPromptChoice {
   id: string;
@@ -797,9 +797,16 @@ class AssistantChatBridge {
     clearCompletedResult(tabId);
   }
 
-  /** Respond to a pending agent prompt (approve/deny, choice, or text input).
-   *  Sends the response over WS and clears the pending state. */
-  respondToConfirmation(tabId: string, confirmationId: string, approved: boolean, response?: { choice?: string; text?: string }): void {
+  /** Respond to a pending agent prompt (approve/deny, choice, multi_choice, or text input).
+   *  Sends the response over WS and clears the pending state.
+   *  ``response.choices`` (plural) is used for multi_choice mode; ``response.choice``
+   *  (singular) for single-select; ``response.text`` for text_input. */
+  respondToConfirmation(
+    tabId: string,
+    confirmationId: string,
+    approved: boolean,
+    response?: { choice?: string; choices?: string[]; text?: string },
+  ): void {
     const req = this._requests.get(tabId);
     if (!req?.pendingConfirmation || req.pendingConfirmation.confirmationId !== confirmationId) return;
     const iType = req.pendingConfirmation.interactionType || 'approve_deny';
@@ -816,6 +823,7 @@ class AssistantChatBridge {
         confirmation_id: confirmationId,
         approved,
         ...(response?.choice != null && { choice: response.choice }),
+        ...(response?.choices != null && { choices: response.choices }),
         ...(response?.text != null && { text: response.text }),
       }));
     }

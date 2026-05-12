@@ -13,7 +13,7 @@ import {
   EmptyState,
   SidebarPaneShell,
 } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useBridgeStatus } from '@lib/agent/useBridgeStatus';
 import { useConnectedEngines } from '@lib/agent/useConnectedEngines';
@@ -64,7 +64,7 @@ import {
   extractReferenceScope,
   findPoolSession,
 } from './assistantTypes';
-import { MessageBubble, ThinkingBlock, ConfirmationCard } from './ChatMessageComponents';
+import { MessageBubble, ThinkingBlock, ConfirmationCard, toDate, isSameLocalDay, formatDayDivider } from './ChatMessageComponents';
 import { ContextBar } from './ContextBar';
 import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
 import { SessionItem } from './SessionItem';
@@ -675,15 +675,29 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {messages.map((msg, i) => {
           // Find preceding user message for echo filtering in thinking steps
           const prevUserMsg = msg.role === 'assistant' ? messages.slice(0, i).findLast((m) => m.role === 'user')?.text : undefined;
+          // Insert a centered date pill when the calendar day changes between
+          // adjacent messages — so chats spanning multiple sessions keep
+          // anchored without leaning on the per-bubble HH:MM alone.
+          const ts = toDate(msg.timestamp);
+          const prevTs = i > 0 ? toDate(messages[i - 1].timestamp) : null;
+          const showDayDivider = !!ts && (!prevTs || !isSameLocalDay(prevTs, ts));
           return (
-            <MessageBubble
-              key={i}
-              msg={msg}
-              onRetry={msg.role === 'error' ? retryLast : undefined}
-              userMessage={prevUserMsg}
-              engine={tab.engine}
-              profileIcon={activeProfileIcon}
-            />
+            <Fragment key={i}>
+              {showDayDivider && ts && (
+                <div className="flex justify-center my-1">
+                  <div className="px-3 py-0.5 rounded-full text-[10px] bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400">
+                    {formatDayDivider(ts)}
+                  </div>
+                </div>
+              )}
+              <MessageBubble
+                msg={msg}
+                onRetry={msg.role === 'error' ? retryLast : undefined}
+                userMessage={prevUserMsg}
+                engine={tab.engine}
+                profileIcon={activeProfileIcon}
+              />
+            </Fragment>
           );
         })}
         {sending && (
@@ -724,6 +738,17 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                     chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true, { choice: choiceId });
                     useAssistantChatStore.getState().appendMessage(tab.id, {
                       role: 'system', text: `Selected: ${label}`, timestamp: new Date(),
+                      confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, resolved: 'approved' },
+                    });
+                  }}
+                  onMultiChoice={(choiceIds) => {
+                    const conf = bridgeReq.pendingConfirmation!;
+                    const labels = choiceIds
+                      .map((id) => conf.choices?.find((c) => c.id === id)?.label || id)
+                      .join(', ');
+                    chatBridge.respondToConfirmation(tab.id, conf.confirmationId, true, { choices: choiceIds });
+                    useAssistantChatStore.getState().appendMessage(tab.id, {
+                      role: 'system', text: `Selected: ${labels}`, timestamp: new Date(),
                       confirmation: { confirmationId: conf.confirmationId, title: conf.title, description: conf.description, resolved: 'approved' },
                     });
                   }}

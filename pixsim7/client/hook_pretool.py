@@ -87,12 +87,7 @@ def _handle_ask_user_question(tool_input: dict) -> None:
         if not question_text or not isinstance(options, list) or not options:
             continue  # malformed question — skip rather than blocking the call
 
-        if q.get("multiSelect"):
-            print(
-                "[hook_pretool] multiSelect not supported by the bridge protocol yet; "
-                "treating as single-select",
-                file=sys.stderr,
-            )
+        multi_select = bool(q.get("multiSelect"))
 
         # id = stringified index so we can map id→label after /confirm returns.
         choices = []
@@ -111,7 +106,7 @@ def _handle_ask_user_question(tool_input: dict) -> None:
         payload = {
             "title": (q.get("header") or "Question").strip(),
             "description": question_text,
-            "interaction_type": "choice",
+            "interaction_type": "multi_choice" if multi_select else "choice",
             "choices": choices,
             "timeout_s": TIMEOUT_S,
         }
@@ -125,18 +120,33 @@ def _handle_ask_user_question(tool_input: dict) -> None:
             _emit_deny("User did not answer the question.")
             return
 
-        chosen_id = result.get("choice") or ""
-        try:
-            idx = int(chosen_id)
-            label = choices[idx]["label"]
-        except (ValueError, IndexError, KeyError):
-            # Fall through with the raw id if something unexpected came back —
-            # better than dropping the answer entirely.
-            label = chosen_id
-
-        answers[question_text] = label
+        answers[question_text] = _resolve_answer_label(result, choices, multi_select)
 
     _emit_choice_as_denial(answers)
+
+
+def _resolve_answer_label(result: dict, choices: list[dict], multi_select: bool) -> str:
+    """Convert the /confirm response into the human-readable answer string.
+
+    For single-select: maps the singular ``choice`` (id) to the matching
+    option's label. For multi-select: maps the plural ``choices`` list of
+    ids to a comma-joined string of labels (matching Claude Code's
+    documented multi-select answer format).
+    """
+    def _label_for(chosen_id: str) -> str:
+        try:
+            return choices[int(chosen_id)]["label"]
+        except (ValueError, IndexError, KeyError, TypeError):
+            return chosen_id  # fall through with raw id if mapping fails
+
+    if multi_select:
+        ids = result.get("choices") or []
+        if not isinstance(ids, list):
+            return str(ids)
+        labels = [_label_for(str(cid)) for cid in ids]
+        return ", ".join(labels)
+
+    return _label_for(result.get("choice") or "")
 
 
 def _emit_choice_as_denial(answers: dict[str, str]) -> None:

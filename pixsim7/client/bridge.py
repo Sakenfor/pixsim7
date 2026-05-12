@@ -398,7 +398,8 @@ class Bridge:
                         if conf_id and conf_id in self._pending_confirmations:
                             self._confirmation_results[conf_id] = {
                                 "approved": bool(msg.get("approved", False)),
-                                "choice": msg.get("choice"),
+                                "choice": msg.get("choice"),     # singular — single-select
+                                "choices": msg.get("choices"),   # plural — multi-select (list of ids)
                                 "text": msg.get("text"),
                             }
                             self._pending_confirmations[conf_id].set()

@@ -998,6 +998,9 @@ async def websocket_chat(
                 extra = {}
                 if data.get("choice") is not None:
                     extra["choice"] = data["choice"]
+                if data.get("choices") is not None:
+                    # Plural — used by multi_choice mode; list of selected option ids.
+                    extra["choices"] = data["choices"]
                 if data.get("text") is not None:
                     extra["text"] = data["text"]
                 if conf_id:
