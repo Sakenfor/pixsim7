@@ -96,8 +96,22 @@ export function TextareaBackdrop({
       }
       // Scrollbar eats content width inside the textarea — mirror that on
       // the backdrop so both layers wrap at the same column.
-      const scrollbarWidth = textarea.offsetWidth - textarea.clientWidth;
-      content.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '';
+      //
+      // Math: `offsetWidth - clientWidth` returns `border*2 + scrollbarGutter`
+      // (clientWidth excludes both border *and* scrollbar). The textarea here
+      // has a 1px border, so the naive formula was 2px too large — the
+      // backdrop wrapped a hair earlier than the textarea, and once a single
+      // line diverged every line below picked up ±lineHeight of cumulative
+      // drift. Symptom: highlights drift relative to text the further down
+      // you scroll, especially with long Latin words near the wrap column.
+      // Subtract the border so paddingRight compensates only the scrollbar.
+      const borderLR =
+        (parseFloat(cs.borderLeftWidth) || 0) +
+        (parseFloat(cs.borderRightWidth) || 0);
+      const scrollbarWidth =
+        textarea.offsetWidth - textarea.clientWidth - borderLR;
+      content.style.paddingRight =
+        scrollbarWidth > 0 ? `${scrollbarWidth}px` : '';
     };
 
     apply();
