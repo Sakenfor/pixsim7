@@ -209,6 +209,15 @@ async def get_plan_events(
     _user: CurrentUser,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    include_raw_diffs: bool = Query(
+        False,
+        description=(
+            "When true, ``field == 'checkpoints'`` events keep the full "
+            "``old_value`` + ``new_value`` JSON-array strings. Default false: "
+            "those entries get a compact ``checkpoint_delta`` instead and the "
+            "raw values are dropped (saves ~5–10 KB per event)."
+        ),
+    ),
     db: AsyncSession = Depends(get_database),
 ):
     plan = await db.get(PlanRegistry, plan_id)
@@ -234,25 +243,37 @@ async def get_plan_events(
     )
     rows = list((await db.execute(stmt)).scalars().all())
 
+    events = []
+    for row in rows:
+        entry: Dict[str, Any] = {
+            "id": str(row.id),
+            "run_id": (row.extra or {}).get("sync_run_id"),
+            "plan_id": plan_id,
+            "event_type": row.action,
+            "entity_type": row.entity_type,
+            "entity_label": row.entity_label,
+            "field": row.field,
+            "old_value": row.old_value,
+            "new_value": row.new_value,
+            "commit_sha": row.commit_sha,
+            "actor": row.actor,
+            "timestamp": row.timestamp.isoformat() if row.timestamp else "",
+        }
+        # C-lite trim: replace the giant checkpoints-array JSON blobs with
+        # a per-checkpoint structured delta when we can compute one. Same
+        # logic as ``get_activity`` above.
+        if row.field == "checkpoints":
+            delta = _h._compute_checkpoint_delta(row.old_value, row.new_value)
+            if delta is not None:
+                entry["checkpoint_delta"] = delta
+                if not include_raw_diffs:
+                    entry["old_value"] = None
+                    entry["new_value"] = None
+        events.append(entry)
+
     return {
         "plan_id": plan_id,
-        "events": [
-            {
-                "id": str(row.id),
-                "run_id": (row.extra or {}).get("sync_run_id"),
-                "plan_id": plan_id,
-                "event_type": row.action,
-                "entity_type": row.entity_type,
-                "entity_label": row.entity_label,
-                "field": row.field,
-                "old_value": row.old_value,
-                "new_value": row.new_value,
-                "commit_sha": row.commit_sha,
-                "actor": row.actor,
-                "timestamp": row.timestamp.isoformat() if row.timestamp else "",
-            }
-            for row in rows
-        ],
+        "events": events,
     }
 
 
@@ -261,6 +282,15 @@ async def get_activity(
     _user: CurrentUser,
     days: int = Query(7, ge=1, le=90),
     limit: int = Query(100, ge=1, le=500),
+    include_raw_diffs: bool = Query(
+        False,
+        description=(
+            "When true, ``field == 'checkpoints'`` events keep the full "
+            "``old_value`` + ``new_value`` JSON-array strings. Default false: "
+            "those entries get a compact ``checkpoint_delta`` instead and the "
+            "raw values are dropped (saves ~5–10 KB per event)."
+        ),
+    ),
     db: AsyncSession = Depends(get_database),
 ):
     from datetime import datetime, timedelta, timezone
@@ -274,24 +304,33 @@ async def get_activity(
         offset=0,
     )
 
-    return {
-        "events": [
-            {
-                "id": str(row.id),
-                "run_id": (row.extra or {}).get("sync_run_id"),
-                "plan_id": row.entity_id,
-                "plan_title": row.entity_label or row.entity_id,
-                "event_type": row.action,
-                "field": row.field,
-                "old_value": row.old_value,
-                "new_value": row.new_value,
-                "commit_sha": row.commit_sha,
-                "actor": row.actor,
-                "timestamp": row.timestamp.isoformat() if row.timestamp else "",
-            }
-            for row in rows
-        ],
-    }
+    events = []
+    for row in rows:
+        entry: Dict[str, Any] = {
+            "id": str(row.id),
+            "run_id": (row.extra or {}).get("sync_run_id"),
+            "plan_id": row.entity_id,
+            "plan_title": row.entity_label or row.entity_id,
+            "event_type": row.action,
+            "field": row.field,
+            "old_value": row.old_value,
+            "new_value": row.new_value,
+            "commit_sha": row.commit_sha,
+            "actor": row.actor,
+            "timestamp": row.timestamp.isoformat() if row.timestamp else "",
+        }
+        # C-lite trim: replace the giant checkpoints-array JSON blobs with
+        # a per-checkpoint structured delta when we can compute one.
+        if row.field == "checkpoints":
+            delta = _h._compute_checkpoint_delta(row.old_value, row.new_value)
+            if delta is not None:
+                entry["checkpoint_delta"] = delta
+                if not include_raw_diffs:
+                    entry["old_value"] = None
+                    entry["new_value"] = None
+        events.append(entry)
+
+    return {"events": events}
 
 
 # ── Companion documents ──────────────────────────────────────────

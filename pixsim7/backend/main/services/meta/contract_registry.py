@@ -347,7 +347,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.4.0",
+        version="2.5.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -597,7 +597,13 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.activity",
                 method="GET",
                 path="/api/v1/dev/plans/activity",
-                summary="Recent change activity across all plans (default 7-day lookback).",
+                summary=(
+                    "Recent change activity across all plans (default 7-day "
+                    "lookback). For ``field == 'checkpoints'`` events the giant "
+                    "old/new JSON blobs are replaced with a compact "
+                    "``checkpoint_delta`` (per-checkpoint diff) by default; "
+                    "pass ``include_raw_diffs=true`` to keep the raw strings."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -606,11 +612,51 @@ def _builtin_plans_management() -> MetaContract:
                             "properties": {
                                 "days": {"type": "integer"},
                                 "limit": {"type": "integer"},
+                                "include_raw_diffs": {"type": "boolean"},
                             },
                         },
                     },
                 },
                 tags=["activity", "planning"],
+            ),
+            MetaContractEndpoint(
+                id="plans.todo_summary",
+                method="GET",
+                path="/api/v1/dev/plans/todo-summary",
+                summary=(
+                    "Per-plan open-work view. For each plan with at least one "
+                    "checkpoint where ``points_done < points_total``, returns "
+                    "the open checkpoints, point totals, a precise "
+                    "``last_touched_at`` (max of plan.updated_at and any "
+                    "checkpoint.last_update.at), and a truncated recent note. "
+                    "Sorted by last_touched_at desc. Use this — not "
+                    "``plans.list`` — when answering 'which plans should I "
+                    "continue?'; it skips plans whose checkpoints are all "
+                    "complete and produces ~10× smaller payloads."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "stage": {"type": "string"},
+                                "tag": {"type": "string"},
+                                "owner": {"type": "string"},
+                                "status": {
+                                    "type": "string",
+                                    "description": "Plan status filter. Default 'active'; pass empty string to include all.",
+                                },
+                                "min_open_points": {"type": "integer"},
+                                "since_days": {"type": "integer"},
+                                "limit": {"type": "integer"},
+                                "max_open_checkpoints": {"type": "integer"},
+                                "include_hidden": {"type": "boolean"},
+                            },
+                        },
+                    },
+                },
+                tags=["agent", "planning", "todo"],
             ),
             MetaContractEndpoint(
                 id="plans.settings_get",
