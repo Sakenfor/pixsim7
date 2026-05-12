@@ -372,6 +372,184 @@ class TestSaveChatSessionMessages:
 
         assert r.status_code == 422
 
+    @pytest.mark.asyncio
+    async def test_save_preserves_backend_only_placeholder(self):
+        """Regression for session ``b9792a1e``: a server-side abandoned-turn
+        placeholder must survive the next debounced ``syncToServer`` PATCH
+        even though the client has no idea it exists.
+
+        Pre-fix the PATCH was a destructive overwrite, so a frontend that
+        later appended ``"Bridge disconnected"`` would silently erase the
+        placeholder when its 2s debounce fired. Post-fix the server merges
+        the union and orders by timestamp.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        # State on disk after `_drain_late_result` ran:
+        session_obj.messages = [
+            {"role": "user", "text": "Q1", "timestamp": "2026-05-10T20:58:00.832Z"},
+            {"role": "assistant", "text": "A1", "timestamp": "2026-05-10T21:15:35.129Z"},
+            {"role": "user", "text": "Q2", "timestamp": "2026-05-10T21:19:39.585Z"},
+            {
+                "role": "system",
+                "kind": "abandoned",
+                "text": "Agent did not respond within 90s — response abandoned.",
+                "timestamp": "2026-05-10T21:23:43.000Z",
+            },
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        # What the frontend sends hours later when its bridge poll flips to 0.
+        # It never observed the abandoned row — its local store still has 3
+        # turns, plus the freshly-appended "Bridge disconnected" system row.
+        client_payload = [
+            {"role": "user", "text": "Q1", "timestamp": "2026-05-10T20:58:00.832Z"},
+            {"role": "assistant", "text": "A1", "timestamp": "2026-05-10T21:15:35.129Z"},
+            {"role": "user", "text": "Q2", "timestamp": "2026-05-10T21:19:39.585Z"},
+            {"role": "system", "text": "Bridge disconnected", "timestamp": "2026-05-10T23:48:03.023Z"},
+        ]
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": client_payload},
+            )
+
+        assert r.status_code == 200
+        # Both the abandoned placeholder AND the bridge-disconnected row survive,
+        # ordered by timestamp.
+        texts = [(m["role"], m.get("kind"), m["text"]) for m in session_obj.messages]
+        assert texts == [
+            ("user", None, "Q1"),
+            ("assistant", None, "A1"),
+            ("user", None, "Q2"),
+            ("system", "abandoned", "Agent did not respond within 90s — response abandoned."),
+            ("system", None, "Bridge disconnected"),
+        ]
+        assert session_obj.message_count == 5
+        assert r.json()["count"] == 5
+
+    @pytest.mark.asyncio
+    async def test_save_dedupes_across_timestamp_format_skew(self):
+        """Regression: the bridge persists with Python ``utcnow().isoformat()``
+        (``…+00:00``); the frontend appends with JS ``Date.toISOString()``
+        (``…Z``). Same logical reply, different timestamp string formats.
+        The merge MUST treat them as one row — otherwise every assistant
+        turn lands twice on the server and the frontend reconcile then
+        re-pastes them as "recovered" duplicates with amber borders
+        (the symptom that hit session ``7303aebc``).
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        # Server state after bridge-side persist — Python-format timestamps.
+        session_obj.messages = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00.123456+00:00"},
+            {
+                "role": "assistant",
+                "text": "A",
+                "timestamp": "2026-05-12T10:00:05.654321+00:00",
+                "duration_ms": 5530,
+            },
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        # Frontend syncing the same conversation — JS-format timestamps.
+        client_payload = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00.123Z"},
+            {"role": "assistant", "text": "A", "timestamp": "2026-05-12T10:00:05.789Z"},
+        ]
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": client_payload},
+            )
+
+        assert r.status_code == 200
+        # Exactly two rows — no duplicates from format skew.
+        assert len(session_obj.messages) == 2
+        # Server copies win, so backend-only fields like duration_ms survive.
+        assert session_obj.messages[1]["duration_ms"] == 5530
+
+    @pytest.mark.asyncio
+    async def test_save_keeps_distinct_system_kinds(self):
+        """``kind:"abandoned"`` placeholder is distinct from an ad-hoc
+        ``Bridge disconnected`` system notice even when text differs only
+        by phrasing — the ``kind`` discriminator keeps them as separate
+        rows.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00Z"},
+            {
+                "role": "system",
+                "kind": "abandoned",
+                "text": "Agent did not respond within 90s — response abandoned.",
+                "timestamp": "2026-05-12T10:04:00Z",
+            },
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        client_payload = [
+            {"role": "user", "text": "Q", "timestamp": "2026-05-12T10:00:00Z"},
+            {"role": "system", "text": "Bridge disconnected", "timestamp": "2026-05-12T12:00:00Z"},
+        ]
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": client_payload},
+            )
+
+        assert r.status_code == 200
+        kinds = [(m["role"], m.get("kind"), m["text"]) for m in session_obj.messages]
+        assert kinds == [
+            ("user", None, "Q"),
+            ("system", "abandoned", "Agent did not respond within 90s — response abandoned."),
+            ("system", None, "Bridge disconnected"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_save_dedupes_round_tripped_rows(self):
+        """Identical (timestamp, role, text) rows are deduped on merge so a
+        client re-syncing the same state doesn't double the assistant turn.
+        Server copy wins to preserve backend-only fields like ``duration_ms``.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = [
+            {"role": "user", "text": "Hi", "timestamp": "2026-05-10T20:00:00Z"},
+            {
+                "role": "assistant",
+                "text": "Hello",
+                "timestamp": "2026-05-10T20:00:05Z",
+                "duration_ms": 4321,
+            },
+        ]
+        db.get_values["sess-1"] = session_obj
+
+        # Frontend round-trips the same rows (no duration_ms — it doesn't track that).
+        client_payload = [
+            {"role": "user", "text": "Hi", "timestamp": "2026-05-10T20:00:00Z"},
+            {"role": "assistant", "text": "Hello", "timestamp": "2026-05-10T20:00:05Z"},
+        ]
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": client_payload},
+            )
+
+        assert r.status_code == 200
+        assert len(session_obj.messages) == 2
+        # Server copy with duration_ms wins.
+        assert session_obj.messages[1]["duration_ms"] == 4321
+
 
 class TestActiveTask:
     """GET /agents/bridge/active-task."""

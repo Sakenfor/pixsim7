@@ -2084,24 +2084,102 @@ async def get_chat_session(
     }
 
 
+def _merge_chat_messages(
+    server_msgs: List[Any] | None,
+    client_msgs: List[Any],
+) -> List[Dict[str, Any]]:
+    """Union the client PATCH with current server state, ordered by timestamp.
+
+    Both ``_store_session_response`` (bridge-side reply persist) and
+    ``_drain_late_result`` (abandoned-turn placeholder) write directly to
+    ``ChatSession.messages`` without notifying live frontends. A naive
+    overwrite from the next debounced ``syncToServer`` would erase those
+    rows — exactly the failure mode that turned session ``b9792a1e``'s
+    ``kind:"abandoned"`` placeholder into a silent gap.
+
+    Identity is ``(role, stripped text, kind)`` — deliberately
+    **timestamp-insensitive** because the bridge writes timestamps via
+    Python's ``utcnow().isoformat()`` (``…+00:00``) while the frontend
+    appends with JS ``Date.toISOString()`` (``…Z``). Same logical event,
+    different format strings; an early version of this merge keyed on
+    timestamp and ended up keeping both copies of every assistant turn,
+    which the frontend's ``findMissingAssistantTail`` reconcile then
+    re-pasted as "Response recovered from server" duplicates with amber
+    borders. The ``kind`` discriminator preserves distinct system rows
+    (``kind:"abandoned"`` vs ad-hoc ``Bridge disconnected`` notices).
+
+    Server copy wins on collisions so backend-only fields (``kind``,
+    ``duration_ms``, …) survive. Sort is by ISO-8601 timestamp; rows
+    without one fall back to the order they appear in the merged stream.
+
+    Trade-off: two truly identical adjacent rows (same role+text+kind)
+    collapse to one — repeated ``Bridge disconnected`` notices, accidental
+    user double-sends, etc. That's the right call in practice; the
+    frontend already debounces the only realistic source (resubmits).
+    """
+    def key(m: Any) -> tuple:
+        if not isinstance(m, dict):
+            return ("", str(m), "")
+        role = m.get("role") or ""
+        text = (m.get("text") or "").strip() if isinstance(m.get("text"), str) else ""
+        kind = m.get("kind") or ""
+        return (role, text, kind)
+
+    def ts_of(m: Any) -> str:
+        if not isinstance(m, dict):
+            return ""
+        return m.get("timestamp") or ""
+
+    seen: Dict[tuple, Dict[str, Any]] = {}
+    order: List[tuple] = []
+    for m in (server_msgs or []):
+        if isinstance(m, dict):
+            k = key(m)
+            if k not in seen:
+                seen[k] = m
+                order.append(k)
+    for m in client_msgs:
+        if isinstance(m, dict):
+            k = key(m)
+            if k not in seen:
+                seen[k] = m
+                order.append(k)
+
+    def sort_key(k: tuple) -> tuple:
+        # Stable secondary sort by insertion order keeps untimestamped
+        # rows in arrival order, and breaks timestamp ties deterministically.
+        ts = ts_of(seen[k])
+        return (0 if ts else 1, ts, order.index(k))
+
+    return [seen[k] for k in sorted(order, key=sort_key)]
+
+
 @router.patch("/agents/chat-sessions/{session_id}/messages")
 async def save_chat_session_messages(
     session_id: str,
     body: Dict[str, Any],
     db: AsyncSession = Depends(get_database),
 ) -> Dict[str, Any]:
-    """Persist chat messages for a session (called by frontend on message changes)."""
+    """Persist chat messages for a session (called by frontend on message changes).
+
+    The client PATCH is merged with the current server state rather than
+    overwriting it, so backend-only writes (bridge reply persist, drain
+    placeholder) survive the next debounced sync. See ``_merge_chat_messages``
+    for identity / ordering rules.
+    """
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
     messages = body.get("messages")
     if not isinstance(messages, list):
         raise HTTPException(status_code=422, detail="messages must be a list")
-    # Cap at 50 messages server-side
-    capped = messages[-50:] if len(messages) > 50 else messages
 
     session = await db.get(ChatSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    merged = _merge_chat_messages(session.messages, messages)
+    # Cap at 50 messages server-side — drop oldest, keep newest.
+    capped = merged[-50:] if len(merged) > 50 else merged
     session.messages = capped
     session.message_count = len(capped)
     await db.commit()
