@@ -905,6 +905,12 @@ class RemoteCommandBridge:
                             "tool_name": hb.get("tool_name"),
                             "tool_input": hb.get("tool_input"),
                             "timeout_s": hb.get("timeout_s", 120),
+                            # Forward choice/text-input prompt fields — without these,
+                            # ws_chat.py can't include them in the frontend message and
+                            # ConfirmationCard silently falls back to approve_deny mode.
+                            "interaction_type": hb.get("interaction_type"),
+                            "choices": hb.get("choices"),
+                            "placeholder": hb.get("placeholder"),
                         }
                         # Block until user responds — deadline paused while waiting
                         conf_timeout = float(hb.get("timeout_s", 120))

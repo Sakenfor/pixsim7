@@ -707,6 +707,13 @@ class AgentCmdSession:
                         self._busy_last_action = raw_type or raw_method_norm
                     if parsed.text:
                         self._busy_last_detail = parsed.text[:200]
+                    # ── Probe: log every tool_use block seen in the stream (temporary diagnostic) ──
+                    if _block_type == "tool_use" and isinstance(_first_block, dict):
+                        _probe_name = _first_block.get("name", "")
+                        _probe_input = _first_block.get("input") or {}
+                        _probe_keys = sorted(_probe_input.keys()) if isinstance(_probe_input, dict) else []
+                        self._log.info("tool_use_seen", name=_probe_name, input_keys=_probe_keys)
+
                     # ── Tool gate: pause stdout reader until user approves ──
                     if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
                         gate_name = _first_block.get("name", "")

@@ -12,6 +12,13 @@
     "deny": []
   },
   "hooks": {
-    "PreToolUse": []
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {"type": "command", "command": "python -m pixsim7.client.hook_pretool"}
+        ]
+      }
+    ]
   }
 }

@@ -1,28 +1,42 @@
 #!/usr/bin/env python3
 """
-Claude Code PreToolUse hook — routes tool approval through the PixSim bridge UI.
+Claude Code PreToolUse hook — routes tool prompts through the PixSim bridge UI.
 
-Exit codes (Claude Code convention):
-    0 = allow tool execution
-    2 = deny tool execution
+Dispatches by ``tool_name``:
 
-Reads the hook port from ~/.pixsim/hook_port (written by bridge's hook_server).
-If the bridge is not running, auto-approves (fail-open).
+* ``AskUserQuestion`` → render each question as a ConfirmationCard ``choice``
+  prompt, collect the user's selections, and emit a PreToolUse JSON response
+  whose ``updatedInput.answers`` dict supplies the answers (documented Claude
+  Code mechanism — Claude treats the supplied ``answers`` as if the native
+  AskUserQuestion UI had run). Multi-select questions are not yet supported
+  by the bridge protocol; the hook logs a warning to stderr and falls back to
+  single-select.
 
-Usage in Claude Code settings.json:
+* Anything else → legacy approve/deny gate using process exit codes
+  (0 = allow, 2 = deny), preserved for Bash/Write/Edit-style approval flows.
+
+Reads the hook port from ``~/.pixsim/hook_port`` (written by the bridge's
+HookServer). If the bridge is not running, fail-open (exit 0 — let Claude
+proceed normally).
+
+Usage in ``.claude/settings.json`` (current Claude Code hook schema):
+
     {
       "hooks": {
         "PreToolUse": [
           {
-            "matcher": "Bash|Write|Edit",
-            "command": "python -m pixsim7.client.hook_pretool"
+            "matcher": "AskUserQuestion",
+            "hooks": [
+              {"type": "command", "command": "python -m pixsim7.client.hook_pretool"}
+            ]
           }
         ]
       }
     }
 
-The hook receives tool info via stdin as JSON:
-    {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}, ...}
+The hook receives the standard PreToolUse stdin payload:
+
+    {"session_id": "...", "tool_name": "AskUserQuestion", "tool_input": {...}, ...}
 """
 from __future__ import annotations
 
@@ -30,13 +44,14 @@ import json
 import socket
 import sys
 from pathlib import Path
+from typing import Optional
 
 HOOK_PORT_FILE = Path.home() / ".pixsim" / "hook_port"
 TIMEOUT_S = 120
 
 
 def main() -> None:
-    # Read tool info from stdin
+    # Read tool info from stdin (PreToolUse payload).
     try:
         raw = sys.stdin.read()
         data = json.loads(raw) if raw.strip() else {}
@@ -44,59 +59,156 @@ def main() -> None:
         data = {}
 
     tool_name = data.get("tool_name", "unknown")
-    tool_input = data.get("tool_input", {})
+    tool_input = data.get("tool_input", {}) if isinstance(data.get("tool_input"), dict) else {}
 
-    # Read port
-    try:
-        port = int(HOOK_PORT_FILE.read_text().strip())
-    except Exception:
-        # Bridge not running — auto-approve
+    if tool_name == "AskUserQuestion":
+        _handle_ask_user_question(tool_input)
+        return
+
+    _handle_approval(tool_name, tool_input)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# AskUserQuestion — render each question as a ConfirmationCard choice prompt
+# ──────────────────────────────────────────────────────────────────────────
+
+def _handle_ask_user_question(tool_input: dict) -> None:
+    questions = tool_input.get("questions") or []
+    if not isinstance(questions, list) or not questions:
+        # Nothing to ask — let the tool proceed via its default path.
         sys.exit(0)
 
-    # POST /confirm
-    body = json.dumps({
+    answers: dict[str, str] = {}
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+        question_text = (q.get("question") or q.get("header") or "").strip()
+        options = q.get("options") or []
+        if not question_text or not isinstance(options, list) or not options:
+            continue  # malformed question — skip rather than blocking the call
+
+        if q.get("multiSelect"):
+            print(
+                "[hook_pretool] multiSelect not supported by the bridge protocol yet; "
+                "treating as single-select",
+                file=sys.stderr,
+            )
+
+        # id = stringified index so we can map id→label after /confirm returns.
+        choices = []
+        for i, opt in enumerate(options):
+            if isinstance(opt, dict):
+                label = (opt.get("label") or "").strip() or f"Option {i + 1}"
+                description = opt.get("description")
+            else:
+                label = str(opt)
+                description = None
+            entry = {"id": str(i), "label": label}
+            if description:
+                entry["description"] = description
+            choices.append(entry)
+
+        payload = {
+            "title": (q.get("header") or "Question").strip(),
+            "description": question_text,
+            "interaction_type": "choice",
+            "choices": choices,
+            "timeout_s": TIMEOUT_S,
+        }
+        result = _post_confirm(payload)
+        if result is None:
+            # Bridge offline — fail-open so Claude isn't blocked; it'll get
+            # the SDK's default reply, same as today's unmounted behaviour.
+            sys.exit(0)
+
+        if not result.get("approved"):
+            _emit_deny("User did not answer the question.")
+            return
+
+        chosen_id = result.get("choice") or ""
+        try:
+            idx = int(chosen_id)
+            label = choices[idx]["label"]
+        except (ValueError, IndexError, KeyError):
+            # Fall through with the raw id if something unexpected came back —
+            # better than dropping the answer entirely.
+            label = chosen_id
+
+        answers[question_text] = label
+
+    _emit_choice_as_denial(answers)
+
+
+def _emit_choice_as_denial(answers: dict[str, str]) -> None:
+    """Deny the AskUserQuestion call, encoding the user's choices in the reason.
+
+    Why deny rather than allow-with-updatedInput.answers: although the hook
+    spec documents ``updatedInput.answers`` for AskUserQuestion, the tool's
+    internal Node.js handler still executes after the hook returns ``allow``
+    (per docs: *"this still lets the tool execute with pre-filled
+    answers — it doesn't skip execution"*). In our non-interactive
+    subprocess setup it crashes on an internal ``.map()`` over undefined
+    widget state. Denying short-circuits that handler entirely and surfaces
+    ``permissionDecisionReason`` to Claude as feedback, which the model
+    parses as the user's answer.
+    """
+    if not answers:
+        # Shouldn't happen — caller guards against empty answers — but be
+        # defensive so we never silently drop the user's input.
+        _emit_deny("User declined to answer.")
+        return
+
+    if len(answers) == 1:
+        question, label = next(iter(answers.items()))
+        reason = f'User selected: "{label}" for: {question}'
+    else:
+        parts = [f'  - {q}: "{label}"' for q, label in answers.items()]
+        reason = "User's answers:\n" + "\n".join(parts)
+
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+    print(json.dumps(output))
+    sys.exit(0)
+
+
+def _emit_deny(reason: str) -> None:
+    """Deny the tool call; Claude surfaces ``reason`` as feedback."""
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }))
+    sys.exit(0)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Legacy approve/deny path — Bash / Write / Edit etc. via exit codes
+# ──────────────────────────────────────────────────────────────────────────
+
+def _handle_approval(tool_name: str, tool_input: dict) -> None:
+    payload = {
         "tool_name": tool_name,
         "tool_input": tool_input,
         "title": f"Tool: {tool_name}",
         "description": _describe_tool(tool_name, tool_input),
         "timeout_s": TIMEOUT_S,
-    }).encode()
-
-    try:
-        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
-        request = (
-            f"POST /confirm HTTP/1.1\r\n"
-            f"Host: 127.0.0.1:{port}\r\n"
-            f"Content-Type: application/json\r\n"
-            f"Content-Length: {len(body)}\r\n"
-            f"Connection: close\r\n"
-            f"\r\n"
-        ).encode() + body
-        sock.sendall(request)
-
-        # Read response (blocking — this is the whole point, we wait for user approval)
-        sock.settimeout(TIMEOUT_S + 10)
-        response = b""
-        while True:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
-        sock.close()
-
-        # Parse HTTP response body
-        parts = response.split(b"\r\n\r\n", 1)
-        resp_body = parts[1] if len(parts) > 1 else b"{}"
-        result = json.loads(resp_body)
-
-        if result.get("approved", False):
-            sys.exit(0)  # allow
-        else:
-            sys.exit(2)  # deny
-
-    except Exception:
-        # Connection failed — auto-approve (fail-open)
+    }
+    result = _post_confirm(payload)
+    if result is None:
+        # Bridge offline — fail-open.
         sys.exit(0)
+
+    if result.get("approved", False):
+        sys.exit(0)  # allow
+    else:
+        sys.exit(2)  # deny
 
 
 def _describe_tool(tool_name: str, tool_input: dict) -> str:
@@ -111,6 +223,52 @@ def _describe_tool(tool_name: str, tool_input: dict) -> str:
     if tool_name in ("Read", "Glob", "Grep"):
         return f"{tool_name}: {json.dumps(tool_input)[:200]}"
     return f"{tool_name}({json.dumps(tool_input)[:200]})"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Hook server I/O (shared by both paths)
+# ──────────────────────────────────────────────────────────────────────────
+
+def _post_confirm(payload: dict) -> Optional[dict]:
+    """POST to the bridge's /confirm endpoint; return parsed response or None.
+
+    Returns ``None`` when the bridge isn't running or the request fails —
+    callers should treat that as fail-open and let Claude proceed normally.
+    """
+    try:
+        port = int(HOOK_PORT_FILE.read_text().strip())
+    except Exception:
+        return None
+
+    body = json.dumps(payload).encode()
+    try:
+        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+        request = (
+            f"POST /confirm HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            f"Connection: close\r\n"
+            f"\r\n"
+        ).encode() + body
+        sock.sendall(request)
+
+        # Blocking read — the bridge holds the response open while it waits
+        # for the user. ``+10`` covers WS roundtrip + render latency.
+        sock.settimeout(TIMEOUT_S + 10)
+        response = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        sock.close()
+
+        parts = response.split(b"\r\n\r\n", 1)
+        resp_body = parts[1] if len(parts) > 1 else b"{}"
+        return json.loads(resp_body)
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":
