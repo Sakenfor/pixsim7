@@ -5,6 +5,67 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 _SENTENCE_ENDINGS = frozenset(".!?")
+# Lines ending in ``:`` are line-terminal section headers (parser's ``colon``
+# header pattern). Treat as already-punctuated so ``ensure_period`` doesn't
+# append ``.`` and break header tokenization downstream.
+_TERMINAL_PUNCTUATION = _SENTENCE_ENDINGS | frozenset(":")
+
+# Canonical section ids → display labels. Used by ``resolve_section_label``
+# when the composer emits ``LABEL:`` header lines at section boundaries.
+# Free-form ids are also supported (uppercased fallback); these are the
+# blessed canonical ones documented in ``composer-section-emission`` plan.
+SECTION_LABELS: Dict[str, str] = {
+    "render_style": "RENDER STYLE",
+    "scene": "SCENE",
+    "subject": "SUBJECT",
+    "wardrobe": "WARDROBE",
+    "camera": "CAMERA",
+    "lighting": "LIGHTING",
+    "mood": "MOOD",
+    "action": "ACTION",
+    "environment": "ENVIRONMENT",
+}
+
+
+def resolve_section_label(section_id: str) -> str:
+    """Resolve a canonical section id to its display label.
+
+    Unknown ids fall back to ``id.replace("_", " ").upper()`` so user-authored
+    templates with novel section ids don't crash composition. Canonical ids
+    are blessed in ``SECTION_LABELS`` for stable display.
+    """
+    if not section_id:
+        return ""
+    canonical = SECTION_LABELS.get(section_id)
+    if canonical:
+        return canonical
+    return section_id.replace("_", " ").upper()
+
+
+def emit_section_headers(
+    parts_with_sections: List[Tuple[str, Optional[str]]],
+) -> List[str]:
+    """Interleave ``LABEL:`` header lines between groups with different sections.
+
+    Given a sequence of ``(text, section_id)`` tuples in emission order, insert
+    a header line before the first non-empty text of each new section. The
+    header uses the parser's ``colon`` pattern (``LABEL:`` line-terminal); the
+    result feeds straight into ``join_blocks`` which preserves the trailing
+    ``:`` so the prompt tokenizer classifies the line as ``kind: header``.
+
+    Empty texts are dropped. Falsy ``section_id`` values do not trigger header
+    emission; texts in unsectioned slots concatenate without a header line.
+    """
+    result: List[str] = []
+    current_section: Optional[str] = None
+    for text, section in parts_with_sections:
+        if not text:
+            continue
+        if section and section != current_section:
+            result.append(f"{resolve_section_label(section)}:")
+            current_section = section
+        result.append(text)
+    return result
 _DEFAULT_LAYER_DEFS: Tuple[Dict[str, Any], ...] = (
     {
         "id": "L0",
@@ -47,7 +108,7 @@ def ensure_period(text: str) -> str:
     stripped = text.rstrip()
     if not stripped:
         return stripped
-    if stripped[-1] not in _SENTENCE_ENDINGS:
+    if stripped[-1] not in _TERMINAL_PUNCTUATION:
         return stripped + "."
     return stripped
 

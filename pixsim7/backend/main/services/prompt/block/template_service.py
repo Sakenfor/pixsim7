@@ -30,6 +30,7 @@ from pixsim7.backend.main.services.prompt.block.composition_layers import (
     compose_layered as _compose_layered,
     compose_merged as _compose_merged,
     compose_sequential as _compose_sequential,
+    emit_section_headers as _emit_section_headers,
     join_blocks as _join_blocks,
     order_layered_blocks as _order_layered_blocks,
     resolve_layer_budget_settings,
@@ -1626,6 +1627,7 @@ class BlockTemplateService:
                     "intensity": slot.get("intensity"),
                     "inherit_intensity": slot.get("inherit_intensity", False),
                     "match_count": 0,
+                    "section": slot.get("section"),
                 })
                 continue
 
@@ -1642,6 +1644,7 @@ class BlockTemplateService:
                         "status": "skipped",
                         "reason": reason,
                         "match_count": match_count,
+                        "section": slot.get("section"),
                     })
                     continue
                 if slot.get("fallback_text"):
@@ -1654,6 +1657,7 @@ class BlockTemplateService:
                         "status": "fallback",
                         "fallback_text": slot["fallback_text"],
                         "match_count": match_count,
+                        "section": slot.get("section"),
                     })
                     continue
                 if match_count == 0:
@@ -1667,6 +1671,7 @@ class BlockTemplateService:
                     "status": "empty",
                     "reason": reason,
                     "match_count": match_count,
+                    "section": slot.get("section"),
                 })
                 continue
 
@@ -1757,6 +1762,7 @@ class BlockTemplateService:
                 "prompt_preview": (selected_block.get("text") or "")[:120],
                 "selector_strategy": selector_debug.get("strategy"),
                 "selector_debug": selector_debug,
+                "section": slot.get("section"),
             }
             # Carry slot frame for composition.
             frame = slot.get("frame")
@@ -1807,24 +1813,28 @@ class BlockTemplateService:
 
         if strategy == "sequential" or not composition_strategy_applied:
             block_iter = iter(selected_blocks)
-            prompt_parts: List[str] = []
+            # Build (text, section_id) tuples in emission order, then let
+            # ``emit_section_headers`` interleave ``LABEL:`` header lines at
+            # section boundaries. See plan ``composer-section-emission``.
+            parts_with_sections: List[Tuple[str, Optional[str]]] = []
             last_block: Optional[Any] = None
 
             for sr in slot_results:
+                text_to_append: Optional[str] = None
+
                 if sr["status"] == "selected":
                     block = next(block_iter, None)
                     if block:
                         text = str(block.get("text") or "")
-                        if not text:
-                            continue
-                        # Apply slot frame (spatial/relational wrapping).
-                        frame = sr.get("frame")
-                        if frame:
-                            text = frame.replace("{text}", text)
-                        prompt_parts.append(text)
-                        last_block = block
+                        if text:
+                            # Apply slot frame (spatial/relational wrapping).
+                            frame = sr.get("frame")
+                            if frame:
+                                text = frame.replace("{text}", text)
+                            text_to_append = text
+                            last_block = block
                 elif sr["status"] == "fallback":
-                    prompt_parts.append(sr["fallback_text"])
+                    text_to_append = sr["fallback_text"]
                 elif sr["status"] == "reinforcement":
                     text = sr["reinforcement_text"]
                     if expander and text:
@@ -1848,11 +1858,14 @@ class BlockTemplateService:
                         characters_resolved.update(expansion["characters_resolved"])
                         for err in expansion.get("expansion_errors", []):
                             warnings.append(f"Character expansion (reinforcement): {err}")
-                    prompt_parts.append(text)
+                    text_to_append = text
                 # skipped / empty contribute nothing
 
-            if prompt_parts:
-                assembled_prompt = _join_blocks(prompt_parts)
+                if text_to_append:
+                    parts_with_sections.append((text_to_append, sr.get("section")))
+
+            if parts_with_sections:
+                assembled_prompt = _join_blocks(_emit_section_headers(parts_with_sections))
         elif strategy == "layered":
             assembled_prompt = _compose_layered(
                 selected_blocks,

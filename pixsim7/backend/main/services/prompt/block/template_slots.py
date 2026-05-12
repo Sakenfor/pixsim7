@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
-TEMPLATE_SLOT_SCHEMA_VERSION = 3
+TEMPLATE_SLOT_SCHEMA_VERSION = 4
 _TAG_QUERY_GROUP_ALIASES = {
     "all": "all",
     "all_of": "all",
@@ -186,6 +186,12 @@ class TemplateSlotSpec(BaseModel):
     # Primitive composition fields. Spatial frame template wrapping block text,
     # e.g. ``"{text} from camera-left"``.
     frame: Optional[str] = Field(default=None)
+    # Section grouping. When two adjacent slots have different ``section`` values,
+    # the composer emits a ``LABEL:`` header line at the boundary (see
+    # ``composition_layers.resolve_section_label``). Reuses the parser's existing
+    # ``colon`` header pattern; no grammar change. Free-form string; canonical
+    # ids (``render_style``, ``scene``, ``subject``, …) have explicit display labels.
+    section: Optional[str] = Field(default=None, min_length=1, max_length=120)
 
 
 def _normalize_tag_group(group: Any) -> Dict[str, Any]:
