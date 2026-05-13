@@ -178,6 +178,15 @@ class Bridge:
         self._per_session_mcp_cache: dict[
             tuple[str, str, frozenset[str]], tuple[str, str, float]
         ] = {}
+        # Reverse map: Claude's cli_session_id → our currently-in-flight
+        # task_id. Populated by _handle_task at start (for resumed sessions
+        # where bridge_session_id IS the cli_session_id) and via on_progress
+        # session_resolved (for new sessions). Cleared in finally. Used by
+        # _hook_confirm to route PreToolUse hook /confirm calls to exactly
+        # the originating task instead of fanning out to every in-flight
+        # task on this bridge. Plan: agent-confirmation-hooks /
+        # cross-tab-fanout-fix.
+        self._cli_session_to_task: dict[str, str] = {}
 
     @staticmethod
     def _get_valid_token() -> Optional[str]:
@@ -1230,6 +1239,15 @@ class Bridge:
             "action": "processing_task",
             "detail": "",
         }
+        # Reverse-map cli_session_id → task_id so PreToolUse hooks can route
+        # back to this task instead of broadcasting (plan:
+        # agent-confirmation-hooks / cross-tab-fanout-fix). For resumed
+        # conversations the bridge_session_id IS Claude's cli_session_id —
+        # map it immediately. New conversations don't know it yet; the
+        # on_progress 'session_resolved' branch below populates the map
+        # once Claude's init event arrives.
+        if meta.get("bridge_session_id"):
+            self._cli_session_to_task[str(meta["bridge_session_id"])] = task_id
 
         # Set in-process dispatch session so MCP tools (log_work) can
         # resolve the correct chat session without file I/O races.
@@ -1395,6 +1413,11 @@ class Bridge:
                 # final `result` arrives. First-message HMR recovery hinges on
                 # this id reaching the panel early.
                 if event_type == "session_resolved" and detail:
+                    # Cross-tab-fanout-fix: register the freshly-resolved
+                    # cli_session_id in the reverse map so a PreToolUse hook
+                    # firing later this turn (e.g. AskUserQuestion) routes
+                    # back to this task instead of fanning out.
+                    self._cli_session_to_task[str(detail)] = task_id
                     if not hb_base.get("bridge_session_id"):
                         hb_base["bridge_session_id"] = detail
                         inflight = self._inflight_tasks.get(task_id)
@@ -1518,6 +1541,12 @@ class Bridge:
             # no longer actively running this task. Drop it so the next
             # pool_status reflects reality.
             self._inflight_tasks.pop(task_id, None)
+            # Drop reverse cli_session → task mappings that pointed here so a
+            # PreToolUse hook /confirm arriving after task completion doesn't
+            # route to a stale task. Iterate by list() since we mutate.
+            for _cli, _tid in list(self._cli_session_to_task.items()):
+                if _tid == task_id:
+                    self._cli_session_to_task.pop(_cli, None)
 
     @staticmethod
     def _read_local_images(image_paths: list[dict]) -> list[dict]:
@@ -1632,8 +1661,41 @@ class Bridge:
         if not ws or not self._connected:
             get_logger().warning("hook_confirm_no_ws", connected=self._connected, has_ws=ws is not None)
             return {"approved": True}  # auto-approve if bridge not connected (fail-open)
-        task_id = payload.get("task_id") or f"hook-{uuid.uuid4().hex[:8]}"
-        get_logger().info("hook_confirm_routing", task_id=task_id, tool=payload.get("tool_name"), connected=self._connected)
+        # Resolve task_id (plan: agent-confirmation-hooks / cross-tab-fanout-fix):
+        #   1. explicit payload['task_id'] — bridge-side tool gate already
+        #      plumbs this; preserves its path verbatim.
+        #   2. payload['cli_session_id'] — PreToolUse hook from
+        #      hook_pretool.py forwards Claude's session_id here; we
+        #      reverse-look-up via _cli_session_to_task so the backend
+        #      heartbeat carries the originating task_id and doesn't fan
+        #      out to every in-flight task on this bridge.
+        #   3. synthetic 'hook-<uuid>' fallback — logs hook_confirm_unrouted
+        #      loudly so the historical silent fan-out is at least audible.
+        task_id = payload.get("task_id")
+        resolution_source = "explicit"
+        if not task_id:
+            cli_session = payload.get("cli_session_id")
+            if cli_session:
+                task_id = self._cli_session_to_task.get(str(cli_session))
+                if task_id:
+                    resolution_source = "cli_session_lookup"
+            if not task_id:
+                task_id = f"hook-{uuid.uuid4().hex[:8]}"
+                resolution_source = "synthetic_fallback"
+                get_logger().warning(
+                    "hook_confirm_unrouted",
+                    cli_session=str(cli_session) if cli_session else None,
+                    tool=payload.get("tool_name"),
+                    synthetic_task=task_id,
+                    in_flight_cli_sessions=list(self._cli_session_to_task.keys())[:5],
+                )
+        get_logger().info(
+            "hook_confirm_routing",
+            task_id=task_id,
+            tool=payload.get("tool_name"),
+            connected=self._connected,
+            resolution=resolution_source,
+        )
         result = await self.request_confirmation(ws, task_id, payload)
         get_logger().info("hook_confirm_result", task_id=task_id, approved=result.get("approved"), result_keys=list(result.keys()))
         return result

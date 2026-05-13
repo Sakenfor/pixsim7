@@ -60,19 +60,25 @@ def main() -> None:
 
     tool_name = data.get("tool_name", "unknown")
     tool_input = data.get("tool_input", {}) if isinstance(data.get("tool_input"), dict) else {}
+    # Plan: agent-confirmation-hooks / cross-tab-fanout-fix.
+    # Claude's session_id == our bridge's cli_session_id. Forwarding it
+    # to /confirm lets Bridge._hook_confirm reverse-map to the originating
+    # task_id and avoid the heartbeat fan-out that otherwise broadcasts
+    # this prompt into every active chat tab.
+    cli_session_id = str(data.get("session_id") or "").strip() or None
 
     if tool_name == "AskUserQuestion":
-        _handle_ask_user_question(tool_input)
+        _handle_ask_user_question(tool_input, cli_session_id=cli_session_id)
         return
 
-    _handle_approval(tool_name, tool_input)
+    _handle_approval(tool_name, tool_input, cli_session_id=cli_session_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # AskUserQuestion — render each question as a ConfirmationCard choice prompt
 # ──────────────────────────────────────────────────────────────────────────
 
-def _handle_ask_user_question(tool_input: dict) -> None:
+def _handle_ask_user_question(tool_input: dict, *, cli_session_id: Optional[str] = None) -> None:
     questions = tool_input.get("questions") or []
     if not isinstance(questions, list) or not questions:
         # Nothing to ask — let the tool proceed via its default path.
@@ -110,6 +116,8 @@ def _handle_ask_user_question(tool_input: dict) -> None:
             "choices": choices,
             "timeout_s": TIMEOUT_S,
         }
+        if cli_session_id:
+            payload["cli_session_id"] = cli_session_id
         result = _post_confirm(payload)
         if result is None:
             # Bridge offline — fail-open so Claude isn't blocked; it'll get
@@ -202,7 +210,9 @@ def _emit_deny(reason: str) -> None:
 # Legacy approve/deny path — Bash / Write / Edit etc. via exit codes
 # ──────────────────────────────────────────────────────────────────────────
 
-def _handle_approval(tool_name: str, tool_input: dict) -> None:
+def _handle_approval(
+    tool_name: str, tool_input: dict, *, cli_session_id: Optional[str] = None
+) -> None:
     payload = {
         "tool_name": tool_name,
         "tool_input": tool_input,
@@ -210,6 +220,8 @@ def _handle_approval(tool_name: str, tool_input: dict) -> None:
         "description": _describe_tool(tool_name, tool_input),
         "timeout_s": TIMEOUT_S,
     }
+    if cli_session_id:
+        payload["cli_session_id"] = cli_session_id
     result = _post_confirm(payload)
     if result is None:
         # Bridge offline — fail-open.

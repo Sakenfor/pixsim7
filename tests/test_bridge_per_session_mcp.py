@@ -446,3 +446,150 @@ class TestStableMcpConfigLocation:
         from pixsim7.client.token_manager import sweep_old_mcp_configs
 
         assert sweep_old_mcp_configs() == 0
+
+
+# ── Hook confirm routing (cross-tab fan-out fix) ─────────────────
+
+
+class TestHookConfirmRouting:
+    """Plan: agent-confirmation-hooks / cross-tab-fanout-fix.
+
+    Before the fix, hook-originated /confirm calls (from
+    ``hook_pretool.py``) reached the bridge without a ``task_id``, so
+    ``_hook_confirm`` synthesized one that didn't match anything in
+    ``agent.current_task_ids`` on the backend — falling through to
+    broadcast and showing the prompt in *every* in-flight chat tab.
+
+    The fix reverse-looks-up ``task_id`` from ``cli_session_id`` (Claude's
+    own session UUID, forwarded by ``hook_pretool.py`` from its stdin
+    payload). These tests pin the resolution ladder:
+
+    1. Explicit ``payload['task_id']`` wins (preserves the internal
+       tool-gate path at ``bridge.py:1432``).
+    2. Fall back to ``cli_session_id`` lookup against
+       ``_cli_session_to_task``.
+    3. Last resort: synthetic ``hook-<uuid>`` id, logged loudly as
+       ``hook_confirm_unrouted`` so the historical silent fan-out is
+       at least audible.
+    """
+
+    def _make_ws_connected_bridge(self) -> tuple[Bridge, list[tuple[str, dict]]]:
+        """Bridge with mocked WS + request_confirmation captures.
+
+        Returns the bridge and a list that captures
+        ``(task_id, payload)`` for every ``request_confirmation`` call.
+        """
+        bridge = _make_bridge()
+        bridge._connected = True
+        # Sentinel — we never actually await on ws.send because
+        # request_confirmation is mocked out below.
+        bridge._active_ws = object()
+
+        captured: list[tuple[str, dict]] = []
+
+        async def _fake_request_confirmation(ws, task_id, payload):
+            captured.append((task_id, payload))
+            return {"approved": True, "choice": "0"}
+
+        bridge.request_confirmation = _fake_request_confirmation  # type: ignore[assignment]
+        return bridge, captured
+
+    @pytest.mark.asyncio
+    async def test_explicit_task_id_wins(self):
+        """The tool-gate path at bridge.py:1432 passes task_id explicitly.
+        That must take precedence over any cli_session_id lookup, even
+        when the cli_session would resolve to a different task."""
+        bridge, captured = self._make_ws_connected_bridge()
+        bridge._cli_session_to_task["sess-X"] = "task-from-lookup"
+
+        result = await bridge._hook_confirm({
+            "task_id": "task-from-explicit",
+            "cli_session_id": "sess-X",
+            "tool_name": "Bash",
+        })
+
+        assert result["approved"] is True
+        assert len(captured) == 1
+        passed_task_id, _ = captured[0]
+        assert passed_task_id == "task-from-explicit"
+
+    @pytest.mark.asyncio
+    async def test_cli_session_id_routes_to_mapped_task(self):
+        """When the PreToolUse hook forwards cli_session_id and that
+        session is mapped to an in-flight task, the heartbeat goes to
+        exactly that task — the whole point of the fix."""
+        bridge, captured = self._make_ws_connected_bridge()
+        bridge._cli_session_to_task["claude-sess-abc"] = "task-originator"
+        # Add a noise mapping so we know it's not just picking the first.
+        bridge._cli_session_to_task["claude-sess-xyz"] = "task-other"
+
+        await bridge._hook_confirm({
+            "cli_session_id": "claude-sess-abc",
+            "tool_name": "AskUserQuestion",
+        })
+
+        assert len(captured) == 1
+        passed_task_id, _ = captured[0]
+        assert passed_task_id == "task-originator"
+
+    @pytest.mark.asyncio
+    async def test_unknown_cli_session_logs_warning_and_uses_synthetic(self, capsys):
+        """If the bridge has no entry for the forwarded cli_session_id
+        (race: task finished and was cleared, or stale hook firing after
+        process death), we fall back to a synthetic 'hook-' id AND log
+        ``hook_confirm_unrouted`` so the regression isn't silent.
+
+        structlog writes directly to stdout (bypassing stdlib caplog),
+        so we use capsys to assert the warning surfaced.
+        """
+        bridge, captured = self._make_ws_connected_bridge()
+        # Empty reverse map deliberately — simulate the race.
+
+        await bridge._hook_confirm({
+            "cli_session_id": "vanished-session",
+            "tool_name": "Bash",
+        })
+
+        assert len(captured) == 1
+        passed_task_id, _ = captured[0]
+        assert passed_task_id.startswith("hook-")
+        # Warning surfaces via structlog's stdout pipeline.
+        stdout = capsys.readouterr().out
+        assert "hook_confirm_unrouted" in stdout
+        assert "vanished-session" in stdout
+
+    @pytest.mark.asyncio
+    async def test_no_ws_fail_open(self):
+        """When the bridge isn't connected to the backend, hook /confirm
+        must fail-open (approve) rather than block on a never-arriving WS
+        response. Behavior preserved from before the fix."""
+        bridge = _make_bridge()
+        bridge._connected = False
+        bridge._active_ws = None
+
+        result = await bridge._hook_confirm({
+            "cli_session_id": "anything",
+            "tool_name": "Bash",
+        })
+
+        assert result == {"approved": True}
+
+    @pytest.mark.asyncio
+    async def test_cli_session_lookup_does_not_consume_mapping(self):
+        """The reverse map is owned by _handle_task's lifecycle (cleared
+        in finally), not by _hook_confirm. A confirmation lookup must
+        leave the entry intact so subsequent hook calls during the same
+        task continue to route correctly."""
+        bridge, captured = self._make_ws_connected_bridge()
+        bridge._cli_session_to_task["sess-stable"] = "task-A"
+
+        for _ in range(3):
+            await bridge._hook_confirm({
+                "cli_session_id": "sess-stable",
+                "tool_name": "AskUserQuestion",
+            })
+
+        # Mapping intact after multiple lookups.
+        assert bridge._cli_session_to_task.get("sess-stable") == "task-A"
+        # All three routed to task-A.
+        assert [tid for tid, _ in captured] == ["task-A", "task-A", "task-A"]
