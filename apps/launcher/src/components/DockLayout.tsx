@@ -247,16 +247,21 @@ function HookConfigOutput({ values, hookPort }: { values: Record<string, unknown
   const [mcpAllowed, setMcpAllowed] = useState(true)
   const hookTools = (values.hook_tools as string[] | undefined) ?? ['Bash', 'Write', 'Edit']
 
-  const hasHooks = hookTools.length > 0
-  const matcher = hookTools.join('|')
-  const hookConfig = hasHooks ? JSON.stringify({
+  // Mirror the backend's apply_hook_config behaviour: AskUserQuestion is
+  // always intercepted (UI routing, not a gate) so the preview must include
+  // it in the matcher even when the user has selected no other tools.
+  const matcherTools = hookTools.includes('AskUserQuestion')
+    ? hookTools
+    : [...hookTools, 'AskUserQuestion']
+  const matcher = matcherTools.join('|')
+  const hookConfig = JSON.stringify({
     hooks: {
       PreToolUse: [{
         matcher,
-        command: 'python -m pixsim7.client.hook_pretool',
+        hooks: [{ type: 'command', command: 'python -m pixsim7.client.hook_pretool' }],
       }],
     },
-  }, null, 2) : null
+  }, null, 2)
 
   const copyConfig = () => {
     navigator.clipboard.writeText(hookConfig || '').then(() => {

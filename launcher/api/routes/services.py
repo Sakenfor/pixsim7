@@ -695,19 +695,42 @@ async def apply_hook_config(
     if not isinstance(pre_tool, list):
         pre_tool = []
 
-    # Remove any existing pixsim hook entries first
-    pre_tool = [
-        h for h in pre_tool
-        if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
-    ]
+    _HOOK_CMD = "python -m pixsim7.client.hook_pretool"
 
-    # Only add hook entry if there are tools to gate
-    if body.hook_tools:
-        matcher = "|".join(body.hook_tools)
-        pre_tool.append({
-            "matcher": matcher,
-            "command": "python -m pixsim7.client.hook_pretool",
-        })
+    def _points_to_pixsim_hook(entry: object) -> bool:
+        """True for any PreToolUse entry whose handler is our hook script.
+
+        Recognises both the legacy flat shape (``{matcher, command}``)
+        and the modern nested shape (``{matcher, hooks: [{type, command}]}``).
+        Used to strip stale pixsim entries before rewriting.
+        """
+        if not isinstance(entry, dict):
+            return False
+        if "pixsim7.client.hook_pretool" in str(entry.get("command", "")):
+            return True
+        nested = entry.get("hooks", [])
+        if isinstance(nested, list):
+            return any(
+                isinstance(n, dict) and "pixsim7.client.hook_pretool" in str(n.get("command", ""))
+                for n in nested
+            )
+        return False
+
+    # Remove any existing pixsim hook entries first (in either shape)
+    pre_tool = [h for h in pre_tool if not _points_to_pixsim_hook(h)]
+
+    # Always intercept AskUserQuestion — it's UI routing (not a gate), and
+    # without it the built-in AUQ tool silently returns "Answer questions?"
+    # in headless subprocess mode. Combine with user-selected gating tools
+    # into a single matcher entry.
+    matcher_tools = list(body.hook_tools)
+    if "AskUserQuestion" not in matcher_tools:
+        matcher_tools.append("AskUserQuestion")
+    matcher = "|".join(matcher_tools)
+    pre_tool.append({
+        "matcher": matcher,
+        "hooks": [{"type": "command", "command": _HOOK_CMD}],
+    })
 
     hooks["PreToolUse"] = pre_tool
     project_settings["hooks"] = hooks
@@ -749,16 +772,14 @@ async def apply_hook_config(
         raise HTTPException(status_code=500, detail=f"Failed to write {project_settings_path}: {e}")
 
     # Clean up stale global hooks if any were written by older launcher versions
+    # (in either flat or nested shape — see _points_to_pixsim_hook above).
     global_settings_path = claude_dir / "settings.json"
     if global_settings_path.exists():
         try:
             global_settings = _json.loads(global_settings_path.read_text(encoding="utf-8"))
             global_hooks = global_settings.get("hooks", {}).get("PreToolUse", [])
             if isinstance(global_hooks, list):
-                cleaned = [
-                    h for h in global_hooks
-                    if not isinstance(h, dict) or "pixsim7.client.hook_pretool" not in h.get("command", "")
-                ]
+                cleaned = [h for h in global_hooks if not _points_to_pixsim_hook(h)]
                 if len(cleaned) != len(global_hooks):
                     global_settings.setdefault("hooks", {})["PreToolUse"] = cleaned
                     global_settings_path.write_text(_json.dumps(global_settings, indent=2), encoding="utf-8")
