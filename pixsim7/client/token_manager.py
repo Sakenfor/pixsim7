@@ -229,6 +229,68 @@ def render_claude_mcp_http_config(
     return json.dumps(config, indent=2)
 
 
+# ─── Stable MCP config directory ─────────────────────────────────
+# Plan: launcher-health-probe-stability / stable-config-location.
+# Previously every HTTP MCP config landed in ``%TEMP%`` via
+# ``tempfile.mkstemp`` and got swept by Windows Storage Sense / Disk
+# Cleanup, leaving stale paths in the bridge's cache. The robust fix
+# (regenerator-on-missing, commit 5ad515d2d) handles the symptom; this
+# helper closes the underlying cause by writing into a per-user dir
+# that those sweepers leave alone (``~/.pixsim/mcp/``).
+#
+# Override via ``PIXSIM_MCP_CONFIG_DIR`` for tests (so they don't pollute
+# the developer's real home dir).
+
+
+def pixsim_mcp_config_dir() -> Path:
+    """Stable per-user directory for HTTP MCP config files.
+
+    Creates the directory on first call. Sets 0700 perms on Unix; on
+    Windows the user-profile ACLs already restrict access. Env var
+    ``PIXSIM_MCP_CONFIG_DIR`` overrides the default location (intended
+    for tests).
+    """
+    override = os.environ.get("PIXSIM_MCP_CONFIG_DIR", "").strip()
+    d = Path(override) if override else Path.home() / ".pixsim" / "mcp"
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass  # Windows / chmod-unsupported FS — best effort.
+    return d
+
+
+def sweep_old_mcp_configs(max_age_seconds: int = 48 * 3600) -> int:
+    """Remove stale MCP config files from the stable directory.
+
+    Files older than ``max_age_seconds`` are unlinked. Returns the count
+    removed. Never raises — sweep failures must not block bridge startup.
+    Cheap enough to call once per bridge launch.
+    """
+    import time
+
+    try:
+        d = pixsim_mcp_config_dir()
+    except OSError:
+        return 0
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    try:
+        entries = list(d.iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            if not entry.is_file():
+                continue
+            if entry.stat().st_mtime < cutoff:
+                entry.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def write_claude_mcp_http_config(
     *,
     mcp_url: str,
@@ -237,8 +299,15 @@ def write_claude_mcp_http_config(
     session_id: str = "",
     profile_id: str = "",
     prefix: str = "pixsim-mcp-http",
+    name: str | None = None,
 ) -> str:
-    """Write an HTTP-based Claude MCP config to a temp file. Returns the path."""
+    """Write an HTTP-based Claude MCP config. Returns the path.
+
+    When ``name`` is provided, writes to ``pixsim_mcp_config_dir()/<name>``
+    — stable across process restarts and immune to ``%TEMP%`` sweeps.
+    Otherwise falls back to ``tempfile.mkstemp`` so legacy callers that
+    don't care about stability keep working unchanged.
+    """
     content = render_claude_mcp_http_config(
         mcp_url=mcp_url,
         api_token=api_token,
@@ -246,6 +315,18 @@ def write_claude_mcp_http_config(
         session_id=session_id,
         profile_id=profile_id,
     )
+    if name is not None:
+        target = pixsim_mcp_config_dir() / name
+        # 0600 perms on Unix; Windows ignores the mode bits and relies on
+        # the parent dir's profile-scoped ACLs.
+        fd = os.open(
+            str(target),
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        return str(target)
     fd, path = tempfile.mkstemp(suffix=".json", prefix=f"{prefix}-")
     with os.fdopen(fd, "w") as f:
         f.write(content)

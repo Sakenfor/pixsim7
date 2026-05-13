@@ -18,6 +18,7 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
+import traceback
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -40,6 +41,41 @@ from pixsim7.client.token_manager import (
     write_claude_mcp_config,
     write_codex_mcp_config,
 )
+
+
+# ─── Stable MCP config filenames (plan: stable-config-location) ───
+# Deterministic, filesystem-safe names so a given (focus) or
+# (chat_session, agent, focus) tuple always resolves to the same file
+# inside ``pixsim_mcp_config_dir()``. Rewriting the same file is what
+# makes ``%TEMP%``-sweep recovery free — no fresh path to invalidate
+# any cache against.
+
+
+def _sanitize_for_filename(value: str, max_length: int = 40) -> str:
+    """Keep filesystem-safe chars only, truncate, never empty."""
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in value)
+    return (safe[:max_length] or "_")
+
+
+def _focus_suffix(focus) -> str:
+    """Deterministic short suffix for a focus set (empty when no focus)."""
+    if not focus:
+        return ""
+    import hashlib
+    canonical = ",".join(sorted(focus))
+    return "--focus-" + hashlib.sha256(canonical.encode()).hexdigest()[:8]
+
+
+def _legacy_mcp_config_name(focus) -> str:
+    return f"focus{_focus_suffix(focus)}.json" if focus else "default.json"
+
+
+def _per_session_mcp_config_name(
+    chat_session_id: str, agent_type: str, focus
+) -> str:
+    session_part = _sanitize_for_filename(chat_session_id)
+    agent_part = _sanitize_for_filename(agent_type)
+    return f"session-{session_part}--{agent_part}{_focus_suffix(focus)}.json"
 
 
 def _describe_tool_for_gate(tool_name: str, tool_input: dict) -> str:
@@ -231,6 +267,18 @@ class Bridge:
             get_logger().error("missing_dependency", package="websockets", hint="pip install websockets")
             return
 
+        # Sweep stale MCP configs from the stable dir at startup. JWTs are
+        # 24h-TTL so anything >48h old is unreachable; we delete eagerly so
+        # ~/.pixsim/mcp/ doesn't accumulate session-<id>-*.json files
+        # across reboots. Plan: stable-config-location.
+        try:
+            from pixsim7.client.token_manager import sweep_old_mcp_configs
+            removed = sweep_old_mcp_configs()
+            if removed:
+                get_logger().info("mcp_config_sweep", removed=removed)
+        except Exception as e:
+            get_logger().debug("mcp_config_sweep_failed", error=str(e))
+
         # Start hook HTTP server for Claude Code PreToolUse integration
         from pixsim7.client.hook_server import HookServer
         self._hook_server = HookServer(confirm_fn=self._hook_confirm, status_fn=self.status)
@@ -280,7 +328,43 @@ class Bridge:
                         break
                     consecutive_failures += 1
                     delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
-                    get_logger().error("connection_error", error=str(e))
+                    # Plan: launcher-health-probe-stability / ws-drop-root-cause —
+                    # str(e) on websockets exceptions is just "no close frame
+                    # received or sent" without the originating cause. Surface
+                    # structured fields so we can see *why* the WS context died
+                    # (ConnectionClosed code/reason, the chained __cause__, or
+                    # the exception type if it's something other than a WS close).
+                    err_fields: dict[str, object] = {
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "error_repr": repr(e),
+                    }
+                    if websockets is not None and isinstance(
+                        e, websockets.exceptions.ConnectionClosed
+                    ):
+                        rcvd = getattr(e, "rcvd", None)
+                        sent = getattr(e, "sent", None)
+                        frame = rcvd or sent
+                        err_fields["close_code"] = getattr(frame, "code", None)
+                        err_fields["close_reason"] = getattr(frame, "reason", None)
+                        err_fields["close_origin"] = (
+                            "remote" if rcvd else ("local" if sent else "unknown")
+                        )
+                    if e.__cause__ is not None:
+                        err_fields["cause_type"] = type(e.__cause__).__name__
+                        err_fields["cause"] = repr(e.__cause__)
+                    elif e.__context__ is not None and not e.__suppress_context__:
+                        err_fields["context_type"] = type(e.__context__).__name__
+                        err_fields["context"] = repr(e.__context__)
+                    get_logger().error("connection_error", **err_fields)
+                    # Full traceback at debug — verbose, but invaluable when a
+                    # specific code path is repeatedly killing the WS context.
+                    get_logger().debug(
+                        "connection_error_traceback",
+                        traceback="".join(
+                            traceback.format_exception(type(e), e, e.__traceback__)
+                        ),
+                    )
                     get_logger().info("reconnecting", delay_s=delay, attempt=consecutive_failures)
                     await asyncio.sleep(delay)
         finally:
@@ -637,10 +721,14 @@ class Bridge:
             effective_token = token
             if not effective_token and self._token_file:
                 effective_token = self._token_file.read()
+            # Stable filename: deterministic on (focus) so reopening on
+            # the next bridge boot reuses the same path; survives %TEMP%
+            # sweeps because we live in pixsim_mcp_config_dir() now.
             path = write_claude_mcp_http_config(
                 mcp_url=self._mcp_http_url,
                 api_token=effective_token,
                 scope=mcp_scope,
+                name=_legacy_mcp_config_name(focus),
             )
             self._mcp_config_cache[cache_key] = path
             if not focus:
@@ -809,12 +897,16 @@ class Bridge:
         # and Codex's project-local config.toml is handled by
         # ``_ensure_codex_project_workdir`` separately. (TODO follow-up: unify
         # both paths once Codex over HTTP-MCP graduates.)
+        # Stable per-(chat_session, agent_type, focus) filename so a
+        # %TEMP%-sweep equivalent (Storage Sense, etc.) doesn't leave the
+        # cache holding a stale path.
         path = write_claude_mcp_http_config(
             mcp_url=self._mcp_http_url,
             api_token=token,
             scope=scope_key or self._mcp_scope,
             session_id=chat_session_id,
             profile_id=profile_id,
+            name=_per_session_mcp_config_name(chat_session_id, agent_type, focus),
         )
         self._per_session_mcp_cache[cache_key] = (path, token, exp_epoch)
         return path

@@ -41,6 +41,20 @@ from pixsim7.client.bridge import Bridge
 from pixsim7.client.agent_pool import AgentPool
 
 
+# ── Test isolation ───────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _isolated_mcp_config_dir(tmp_path, monkeypatch):
+    """Redirect ``pixsim_mcp_config_dir()`` per-test so stable-path writes
+    land in ``tmp_path`` instead of the developer's real ``~/.pixsim/mcp/``.
+
+    Plan: launcher-health-probe-stability / stable-config-location.
+    """
+    monkeypatch.setenv("PIXSIM_MCP_CONFIG_DIR", str(tmp_path / "mcp"))
+    yield
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
@@ -320,3 +334,115 @@ class TestMintAgentSessionToken:
                     agent_type="claude",
                     profile_id="p",
                 )
+
+
+# ── Stable MCP config location ───────────────────────────────────
+
+
+class TestStableMcpConfigLocation:
+    """Plan: launcher-health-probe-stability / stable-config-location.
+
+    Config files now land in ``pixsim_mcp_config_dir()`` (overridden to
+    ``tmp_path/mcp`` for tests by the autouse fixture) with deterministic
+    names. This:
+
+    - survives ``%TEMP%`` sweeps (Storage Sense / Disk Cleanup);
+    - avoids the perf cost of regenerating after a sweep;
+    - makes ``mcp_config_missing`` warnings disappear from logs;
+    - keeps the bridge's caches pointed at paths that still exist.
+    """
+
+    @pytest.mark.asyncio
+    async def test_writes_to_stable_dir_not_tempfile(self, tmp_path):
+        """File path is inside pixsim_mcp_config_dir() — not %TEMP%."""
+        bridge = _make_bridge()
+        bridge._mint_agent_session_token = AsyncMock(
+            return_value=("jwt-stable", time.time() + 24 * 3600)
+        )
+
+        path = await bridge._ensure_per_session_mcp_config(
+            chat_session_id="sess-stable",
+            agent_type="claude",
+            profile_id="p",
+        )
+        assert path is not None
+        # The autouse fixture points the stable dir at tmp_path / "mcp".
+        assert str(tmp_path / "mcp") in path
+        # The previous tempfile prefix shouldn't appear in the path now.
+        assert "pixsim-mcp-http-" not in os.path.basename(path)
+
+    @pytest.mark.asyncio
+    async def test_rewrite_reuses_same_path(self, tmp_path):
+        """A re-mint after the file is swept reuses the same filename — that's
+        what the cache-stable contract is about. The bridge can keep its
+        cached path forever; the underlying file gets overwritten in place
+        rather than ending up at a fresh tempfile location.
+        """
+        from pixsim7.client.token_manager import write_claude_mcp_http_config
+
+        p1 = write_claude_mcp_http_config(
+            mcp_url="http://x", api_token="t1", name="rewrite.json"
+        )
+        p2 = write_claude_mcp_http_config(
+            mcp_url="http://x", api_token="t2", name="rewrite.json"
+        )
+        assert p1 == p2
+        with open(p2) as f:
+            cfg = json.load(f)
+        assert (
+            cfg["mcpServers"]["pixsim"]["headers"]["Authorization"]
+            == "Bearer t2"
+        )
+
+    @pytest.mark.asyncio
+    async def test_session_filename_encodes_session_and_agent(self):
+        """The deterministic name embeds the chat_session_id + agent_type so
+        a quick ls of ~/.pixsim/mcp/ tells you which sessions are alive.
+        """
+        bridge = _make_bridge()
+        bridge._mint_agent_session_token = AsyncMock(
+            return_value=("jwt", time.time() + 24 * 3600)
+        )
+
+        path_claude = await bridge._ensure_per_session_mcp_config(
+            chat_session_id="tab-mp4-847c", agent_type="claude", profile_id="p",
+        )
+        path_codex = await bridge._ensure_per_session_mcp_config(
+            chat_session_id="tab-mp4-847c", agent_type="codex", profile_id="p",
+        )
+        name_claude = os.path.basename(path_claude)
+        name_codex = os.path.basename(path_codex)
+        assert "tab-mp4-847c" in name_claude
+        assert "claude" in name_claude
+        assert "codex" in name_codex
+        assert name_claude != name_codex
+
+    def test_sweep_removes_old_files_only(self, tmp_path):
+        """sweep_old_mcp_configs deletes files older than the threshold and
+        leaves fresh ones alone. Never raises."""
+        from pixsim7.client.token_manager import (
+            pixsim_mcp_config_dir,
+            sweep_old_mcp_configs,
+        )
+
+        d = pixsim_mcp_config_dir()
+        old = d / "old.json"
+        fresh = d / "fresh.json"
+        old.write_text("{}")
+        fresh.write_text("{}")
+        # Backdate ``old`` to 3 days ago — beyond the 48h sweep threshold.
+        three_days_ago = time.time() - 3 * 24 * 3600
+        os.utime(old, (three_days_ago, three_days_ago))
+
+        removed = sweep_old_mcp_configs(max_age_seconds=48 * 3600)
+        assert removed == 1
+        assert not old.exists()
+        assert fresh.exists()
+
+    def test_sweep_survives_empty_dir(self, tmp_path):
+        """A bridge starting on a fresh install has an empty (or missing)
+        stable dir. Sweep must not raise — it's called unconditionally at
+        startup."""
+        from pixsim7.client.token_manager import sweep_old_mcp_configs
+
+        assert sweep_old_mcp_configs() == 0
