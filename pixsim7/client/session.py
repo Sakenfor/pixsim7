@@ -68,6 +68,7 @@ class AgentCmdSession:
         command: str = "claude",
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
+        mcp_config_regenerator: "Callable[[], Optional[str]] | None" = None,
         resume_session_id: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
@@ -81,6 +82,14 @@ class AgentCmdSession:
         self._protocol = get_protocol(command)
         self._system_prompt = system_prompt
         self._mcp_config_path = mcp_config_path
+        # Callable that returns a fresh MCP config path when the cached one is
+        # missing (e.g. swept by Windows %TEMP% cleanup). Returns None or
+        # raises if regeneration fails — Session uses that to decide whether
+        # to fail-loud or fall back. When None, Session preserves legacy
+        # silent-fallback behavior for callers (tests / standalone) that
+        # construct Session without going through AgentPool.
+        # See plan: mcp-server-reliability — robust-fix-regenerate-on-missing.
+        self._mcp_config_regenerator = mcp_config_regenerator
         self._resume_session_id = resume_session_id
         self._model = model
         self._reasoning_effort = reasoning_effort
@@ -178,11 +187,54 @@ class AgentCmdSession:
         # aren't found by asyncio.create_subprocess_exec with bare names
         resolved_command = shutil.which(self._command) or self._command
 
-        # Validate MCP config still exists (temp files can be cleaned up by OS)
+        # Validate MCP config still exists. Temp files in %TEMP% can be cleaned
+        # up by Windows Storage Sense, antivirus, etc. — see plan
+        # mcp-server-reliability for the failure analysis.
+        #
+        # If a regenerator is wired (production path via AgentPool), try to get
+        # a fresh path and fail loud on regeneration failure. Without a
+        # regenerator (legacy / test construction), fall back to launching
+        # without MCP rather than refusing to start — preserves back-compat.
         mcp_config = self._mcp_config_path
         if mcp_config and not os.path.exists(mcp_config):
             self._log.warning("mcp_config_missing", path=mcp_config)
-            mcp_config = None
+            fresh: Optional[str] = None
+            if self._mcp_config_regenerator is not None:
+                try:
+                    fresh = self._mcp_config_regenerator()
+                except Exception as exc:
+                    self._log.error(
+                        "mcp_config_regeneration_failed",
+                        path=mcp_config,
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                    )
+                    self.state = SessionState.STOPPED
+                    self._last_error = (
+                        f"MCP config missing at {mcp_config!r} and regeneration "
+                        f"raised {type(exc).__name__}: {exc}. Refusing to start "
+                        f"session without MCP."
+                    )
+                    return False
+                if fresh and os.path.exists(fresh):
+                    self._mcp_config_path = fresh
+                    mcp_config = fresh
+                    self._log.info("mcp_config_regenerated", path=fresh)
+                else:
+                    self._log.error(
+                        "mcp_config_regeneration_unrecoverable",
+                        original=mcp_config,
+                        returned=fresh,
+                    )
+                    self.state = SessionState.STOPPED
+                    self._last_error = (
+                        f"MCP config missing at {mcp_config!r} and regenerator "
+                        f"returned {fresh!r}. Refusing to start session without MCP."
+                    )
+                    return False
+            else:
+                # No regenerator wired — preserve legacy behavior.
+                mcp_config = None
 
         cmd = self._protocol.build_start_cmd(
             resolved_command,

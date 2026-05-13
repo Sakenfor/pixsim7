@@ -151,6 +151,10 @@ class AgentPool:
         self._max_sessions = max_sessions
         self._system_prompt: Optional[str] = None
         self._mcp_config_path: Optional[str] = None
+        # Optional callback the bridge wires up to regenerate the pool's base
+        # MCP config (e.g. when Windows sweeps the temp file out from under us).
+        # See plan: mcp-server-reliability — robust-fix-regenerate-on-missing.
+        self._base_mcp_config_regenerator: Optional[Callable[[], Optional[str]]] = None
         self._resume_session_id: Optional[str] = None
         self._sessions: Dict[str, AgentCmdSession] = {}
         self._health_task: Optional[asyncio.Task] = None
@@ -271,6 +275,64 @@ class AgentPool:
                 except OSError:
                     pass
 
+    def set_base_mcp_config_regenerator(
+        self, regenerator: Callable[[], Optional[str]] | None,
+    ) -> None:
+        """Wire a bridge-provided callback that returns a fresh base MCP config
+        path. The pool calls this when its cached base config has been swept
+        (Windows %TEMP% cleanup, etc.). See plan: mcp-server-reliability.
+        """
+        self._base_mcp_config_regenerator = regenerator
+
+    def _make_session_mcp_regenerator(
+        self, pool_key: str,
+    ) -> Callable[[], Optional[str]]:
+        """Build a closure that regenerates this pool_key's per-session MCP
+        config. Tries `_create_session_mcp_config` first; if the pool's base
+        config is also missing, asks the bridge via the base regenerator and
+        retries the clone. Returns None on unrecoverable failure (Session
+        treats None as fail-loud).
+        """
+        def _regenerate() -> Optional[str]:
+            # Step 1: ensure pool's base config exists; regenerate via bridge if not.
+            base = self._mcp_config_path
+            if not base or not os.path.exists(base):
+                if self._base_mcp_config_regenerator is None:
+                    get_logger().error(
+                        "mcp_base_config_missing_no_regenerator",
+                        pool_key=pool_key,
+                        cached_base=base,
+                    )
+                    return None
+                try:
+                    fresh_base = self._base_mcp_config_regenerator()
+                except Exception as exc:
+                    get_logger().error(
+                        "mcp_base_config_regeneration_failed",
+                        pool_key=pool_key,
+                        error=str(exc),
+                        error_type=type(exc).__name__,
+                    )
+                    return None
+                if not fresh_base or not os.path.exists(fresh_base):
+                    get_logger().error(
+                        "mcp_base_config_regeneration_unrecoverable",
+                        pool_key=pool_key,
+                        returned=fresh_base,
+                    )
+                    return None
+                self._mcp_config_path = fresh_base
+            # Step 2: re-clone per-session config from the (now-fresh) base.
+            _, new_path = self._create_session_mcp_config(pool_key)
+            if not new_path:
+                get_logger().error(
+                    "mcp_session_clone_failed",
+                    pool_key=pool_key,
+                    base=self._mcp_config_path,
+                )
+            return new_path
+        return _regenerate
+
     def _create_session_mcp_config(self, pool_key: str, base_config_path: str | None = None) -> tuple[str | None, str | None]:
         """Create a per-session token file + MCP config.
 
@@ -341,6 +403,7 @@ class AgentPool:
             command=command,
             system_prompt=self._system_prompt,
             mcp_config_path=session_mcp_config or mcp_config_path or self._mcp_config_path,
+            mcp_config_regenerator=self._make_session_mcp_regenerator(pool_key),
             resume_session_id=resume_session_id,
             model=model,
             reasoning_effort=reasoning_effort,

@@ -339,6 +339,20 @@ class Bridge:
             server_system_prompt = welcome.get("system_prompt")
             mcp_config_path = self._ensure_mcp_config(scope=scope, token=service_token)
 
+            # Wire a base-regenerator into the pool so sessions can recover when
+            # the cached MCP config file is swept (Windows %TEMP% cleanup, etc.).
+            # See plan: mcp-server-reliability.
+            def _regen_base_mcp_config(
+                _scope: str = scope, _token: str = str(service_token or "")
+            ) -> Optional[str]:
+                # Drop the bridge's cached path so _ensure_mcp_config writes a
+                # fresh file instead of returning the (now missing) cached one.
+                self._mcp_config_cache.pop(frozenset({"__default__"}), None)
+                self._mcp_config_path = None
+                return self._ensure_mcp_config(scope=_scope, token=_token)
+
+            self._pool.set_base_mcp_config_regenerator(_regen_base_mcp_config)
+
             if server_system_prompt:
                 self._system_prompt = server_system_prompt
             if server_system_prompt or mcp_config_path:
