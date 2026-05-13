@@ -28,10 +28,14 @@ _paths = get_path_registry()
 # ---------------------------------------------------------------------------
 
 async def _seed_default_presets(_spec: ContentLoaderSpec) -> Dict[str, Any]:
-    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    # AppActionPreset lives in the automation DB after Phase 2c cutover.
+    # Use the automation session factory so this still works post-separation.
+    from pixsim7.backend.main.infrastructure.database.session import (
+        get_async_automation_session,
+    )
     from pixsim7.backend.main.seeds.default_presets import seed_default_presets
 
-    async with get_async_session() as db:
+    async with get_async_automation_session() as db:
         await seed_default_presets(db)
     return {"count": 1}
 

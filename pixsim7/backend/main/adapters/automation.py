@@ -141,7 +141,7 @@ def _to_snapshot(account: ProviderAccount, resolved_password: Optional[str]) -> 
 # ── Provider metadata ──
 
 class BackendProviderMetadata:
-    """Per-provider runtime data (currently Pixverse ad tasks only)."""
+    """Per-provider runtime data (Pixverse ad tasks + post-session credit refresh)."""
 
     async def pixverse_ad_task(self, account_id: int) -> Optional[PixverseAdTask]:
         try:
@@ -166,6 +166,64 @@ class BackendProviderMetadata:
         except Exception:
             return None
         return None
+
+    async def refresh_account_credits(self, account_id: int) -> None:
+        """Refresh + persist provider credits, backend-DB-side.
+
+        Was inlined into pixsim7/automation/services/device_sync_service.py
+        with direct ProviderAccount/AccountService imports — the cross-DB
+        shape this protocol is meant to prevent. Now the backend owns the
+        whole flow and automation just signals "session ended for this id".
+        Best-effort: errors are logged, never raised.
+        """
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+        try:
+            from pixsim7.backend.main.services.provider import registry as provider_registry
+            from pixsim7.backend.main.services.account import (
+                AccountService,
+                apply_provider_credit_snapshot,
+            )
+
+            async for db in get_db():
+                account = await db.get(ProviderAccount, account_id)
+                if not account or account.provider_id != "pixverse":
+                    return
+
+                provider = provider_registry.get(account.provider_id)
+                if not hasattr(provider, "get_credits"):
+                    return
+
+                credits_data = await provider.get_credits(
+                    account, retry_on_session_error=False, force_refresh=True
+                )
+                if not credits_data:
+                    return
+
+                account_service = AccountService(db)
+                updated = await apply_provider_credit_snapshot(
+                    account_service=account_service,
+                    account=account,
+                    provider=provider,
+                    credits_data=credits_data,
+                    fallback_credit_types={"web", "openapi"},
+                    amount_transform=lambda _ct, amount: max(0, amount),
+                    stamp_synced_at=True,
+                )
+                if updated:
+                    _logger.info(
+                        "ad_session_credits_refreshed account_id=%s email=%s credits=%s",
+                        account_id,
+                        account.email,
+                        ", ".join(f"{ct}={amt}" for ct, amt in sorted(updated.items())),
+                    )
+                return
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            _logger.warning(
+                "ad_session_credits_refresh_failed account_id=%s error=%s",
+                account_id,
+                exc,
+            )
 
 
 def _as_int(value: object) -> Optional[int]:

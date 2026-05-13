@@ -35,3 +35,13 @@ class ProviderMetadataLookup(Protocol):
         in workers/automation.py.
         """
         ...
+
+    async def refresh_account_credits(self, account_id: int) -> None:
+        """Trigger a backend-side credit re-fetch + persist for this account.
+
+        Used by automation after an ad-watching session ends, to keep the
+        scheduler's credit estimates fresh. Implementations should swallow
+        provider/DB errors and log backend-side — automation treats this as
+        best-effort fire-and-forget and does not branch on failure.
+        """
+        ...

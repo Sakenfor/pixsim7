@@ -406,58 +406,19 @@ class DeviceSyncService:
         }
 
     async def _refresh_credits_after_ads(self, account_id: int, device_name: str) -> None:
-        """Best-effort credit refresh for an account after ad session ends."""
-        try:
-            from pixsim7.backend.main.domain.providers import ProviderAccount
-            from pixsim7.backend.main.services.provider import registry
-            from pixsim7.backend.main.services.account import (
-                AccountService,
-                apply_provider_credit_snapshot,
-            )
+        """Best-effort credit refresh for an account after ad session ends.
 
-            account = await self.db.get(ProviderAccount, account_id)
-            if not account or account.provider_id != "pixverse":
-                return
-
-            provider = registry.get(account.provider_id)
-            if not hasattr(provider, "get_credits"):
-                return
-
-            credits_data = await provider.get_credits(
-                account, retry_on_session_error=False, force_refresh=True
-            )
-            if not credits_data:
-                return
-
-            account_service = AccountService(self.db)
-            updated_credits = await apply_provider_credit_snapshot(
-                account_service=account_service,
-                account=account,
-                provider=provider,
-                credits_data=credits_data,
-                fallback_credit_types={"web", "openapi"},
-                amount_transform=lambda _credit_type, amount: max(0, amount),
-                stamp_synced_at=True,
-            )
-
-            if updated_credits:
-                logger.info(
-                    "ad_session_credits_refreshed",
-                    account_id=account_id,
-                    email=account.email,
-                    device=device_name,
-                    credits=", ".join(
-                        f"{credit_type}={amount}"
-                        for credit_type, amount in sorted(updated_credits.items())
-                    ),
-                )
-        except Exception as e:
-            logger.warning(
-                "ad_session_credits_refresh_failed",
-                account_id=account_id,
-                device=device_name,
-                error=str(e),
-            )
+        Delegates to backend via ProviderMetadataLookup — keeps the cross-DB
+        ProviderAccount/AccountService access on the backend side. The protocol
+        impl swallows errors; here we just log the device association.
+        """
+        from pixsim7.automation.locator import get_provider_metadata
+        await get_provider_metadata().refresh_account_credits(account_id)
+        logger.debug(
+            "ad_session_credits_refresh_dispatched",
+            account_id=account_id,
+            device=device_name,
+        )
 
     async def reconnect_known_devices(self) -> Dict[str, int]:
         """Reconnect TCP-attached emulators known to the automation DB.

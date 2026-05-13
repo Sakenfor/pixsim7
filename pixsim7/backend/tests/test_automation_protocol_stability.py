@@ -91,12 +91,21 @@ def test_account_lookup_release_reservation_signature() -> None:
 
 
 def test_provider_metadata_lookup_method_surface() -> None:
-    assert _public_method_names(ProviderMetadataLookup) == ["pixverse_ad_task"]
+    assert _public_method_names(ProviderMetadataLookup) == [
+        "pixverse_ad_task",
+        "refresh_account_credits",
+    ]
 
 
 def test_pixverse_ad_task_signature() -> None:
     assert _method_signature(ProviderMetadataLookup, "pixverse_ad_task") == (
         "(self, account_id: 'int') -> 'Optional[PixverseAdTask]'"
+    )
+
+
+def test_refresh_account_credits_signature() -> None:
+    assert _method_signature(ProviderMetadataLookup, "refresh_account_credits") == (
+        "(self, account_id: 'int') -> 'None'"
     )
 
 
