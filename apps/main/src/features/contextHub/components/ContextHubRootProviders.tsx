@@ -181,6 +181,8 @@ export function ContextHubRootProviders() {
       priority: 20,
       exposeToContextMenu: true,
       isAvailable: () =>
+        projectValue.projectId != null ||
+        projectValue.projectSourceWorldId != null ||
         projectValue.worldId != null ||
         projectValue.lastImportedAt != null ||
         projectValue.lastExportedAt != null,

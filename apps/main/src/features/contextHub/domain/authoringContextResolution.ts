@@ -105,11 +105,13 @@ export function resolveAuthoringContext(
   }
 
   // 2. Project context
-  if (projectCtx?.projectId != null) {
+  const hasProjectContext =
+    projectCtx?.projectId != null || projectCtx?.projectSourceWorldId != null;
+  if (hasProjectContext) {
     const resolvedProjectWorldId =
       projectCtx.worldId ?? projectCtx.projectSourceWorldId ?? null;
     return {
-      projectId: projectCtx.projectId,
+      projectId: projectCtx.projectId ?? null,
       worldId: resolvedProjectWorldId,
       projectSourceWorldId: projectCtx.projectSourceWorldId ?? null,
       source: "project-context",
