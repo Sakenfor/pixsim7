@@ -109,6 +109,7 @@ def _agent_claims(
     profile_id: str | None = None,
     scope_key: str | None = None,
     chat_session_id: str | None = None,
+    tab_id: str | None = None,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {
         "sub": "0",
@@ -133,6 +134,8 @@ def _agent_claims(
         data["scope_key"] = scope_key
     if chat_session_id:
         data["chat_session_id"] = chat_session_id
+    if tab_id:
+        data["tab_id"] = tab_id
     return data
 
 

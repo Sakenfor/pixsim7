@@ -13,12 +13,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_database
+from pixsim7.backend.main.api.dependencies import (
+    CurrentAdminUser,
+    get_current_principal,
+    get_database,
+)
 from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentRun
 from pixsim7.backend.main.services.user.token_policy import TokenKind, mint_token
 from pixsim7.backend.main.shared.auth import decode_access_token
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.actor import RequestPrincipal
 
 router = APIRouter(prefix="/dev/agent-tokens", tags=["dev", "agent-tokens"])
 
@@ -109,4 +114,142 @@ async def mint_agent_token(
         access_token=token,
         agent_id=payload.agent_id,
         expires_in_hours=payload.ttl_hours,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Bridge-minted per-session agent tokens
+#
+# The client bridge runs one MCP HTTP server but spawns one Claude/Codex
+# subprocess per (agent_type, chat_session_id). Each subprocess needs a
+# bearer JWT whose claims identify the chat session it serves so that MCP
+# tools (log_work, ask_user, etc.) resolve identity from the token rather
+# than from contextvars that don't cross task boundaries. The bridge can't
+# sign JWTs (signing secret is server-side only) so it asks this endpoint
+# to mint one at subprocess spawn time.
+#
+# Plan: mcp-http-bridge-session-resolution (checkpoint per-subprocess-jwt-config)
+# ──────────────────────────────────────────────────────────────────────
+
+
+class BridgeAgentSessionTokenRequest(BaseModel):
+    chat_session_id: str = Field(
+        ..., min_length=1, max_length=120,
+        description="The ChatSession UUID this subprocess will serve.",
+    )
+    agent_type: str = Field(
+        ..., min_length=1, max_length=64,
+        description="Agent engine (e.g. claude, codex).",
+    )
+    profile_id: str = Field(
+        ..., min_length=1, max_length=120,
+        description="Agent profile id (used as agent_id + profile_id claims).",
+    )
+    tab_id: Optional[str] = Field(
+        default=None, max_length=120,
+        description="UI tab id (informational; mirrored to scope_key if not supplied).",
+    )
+    scope_key: Optional[str] = Field(
+        default=None, max_length=200,
+        description="Scope key for this tab (e.g. tab:abc123).",
+    )
+    on_behalf_of: Optional[int] = Field(
+        default=None,
+        description="User id the agent acts for. Required in jwt_require_session mode.",
+    )
+    ttl_hours: int = Field(
+        default=24, ge=1, le=72,
+        description="Token lifetime in hours; per-session tokens default longer than admin-minted ones because subprocess lifecycle can span long sessions.",
+    )
+
+
+class BridgeAgentSessionTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int
+    chat_session_id: str
+    agent_type: str
+
+
+@router.post("/bridge-session", response_model=BridgeAgentSessionTokenResponse)
+async def mint_bridge_agent_session_token(
+    payload: BridgeAgentSessionTokenRequest,
+    principal: RequestPrincipal = Depends(get_current_principal),
+    db: AsyncSession = Depends(get_database),
+):
+    """Mint a per-(chat_session_id, agent_type) agent token for the bridge.
+
+    Gated to bridge-purpose (``principal_type=service``) callers. The
+    minted token carries ``chat_session_id`` / ``scope_key`` / ``tab_id``
+    / ``agent_type`` claims so MCP tool calls resolve identity directly
+    from the JWT without server-side dispatch lookups.
+    """
+    # Only the bridge service should call this. Bridge tokens decode to
+    # principal_type="service"; admin users are explicitly allowed too so
+    # ops / tests can still mint manually if needed.
+    if principal.principal_type != "service" and not principal.is_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="bridge_agent_session_token_requires_service_or_admin",
+        )
+
+    effective_user_id = payload.on_behalf_of
+    if effective_user_id is None and principal.id and principal.id > 0:
+        # User-scoped bridge token already binds a user — inherit that.
+        effective_user_id = principal.id
+    if effective_user_id is None and settings.jwt_require_session:
+        raise HTTPException(
+            status_code=400,
+            detail="bridge_agent_session_token_requires_on_behalf_of_in_strict_mode",
+        )
+
+    # Mirror tab_id to scope_key if caller didn't supply one explicitly.
+    scope_key = payload.scope_key or (
+        f"tab:{payload.tab_id}" if payload.tab_id else None
+    )
+
+    token = mint_token(
+        TokenKind.AGENT,
+        agent_id=payload.profile_id,
+        agent_type=payload.agent_type,
+        on_behalf_of=effective_user_id,
+        profile_id=payload.profile_id,
+        chat_session_id=payload.chat_session_id,
+        scope_key=scope_key,
+        tab_id=payload.tab_id,
+        ttl=timedelta(hours=payload.ttl_hours),
+    )
+
+    claims = decode_access_token(token)
+    token_id = claims.get("jti")
+    if not isinstance(token_id, str) or not token_id.strip():
+        raise HTTPException(status_code=500, detail="minted_session_token_missing_jti")
+
+    expires_at = _read_expiration_datetime(claims)
+    expires_in_seconds = max(
+        1,
+        int((expires_at - datetime.now(timezone.utc)).total_seconds()),
+    )
+
+    # Track in UserSession so revocation works the same as for admin-minted
+    # agent tokens. The bridge token chain already records the user binding;
+    # we just attach the agent JWT to it so logout cascades cleanly.
+    if effective_user_id is not None:
+        db.add(
+            UserSession(
+                user_id=int(effective_user_id),
+                token_id=token_id,
+                expires_at=expires_at,
+                client_type="bridge_agent_session",
+                client_name=f"{payload.agent_type}:{payload.chat_session_id[:12]}",
+                user_agent=f"bridge/{payload.agent_type}",
+            )
+        )
+        await db.commit()
+
+    return BridgeAgentSessionTokenResponse(
+        access_token=token,
+        expires_in_seconds=expires_in_seconds,
+        chat_session_id=payload.chat_session_id,
+        agent_type=payload.agent_type,
     )
