@@ -275,6 +275,12 @@ async def _drain_late_result(
             if not session:
                 logger.info("ws_chat_drain_placeholder_skip", session_id=session_id, reason="not_found")
                 return
+            # Don't drop placeholders into archived sessions — the user has
+            # explicitly hidden them. The agent's late-arriving response is
+            # also worthless here (no UI surface to consume it).
+            if session.status == "archived":
+                logger.info("ws_chat_drain_placeholder_skip", session_id=session_id, reason="archived")
+                return
 
             # Merge (rather than overwrite) so a concurrent frontend PATCH
             # landing between our initial fetch and our commit doesn't get

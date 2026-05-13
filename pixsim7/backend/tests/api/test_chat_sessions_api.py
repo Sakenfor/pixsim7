@@ -706,6 +706,96 @@ class TestStoreSessionResponseMerges:
         assert "A" in texts
 
 
+class TestArchivedSessionWriteGuards:
+    """User-archived sessions must not receive background writes.
+
+    Pre-2026-05 the upsert and message-append writers had no `status` gate,
+    so heartbeats / late-arriving bridge replies / drain placeholders kept
+    bumping `last_used_at` and even appending messages to archived rows.
+    The list endpoint filters by status so they didn't reappear, but the
+    data drift was real (and confusing when un-archiving via /restore).
+
+    These tests pin: an archived row is read-only to background writes
+    until `/restore` un-archives it.
+    """
+
+    @staticmethod
+    def _make_async_session_factory(db):
+        class _Ctx:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *args):
+                return None
+
+        return lambda: _Ctx()
+
+    @pytest.mark.asyncio
+    async def test_upsert_skips_archived_session(self, monkeypatch):
+        """`_upsert_chat_session` on an archived row must not mutate it."""
+        db = _FakeDB()
+        archived = _make_session_obj("sess-archived")
+        archived.status = "archived"
+        archived.message_count = 7
+        original_last_used_at = archived.last_used_at
+        original_label = archived.label
+        db.get_values["sess-archived"] = archived
+
+        factory = self._make_async_session_factory(db)
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            factory,
+        )
+
+        await meta_contracts._upsert_chat_session(
+            session_id="sess-archived",
+            user_id=1,
+            engine="claude",
+            label="new-label-attempt",
+            profile_id="profile-x",
+            scope_key="plan:something",
+            last_plan_id="something",
+            source="mcp",
+            increment_messages=True,
+        )
+
+        assert archived.status == "archived"  # unchanged
+        assert archived.message_count == 7    # not incremented
+        assert archived.last_used_at is original_last_used_at  # not bumped
+        assert archived.label == original_label  # not overwritten
+        assert db.commit_count == 0           # no commit fired
+
+    @pytest.mark.asyncio
+    async def test_store_session_response_skips_archived_session(self, monkeypatch):
+        """Bridge-side reply persist must not append to an archived row."""
+        db = _FakeDB()
+        archived = _make_session_obj("sess-archived")
+        archived.status = "archived"
+        archived.messages = [
+            {"role": "user", "text": "old", "timestamp": "2026-05-12T10:00:00Z"},
+        ]
+        original_messages = list(archived.messages)
+        original_last_used_at = archived.last_used_at
+        db.get_values["sess-archived"] = archived
+
+        factory = self._make_async_session_factory(db)
+        monkeypatch.setattr(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            factory,
+        )
+
+        await meta_contracts._store_session_response(
+            session_id="sess-archived",
+            user_message="new user message",
+            assistant_response="new agent reply",
+            duration_ms=500,
+        )
+
+        assert archived.messages == original_messages  # not appended to
+        assert archived.last_used_at is original_last_used_at  # not bumped
+        assert db.commit_count == 0
+
+
 class TestActiveTask:
     """GET /agents/bridge/active-task."""
 

@@ -2590,6 +2590,20 @@ async def _upsert_chat_session(
         async with AsyncSessionLocal() as db:
             existing = await db.get(ChatSession, session_id)
             if existing:
+                # Archived sessions are explicitly user-hidden. Background
+                # heartbeats / log_work calls keep firing on them indefinitely
+                # if the MCP process holds the stale id, which bumped
+                # `last_used_at` forever and gradually polluted other fields
+                # too. List endpoint filters by status so they don't reappear,
+                # but the data drift is real — gate writes here.
+                # `/restore` is the documented un-archive path.
+                if existing.status == "archived":
+                    import logging
+                    logging.getLogger(__name__).debug(
+                        "chat_session_upsert_skipped_archived session_id=%s",
+                        session_id,
+                    )
+                    return
                 if increment_messages:
                     existing.message_count += 1
                 existing.last_used_at = utcnow()
@@ -2666,6 +2680,15 @@ async def _store_session_response(
                 log.warning(
                     "store_session_response_session_missing session_id=%s "
                     "(upsert race or unknown id — assistant response not persisted)",
+                    session_id,
+                )
+                return
+            # Don't append to archived sessions — the user has explicitly
+            # hidden them. Bridge-side reply persist can still race the
+            # archive flip; this guard is the second line of defense.
+            if session.status == "archived":
+                log.debug(
+                    "store_session_response_skipped_archived session_id=%s",
                     session_id,
                 )
                 return
