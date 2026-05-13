@@ -133,6 +133,15 @@ class Bridge:
         self._mcp_http_port: int = 9100
         self._mcp_http_url: str | None = None
         self._repo_root: Path = Path(__file__).resolve().parents[2]
+        # Per-session MCP HTTP config + JWT cache.
+        # Plan: mcp-http-bridge-session-resolution. When the
+        # PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS flag is on, the bridge mints a
+        # chat-session-scoped JWT at dispatch time and writes a per-(session,
+        # agent, focus) HTTP MCP config so the MCP server can resolve identity
+        # directly from token claims. Cache value: (config_path, jwt, exp_epoch).
+        self._per_session_mcp_cache: dict[
+            tuple[str, str, frozenset[str]], tuple[str, str, float]
+        ] = {}
 
     @staticmethod
     def _get_valid_token() -> Optional[str]:
@@ -678,6 +687,138 @@ class Bridge:
 
         return path
 
+    # ── Per-session MCP HTTP config (plan: mcp-http-bridge-session-resolution) ──
+
+    @staticmethod
+    def _per_session_subprocess_enabled() -> bool:
+        """Feature flag for per-(chat_session, agent_type) HTTP MCP configs.
+
+        Default off during rollout. When on, the bridge mints a fresh
+        agent-purpose JWT per dispatch and writes a per-subprocess HTTP
+        MCP config so MCP tool calls resolve identity directly from token
+        claims (no contextvar / sidecar dance). See plan checkpoint
+        ``per-subprocess-jwt-config``.
+        """
+        raw = os.environ.get("PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS", "").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    async def _mint_agent_session_token(
+        self,
+        *,
+        chat_session_id: str,
+        agent_type: str,
+        profile_id: str,
+        scope_key: Optional[str] = None,
+        tab_id: Optional[str] = None,
+        on_behalf_of: Optional[int] = None,
+        ttl_hours: int = 24,
+    ) -> tuple[str, float]:
+        """Ask the backend to mint a per-(chat_session, agent_type) JWT.
+
+        Returns ``(access_token, exp_epoch_seconds)``. Raises on HTTP error
+        so callers can decide whether to fall back to the legacy resolution
+        path (this is the cutover seam — failure here is expected when the
+        backend hasn't been upgraded yet).
+        """
+        import time as _time
+        import httpx
+
+        api_base = self._ws_url_to_http_base()
+        url = f"{api_base}/api/v1/dev/agent-tokens/bridge-session"
+        body = {
+            "chat_session_id": chat_session_id,
+            "agent_type": agent_type,
+            "profile_id": profile_id,
+            "ttl_hours": ttl_hours,
+        }
+        if scope_key:
+            body["scope_key"] = scope_key
+        if tab_id:
+            body["tab_id"] = tab_id
+        if on_behalf_of is not None:
+            body["on_behalf_of"] = on_behalf_of
+
+        headers = {"Authorization": f"Bearer {self._service_token}"} if self._service_token else {}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=body, headers=headers)
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"bridge-session token mint failed: {resp.status_code} {resp.text[:200]}"
+            )
+        data = resp.json()
+        access_token = str(data.get("access_token") or "")
+        if not access_token:
+            raise RuntimeError("bridge-session token mint returned empty access_token")
+        expires_in = int(data.get("expires_in_seconds") or 0)
+        exp_epoch = _time.time() + max(expires_in, 1)
+        return access_token, exp_epoch
+
+    async def _ensure_per_session_mcp_config(
+        self,
+        *,
+        chat_session_id: str,
+        agent_type: str,
+        focus: Optional[list[str]] = None,
+        profile_id: str,
+        scope_key: Optional[str] = None,
+        tab_id: Optional[str] = None,
+        on_behalf_of: Optional[int] = None,
+    ) -> Optional[str]:
+        """Write a per-(chat_session, agent_type, focus) HTTP MCP config.
+
+        Returns the config file path, or ``None`` if HTTP MCP isn't active
+        (caller should fall back to the legacy ``_ensure_mcp_config``).
+        The MCP config carries a fresh agent-purpose JWT in the
+        ``Authorization`` header so MCP tools resolve identity from claims
+        rather than from the bridge's contextvar (which doesn't survive the
+        starlette task boundary).
+        """
+        if not self._mcp_http_url:
+            # Only applicable to HTTP transport. STDIO transport already gets
+            # per-session isolation via PIXSIM_TOKEN_FILE.
+            return None
+
+        import os as _os
+        import time as _time
+
+        cache_key = (
+            chat_session_id,
+            agent_type,
+            frozenset(focus) if focus else frozenset({"__default__"}),
+        )
+        cached = self._per_session_mcp_cache.get(cache_key)
+        # Refresh when within 1h of expiry (matches design note in plan).
+        if cached and _os.path.exists(cached[0]) and (cached[2] - _time.time()) > 3600:
+            return cached[0]
+
+        # Mint a fresh JWT. Bubble errors up so the dispatch path can fall
+        # back to legacy behavior cleanly.
+        token, exp_epoch = await self._mint_agent_session_token(
+            chat_session_id=chat_session_id,
+            agent_type=agent_type,
+            profile_id=profile_id,
+            scope_key=scope_key,
+            tab_id=tab_id,
+            on_behalf_of=on_behalf_of,
+        )
+
+        from pixsim7.client.token_manager import write_claude_mcp_http_config
+        # Both Claude and Codex use the same Authorization-bearing HTTP config
+        # at this layer. Codex HTTP config writer accepts the same parameters;
+        # we use the Claude writer for the JSON path consumed by the pool,
+        # and Codex's project-local config.toml is handled by
+        # ``_ensure_codex_project_workdir`` separately. (TODO follow-up: unify
+        # both paths once Codex over HTTP-MCP graduates.)
+        path = write_claude_mcp_http_config(
+            mcp_url=self._mcp_http_url,
+            api_token=token,
+            scope=scope_key or self._mcp_scope,
+            session_id=chat_session_id,
+            profile_id=profile_id,
+        )
+        self._per_session_mcp_cache[cache_key] = (path, token, exp_epoch)
+        return path
+
     def _ws_url_to_http_base(self) -> str:
         """Derive HTTP base URL from WebSocket URL."""
         api_url = self._url
@@ -1033,8 +1174,45 @@ class Bridge:
                     mcp_python_prefix=mcp_python_prefix,
                     focus=meta["focus"],
                 )
-        elif meta["focus"]:
-            mcp_config_override = self._ensure_mcp_config(focus=meta["focus"])
+        elif meta["focus"] or self._per_session_subprocess_enabled():
+            # Per-session HTTP MCP config when the feature flag is on, even
+            # without a focus filter — the per-session JWT is what carries
+            # chat_session_id claims for MCP tool resolution. Falls back to
+            # the legacy focus-only path on mint failure (cutover seam).
+            mcp_config_override = None
+            if self._per_session_subprocess_enabled() and meta.get("bridge_session_id"):
+                try:
+                    profile_id = (
+                        msg.get("profile_id")
+                        or (msg.get("profile_config") or {}).get("id")
+                        or "unknown"
+                    )
+                    tab_id = None
+                    sk = meta.get("scope_key") or ""
+                    if isinstance(sk, str) and sk.startswith("tab:"):
+                        tab_id = sk.split(":", 1)[1] or None
+                    mcp_config_override = await self._ensure_per_session_mcp_config(
+                        chat_session_id=str(meta["bridge_session_id"]),
+                        agent_type=str(meta.get("engine") or "claude"),
+                        focus=meta.get("focus"),
+                        profile_id=str(profile_id),
+                        scope_key=sk or None,
+                        tab_id=tab_id,
+                        on_behalf_of=msg.get("on_behalf_of"),
+                    )
+                except Exception as exc:
+                    get_logger().warning(
+                        "per_session_mcp_config_failed",
+                        chat_session=str(meta.get("bridge_session_id") or "")[:12],
+                        agent_type=meta.get("engine"),
+                        error=str(exc),
+                    )
+                    mcp_config_override = None
+            # Legacy path covers two cases:
+            #  (a) feature flag off, focus present
+            #  (b) flag on but mint failed (graceful fallback during cutover)
+            if mcp_config_override is None and meta["focus"]:
+                mcp_config_override = self._ensure_mcp_config(focus=meta["focus"])
 
         # On first message of a new conversation, inject persona + token.
         # Resumed conversations already have these in history.

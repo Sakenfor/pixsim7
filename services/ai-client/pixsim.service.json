@@ -49,6 +49,15 @@
       "section": "Pool"
     },
     {
+      "key": "per_session_subprocess",
+      "type": "boolean",
+      "label": "Per-session subprocess (lift __bridge__ sentinel)",
+      "description": "Spawn one agent subprocess per (chat session, agent type), each with a JWT carrying its own chat_session_id claim. Fixes log_work and other MCP tools resolving identity to '__bridge__' when called from inside the AI Assistant panel. Costs more memory (~1 subprocess per active tab). Default off during rollout — flip on per environment as the new backend endpoint deploys.",
+      "default": false,
+      "env_map": "PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS",
+      "section": "Pool"
+    },
+    {
       "key": "hook_tools",
       "type": "multi_select",
       "label": "Claude Built-in Tools",
