@@ -657,6 +657,44 @@ interface WorkSummaryEntry {
   } | null;
 }
 
+/**
+ * Salvage historical log_work entries where an upstream tool-call serializer
+ * collapsed `<next>…</next><decisions>[…]</decisions><evidence>[…]</evidence>`
+ * siblings into a single `metadata.next` string. The server-side handler now
+ * intercepts new calls; this client-side mirror cleans up rows already stored.
+ *
+ * Only lifts a sibling when its dict key is missing or empty — never clobbers
+ * an explicit value.
+ */
+const LEAKED_TAG_TAIL_RE =
+  /<\/(?:next|summary)>\s*((?:<(?:decisions|evidence|blockers)>[\s\S]*?<\/(?:decisions|evidence|blockers)>\s*)+)\s*(?:<\/invoke>)?\s*$/;
+const LEAKED_TAG_INNER_RE =
+  /<(decisions|evidence|blockers)>([\s\S]*?)<\/\1>/g;
+
+function salvageWorkSummary(entry: WorkSummaryEntry): WorkSummaryEntry {
+  const next = entry.metadata?.next;
+  if (typeof next !== 'string' || !next.includes('</next>')) return entry;
+  const tail = LEAKED_TAG_TAIL_RE.exec(next);
+  if (!tail) return entry;
+  const cleanedNext = next.slice(0, tail.index).trimEnd();
+  const md = { ...(entry.metadata ?? {}) };
+  md.next = cleanedNext || undefined;
+  LEAKED_TAG_INNER_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LEAKED_TAG_INNER_RE.exec(tail[1]))) {
+    const key = m[1] as 'decisions' | 'evidence' | 'blockers';
+    try {
+      const parsed = JSON.parse(m[2].trim());
+      if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === 'string')) continue;
+      // Merge: keep existing (e.g. server-injected commit SHA) + salvaged, deduped.
+      const existing = md[key] ?? [];
+      const seen = new Set(existing);
+      md[key] = [...existing, ...parsed.filter((x) => !seen.has(x) && (seen.add(x), true))];
+    } catch { /* leave key as-is */ }
+  }
+  return { ...entry, metadata: md };
+}
+
 /** Color per summary: green = has commit, blue = plan-linked, amber = no commit, red outline = has blockers */
 function summaryColor(s: WorkSummaryEntry): string {
   if (s.metadata?.blockers?.length) return 'text-red-500';
@@ -666,12 +704,71 @@ function summaryColor(s: WorkSummaryEntry): string {
   return 'text-amber-500';
 }
 
-function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
+/**
+ * Single retractable section inside the work-summary popover.
+ *
+ * - `defaultExpanded` decides the initial state — callers pass an auto-by-size
+ *   heuristic (short text / few items = expanded, long = collapsed).
+ * - The toggle uses `onMouseDown` preventDefault so the click doesn't steal
+ *   focus and trigger a page scroll inside the portaled popover (see the
+ *   overlay-button-focus convention used across other overlay popovers).
+ */
+function CollapsibleSection({
+  label,
+  count,
+  className,
+  defaultExpanded,
+  divider,
+  children,
+}: {
+  label: string;
+  count?: number;
+  className?: string;
+  defaultExpanded: boolean;
+  divider?: boolean;
+  children: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  return (
+    <div className={`mt-1 ${divider ? 'pt-1.5 border-t border-neutral-100 dark:border-neutral-800' : ''} text-[10px] ${className ?? ''}`}>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1 w-full text-left hover:opacity-80 cursor-pointer"
+      >
+        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} />
+        <span className="font-medium">{label}</span>
+        {typeof count === 'number' && <span className="opacity-60">({count})</span>}
+      </button>
+      {expanded && <div className="mt-0.5 pl-3.5 leading-relaxed">{children}</div>}
+    </div>
+  );
+}
+
+// Heuristics — short content stays open on hover, long content stays retracted
+// until the user clicks to expand. Numbers picked to keep most "normal" entries
+// fully readable without scrolling but stop a 2KB next-block from blowing up
+// the popover.
+const AUTO_EXPAND_TEXT_CHARS = 220;
+const AUTO_EXPAND_LIST_ITEMS = 3;
+
+function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 300 });
-  const commits = (summary.metadata?.evidence ?? []).filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
+  const summary = useMemo(() => salvageWorkSummary(rawSummary), [rawSummary]);
+  // Split evidence into commit SHAs (rendered as a clickable chip in the
+  // header row) and file paths (rendered as a separate collapsible section).
+  const evidence = summary.metadata?.evidence ?? [];
+  const commits = evidence.filter((e) => /^[0-9a-f]{7,40}$/i.test(e));
+  const files = evidence.filter((e) => !/^[0-9a-f]{7,40}$/i.test(e));
   const sha = commits[0]?.slice(0, 9) || summary.metadata?.commit || null;
   const fullSha = commits[0] || summary.metadata?.commit || null;
   const time = new Date(summary.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const detail = summary.detail ?? '';
+  const next = summary.metadata?.next ?? '';
+  const decisions = summary.metadata?.decisions ?? [];
+  const blockers = summary.metadata?.blockers ?? [];
 
   return (
     <div className="relative" {...handlers}>
@@ -679,12 +776,14 @@ function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
         <Icon name="fileText" size={12} />
       </div>
       {isExpanded && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl z-30 p-2.5">
-          <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">{summary.detail}</div>
-          <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-neutral-400 flex-wrap">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 max-h-[60vh] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl z-30 p-2.5">
+          {/* Compact header row — time, SHA, plan id. Always visible. */}
+          <div className="flex items-center gap-1.5 text-[9px] text-neutral-400 flex-wrap">
             <span>{time}</span>
             {sha && (
               <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 className="font-mono text-blue-400 hover:underline hover:text-blue-300"
                 onClick={() => { if (fullSha) navigator.clipboard.writeText(fullSha); }}
                 title={`${fullSha}\nClick to copy`}
@@ -694,20 +793,70 @@ function WorkSummaryIcon({ summary }: { summary: WorkSummaryEntry }) {
             )}
             {summary.plan_id && <span className="text-blue-500">{summary.plan_id}</span>}
           </div>
-          {summary.metadata?.next && (
-            <div className="mt-1.5 pt-1.5 border-t border-neutral-100 dark:border-neutral-800 text-[10px] text-amber-600 dark:text-amber-400">
-              <span className="font-medium">Next:</span> {summary.metadata.next}
-            </div>
+
+          {/* Summary (the `detail` field) — primary content; only auto-retracts
+              when very long, since users almost always want to read it. */}
+          {detail && (
+            <CollapsibleSection
+              label="Summary"
+              defaultExpanded={detail.length <= AUTO_EXPAND_TEXT_CHARS * 2}
+              divider
+              className="text-neutral-700 dark:text-neutral-300"
+            >
+              <div className="text-[11px]">{detail}</div>
+            </CollapsibleSection>
           )}
-          {summary.metadata?.decisions && summary.metadata.decisions.length > 0 && (
-            <div className="mt-1 text-[10px] text-violet-500">
-              <span className="font-medium">Decisions:</span> {summary.metadata.decisions.join('; ')}
-            </div>
+
+          {next && (
+            <CollapsibleSection
+              label="Next"
+              defaultExpanded={next.length <= AUTO_EXPAND_TEXT_CHARS}
+              divider
+              className="text-amber-600 dark:text-amber-400"
+            >
+              {next}
+            </CollapsibleSection>
           )}
-          {summary.metadata?.blockers && summary.metadata.blockers.length > 0 && (
-            <div className="mt-1 text-[10px] text-red-500">
-              <span className="font-medium">Blocked:</span> {summary.metadata.blockers.join('; ')}
-            </div>
+
+          {decisions.length > 0 && (
+            <CollapsibleSection
+              label="Decisions"
+              count={decisions.length}
+              defaultExpanded={decisions.length <= AUTO_EXPAND_LIST_ITEMS}
+              className="text-violet-500"
+            >
+              <ul className="list-disc pl-3 space-y-0.5">
+                {decisions.map((d, i) => <li key={i}>{d}</li>)}
+              </ul>
+            </CollapsibleSection>
+          )}
+
+          {/* Blockers stay expanded by default regardless of count — they're
+              the highest-signal item on the card. */}
+          {blockers.length > 0 && (
+            <CollapsibleSection
+              label="Blocked"
+              count={blockers.length}
+              defaultExpanded
+              className="text-red-500"
+            >
+              <ul className="list-disc pl-3 space-y-0.5">
+                {blockers.map((b, i) => <li key={i}>{b}</li>)}
+              </ul>
+            </CollapsibleSection>
+          )}
+
+          {files.length > 0 && (
+            <CollapsibleSection
+              label="Files"
+              count={files.length}
+              defaultExpanded={files.length <= AUTO_EXPAND_LIST_ITEMS}
+              className="text-neutral-500 dark:text-neutral-400"
+            >
+              <ul className="space-y-0.5 font-mono">
+                {files.map((f, i) => <li key={i} className="truncate" title={f}>{f}</li>)}
+              </ul>
+            </CollapsibleSection>
           )}
         </div>
       )}
