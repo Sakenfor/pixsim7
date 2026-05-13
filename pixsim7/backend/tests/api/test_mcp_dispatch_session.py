@@ -542,3 +542,138 @@ class TestResolveBridgeSessionCache:
         assert r1 == "session-A"
         assert r2 == "session-A"
         assert call_count == 1, "Second scoped call should hit the cache"
+
+
+class TestLogWorkBridgeResolutionFallback:
+    """Regression for the `__bridge__`-stamped activity log row: when
+    `log_work` is called with `plan_id`, the resolver used to look ONLY for
+    a chat session with `scope_key="plan:foo"`. Real chat sessions are
+    tab-scoped (`scope_key="tab:tab-X"`), so the lookup missed, session_id
+    fell through to the literal `"__bridge__"` sentinel, and the heartbeat
+    POST wrote that string into `agent_activity_log.session_id`. Fix: try
+    plan-scope first (for plan-bound `mcp-*` sessions), then fall back to
+    the token's tab-scope. Also: refuse to POST when the resolved id is
+    still a sentinel — better to surface the failure than to write garbage."""
+
+    def setup_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._registered_session_id = None
+        mod._bridge_session_cache.clear()
+        set_dispatch_session(None)
+
+    def teardown_method(self):
+        import pixsim7.client.mcp_server as mod
+        mod._registered_session_id = None
+        mod._bridge_session_cache.clear()
+        set_dispatch_session(None)
+
+    @pytest.mark.asyncio
+    async def test_plan_scope_falls_back_to_token_tab_scope(self):
+        """When `plan_id` is set but no chat session has `scope_key="plan:foo"`,
+        the resolver must try the token's tab scope before giving up."""
+        import pixsim7.client.mcp_server as mod
+
+        mod._registered_session_id = "__bridge__"
+
+        # Token claims include profile_id and scope_key="tab:tab-XYZ".
+        # Base64({"profile_id":"profile-x","scope_key":"tab:tab-xyz"})
+        fake_token = (
+            "header."
+            "eyJwcm9maWxlX2lkIjoicHJvZmlsZS14Iiwic2NvcGVfa2V5IjoidGFiOnRhYi14eXoifQ"
+            ".sig"
+        )
+
+        # No session exists for plan:foo, but session-T exists for tab:tab-xyz.
+        captured_lookups: list[dict] = []
+
+        class _Resp:
+            status_code = 200
+            def json(self):
+                return {
+                    "sessions": [
+                        {"id": "session-T", "scope_key": "tab:tab-xyz", "profile_id": "profile-x"},
+                    ]
+                }
+
+        async def fake_get(path, headers=None, params=None):  # noqa: A002
+            captured_lookups.append({"path": path, "params": params})
+            return _Resp()
+
+        captured_post: dict[str, object] = {}
+
+        class _PostResp:
+            status_code = 200
+            def json(self):
+                return {"ok": True}
+
+        async def fake_post(path, headers=None, json=None):  # noqa: A002
+            captured_post["json"] = json
+            return _PostResp()
+
+        class _Client:
+            get = staticmethod(fake_get)
+            post = staticmethod(fake_post)
+
+        with patch.object(mod, "_get_token", lambda: fake_token), \
+             patch.object(mod, "_get_client", lambda: _Client()):
+            await mod._handle_log_work({
+                "summary": "test summary",
+                "plan_id": "foo",
+            })
+
+        body = captured_post.get("json") or {}
+        assert body.get("session_id") == "session-T", (
+            "log_work must fall back to the token's tab scope when plan-scoped "
+            f"lookup misses. Got session_id={body.get('session_id')!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sentinel_session_id_blocks_heartbeat_post(self):
+        """When resolution exhausts every hint and session_id is still a
+        sentinel, the heartbeat POST must NOT fire — better to surface the
+        failure than to write '__bridge__' as a literal session id."""
+        import pixsim7.client.mcp_server as mod
+
+        mod._registered_session_id = "__bridge__"
+
+        # Token has no scope_key — exhausts every hint.
+        fake_token = "header.eyJwcm9maWxlX2lkIjoicHJvZmlsZS14In0.sig"
+
+        # API returns no sessions at all — every lookup misses.
+        class _Resp:
+            status_code = 200
+            def json(self):
+                return {"sessions": []}
+
+        async def fake_get(path, headers=None, params=None):  # noqa: A002
+            return _Resp()
+
+        post_called = False
+
+        async def fake_post(path, headers=None, json=None):  # noqa: A002
+            nonlocal post_called
+            post_called = True
+
+            class _R:
+                status_code = 200
+                def json(self):
+                    return {"ok": True}
+            return _R()
+
+        class _Client:
+            get = staticmethod(fake_get)
+            post = staticmethod(fake_post)
+
+        result = None
+        with patch.object(mod, "_get_token", lambda: fake_token), \
+             patch.object(mod, "_get_client", lambda: _Client()):
+            result = await mod._handle_log_work({
+                "summary": "test summary",
+                "plan_id": "no-such-plan",
+            })
+
+        assert not post_called, "Sentinel session_id must not reach the heartbeat POST"
+        text = result[0].text if result else ""
+        assert "skipped" in text.lower() or "sentinel" in text.lower(), (
+            f"Caller should see a 'skipped/sentinel' message, got: {text!r}"
+        )

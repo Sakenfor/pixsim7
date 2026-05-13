@@ -990,8 +990,61 @@ async def _resolve_bridge_session_id(
     return None
 
 
+# Some upstream tool-call serializers emit log_work parameters element-style
+# — `<next>…</next><decisions>[…]</decisions><evidence>[…]</evidence>` inside
+# a single `<invoke>` — and the wire parser then misses the inner close and
+# concatenates the trailing siblings into the first value. The outer regex
+# detects that tail; the inner regex extracts each pair with a strict
+# backref so `<decisions>…</evidence>` cross-mismatches don't get salvaged.
+_LEAKED_TAG_TAIL_RE = re.compile(
+    r"</(?:next|summary)>\s*"
+    r"(?P<tail>(?:<(?:decisions|evidence|blockers)>.*?</(?:decisions|evidence|blockers)>\s*)+)"
+    r"\s*(?:</invoke>)?\s*\Z",
+    re.DOTALL,
+)
+_LEAKED_TAG_INNER_RE = re.compile(
+    r"<(decisions|evidence|blockers)>(.*?)</\1>",
+    re.DOTALL,
+)
+
+
+def _salvage_log_work_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Recover sibling log_work params that got slurped into `next`.
+
+    Detects `…</next><decisions>[…]</decisions><evidence>[…]</evidence></invoke>`
+    trailing on `arguments["next"]`, parses the inner JSON, and merges the
+    siblings into the top-level args (existing entries first, salvaged appended,
+    deduplicated). Merge — rather than skip-if-non-empty — keeps the auto-injected
+    HEAD-commit alongside salvaged file paths. Returns a new dict; input is unchanged.
+    """
+    next_raw = arguments.get("next")
+    if not isinstance(next_raw, str) or "</next>" not in next_raw:
+        return dict(arguments)
+    m = _LEAKED_TAG_TAIL_RE.search(next_raw)
+    if not m:
+        return dict(arguments)
+    salvaged = dict(arguments)
+    salvaged["next"] = next_raw[: m.start()].rstrip()
+    for inner in _LEAKED_TAG_INNER_RE.finditer(m.group("tail")):
+        key, body = inner.group(1), inner.group(2).strip()
+        try:
+            parsed = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not (isinstance(parsed, list) and all(isinstance(x, str) for x in parsed)):
+            continue
+        existing = salvaged.get(key) or []
+        if not isinstance(existing, list):
+            existing = []
+        seen = set(existing)
+        merged = list(existing) + [x for x in parsed if not (x in seen or seen.add(x))]
+        salvaged[key] = merged
+    return salvaged
+
+
 async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]:
     """Log a work summary to activity log and optionally update plan checkpoint."""
+    arguments = _salvage_log_work_arguments(arguments)
     summary = (arguments.get("summary") or "").strip()
     if not summary:
         return [types.TextContent(type="text", text="Summary is required.")]
@@ -1034,20 +1087,36 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
         if sidecar_id:
             session_id = sidecar_id
         else:
-            scope_key_hint = (
-                f"plan:{plan_id}" if plan_id
-                else token_scope_key  # tab:tab-XYZ from token claims
-            )
-            _bridge_session_cache.pop(
-                ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(scope_key_hint)),
-                None,
-            )
-            session_id = await _resolve_bridge_session_id(
-                token,
-                profile_id,
-                agent_type,
-                scope_key=scope_key_hint,
-            ) or "__bridge__"
+            # Try the most-specific scope first, then fall back to broader hints.
+            # When `plan_id` is set, look for a plan-bound MCP session (e.g. the
+            # `mcp-*` rows auto-register creates with `scope_key="plan:foo"`); if
+            # that misses, fall back to the token's tab scope. Real chat sessions
+            # are tab-scoped — the plan_id is metadata about WHAT the work
+            # concerns, not WHO ran it. Pre-2026-05 this fell straight through to
+            # the `__bridge__` literal when no plan-scoped session existed, and
+            # the heartbeat POST wrote that sentinel into agent_activity_log as
+            # if it were a session id.
+            hints: list[str] = []
+            if plan_id:
+                hints.append(f"plan:{plan_id}")
+            if token_scope_key and token_scope_key not in hints:
+                hints.append(token_scope_key)
+
+            resolved: str | None = None
+            for hint in hints:
+                _bridge_session_cache.pop(
+                    ((agent_type or "").strip() or None, _normalize_profile_id(profile_id), _normalize_scope_key(hint)),
+                    None,
+                )
+                resolved = await _resolve_bridge_session_id(
+                    token,
+                    profile_id,
+                    agent_type,
+                    scope_key=hint,
+                )
+                if resolved:
+                    break
+            session_id = resolved or "__bridge__"
     checkpoint_id = (arguments.get("checkpoint_id") or "").strip() or None
     points_delta = arguments.get("points_delta") or 0
     evidence = arguments.get("evidence") or []
@@ -1076,36 +1145,50 @@ async def _handle_log_work(arguments: dict[str, Any]) -> list[types.TextContent]
 
     results: list[str] = []
 
-    # 1. Write to activity log (heartbeat endpoint with action=work_summary)
-    try:
-        client = _get_client()
-        metadata: dict[str, object] = {}
-        if head_sha:
-            metadata["commit"] = head_sha[:8]
-        if next_steps:
-            metadata["next"] = next_steps
-        if decisions:
-            metadata["decisions"] = decisions
-        if blockers_list:
-            metadata["blockers"] = blockers_list
-        if evidence:
-            metadata["evidence"] = evidence
-        await client.post(
-            "/api/v1/meta/agents/heartbeat",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "session_id": session_id,
-                "agent_type": agent_type,
-                "status": "active",
-                "action": "work_summary",
-                "detail": summary,
-                "plan_id": plan_id,
-                "metadata": metadata or None,
-            },
+    # 1. Write to activity log (heartbeat endpoint with action=work_summary).
+    # Refuse to write when session_id is still a sentinel ("__bridge__" /
+    # "unregistered") — the heartbeat endpoint stores the value verbatim into
+    # agent_activity_log.session_id, and a row whose session_id isn't a real
+    # ChatSession key is just noise. Surface the failure to the caller so the
+    # missing log_work is visible instead of silently mis-attributed.
+    _SENTINEL_SESSION_IDS = {"__bridge__", "unregistered"}
+    if session_id in _SENTINEL_SESSION_IDS:
+        results.append(
+            f"Activity log skipped: could not resolve a real chat session "
+            f"(got sentinel '{session_id}'). "
+            f"Try passing session_id= explicitly, or ensure the calling tab "
+            f"is bridge-bound and its token carries a scope_key claim."
         )
-        results.append(f"Activity logged for session {session_id[:8]}")
-    except Exception as e:
-        results.append(f"Activity log failed: {e}")
+    else:
+        try:
+            client = _get_client()
+            metadata: dict[str, object] = {}
+            if head_sha:
+                metadata["commit"] = head_sha[:8]
+            if next_steps:
+                metadata["next"] = next_steps
+            if decisions:
+                metadata["decisions"] = decisions
+            if blockers_list:
+                metadata["blockers"] = blockers_list
+            if evidence:
+                metadata["evidence"] = evidence
+            await client.post(
+                "/api/v1/meta/agents/heartbeat",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "session_id": session_id,
+                    "agent_type": agent_type,
+                    "status": "active",
+                    "action": "work_summary",
+                    "detail": summary,
+                    "plan_id": plan_id,
+                    "metadata": metadata or None,
+                },
+            )
+            results.append(f"Activity logged for session {session_id[:8]}")
+        except Exception as e:
+            results.append(f"Activity log failed: {e}")
 
     # 2. Update session with latest summary and plan context
     if session_id != "unregistered":
