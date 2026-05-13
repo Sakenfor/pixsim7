@@ -15,6 +15,7 @@ import {
 import { Icon } from '@lib/icons';
 
 import { AspectRatioDropdown } from './AspectRatioDropdown';
+import { DurationRotaryPicker } from './DurationRotaryPicker';
 import { ModelDropdown } from './ModelDropdown';
 
 function getModelMatchKeys(value: unknown): string[] {
@@ -207,19 +208,12 @@ export function GenerationParamControls({
                 <span className="flex items-center justify-center pl-1.5 pr-0 py-1.5 text-neutral-400 dark:text-neutral-500" aria-hidden="true">
                   <Icon name="clock" size={12} />
                 </span>
-                <select
+                <DurationRotaryPicker
+                  options={durationOptions}
                   value={currentDuration}
-                  onChange={(e) => onChange('duration', Number(e.target.value))}
+                  onChange={(next) => onChange('duration', next)}
                   disabled={generating}
-                  className="w-auto pl-1 pr-1.5 py-1.5 text-[11px] bg-transparent border-0 appearance-none cursor-pointer focus:outline-none"
-                  title="Duration"
-                >
-                  {durationOptions.map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds}s
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               {showAudio && (() => {
                 const probeAudioOverride = probeOverrides?.audio;

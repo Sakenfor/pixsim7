@@ -4,7 +4,7 @@
  * Generic infrastructure for context menu data resolution.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 
 export type ContextDataResolver = (id: string) => Record<string, unknown> | null;
 
@@ -143,13 +143,16 @@ export const contextDataCache = new ContextDataCache();
 // Wire up cache as fallback
 contextDataRegistry.setFallbackCache(contextDataCache);
 
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 export function useRegisterContextData(
   type: string,
   id: string | number | null | undefined,
   data: Record<string, unknown>,
   deps: React.DependencyList,
 ): void {
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (id === null || id === undefined) return;
     contextDataCache.set(type, id, data);
     return () => {
