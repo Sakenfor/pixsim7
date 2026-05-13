@@ -425,8 +425,17 @@ class AgentPool:
 
     async def _get_or_create_for_session_id(
         self, bridge_session_id: str, command: str | None = None,
+        mcp_config_path: str | None = None,
     ) -> AgentCmdSession:
-        """Find the session with this conversation, or spawn a new one with --resume."""
+        """Find the session with this conversation, or spawn a new one with --resume.
+
+        ``mcp_config_path`` is passed through to ``_spawn_session`` so callers
+        like the bridge's per-session HTTP MCP path (plan
+        ``mcp-http-bridge-session-resolution``) can stamp a session-scoped
+        config + JWT into a freshly spawned subprocess. Reused existing
+        subprocesses keep their original config — Claude reads the MCP config
+        once at spawn and won't reload mid-process.
+        """
         existing = self._find_by_session_id(bridge_session_id)
         if existing:
             if existing.state == SessionState.BUSY:
@@ -476,6 +485,7 @@ class AgentPool:
         return await self._spawn_session(
             command=command or self._command,
             resume_session_id=resume_id,
+            mcp_config_path=mcp_config_path,
         )
 
     async def _get_or_create_for_scope_key(
@@ -679,7 +689,9 @@ class AgentPool:
         ephemeral = False
 
         if bridge_session_id:
-            session = await self._get_or_create_for_session_id(bridge_session_id, command=command)
+            session = await self._get_or_create_for_session_id(
+                bridge_session_id, command=command, mcp_config_path=mcp_config_path,
+            )
             await self._ensure_session_workdir(session, workdir=workdir)
         elif policy == "ephemeral":
             session = await self._spawn_session(
