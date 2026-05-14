@@ -32,24 +32,34 @@ import type { BlockAuthoringMethodProps } from '../types';
 
 import { CueDiagnostics } from './CueDiagnostics';
 import { CuePackOutline } from './CuePackOutline';
+import { BuilderTab } from './form/BuilderTab';
 import { buildStarterCueSource } from './starterTemplate';
 
-type EditorTab = 'source' | 'outline';
+type EditorTab = 'source' | 'builder' | 'outline';
 
 interface CompileSnapshot {
   ok: boolean;
   status: string;
   diagnostics: Array<Record<string, unknown>>;
   blocks: Array<Record<string, unknown>>;
+  /** Resolved `pack:` expression — feeds the Builder form. */
+  pack: Record<string, unknown> | null;
+  /** The source string that produced this snapshot, for staleness. */
+  compiledSource: string | null;
   compiledAt?: string | null;
 }
 
-function snapshotFromResponse(res: PromptPackCompileResponse): CompileSnapshot {
+function snapshotFromResponse(
+  res: PromptPackCompileResponse,
+  compiledSource: string,
+): CompileSnapshot {
   return {
     ok: res.ok,
     status: res.status,
     diagnostics: res.diagnostics ?? [],
     blocks: res.blocks_json ?? [],
+    pack: res.pack_json ?? null,
+    compiledSource,
     compiledAt: res.compiled_at ?? null,
   };
 }
@@ -60,6 +70,8 @@ function snapshotFromDraft(draft: PromptPackDraft): CompileSnapshot {
     status: draft.last_compile_status ?? 'unknown',
     diagnostics: draft.last_compile_errors ?? [],
     blocks: [],
+    pack: null,
+    compiledSource: null,
     compiledAt: draft.last_compiled_at ?? null,
   };
 }
@@ -142,13 +154,23 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
     setError(null);
     try {
       const res = await validatePromptPackDraft(draft.id);
-      setSnapshot((prev) => ({ ...snapshotFromResponse(res), blocks: prev?.blocks ?? [] }));
+      // Validate doesn't return pack_json/blocks — preserve any prior
+      // compile output so the Builder/Outline tabs don't go blank.
+      setSnapshot((prev) => {
+        const fresh = snapshotFromResponse(res, source);
+        return {
+          ...fresh,
+          blocks: prev?.blocks ?? fresh.blocks,
+          pack: prev?.pack ?? fresh.pack,
+          compiledSource: prev?.compiledSource ?? null,
+        };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Validate failed');
     } finally {
       setBusy('idle');
     }
-  }, [draft, dirty, saveSource]);
+  }, [draft, dirty, saveSource, source]);
 
   const compile = useCallback(async () => {
     if (!draft) return;
@@ -159,9 +181,10 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
     setError(null);
     try {
       const res = await compilePromptPackDraft(draft.id);
-      setSnapshot(snapshotFromResponse(res));
-      // Show outline immediately after a successful compile.
-      if (res.ok && (res.blocks_json?.length ?? 0) > 0) {
+      setSnapshot(snapshotFromResponse(res, source));
+      // Auto-switch to Outline on first successful compile so users
+      // can immediately see structural output. Builder is opt-in.
+      if (res.ok && (res.blocks_json?.length ?? 0) > 0 && tab === 'source') {
         setTab('outline');
       }
     } catch (err) {
@@ -169,7 +192,27 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
     } finally {
       setBusy('idle');
     }
-  }, [draft, dirty, saveSource]);
+  }, [draft, dirty, saveSource, source, tab]);
+
+  const applyBuilderSource = useCallback(
+    async (nextSource: string) => {
+      if (!draft) return;
+      setBusy('saving');
+      setError(null);
+      try {
+        const updated = await replacePromptPackDraftSource(draft.id, nextSource);
+        setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        setDraft(updated);
+        setSource(nextSource);
+        setDirty(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Apply failed');
+      } finally {
+        setBusy('idle');
+      }
+    },
+    [draft],
+  );
 
   const createDraft = useCallback(async () => {
     const slug = window.prompt('Pack slug (lowercase, snake_case):', 'my_pack');
@@ -301,6 +344,18 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
               </button>
               <button
                 type="button"
+                onClick={() => setTab('builder')}
+                className={`text-[11px] px-2 py-1 rounded ${
+                  tab === 'builder'
+                    ? 'bg-neutral-800 text-neutral-100'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+                title="Form-driven editor over the last compiled pack"
+              >
+                Builder
+              </button>
+              <button
+                type="button"
                 onClick={() => setTab('outline')}
                 className={`text-[11px] px-2 py-1 rounded ${
                   tab === 'outline'
@@ -343,7 +398,7 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
 
             {/* Editor body */}
             <div className="flex-1 min-h-0 overflow-hidden">
-              {tab === 'source' ? (
+              {tab === 'source' && (
                 <textarea
                   ref={sourceRef}
                   value={source}
@@ -352,7 +407,22 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
                   className="w-full h-full bg-neutral-950 text-neutral-100 font-mono text-[12px] leading-5 px-3 py-2 outline-none resize-none border-0"
                   placeholder="// CUE source for the pack — see tools/cue/prompt_packs/schema_v1.cue"
                 />
-              ) : (
+              )}
+              {tab === 'builder' && (
+                <BuilderTab
+                  compiledPack={snapshot?.pack ?? null}
+                  compileOk={snapshot?.ok ?? false}
+                  source={source}
+                  sourceStale={
+                    snapshot?.compiledSource !== null &&
+                    snapshot?.compiledSource !== source
+                  }
+                  onApply={applyBuilderSource}
+                  onRequestCompile={compile}
+                  busy={busy !== 'idle'}
+                />
+              )}
+              {tab === 'outline' && (
                 <div className="h-full overflow-y-auto">
                   <CuePackOutline
                     blocks={snapshot?.blocks ?? []}
