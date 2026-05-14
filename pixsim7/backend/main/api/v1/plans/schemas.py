@@ -195,6 +195,14 @@ class PlanSummary(ApiModel):
     review_round_count: int = 0
     active_review_round_count: int = 0
     children: List[PlanChildSummary] = Field(default_factory=list)
+    # Set only when the caller passed ``q``. Lists the checkpoint IDs whose
+    # text (label / description / note / criteria / steps[].label /
+    # last_update.note) matched the query. Empty list means the plan made the
+    # cut on a non-checkpoint field (title, summary, tags, …). ``None`` means
+    # ``q`` was not supplied. Populated in both compact and full mode so
+    # compact callers — which otherwise lose the ``checkpoints`` array — still
+    # see which checkpoint to drill into.
+    matched_checkpoint_ids: Optional[List[str]] = None
 
 
 class PlansIndexResponse(ApiModel):

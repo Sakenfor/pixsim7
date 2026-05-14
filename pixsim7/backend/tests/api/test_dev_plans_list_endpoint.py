@@ -53,6 +53,7 @@ def _bundle(
     tags: list[str] | None = None,
     checkpoints: list[dict] | None = None,
     code_paths: list[str] | None = None,
+    markdown: str = "",
 ):
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     doc = SimpleNamespace(
@@ -61,7 +62,7 @@ def _bundle(
         status="active",
         owner=owner,
         summary=summary,
-        markdown="",
+        markdown=markdown,
         visibility="public",
         namespace="dev/plans",
         tags=tags or [],
@@ -174,6 +175,161 @@ class TestDevPlansListEndpoint:
         # Graph-topology fields preserved (needed by plan-graph view):
         assert plan["tags"] == ["policy"]
         assert plan["dependsOn"] == ["plan-dep"]
+
+    @pytest.mark.asyncio
+    async def test_q_matches_checkpoint_label(self):
+        """`q` searches checkpoint label text and echoes the matched id."""
+        app, _db = _app()
+        bundles = [
+            _bundle(plan_id="plan-alpha", title="Alpha", summary="unrelated"),
+            _bundle(
+                plan_id="plan-beta",
+                title="Beta",
+                summary="unrelated",
+                checkpoints=[
+                    {"id": "cp_one", "label": "Migrate inventory mirror", "status": "pending"},
+                    {"id": "cp_two", "label": "Unrelated step", "status": "pending"},
+                ],
+            ),
+        ]
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.list_plan_bundles",
+            AsyncMock(return_value=bundles),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/dev/plans?q=inventory+mirror")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 1
+        plan = body["plans"][0]
+        assert plan["id"] == "plan-beta"
+        assert plan["matchedCheckpointIds"] == ["cp_one"]
+
+    @pytest.mark.asyncio
+    async def test_q_matches_step_label_and_last_update_note(self):
+        """`q` reaches into steps[].label and last_update.note."""
+        app, _db = _app()
+        bundles = [
+            _bundle(
+                plan_id="plan-deep",
+                title="Deep",
+                summary="unrelated",
+                checkpoints=[
+                    {
+                        "id": "cp_step",
+                        "label": "Outer label",
+                        "status": "pending",
+                        "steps": [{"id": "s1", "label": "Wire POJO-edge boundary"}],
+                    },
+                    {
+                        "id": "cp_note",
+                        "label": "Other",
+                        "status": "pending",
+                        "last_update": {
+                            "at": "2026-05-01T00:00:00+00:00",
+                            "note": "Wire POJO-edge boundary",
+                        },
+                    },
+                ],
+            ),
+        ]
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.list_plan_bundles",
+            AsyncMock(return_value=bundles),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/dev/plans?q=pojo-edge")
+
+        assert response.status_code == 200
+        plan = response.json()["plans"][0]
+        assert sorted(plan["matchedCheckpointIds"]) == ["cp_note", "cp_step"]
+
+    @pytest.mark.asyncio
+    async def test_q_skips_markdown_body_by_default(self):
+        """Markdown body is not searched unless `q_includes_body=true`."""
+        app, _db = _app()
+        bundles = [
+            _bundle(
+                plan_id="plan-body",
+                title="Body Plan",
+                summary="unrelated",
+                markdown="This blueprint discusses widget assemblies in depth.",
+            ),
+        ]
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.list_plan_bundles",
+            AsyncMock(return_value=bundles),
+        ):
+            async with _client(app) as c:
+                # Default: body excluded, no match.
+                r_default = await c.get("/api/v1/dev/plans?q=widget+assemblies")
+                # Opt-in: body included, match.
+                r_body = await c.get(
+                    "/api/v1/dev/plans?q=widget+assemblies&q_includes_body=true"
+                )
+
+        assert r_default.json()["total"] == 0
+        body_on = r_body.json()
+        assert body_on["total"] == 1
+        plan = body_on["plans"][0]
+        assert plan["id"] == "plan-body"
+        # Body hit, no checkpoint hit — echo is empty list, not None.
+        assert plan["matchedCheckpointIds"] == []
+
+    @pytest.mark.asyncio
+    async def test_q_omitted_means_matched_checkpoint_ids_is_null(self):
+        """No `q` → `matchedCheckpointIds` is null, distinguishing from empty match."""
+        app, _db = _app()
+        bundles = [
+            _bundle(
+                plan_id="plan-x",
+                title="X",
+                summary="x",
+                checkpoints=[{"id": "cp", "label": "anything", "status": "pending"}],
+            ),
+        ]
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.list_plan_bundles",
+            AsyncMock(return_value=bundles),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/dev/plans")
+
+        assert response.status_code == 200
+        plan = response.json()["plans"][0]
+        assert plan["matchedCheckpointIds"] is None
+
+    @pytest.mark.asyncio
+    async def test_q_matched_checkpoint_ids_survives_compact_mode(self):
+        """Compact strips `checkpoints` but `matchedCheckpointIds` still echoes."""
+        app, _db = _app()
+        bundles = [
+            _bundle(
+                plan_id="plan-c",
+                title="C",
+                summary="unrelated",
+                checkpoints=[
+                    {"id": "cp_match", "label": "needle haystack", "status": "pending"},
+                ],
+            ),
+        ]
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.list_plan_bundles",
+            AsyncMock(return_value=bundles),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/dev/plans?q=needle&compact=true")
+
+        assert response.status_code == 200
+        plan = response.json()["plans"][0]
+        assert plan["checkpoints"] is None  # compact strips checkpoints
+        assert plan["matchedCheckpointIds"] == ["cp_match"]  # but echo survives
 
     @pytest.mark.asyncio
     async def test_registry_supports_q_and_compact(self):

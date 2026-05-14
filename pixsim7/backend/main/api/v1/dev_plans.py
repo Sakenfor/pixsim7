@@ -167,6 +167,7 @@ from pixsim7.backend.main.api.v1.plans.schemas import (  # noqa: E402
 from pixsim7.backend.main.api.v1.plans.helpers import *  # noqa: F401,F403
 from pixsim7.backend.main.api.v1.plans.helpers import (
     _bundle_to_summary,
+    _collect_matched_checkpoint_ids,
     _filter_bundles,
     _validate_commit_sha,
     _parse_uuid_or_400,
@@ -191,7 +192,26 @@ from pixsim7.backend.main.api.v1.plans.helpers import (
 @router.get("", response_model=PlansIndexResponse)
 async def list_plans(
     _user: CurrentUser,
-    q: Optional[str] = Query(None, description="Free-text search across id/title/summary/owner/tags"),
+    q: Optional[str] = Query(
+        None,
+        description=(
+            "Free-text search. Always scans id/title/summary/owner/namespace/"
+            "scope/plan_type/tags + list fields (code_paths, companions, "
+            "handoffs, depends_on, phases) and checkpoint text "
+            "(label, description, note, criteria, steps[].label, "
+            "last_update.note). Use ``q_includes_body=true`` to also scan "
+            "the plan markdown body."
+        ),
+    ),
+    q_includes_body: bool = Query(
+        False,
+        description=(
+            "When true and ``q`` is set, also search the plan markdown body "
+            "(``doc.markdown``). Off by default: bodies are long and produce "
+            "noisier matches. Enable when you specifically want to mine plan "
+            "bodies — e.g. find every plan that mentions a class name."
+        ),
+    ),
     status: Optional[str] = Query(None, description="Filter by status (active, done, parked, archived, removed)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
@@ -209,6 +229,7 @@ async def list_plans(
     filtered = _filter_bundles(
         bundles, status=status, owner=owner, namespace=namespace,
         priority=priority, plan_type=plan_type, tag=tag, q=q, include_hidden=include_hidden,
+        include_body=q_includes_body,
     )
 
     # Build parent->children index
@@ -247,6 +268,11 @@ async def list_plans(
             children=children_map.get(b.id),
             review_counts=review_counts.get(b.id),
             compact=compact,
+            matched_checkpoint_ids=(
+                _collect_matched_checkpoint_ids(b, q, include_body=q_includes_body)
+                if q
+                else None
+            ),
         )
         for b in page
     ]

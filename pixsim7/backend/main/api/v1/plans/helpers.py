@@ -8,7 +8,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -77,6 +77,7 @@ def _bundle_to_summary(
     children: Optional[List[PlanBundle]] = None,
     review_counts: Optional[tuple[int, int]] = None,
     compact: bool = False,
+    matched_checkpoint_ids: Optional[List[str]] = None,
 ) -> PlanSummary:
     """Build a typed PlanSummary from PlanBundle.
 
@@ -136,6 +137,7 @@ def _bundle_to_summary(
         review_round_count=review_counts[0] if review_counts else 0,
         active_review_round_count=review_counts[1] if review_counts else 0,
         children=child_entries,
+        matched_checkpoint_ids=matched_checkpoint_ids,
         **list_fields,
     )
 
@@ -2795,6 +2797,121 @@ def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, st
     return out
 
 
+def _matches_query(
+    bundle: PlanBundle,
+    needle: str,
+    *,
+    include_body: bool = False,
+) -> Tuple[bool, List[str]]:
+    """Return ``(matched, matched_checkpoint_ids)`` for ``bundle`` against ``needle``.
+
+    Search scope:
+    - **Scalars** (always): id, title, summary, owner, namespace, scope, plan_type
+    - **Lists** (always): doc.tags + ``PLAN_LIST_FIELDS`` (code_paths, companions,
+      handoffs, depends_on, phases)
+    - **Checkpoints** (always): per checkpoint — id, label, description, note,
+      criteria + steps[].label + last_update.note. Any checkpoint that hits
+      contributes its id to ``matched_checkpoint_ids``.
+    - **Markdown body** (opt-in via ``include_body=True``): ``doc.markdown``.
+      Bodies are long; opt-in keeps default recall tight.
+
+    Empty needle returns ``(True, [])`` — caller is expected to skip the call
+    when ``q`` is not set.
+    """
+    if not needle:
+        return True, []
+    doc = bundle.doc
+    plan = bundle.plan
+
+    scalar_hit = False
+    scalar_fields = (
+        bundle.id,
+        doc.title,
+        doc.summary,
+        doc.owner,
+        doc.namespace,
+        plan.scope,
+        plan.plan_type,
+    )
+    for value in scalar_fields:
+        if needle in str(value or "").lower():
+            scalar_hit = True
+            break
+
+    if not scalar_hit:
+        list_fields = [doc.tags or []]
+        for field in PLAN_LIST_FIELDS:
+            list_fields.append(getattr(plan, field, None) or [])
+        for values in list_fields:
+            for value in values:
+                if needle in str(value or "").lower():
+                    scalar_hit = True
+                    break
+            if scalar_hit:
+                break
+
+    # Always scan checkpoints — record every hit so callers can echo
+    # ``matched_checkpoint_ids``. We keep scanning even after a scalar match
+    # because the echo is useful regardless of why the plan made the cut.
+    matched_cp_ids: List[str] = []
+    for cp in (plan.checkpoints or []):
+        if not isinstance(cp, dict):
+            continue
+        cp_id = str(cp.get("id") or "")
+        if not cp_id:
+            continue
+        if _checkpoint_text_matches(cp, needle):
+            matched_cp_ids.append(cp_id)
+
+    body_hit = False
+    if include_body and not scalar_hit and not matched_cp_ids:
+        if needle in str(doc.markdown or "").lower():
+            body_hit = True
+
+    matched = scalar_hit or bool(matched_cp_ids) or body_hit
+    return matched, matched_cp_ids
+
+
+def _checkpoint_text_matches(cp: Dict[str, Any], needle: str) -> bool:
+    """True if any text field within a checkpoint dict contains ``needle``."""
+    text_keys = ("id", "label", "description", "note", "criteria", "eta")
+    for key in text_keys:
+        if needle in str(cp.get(key) or "").lower():
+            return True
+    for step in (cp.get("steps") or []):
+        if not isinstance(step, dict):
+            continue
+        if needle in str(step.get("label") or "").lower():
+            return True
+    last_update = cp.get("last_update") or cp.get("lastUpdate")
+    if isinstance(last_update, dict):
+        if needle in str(last_update.get("note") or "").lower():
+            return True
+    for blocker in (cp.get("blockers") or []):
+        if needle in str(blocker or "").lower():
+            return True
+    return False
+
+
+def _collect_matched_checkpoint_ids(
+    bundle: PlanBundle,
+    q: Optional[str],
+    *,
+    include_body: bool = False,
+) -> List[str]:
+    """Per-bundle echo helper: matched checkpoint IDs for response payloads.
+
+    Returns ``[]`` when ``q`` is not set or the bundle matched only on
+    non-checkpoint fields. Re-scans the bundle (cheap; bounded by the page
+    size that callers iterate after slicing).
+    """
+    needle = (q or "").strip().lower()
+    if not needle:
+        return []
+    _, matched_cp_ids = _matches_query(bundle, needle, include_body=include_body)
+    return matched_cp_ids
+
+
 def _filter_bundles(
     bundles: List[PlanBundle],
     *,
@@ -2806,35 +2923,15 @@ def _filter_bundles(
     tag: Optional[str] = None,
     q: Optional[str] = None,
     include_hidden: bool = False,
+    include_body: bool = False,
 ) -> List[PlanBundle]:
-    """Apply common filters to a list of plan bundles."""
-    query = (q or "").strip().lower()
+    """Apply common filters to a list of plan bundles.
 
-    def _matches_query(bundle: PlanBundle, needle: str) -> bool:
-        if not needle:
-            return True
-        doc = bundle.doc
-        plan = bundle.plan
-        scalar_fields = (
-            bundle.id,
-            doc.title,
-            doc.summary,
-            doc.owner,
-            doc.namespace,
-            plan.scope,
-            plan.plan_type,
-        )
-        for value in scalar_fields:
-            if needle in str(value or "").lower():
-                return True
-        list_fields = [doc.tags or []]
-        for field in PLAN_LIST_FIELDS:
-            list_fields.append(getattr(plan, field, None) or [])
-        for values in list_fields:
-            for value in values:
-                if needle in str(value or "").lower():
-                    return True
-        return False
+    ``q`` matches across scalars, list fields, and checkpoint text by default.
+    Pass ``include_body=True`` to also scan ``doc.markdown`` (opt-in: bodies
+    are long and produce noisier matches).
+    """
+    query = (q or "").strip().lower()
 
     out: list[PlanBundle] = []
     for b in sorted(bundles, key=lambda b: b.id):
@@ -2852,8 +2949,10 @@ def _filter_bundles(
             continue
         if tag and tag not in (b.doc.tags or []):
             continue
-        if query and not _matches_query(b, query):
-            continue
+        if query:
+            matched, _ = _matches_query(b, query, include_body=include_body)
+            if not matched:
+                continue
         out.append(b)
     return out
 
