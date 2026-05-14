@@ -337,6 +337,19 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
   const connected = bridgeStatus.connected as boolean
   const bridgeId = bridgeStatus.bridge_client_id as string | undefined
   const tasksHandled = bridgeStatus.tasks_handled as number | undefined
+  // Truthful scope from bridge.py's status() payload. Falls back to inferring
+  // from the bridge_client_id prefix when an older bridge build hasn't been
+  // restarted yet (pre-scope-block clients). Never trust the prefix on its
+  // own — it goes stale after a token-presence transition; the `scope` block
+  // is the authoritative source.
+  const scope = bridgeStatus.scope as
+    | { shared_flag?: boolean; user_id?: number | null; label?: string }
+    | undefined
+  const scopeLabel = scope?.label
+    ?? (bridgeId?.startsWith('shared-') ? 'shared' : bridgeId?.startsWith('user-') ? 'user-scoped' : undefined)
+  const sharedFlag = scope?.shared_flag === true
+  const userId = scope?.user_id ?? null
+  const scopeMismatch = sharedFlag && userId !== null  // flag says shared, runtime says authed
 
   return (
     <div className="bg-surface-secondary rounded border border-border p-3 space-y-2.5">
@@ -347,6 +360,24 @@ function BridgeSessionsPanel({ bridgeStatus }: { bridgeStatus: Record<string, un
         }`}>
           {connected ? 'Connected' : 'Disconnected'}
         </span>
+        {scopeLabel && (
+          <span
+            className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium border ${
+              scopeLabel === 'user-scoped'
+                ? 'bg-blue-900/30 text-blue-300 border-blue-800/60'
+                : 'bg-amber-900/30 text-amber-300 border-amber-800/60'
+            }`}
+            title={
+              scopeMismatch
+                ? '"Shared bridge" toggle is on but the bridge connected with a user token — the toggle setting will apply on next bridge restart.'
+                : scopeLabel === 'user-scoped'
+                  ? `Bound to user_id=${userId}`
+                  : 'No user token — visible to any caller in this environment'
+            }
+          >
+            {scopeLabel}
+          </span>
+        )}
       </div>
 
       {/* Bridge summary */}

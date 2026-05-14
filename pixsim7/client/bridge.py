@@ -155,6 +155,13 @@ class Bridge:
         # Per-focus Codex project workdirs with local .codex/config.toml
         self._codex_workdir_cache: dict[tuple[str, tuple[str, ...]], str] = {}
         self._mcp_scope: str = "dev"
+        # Latest authenticated user_id from the server's WS welcome message.
+        # Stored so Bridge.status() can expose the actual runtime scope
+        # rather than forcing the launcher to infer it from the cosmetic
+        # `shared-` / `user-N` prefix on `bridge_client_id` (which goes
+        # stale across token-presence transitions). Plan:
+        # `unified-task-agent-architecture` — bridge UI scope toggle.
+        self._user_id: Optional[int] = None
         self._mcp_python_runtime: Optional[tuple[str, list[str]]] = None
         self._service_token: str = ""
         # Pending confirmation responses from backend: confirmation_id -> asyncio.Event + result
@@ -434,6 +441,9 @@ class Bridge:
             user_id = welcome.get("user_id")
             scope = "user" if user_id else "dev"
             self._mcp_scope = scope
+            # Cache the user_id for status() so the launcher UI gets a
+            # truthful scope readout (see Bridge.status()).
+            self._user_id = int(user_id) if user_id is not None else None
             service_token = welcome.get("service_token", "")
             self._service_token = str(service_token or "")
 
@@ -1184,7 +1194,9 @@ class Bridge:
         if model and model.lower() == "default":
             model = None
         elif model and ":" in model:
-            model = model.split(":", 1)[1]  # strip provider prefix
+            model = model.split(":", 1)[1]  # strip provider prefix (e.g. openai:gpt-5.4)
+        elif model and model.startswith("openai/"):
+            model = model.split("/", 1)[1]  # tolerate profile IDs like openai/gpt-5.4
 
         profile_config = msg.get("profile_config") or {}
 
@@ -1743,7 +1755,22 @@ class Bridge:
             self._confirmation_results.pop(confirmation_id, None)
 
     def status(self) -> dict:
-        """Bridge status summary — exposed via hook server /status for launcher UI."""
+        """Bridge status summary — exposed via hook server /status for launcher UI.
+
+        The ``scope`` block is the truthful current state, computed each tick:
+        - ``shared_flag`` reflects the ``--shared`` CLI flag the bridge was
+          started with (the toggle on the launcher's ai-client settings).
+        - ``user_id`` is the authenticated id the backend sent back in the
+          most recent WS welcome (``None`` while disconnected, or when the
+          bridge is genuinely operating without a user token).
+        - ``scope`` is the display label the UI should render:
+          ``"user-scoped"`` if user_id is set, ``"shared"`` otherwise.
+
+        Without this, the launcher had to infer scope from the
+        ``shared-`` / ``user-N`` prefix of ``bridge_client_id``, which gets
+        stale once a bridge is reassigned (Plan
+        `unified-task-agent-architecture` — bridge UI scope toggle).
+        """
         return {
             "connected": self._connected,
             "bridge_client_id": self._bridge_client_id,
@@ -1753,4 +1780,9 @@ class Bridge:
             "mcp_http_port": self._mcp_http_port if self._mcp_http_url else None,
             "pending_confirmations": len(self._pending_confirmations),
             "pool": self._pool.status(),
+            "scope": {
+                "shared_flag": bool(self._shared),
+                "user_id": self._user_id,
+                "label": "user-scoped" if self._user_id is not None else "shared",
+            },
         }

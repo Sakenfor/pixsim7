@@ -73,6 +73,37 @@ async def _resolve_token(token: str | None) -> _ResolvedToken:
     return _ResolvedToken(user_id=principal.user_id, run_id=principal.run_id, profile_id=principal.profile_id)
 
 
+def _resolve_bridge_client_id(raw: str | None, user_id: int | None) -> str:
+    """Pick the canonical ``bridge_client_id`` for this WS connection.
+
+    Three cases:
+
+    1. **Fresh connect** (no ``raw`` id passed): mint a new id with the
+       prefix that matches current auth state — ``user-<id>-XXXX`` if
+       authenticated, ``shared-XXXX`` otherwise.
+
+    2. **Reconnect with matching auth state**: reuse the persisted id
+       verbatim so the backend can map the bridge back to its prior
+       ``BridgeInstance`` row and in-flight tasks.
+
+    3. **Reconnect with stale ``shared-`` id but now-authenticated**:
+       re-mint as ``user-<id>-XXXX``. This is the "the user logged in
+       since the bridge first connected" path — without re-minting, the
+       launcher UI keeps cosmetically labeling the bridge as shared
+       forever even though the runtime scope is correct. The new id is
+       returned in the WS welcome message and ``bridge.py`` persists it
+       to ``~/.pixsim/bridge_id``. Plan ``unified-task-agent-architecture``
+       — bridge UI scope toggle.
+    """
+    resolved = str(raw or "").strip() or None
+    if not resolved:
+        prefix = f"user-{user_id}" if user_id else "shared"
+        return f"{prefix}-{uuid.uuid4().hex[:8]}"
+    if user_id and resolved.startswith("shared-"):
+        return f"user-{user_id}-{uuid.uuid4().hex[:8]}"
+    return resolved
+
+
 def _is_local_websocket(websocket: WebSocket) -> bool:
     """True when the client is localhost/loopback."""
     try:
@@ -497,10 +528,7 @@ async def agent_cmd_websocket(
         await websocket.close(code=1008, reason="Authentication required for remote bridge connections")
         return
 
-    resolved_bridge_client_id = str(bridge_client_id or "").strip() or None
-    if not resolved_bridge_client_id:
-        prefix = f"user-{user_id}" if user_id else "shared"
-        resolved_bridge_client_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
+    resolved_bridge_client_id = _resolve_bridge_client_id(bridge_client_id, user_id)
 
     bridge_id = await _upsert_bridge_instance(
         bridge_client_id=resolved_bridge_client_id,
