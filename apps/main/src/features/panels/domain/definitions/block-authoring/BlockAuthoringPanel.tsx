@@ -21,9 +21,19 @@
  *   (registered in features/contextHub). Block Explorer is the
  *   provider; the active method receives the currently-focused
  *   block id through BlockAuthoringMethodContext.
+ *
+ * Auth gating:
+ *   Methods can opt into a user-availability predicate via
+ *   `BlockAuthoringMethod.isAvailable`. The shell filters the
+ *   registry against the current user and falls back to the first
+ *   available method if the previously-selected one is gated out.
+ *   When zero methods are available, the shell renders a sign-in /
+ *   upgrade hint. The frontend filter is a UX courtesy; backend
+ *   endpoints behind admin-only methods enforce auth themselves.
  */
 
-import { useMemo, useState } from 'react';
+import { useAuthStore } from '@pixsim7/shared.auth.core';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   CAP_BLOCK_SELECTION,
@@ -36,14 +46,29 @@ import './methods/cue-pack';
 
 import { BlockExplorerPanel } from '../block-explorer';
 
-import { listBlockAuthoringMethods } from './methods/registry';
+import { listAvailableBlockAuthoringMethods } from './methods/registry';
 
 type ExplorerVisibility = 'hidden' | 'side';
 
 export function BlockAuthoringPanel() {
-  const methods = useMemo(() => listBlockAuthoringMethods(), []);
+  // Re-filter the registry whenever the current user changes — methods
+  // with an `isAvailable` predicate may swap in/out on login/logout.
+  const currentUser = useAuthStore((s) => s.user);
+  const methods = useMemo(
+    () => listAvailableBlockAuthoringMethods(currentUser),
+    [currentUser],
+  );
   const [methodId, setMethodId] = useState<string>(() => methods[0]?.id ?? '');
   const [explorer, setExplorer] = useState<ExplorerVisibility>('hidden');
+
+  // If the currently selected method becomes unavailable (e.g. an
+  // admin signs out), fall back to the first one that is.
+  useEffect(() => {
+    if (methods.length === 0) return;
+    if (!methods.some((m) => m.id === methodId)) {
+      setMethodId(methods[0].id);
+    }
+  }, [methods, methodId]);
 
   // Subscribe to the shared block selection. When the user clicks a
   // block in the embedded (or any other) Block Explorer instance, the
@@ -54,12 +79,18 @@ export function BlockAuthoringPanel() {
   const activeMethod = methods.find((m) => m.id === methodId) ?? methods[0];
 
   if (!activeMethod) {
-    // No methods registered — should never happen in practice because
-    // cue-pack registers itself on import above.
+    // Two paths land here:
+    //   - the registry is empty (shouldn't happen — cue-pack registers
+    //     itself on import above), or
+    //   - every registered method is gated and the current user passes
+    //     none of the gates (e.g. signed-out, viewing an admin-only build).
     return (
-      <div className="h-full flex items-center justify-center bg-neutral-900">
-        <p className="text-xs text-neutral-500">
-          No authoring methods registered.
+      <div className="h-full flex flex-col items-center justify-center gap-1.5 bg-neutral-900 px-6 text-center">
+        <p className="text-xs text-neutral-400">No authoring methods available.</p>
+        <p className="text-[11px] text-neutral-500">
+          {currentUser
+            ? 'Your account does not have access to any registered authoring methods.'
+            : 'Sign in to access block authoring.'}
         </p>
       </div>
     );

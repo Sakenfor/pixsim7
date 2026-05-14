@@ -9,6 +9,7 @@
  * or admin-only canonical core_* pack editing on disk.
  */
 
+import type { User } from '@pixsim7/shared.auth.core';
 import type { ComponentType } from 'react';
 
 export interface BlockAuthoringMethodContext {
@@ -31,6 +32,22 @@ export interface BlockAuthoringMethod {
   icon?: string;
   /** Optional ordering hint (lower = earlier). */
   order?: number;
+  /**
+   * Optional availability predicate. When set, the panel shell hides
+   * this method from the picker for users that don't match. Use the
+   * established auth utilities — `isAdminUser(user)` for admin-only
+   * methods, `hasPermission(user, 'foo.bar')` for permission-gated
+   * ones — so the same gate logic matches the backend's auth deps.
+   *
+   * A future admin-only "core pack" method (editing canonical
+   * tools/cue/prompt_packs/core_*.cue files on disk) would set:
+   *   isAvailable: (user) => isAdminUser(user)
+   * paired with backend endpoints behind `CurrentAdminUser`.
+   *
+   * The predicate must be a pure function — it's called on every
+   * auth state change.
+   */
+  isAvailable?: (user: User | null) => boolean;
   /** The editor surface for this method. Renders within the panel body. */
   Editor: ComponentType<BlockAuthoringMethodProps>;
 }
