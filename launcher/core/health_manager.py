@@ -540,8 +540,22 @@ class HealthManager:
         # try to detect externally-started processes by command line scan.
         # Rate-limited: scan at most once per 10 health cycles (~20s) to
         # avoid PowerShell overhead on every tick.
+        #
+        # Plan: launcher-health-probe-stability /
+        # headless-adoption-bypasses-requested-stopped. Skip the scan
+        # entirely when the user has explicitly stopped this service
+        # (requested_running is False). Without this, an external
+        # process matching the cmdline pattern (orphan from a previous
+        # run, second launcher, manual `python -m ...` in a terminal)
+        # silently gets adopted: state.detected_pid is set, status is
+        # flipped to RUNNING, and the downstream worker/HTTP guards
+        # that only fire on `status.value == 'stopped'` no longer
+        # catch it. The user's Stop click is effectively undone.
+        # `requested_running is None` (default — never touched) keeps
+        # the original externally-started-discovery behavior intact.
         if (not has_known_pid and not has_health_url
-                and not is_detached and not definition.custom_health_check):
+                and not is_detached and not definition.custom_health_check
+                and state.requested_running is not False):
             scan_key = f"_scan_{key}"
             scan_count = getattr(self, scan_key, 0)
             if scan_count <= 0:

@@ -97,3 +97,89 @@ def test_http_probe_failure_sets_reason_and_clears_on_recovery(monkeypatch):
 
     assert state.health == HealthStatus.HEALTHY
     assert state.last_error == ""
+
+
+# ── Headless adoption respects requested-stopped intent ──────────
+# Plan: launcher-health-probe-stability /
+# headless-adoption-bypasses-requested-stopped.
+
+
+def test_headless_scan_skipped_when_user_explicitly_stopped(monkeypatch):
+    """User stopped the worker → cmdline scan must not run, even if an
+    external matching process exists. Without the gate, the scan would
+    set ``state.detected_pid`` + flip ``status`` to RUNNING and silently
+    re-adopt the orphan process, undoing the user's Stop click."""
+    state = _worker_state()
+    state.status = ServiceStatus.STOPPED
+    state.health = HealthStatus.STOPPED
+    state.pid = None
+    state.detected_pid = None
+    state.requested_running = False  # user explicitly stopped
+    mgr = HealthManager(states={"worker": state})
+
+    scan_calls: list[str] = []
+    def _detect(_key, _defn):
+        scan_calls.append(_key)
+        return 99999  # would adopt this PID if scan were allowed to run
+    monkeypatch.setattr(mgr, "_detect_headless_service", _detect)
+    monkeypatch.setattr(mgr, "_check_redis_health", lambda _url: True)
+
+    mgr._check_service("worker", state)
+
+    assert scan_calls == [], "scan must not run when user has stopped the service"
+    assert state.detected_pid is None
+    assert state.status == ServiceStatus.STOPPED
+    assert state.health == HealthStatus.STOPPED
+    assert state.requested_running is False
+
+
+def test_headless_scan_runs_when_requested_running_is_unknown(monkeypatch):
+    """``requested_running is None`` is the default for services the user
+    hasn't explicitly touched. The scan must still run so externally-
+    started processes get discovered and adopted — that's a feature,
+    not the bug. Regression guard."""
+    state = _worker_state()
+    state.status = ServiceStatus.STOPPED
+    state.health = HealthStatus.STOPPED
+    state.pid = None
+    state.detected_pid = None
+    state.requested_running = None  # never touched
+    mgr = HealthManager(states={"worker": state})
+
+    scan_calls: list[str] = []
+    def _detect(_key, _defn):
+        scan_calls.append(_key)
+        return 42424  # external process — should be adopted
+    monkeypatch.setattr(mgr, "_detect_headless_service", _detect)
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(mgr, "_check_redis_health", lambda _url: True)
+
+    mgr._check_service("worker", state)
+
+    assert scan_calls == ["worker"], "scan must run for never-touched services"
+    assert state.detected_pid == 42424
+
+
+def test_headless_scan_runs_when_user_started(monkeypatch):
+    """``requested_running is True`` (user started, then PID was lost
+    e.g. via a reload race) should also allow the scan to recover the
+    PID. Only ``is False`` should block."""
+    state = _worker_state()
+    state.status = ServiceStatus.STOPPED
+    state.pid = None
+    state.detected_pid = None
+    state.requested_running = True  # user started
+    mgr = HealthManager(states={"worker": state})
+
+    scan_calls: list[str] = []
+    def _detect(_key, _defn):
+        scan_calls.append(_key)
+        return 11111
+    monkeypatch.setattr(mgr, "_detect_headless_service", _detect)
+    monkeypatch.setattr(mgr, "_is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(mgr, "_check_redis_health", lambda _url: True)
+
+    mgr._check_service("worker", state)
+
+    assert scan_calls == ["worker"]
+    assert state.detected_pid == 11111
