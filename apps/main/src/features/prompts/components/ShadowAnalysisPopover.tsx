@@ -1,132 +1,34 @@
 import clsx from 'clsx';
-import { useState, type ReactNode } from 'react';
 
 import type { OpExecuteOverlayEntry } from '@lib/api/promptOperations';
+import { Icon } from '@lib/icons';
 
-import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
-
-import { parsePrimitiveProjection, type PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
+import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import type { PromptBlockCandidate } from '../types';
-import { ShadowAnalysisPopoverAdjustTab } from './ShadowAnalysisPopoverAdjustTab';
 
-function HypothesisRow({
-  hyp,
-  isSelected,
-  onAccept,
-  isPending,
-  isDisabled,
-}: {
-  hyp: PrimitiveProjectionHypothesis;
-  isSelected: boolean;
-  onAccept?: (hyp: PrimitiveProjectionHypothesis) => void;
-  isPending?: boolean;
-  isDisabled?: boolean;
-}) {
-  const interactive = !!onAccept && !isDisabled;
-  // Phase 0: clickable rows that swap the span text for the primitive's
-  // canonical text. When onAccept is absent the popover stays read-only.
-  const className = clsx(
-    'flex items-center gap-2 px-2 py-1.5 rounded text-xs w-full text-left',
-    isSelected
-      ? 'bg-violet-100 dark:bg-violet-900/40'
-      : interactive
-        ? 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-        : '',
-    interactive && 'cursor-pointer',
-    isDisabled && 'opacity-50 cursor-wait',
-  );
-  const inner = (
-    <>
-      <span
-        className={clsx(
-          'font-mono truncate flex-1',
-          isSelected
-            ? 'text-violet-700 dark:text-violet-300 font-medium'
-            : 'text-neutral-700 dark:text-neutral-300',
-        )}
-      >
-        {hyp.block_id}
-      </span>
-      <span
-        className={clsx(
-          'tabular-nums flex-shrink-0',
-          hyp.score >= 0.8
-            ? 'text-green-600 dark:text-green-400'
-            : hyp.score >= 0.6
-              ? 'text-yellow-600 dark:text-yellow-400'
-              : 'text-neutral-500',
-        )}
-      >
-        {isPending ? '…' : `${Math.round(hyp.score * 100)}%`}
-      </span>
-      {isSelected && (
-        <span className="text-violet-500 flex-shrink-0" title="Selected match">
-          &#x2713;
-        </span>
-      )}
-    </>
-  );
+import { SpanInspectorBody } from './SpanInspectorBody';
 
-  if (interactive) {
-    return (
-      <button
-        type="button"
-        className={className}
-        // Preserve focus so the popover doesn't dismiss before the click
-        // resolves; mirrors the canon for buttons inside portaled popovers.
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => onAccept?.(hyp)}
-        disabled={isDisabled}
-        title={`Replace span with "${hyp.block_id}"`}
-      >
-        {inner}
-      </button>
-    );
-  }
-  return <div className={className}>{inner}</div>;
-}
+/**
+ * Anchored 260px popover chrome around the shared `SpanInspectorBody`.
+ * The body knows nothing about anchoring; this wrapper only adds the
+ * fixed-width rounded card and an optional detach button (passed through
+ * to the body's `headerTrailing` slot).
+ *
+ * Detach behaviour lives in the caller: when the user clicks the detach
+ * button, the composer dismisses this anchored popover and opens the
+ * `prompt-span-inspector` workspace floating panel which subscribes to
+ * `CAP_PROMPT_SPAN_FOCUS` for re-bind on next-candidate clicks.
+ */
 
 export interface ShadowAnalysisPopoverProps {
   candidate: PromptBlockCandidate;
   roleColors?: Record<string, string>;
-  /** When provided, hypothesis rows become clickable and fire onAccept with
-   *  the chosen hypothesis. Phase 0 of the op-runtime-span-popover plan. */
   onAccept?: (hyp: PrimitiveProjectionHypothesis) => void;
-  /** When set, the matching hypothesis row shows a pending indicator and the
-   *  whole list is disabled (single in-flight accept at a time). */
   pendingBlockId?: string | null;
-  /** Phase 2: replaces the candidate's span with the executor's resolved
-   *  prose. Receives `(text, overlay)` so the host can stamp provenance
-   *  into the prompt's persisted block_overlay (Phase 2b will consume it). */
   onAcceptOpOutput?: (text: string, overlay: OpExecuteOverlayEntry) => void;
-}
-
-type PopoverTab = 'matches' | 'adjust';
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={clsx(
-        'flex-1 px-2 py-1 text-[11px] font-medium border-b-2',
-        active
-          ? 'border-violet-500 text-violet-700 dark:text-violet-300'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200',
-      )}
-    >
-      {children}
-    </button>
-  );
+  /** When provided, a pin/expand icon appears in the header; clicking it
+   *  fires `onDetach()` so the host can swap to the floating-panel surface. */
+  onDetach?: () => void;
 }
 
 export function ShadowAnalysisPopover({
@@ -135,22 +37,21 @@ export function ShadowAnalysisPopover({
   onAccept,
   pendingBlockId,
   onAcceptOpOutput,
+  onDetach,
 }: ShadowAnalysisPopoverProps) {
-  const projection = parsePrimitiveProjection(candidate);
-  const isPending = !!pendingBlockId;
-
-  const selectedHypothesis =
-    projection &&
-    projection.selected_index !== null &&
-    projection.selected_index >= 0 &&
-    projection.selected_index < projection.hypotheses.length
-      ? projection.hypotheses[projection.selected_index]
-      : null;
-  // Adjust tab is only meaningful when the selected match is op-backed.
-  // Phase 1: surface the tab; Phase 2 wires the executor and turns the
-  // disabled "Generate & insert" button live.
-  const adjustAvailable = !!selectedHypothesis?.op?.op_id;
-  const [activeTab, setActiveTab] = useState<PopoverTab>('matches');
+  const headerTrailing = onDetach ? (
+    <button
+      type="button"
+      // Preserve focus so the popover doesn't dismiss before the click resolves
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onDetach}
+      className="p-0.5 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+      title="Detach to floating panel"
+      aria-label="Detach to floating panel"
+    >
+      <Icon name="maximize2" size={11} />
+    </button>
+  ) : undefined;
 
   return (
     <div
@@ -160,79 +61,15 @@ export function ShadowAnalysisPopover({
         'border-neutral-200 dark:border-neutral-700',
       )}
     >
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span
-            className={clsx(
-              'w-2 h-2 rounded-full flex-shrink-0',
-              getPromptRoleBadgeClass(candidate.role, roleColors),
-            )}
-          />
-          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
-            {getPromptRoleLabel(candidate.role)}
-          </span>
-          {candidate.category && (
-            <span className="text-xs text-neutral-500">
-              / {candidate.category}
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-neutral-600 dark:text-neutral-400 truncate italic">
-          &ldquo;{candidate.text}&rdquo;
-        </div>
-      </div>
-
-      {adjustAvailable && (
-        <div className="flex border-b border-neutral-200 dark:border-neutral-700">
-          <TabButton active={activeTab === 'matches'} onClick={() => setActiveTab('matches')}>
-            Matches
-          </TabButton>
-          <TabButton active={activeTab === 'adjust'} onClick={() => setActiveTab('adjust')}>
-            Adjust
-          </TabButton>
-        </div>
-      )}
-
-      {activeTab === 'adjust' && selectedHypothesis ? (
-        <ShadowAnalysisPopoverAdjustTab
-          blockId={selectedHypothesis.block_id}
-          currentSpanText={candidate.text}
-          onAccept={onAcceptOpOutput}
-        />
-      ) : projection && projection.hypotheses.length > 0 ? (
-        <div className="p-1.5 max-h-[200px] overflow-y-auto">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400 px-2 py-1">
-            Matches ({projection.hypotheses.length})
-          </div>
-          {projection.hypotheses.map((hyp, i) => (
-            <HypothesisRow
-              key={hyp.block_id}
-              hyp={hyp}
-              isSelected={i === projection.selected_index}
-              onAccept={onAccept}
-              isPending={pendingBlockId === hyp.block_id}
-              isDisabled={isPending}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="p-3 text-xs text-neutral-500 text-center">
-          {projection?.status === 'no_signal'
-            ? 'No primitives matched this text'
-            : projection?.status === 'suppressed'
-              ? `Suppressed: ${projection.suppression_reason ?? 'threshold'}`
-              : 'No projection data'}
-        </div>
-      )}
-
-      {typeof candidate.confidence === 'number' && (
-        <div className="px-3 py-1.5 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between text-[10px] text-neutral-500">
-          <span>Confidence</span>
-          <span className="tabular-nums font-medium">
-            {Math.round(candidate.confidence * 100)}%
-          </span>
-        </div>
-      )}
+      <SpanInspectorBody
+        candidate={candidate}
+        roleColors={roleColors}
+        onAccept={onAccept}
+        pendingBlockId={pendingBlockId}
+        onAcceptOpOutput={onAcceptOpOutput}
+        headerTrailing={headerTrailing}
+        compact
+      />
     </div>
   );
 }

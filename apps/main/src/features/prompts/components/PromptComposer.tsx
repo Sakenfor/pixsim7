@@ -20,6 +20,7 @@ import {
 import clsx from 'clsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 
+import { getBlockSchema } from '@lib/api/blockTemplates';
 import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
 import {
@@ -33,29 +34,36 @@ import { logEvent } from '@lib/utils/logging';
 import { getTextareaCaretCoords } from '@lib/utils/textareaCaret';
 
 import type { AssetModel, ViewerAsset } from '@features/assets';
-import { CAP_ASSET, CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
-import { openWorkspacePanel } from '@features/workspace';
-import { useWorkspaceStore } from '@features/workspace';
+import {
+  CAP_ASSET,
+  CAP_ASSET_SELECTION,
+  CAP_PROMPT_SPAN_FOCUS,
+  useCapability,
+  useProvideCapability,
+  type AssetSelection,
+  type PromptSpanFocusContext,
+} from '@features/contextHub';
+import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
-import { getBlockSchema } from '@lib/api/blockTemplates';
 
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
+
 import { useCmReferenceInput } from '../hooks/useCmReferenceInput';
 import { useOperatorVocabulary } from '../hooks/useOperatorVocabulary';
-import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { usePromptHistory } from '../hooks/usePromptHistory';
+import { matchOperator, matchRecipe, useRelationRecipes } from '../hooks/useRelationRecipes';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { ghostDiffExtension, type GhostDiffConfig } from '../lib/ghostDiffExtension';
+import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
+import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import {
   getCachedAnalysis,
   setCachedAnalysis,
   type AnalysisResult,
   type SequenceContext,
 } from '../lib/promptAnalysisCache';
-import { operatorEditExtension, type OperatorRange } from '../lib/operatorEditExtension';
-import type { PrimitiveProjectionHypothesis } from '../lib/parsePrimitiveMatch';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
 import { tagPillExtension } from '../lib/tagPillExtension';
@@ -67,15 +75,15 @@ import type { PromptTag } from '../types';
 
 import { FloatingToolPanel } from './FloatingToolPanel';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
-import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
-import { PromptHistoryPopover } from './PromptHistoryPopover';
-import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { OperatorEditPopover } from './OperatorEditPopover';
+import { PromptAnalysisLayout } from './PromptAnalysisLayout';
 import {
   PromptCompareSideBySide,
   type CompareSource,
 } from './PromptCompareSideBySide';
-import { PromptAnalysisLayout } from './PromptAnalysisLayout';
+import { PromptGhostDiff, type GhostDiffSource } from './PromptGhostDiff';
+import { PromptHistoryPopover } from './PromptHistoryPopover';
+import { PromptToolsPanel, type PromptToolsApplyPayload } from './PromptToolsPanel';
 import { ShadowAnalysisPopover } from './ShadowAnalysisPopover';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
@@ -334,7 +342,6 @@ export function PromptComposer({
   ]);
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [assistantError, setAssistantError] = useState<string | null>(null);
 
   const [showShadow, setShowShadow] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -355,6 +362,24 @@ export function PromptComposer({
   // Phase 0 of plan:op-runtime-span-popover.
   const [cmShadowAcceptPending, setCmShadowAcceptPending] = useState<string | null>(null);
 
+  // --- Focused candidate (sticky binding for the detached inspector) ---
+  // Phase 4 (plan:op-runtime-span-popover): the anchored popover only lives
+  // while open, but the detached `prompt-span-inspector` floating panel needs
+  // a stable target candidate that persists across popover close events. We
+  // track a separate "focused candidate" that updates when the user clicks a
+  // span (popover opens) and stays until the user accepts/rejects or clicks
+  // a new span. Both surfaces (anchored popover + floating inspector) read
+  // the same source via CAP_PROMPT_SPAN_FOCUS so re-bind is automatic when
+  // the user clicks a different candidate.
+  const [focusedCandidate, setFocusedCandidate] = useState<PromptBlockCandidate | null>(null);
+  const focusedCandidateRef = useRef<PromptBlockCandidate | null>(null);
+  focusedCandidateRef.current = focusedCandidate;
+  useEffect(() => {
+    if (cmShadowPopover?.candidate) {
+      setFocusedCandidate(cmShadowPopover.candidate);
+    }
+  }, [cmShadowPopover?.candidate]);
+
   /**
    * Phase 0 (plan:op-runtime-span-popover): replace the candidate's span
    * with the canonical text of the accepted primitive hypothesis.
@@ -370,9 +395,11 @@ export function PromptComposer({
    */
   const handleAcceptHypothesis = useCallback(
     async (hyp: PrimitiveProjectionHypothesis) => {
-      const popover = cmShadowPopover;
-      if (!popover) return;
-      const candidate = popover.candidate;
+      // Phase 4: read from focusedCandidateRef so the handler works whether
+      // the anchored popover is currently open or not (the detached floating
+      // inspector calls this same handler).
+      const candidate = focusedCandidateRef.current;
+      if (!candidate) return;
       if (typeof candidate.start_pos !== 'number' || typeof candidate.end_pos !== 'number') {
         return;
       }
@@ -383,6 +410,7 @@ export function PromptComposer({
       const docLen = view.state.doc.length;
       if (candidate.start_pos < 0 || candidate.end_pos > docLen || candidate.start_pos >= candidate.end_pos) {
         setCmShadowPopover(null);
+        setFocusedCandidate(null);
         return;
       }
 
@@ -395,6 +423,7 @@ export function PromptComposer({
         const schema = await getBlockSchema(hyp.block_id);
         if (!schema.text) {
           setCmShadowPopover(null);
+          setFocusedCandidate(null);
           return;
         }
         view.dispatch({
@@ -405,6 +434,7 @@ export function PromptComposer({
           },
         });
         setCmShadowPopover(null);
+        setFocusedCandidate(null);
       } catch (err) {
         // Keep the popover open so the user can retry with a different
         // hypothesis if a transient fetch fails.
@@ -416,7 +446,7 @@ export function PromptComposer({
         setCmShadowAcceptPending(null);
       }
     },
-    [cmShadowPopover],
+    [],
   );
 
   /**
@@ -433,9 +463,9 @@ export function PromptComposer({
    */
   const handleAcceptOpOutput = useCallback(
     (text: string, overlay: { source_op: string; block_id: string }) => {
-      const popover = cmShadowPopover;
-      if (!popover) return;
-      const candidate = popover.candidate;
+      // Phase 4: read from focusedCandidateRef (see handleAcceptHypothesis note).
+      const candidate = focusedCandidateRef.current;
+      if (!candidate) return;
       if (typeof candidate.start_pos !== 'number' || typeof candidate.end_pos !== 'number') return;
       const view = promptEditorRef.current;
       if (!view) return;
@@ -446,6 +476,7 @@ export function PromptComposer({
         candidate.start_pos >= candidate.end_pos
       ) {
         setCmShadowPopover(null);
+        setFocusedCandidate(null);
         return;
       }
       view.dispatch({
@@ -466,9 +497,77 @@ export function PromptComposer({
         text_length: text.length,
       });
       setCmShadowPopover(null);
+      setFocusedCandidate(null);
     },
-    [cmShadowPopover],
+    [],
   );
+
+  // --- Phase 4: publish focused candidate as a capability + detach handler ---
+  // The composer publishes CAP_PROMPT_SPAN_FOCUS with the currently focused
+  // candidate plus the host callbacks needed to act on it. The anchored
+  // popover doesn't read the capability (it gets the same data via props),
+  // but the detached `prompt-span-inspector` floating panel does — that's
+  // how rebind works: clicking a different candidate updates the published
+  // value, and the floating panel re-renders automatically.
+  const spanFocusSurfaceId = historyScopeKey ?? 'composer';
+  // Publish to the ROOT hub so detached floating panels (which mount in their
+  // own ContextHubHost — a sibling, not a descendant of the composer's hub)
+  // can resolve the capability. Without `scope: 'root'`, the floating
+  // inspector's getRegistryChain wouldn't reach the composer's local hub.
+  useProvideCapability<PromptSpanFocusContext>(
+    CAP_PROMPT_SPAN_FOCUS,
+    {
+      id: `prompt-span-focus:${spanFocusSurfaceId}`,
+      label: 'Prompt Span Focus',
+      isAvailable: () => focusedCandidateRef.current !== null,
+      getValue: () => ({
+        surfaceId: spanFocusSurfaceId,
+        candidate: focusedCandidate,
+        roleColors: promptRoleColors,
+        pendingBlockId: cmShadowAcceptPending,
+        onAccept: handleAcceptHypothesis as (h: unknown) => void,
+        onAcceptOpOutput: handleAcceptOpOutput as (text: string, overlay: unknown) => void,
+      }),
+    },
+    [
+      spanFocusSurfaceId,
+      focusedCandidate,
+      promptRoleColors,
+      cmShadowAcceptPending,
+      handleAcceptHypothesis,
+      handleAcceptOpOutput,
+    ],
+    { scope: 'root' },
+  );
+
+  /** Phase 4: open the prompt-span-inspector workspace floating panel.
+   *  The anchored popover dismisses; the floating panel subscribes to
+   *  CAP_PROMPT_SPAN_FOCUS for content + callbacks, so re-binding to a
+   *  new candidate is automatic when the user clicks elsewhere. */
+  const handleDetachSpanInspector = useCallback(() => {
+    const anchor = cmShadowPopover?.anchor;
+    const rect = anchor?.getBoundingClientRect();
+    const width = 380;
+    const height = 480;
+    let x = Math.max(40, (window.innerWidth - width) / 2);
+    let y = Math.max(40, (window.innerHeight - height) / 3);
+    if (rect) {
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const placeAbove = spaceBelow < height + 16 && rect.top > spaceBelow;
+      x = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left));
+      y = placeAbove
+        ? Math.max(12, Math.min(window.innerHeight - height - 12, rect.top - height - 8))
+        : Math.max(12, Math.min(window.innerHeight - height - 12, rect.bottom + 8));
+    }
+    useWorkspaceStore.getState().openFloatingPanel('prompt-span-inspector', {
+      context: { surfaceId: spanFocusSurfaceId },
+      x,
+      y,
+      width,
+      height,
+    });
+    setCmShadowPopover(null);
+  }, [cmShadowPopover, spanFocusSurfaceId]);
 
   // --- Operator edit popover (CM path) ---
   const [cmOperatorPopover, setCmOperatorPopover] = useState<{
@@ -734,6 +833,75 @@ export function PromptComposer({
     history.snapshot(valueRef.current);
   }, [history]);
 
+  const insertTextAtPromptSelection = useCallback((text: string): boolean => {
+    if (!text) return false;
+
+    const view = promptEditorRef.current;
+    if (view) {
+      const main = view.state.selection.main;
+      const from = Math.max(0, Math.min(main.from, view.state.doc.length));
+      const to = Math.max(from, Math.min(main.to, view.state.doc.length));
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+        scrollIntoView: true,
+      });
+      view.focus();
+      return true;
+    }
+
+    const textarea =
+      promptTextareaRef.current ??
+      (document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null);
+    const current = valueRef.current;
+    if (!textarea) return false;
+
+    const rawStart =
+      typeof textarea.selectionStart === 'number' ? textarea.selectionStart : current.length;
+    const rawEnd =
+      typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : rawStart;
+    const from = Math.max(0, Math.min(rawStart, current.length));
+    const to = Math.max(from, Math.min(rawEnd, current.length));
+    const next = current.slice(0, from) + text + current.slice(to);
+    onChangeRef.current(next);
+
+    const caret = from + text.length;
+    requestAnimationFrame(() => {
+      const liveTextarea = promptTextareaRef.current ?? textarea;
+      if (!liveTextarea) return;
+      liveTextarea.focus();
+      try {
+        liveTextarea.setSelectionRange(caret, caret);
+      } catch {
+        // Best-effort caret restoration.
+      }
+    });
+    return true;
+  }, []);
+
+  const getSelectedPromptText = useCallback((): string => {
+    const view = promptEditorRef.current;
+    if (view) {
+      const main = view.state.selection.main;
+      if (main.empty) return '';
+      return view.state.sliceDoc(main.from, main.to);
+    }
+
+    const textarea =
+      promptTextareaRef.current ??
+      (document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null);
+    if (!textarea) return '';
+
+    const current = valueRef.current;
+    const rawStart =
+      typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const rawEnd =
+      typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : rawStart;
+    const from = Math.max(0, Math.min(rawStart, current.length));
+    const to = Math.max(from, Math.min(rawEnd, current.length));
+    return to > from ? current.slice(from, to) : '';
+  }, []);
+
   const applyGhostRangeReplacement = useCallback(
     (payload: { from: number; to: number; replaceWith: string }) => {
       const current = valueRef.current;
@@ -821,6 +989,9 @@ export function PromptComposer({
   useRegisterContextData('prompt-text', composerId, {
     prompt: value,
     setPrompt: onChange,
+    insertTextAtSelection: insertTextAtPromptSelection,
+    getSelectedText: getSelectedPromptText,
+    flushSnapshot,
     undo: () => {
       const beforeUndo = valueRef.current;
       flushSnapshot();
@@ -842,7 +1013,7 @@ export function PromptComposer({
     },
     canUndo: history.canUndo(),
     canRedo: history.canRedo(),
-  }, [value, onChange, flushSnapshot, history, showGhostFor]);
+  }, [value, onChange, insertTextAtPromptSelection, getSelectedPromptText, flushSnapshot, history, showGhostFor]);
 
   // --- History popover ---
   const historyTimeline = showHistory
@@ -1275,24 +1446,19 @@ export function PromptComposer({
     [blocks, updateBlocks]
   );
 
-  const handleInsertBlock = useCallback(
-    (text: string) => {
-      insertSemanticBlock(text, DEFAULT_PROMPT_ROLE);
-    },
-    [insertSemanticBlock]
-  );
-
   const handlePasteFromClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
       // Allow pasting full text even if over limit — truncation happens at generation time
       flushSnapshot();
-      onChange(text);
+      if (!insertTextAtPromptSelection(text)) {
+        onChange(text);
+      }
     } catch {
       // Clipboard access denied or unavailable
     }
-  }, [onChange, flushSnapshot]);
+  }, [onChange, flushSnapshot, insertTextAtPromptSelection]);
 
 
   const handlePromptToolApply = useCallback(
@@ -1742,10 +1908,6 @@ export function PromptComposer({
         )}
       </div>
 
-      {mode === 'blocks' && assistantError && (
-        <div className="text-xs text-red-600 dark:text-red-400">{assistantError}</div>
-      )}
-
       {mode === 'text' ? (
         useCodemirror ? (
           // CM editor — always wrapped in PromptAnalysisLayout so the
@@ -1806,6 +1968,7 @@ export function PromptComposer({
                         onAccept={handleAcceptHypothesis}
                         onAcceptOpOutput={handleAcceptOpOutput}
                         pendingBlockId={cmShadowAcceptPending}
+                        onDetach={handleDetachSpanInspector}
                       />
                     )}
                   </Popover>
@@ -1871,6 +2034,7 @@ export function PromptComposer({
                   value={value}
                   onChange={onChange}
                   candidates={shadowAnalysis.result?.candidates ?? []}
+                  textareaRef={promptTextareaRef}
                   emphasizedRole={emphasizedRole}
                   maxChars={maxChars}
                   placeholder={placeholder}

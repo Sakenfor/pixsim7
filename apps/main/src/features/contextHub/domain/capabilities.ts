@@ -18,6 +18,7 @@ import {
   CAP_PROJECT_CONTEXT,
   CAP_GENERATION_CONTEXT,
   CAP_PROMPT_BOX,
+  CAP_PROMPT_SPAN_FOCUS,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
@@ -43,6 +44,7 @@ export {
   CAP_PROJECT_CONTEXT,
   CAP_GENERATION_CONTEXT,
   CAP_PROMPT_BOX,
+  CAP_PROMPT_SPAN_FOCUS,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
@@ -110,6 +112,14 @@ registerCapabilityDescriptor({
   key: CAP_PROMPT_BOX,
   label: "Prompt Box",
   description: "Prompt box input state and limits.",
+  kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_PROMPT_SPAN_FOCUS,
+  label: "Prompt Span Focus",
+  description:
+    "Currently focused prompt span/candidate plus the host callbacks needed to act on it (accept hypothesis, accept op output). Published by the composer; consumed by the anchored popover and the detached prompt-span-inspector floating panel so the inspector auto-rebinds when the user clicks a different candidate.",
   kind: "context",
   source: "contextHub",
 });
@@ -250,6 +260,33 @@ export interface PromptBoxContext {
   maxChars?: number;
   providerId?: string;
   operationType?: string;
+}
+
+/**
+ * Currently focused prompt span/candidate plus the host callbacks needed to
+ * act on it. Published by the composer; consumed by both the anchored
+ * span popover and the detached `prompt-span-inspector` floating panel so
+ * the inspector auto-rebinds when the user clicks a different candidate.
+ *
+ * The candidate type is intentionally `unknown`-shaped at this layer to keep
+ * contextHub feature-independent; consumers in features/prompts cast to
+ * `PromptBlockCandidate` (and the hypothesis/overlay shapes for callbacks).
+ * The `surfaceId` distinguishes composer instances when more than one is
+ * mounted simultaneously (multi-pane).
+ */
+export interface PromptSpanFocusContext {
+  /** Stable id for the publishing composer surface (e.g. "composer:quickgen"). */
+  surfaceId: string;
+  /** The currently focused span/candidate, or null if no span is focused. */
+  candidate: unknown;
+  /** Optional role-color overrides from the host. */
+  roleColors?: Record<string, string>;
+  /** When set, the matching hypothesis row shows pending state and the list disables. */
+  pendingBlockId?: string | null;
+  /** Accept a primitive-projection hypothesis (Matches tab "click-to-replace"). */
+  onAccept?: (hypothesis: unknown) => void;
+  /** Accept executor output (Adjust tab "Generate & insert"). */
+  onAcceptOpOutput?: (text: string, overlay: unknown) => void;
 }
 
 export type AssetInputContext = EntityScopedCapability<{

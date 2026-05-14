@@ -18,6 +18,7 @@
 import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import {
+  type RefObject,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -53,6 +54,7 @@ export interface ShadowTextareaProps {
   showCounter?: boolean;
   resizable?: boolean;
   minHeight?: number;
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** When set, candidates whose role !== emphasizedRole render at reduced
    *  opacity. Threaded from PromptAnalysisLayout's legend hover/pin state. */
   emphasizedRole?: string | null;
@@ -223,13 +225,15 @@ export function ShadowTextarea({
   showCounter = true,
   resizable = false,
   minHeight,
+  textareaRef: externalTextareaRef,
   emphasizedRole = null,
   onCandidateHover,
   onCandidateClick,
 }: ShadowTextareaProps) {
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = externalTextareaRef ?? internalTextareaRef;
   const cursorPosRef = useRef<number | null>(null);
   const scrollPosRef = useRef<number | null>(null);
   const isUserTypingRef = useRef(false);
@@ -307,7 +311,7 @@ export function ShadowTextarea({
         onCandidateHoverRef.current?.(null);
       });
     },
-    [spans],
+    [spans, textareaRef],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -344,7 +348,7 @@ export function ShadowTextarea({
       // Clicked outside any span → close popover
       setPopover(null);
     },
-    [spans],
+    [spans, textareaRef],
   );
 
   const closePopover = useCallback(() => setPopover(null), []);
@@ -377,7 +381,7 @@ export function ShadowTextarea({
     isUserTypingRef.current = false;
     cursorPosRef.current = null;
     scrollPosRef.current = null;
-  }, [value]);
+  }, [value, textareaRef]);
 
   // ── Cleanup rAFs on unmount ──
   useLayoutEffect(() => {
