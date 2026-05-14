@@ -1681,8 +1681,16 @@ class Bridge:
         #      reverse-look-up via _cli_session_to_task so the backend
         #      heartbeat carries the originating task_id and doesn't fan
         #      out to every in-flight task on this bridge.
-        #   3. synthetic 'hook-<uuid>' fallback — logs hook_confirm_unrouted
-        #      loudly so the historical silent fan-out is at least audible.
+        #   3a. cli_session_id provided but unmapped → fail-open. The hook
+        #       belongs to a Claude CLI this bridge doesn't own (foreign
+        #       terminal session, etc.). Broadcasting via synthetic_fallback
+        #       leaks the prompt into every in-flight chat tab; better to
+        #       return approved:True so the foreign Claude uses its native
+        #       UI. hook_pretool.py already gates on PIXSIM_BRIDGE_MANAGED
+        #       so this path is mostly belt-and-suspenders.
+        #   3b. cli_session_id absent (legacy hook without session forwarding)
+        #       → synthetic 'hook-<uuid>' fallback, logged loudly so the
+        #       historical silent fan-out is at least audible.
         task_id = payload.get("task_id")
         resolution_source = "explicit"
         if not task_id:
@@ -1691,12 +1699,20 @@ class Bridge:
                 task_id = self._cli_session_to_task.get(str(cli_session))
                 if task_id:
                     resolution_source = "cli_session_lookup"
+                else:
+                    get_logger().warning(
+                        "hook_confirm_foreign_session",
+                        cli_session=str(cli_session),
+                        tool=payload.get("tool_name"),
+                        in_flight_cli_sessions=list(self._cli_session_to_task.keys())[:5],
+                    )
+                    return {"approved": True}
             if not task_id:
                 task_id = f"hook-{uuid.uuid4().hex[:8]}"
                 resolution_source = "synthetic_fallback"
                 get_logger().warning(
                     "hook_confirm_unrouted",
-                    cli_session=str(cli_session) if cli_session else None,
+                    cli_session=None,
                     tool=payload.get("tool_name"),
                     synthetic_task=task_id,
                     in_flight_cli_sessions=list(self._cli_session_to_task.keys())[:5],

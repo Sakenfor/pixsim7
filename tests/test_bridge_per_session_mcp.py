@@ -533,30 +533,53 @@ class TestHookConfirmRouting:
         assert passed_task_id == "task-originator"
 
     @pytest.mark.asyncio
-    async def test_unknown_cli_session_logs_warning_and_uses_synthetic(self, capsys):
-        """If the bridge has no entry for the forwarded cli_session_id
-        (race: task finished and was cleared, or stale hook firing after
-        process death), we fall back to a synthetic 'hook-' id AND log
-        ``hook_confirm_unrouted`` so the regression isn't silent.
-
-        structlog writes directly to stdout (bypassing stdlib caplog),
-        so we use capsys to assert the warning surfaced.
+    async def test_unknown_cli_session_fails_open_without_broadcast(self, capsys):
+        """If the bridge has no entry for the forwarded cli_session_id,
+        the hook belongs to a Claude CLI this bridge doesn't own (foreign
+        terminal, scheduled job, parallel worktree). The synthetic_fallback
+        path would route via heartbeat which the backend broadcasts to
+        every in-flight task on the bridge — exactly the cross-tab leak
+        we saw in the wild with a foreign session. Return approved:True
+        immediately so the foreign Claude uses its native UI, and log
+        ``hook_confirm_foreign_session`` so the event isn't silent.
         """
         bridge, captured = self._make_ws_connected_bridge()
-        # Empty reverse map deliberately — simulate the race.
+        # Pre-existing in-flight task on this bridge — we must NOT route
+        # the foreign hook's prompt to it.
+        bridge._cli_session_to_task["mine-sess"] = "task-mine"
+
+        result = await bridge._hook_confirm({
+            "cli_session_id": "foreign-session",
+            "tool_name": "Bash",
+        })
+
+        # Fail-open: approve, never invoke request_confirmation.
+        assert result == {"approved": True}
+        assert captured == [], "foreign hook must not reach request_confirmation"
+        # Warning surfaces via structlog's stdout pipeline.
+        stdout = capsys.readouterr().out
+        assert "hook_confirm_foreign_session" in stdout
+        assert "foreign-session" in stdout
+
+    @pytest.mark.asyncio
+    async def test_legacy_hook_without_cli_session_uses_synthetic(self, capsys):
+        """Belt-and-suspenders for older Claude versions / variant hooks
+        that post to /confirm with neither task_id nor cli_session_id.
+        The synthetic_fallback path is retained for that case so the
+        legacy "best-effort broadcast" behavior is preserved when there's
+        nothing more specific to route on.
+        """
+        bridge, captured = self._make_ws_connected_bridge()
 
         await bridge._hook_confirm({
-            "cli_session_id": "vanished-session",
             "tool_name": "Bash",
         })
 
         assert len(captured) == 1
         passed_task_id, _ = captured[0]
         assert passed_task_id.startswith("hook-")
-        # Warning surfaces via structlog's stdout pipeline.
         stdout = capsys.readouterr().out
         assert "hook_confirm_unrouted" in stdout
-        assert "vanished-session" in stdout
 
     @pytest.mark.asyncio
     async def test_no_ws_fail_open(self):

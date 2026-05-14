@@ -41,6 +41,7 @@ The hook receives the standard PreToolUse stdin payload:
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sys
 from pathlib import Path
@@ -51,6 +52,21 @@ TIMEOUT_S = 120
 
 
 def main() -> None:
+    # Bridge ownership gate. The hook is configured globally in the user's
+    # ~/.claude settings, so it fires for EVERY Claude CLI on the machine —
+    # not just sessions spawned by the pixsim bridge. Bridge-spawned
+    # sessions carry PIXSIM_BRIDGE_MANAGED=1 (set by token_manager.py:117
+    # and bridge.py via the pool's session env). Foreign Claude CLIs (the
+    # user's own terminal, scheduled jobs, other tools) lack it; if those
+    # post to /confirm, _hook_confirm's `cli_session_id` reverse-lookup
+    # misses, the synthetic_fallback synthesizes a hook task id, and the
+    # backend broadcasts the confirmation into every in-flight chat tab on
+    # the bridge — exactly the cross-tab leak we hit. Skip cleanly so
+    # foreign sessions use Claude Code's native UI instead.
+    # Plan: agent-confirmation-hooks / cross-tab-fanout-fix.
+    if not os.environ.get("PIXSIM_BRIDGE_MANAGED"):
+        return
+
     # Read tool info from stdin (PreToolUse payload).
     try:
         raw = sys.stdin.read()
