@@ -27,6 +27,7 @@ import {
   type PromptPackCompileResponse,
   type PromptPackDraft,
 } from '@lib/api/promptPacks';
+import { DraftsList } from '@lib/ui/promptPacks';
 
 import type { BlockAuthoringMethodProps } from '../types';
 
@@ -34,8 +35,9 @@ import { CueDiagnostics } from './CueDiagnostics';
 import { CuePackOutline } from './CuePackOutline';
 import { BuilderTab } from './form/BuilderTab';
 import { buildStarterCueSource } from './starterTemplate';
+import { VersionsTab } from './VersionsTab';
 
-type EditorTab = 'source' | 'builder' | 'outline';
+type EditorTab = 'source' | 'builder' | 'outline' | 'versions';
 
 interface CompileSnapshot {
   ok: boolean;
@@ -286,36 +288,16 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
             + New
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto py-1 px-1">
-          {drafts.length === 0 && busy !== 'loading' && (
-            <div className="px-2 py-3 text-[11px] text-neutral-500">
-              No drafts yet. Click <span className="text-neutral-300">+ New</span> to
-              start.
-            </div>
-          )}
-          {drafts.map((d) => {
-            const isSelected = d.id === selectedId;
-            const isHighlighted = d.id === highlightDraftId && !isSelected;
-            return (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => setSelectedId(d.id)}
-                className={`w-full text-left px-2 py-1.5 rounded text-[11px] mb-0.5 transition ${
-                  isSelected
-                    ? 'bg-blue-500/15 text-blue-100'
-                    : isHighlighted
-                      ? 'bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
-                      : 'text-neutral-300 hover:bg-neutral-800/60'
-                }`}
-              >
-                <div className="font-mono truncate">{d.pack_slug}</div>
-                <div className="text-[9px] text-neutral-500 truncate">
-                  {d.namespace} · {d.status}
-                </div>
-              </button>
-            );
-          })}
+        <div className="flex-1 overflow-y-auto py-1">
+          <DraftsList
+            drafts={drafts}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            loading={busy === 'loading' && drafts.length === 0}
+            highlightId={highlightDraftId}
+            compact
+            emptyMessage="No drafts yet. Click + New to start."
+          />
         </div>
       </div>
 
@@ -364,6 +346,18 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
                 }`}
               >
                 Outline
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('versions')}
+                className={`text-[11px] px-2 py-1 rounded ${
+                  tab === 'versions'
+                    ? 'bg-neutral-800 text-neutral-100'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+                title="Snapshots, publication, and activation for this draft"
+              >
+                Versions
               </button>
               <div className="ml-auto flex items-center gap-1">
                 {dirty && (
@@ -430,6 +424,7 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
                   />
                 </div>
               )}
+              {tab === 'versions' && <VersionsTab draft={draft} />}
             </div>
 
             {/* Error banner (transport-level) */}
