@@ -36,6 +36,21 @@ async def get_todo_summary(
     ),
     tag: Optional[str] = Query(None, description="Filter by tag (exact match)."),
     owner: Optional[str] = Query(None, description="Substring match on owner."),
+    q: Optional[str] = Query(
+        None,
+        description=(
+            "Free-text search. Same scope as plans.list: scalars + list "
+            "fields + checkpoint text (label, description, note, criteria, "
+            "steps[].label, last_update.note). Lets callers ask 'which "
+            "plans about X have open work?'."
+        ),
+    ),
+    q_includes_body: bool = Query(
+        False,
+        description=(
+            "When true and ``q`` is set, also search the plan markdown body."
+        ),
+    ),
     status: str = Query(
         "active",
         description="Plan status filter. Default 'active'; pass empty string to include all.",
@@ -72,7 +87,9 @@ async def get_todo_summary(
         status=status if status else None,
         owner=owner,
         tag=tag,
+        q=q,
         include_hidden=include_hidden,
+        include_body=q_includes_body,
     )
     if stage:
         bundles = [
@@ -88,7 +105,16 @@ async def get_todo_summary(
 
     summaries: List[PlanTodoSummary] = []
     for b in bundles:
-        s = _h._bundle_to_todo_summary(b, max_open_checkpoints=max_open_checkpoints)
+        matched_cp_ids = (
+            _h._collect_matched_checkpoint_ids(b, q, include_body=q_includes_body)
+            if q
+            else None
+        )
+        s = _h._bundle_to_todo_summary(
+            b,
+            max_open_checkpoints=max_open_checkpoints,
+            matched_checkpoint_ids=matched_cp_ids,
+        )
         if s is None:
             continue
         if s.open_points < min_open_points:

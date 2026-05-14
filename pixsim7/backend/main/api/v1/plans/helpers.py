@@ -2533,6 +2533,7 @@ def _bundle_to_todo_summary(
     b: PlanBundle,
     *,
     max_open_checkpoints: int = 8,
+    matched_checkpoint_ids: Optional[List[str]] = None,
 ) -> Optional[PlanTodoSummary]:
     """Per-plan open-work summary, or None when nothing is open.
 
@@ -2609,6 +2610,7 @@ def _bundle_to_todo_summary(
         open_checkpoint_count=len(open_entries),
         open_checkpoints=truncated,
         recent_note=_truncate_note(most_recent_note),
+        matched_checkpoint_ids=matched_checkpoint_ids,
     )
 
 

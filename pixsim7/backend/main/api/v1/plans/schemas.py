@@ -829,6 +829,11 @@ class PlanTodoSummary(ApiModel):
     open_checkpoints: List[OpenCheckpoint] = Field(default_factory=list)
     # Most-recent checkpoint note across the plan, truncated to ~240 chars.
     recent_note: Optional[str] = None
+    # Set only when ``q`` is passed. Same semantics as
+    # ``PlanSummary.matched_checkpoint_ids``: list of checkpoint IDs whose
+    # text matched the query (may be empty if the plan matched on a
+    # non-checkpoint field). ``None`` when ``q`` was not supplied.
+    matched_checkpoint_ids: Optional[List[str]] = None
 
 
 class PlanTodoSummaryResponse(ApiModel):
