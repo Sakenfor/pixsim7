@@ -14,7 +14,12 @@ import { pixsimClient } from '@lib/api/client';
 /** Server response shape — camelCase, mirrors `ChatTabResponse`. */
 export interface ServerChatTab {
   id: string;
-  sessionId: string;
+  /**
+   * Nullable: tabs are created unbound and get bound on first turn when the
+   * bridge surfaces Claude's real ``cli_session_id``. See plan
+   * `chat-tab-server-persistence` (first-turn resume-failure fix).
+   */
+  sessionId: string | null;
   label: string;
   draft: string | null;
   orderIndex: number;
@@ -61,6 +66,12 @@ export interface UpdateChatTabPayload {
   pinned?: boolean;
   draft?: string | null;
   order_index?: number;
+  /**
+   * First-turn bind: set when the bridge surfaces Claude's real
+   * ``cli_session_id``. Server validates ownership before persisting.
+   * See plan `chat-tab-server-persistence` (first-turn resume-failure fix).
+   */
+  session_id?: string | null;
 }
 
 export interface ReorderEntry {

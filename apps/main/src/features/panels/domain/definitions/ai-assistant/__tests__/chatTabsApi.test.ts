@@ -108,6 +108,21 @@ describe('chatTabsApi', () => {
     );
   });
 
+  it('updateChatTab can bind session_id (first-turn cli_session_id)', async () => {
+    // After the first-turn resume-failure fix, tabs are created unbound
+    // (sessionId: null) and the server PATCH binds them when the bridge
+    // surfaces Claude's real cli_session_id.
+    patch.mockResolvedValue(stubServer({ id: 'a', sessionId: 'claude-real-uuid' }));
+
+    await updateChatTab('a', { session_id: 'claude-real-uuid' });
+
+    expect(patch).toHaveBeenCalledWith(
+      '/chat-tabs/a',
+      { session_id: 'claude-real-uuid' },
+      expect.any(Object),
+    );
+  });
+
   it('deleteChatTab DELETEs /chat-tabs/{id}', async () => {
     del.mockResolvedValue({ ok: true });
 

@@ -90,6 +90,46 @@ def _error_payload_from_exception(exc: BaseException) -> dict:
     return _error_payload(text, code=str(code), details=details if isinstance(details, dict) else None)
 
 
+async def _bind_tab_to_session(tab_id: str, cli_session_id: str, user_id: int | None) -> None:
+    """Bind ``ChatTab.session_id`` (if currently NULL) to the freshly-minted
+    ``cli_session_id`` returned by the bridge on the first turn.
+
+    Tabs are now created **unbound** (see plan
+    ``chat-tab-server-persistence`` — first-turn resume-failure fix). The
+    bridge always assigns a real Claude/Codex conversation UUID; this
+    helper persists that UUID so future turns can resume the same
+    conversation. Already-bound tabs are left alone — re-pointing is an
+    explicit client action via PATCH ``/chat-tabs/{id}``.
+    """
+    if not tab_id or not cli_session_id:
+        return
+    try:
+        from uuid import UUID
+
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        try:
+            tab_uuid = UUID(tab_id)
+        except ValueError:
+            return
+
+        async with AsyncSessionLocal() as db:
+            tab = await db.get(ChatTab, tab_uuid)
+            if tab is None:
+                return
+            if user_id is not None and tab.user_id != user_id:
+                return
+            if tab.session_id:
+                return  # already bound — leave alone
+            tab.session_id = cli_session_id
+            tab.updated_at = utcnow()
+            await db.commit()
+    except Exception as exc:
+        logger.warning("ws_chat_bind_tab_failed", tab_id=tab_id, error=str(exc))
+
+
 async def _wait_for_replayed_result(
     task_id: str,
     *,
@@ -405,7 +445,10 @@ async def _handle_message(
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
     _agent_engine = normalize_engine(agent.agent_type)
     engine = _agent_engine or (data.get("engine") or "").strip().lower() or "claude"
-    model = data.get("model")
+    model_raw = data.get("model")
+    model = model_raw.strip() if isinstance(model_raw, str) else model_raw
+    if isinstance(model, str) and not model:
+        model = None
     assistant_id_raw = data.get("assistant_id")
     assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
     if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
@@ -452,7 +495,9 @@ async def _handle_message(
                 # model_id set, and the only way to try another model
                 # would be to edit the profile.
                 if not (model or "").strip() and profile.model_id:
-                    model = profile.model_id
+                    prof_model = str(profile.model_id).strip()
+                    if prof_model:
+                        model = prof_model
                 # Build profile_config from first-class fields + legacy config dict
                 merged_config = dict(profile.config or {})
                 if profile.reasoning_effort:
@@ -626,6 +671,14 @@ async def _handle_message(
                             session_id=cli_session_id,
                             error=str(exc),
                         )
+
+                    # First-turn bind: tabs are created unbound (plan
+                    # `chat-tab-server-persistence` — first-turn resume-failure
+                    # fix). Once the bridge surfaces Claude's real
+                    # cli_session_id, stamp it onto the originating ChatTab so
+                    # future turns resume the same conversation. No-ops if the
+                    # tab is already bound.
+                    await _bind_tab_to_session(tab_id, cli_session_id, user_id)
 
                     # Belt-and-suspenders durability:
                     #   * Bridge-side `resolve_task` already scheduled a

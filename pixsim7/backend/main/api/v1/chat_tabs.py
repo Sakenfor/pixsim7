@@ -41,7 +41,10 @@ router = APIRouter(prefix="/chat-tabs", tags=["chat-tabs"])
 
 class ChatTabResponse(BaseModel):
     id: str
-    sessionId: str
+    # Nullable: a freshly-created tab has no session until the first turn
+    # binds it to Claude's actual ``cli_session_id``. See plan
+    # ``chat-tab-server-persistence`` — first-turn resume-failure fix.
+    sessionId: Optional[str] = None
     label: str
     draft: Optional[str] = None
     orderIndex: int
@@ -67,7 +70,12 @@ class ChatTabCreateRequest(BaseModel):
     )
     session_id: Optional[str] = Field(
         None,
-        description="Existing ChatSession to bind the tab to. If omitted, a new session is auto-created.",
+        description=(
+            "Existing ChatSession to bind the tab to (used by the closed-tab "
+            "reopen / orphan-session picker). If omitted, the tab is created "
+            "unbound and gets bound on first turn when the bridge returns "
+            "Claude's actual cli_session_id."
+        ),
         max_length=120,
     )
     label: Optional[str] = Field(None, max_length=255)
@@ -79,7 +87,9 @@ class ChatTabCreateRequest(BaseModel):
         None,
         description="Tab strip position. If omitted, appended to the end.",
     )
-    # Only used when auto-creating a ChatSession (session_id omitted):
+    # Accepted for forward-compat with clients that used to drive ChatSession
+    # auto-create. Stored only as client-side tab prefs now — the server no
+    # longer mints a ChatSession at tab-create time.
     engine: Optional[str] = Field(None, max_length=32)
     profile_id: Optional[str] = Field(None, max_length=120)
 
@@ -97,6 +107,11 @@ class ChatTabUpdateRequest(BaseModel):
     pinned: Optional[bool] = None
     draft: Optional[str] = None
     order_index: Optional[int] = None
+    # First-turn bind: the frontend sets this when the bridge surfaces
+    # Claude's real ``cli_session_id``. Validated server-side to point at an
+    # existing ChatSession owned by the caller (or system user_id=0). Plan
+    # ``chat-tab-server-persistence`` — first-turn resume-failure fix.
+    session_id: Optional[str] = Field(None, max_length=120)
 
 
 class ChatTabReorderEntry(BaseModel):
@@ -168,27 +183,20 @@ async def create_chat_tab(
 ):
     """Create a chat tab.
 
-    If ``session_id`` is omitted, a fresh ``ChatSession`` is auto-created and
-    the new tab bound to it. If provided, the session must already exist
-    and belong to the caller.
+    If ``session_id`` is omitted the tab is created **unbound**. The first
+    turn's ``cli_session_id`` returned by the bridge then PATCHes the tab
+    to bind it — see plan ``chat-tab-server-persistence`` (first-turn
+    resume-failure fix). Auto-minting a synthetic ChatSession at this
+    point would feed Claude an unknown UUID to ``--resume``.
+
+    If ``session_id`` is provided (closed-tab reopen / orphan picker), the
+    session must already exist and belong to the caller (or system,
+    ``user_id=0``).
 
     ``order_index`` defaults to ``max(existing) + 1`` (i.e. append to end).
     """
     session_id = payload.session_id
-    if session_id is None:
-        # Auto-create a new ChatSession owned by the caller.
-        session_id = uuid4().hex
-        session = ChatSession(
-            id=session_id,
-            user_id=user.id,
-            engine=payload.engine or "claude",
-            profile_id=payload.profile_id,
-            scope_key=payload.scope_key,
-            label=payload.label or "Untitled",
-            source="chat",
-        )
-        db.add(session)
-    else:
+    if session_id is not None:
         existing = await db.get(ChatSession, session_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="ChatSession not found")
@@ -253,6 +261,20 @@ async def update_chat_tab(
     tab = await _load_owned_tab(db, tab_id, user.id)
 
     updates = payload.model_dump(exclude_unset=True)
+
+    # session_id binds the tab to a real ChatSession the first time the
+    # bridge surfaces Claude's cli_session_id. Validate the target exists
+    # and belongs to the caller before writing the FK — same scoping rule
+    # as create_chat_tab. ``None`` is accepted (explicit unbind) so a
+    # client can detach a tab from a stale session if needed.
+    if "session_id" in updates and updates["session_id"] is not None:
+        target_id = updates["session_id"]
+        target = await db.get(ChatSession, target_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="ChatSession not found")
+        if target.user_id not in (user.id, 0):
+            raise HTTPException(status_code=403, detail="Not your session")
+
     for key, value in updates.items():
         setattr(tab, key, value)
     tab.updated_at = utcnow()
@@ -369,7 +391,13 @@ async def list_orphan_sessions(
         limit = 200
 
     # Subquery: ChatSession.ids that the caller already has a tab for.
-    occupied = select(ChatTab.session_id).where(ChatTab.user_id == user.id)
+    # Filter NULLs explicitly — ``ChatSession.id NOT IN (NULL, …)`` evaluates
+    # to NULL in SQL three-valued logic and would hide every session.
+    occupied = (
+        select(ChatTab.session_id)
+        .where(ChatTab.user_id == user.id)
+        .where(ChatTab.session_id.is_not(None))
+    )
 
     stmt = (
         select(ChatSession)

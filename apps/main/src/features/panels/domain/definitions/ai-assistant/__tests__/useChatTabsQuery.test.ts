@@ -93,7 +93,9 @@ describe('useChatTabsQuery — optimistic mutations', () => {
       const promise = createTabOptimistic({ id: 'srv-id', label: 'hi' });
       // Before the await resolves, the optimistic row should already be there.
       expect(getChatTabsSnapshot().tabs.map((t) => t.id)).toEqual(['srv-id']);
-      expect(getChatTabsSnapshot().tabs[0].sessionId).toBe(''); // optimistic placeholder
+      // Optimistic placeholder is null — tabs are now created unbound and
+      // the first-turn cli_session_id PATCHes the binding later.
+      expect(getChatTabsSnapshot().tabs[0].sessionId).toBeNull();
 
       const result = await promise;
       // Server response reconciled — sessionId now real.

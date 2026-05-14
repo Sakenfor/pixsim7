@@ -162,6 +162,37 @@ def _short_path(path: str) -> str:
     return "/".join(parts[-3:]) if len(parts) > 3 else path
 
 
+def _extract_claude_error_message(raw: dict) -> str:
+    """Best-effort extraction of a human-readable error from Claude's
+    ``is_error=true`` result event.
+
+    Claude's shape varies: sometimes an ``errors: [{message: ...}, ...]``
+    list, sometimes a ``subtype`` like ``error_during_execution`` /
+    ``error_max_turns``, sometimes just a ``stop_reason``. Walk these in
+    priority order so the eventual ``RuntimeError("Agent error: …")``
+    raised by session.py carries something the user can act on, not the
+    bare empty string that would otherwise render as "No response from
+    agent".
+    """
+    errors = raw.get("errors")
+    if isinstance(errors, list) and errors:
+        first = errors[0]
+        if isinstance(first, dict):
+            msg = first.get("message") or first.get("detail") or first.get("error") or ""
+            if isinstance(msg, str) and msg.strip():
+                return msg.strip()
+        elif isinstance(first, str) and first.strip():
+            return first.strip()
+    subtype = raw.get("subtype")
+    if isinstance(subtype, str) and subtype.strip():
+        # Render snake_case → readable: "error_during_execution" → "error during execution"
+        return subtype.replace("_", " ").strip()
+    stop_reason = raw.get("stop_reason")
+    if isinstance(stop_reason, str) and stop_reason.strip():
+        return f"stop_reason: {stop_reason.strip()}"
+    return "Claude returned an error result (no detail)"
+
+
 class ClaudeProtocol(AgentProtocol):
     """Claude Code: long-running process, stream-json stdin/stdout."""
 
@@ -213,6 +244,23 @@ class ClaudeProtocol(AgentProtocol):
         if t == "system":
             return ParsedEvent(kind="init", session_id=raw.get("session_id"), model=raw.get("model"), raw=raw)
         if t == "result":
+            # Claude's stream-json emits "result" events for BOTH success and
+            # failure. Failure cases set ``is_error: true`` (and/or a
+            # ``subtype`` that starts with ``error_``) and omit the ``result``
+            # field — so reading ``raw["result"]`` returns "" and the session
+            # would silently complete with empty text. The frontend then renders
+            # the bare "No response from agent" fallback because no error
+            # field was set anywhere downstream.
+            #
+            # The trigger we hit in the wild: a resume-id Claude doesn't know
+            # (e.g. tab's ``session_id`` is a server-mint UUID, not Claude's
+            # real cli_session_id) — Claude rejects ``--resume`` and emits
+            # exactly this shape with ``duration_ms=0``. Route to kind=error
+            # so session.py:711 raises a RuntimeError with a useful message.
+            subtype = str(raw.get("subtype") or "")
+            if raw.get("is_error") or subtype.startswith("error"):
+                msg = _extract_claude_error_message(raw)
+                return ParsedEvent(kind="error", text=msg, raw=raw)
             return ParsedEvent(
                 kind="result", text=raw.get("result", ""), session_id=raw.get("session_id"),
                 duration_ms=raw.get("duration_ms", 0), raw=raw,
@@ -289,14 +337,35 @@ class CodexAppServerProtocol(AgentProtocol):
         "model_reasoning_effort": "high",
     }
 
+    # Codex accepts these effort values. Normalize stale/legacy values from
+    # saved profiles so Claude-oriented settings do not break Codex startup.
+    _VALID_REASONING_EFFORTS = {"low", "medium", "high", "xhigh"}
+    _REASONING_EFFORT_ALIASES = {
+        "max": "xhigh",
+        "minimal": "low",
+    }
+
+    @classmethod
+    def _normalize_reasoning_effort(cls, value: str | None) -> str | None:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return None
+        if raw in cls._VALID_REASONING_EFFORTS:
+            return raw
+        mapped = cls._REASONING_EFFORT_ALIASES.get(raw)
+        if mapped in cls._VALID_REASONING_EFFORTS:
+            return mapped
+        return None
+
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         # app-server is always long-running; resume is handled via thread/resume RPC
         cmd = [command, "app-server"]
         if model:
             cmd.extend(["-c", f"model={model}"])
+        normalized_effort = self._normalize_reasoning_effort(reasoning_effort)
         # Profile-level reasoning effort takes priority
-        if reasoning_effort:
-            cmd.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
+        if normalized_effort:
+            cmd.extend(["-c", f"model_reasoning_effort={normalized_effort}"])
         elif model:
             # Non-default model — apply safe default since user's config.toml
             # reasoning effort (e.g. xhigh) may not be supported by this model
@@ -366,6 +435,14 @@ class CodexAppServerProtocol(AgentProtocol):
         if method_norm == "codex/event/error":
             msg = params.get("msg", params)
             message = msg.get("message", "") if isinstance(msg, dict) else str(msg)
+            return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
+        if method_norm == "error":
+            err = params.get("error", params)
+            message = ""
+            if isinstance(err, dict):
+                message = str(err.get("message", "") or err.get("detail", "") or "")
+            if not message:
+                message = str(params.get("message", "") or "Unknown error")
             return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
 
         # Streaming text deltas
@@ -441,7 +518,10 @@ class CodexAppServerProtocol(AgentProtocol):
             if isinstance(status, dict):
                 status_type = status.get("type", "")
                 if status_type in ("systemError", "error"):
-                    detail = status.get("message", "") or status.get("detail", "") or params.get("message", "") or params.get("error", "")
+                    err = params.get("error", "")
+                    if isinstance(err, dict):
+                        err = err.get("message", "") or err.get("detail", "") or str(err)
+                    detail = status.get("message", "") or status.get("detail", "") or params.get("message", "") or err
                     return ParsedEvent(kind="error", text=f"Codex {status_type}: {detail or 'unknown'}", raw=raw)
                 return ParsedEvent(kind="progress", text=f"Status: {status_type}", raw=raw)
             if status:

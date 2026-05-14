@@ -84,7 +84,11 @@ export async function createTabOptimistic(
   const before = getChatTabsSnapshot().tabs;
   const optimistic: ServerChatTab = {
     id,
-    sessionId: payload.session_id ?? '',
+    // Tabs are created unbound; the server now leaves session_id NULL until
+    // the bridge binds it on first turn (plan `chat-tab-server-persistence`
+    // — first-turn resume-failure fix). Use null directly so the optimistic
+    // row matches the server's shape.
+    sessionId: payload.session_id ?? null,
     label: payload.label ?? 'Untitled',
     draft: payload.draft ?? null,
     orderIndex:
@@ -193,6 +197,7 @@ export async function updateTabOptimistic(
   if (payload.pinned !== undefined) camelPatch.pinned = payload.pinned;
   if (payload.draft !== undefined) camelPatch.draft = payload.draft;
   if (payload.order_index !== undefined) camelPatch.orderIndex = payload.order_index;
+  if (payload.session_id !== undefined) camelPatch.sessionId = payload.session_id;
   applyUpdateTab(tabId, camelPatch);
   try {
     const server = await apiUpdateChatTab(tabId, payload);

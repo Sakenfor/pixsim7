@@ -163,7 +163,12 @@ class ChatTab(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: int = Field(nullable=False, index=True)
-    session_id: str = Field(
+    # Nullable: bound lazily to a ChatSession when the first turn's
+    # ``cli_session_id`` arrives from the bridge. Avoids minting a synthetic
+    # UUID at tab-create time that Claude's ``--resume`` doesn't recognise
+    # (plan ``chat-tab-server-persistence`` — first-turn resume-failure fix).
+    session_id: Optional[str] = Field(
+        default=None,
         foreign_key=f"{PLATFORM_SCHEMA}.chat_sessions.id",
         max_length=120,
     )

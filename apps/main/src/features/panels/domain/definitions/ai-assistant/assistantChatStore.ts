@@ -1063,9 +1063,13 @@ export const useAssistantChatStore = hmrSingleton(
 
       updateTab: (tabId, updates) => {
         // Split the patch into core fields (server PATCH) and client-only
-        // prefs (localStorage map). sessionId stays client-only for now —
-        // server's session_id is set-once at create time; the bridge's
-        // session id is what the rest of the chat flow actually uses.
+        // prefs (localStorage map). sessionId is kept client-only here: the
+        // ws_chat backend handler binds ``ChatTab.session_id`` server-side
+        // the moment the bridge surfaces ``cli_session_id`` (plan
+        // `chat-tab-server-persistence` — first-turn resume-failure fix),
+        // so the next poll snapshot already carries it. The local mirror
+        // below just makes the new sessionId visible to recovery paths
+        // gated on ``tab.sessionId`` before that poll lands.
         const corePatch: Parameters<typeof updateTabOptimistic>[1] = {};
         if (updates.label !== undefined) corePatch.label = updates.label;
         if (updates.planId !== undefined) corePatch.plan_id = updates.planId;
@@ -1107,10 +1111,11 @@ export const useAssistantChatStore = hmrSingleton(
           });
         }
 
-        // sessionId is the only mutable client-mirror field that doesn't go
-        // to the server yet. Apply it directly to the derived tabs array so
-        // the bridge can read it back. The next poll tick won't overwrite it
-        // because the server's session_id is also populated (set at create).
+        // Local sessionId mirror. The backend's ws_chat.py handler is the
+        // authoritative writer (`_bind_tab_to_session` on first turn), but
+        // there's a window between the bridge's session_resolved heartbeat
+        // and the next poll snapshot during which UI recovery paths (gated
+        // on ``tab.sessionId``) need the freshly-resolved id locally.
         if (updates.sessionId !== undefined) {
           const next = get().tabs.map((t) =>
             t.id === tabId ? { ...t, sessionId: updates.sessionId ?? null } : t,

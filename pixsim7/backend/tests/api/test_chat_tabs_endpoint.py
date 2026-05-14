@@ -283,7 +283,14 @@ def _extract_not_in_session_ids(
     """
     if "not in" not in sql or "chat_tabs" not in sql or user_id is None:
         return None
-    return {t.session_id for t in tabs.values() if t.user_id == user_id}
+    # Mirror the production filter that excludes NULL session_ids from the
+    # occupied subquery — otherwise NULL-bound tabs would still hide every
+    # session via SQL three-valued NOT IN semantics.
+    return {
+        t.session_id
+        for t in tabs.values()
+        if t.user_id == user_id and t.session_id is not None
+    }
 
 
 def _extract_id_in(sql: str) -> Optional[set]:
@@ -382,20 +389,24 @@ async def test_list_empty_for_user_with_no_tabs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_auto_creates_session_when_omitted() -> None:
+async def test_create_leaves_session_unbound_when_omitted() -> None:
+    """Tabs are now created unbound; the bridge's first-turn cli_session_id
+    PATCHes the binding via ws_chat's `_bind_tab_to_session`. Auto-minting
+    a synthetic session UUID at create time made Claude's ``--resume`` fail
+    instantly with an empty-result error (plan ``chat-tab-server-persistence``
+    — first-turn resume-failure fix).
+    """
     db = _FakeSession()
     payload = ChatTabCreateRequest(label="new chat")
 
     result = await create_chat_tab(payload=payload, user=_user(1), db=db)
 
     assert result.label == "new chat"
-    assert result.sessionId is not None
-    # One ChatSession seeded; same id as response.sessionId
-    assert result.sessionId in db.sessions
-    assert db.sessions[result.sessionId].user_id == 1
-    assert db.sessions[result.sessionId].source == "chat"
-    # One ChatTab seeded
+    assert result.sessionId is None
+    # No ChatSession created; only the ChatTab row is seeded.
+    assert db.sessions == {}
     assert UUID(result.id) in db.tabs
+    assert db.tabs[UUID(result.id)].session_id is None
 
 
 @pytest.mark.asyncio
@@ -573,6 +584,56 @@ async def test_update_missing_tab_404() -> None:
     assert exc.value.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_update_binds_session_id_to_existing_session() -> None:
+    """First-turn bind path: ws_chat's `_bind_tab_to_session` writes the
+    cli_session_id, but a client-side PATCH against an existing ChatSession
+    must also succeed (used by explicit re-bind flows). Plan
+    ``chat-tab-server-persistence`` — first-turn resume-failure fix.
+    """
+    db = _FakeSession()
+    tab = db.seed_tab(_make_tab(user_id=1, session_id=None))
+    # ChatTab created without a session_id (the new default after the fix).
+    tab.session_id = None
+    db.seed_session(_make_session(user_id=1, session_id="claude-real-uuid"))
+
+    payload = ChatTabUpdateRequest(session_id="claude-real-uuid")
+    result = await update_chat_tab(
+        tab_id=tab.id, payload=payload, user=_user(1), db=db,
+    )
+    assert result.sessionId == "claude-real-uuid"
+    assert db.tabs[tab.id].session_id == "claude-real-uuid"
+
+
+@pytest.mark.asyncio
+async def test_update_session_id_rejects_unknown_session() -> None:
+    db = _FakeSession()
+    tab = db.seed_tab(_make_tab(user_id=1, session_id=None))
+    tab.session_id = None
+
+    payload = ChatTabUpdateRequest(session_id="does-not-exist")
+    with pytest.raises(HTTPException) as exc:
+        await update_chat_tab(
+            tab_id=tab.id, payload=payload, user=_user(1), db=db,
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_session_id_rejects_other_users_session() -> None:
+    db = _FakeSession()
+    tab = db.seed_tab(_make_tab(user_id=1, session_id=None))
+    tab.session_id = None
+    db.seed_session(_make_session(user_id=2, session_id="theirs"))
+
+    payload = ChatTabUpdateRequest(session_id="theirs")
+    with pytest.raises(HTTPException) as exc:
+        await update_chat_tab(
+            tab_id=tab.id, payload=payload, user=_user(1), db=db,
+        )
+    assert exc.value.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # delete_chat_tab — the key Option-B invariant
 # ---------------------------------------------------------------------------
@@ -611,6 +672,25 @@ async def test_delete_missing_tab_404() -> None:
     with pytest.raises(HTTPException) as exc:
         await delete_chat_tab(tab_id=uuid4(), user=_user(1), db=db)
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_unbound_tab_no_session_cleanup() -> None:
+    """A tab created but never first-turn-bound has ``session_id = NULL``.
+    Deleting it must succeed and skip the session-scoped notification
+    cleanup branch (no session to reference).
+    """
+    db = _FakeSession()
+    tab = db.seed_tab(_make_tab(user_id=1))
+    tab.session_id = None
+
+    result = await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+
+    assert result == {"ok": True}
+    assert tab.id not in db.tabs
+    # No ChatSession was created or deleted.
+    assert db.sessions == {}
+    assert db.deleted_sessions == []
 
 
 # ---------------------------------------------------------------------------
