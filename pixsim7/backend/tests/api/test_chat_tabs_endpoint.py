@@ -43,9 +43,12 @@ from pixsim7.backend.main.api.v1.chat_tabs import (
     ChatTabReorderEntry,
     ChatTabReorderRequest,
     ChatTabUpdateRequest,
+    NOTIF_REF_TYPE_CHAT_SESSION,
+    NOTIF_REF_TYPE_CHAT_TAB,
     create_chat_tab,
     delete_chat_tab,
     list_chat_tabs,
+    list_orphan_sessions,
     reorder_chat_tabs,
     update_chat_tab,
 )
@@ -53,6 +56,7 @@ from pixsim7.backend.main.domain.platform.agent_profile import (
     ChatSession,
     ChatTab,
 )
+from pixsim7.backend.main.domain.platform.notification import Notification
 
 
 # ---------------------------------------------------------------------------
@@ -100,9 +104,11 @@ class _FakeSession:
 
     tabs: Dict[UUID, ChatTab] = field(default_factory=dict)
     sessions: Dict[str, ChatSession] = field(default_factory=dict)
+    notifications: Dict[UUID, Notification] = field(default_factory=dict)
     commits: int = 0
     deleted_tabs: List[ChatTab] = field(default_factory=list)
     deleted_sessions: List[ChatSession] = field(default_factory=list)
+    flushes: int = 0
 
     def seed_tab(self, tab: ChatTab) -> ChatTab:
         self.tabs[tab.id] = tab
@@ -111,6 +117,10 @@ class _FakeSession:
     def seed_session(self, session: ChatSession) -> ChatSession:
         self.sessions[session.id] = session
         return session
+
+    def seed_notification(self, notif: Notification) -> Notification:
+        self.notifications[notif.id] = notif
+        return notif
 
     async def get(self, model: Any, key: Any) -> Optional[Any]:
         if model is ChatTab:
@@ -136,6 +146,9 @@ class _FakeSession:
     async def commit(self) -> None:
         self.commits += 1
 
+    async def flush(self) -> None:
+        self.flushes += 1
+
     async def refresh(self, entity: Any) -> None:
         # In-memory entities don't need a server round-trip.
         return None
@@ -150,6 +163,60 @@ class _FakeSession:
                 t.order_index for t in self.tabs.values() if t.user_id == user_id
             ]
             return _ExecuteResult(rows=[], scalar=(max(indices) if indices else None))
+
+        # count(chat_tabs.id) — used by delete_chat_tab's "remaining tabs for
+        # this session" check before mark-reading session-scoped notifications
+        # (plan checkpoint D).
+        if "count(" in sql and "chat_tabs" in sql:
+            user_id = _extract_user_id(sql)
+            session_id = _extract_session_id(sql)
+            matches = [
+                t for t in self.tabs.values()
+                if t.user_id == user_id and t.session_id == session_id
+            ]
+            return _ExecuteResult(rows=[], scalar=len(matches))
+
+        # UPDATE notifications SET read=true WHERE … — checkpoint D
+        # orphan-cleanup path. We only need to honour the (ref_type, ref_id,
+        # user_id) filters my code emits; other fields (created_at, severity)
+        # are read-only here. The compiled SQL is schema-qualified
+        # (``dev_meta.notifications``) so we match on the suffix.
+        if sql.lstrip().startswith("update") and "notifications" in sql and "set read" in sql:
+            user_id = _extract_user_id(sql)
+            matched_pairs = _extract_ref_pairs(sql)
+            for n in self.notifications.values():
+                if user_id is not None and n.user_id != user_id:
+                    continue
+                if (n.ref_type, n.ref_id) not in matched_pairs:
+                    continue
+                n.read = True
+            return _ExecuteResult(rows=[])
+
+        # select(ChatSession) — checkpoint E orphan-sessions endpoint
+        if "chat_sessions" in sql:
+            rows = list(self.sessions.values())
+            user_id = _extract_user_id(sql)
+            # Code path uses `user_id == X OR user_id == 0` — accept that
+            # union when a literal `or` is present.
+            if user_id is not None and " or " in sql and "user_id = 0" in sql:
+                rows = [s for s in rows if s.user_id in (user_id, 0)]
+            elif user_id is not None:
+                rows = [s for s in rows if s.user_id == user_id]
+            # NOT IN (… session_ids from chat_tabs …)
+            occupied = _extract_not_in_session_ids(sql, self.tabs, user_id)
+            if occupied is not None:
+                rows = [s for s in rows if s.id not in occupied]
+            # status != 'archived'
+            if "status !=" in sql or "status <>" in sql:
+                rows = [s for s in rows if s.status != "archived"]
+            # ORDER BY last_used_at DESC
+            if "order by" in sql and "last_used_at" in sql:
+                rows.sort(key=lambda s: s.last_used_at, reverse=True)
+            # LIMIT N
+            limit = _extract_limit(sql)
+            if limit is not None:
+                rows = rows[:limit]
+            return _ExecuteResult(rows=rows)
 
         # select(ChatTab) — filter by user_id, optional id IN, ordered
         if "chat_tabs" in sql:
@@ -170,6 +237,53 @@ class _FakeSession:
 def _extract_user_id(sql: str) -> Optional[int]:
     m = re.search(r"user_id\s*=\s*(\d+)", sql)
     return int(m.group(1)) if m else None
+
+
+def _extract_session_id(sql: str) -> Optional[str]:
+    """Pull the literal session_id from a `session_id = '<id>'` clause."""
+    m = re.search(r"session_id\s*=\s*'([^']+)'", sql)
+    return m.group(1) if m else None
+
+
+def _extract_limit(sql: str) -> Optional[int]:
+    m = re.search(r"\blimit\s+(\d+)", sql)
+    return int(m.group(1)) if m else None
+
+
+def _extract_ref_pairs(sql: str) -> set:
+    """Collect (ref_type, ref_id) literals from the UPDATE notifications WHERE clause.
+
+    My code emits ``or_(and_(ref_type='chat_tab', ref_id='<uuid>'), …)`` —
+    we walk the compiled SQL looking for adjacent ``ref_type = '…' AND
+    ref_id = '…'`` pairs. The pairs land in a set so duplicate-emitting
+    filters don't double-count.
+    """
+    pairs: set = set()
+    # Match `[schema.][table.]ref_type = 'x' AND [schema.][table.]ref_id = 'y'`.
+    # The compiled SQL prefixes columns with `dev_meta.notifications.` because
+    # of the table's schema qualifier, so we tolerate optional dotted prefixes.
+    pattern = re.compile(
+        r"(?:\w+\.)*ref_type\s*=\s*'([^']+)'\s+and\s+(?:\w+\.)*ref_id\s*=\s*'([^']+)'",
+        re.IGNORECASE,
+    )
+    for ref_type, ref_id in pattern.findall(sql):
+        pairs.add((ref_type, ref_id))
+    return pairs
+
+
+def _extract_not_in_session_ids(
+    sql: str, tabs: Dict[UUID, ChatTab], user_id: Optional[int]
+) -> Optional[set]:
+    """For the orphan-sessions endpoint: resolve the ``id NOT IN (subselect)``.
+
+    The compiled SQL embeds the subselect as ``id NOT IN (SELECT
+    chat_tabs.session_id … WHERE user_id = …)`` — rather than re-parse the
+    subselect, we approximate it by reading our in-memory tabs for the same
+    user (which is exactly what the subselect computes).
+    """
+    if "not in" not in sql or "chat_tabs" not in sql or user_id is None:
+        return None
+    return {t.session_id for t in tabs.values() if t.user_id == user_id}
 
 
 def _extract_id_in(sql: str) -> Optional[set]:
@@ -568,3 +682,178 @@ async def test_reorder_only_writes_tabs_whose_index_actually_changed() -> None:
     ])
     result = await reorder_chat_tabs(payload=payload, user=_user(1), db=db)
     assert result == {"ok": True, "updated": 0}
+
+
+# ---------------------------------------------------------------------------
+# delete_chat_tab — orphan-notification cleanup (checkpoint D)
+# ---------------------------------------------------------------------------
+
+
+def _make_notification(
+    user_id: int,
+    ref_type: str,
+    ref_id: str,
+    *,
+    read: bool = False,
+) -> Notification:
+    return Notification(
+        id=uuid4(),
+        title="agent ping",
+        body=None,
+        category="agent",
+        severity="info",
+        source="agent:test",
+        event_type="chat.message",
+        ref_type=ref_type,
+        ref_id=ref_id,
+        broadcast=False,
+        user_id=user_id,
+        read=read,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_marks_per_tab_notifications_read() -> None:
+    """Closing a tab always clears notifications scoped to that tab id."""
+    db = _FakeSession()
+    session = _make_session(user_id=1, session_id="sess-A")
+    db.seed_session(session)
+    tab = db.seed_tab(_make_tab(user_id=1, session_id="sess-A"))
+    notif = db.seed_notification(
+        _make_notification(user_id=1, ref_type=NOTIF_REF_TYPE_CHAT_TAB, ref_id=str(tab.id))
+    )
+
+    await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+
+    assert notif.read is True
+
+
+@pytest.mark.asyncio
+async def test_delete_clears_session_notifications_when_last_tab() -> None:
+    """When the last tab for a session is closed, session-scoped notifs clear too."""
+    db = _FakeSession()
+    db.seed_session(_make_session(user_id=1, session_id="sess-final"))
+    tab = db.seed_tab(_make_tab(user_id=1, session_id="sess-final"))
+    session_notif = db.seed_notification(
+        _make_notification(
+            user_id=1,
+            ref_type=NOTIF_REF_TYPE_CHAT_SESSION,
+            ref_id="sess-final",
+        )
+    )
+
+    await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+    assert session_notif.read is True
+
+
+@pytest.mark.asyncio
+async def test_delete_preserves_session_notifications_when_other_tabs_remain() -> None:
+    """Cross-device safety: another tab on the same session keeps the unread alive."""
+    db = _FakeSession()
+    db.seed_session(_make_session(user_id=1, session_id="sess-shared"))
+    closing = db.seed_tab(_make_tab(user_id=1, session_id="sess-shared"))
+    other = db.seed_tab(_make_tab(user_id=1, session_id="sess-shared"))
+    void = other  # noqa: F841  (kept just for clarity in the test body)
+    session_notif = db.seed_notification(
+        _make_notification(
+            user_id=1,
+            ref_type=NOTIF_REF_TYPE_CHAT_SESSION,
+            ref_id="sess-shared",
+        )
+    )
+
+    await delete_chat_tab(tab_id=closing.id, user=_user(1), db=db)
+    # Other tab still binds the session → session notif stays unread.
+    assert session_notif.read is False
+
+
+@pytest.mark.asyncio
+async def test_delete_does_not_touch_other_users_notifications() -> None:
+    """User scoping: notifs owned by another user are never written by my delete."""
+    db = _FakeSession()
+    db.seed_session(_make_session(user_id=1, session_id="sess-mine"))
+    tab = db.seed_tab(_make_tab(user_id=1, session_id="sess-mine"))
+    # Same ref_id but different user_id — a hypothetical cross-account notif.
+    foreign = db.seed_notification(
+        _make_notification(user_id=2, ref_type=NOTIF_REF_TYPE_CHAT_TAB, ref_id=str(tab.id))
+    )
+
+    await delete_chat_tab(tab_id=tab.id, user=_user(1), db=db)
+    assert foreign.read is False
+
+
+# ---------------------------------------------------------------------------
+# list_orphan_sessions (checkpoint E)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_orphan_sessions_excludes_sessions_with_open_tabs() -> None:
+    """Only sessions with NO ChatTab row for the caller should be returned."""
+    db = _FakeSession()
+    bound = _make_session(user_id=1, session_id="sess-bound")
+    orphan = _make_session(user_id=1, session_id="sess-orphan")
+    db.seed_session(bound)
+    db.seed_session(orphan)
+    db.seed_tab(_make_tab(user_id=1, session_id="sess-bound"))
+
+    result = await list_orphan_sessions(user=_user(1), db=db)
+    ids = [s.id for s in result.sessions]
+    assert ids == ["sess-orphan"]
+
+
+@pytest.mark.asyncio
+async def test_orphan_sessions_includes_system_user_zero() -> None:
+    """user_id=0 system/legacy sessions are surfaceable for resume (mirrors create_chat_tab)."""
+    db = _FakeSession()
+    db.seed_session(_make_session(user_id=0, session_id="sess-system"))
+
+    result = await list_orphan_sessions(user=_user(1), db=db)
+    ids = [s.id for s in result.sessions]
+    assert "sess-system" in ids
+
+
+@pytest.mark.asyncio
+async def test_orphan_sessions_excludes_archived() -> None:
+    """Status='archived' sessions are intentionally hidden (use the resume picker for those)."""
+    db = _FakeSession()
+    live = _make_session(user_id=1, session_id="sess-live")
+    archived = _make_session(user_id=1, session_id="sess-archived")
+    archived.status = "archived"
+    db.seed_session(live)
+    db.seed_session(archived)
+
+    result = await list_orphan_sessions(user=_user(1), db=db)
+    ids = [s.id for s in result.sessions]
+    assert "sess-live" in ids
+    assert "sess-archived" not in ids
+
+
+@pytest.mark.asyncio
+async def test_orphan_sessions_sorted_by_last_used_at_desc() -> None:
+    """Most-recently-used surfaces first so the picker shows the obvious resume target."""
+    db = _FakeSession()
+    older = _make_session(user_id=1, session_id="sess-older")
+    older.last_used_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    newer = _make_session(user_id=1, session_id="sess-newer")
+    newer.last_used_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    db.seed_session(older)
+    db.seed_session(newer)
+
+    result = await list_orphan_sessions(user=_user(1), db=db)
+    ids = [s.id for s in result.sessions]
+    assert ids == ["sess-newer", "sess-older"]
+
+
+@pytest.mark.asyncio
+async def test_orphan_sessions_excludes_other_users_sessions() -> None:
+    """Cross-account isolation: sessions owned by user_id=2 are invisible to user 1."""
+    db = _FakeSession()
+    db.seed_session(_make_session(user_id=2, session_id="sess-foreign"))
+    db.seed_session(_make_session(user_id=1, session_id="sess-mine"))
+
+    result = await list_orphan_sessions(user=_user(1), db=db)
+    ids = [s.id for s in result.sessions]
+    assert "sess-mine" in ids
+    assert "sess-foreign" not in ids

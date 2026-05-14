@@ -118,3 +118,32 @@ export async function reorderChatTabs(
     { headers: SURFACE_HEADER },
   );
 }
+
+/**
+ * A ChatSession the caller could re-open into a new tab (no ChatTab points
+ * at it yet). See plan `chat-tab-server-persistence` checkpoint E.
+ */
+export interface OrphanSession {
+  id: string;
+  engine: string;
+  label: string;
+  profileId: string | null;
+  scopeKey: string | null;
+  lastPlanId: string | null;
+  messageCount: number;
+  lastUsedAt: string;
+  createdAt: string;
+  source: string | null;
+}
+
+interface OrphanSessionsResponse {
+  sessions: OrphanSession[];
+}
+
+export async function listOrphanSessions(limit = 50): Promise<OrphanSession[]> {
+  const res = await pixsimClient.get<OrphanSessionsResponse>(
+    '/chat-tabs/orphan-sessions',
+    { headers: SURFACE_HEADER, params: { limit } },
+  );
+  return res.sessions;
+}

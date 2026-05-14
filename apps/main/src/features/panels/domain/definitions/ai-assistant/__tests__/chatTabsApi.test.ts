@@ -14,6 +14,7 @@ import {
   createChatTab,
   deleteChatTab,
   listChatTabs,
+  listOrphanSessions,
   reorderChatTabs,
   updateChatTab,
   type ServerChatTab,
@@ -138,6 +139,37 @@ describe('chatTabsApi', () => {
       '/chat-tabs',
       expect.objectContaining({
         headers: { 'X-Client-Surface': 'lib:chat-tabs-api' },
+      }),
+    );
+  });
+
+  // Plan `chat-tab-server-persistence` checkpoint E.
+  it('listOrphanSessions calls GET /chat-tabs/orphan-sessions and unwraps {sessions}', async () => {
+    get.mockResolvedValue({
+      sessions: [
+        {
+          id: 'sess-a',
+          engine: 'claude',
+          label: 'Old chat',
+          profileId: null,
+          scopeKey: null,
+          lastPlanId: null,
+          messageCount: 4,
+          lastUsedAt: '2026-05-14T00:00:00Z',
+          createdAt: '2026-05-13T00:00:00Z',
+          source: 'chat',
+        },
+      ],
+    });
+
+    const sessions = await listOrphanSessions(25);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].id).toBe('sess-a');
+    expect(get).toHaveBeenCalledWith(
+      '/chat-tabs/orphan-sessions',
+      expect.objectContaining({
+        headers: { 'X-Client-Surface': 'lib:chat-tabs-api' },
+        params: { limit: 25 },
       }),
     );
   });

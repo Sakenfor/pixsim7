@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
@@ -21,7 +21,17 @@ from pixsim7.backend.main.domain.platform.agent_profile import (
     ChatSession,
     ChatTab,
 )
+from pixsim7.backend.main.domain.platform.notification import Notification
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+# Notification ref convention for chat-tab unread (plan
+# `chat-tab-server-persistence` checkpoint D, paired with
+# `notification-system` Phase 4a). Cross-device unread follows the SESSION:
+# all tabs binding the same chat_session share a single unread state. The
+# `chat_tab`-scoped value is accepted as a fallback for emitters that
+# specifically want a per-device pip, and is cleaned up alongside.
+NOTIF_REF_TYPE_CHAT_SESSION = "chat_session"
+NOTIF_REF_TYPE_CHAT_TAB = "chat_tab"
 
 router = APIRouter(prefix="/chat-tabs", tags=["chat-tabs"])
 
@@ -263,11 +273,135 @@ async def delete_chat_tab(
     Deletes the ``ChatTab`` row. The underlying ``ChatSession`` is **not**
     touched — the conversation persists and can be reopened later via the
     closed-tab picker (checkpoint E).
+
+    Orphan-notification cleanup (checkpoint D): per-tab notifications
+    (``ref_type='chat_tab', ref_id=tab.id``) are unconditionally mark-read.
+    Per-session notifications (``ref_type='chat_session',
+    ref_id=tab.session_id``) are mark-read only when this is the LAST tab
+    pointing at that session for the caller — keeping the bell honest when
+    the user closes one of several cross-device tabs on the same conversation.
     """
     tab = await _load_owned_tab(db, tab_id, user.id)
+    session_id = tab.session_id
     await db.delete(tab)
+    await db.flush()  # so the count-other-tabs query below sees the deletion
+
+    # Always clear per-tab unread for this exact id.
+    notif_filters = [
+        and_(
+            Notification.ref_type == NOTIF_REF_TYPE_CHAT_TAB,
+            Notification.ref_id == str(tab_id),
+            Notification.user_id == user.id,
+        )
+    ]
+
+    # If no other tab binds this session, clear session-scoped unread too.
+    if session_id:
+        remaining_stmt = select(func.count(ChatTab.id)).where(
+            ChatTab.user_id == user.id,
+            ChatTab.session_id == session_id,
+        )
+        remaining = (await db.execute(remaining_stmt)).scalar() or 0
+        if remaining == 0:
+            notif_filters.append(
+                and_(
+                    Notification.ref_type == NOTIF_REF_TYPE_CHAT_SESSION,
+                    Notification.ref_id == session_id,
+                    Notification.user_id == user.id,
+                )
+            )
+
+    mark_stmt = (
+        update(Notification)
+        .where(or_(*notif_filters))
+        .where(Notification.read == False)  # noqa: E712
+        .values(read=True)
+    )
+    await db.execute(mark_stmt)
+
     await db.commit()
     return {"ok": True}
+
+
+class OrphanSession(BaseModel):
+    """A ChatSession that the caller can re-open into a new tab.
+
+    Subset of ChatSession columns: just what the picker needs. Excludes the
+    messages JSON column (heavy, fetched lazily on actual resume) and
+    bookkeeping fields (cli_session_id, status). Sorted newest-first.
+    """
+
+    id: str
+    engine: str
+    label: str
+    profileId: Optional[str] = None
+    scopeKey: Optional[str] = None
+    lastPlanId: Optional[str] = None
+    messageCount: int
+    lastUsedAt: str
+    createdAt: str
+    source: Optional[str] = None
+
+
+class OrphanSessionsResponse(BaseModel):
+    sessions: List[OrphanSession]
+
+
+@router.get("/orphan-sessions", response_model=OrphanSessionsResponse)
+async def list_orphan_sessions(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+    limit: int = 50,
+):
+    """Sessions the caller could re-open into a tab (plan checkpoint E).
+
+    Returns ``ChatSession`` rows owned by the caller (or system, user_id=0,
+    mirroring the resume picker) that have **no** ``ChatTab`` row pointing
+    at them. Sorted by ``last_used_at`` descending so recently-used sessions
+    surface first. Excludes archived sessions.
+
+    The frontend's resume picker uses this in "orphans only" mode to power
+    a 'Recent Chats' / closed-tab reopen workflow.
+    """
+    if limit < 1:
+        limit = 1
+    if limit > 200:
+        limit = 200
+
+    # Subquery: ChatSession.ids that the caller already has a tab for.
+    occupied = select(ChatTab.session_id).where(ChatTab.user_id == user.id)
+
+    stmt = (
+        select(ChatSession)
+        .where(
+            or_(
+                ChatSession.user_id == user.id,
+                ChatSession.user_id == 0,
+            )
+        )
+        .where(ChatSession.id.not_in(occupied))
+        .where(ChatSession.status != "archived")
+        .order_by(ChatSession.last_used_at.desc())
+        .limit(limit)
+    )
+
+    rows = list((await db.execute(stmt)).scalars().all())
+    sessions = [
+        OrphanSession(
+            id=r.id,
+            engine=r.engine,
+            label=r.label,
+            profileId=r.profile_id,
+            scopeKey=r.scope_key,
+            lastPlanId=r.last_plan_id,
+            messageCount=r.message_count,
+            lastUsedAt=r.last_used_at.isoformat(),
+            createdAt=r.created_at.isoformat(),
+            source=r.source,
+        )
+        for r in rows
+    ]
+    return OrphanSessionsResponse(sessions=sessions)
 
 
 @router.post("/reorder")

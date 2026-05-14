@@ -18,6 +18,7 @@ import { Icon, type IconName } from '@lib/icons';
 import type { AgentEngine } from './assistantChatStore';
 import type { ChatSessionEntry, UnifiedProfile } from './assistantTypes';
 import { AGENT_COMMANDS } from './assistantTypes';
+import { listOrphanSessions } from './chatTabsApi';
 import { EngineProfileIcon, iconForEngine } from './EngineProfileIcon';
 
 // =============================================================================
@@ -177,6 +178,10 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
   const [filter, setFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
   const [profileOnly, setProfileOnly] = useState(false);
+  // "Recent Chats" mode — show only sessions with no open ChatTab. Backed by
+  // GET /chat-tabs/orphan-sessions. Plan `chat-tab-server-persistence`
+  // checkpoint E.
+  const [orphansOnly, setOrphansOnly] = useState(false);
   const [pasteId, setPasteId] = useState('');
   const [pasteBusy, setPasteBusy] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
@@ -198,16 +203,42 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
     let cancelled = false;
     setLoading(true);
     setActionError(null);
-    const params: Record<string, unknown> = { limit, include_empty: false };
-    if (filter) params.engine = filter;
-    if (showArchived) params.status = 'archived';
-    pixsimClient
-      .get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params })
-      .then((r) => { if (!cancelled) setSessions(r.sessions || []); })
-      .catch(() => { if (!cancelled) setSessions([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+
+    if (orphansOnly) {
+      // Recent-chats mode: orphan endpoint already filters by user_id and
+      // excludes archived; engine filter applies client-side below.
+      listOrphanSessions(limit)
+        .then((rows) => {
+          if (cancelled) return;
+          // Map camelCase OrphanSession → snake_case ChatSessionEntry shape so
+          // the existing list renderer doesn't need a separate code path.
+          const mapped: ChatSessionEntry[] = rows.map((r) => ({
+            id: r.id,
+            engine: r.engine,
+            profile_id: r.profileId,
+            scope_key: r.scopeKey,
+            last_plan_id: r.lastPlanId,
+            label: r.label,
+            message_count: r.messageCount,
+            source: r.source,
+            last_used_at: r.lastUsedAt,
+          }));
+          setSessions(mapped);
+        })
+        .catch(() => { if (!cancelled) setSessions([]); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    } else {
+      const params: Record<string, unknown> = { limit, include_empty: false };
+      if (filter) params.engine = filter;
+      if (showArchived) params.status = 'archived';
+      pixsimClient
+        .get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params })
+        .then((r) => { if (!cancelled) setSessions(r.sessions || []); })
+        .catch(() => { if (!cancelled) setSessions([]); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }
     return () => { cancelled = true; };
-  }, [open, limit, filter, showArchived, fetchKey]);
+  }, [open, limit, filter, showArchived, fetchKey, orphansOnly]);
 
   const filtered = useMemo(() => {
     let list = sessions;
@@ -315,7 +346,22 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                 </button>
               )}
               <button
-                onClick={() => setShowArchived(!showArchived)}
+                onClick={() => {
+                  // Mutually-exclusive with archived view (orphan endpoint
+                  // already excludes archived). Enter "Recent Chats" mode.
+                  setOrphansOnly((v) => !v);
+                  if (!orphansOnly) setShowArchived(false);
+                }}
+                className={`px-1.5 py-0.5 text-[9px] rounded ${orphansOnly ? 'bg-blue-500/20 text-blue-500' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                title={orphansOnly ? 'Showing recent chats with no open tab — click for all' : 'Recent chats — sessions without an open tab'}
+              >
+                <Icon name="messageSquare" size={9} />
+              </button>
+              <button
+                onClick={() => {
+                  setShowArchived((v) => !v);
+                  if (!showArchived) setOrphansOnly(false);
+                }}
                 className={`px-1.5 py-0.5 text-[9px] rounded ${showArchived ? 'bg-amber-500/20 text-amber-500' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
                 title={showArchived ? 'Showing archived — click for active' : 'Show archived sessions'}
               >
