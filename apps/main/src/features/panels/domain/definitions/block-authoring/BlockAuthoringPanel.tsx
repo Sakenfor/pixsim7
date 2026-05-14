@@ -17,13 +17,19 @@
  *   Explorer is forwarded into the active method as a hint via
  *   BlockAuthoringMethodContext.
  *
- *   Today Explorer keeps its own internal selection state — there is
- *   no shared selection store yet — so the "selectedBlockId" we pass
- *   to the method is left null. When a selection scope is introduced
- *   (see definePanel capabilities), wire it here.
+ *   Selection is shared via the `CAP_BLOCK_SELECTION` capability
+ *   (registered in features/contextHub). Block Explorer is the
+ *   provider; the active method receives the currently-focused
+ *   block id through BlockAuthoringMethodContext.
  */
 
 import { useMemo, useState } from 'react';
+
+import {
+  CAP_BLOCK_SELECTION,
+  useCapability,
+  type BlockSelection,
+} from '@features/contextHub';
 
 // Registers the cue-pack method as a side effect of import.
 import './methods/cue-pack';
@@ -38,6 +44,12 @@ export function BlockAuthoringPanel() {
   const methods = useMemo(() => listBlockAuthoringMethods(), []);
   const [methodId, setMethodId] = useState<string>(() => methods[0]?.id ?? '');
   const [explorer, setExplorer] = useState<ExplorerVisibility>('hidden');
+
+  // Subscribe to the shared block selection. When the user clicks a
+  // block in the embedded (or any other) Block Explorer instance, the
+  // active method gets the id as a hint via its context prop.
+  const { value: blockSelection } = useCapability<BlockSelection>(CAP_BLOCK_SELECTION);
+  const selectedBlockId = blockSelection?.block?.blockId ?? null;
 
   const activeMethod = methods.find((m) => m.id === methodId) ?? methods[0];
 
@@ -98,9 +110,7 @@ export function BlockAuthoringPanel() {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          {/* Pass an empty context for v1. When a shared block-selection */}
-          {/* scope is introduced, wire it through here. */}
-          <Editor context={{ selectedBlockId: null }} />
+          <Editor context={{ selectedBlockId }} />
         </div>
       </div>
     </div>

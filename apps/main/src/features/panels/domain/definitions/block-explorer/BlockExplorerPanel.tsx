@@ -4,6 +4,12 @@
  * Left sidebar: role/category tree with counts.
  * Right detail: selected block text, tags, metadata.
  * Fetches from GET /block-templates/blocks (DB-backed).
+ *
+ * Capabilities:
+ *   - Provides `CAP_BLOCK_SELECTION` at root scope, so other panels
+ *     (Block Authoring, future shadow-analysis / library inspectors)
+ *     can react to the user's currently-focused block without
+ *     prop drilling.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -17,6 +23,11 @@ import {
   type BlockRoleSummary,
 } from '@lib/api/blockTemplates';
 
+import {
+  CAP_BLOCK_SELECTION,
+  useProvideCapability,
+  type BlockSelection,
+} from '@features/contextHub';
 import {
   SidebarTreeGroup,
   SidebarTreeLeafButton,
@@ -266,6 +277,45 @@ export function BlockExplorerPanel() {
   const [activeTagFilters, setActiveTagFilters] = useState<TagFilter[]>([]);
 
   const { resolveTagValue } = useVocabResolver();
+
+  // ── Provide CAP_BLOCK_SELECTION ──────────────────────────────────────
+  // Surfaces the currently-selected block as a capability so that
+  // sibling panels (Block Authoring, future shadow-analysis viewers)
+  // can react without prop drilling. `isAvailable` gates on whether
+  // anything is selected — consumers get a null value otherwise.
+  const blockSelectionValue = useMemo<BlockSelection>(() => {
+    if (!selectedBlock) return { block: null };
+    return {
+      block: {
+        blockId: selectedBlock.block_id,
+        role: selectedBlock.composition_role,
+        category: selectedBlock.category,
+        packageName: selectedBlock.package_name,
+        text: selectedBlock.text,
+        tags: selectedBlock.tags,
+        capabilities: selectedBlock.capabilities,
+      },
+      clear: () => setSelectedBlock(null),
+    };
+  }, [selectedBlock]);
+  const blockSelectionProvider = useMemo(
+    () => ({
+      id: 'block-explorer',
+      label: 'Block Explorer',
+      description: 'Currently focused block in the Block Explorer.',
+      priority: 50,
+      exposeToContextMenu: true,
+      isAvailable: () => blockSelectionValue.block !== null,
+      getValue: () => blockSelectionValue,
+    }),
+    [blockSelectionValue],
+  );
+  useProvideCapability(
+    CAP_BLOCK_SELECTION,
+    blockSelectionProvider,
+    [blockSelectionValue],
+    { scope: 'root' },
+  );
 
   // Load role tree and packages on mount
   useEffect(() => {

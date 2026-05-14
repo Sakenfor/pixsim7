@@ -37,6 +37,7 @@ export {
   CAP_CHARACTER_SCENE_PREP_PREFILL,
   CAP_UI_STUDIO_TARGET,
   CAP_UI_STUDIO_ACTIONS,
+  CAP_BLOCK_SELECTION,
 } from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -65,6 +66,8 @@ export type {
   UiStudioTabId,
   UiStudioTargetContext,
   UiStudioActionsContext,
+  BlockSummary,
+  BlockSelection,
 } from "./domain/capabilities";
 export type {
   SceneViewOffer as SceneViewCapabilityOffer,

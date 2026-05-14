@@ -19,4 +19,5 @@ export default definePanel({
   supportsCompactMode: false,
   supportsMultipleInstances: false,
   siblings: ['block-explorer', 'block-matrix'],
+  consumesCapabilities: ['blockSelection'],
 });

@@ -30,6 +30,7 @@ import {
   CAP_CHARACTER_SCENE_PREP_PREFILL,
   CAP_UI_STUDIO_TARGET,
   CAP_UI_STUDIO_ACTIONS,
+  CAP_BLOCK_SELECTION,
 } from "./capabilityKeys";
 import { assetInputContract } from "./contracts/assetInput";
 import { sceneViewContract } from "./contracts/sceneView";
@@ -55,6 +56,7 @@ export {
   CAP_CHARACTER_SCENE_PREP_PREFILL,
   CAP_UI_STUDIO_TARGET,
   CAP_UI_STUDIO_ACTIONS,
+  CAP_BLOCK_SELECTION,
 };
 
 registerCapabilityDescriptor({
@@ -197,6 +199,16 @@ registerCapabilityDescriptor({
   label: "UI Studio Actions",
   description: "Actions for changing UI Studio tab focus.",
   kind: "action",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_BLOCK_SELECTION,
+  label: "Block Selection",
+  description:
+    "Currently focused prompt block from a block-explorer-style panel. " +
+    "Consumed by authoring + inspection panels that want to coordinate on " +
+    "the user's current block of interest.",
+  kind: "context",
   source: "contextHub",
 });
 
@@ -459,4 +471,45 @@ export interface UiStudioTargetContext {
 
 export interface UiStudioActionsContext {
   setTab: (tab: UiStudioTabId) => void;
+}
+
+/**
+ * Minimal description of a prompt block surfaced to capability consumers.
+ * Intentionally narrower than `PromptBlockResponse` from the API client so
+ * consumers don't take a transitive dep on the block-templates client.
+ *
+ * Providers are encouraged to populate as many fields as they have on hand;
+ * `blockId` is the only required field.
+ */
+export interface BlockSummary {
+  /** Fully-qualified block id (e.g. "core.camera.angle.eye_level"). */
+  blockId: string;
+  /** Composition role (subject, camera, lighting, etc.). */
+  role?: string | null;
+  /** Sub-category within a role. */
+  category?: string | null;
+  /** Source pack name (package_name). */
+  packageName?: string | null;
+  /** Rendered text of the block, if known. */
+  text?: string | null;
+  /** Free-form tags attached to the block, if known. */
+  tags?: Record<string, unknown>;
+  /** Capabilities advertised by the block's schema. */
+  capabilities?: string[];
+}
+
+/**
+ * Capability shape for `CAP_BLOCK_SELECTION`. Modeled on `AssetSelection`:
+ * a single "currently focused" item plus an optional clear action.
+ *
+ * Providers (e.g. Block Explorer) call `useProvideCapability` and gate on
+ * `isAvailable: () => block !== null`. Consumers (Block Authoring, future
+ * shadow-analysis / prompt-library panels) read via
+ * `useCapability<BlockSelection>(CAP_BLOCK_SELECTION)` and get `{ block: null }`
+ * when nothing is selected.
+ */
+export interface BlockSelection {
+  block: BlockSummary | null;
+  /** Optional: clear the selection back to null. */
+  clear?: () => void;
 }
