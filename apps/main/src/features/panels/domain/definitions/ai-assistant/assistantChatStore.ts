@@ -15,6 +15,23 @@ import { pixsimClient, API_BASE_URL } from '@lib/api/client';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { hmrSingleton } from '@lib/utils/hmrSafe';
 
+import { updateChatTab as apiUpdateChatTab } from './chatTabsApi';
+import {
+  getChatTabsSnapshot,
+  subscribeChatTabs,
+  type ChatTabsError,
+  type ChatTabsSnapshot,
+  type ServerChatTab,
+} from './chatTabsPoll';
+import {
+  createTabOptimistic,
+  deleteTabOptimistic,
+  mintTabId,
+  reorderTabsOptimistic,
+  updateTabOptimistic,
+  type ReorderOrder,
+} from './useChatTabsQuery';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -72,6 +89,23 @@ interface ChatTab {
   injectToken: boolean;
   planId: string | null;
   createdAt: string;
+  /**
+   * Server-side draft (composer text). Mirrors `ServerChatTab.draft`. The
+   * TabChatView falls back to this on mount when local LS is empty —
+   * cross-device draft restore. During an active editing session, the
+   * authoritative copy lives in the textarea's local state, written through
+   * to LS + debounced PATCH via `setDraft`. See plan
+   * `chat-tab-server-persistence` checkpoint C.
+   */
+  draft: string | null;
+  /**
+   * Set to `'create-failed'` when the optimistic server insert was rejected
+   * and the row was preserved instead of rolled back. The sidebar `SessionItem`
+   * renders an inline retry/dismiss affordance; the chat view should gate
+   * server-side ops on this until retry succeeds. See plan
+   * `chat-tab-server-persistence` checkpoint F.
+   */
+  pending?: 'create-failed';
 }
 
 // =============================================================================
@@ -115,8 +149,17 @@ function normalizeProfileId(raw: string | null | undefined): string | null {
   return value;
 }
 
+/**
+ * Mint a tab id that the server will also accept (UUID v4).
+ *
+ * Previously this returned `tab-<timestamp>-<rand>` so reads/writes lived
+ * purely in localStorage. Server-side persistence (plan
+ * `chat-tab-server-persistence` checkpoint B) requires a real UUID — the
+ * client mints it up front so addTab can stay synchronous (the server is
+ * told the id via `POST /chat-tabs` body).
+ */
 function createTabId(): string {
-  return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return mintTabId();
 }
 
 function msgKey(tabId: string): string {
@@ -135,36 +178,141 @@ function draftKey(tabId: string): string {
 // Persistence helpers (localStorage)
 // =============================================================================
 
-function loadTabs(): ChatTab[] {
+// ---------------------------------------------------------------------------
+// Tab prefs (client-only fields not on the server schema)
+// ---------------------------------------------------------------------------
+//
+// The server's ChatTab carries the core identity: id, label, sessionId, planId,
+// scopeKey, pinned, draft, orderIndex, createdAt. The seven fields below are
+// client-only chat-send-time prefs that don't yet have server columns. They're
+// persisted to localStorage keyed by tab.id so they survive reload.
+//
+// When the server schema gains these columns in a follow-up checkpoint, the
+// prefs path can be deleted in favour of unified PATCHes.
+
+interface TabPrefs {
+  profileId: string | null;
+  engine: AgentEngine;
+  modelOverride: string | null;
+  usePersona: boolean;
+  customInstructions: string;
+  focusAreas: string[];
+  injectToken: boolean;
+}
+
+const DEFAULT_PREFS: TabPrefs = {
+  profileId: null,
+  engine: 'claude',
+  modelOverride: null,
+  usePersona: true,
+  customInstructions: '',
+  focusAreas: [],
+  injectToken: false,
+};
+
+const TAB_PREFS_KEY = 'ai-assistant:tab-prefs';
+
+function loadTabPrefs(): Record<string, TabPrefs> {
   try {
-    const raw = localStorage.getItem(TABS_KEY);
-    if (raw) {
-      return (JSON.parse(raw) as Array<Partial<ChatTab>>).map((t) => {
-        const normalizedProfileId = normalizeProfileId(t.profileId ?? null);
-        return {
-          label: 'Chat',
-          sessionId: null,
-          usePersona: true,
-          engine: 'claude' as AgentEngine,
-          modelOverride: null,
-          customInstructions: '',
-          focusAreas: [] as string[],
-          planId: null,
-          createdAt: new Date().toISOString(),
-          ...t,
-          profileId: normalizedProfileId,
-          // Legacy tabs without injectToken inherit profile-bound default.
-          injectToken:
-            typeof t.injectToken === 'boolean'
-              ? t.injectToken
-              : Boolean(normalizedProfileId),
-        } as ChatTab;
-      });
+    const raw = localStorage.getItem(TAB_PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, Partial<TabPrefs>>;
+    const out: Record<string, TabPrefs> = {};
+    for (const [id, partial] of Object.entries(parsed)) {
+      const normalizedProfileId = normalizeProfileId(partial.profileId ?? null);
+      out[id] = {
+        ...DEFAULT_PREFS,
+        ...partial,
+        profileId: normalizedProfileId,
+        injectToken:
+          typeof partial.injectToken === 'boolean'
+            ? partial.injectToken
+            : Boolean(normalizedProfileId),
+      };
     }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function persistTabPrefs(prefs: Record<string, TabPrefs>) {
+  try {
+    localStorage.setItem(TAB_PREFS_KEY, JSON.stringify(prefs));
   } catch {
     /* ignore */
   }
-  return [];
+}
+
+function extractPrefs(tab: Partial<ChatTab>): TabPrefs {
+  return {
+    profileId: normalizeProfileId(tab.profileId ?? null),
+    engine: (tab.engine ?? DEFAULT_PREFS.engine) as AgentEngine,
+    modelOverride: tab.modelOverride ?? null,
+    usePersona: tab.usePersona ?? DEFAULT_PREFS.usePersona,
+    customInstructions: tab.customInstructions ?? DEFAULT_PREFS.customInstructions,
+    focusAreas: tab.focusAreas ?? DEFAULT_PREFS.focusAreas,
+    injectToken: tab.injectToken ?? DEFAULT_PREFS.injectToken,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Greenfield migration — clear legacy tab-list localStorage on first run
+// ---------------------------------------------------------------------------
+//
+// Plan `chat-tab-server-persistence` runs greenfield (no existing users).
+// Per the `no-existing-users` memory note, no data shim is required — we just
+// drop the legacy `ai-assistant:tabs` key so old (non-UUID) tab ids don't
+// re-hydrate after this code lands. The keying-by-tab caches
+// (msg:/draft:/thinking:) live under different keys and are dropped lazily
+// when their tab is closed.
+
+const STORE_VERSION = '2026-05-14-server-tabs';
+const VERSION_KEY = 'ai-assistant:tab-store-version';
+
+function runGreenfieldMigrationIfNeeded(): void {
+  try {
+    if (localStorage.getItem(VERSION_KEY) === STORE_VERSION) return;
+    localStorage.removeItem(TABS_KEY);
+    localStorage.removeItem(ACTIVE_TAB_KEY);
+    localStorage.setItem(VERSION_KEY, STORE_VERSION);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Derive a full UI-level ChatTab from a server row + tab prefs map.
+ * Single source of truth for the merge so the subscription callback and
+ * mutation paths stay aligned.
+ */
+function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab {
+  const p = prefs ?? DEFAULT_PREFS;
+  const derived: ChatTab = {
+    id: server.id,
+    label: server.label,
+    sessionId: server.sessionId || null,
+    profileId: p.profileId,
+    engine: p.engine,
+    modelOverride: p.modelOverride,
+    usePersona: p.usePersona,
+    customInstructions: p.customInstructions,
+    focusAreas: p.focusAreas,
+    injectToken: p.injectToken,
+    planId: server.planId,
+    createdAt: server.createdAt,
+    draft: server.draft,
+  };
+  if (server.pending) derived.pending = server.pending;
+  return derived;
+}
+
+/** Convenience: full derivation from a poll snapshot + prefs map. */
+function deriveTabsFromSnapshot(
+  snap: ChatTabsSnapshot,
+  prefs: Record<string, TabPrefs>,
+): ChatTab[] {
+  return snap.tabs.map((srv) => deriveTab(srv, prefs[srv.id]));
 }
 
 /**
@@ -355,13 +503,9 @@ function evaluateTranscriptRecovery(
   };
 }
 
-function persistTabs(tabs: ChatTab[]) {
-  try {
-    localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20)));
-  } catch {
-    /* ignore */
-  }
-}
+// `persistTabs` removed — the server is now the source of truth for the
+// tab list (plan `chat-tab-server-persistence` checkpoint B). Client-only
+// per-tab prefs are persisted via `persistTabPrefs` above.
 
 function getActiveTabId(): string | null {
   try {
@@ -451,6 +595,110 @@ function persistTabDraft(tabId: string, text: string) {
   } catch {
     /* ignore */
   }
+}
+
+// =============================================================================
+// Draft autosave to server (debounced PATCH)
+// =============================================================================
+//
+// Plan `chat-tab-server-persistence` checkpoint C. Mirrors the message-sync
+// pattern below but targets `/chat-tabs/{id}` with `{draft}` and runs on a
+// tighter 500ms idle window so cross-device draft restore is timely.
+//
+// Failures are intentionally swallowed (no banner) — drafts auto-save on every
+// pause, so a transient 500 would otherwise spam the user. The dirty indicator
+// stays lit until a save succeeds, which is the right signal.
+
+const DRAFT_DEBOUNCE_MS = 500;
+
+const _draftSyncTimers = hmrSingleton(
+  'assistantChat:draftSyncTimers',
+  () => new Map<string, ReturnType<typeof setTimeout>>(),
+);
+
+/**
+ * Most recent text passed to apiUpdateChatTab per tab. Used to gate
+ * dirty-clear: we only mark the tab "saved" when the value the server
+ * confirmed matches what the user has locally — otherwise a fast typer
+ * would see flickers of "saved" mid-keystroke.
+ */
+const _draftInFlight = hmrSingleton(
+  'assistantChat:draftInFlight',
+  () => new Map<string, string>(),
+);
+
+function performDraftPatch(
+  tabId: string,
+  text: string,
+  store: { getState: () => AssistantChatState; setState: (patch: Partial<AssistantChatState>) => void },
+): Promise<void> {
+  _draftInFlight.set(tabId, text);
+  return apiUpdateChatTab(tabId, { draft: text || null })
+    .then(() => {
+      // Race-safe dirty-clear: only mark "saved" if the current local text
+      // still matches what we just sent. If the user typed mid-flight, leave
+      // dirty=true so the next debounce cycle is the one that clears it.
+      const current = store.getState().draftsByTab[tabId] ?? '';
+      if (current === text) {
+        store.setState({
+          draftDirtyByTab: omitKey(store.getState().draftDirtyByTab, tabId),
+        });
+      }
+    })
+    .catch(() => {
+      // Silent — the dirty dot is the user-facing signal. A retry happens
+      // automatically on the next keystroke (which re-arms the debounce).
+    })
+    .finally(() => {
+      if (_draftInFlight.get(tabId) === text) {
+        _draftInFlight.delete(tabId);
+      }
+    });
+}
+
+function omitKey<V>(rec: Record<string, V>, key: string): Record<string, V> {
+  if (!(key in rec)) return rec;
+  const { [key]: _gone, ...rest } = rec; void _gone;
+  return rest;
+}
+
+function scheduleDraftSync(
+  tabId: string,
+  text: string,
+  store: { getState: () => AssistantChatState; setState: (patch: Partial<AssistantChatState>) => void },
+  tabHasServerRow: boolean,
+): void {
+  // Skip PATCH for create-failed rows — the server doesn't know this tab id
+  // yet, so PATCH would 404. The text is still saved to LS and to memory;
+  // once retryFailedCreate succeeds, the next setDraft will sync.
+  if (!tabHasServerRow) return;
+
+  const existing = _draftSyncTimers.get(tabId);
+  if (existing) clearTimeout(existing);
+  _draftSyncTimers.set(
+    tabId,
+    setTimeout(() => {
+      _draftSyncTimers.delete(tabId);
+      void performDraftPatch(tabId, text, store);
+    }, DRAFT_DEBOUNCE_MS),
+  );
+}
+
+function flushDraftSyncNow(
+  tabId: string,
+  store: { getState: () => AssistantChatState; setState: (patch: Partial<AssistantChatState>) => void },
+  tabHasServerRow: boolean,
+): void {
+  const existing = _draftSyncTimers.get(tabId);
+  if (existing) {
+    clearTimeout(existing);
+    _draftSyncTimers.delete(tabId);
+  }
+  if (!tabHasServerRow) return;
+  const text = store.getState().draftsByTab[tabId] ?? loadTabDraft(tabId);
+  // Skip the fetch if nothing's dirty — saves a roundtrip on blur after no edit.
+  if (!store.getState().draftDirtyByTab[tabId]) return;
+  void performDraftPatch(tabId, text, store);
 }
 
 // =============================================================================
@@ -615,10 +863,36 @@ interface ThinkingEntry {
 
 interface AssistantChatState {
   // State
+  /**
+   * Tabs derived from the chatTabsPoll snapshot + tabPrefsByTabId map.
+   * Refreshed on every snapshot update; mutations route through the
+   * foundation's optimistic helpers (see plan
+   * `chat-tab-server-persistence` checkpoint B).
+   */
   tabs: ChatTab[];
+  /** True until the first poll tick settles. Drives the panel's loading skeleton. */
+  tabsLoading: boolean;
+  /**
+   * Most recent list/mutation failure from the chatTabsPoll snapshot. Drives
+   * the error banner in `AIAssistantPanel` and gates the empty-tabs auto-create
+   * effect so a 500 from the server doesn't busy-loop. Cleared automatically
+   * when the next compatible mutation/list succeeds. See plan
+   * `chat-tab-server-persistence` checkpoint F.
+   */
+  tabsError: ChatTabsError | null;
+  /** Client-only per-tab prefs (fields not on the server schema). */
+  tabPrefsByTabId: Record<string, TabPrefs>;
   activeTabId: string | null;
   messagesByTab: Record<string, ChatMessage[]>;
   draftsByTab: Record<string, string>;
+  /**
+   * Per-tab "draft has unsaved-to-server changes" marker. Set in `setDraft`,
+   * cleared when the debounced PATCH succeeds AND the saved payload still
+   * matches the current local text. Drives the tiny dot in the composer that
+   * tells the user their draft is autosaving. See plan
+   * `chat-tab-server-persistence` checkpoint C.
+   */
+  draftDirtyByTab: Record<string, true>;
   /** Live thinking entries per tab — persisted so they survive full reload */
   thinkingByTab: Record<string, ThinkingEntry[]>;
   /** Tabs that received an assistant message while not active — in-memory only.
@@ -630,6 +904,7 @@ interface AssistantChatState {
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string | null) => void;
   updateTab: (tabId: string, updates: Partial<ChatTab>) => void;
+  reorderTabs: (order: ReorderOrder[]) => void;
 
   // Message actions
   getMessages: (tabId: string) => ChatMessage[];
@@ -645,6 +920,12 @@ interface AssistantChatState {
   // Draft actions
   getDraft: (tabId: string) => string;
   setDraft: (tabId: string, text: string) => void;
+  /**
+   * Force the pending debounced server PATCH to fire now. Called from the
+   * composer's onBlur and from `sendMessage` so the server gets the final
+   * keystroke even if the user blurs/sends before the 500ms timer elapses.
+   */
+  flushDraftSync: (tabId: string) => void;
 
   // Server sync
   syncToServer: (sessionId: string, messages: ChatMessage[]) => void;
@@ -657,36 +938,71 @@ interface AssistantChatState {
 
 export const useAssistantChatStore = hmrSingleton(
   'assistantChat:store',
-  () =>
-    create<AssistantChatState>()((set, get) => ({
-      // ----- Initial state (hydrated from localStorage) -----
-      tabs: loadTabs(),
+  () => {
+    // One-shot greenfield clear of legacy localStorage tab data before
+    // anything else reads from it.
+    runGreenfieldMigrationIfNeeded();
+
+    const initialPrefs = loadTabPrefs();
+    const store = create<AssistantChatState>()((set, get) => ({
+      // ----- Initial state -----
+      // tabs starts empty + tabsLoading=true; the poll subscription below
+      // hydrates these as soon as the first /chat-tabs response lands.
+      tabs: [],
+      tabsLoading: true,
+      tabsError: null,
+      tabPrefsByTabId: initialPrefs,
       activeTabId: getActiveTabId(),
       messagesByTab: {},
       draftsByTab: {},
+      draftDirtyByTab: {},
       thinkingByTab: {},
       unreadByTab: {},
 
       // ----- Tab actions -----
 
       addTab: (tab) => {
-        const next = [...get().tabs, tab].slice(0, 20);
-        persistTabs(next);
+        // Split the incoming ChatTab into server-core fields and client-only
+        // prefs. Prefs save synchronously to localStorage; the optimistic
+        // server insert happens via createTabOptimistic (the poll snapshot
+        // picks up the new row, the subscription below re-derives state.tabs).
+        const prefs = extractPrefs(tab);
+        const nextPrefs = { ...get().tabPrefsByTabId, [tab.id]: prefs };
+        persistTabPrefs(nextPrefs);
+        // Fire optimistic insert FIRST so the poll snapshot carries the new
+        // server-core row; then the derive picks it up + new prefs in one
+        // setState. Order matters: if we set state first, the derive sees
+        // no server row for this id and the new tab "disappears" between
+        // ticks.
+        // For resumed tabs (buildResumedTab) we forward the existing
+        // sessionId so the optimistic ServerChatTab + the eventual server
+        // row both bind to it. New tabs pass session_id=undefined → server
+        // auto-creates a fresh ChatSession. (The bridge later mints its own
+        // session id for actual messages — a known divergence to be
+        // reconciled in a follow-up checkpoint.)
+        void createTabOptimistic({
+          id: tab.id,
+          label: tab.label,
+          plan_id: tab.planId,
+          session_id: tab.sessionId ?? undefined,
+        }).catch((err) => {
+          console.warn('[assistantChatStore] addTab server-side failed:', err);
+        });
         set((s) => ({
-          tabs: next,
+          tabPrefsByTabId: nextPrefs,
+          tabs: deriveTabsFromSnapshot(getChatTabsSnapshot(), nextPrefs),
           messagesByTab: { ...s.messagesByTab, [tab.id]: [] },
         }));
       },
 
       closeTab: (tabId) => {
-        // Flush messages to server before closing (don't wait for debounce)
+        // Flush messages to the session-messages endpoint before tearing
+        // anything down (don't wait for the debounce timer).
         const closingTab = get().tabs.find((t) => t.id === tabId);
         if (closingTab?.sessionId) {
           const msgs = get().getMessages(tabId);
           if (msgs.length > 0) {
-            // Persist to session-keyed localStorage immediately
             persistSessionMessages(closingTab.sessionId, msgs);
-            // Cancel debounced timer and fire sync now
             const timer = _syncTimers.get(closingTab.sessionId);
             if (timer) clearTimeout(timer);
             _syncTimers.delete(closingTab.sessionId);
@@ -698,9 +1014,9 @@ export const useAssistantChatStore = hmrSingleton(
               .catch(() => {});
           }
         }
-        const nextTabs = get().tabs.filter((t) => t.id !== tabId);
-        persistTabs(nextTabs);
-        // Clean up localStorage
+        // Clean up message/draft/thinking localStorage caches. The session
+        // row on the server is preserved (DELETE only removes the ChatTab,
+        // per Option-B in the plan).
         try { localStorage.removeItem(msgKey(tabId)); } catch { /* ignore */ }
         try { localStorage.removeItem(draftKey(tabId)); } catch { /* ignore */ }
         try { localStorage.removeItem(thinkingKey(tabId)); } catch { /* ignore */ }
@@ -708,10 +1024,27 @@ export const useAssistantChatStore = hmrSingleton(
         const { [tabId]: _draft, ...restDrafts } = get().draftsByTab; void _draft;
         const { [tabId]: _think, ...restThink } = get().thinkingByTab; void _think;
         const { [tabId]: _unread, ...restUnread } = get().unreadByTab; void _unread;
+        const { [tabId]: _prefs, ...restPrefs } = get().tabPrefsByTabId; void _prefs;
+        const { [tabId]: _dirty, ...restDirty } = get().draftDirtyByTab; void _dirty;
+        // Cancel any pending draft autosave — the row is going away.
+        const draftTimer = _draftSyncTimers.get(tabId);
+        if (draftTimer) {
+          clearTimeout(draftTimer);
+          _draftSyncTimers.delete(tabId);
+        }
+        _draftInFlight.delete(tabId);
+        persistTabPrefs(restPrefs);
+        // Optimistic delete on the poll snapshot fires first so the derive
+        // below sees the row gone in the snapshot.
+        void deleteTabOptimistic(tabId).catch((err) => {
+          console.warn('[assistantChatStore] closeTab server-side failed:', err);
+        });
         set({
-          tabs: nextTabs,
+          tabPrefsByTabId: restPrefs,
+          tabs: deriveTabsFromSnapshot(getChatTabsSnapshot(), restPrefs),
           messagesByTab: restMsgs,
           draftsByTab: restDrafts,
+          draftDirtyByTab: restDirty,
           thinkingByTab: restThink,
           unreadByTab: restUnread,
         });
@@ -729,11 +1062,69 @@ export const useAssistantChatStore = hmrSingleton(
       },
 
       updateTab: (tabId, updates) => {
-        const nextTabs = get().tabs.map((t) =>
-          t.id === tabId ? { ...t, ...updates } : t,
-        );
-        persistTabs(nextTabs);
-        set({ tabs: nextTabs });
+        // Split the patch into core fields (server PATCH) and client-only
+        // prefs (localStorage map). sessionId stays client-only for now —
+        // server's session_id is set-once at create time; the bridge's
+        // session id is what the rest of the chat flow actually uses.
+        const corePatch: Parameters<typeof updateTabOptimistic>[1] = {};
+        if (updates.label !== undefined) corePatch.label = updates.label;
+        if (updates.planId !== undefined) corePatch.plan_id = updates.planId;
+
+        const currentPrefs = get().tabPrefsByTabId[tabId] ?? DEFAULT_PREFS;
+        const prefPatch: Partial<TabPrefs> = {};
+        if (updates.profileId !== undefined) {
+          prefPatch.profileId = normalizeProfileId(updates.profileId);
+        }
+        if (updates.engine !== undefined) prefPatch.engine = updates.engine;
+        if (updates.modelOverride !== undefined) prefPatch.modelOverride = updates.modelOverride;
+        if (updates.usePersona !== undefined) prefPatch.usePersona = updates.usePersona;
+        if (updates.customInstructions !== undefined) {
+          prefPatch.customInstructions = updates.customInstructions;
+        }
+        if (updates.focusAreas !== undefined) prefPatch.focusAreas = updates.focusAreas;
+        if (updates.injectToken !== undefined) prefPatch.injectToken = updates.injectToken;
+
+        // Fire the optimistic core PATCH first so the poll snapshot reflects
+        // server-core changes before we re-derive below.
+        if (Object.keys(corePatch).length > 0) {
+          void updateTabOptimistic(tabId, corePatch).catch((err) => {
+            console.warn('[assistantChatStore] updateTab server-side failed:', err);
+          });
+        }
+
+        if (Object.keys(prefPatch).length > 0) {
+          const nextEntry = { ...currentPrefs, ...prefPatch };
+          const nextPrefs = { ...get().tabPrefsByTabId, [tabId]: nextEntry };
+          persistTabPrefs(nextPrefs);
+          set({
+            tabPrefsByTabId: nextPrefs,
+            tabs: deriveTabsFromSnapshot(getChatTabsSnapshot(), nextPrefs),
+          });
+        } else if (Object.keys(corePatch).length > 0) {
+          // Core-only patch — pick up the optimistic snapshot edit via derive.
+          set({
+            tabs: deriveTabsFromSnapshot(getChatTabsSnapshot(), get().tabPrefsByTabId),
+          });
+        }
+
+        // sessionId is the only mutable client-mirror field that doesn't go
+        // to the server yet. Apply it directly to the derived tabs array so
+        // the bridge can read it back. The next poll tick won't overwrite it
+        // because the server's session_id is also populated (set at create).
+        if (updates.sessionId !== undefined) {
+          const next = get().tabs.map((t) =>
+            t.id === tabId ? { ...t, sessionId: updates.sessionId ?? null } : t,
+          );
+          set({ tabs: next });
+        }
+      },
+
+      reorderTabs: (order) => {
+        // Fire-and-forget. Optimistic snapshot apply + server POST; on
+        // failure the poll snapshot rolls back and re-derives.
+        void reorderTabsOptimistic(order).catch((err) => {
+          console.warn('[assistantChatStore] reorderTabs server-side failed:', err);
+        });
       },
 
       // ----- Message actions -----
@@ -825,7 +1216,19 @@ export const useAssistantChatStore = hmrSingleton(
         persistTabDraft(tabId, text);
         set((s) => ({
           draftsByTab: { ...s.draftsByTab, [tabId]: text },
+          draftDirtyByTab: { ...s.draftDirtyByTab, [tabId]: true },
         }));
+        // Server autosave — debounced, silent on failure. Skipped for
+        // create-failed rows (server doesn't know the id yet).
+        const tab = get().tabs.find((t) => t.id === tabId);
+        const hasServerRow = !!tab && tab.pending !== 'create-failed';
+        scheduleDraftSync(tabId, text, store, hasServerRow);
+      },
+
+      flushDraftSync: (tabId) => {
+        const tab = get().tabs.find((t) => t.id === tabId);
+        const hasServerRow = !!tab && tab.pending !== 'create-failed';
+        flushDraftSyncNow(tabId, store, hasServerRow);
       },
 
       // ----- Server sync -----
@@ -837,7 +1240,34 @@ export const useAssistantChatStore = hmrSingleton(
       flushPendingSyncs: () => {
         flushPendingSyncs();
       },
-    })),
+    }));
+
+    // -----------------------------------------------------------------------
+    // Reactive hydration from chatTabsPoll
+    // -----------------------------------------------------------------------
+    //
+    // Whenever the poll publishes a new snapshot (initial fetch, optimistic
+    // mutation, or periodic refresh), re-derive `state.tabs` from
+    // server-core + client-only prefs and flip `tabsLoading` to match the
+    // hydration flag. Single subscription per module load (hmrSingleton
+    // guarantees this initializer runs at most once across HMR).
+    const applySnapshot = (snap: ChatTabsSnapshot) => {
+      const prefs = store.getState().tabPrefsByTabId;
+      const next = snap.tabs.map((srv) => deriveTab(srv, prefs[srv.id]));
+      store.setState({
+        tabs: next,
+        tabsLoading: !snap.hydrated,
+        tabsError: snap.lastError,
+      });
+    };
+    // Hand over the current snapshot synchronously so any selector reading
+    // `tabs` between store creation and the first poll tick sees consistent
+    // (empty + loading) state, then keeps in lockstep with the poll.
+    applySnapshot(getChatTabsSnapshot());
+    subscribeChatTabs(applySnapshot);
+
+    return store;
+  },
 );
 
 // =============================================================================
@@ -948,6 +1378,7 @@ export function buildResumedTab(session: {
     injectToken: Boolean(profileId),
     planId: session.last_plan_id ?? null,
     createdAt: new Date().toISOString(),
+    draft: null,
   };
 }
 
@@ -965,4 +1396,8 @@ export {
   evaluateTranscriptRecovery,
   isLastAssistantMessageEqual,
 };
+
+// Re-export for tests so resetStore helpers can wipe the cross-test
+// chatTabsPoll snapshot alongside the store's own state.
+export { __resetChatTabsPollForTest } from './chatTabsPoll';
 export type { ChatTab, ChatMessage, ChatMessageConfirmation, AgentEngine, AgentCommand, AssistantChatState, ThinkingEntry };

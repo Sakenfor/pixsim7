@@ -17,11 +17,42 @@ export const TEST_SUITE = {
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// Mock the API client BEFORE importing SUT so the store's fire-and-forget
+// server calls don't hit a real backend. The poll snapshot is reset in
+// resetStore() to isolate tests from each other.
+const { get, post, patch, del } = vi.hoisted(() => ({
+  get: vi.fn(() => Promise.resolve({ tabs: [] })),
+  post: vi.fn((url: string, body: { id?: string; label?: string; session_id?: string }) =>
+    Promise.resolve({
+      id: body?.id ?? 'srv-id',
+      sessionId: body?.session_id ?? 'srv-session',
+      label: body?.label ?? 'Untitled',
+      draft: null,
+      orderIndex: 0,
+      planId: null,
+      scopeKey: null,
+      pinned: false,
+      createdAt: '2026-05-14T00:00:00Z',
+      updatedAt: '2026-05-14T00:00:00Z',
+    }),
+  ),
+  patch: vi.fn(() => Promise.resolve({})),
+  del: vi.fn(() => Promise.resolve({ ok: true })),
+}));
+vi.mock('@lib/api/client', () => ({
+  pixsimClient: { get, post, patch, delete: del },
+  API_BASE_URL: 'http://test/api/v1',
+}));
+vi.mock('@lib/api/correlationHeaders', () => ({
+  withCorrelationHeaders: (h: Record<string, string>) => h,
+}));
+
 import {
   useAssistantChatStore,
   buildResumedTab,
   fetchServerMessages,
   normalizeProfileId,
+  __resetChatTabsPollForTest,
   type ChatTab,
   type ChatMessage,
 } from '../assistantChatStore';
@@ -52,8 +83,11 @@ function makeMsg(role: ChatMessage['role'], text: string): ChatMessage {
 
 function resetStore() {
   localStorage.clear();
+  __resetChatTabsPollForTest();
   useAssistantChatStore.setState({
     tabs: [],
+    tabsLoading: false,
+    tabPrefsByTabId: {},
     activeTabId: null,
     messagesByTab: {},
     draftsByTab: {},
@@ -85,7 +119,8 @@ describe('Session Resume', () => {
       expect(tab.engine).toBe('claude');
       expect(tab.label).toBe('My Session');
       expect(tab.profileId).toBe('profile-1');
-      expect(tab.id).toMatch(/^tab-/);
+      // tab.id is a server-compatible UUID (plan `chat-tab-server-persistence`)
+      expect(tab.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(tab.id).not.toBe('sess-abc'); // tab.id is separate from sessionId
     });
 

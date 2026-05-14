@@ -26,6 +26,14 @@ export interface SessionItemProps {
   onSetRenameValue: (value: string) => void;
   onClose: (id: string) => void;
   onUnlinkPlan?: (id: string) => void;
+  /**
+   * Retry handler for `tab.pending === 'create-failed'` rows — re-fires the
+   * server POST that originally rolled back. See plan
+   * `chat-tab-server-persistence` checkpoint F.
+   */
+  onRetryCreate?: (id: string) => void;
+  /** Dismiss handler — yanks a failed-create row out of the snapshot. */
+  onDismissFailedCreate?: (id: string) => void;
 }
 
 export function SessionItem({
@@ -44,6 +52,8 @@ export function SessionItem({
   onSetRenameValue,
   onClose,
   onUnlinkPlan,
+  onRetryCreate,
+  onDismissFailedCreate,
 }: SessionItemProps) {
   const tabProfile = profiles.find((p) => p.id === tab.profileId);
   const tabIcon = resolveProfileIcon(
@@ -51,6 +61,7 @@ export function SessionItem({
     tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'),
   );
   const isRenaming = renamingTabId === tab.id;
+  const isFailedCreate = tab.pending === 'create-failed';
 
   return (
     <div
@@ -67,7 +78,12 @@ export function SessionItem({
     >
       <div className="relative shrink-0">
         <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
-        {isSending ? (
+        {isFailedCreate ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-1 ring-white dark:ring-neutral-950"
+            title="Couldn't save this tab to the server — retry or dismiss"
+          />
+        ) : isSending ? (
           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         ) : hasUnread ? (
           <span
@@ -103,33 +119,59 @@ export function SessionItem({
           <div className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate">{tabProfile.label}</div>
         )}
       </div>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          onClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
-          className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-          title="Rename"
-        >
-          <Icon name="edit" size={10} />
-        </button>
-        {tab.planId && onUnlinkPlan && (
+      {isFailedCreate ? (
+        // Failed-create rows replace the hover cluster with always-visible
+        // retry + dismiss so the user can recover without having to hover
+        // and discover it.
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onRetryCreate && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRetryCreate(tab.id); }}
+              className="text-amber-500 hover:text-amber-600 dark:hover:text-amber-400"
+              title="Retry server save"
+            >
+              <Icon name="refresh" size={10} />
+            </button>
+          )}
+          {onDismissFailedCreate && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDismissFailedCreate(tab.id); }}
+              className="text-neutral-400 hover:text-red-500"
+              title="Dismiss — drop this tab locally"
+            >
+              <Icon name="x" size={10} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); onUnlinkPlan(tab.id); }}
-            className="text-neutral-400 hover:text-green-600 dark:hover:text-green-400"
-            title="Unlink from plan"
-          >
-            <Icon name="link" size={10} />
-          </button>
-        )}
-        {tabCount > 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
+            onClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
             className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-            title="Close"
+            title="Rename"
           >
-            <Icon name="x" size={10} />
+            <Icon name="edit" size={10} />
           </button>
-        )}
-      </div>
+          {tab.planId && onUnlinkPlan && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUnlinkPlan(tab.id); }}
+              className="text-neutral-400 hover:text-green-600 dark:hover:text-green-400"
+              title="Unlink from plan"
+            >
+              <Icon name="link" size={10} />
+            </button>
+          )}
+          {tabCount > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
+              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+              title="Close"
+            >
+              <Icon name="x" size={10} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

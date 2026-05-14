@@ -952,6 +952,77 @@ def _builtin_notifications() -> MetaContract:
     )
 
 
+def _builtin_chat_tabs() -> MetaContract:
+    return MetaContract(
+        id="chat_tabs",
+        name="Chat Tabs",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="platform",
+        summary=(
+            "Server-persisted AI Assistant chat tabs. Each tab is a UI surface "
+            "pointing at a ChatSession; closing a tab keeps the session "
+            "(re-openable from the closed-tab picker). Stable tab id is the "
+            "ref_id for chat-tab unread notifications (notification-system Phase 4a)."
+        ),
+        provides=[
+            "chat_tab_list",
+            "chat_tab_crud",
+            "chat_tab_reorder",
+        ],
+        relates_to=["user.assistant", "notifications"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="chat_tabs.list",
+                method="GET",
+                path="/api/v1/chat-tabs",
+                summary="List the caller's open chat tabs, ordered by order_index.",
+            ),
+            MetaContractEndpoint(
+                id="chat_tabs.create",
+                method="POST",
+                path="/api/v1/chat-tabs",
+                summary=(
+                    "Create a chat tab. If session_id is omitted, a fresh "
+                    "ChatSession is auto-created and bound to the new tab."
+                ),
+                tags=["write"],
+            ),
+            MetaContractEndpoint(
+                id="chat_tabs.update",
+                method="PATCH",
+                path="/api/v1/chat-tabs/{tab_id}",
+                summary=(
+                    "Partial update — only fields present in the body are written. "
+                    "Pass null for plan_id / scope_key / draft to clear them."
+                ),
+                tags=["write"],
+            ),
+            MetaContractEndpoint(
+                id="chat_tabs.delete",
+                method="DELETE",
+                path="/api/v1/chat-tabs/{tab_id}",
+                summary=(
+                    "Close a tab. Deletes the ChatTab row; the underlying "
+                    "ChatSession is preserved for later reopening."
+                ),
+                tags=["write"],
+            ),
+            MetaContractEndpoint(
+                id="chat_tabs.reorder",
+                method="POST",
+                path="/api/v1/chat-tabs/reorder",
+                summary=(
+                    "Bulk reorder tabs. Body: {tabs: [{id, order_index}, ...]}. "
+                    "All ids must belong to the caller; partial writes are rejected."
+                ),
+                tags=["write"],
+            ),
+        ],
+    )
+
+
 def _builtin_devtools_codegen() -> MetaContract:
     return MetaContract(
         id="devtools.codegen",
@@ -1571,6 +1642,7 @@ _BUILTIN_FACTORIES = {
     "plans.management": _builtin_plans_management,
     "game.authoring": _builtin_game_authoring,
     "notifications": _builtin_notifications,
+    "chat_tabs": _builtin_chat_tabs,
     "assets.management": _builtin_assets_management,
     "generation.assistance": _builtin_generation_assistance,
     "devtools.codegen": _builtin_devtools_codegen,

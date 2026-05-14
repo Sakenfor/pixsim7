@@ -65,9 +65,14 @@ import {
   findPoolSession,
 } from './assistantTypes';
 import { MessageBubble, ThinkingBlock, ConfirmationCard, toDate, isSameLocalDay, formatDayDivider } from './ChatMessageComponents';
+import { clearLastError } from './chatTabsPoll';
 import { ContextBar } from './ContextBar';
 import { EngineProfileIcon, resolveProfileIcon, engineFromProfile } from './EngineProfileIcon';
 import { SessionItem } from './SessionItem';
+import {
+  dismissFailedCreate,
+  retryFailedCreate,
+} from './useChatTabsQuery';
 
 // =============================================================================
 // Plan-context injection — pulls latest work_summary entries for a plan and
@@ -318,9 +323,23 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     };
   }, [tab.id, tab.sessionId, reconcileNonce, sending]);
 
-  // Draft: local state for responsive typing, synced to store
-  const [input, setInput] = useState(() => useAssistantChatStore.getState().getDraft(tab.id));
+  // Draft: local state for responsive typing, synced to store.
+  // On mount, prefer the local LS draft (cached by setDraft on prior edit);
+  // fall back to `tab.draft` from the server snapshot for cross-device restore.
+  // Plan `chat-tab-server-persistence` checkpoint C.
+  const [input, setInput] = useState(() => {
+    const local = useAssistantChatStore.getState().getDraft(tab.id);
+    return local || tab.draft || '';
+  });
   useEffect(() => { useAssistantChatStore.getState().setDraft(tab.id, input); }, [input, tab.id]);
+  // Subscribe to the dirty flag so the composer shows an unsaved dot.
+  const draftDirty = useAssistantChatStore((s) => !!s.draftDirtyByTab[tab.id]);
+  // Flush the debounced server PATCH when the textarea loses focus or
+  // the tab unmounts (user switched chats with an in-flight idle window).
+  const flushDraft = useCallback(() => {
+    useAssistantChatStore.getState().flushDraftSync(tab.id);
+  }, [tab.id]);
+  useEffect(() => () => flushDraft(), [flushDraft]);
 
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const profileLabelMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.label] as const)), [profiles]);
@@ -486,6 +505,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       onUpdateTab({ label: text.slice(0, 30) });
     }
     setInput('');
+    // Push the cleared draft through to LS + server immediately. Without this,
+    // the useEffect-driven debounce would leave the server holding the
+    // pre-send text for 500ms — cross-device viewers would see the stale draft
+    // even though the message has already gone out. Plan
+    // `chat-tab-server-persistence` checkpoint C step 5.
+    useAssistantChatStore.getState().setDraft(tab.id, '');
+    useAssistantChatStore.getState().flushDraftSync(tab.id);
     // Store handles persist to localStorage
     useAssistantChatStore.getState().appendMessage(tab.id, { role: 'user', text, timestamp: new Date() });
 
@@ -802,14 +828,25 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {/* Textarea — above the toolbar for more space */}
         <div className="group/input mb-1.5">
           <div className="flex gap-1.5 items-end">
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                onBlur={flushDraft}
                 placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
                 disabled={connected === 0 || sending} rows={3}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
                 style={{ minHeight: '68px', maxHeight: '160px' }}
                 onInput={handleTextareaInput}
               />
+              {/* Draft autosave indicator — tiny dot in the bottom-right corner.
+                  Amber while dirty (debounce in flight), invisible once the
+                  server has confirmed. Plan `chat-tab-server-persistence`
+                  checkpoint C. */}
+              {draftDirty && input.length > 0 && (
+                <span
+                  className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
+                  title="Saving draft…"
+                />
+              )}
             </div>
             <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
               <Icon name="send" size={14} />
@@ -1016,6 +1053,8 @@ export function AIAssistantPanel() {
   const tabs = useAssistantChatStore((s) => s.tabs);
   const activeTabId = useAssistantChatStore((s) => s.activeTabId);
   const unreadByTab = useAssistantChatStore((s) => s.unreadByTab);
+  const tabsLoading = useAssistantChatStore((s) => s.tabsLoading);
+  const tabsError = useAssistantChatStore((s) => s.tabsError);
   const store = useAssistantChatStore;
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
@@ -1101,10 +1140,22 @@ export function AIAssistantPanel() {
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  // Auto-create a tab if none exist
+  // Auto-create a tab if none exist.
+  //
+  // Gated on `!tabsLoading` so we don't fire during the initial poll, and on
+  // `!tabsError` so a server outage doesn't busy-loop the create endpoint:
+  // before this gate, a 500 from POST /chat-tabs caused the optimistic insert
+  // to roll back to length 0, the effect to re-fire, and `<TabChatView key=...>`
+  // to remount continuously — the textarea was unfocusable until the migration
+  // landed (2026-05-14 incident). The gate clears as soon as the next poll
+  // succeeds and `lastError` resets to null. Plan `chat-tab-server-persistence`
+  // checkpoint F.
   useEffect(() => {
-    if (tabs.length === 0) createTab();
-  }, [tabs.length, createTab]);
+    if (tabsLoading) return;
+    if (tabs.length > 0) return;
+    if (tabsError) return;
+    createTab();
+  }, [tabs.length, tabsLoading, tabsError, createTab]);
 
   // Listen for resume-session events from other panels (e.g. Agent Observability)
   useEffect(() => {
@@ -1207,6 +1258,33 @@ export function AIAssistantPanel() {
     setRenameValue(currentLabel);
   }, []);
 
+  // Retry a failed-create row by re-firing the server POST with the same
+  // identity (id + label + plan + session) the original optimistic call used.
+  // The row stays in the snapshot the whole time; success replaces it with
+  // the server response, failure flips it back to `pending: 'create-failed'`.
+  const retryCreate = useCallback((tabId: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    retryFailedCreate(tabId, {
+      id: tabId,
+      label: tab.label,
+      plan_id: tab.planId,
+      session_id: tab.sessionId ?? undefined,
+    }).catch(() => {
+      // Error already surfaced via lastError → the banner re-renders.
+    });
+  }, [tabs]);
+
+  const dismissCreate = useCallback((tabId: string) => {
+    // Move focus off the row before yanking it so the user doesn't land on
+    // a stale activeTabId.
+    if (activeTabId === tabId) {
+      const remaining = tabs.filter((t) => t.id !== tabId);
+      setActiveTab(remaining[0]?.id ?? null);
+    }
+    dismissFailedCreate(tabId);
+  }, [activeTabId, tabs, setActiveTab]);
+
   const renderItem = (tab: ChatTab, isActive: boolean) => {
     const bridgeReq = chatBridge.get(tab.id);
     const isSending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
@@ -1228,9 +1306,25 @@ export function AIAssistantPanel() {
         onSetRenameValue={setRenameValue}
         onClose={closeTab}
         onUnlinkPlan={(id) => updateTab(id, { planId: null })}
+        onRetryCreate={retryCreate}
+        onDismissFailedCreate={dismissCreate}
       />
     );
   };
+
+  // Build a human-readable label for the error banner. Per-tab errors
+  // (create/update/delete) have their own inline affordance on the row, so
+  // skip the banner for those — the banner is for list/reorder failures
+  // and for errors whose target tab is no longer visible.
+  const bannerError = useMemo(() => {
+    if (!tabsError) return null;
+    // `create` errors render inline via the SessionItem red-dot + retry/dismiss.
+    if (tabsError.kind === 'create' && tabs.some((t) => t.id === tabsError.tabId)) {
+      return null;
+    }
+    const verb = tabsError.kind === 'list' ? 'load' : tabsError.kind;
+    return `Couldn't ${verb} chat tabs: ${tabsError.message}`;
+  }, [tabsError, tabs]);
 
   return (
     <div className="flex h-full min-h-0 bg-white dark:bg-neutral-950">
@@ -1245,6 +1339,21 @@ export function AIAssistantPanel() {
         bodyScrollable={false}
       >
         <div className="flex flex-col h-full min-h-0">
+          {/* Error banner — surfaces failed list/reorder/orphaned-create errors.
+              Per-tab create failures render inline on the row instead. */}
+          {bannerError && (
+            <div className="shrink-0 mx-1 my-1 px-2 py-1 rounded-md border border-red-200 dark:border-red-900/40 bg-red-50/70 dark:bg-red-950/30 text-[10px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
+              <Icon name="alertCircle" size={11} className="shrink-0 mt-0.5" />
+              <span className="flex-1 break-words">{bannerError}</span>
+              <button
+                onClick={() => clearLastError()}
+                className="shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-200"
+                title="Dismiss"
+              >
+                <Icon name="x" size={10} />
+              </button>
+            </div>
+          )}
           {/* Session list */}
           <div className="flex-1 overflow-y-auto px-1 py-1 space-y-0.5">
             {/* Plan-bound groups */}

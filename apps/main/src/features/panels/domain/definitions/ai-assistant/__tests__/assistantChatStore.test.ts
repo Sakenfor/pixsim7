@@ -15,7 +15,39 @@ export const TEST_SUITE = {
   order: 40.2,
 };
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+// `vi` already imported above for the hoisted mock.
+
+// Mock the API client BEFORE importing SUT so the store's fire-and-forget
+// server calls (POST/PATCH/DELETE /chat-tabs) don't hit a real backend —
+// the cross-test chatTabsPoll snapshot is reset in resetStore() below.
+import { vi } from 'vitest';
+const { get, post, patch, del } = vi.hoisted(() => ({
+  get: vi.fn(() => Promise.resolve({ tabs: [] })),
+  post: vi.fn((url: string, body: { id?: string; label?: string }) =>
+    Promise.resolve({
+      id: body?.id ?? 'srv-id',
+      sessionId: 'srv-session',
+      label: body?.label ?? 'Untitled',
+      draft: null,
+      orderIndex: 0,
+      planId: null,
+      scopeKey: null,
+      pinned: false,
+      createdAt: '2026-05-14T00:00:00Z',
+      updatedAt: '2026-05-14T00:00:00Z',
+    }),
+  ),
+  patch: vi.fn(() => Promise.resolve({})),
+  del: vi.fn(() => Promise.resolve({ ok: true })),
+}));
+vi.mock('@lib/api/client', () => ({
+  pixsimClient: { get, post, patch, delete: del },
+  API_BASE_URL: 'http://test/api/v1',
+}));
+vi.mock('@lib/api/correlationHeaders', () => ({
+  withCorrelationHeaders: (h: Record<string, string>) => h,
+}));
 
 import {
   useAssistantChatStore,
@@ -25,6 +57,7 @@ import {
   serverHasUnansweredUserTurn,
   evaluateTranscriptRecovery,
   isLastAssistantMessageEqual,
+  __resetChatTabsPollForTest,
   type ChatTab,
   type ChatMessage,
 } from '../assistantChatStore';
@@ -45,6 +78,7 @@ function makeTab(overrides: Partial<ChatTab> = {}): ChatTab {
     injectToken: false,
     planId: null,
     createdAt: new Date().toISOString(),
+    draft: null,
     ...overrides,
   };
 }
@@ -55,13 +89,20 @@ function makeMsg(role: ChatMessage['role'], text: string): ChatMessage {
 
 function resetStore() {
   localStorage.clear();
+  // Wipe the cross-test chatTabsPoll snapshot so leftover server-tabs from
+  // a prior test don't bleed into the next via the store's subscription.
+  __resetChatTabsPollForTest();
   const s = useAssistantChatStore.getState();
   // Reset to clean state
   useAssistantChatStore.setState({
     tabs: [],
+    tabsLoading: false,
+    tabsError: null,
+    tabPrefsByTabId: {},
     activeTabId: null,
     messagesByTab: {},
     draftsByTab: {},
+    draftDirtyByTab: {},
     thinkingByTab: {},
     unreadByTab: {},
   });
@@ -76,6 +117,23 @@ describe('Assistant Chat Store', () => {
   });
 
   // ────────────────────────────────────────────────────────
+  // Error surfacing — plan `chat-tab-server-persistence` checkpoint F
+  // ────────────────────────────────────────────────────────
+  //
+  // The store mirrors `chatTabsPoll.lastError` into `state.tabsError` via the
+  // applySnapshot subscription that runs at store init. The panel reads
+  // `tabsError` to gate its auto-create-when-empty effect, breaking the
+  // 2026-05-14 busy-loop regression.
+  //
+  // Lower-level coverage lives in `chatTabsPoll.test.ts` (lastError set on
+  // list failure, cleared on next success, preserved across non-list ops)
+  // and in `useChatTabsQuery.test.ts` (per-tab create errors keep the row
+  // flagged `create-failed`, retry path clears the banner). Re-asserting
+  // through the store's subscription here would require working around
+  // `__resetChatTabsPollForTest` clearing the listener set between tests,
+  // which is more harness than test value.
+
+  // ────────────────────────────────────────────────────────
   // Tab management
   // ────────────────────────────────────────────────────────
 
@@ -86,18 +144,30 @@ describe('Assistant Chat Store', () => {
       expect(s.activeTabId).toBeNull();
     });
 
-    it('addTab persists to localStorage', () => {
-      const tab = makeTab({ id: 'tab-1', label: 'Chat 1' });
+    it('addTab inserts into state.tabs and persists prefs to localStorage', () => {
+      const tab = makeTab({ id: 'tab-1', label: 'Chat 1', profileId: 'p-1' });
       useAssistantChatStore.getState().addTab(tab);
 
       const s = useAssistantChatStore.getState();
       expect(s.tabs).toHaveLength(1);
       expect(s.tabs[0].id).toBe('tab-1');
+      expect(s.tabs[0].label).toBe('Chat 1');
 
-      // Check localStorage
-      const stored = JSON.parse(localStorage.getItem('ai-assistant:tabs')!);
-      expect(stored).toHaveLength(1);
-      expect(stored[0].id).toBe('tab-1');
+      // Server-core fields now live on the chatTabsPoll snapshot; only the
+      // client-only per-tab prefs are persisted to localStorage.
+      const storedPrefs = JSON.parse(localStorage.getItem('ai-assistant:tab-prefs')!);
+      expect(storedPrefs['tab-1']).toBeDefined();
+      expect(storedPrefs['tab-1'].profileId).toBe('p-1');
+
+      // The legacy `ai-assistant:tabs` key is no longer written.
+      expect(localStorage.getItem('ai-assistant:tabs')).toBeNull();
+
+      // POST /chat-tabs was fired with the client-minted id.
+      expect(post).toHaveBeenCalledWith(
+        '/chat-tabs',
+        expect.objectContaining({ id: 'tab-1', label: 'Chat 1' }),
+        expect.any(Object),
+      );
     });
 
     it('closeTab removes from store and cleans up localStorage', () => {
@@ -791,6 +861,168 @@ describe('Assistant Chat Store', () => {
   });
 
   // ────────────────────────────────────────────────────────
+  // Draft autosave — plan `chat-tab-server-persistence` checkpoint C
+  // ────────────────────────────────────────────────────────
+
+  describe('draft autosave', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      patch.mockReset();
+      patch.mockResolvedValue({});
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Seed a server-row tab so setDraft's pending check passes.
+    function seedTab(id = 'tab-1') {
+      const s = useAssistantChatStore.getState();
+      s.addTab(makeTab({ id }));
+    }
+
+    it('marks the tab dirty on setDraft and PATCHes after 500ms idle', async () => {
+      seedTab();
+      const s = useAssistantChatStore.getState();
+      s.setDraft('tab-1', 'hi there');
+
+      // Immediately dirty + no server hit yet.
+      expect(useAssistantChatStore.getState().draftDirtyByTab['tab-1']).toBe(true);
+      expect(patch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(500);
+      // Server PATCH fired exactly once with the latest text.
+      expect(patch).toHaveBeenCalledWith(
+        '/chat-tabs/tab-1',
+        { draft: 'hi there' },
+        expect.any(Object),
+      );
+      // PATCH success → dirty cleared.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(useAssistantChatStore.getState().draftDirtyByTab['tab-1']).toBeUndefined();
+    });
+
+    it('debounces a burst of keystrokes — only the latest text is PATCHed', async () => {
+      seedTab();
+      const s = useAssistantChatStore.getState();
+
+      s.setDraft('tab-1', 'h');
+      await vi.advanceTimersByTimeAsync(200);
+      s.setDraft('tab-1', 'hi');
+      await vi.advanceTimersByTimeAsync(200);
+      s.setDraft('tab-1', 'hi the');
+      await vi.advanceTimersByTimeAsync(200);
+      s.setDraft('tab-1', 'hi there');
+      expect(patch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(patch).toHaveBeenCalledTimes(1);
+      expect(patch).toHaveBeenLastCalledWith(
+        '/chat-tabs/tab-1',
+        { draft: 'hi there' },
+        expect.any(Object),
+      );
+    });
+
+    it('flushDraftSync fires the PATCH immediately (cancels the pending timer)', async () => {
+      seedTab();
+      const s = useAssistantChatStore.getState();
+
+      s.setDraft('tab-1', 'send-time');
+      expect(patch).not.toHaveBeenCalled();
+
+      s.flushDraftSync('tab-1');
+      // Microtask flush so the synchronously-fired PATCH settles.
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(patch).toHaveBeenCalledTimes(1);
+      expect(patch).toHaveBeenCalledWith(
+        '/chat-tabs/tab-1',
+        { draft: 'send-time' },
+        expect.any(Object),
+      );
+
+      // The debounce timer was cancelled — no second PATCH at +500.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(patch).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushDraftSync is a no-op when nothing is dirty', async () => {
+      seedTab();
+      useAssistantChatStore.getState().flushDraftSync('tab-1');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(patch).not.toHaveBeenCalled();
+    });
+
+    it('PATCHes draft: null when the user cleared the composer', async () => {
+      seedTab();
+      const s = useAssistantChatStore.getState();
+      s.setDraft('tab-1', 'first');
+      await vi.advanceTimersByTimeAsync(500);
+      patch.mockClear();
+
+      s.setDraft('tab-1', '');
+      await vi.advanceTimersByTimeAsync(500);
+      expect(patch).toHaveBeenCalledWith(
+        '/chat-tabs/tab-1',
+        { draft: null },
+        expect.any(Object),
+      );
+    });
+
+    it('does NOT clear dirty if the user typed mid-flight after PATCH was sent', async () => {
+      seedTab();
+      const s = useAssistantChatStore.getState();
+
+      // Slow server — PATCH takes 100ms.
+      let resolvePatch: (value: unknown) => void = () => {};
+      patch.mockReturnValueOnce(new Promise((r) => { resolvePatch = r; }));
+
+      s.setDraft('tab-1', 'sent');
+      await vi.advanceTimersByTimeAsync(500); // debounce fires, PATCH starts
+      expect(patch).toHaveBeenCalledTimes(1);
+
+      // User types more mid-flight.
+      s.setDraft('tab-1', 'sent + more');
+      expect(useAssistantChatStore.getState().draftDirtyByTab['tab-1']).toBe(true);
+
+      // PATCH(sent) completes — but local text has moved on, so dirty stays.
+      resolvePatch({});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(useAssistantChatStore.getState().draftDirtyByTab['tab-1']).toBe(true);
+    });
+
+    it('skips server PATCH for create-failed rows (no server row to update)', async () => {
+      // Mark a tab as create-failed in the store directly.
+      seedTab();
+      useAssistantChatStore.setState((s) => ({
+        tabs: s.tabs.map((t) => t.id === 'tab-1' ? { ...t, pending: 'create-failed' as const } : t),
+      }));
+
+      useAssistantChatStore.getState().setDraft('tab-1', 'while broken');
+      // Still tracks the dirty bit + LS, but no server PATCH.
+      expect(useAssistantChatStore.getState().draftDirtyByTab['tab-1']).toBe(true);
+      expect(localStorage.getItem('ai-assistant:draft:tab-1')).toBe('while broken');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(patch).not.toHaveBeenCalled();
+    });
+
+    it('cancels pending PATCH on tab close', async () => {
+      seedTab();
+      useAssistantChatStore.getState().setDraft('tab-1', 'about to be cancelled');
+      useAssistantChatStore.getState().closeTab('tab-1');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      // closeTab itself PATCHes session messages (already mocked to resolve);
+      // the draft autosave timer should be the one cancelled here.
+      const draftCalls = patch.mock.calls.filter(
+        ([url]) => typeof url === 'string' && url.startsWith('/chat-tabs/'),
+      );
+      expect(draftCalls).toEqual([]);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
   // Cross-cutting: message + thinking lifecycle
   // ────────────────────────────────────────────────────────
 
@@ -1006,23 +1238,32 @@ describe('Assistant Chat Store', () => {
       expect(thinkB[0].detail).toBe('for B');
     });
 
-    it('tabs metadata survives reload', () => {
+    it('tab prefs + active-tab survive reload (server-backed tab core)', () => {
       const s = useAssistantChatStore.getState();
-      const tab = makeTab({ id: 'tab-1', label: 'My Chat', sessionId: 'sess-abc' });
+      const tab = makeTab({
+        id: 'tab-1',
+        label: 'My Chat',
+        sessionId: 'sess-abc',
+        profileId: 'p-1',
+        customInstructions: 'be concise',
+      });
       s.addTab(tab);
       s.setActiveTab('tab-1');
 
-      // Reload — wipe in-memory tabs
-      useAssistantChatStore.setState({ tabs: [], activeTabId: null });
+      // The legacy `ai-assistant:tabs` key is no longer used — tab core
+      // (label, sessionId, planId, orderIndex) lives server-side. Reload
+      // recovery for those fields is the chatTabsPoll fetch on store boot.
+      expect(localStorage.getItem('ai-assistant:tabs')).toBeNull();
 
-      // Reconstruct from localStorage (simulating store re-creation)
-      const storedTabs = JSON.parse(localStorage.getItem('ai-assistant:tabs')!);
-      const storedActive = localStorage.getItem('ai-assistant:active-tab');
+      // Active tab id is still localStorage-backed (cheap pointer, no need
+      // for a server round-trip on every focus change).
+      expect(localStorage.getItem('ai-assistant:active-tab')).toBe('tab-1');
 
-      expect(storedTabs).toHaveLength(1);
-      expect(storedTabs[0].id).toBe('tab-1');
-      expect(storedTabs[0].sessionId).toBe('sess-abc');
-      expect(storedActive).toBe('tab-1');
+      // Client-only per-tab prefs survive via the new `ai-assistant:tab-prefs` key.
+      const storedPrefs = JSON.parse(localStorage.getItem('ai-assistant:tab-prefs')!);
+      expect(storedPrefs['tab-1']).toBeDefined();
+      expect(storedPrefs['tab-1'].profileId).toBe('p-1');
+      expect(storedPrefs['tab-1'].customInstructions).toBe('be concise');
     });
 
     it('draft survives reload', () => {

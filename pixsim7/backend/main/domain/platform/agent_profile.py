@@ -18,6 +18,7 @@ from sqlalchemy import JSON, Text
 from sqlmodel import Column, Field, Index, SQLModel
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.common.ownership import OwnershipPolicy, OwnershipScope
 
 PLATFORM_SCHEMA = "dev_meta"
 
@@ -128,6 +129,67 @@ class ChatSession(SQLModel, table=True):
     last_used_at: datetime = Field(default_factory=utcnow)
     created_at: datetime = Field(default_factory=utcnow)
     status: str = Field(default="active", max_length=32)  # active | archived
+
+
+# ---------------------------------------------------------------------------
+# Chat Tab â€” user-visible AI Assistant tab pointing at a ChatSession
+# ---------------------------------------------------------------------------
+
+
+class ChatTab(SQLModel, table=True):
+    """A user-visible tab in the AI Assistant tab bar.
+
+    Tabs are the UI surface that points at a ``ChatSession``. Closing a tab
+    deletes the ``ChatTab`` row but leaves the underlying ``ChatSession``
+    (and its messages) intact, so the session can be reopened later via the
+    'Recent Chats' picker.
+
+    Tab metadata (label, draft text, order, plan binding) lives here rather
+    than on ``ChatSession`` so:
+      * Draft autosave writes a tiny row, not one carrying the messages JSON.
+      * Closing a tab is cheap and reversible (session survives).
+      * Phase 4a notifications can reference the stable server-issued ``id``
+        as their ``ref_id`` for per-tab unread counts.
+
+    See plan ``chat-tab-server-persistence``.
+    """
+
+    __tablename__ = "chat_tabs"
+    __table_args__ = (
+        Index("idx_chat_tabs_user_order", "user_id", "order_index"),
+        Index("idx_chat_tabs_session", "session_id"),
+        {"schema": PLATFORM_SCHEMA},
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: int = Field(nullable=False, index=True)
+    session_id: str = Field(
+        foreign_key=f"{PLATFORM_SCHEMA}.chat_sessions.id",
+        max_length=120,
+    )
+    label: str = Field(default="Untitled", max_length=255)
+    draft: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text),
+        description="In-progress composer text; autosaved per tab.",
+    )
+    order_index: int = Field(default=0, description="Position in the tab strip; lower = leftmost.")
+    plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    scope_key: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Mirrors ChatSession.scope_key for convenience (e.g. 'plan:X' | 'tab:<id>').",
+    )
+    pinned: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+# Tabs are strictly user-private: no shared/public visibility, no admin override.
+CHAT_TAB_POLICY = OwnershipPolicy(
+    scope=OwnershipScope.USER,
+    owner_field="user_id",
+)
 
 
 # ---------------------------------------------------------------------------
