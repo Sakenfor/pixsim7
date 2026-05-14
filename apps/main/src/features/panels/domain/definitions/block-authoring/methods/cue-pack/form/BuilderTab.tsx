@@ -19,7 +19,9 @@
  *     be extracted from the source via a structural anchor.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { blockIdPrefixMatchesSelection } from '../blockMatch';
 
 import { BlockFormCard } from './BlockForm';
 import { compiledToForm } from './compiledToForm';
@@ -42,6 +44,11 @@ export interface BuilderTabProps {
   onRequestCompile: () => Promise<void> | void;
   /** Disable interaction (e.g. saving/compiling in progress). */
   busy?: boolean;
+  /**
+   * Fully-qualified block id from `CAP_BLOCK_SELECTION`. When set,
+   * the matching block card is scrolled into view + ring-highlighted.
+   */
+  selectedBlockId?: string | null;
 }
 
 export function BuilderTab({
@@ -52,9 +59,19 @@ export function BuilderTab({
   onApply,
   onRequestCompile,
   busy,
+  selectedBlockId,
 }: BuilderTabProps) {
   const [form, setForm] = useState<PackForm | null>(null);
   const [dirty, setDirty] = useState(false);
+  const selectedCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll the matching block card into view when an incoming
+  // selection changes. The ref is attached by the JSX below to
+  // whichever card matches the selection.
+  useEffect(() => {
+    if (!selectedBlockId || !selectedCardRef.current) return;
+    selectedCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedBlockId]);
 
   // Rebuild form state whenever the compile output changes.
   useEffect(() => {
@@ -255,15 +272,25 @@ export function BuilderTab({
             No blocks. Click <span className="text-neutral-300">+ Block</span> to add one.
           </div>
         )}
-        {form.blocks.map((block, idx) => (
-          <BlockFormCard
-            key={idx}
-            block={block}
-            onChange={(next) => updateBlock(idx, next)}
-            onRemove={() => removeBlock(idx)}
-            disabled={busy}
-          />
-        ))}
+        {form.blocks.map((block, idx) => {
+          const isHighlighted = blockIdPrefixMatchesSelection(block.idPrefix, selectedBlockId);
+          return (
+            <div
+              key={idx}
+              ref={isHighlighted ? selectedCardRef : null}
+              className={
+                isHighlighted ? 'rounded ring-2 ring-blue-500/40 transition' : undefined
+              }
+            >
+              <BlockFormCard
+                block={block}
+                onChange={(next) => updateBlock(idx, next)}
+                onRemove={() => removeBlock(idx)}
+                disabled={busy}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Footer hint */}

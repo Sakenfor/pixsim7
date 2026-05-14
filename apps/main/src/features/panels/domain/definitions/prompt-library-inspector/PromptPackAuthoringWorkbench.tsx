@@ -1,3 +1,4 @@
+import { useAuthStore } from '@pixsim7/shared.auth.core';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -19,8 +20,6 @@ import {
   VersionsList,
   useDraftLifecycle,
 } from '@lib/ui/promptPacks';
-
-import { useAuthStore } from '@/stores/authStore';
 
 const DEFAULT_CUE_SOURCE = `pack: {
   package_name: "my_pack"

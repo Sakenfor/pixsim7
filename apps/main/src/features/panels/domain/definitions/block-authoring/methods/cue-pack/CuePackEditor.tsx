@@ -33,9 +33,10 @@ import type { BlockAuthoringMethodProps } from '../types';
 
 import { CueDiagnostics } from './CueDiagnostics';
 import { CuePackOutline } from './CuePackOutline';
+import { VersionsTab } from './VersionsTab';
+import { findSelectionAnchor, offsetToLineColumn } from './blockMatch';
 import { BuilderTab } from './form/BuilderTab';
 import { buildStarterCueSource } from './starterTemplate';
-import { VersionsTab } from './VersionsTab';
 
 type EditorTab = 'source' | 'builder' | 'outline' | 'versions';
 
@@ -259,6 +260,31 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
     });
   }, []);
 
+  // ── Source-tab reaction to CAP_BLOCK_SELECTION ─────────────────────
+  // When a block is selected (in Block Explorer or any other provider)
+  // and the user is on the Source tab, select the matching id_prefix
+  // substring so the textarea scrolls + visually flags it. Doesn't
+  // auto-switch tabs — we respect the user's current view choice.
+  // We intentionally don't depend on `source`, so typing in the
+  // textarea doesn't keep yanking the cursor back to the selection.
+  useEffect(() => {
+    if (tab !== 'source') return;
+    const sel = context.selectedBlockId;
+    if (!sel) return;
+    const ta = sourceRef.current;
+    if (!ta) return;
+    const anchor = findSelectionAnchor(ta.value, sel);
+    if (!anchor) return;
+    ta.focus();
+    ta.setSelectionRange(anchor.offset, anchor.offset + anchor.matched.length);
+    const { line } = offsetToLineColumn(ta.value, anchor.offset);
+    // Approximate scroll: place the matched line near the top by
+    // setting scrollTop in terms of average line height.
+    const lineHeight = ta.scrollHeight / Math.max(1, ta.value.split('\n').length);
+    ta.scrollTop = Math.max(0, (line - 3) * lineHeight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.selectedBlockId, tab]);
+
   // ── Filter drafts by Block Explorer selection (best-effort) ───────
   // If the user selects a block in the embedded Explorer, prefer the
   // draft whose source mentions that id_prefix. Non-binding hint only.
@@ -414,6 +440,7 @@ export function CuePackEditor({ context }: BlockAuthoringMethodProps) {
                   onApply={applyBuilderSource}
                   onRequestCompile={compile}
                   busy={busy !== 'idle'}
+                  selectedBlockId={context.selectedBlockId ?? null}
                 />
               )}
               {tab === 'outline' && (

@@ -12,7 +12,9 @@
  * source line via the variant key.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+
+import { blockIdPrefixMatchesSelection } from './blockMatch';
 
 interface CompiledBlock {
   id?: string;
@@ -29,13 +31,25 @@ interface CompiledBlock {
 
 export interface CuePackOutlineProps {
   blocks: Array<Record<string, unknown>>;
-  /** When set, the matching block id is highlighted. */
+  /**
+   * Fully-qualified block id from `CAP_BLOCK_SELECTION` (e.g.
+   * `core.camera.angle.eye_level`). Matched against each compiled
+   * block's `id_prefix` so a selection of any variant highlights
+   * the parent block.
+   */
   highlightId?: string | null;
   onSelectBlock?: (blockId: string) => void;
 }
 
 export function CuePackOutline({ blocks, highlightId, onSelectBlock }: CuePackOutlineProps) {
   const parsed = useMemo<CompiledBlock[]>(() => blocks as CompiledBlock[], [blocks]);
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll the highlighted card into view when the selection changes.
+  useEffect(() => {
+    if (!highlightId || !highlightedRef.current) return;
+    highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [highlightId]);
 
   if (parsed.length === 0) {
     return (
@@ -52,10 +66,11 @@ export function CuePackOutline({ blocks, highlightId, onSelectBlock }: CuePackOu
         const id = block.id ?? `#${idx}`;
         const schema = block.block_schema ?? {};
         const variants = schema.variants ?? [];
-        const isHighlighted = highlightId === id;
+        const isHighlighted = blockIdPrefixMatchesSelection(schema.id_prefix, highlightId);
         return (
           <div
             key={id}
+            ref={isHighlighted ? highlightedRef : null}
             className={`rounded border px-2 py-1.5 transition ${
               isHighlighted
                 ? 'border-blue-500/60 bg-blue-500/5'
