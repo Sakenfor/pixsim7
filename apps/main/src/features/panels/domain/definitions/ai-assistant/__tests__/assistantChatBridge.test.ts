@@ -909,4 +909,115 @@ describe('AssistantChatBridge', () => {
       expect(restored?.error).toMatch(/timed out/i);
     });
   });
+
+  // ────────────────────────────────────────────────────────
+  // Confirmation prompt staleness carve-out
+  // Plan: agent-confirmation-hooks / picker-timeout-investigation.
+  // ────────────────────────────────────────────────────────
+
+  describe('confirmation prompt staleness', () => {
+    async function connectAndStreaming(tabId: string) {
+      const p = bridge.send(tabId, { message: 'hi' });
+      await vi.advanceTimersByTimeAsync(0);
+      const ws = MockWebSocket.instances[0];
+      ws.simulateOpen();
+      await p;
+      // Heartbeat transitions pending → streaming (mirrors real flow
+      // where the agent emits a heartbeat before invoking AskUser).
+      ws.simulateMessage({
+        type: 'heartbeat', tab_id: tabId, action: 'thinking',
+        detail: 'Working', task_id: 't1',
+      });
+      return ws;
+    }
+
+    it('does not mark a request stale while a confirmation is pending', async () => {
+      // The bug this guards: the bridge sets _lastActivity on
+      // confirmation_request, then the agent blocks on the user. No
+      // heartbeats arrive for the duration of the prompt. Without the
+      // carve-out, _checkStale fires at 90s and unmounts the picker
+      // BEFORE the backend's own 120s gate even has a chance to time out.
+      const ws = await connectAndStreaming('tab-1');
+
+      ws.simulateMessage({
+        type: 'confirmation_request',
+        tab_id: 'tab-1',
+        confirmation_id: 'conf-1',
+        title: 'Approve?',
+        description: 'Run command X',
+        tool_name: 'Bash',
+        timeout_s: 120,
+        task_id: 't1',
+      });
+
+      expect(bridge.get('tab-1')!.pendingConfirmation).toBeTruthy();
+      expect(bridge.get('tab-1')!.status).toBe('streaming');
+
+      // Advance past STALE_TIMEOUT_S (90s) + check interval — would
+      // normally error the request.
+      await vi.advanceTimersByTimeAsync(105_000);
+
+      const req = bridge.get('tab-1');
+      expect(req!.status).toBe('streaming');
+      expect(req!.pendingConfirmation).toBeTruthy();
+    });
+
+    it('auto-clears pendingConfirmation when its own timeoutS elapses', async () => {
+      // After the backend gate auto-resolves at timeout_s (120s), the
+      // agent resumes processing. Frontend should drop the visual
+      // prompt so the user sees the agent moving on rather than a
+      // forever-unanswerable picker.
+      const ws = await connectAndStreaming('tab-1');
+
+      ws.simulateMessage({
+        type: 'confirmation_request',
+        tab_id: 'tab-1',
+        confirmation_id: 'conf-1',
+        title: 'Approve?',
+        description: 'X',
+        timeout_s: 120,
+        task_id: 't1',
+      });
+
+      // Advance just past prompt timeoutS + slack (120 + 5 = 125s),
+      // plus a check-interval tick so _checkStale actually runs.
+      await vi.advanceTimersByTimeAsync(140_000);
+
+      const req = bridge.get('tab-1');
+      expect(req!.pendingConfirmation).toBeNull();
+      // Request itself stays streaming — agent will resume after gate.
+      expect(req!.status).toBe('streaming');
+      expect(req!.activity).toMatch(/timed out/i);
+    });
+
+    it('respondToConfirmation resets _lastActivity to prevent immediate staleness', async () => {
+      // If the user takes 80s to answer, the bridge's _lastActivity is
+      // 80s stale by the time we send the response. The next agent
+      // heartbeat may take a few seconds to arrive; in the gap
+      // _checkStale could fire and kill the request. Resetting on
+      // respondToConfirmation prevents that race.
+      const ws = await connectAndStreaming('tab-1');
+
+      ws.simulateMessage({
+        type: 'confirmation_request',
+        tab_id: 'tab-1',
+        confirmation_id: 'conf-1',
+        title: 'Approve?',
+        description: 'X',
+        timeout_s: 120,
+        task_id: 't1',
+      });
+
+      // User takes 80s
+      await vi.advanceTimersByTimeAsync(80_000);
+      bridge.respondToConfirmation('tab-1', 'conf-1', true);
+
+      expect(bridge.get('tab-1')!.pendingConfirmation).toBeNull();
+
+      // Advance 80s more — 160s since original send but only 80s since
+      // resetting _lastActivity. Should still be streaming.
+      await vi.advanceTimersByTimeAsync(80_000);
+      expect(bridge.get('tab-1')!.status).toBe('streaming');
+    });
+  });
 });

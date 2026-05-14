@@ -229,12 +229,48 @@ class AssistantChatBridge {
     }
   }
 
-  /** Mark requests as errored if no heartbeat/result has arrived for too long */
+  /** Mark requests as errored if no heartbeat/result has arrived for too long.
+   *
+   *  Plan: agent-confirmation-hooks / picker-timeout-investigation.
+   *  A request with ``pendingConfirmation`` is NOT stale — it's waiting on
+   *  the user. The bridge doesn't emit heartbeats while blocked at
+   *  ``request_confirmation``, so the staleness clock would otherwise tick
+   *  past STALE_TIMEOUT_S before the user has a chance to answer, killing
+   *  the request and unmounting ConfirmationCard. Two carve-outs:
+   *
+   *  - Skip staleness for requests holding a pending prompt, UNLESS that
+   *    prompt itself has exceeded its own ``timeoutS`` (backend's gate
+   *    timeout) — in which case the backend has already auto-resolved
+   *    with ``{approved: false}`` and the agent will resume; we clear
+   *    the visual prompt and reset the activity clock so the next
+   *    heartbeat gap isn't immediately flagged.
+   *  - Otherwise, original 90s staleness behavior.
+   */
   private _checkStale(): void {
     const now = Date.now();
     let inflightChanged = false;
     for (const [, req] of this._requests) {
       if (req.status !== 'pending' && req.status !== 'streaming') continue;
+
+      // Carve-out: waiting on user input ≠ stale.
+      if (req.pendingConfirmation) {
+        const promptElapsedMs = now - req.pendingConfirmation.requestedAt;
+        // Allow 5s slack past the backend's gate timeout so we don't
+        // race it (clock skew, in-flight heartbeats).
+        const promptTimeoutMs = ((req.pendingConfirmation.timeoutS ?? 120) + 5) * 1000;
+        if (promptElapsedMs > promptTimeoutMs) {
+          // Backend has auto-resolved this gate already; clear visual
+          // state and let staleness resume tracking real activity.
+          req.pendingConfirmation = null;
+          req.activity = 'Prompt timed out — agent continuing...';
+          req._lastActivity = now;
+          appendHeartbeat(req.thinkingLog, 'prompt_timeout', req.activity);
+          this._notify();
+        }
+        // Either way, this request is not stale for traditional purposes.
+        continue;
+      }
+
       const elapsed = (now - req._lastActivity) / 1000;
       if (elapsed > STALE_TIMEOUT_S) {
         req.status = 'error';
@@ -814,6 +850,10 @@ class AssistantChatBridge {
     req.activity = iType === 'approve_deny'
       ? (approved ? 'Approved — resuming...' : 'Denied — stopping...')
       : 'Resuming...';
+    // Reset the staleness clock — the prompt could have been pending for
+    // most of STALE_TIMEOUT_S; without this, the gap between the user's
+    // response and the agent's next heartbeat could trip _checkStale.
+    req._lastActivity = Date.now();
     appendHeartbeat(req.thinkingLog, approved ? 'responded' : 'denied', req.activity);
     this._notify();
     if (this._wsConnected && this._ws?.readyState === WebSocket.OPEN) {
