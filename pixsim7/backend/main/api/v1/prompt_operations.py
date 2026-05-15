@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from pixsim7.backend.main.domain.composition.role_resolver import resolve_role
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
@@ -25,6 +26,7 @@ from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
 from pixsim7.backend.main.services.prompt.block.op_signatures import (
     get_op_signature,
 )
+from pixsim7.backend.main.shared.entity_refs import parse_entity_ref
 
 router = APIRouter(prefix="/prompts/operations", tags=["prompt-operations"])
 
@@ -36,9 +38,14 @@ class OpExecuteRequest(BaseModel):
     op_id: str = Field(..., min_length=1, max_length=200)
     signature_id: Optional[str] = Field(default=None, max_length=200)
     params: Dict[str, Any] = Field(default_factory=dict)
-    # Phase 2 MVP: refs come in as {key: bound_value_id}. We pass them
-    # through to the response provenance but don't yet resolve them to
-    # entities — that's Phase 2b (AssetPickerField wiring).
+    # Refs are user-picked tokens from the polymorphic RefPickerField.
+    # Accepted shapes per value (string):
+    #   "asset:<id>", "character_instance:<id>"      — entity refs
+    #   "role:<concept>"                              — role concept
+    #   "symbol:<token>"                              — opaque symbol
+    # Normalization happens in _normalize_ref(); malformed values are
+    # kept verbatim with a warning rather than rejected, so the round-trip
+    # to op_refs is identity-preserving for debugging.
     refs: Dict[str, str] = Field(default_factory=dict)
     modality: Optional[str] = Field(default=None, max_length=32)
 
@@ -69,6 +76,43 @@ class OpExecuteResponse(BaseModel):
 
 
 # ─── Resolver ─────────────────────────────────────────────────────────────
+
+
+def _normalize_ref(raw: Any) -> Optional[str]:
+    """Best-effort normalize a user-supplied ref value to canonical form.
+
+    Returns the canonical token string when the input parses as one of:
+      - entity ref ("asset:N", "character_instance:N", ...) → entity_ref.to_string()
+      - role concept ("role:X" with X resolvable via resolve_role()) → "role:<id>"
+      - symbol ("symbol:X" with non-empty X) → "symbol:<token>"
+
+    Returns ``None`` for unparseable input. Refs are provenance-only in this
+    push (variant scoring stays params-only), so callers should keep the raw
+    value with a warning rather than reject the request.
+    """
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+
+    entity_ref = parse_entity_ref(text)
+    if entity_ref is not None:
+        return entity_ref.to_string()
+
+    if text.startswith("role:"):
+        role_ref = resolve_role(text)
+        if role_ref is not None:
+            return role_ref.to_canonical()
+        return None
+
+    if text.startswith("symbol:"):
+        symbol = text[len("symbol:"):].strip()
+        if symbol:
+            return f"symbol:{symbol}"
+        return None
+
+    return None
 
 
 def _score_variant(*, block_tags: Dict[str, Any], params: Dict[str, Any]) -> tuple[int, int]:
@@ -201,6 +245,25 @@ async def execute_prompt_operation(request: OpExecuteRequest) -> OpExecuteRespon
     block_tags = best_block.tags if isinstance(best_block.tags, dict) else {}
     composition_role = block_tags.get("composition_role") if isinstance(block_tags.get("composition_role"), str) else None
 
+    # Normalize refs to canonical tokens. Malformed entries are kept verbatim
+    # in op_refs and surfaced as a warning so the user can debug what they
+    # sent; we don't reject the request because refs are provenance-only in
+    # this push.
+    resolved_refs: Dict[str, str] = {}
+    unparseable_ref_keys: List[str] = []
+    for ref_key, raw_value in request.refs.items():
+        normalized = _normalize_ref(raw_value)
+        if normalized is None:
+            resolved_refs[ref_key] = raw_value if isinstance(raw_value, str) else str(raw_value)
+            unparseable_ref_keys.append(ref_key)
+        else:
+            resolved_refs[ref_key] = normalized
+    if unparseable_ref_keys:
+        warnings.append(
+            "could not normalize refs (kept raw): "
+            + ", ".join(sorted(unparseable_ref_keys))
+        )
+
     overlay = OpExecuteOverlayEntry(
         block_id=best_block.block_id,
         text=str(best_block.text or ""),
@@ -208,7 +271,7 @@ async def execute_prompt_operation(request: OpExecuteRequest) -> OpExecuteRespon
         category=getattr(best_block, "category", None),
         source_op=op_id,
         op_params=dict(request.params),
-        op_refs=dict(request.refs),
+        op_refs=resolved_refs,
         signature_id=request.signature_id,
     )
 

@@ -164,6 +164,19 @@ class PromptVersion(SQLModel, table=True):
         description="Analyzed prompt: {blocks: [{role, text}], tags: [...]}"
     )
 
+    # Op-derived span provenance (Phase 2b of plan:op-runtime-span-popover).
+    # NULL = no op-derived spans. Each entry: {start_pos, end_pos, source_op,
+    # op_params, op_refs, signature_id, block_id}. op_refs values are cross-DB
+    # entity refs ("asset:N" | "character_instance:N" | "role:X" | "symbol:Y");
+    # block_id is a soft cross-DB ref into pixsim7_blocks (same pattern as
+    # PromptVersionBlock.block_id).
+    span_provenance: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Op-derived span provenance for spans inserted via the "
+                    "Adjust tab. See plan:op-runtime-span-popover Phase 2b."
+    )
+
     # Version tracking (Git-like, nullable for one-off prompts)
     version_number: Optional[int] = Field(
         default=None,

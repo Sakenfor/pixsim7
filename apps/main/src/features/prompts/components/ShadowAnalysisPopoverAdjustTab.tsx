@@ -15,35 +15,20 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { BlockOpRefSchema } from '@lib/api/blockTemplates';
 import {
   executePromptOperation,
   type OpExecuteResponse,
 } from '@lib/api/promptOperations';
 
 import { useOpBlockSchema } from '../hooks/useOpBlockSchema';
+
 import { OpParamField } from './OpParamField';
+import { RefPickerField } from './pickers/RefPickerField';
 
 const sectionLabelClass =
   'text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500';
 
 const EXECUTE_DEBOUNCE_MS = 250;
-
-function RefBindingRow({ ref: refSpec }: { ref: BlockOpRefSchema }) {
-  // Phase 1: ref binders are display-only; Phase 2b will swap this for
-  // an inline AssetPickerField so the user can resolve `subject` etc.
-  return (
-    <div
-      className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-neutral-50 dark:bg-neutral-800/60"
-      title="Ref binding via asset picker lands in Phase 2b"
-    >
-      <span className="font-mono text-neutral-700 dark:text-neutral-300">{refSpec.key}</span>
-      <span className="text-neutral-400">→</span>
-      <span className="text-neutral-500 truncate">{refSpec.capability}</span>
-      {refSpec.required && <span className="text-rose-500">*</span>}
-    </div>
-  );
-}
 
 export interface ShadowAnalysisPopoverAdjustTabProps {
   blockId: string;
@@ -63,6 +48,10 @@ export function ShadowAnalysisPopoverAdjustTab({
   const { schema, loading, error } = useOpBlockSchema(blockId);
   const [params, setParams] = useState<Record<string, unknown>>({});
   const [paramsSeeded, setParamsSeeded] = useState(false);
+  // Phase 2b: ref bindings — keyed by op_ref.key, value is the canonical
+  // token from RefPickerField (e.g. "asset:42", "character:anne_v3",
+  // "role:entities:subject", "symbol:foo") or null when unbound.
+  const [refs, setRefs] = useState<Record<string, string | null>>({});
   const [executeResult, setExecuteResult] = useState<OpExecuteResponse | null>(null);
   const [executing, setExecuting] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
@@ -89,17 +78,23 @@ export function ShadowAnalysisPopoverAdjustTab({
 
   // Debounced executor call. Fires once params have been seeded so the
   // initial fetch reflects the variant's natural prose, then again on
-  // each tweak after the debounce settles.
+  // each tweak after the debounce settles. Refs are filtered to drop
+  // null bindings so the backend only sees user-picked values.
   useEffect(() => {
     if (!op || !paramsSeeded) return;
     const requestId = ++executeRequestIdRef.current;
     setExecuting(true);
     setExecuteError(null);
+    const refsPayload: Record<string, string> = {};
+    for (const [k, v] of Object.entries(refs)) {
+      if (typeof v === 'string' && v.length > 0) refsPayload[k] = v;
+    }
     const handle = window.setTimeout(() => {
       void executePromptOperation({
         op_id: op.op_id,
         signature_id: op.signature_id ?? undefined,
         params,
+        refs: refsPayload,
       })
         .then((result) => {
           if (executeRequestIdRef.current !== requestId) return;
@@ -117,8 +112,8 @@ export function ShadowAnalysisPopoverAdjustTab({
     }, EXECUTE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
     // op.op_id / signature_id are stable for the schema's lifetime; we
-    // re-fire only when params change once seeded.
-  }, [op, paramsSeeded, params]);
+    // re-fire when params or refs change once seeded.
+  }, [op, paramsSeeded, params, refs]);
 
   const previewText = useMemo(
     () => executeResult?.prompt_text ?? '',
@@ -185,10 +180,19 @@ export function ShadowAnalysisPopoverAdjustTab({
       )}
 
       {op.refs.length > 0 && (
-        <div className="flex flex-col gap-1 px-1">
+        <div className="flex flex-col gap-1.5 px-1">
           <span className={sectionLabelClass}>Bindings</span>
           {op.refs.map((refSpec) => (
-            <RefBindingRow key={refSpec.key} ref={refSpec} />
+            <RefPickerField
+              key={refSpec.key}
+              capability={refSpec.capability}
+              value={refs[refSpec.key] ?? null}
+              onChange={(token) =>
+                setRefs((prev) => ({ ...prev, [refSpec.key]: token }))
+              }
+              label={`${refSpec.key} (${refSpec.capability})`}
+              required={refSpec.required}
+            />
           ))}
         </div>
       )}
