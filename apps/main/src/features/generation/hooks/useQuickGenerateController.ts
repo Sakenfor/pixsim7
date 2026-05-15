@@ -607,6 +607,17 @@ function useQuickGenerateControllerImpl() {
     return (sessionState?.operationType as OperationType | undefined) ?? latestStateRef.current.operationType;
   }
 
+  /** True when the carousel index has been navigated past the last real item
+   *  (the virtual "+ empty" slot used to opt into text-to-* in carousel mode).
+   *  `getCurrentInput()` clamps `currentIndex` to `[1, items.length]` so callers
+   *  must read the raw index directly to detect the virtual slot. */
+  function isOnVirtualEmptySlot(activeOperationType: OperationType = getActiveOperationType()): boolean {
+    const operationData = (useInputStore as any).getState().inputsByOperation?.[activeOperationType];
+    const items = operationData?.items ?? [];
+    const rawIndex = operationData?.currentIndex ?? 1;
+    return items.length > 0 && rawIndex > items.length;
+  }
+
   /** Read current input state from store (avoids stale React hook values) */
   function getInputState(activeOperationType: OperationType = getActiveOperationType()) {
     const inputState = (useInputStore as any).getState();
@@ -1235,10 +1246,24 @@ function useQuickGenerateControllerImpl() {
       pinnedTemplateId: activeTemplateId,
       templateRollMode: activeRollMode,
     } = latestStateRef.current;
-    const overrides = applyProbeState(rawOverrides);
+    let overrides = applyProbeState(rawOverrides);
+    const activeOperationType = getActiveOperationType();
+    // Carousel virtual empty slot: the user navigated past real items to opt
+    // into text-to-* . Callers that pass no asset hint (main "Go" button,
+    // generation-preset triggers, external gestures) would otherwise pull every
+    // queued carousel input from the store — both into composition_assets and
+    // into run_context.input_asset_ids — stamping unintended lineage onto the
+    // generated asset. Synthesize the same empty-input signal the AssetPanel's
+    // own generate button already sends.
+    if (
+      !Array.isArray(overrides?.assetOverrides)
+      && !overrides?.skipActiveAssetFallback
+      && isOnVirtualEmptySlot(activeOperationType)
+    ) {
+      overrides = { ...(overrides ?? {}), assetOverrides: [], skipActiveAssetFallback: true } as typeof overrides;
+    }
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
-    const activeOperationType = getActiveOperationType();
     const hasAssetOverrides = Array.isArray(overrides?.assetOverrides);
 
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
@@ -1830,15 +1855,8 @@ function useQuickGenerateControllerImpl() {
     options?: { ephemeral?: boolean; paramOverrides?: Record<string, any> },
   ) {
     const activeOperationType = getActiveOperationType();
-    const inputState = (useInputStore as any).getState();
-    const operationData = inputState.inputsByOperation?.[activeOperationType];
-    const items = operationData?.items ?? [];
-    const rawIndex = operationData?.currentIndex ?? 1;
 
-    // Virtual empty slot: the UI index is beyond the real items list
-    const isOnVirtualSlot = items.length > 0 && rawIndex > items.length;
-
-    if (isOnVirtualSlot) {
+    if (isOnVirtualEmptySlot(activeOperationType)) {
       // No asset on virtual slot — force text-to-* with empty inputs
       return generate({ assetOverrides: [], skipActiveAssetFallback: true, count, ephemeral: options?.ephemeral, paramOverrides: options?.paramOverrides });
     }
