@@ -17,6 +17,7 @@ Implementation is split across creation_helpers/ for maintainability:
 - cache: Cache key computation
 """
 import logging
+import time
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +72,6 @@ from pixsim7.backend.main.services.generation.creation_helpers.inputs import (
 )
 from pixsim7.backend.main.services.generation.creation_helpers.params import (
     canonicalize_params as _canonicalize_params_impl,
-    warn_legacy_asset_params as _warn_legacy_asset_params_impl,
     validate_structured_params as _validate_structured_params_impl,
 )
 from pixsim7.backend.main.services.generation.creation_helpers.prompts import (
@@ -121,6 +121,7 @@ class GenerationCreationService:
         analyzer_id: Optional[str] = None,
         precomputed_analysis: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
+        span_provenance: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find existing PromptVersion by hash or create new one with analysis.
@@ -148,6 +149,7 @@ class GenerationCreationService:
             author=author,
             precomputed_analysis=precomputed_analysis,
             user_id=user_id,
+            span_provenance=span_provenance,
         )
 
     async def _track_character_refs_for_generation(self, generation: Generation) -> None:
@@ -243,8 +245,20 @@ class GenerationCreationService:
             QuotaError: User exceeded quotas
             InvalidOperationError: Invalid operation or parameters
         """
+        # Per-phase timing — logged only when total > 1s. Helps pinpoint
+        # which await is responsible for slow burst creates (e.g. account
+        # selection lock contention, prompt analyzer cold-start, ARQ pool
+        # lazy connect). See `create_generation_phases` warnings.
+        _create_t0 = time.perf_counter()
+        _phases: List[Tuple[str, float]] = []
+
+        def _phase(name: str, t_start: float) -> None:
+            _phases.append((name, round((time.perf_counter() - t_start) * 1000, 1)))
+
         # Check user quota
+        _p = time.perf_counter()
         await self.users.check_can_create_job(user)
+        _phase("check_can_create_job", _p)
 
         # Validate provider exists and supports operation
         from pixsim7.backend.main.domain.providers.registry import registry
@@ -264,6 +278,19 @@ class GenerationCreationService:
         # Validate parameters (basic validation)
         if not params:
             raise InvalidOperationError("Generation parameters are required")
+
+        # Phase 2b of plan:op-runtime-span-popover. Extract span_provenance
+        # from the raw params (sidecar field, not a generation parameter)
+        # before canonicalization — canonical_params is the cleaned-up
+        # generation-param projection and won't carry it through. Piped
+        # into find_or_create_prompt_version below so the new PromptVersion
+        # row carries op-derived provenance.
+        raw_span_provenance = params.get("span_provenance")
+        span_provenance_payload: Optional[List[Dict[str, Any]]] = (
+            raw_span_provenance
+            if isinstance(raw_span_provenance, list)
+            else None
+        )
 
         # Check if params use structured format (from unified generations API)
         # Structured format has keys: generation_config, scene_context, player_context, social_context
@@ -292,7 +319,9 @@ class GenerationCreationService:
         # === PHASE 8: Content Rating Enforcement ===
         # Validate content rating against world/user constraints
         # Fetch user preferences once (used for content rating + validation settings)
+        _p = time.perf_counter()
         user_preferences = await fetch_user_preferences(self.db, user.id) or {}
+        _phase("fetch_user_preferences", _p)
 
         if params.get("social_context"):
             # Fetch world_meta from database
@@ -303,7 +332,9 @@ class GenerationCreationService:
 
             world_meta = None
             if world_id:
+                _p = time.perf_counter()
                 world_meta = await fetch_world_meta(self.db, world_id)
+                _phase("fetch_world_meta", _p)
 
             # Validate content rating
             is_valid, violation_msg, clamped_context = self._validate_content_rating(
@@ -336,25 +367,48 @@ class GenerationCreationService:
         # Compute both hashes:
         # - dedup_hash includes seed (avoid collapsing explicit seed variations)
         # - reproducible_hash ignores seed (sibling grouping across variations)
+        #
+        # Earlier we wrapped these in asyncio.to_thread to avoid blocking the
+        # event loop, but that made things WORSE under burst load: the default
+        # thread pool is small (min(32, cpu+4)) and contended with SQLAlchemy /
+        # FastAPI middleware / structlog formatters, so wall time exploded to
+        # multiple seconds while the hashes themselves are <50ms of CPU.
+        # Calling them inline is faster for this size of payload. Internal
+        # instrumentation in compute_hash will emit `compute_hash_internal_slow`
+        # if anything goes wrong.
+        _hash_t0 = time.perf_counter()
         dedup_hash = Generation.compute_hash(
-            canonical_params,
-            inputs,
-            include_seed=True,
+            canonical_params, inputs, include_seed=True
         )
         reproducible_hash = Generation.compute_hash(
-            canonical_params,
-            inputs,
-            include_seed=False,
+            canonical_params, inputs, include_seed=False
         )
+        _hash_dur_ms = (time.perf_counter() - _hash_t0) * 1000
+        if _hash_dur_ms > 50:
+            # Outer wall time of the pair. Pair with `compute_hash_internal_slow`
+            # to see whether time was spent in CPU vs queueing.
+            logger.warning(
+                "compute_hash_slow",
+                extra={
+                    "duration_ms": round(_hash_dur_ms, 1),
+                    "operation_type": operation_type.value,
+                    "provider_id": provider_id,
+                    "inputs_count": len(inputs) if inputs else 0,
+                },
+            )
 
         # === PHASE 6: Caching & Deduplication ===
         debug = DebugLogger()
+
+        _phase("compute_hash_pair", _hash_t0)
 
         # Skip dedup if force_new is True (for creating variations/versions)
         if not force_new:
             # Check for duplicate generation by hash
             debug.generation(f"Looking up dedup hash: {dedup_hash[:16]}...")
+            _p = time.perf_counter()
             existing_generation_id = await self.cache.find_by_hash(dedup_hash)
+            _phase("dedup_find_by_hash", _p)
             debug.generation(f"Hash lookup result: {existing_generation_id}")
             if existing_generation_id:
                 result = await self.db.execute(
@@ -387,6 +441,7 @@ class GenerationCreationService:
         # Pre-compute cache key if caching is enabled (reused for lookup and store)
         cache_key = None
         if strategy != "always" and not force_new:
+            _p = time.perf_counter()
             cache_key = await self._compute_generation_cache_key(
                 user=user,
                 operation_type=operation_type,
@@ -395,10 +450,13 @@ class GenerationCreationService:
                 strategy=strategy,
                 params=params,
             )
+            _phase("compute_cache_key", _p)
             debug.generation(f"cache_key={cache_key[:50]}...")
 
             # Check cache
+            _p = time.perf_counter()
             cached_generation_id = await self.cache.get_cached_generation(cache_key)
+            _phase("get_cached_generation", _p)
             debug.generation(f"cached_generation_id={cached_generation_id}")
             if cached_generation_id:
                 result = await self.db.execute(
@@ -429,6 +487,7 @@ class GenerationCreationService:
         # Optional fail-fast: check if user has an account with sufficient credits
         # This is a soft check - actual credit deduction happens in status_poller
         if estimated_credits is not None and estimated_credits > 0:
+            _p = time.perf_counter()
             has_credits = await self._check_sufficient_credits(
                 user_id=user.id,
                 provider_id=provider_id,
@@ -436,6 +495,7 @@ class GenerationCreationService:
                 operation_type=operation_type,
                 model=canonical_params.get("model"),
             )
+            _phase("check_sufficient_credits", _p)
             if not has_credits:
                 logger.warning(
                     "insufficient_credits_fail_fast",
@@ -454,7 +514,9 @@ class GenerationCreationService:
         final_prompt = None
         if prompt_version_id:
             # Explicit version provided - resolve it
+            _p = time.perf_counter()
             final_prompt = await self._resolve_prompt(prompt_version_id, params)
+            _phase("resolve_prompt", _p)
         else:
             # No version provided - find or create from prompt text
             prompt_text = canonical_params.get("prompt")
@@ -465,12 +527,20 @@ class GenerationCreationService:
 
                 # Find or create PromptVersion by hash
                 # If precomputed_analysis is present, skip analyzer
+                _p = time.perf_counter()
                 prompt_version, created = await self.find_or_create_prompt_version(
                     prompt_text=prompt_text,
                     author=f"user:{user.id}",
                     analyzer_id=None if precomputed_analysis else analyzer_id,
                     precomputed_analysis=precomputed_analysis,
                     user_id=user.id,
+                    span_provenance=span_provenance_payload,
+                )
+                _phase(
+                    "find_or_create_prompt_version_new"
+                    if created
+                    else "find_or_create_prompt_version_reuse",
+                    _p,
                 )
                 prompt_version_id = prompt_version.id
                 final_prompt = prompt_version.prompt_text
@@ -521,35 +591,50 @@ class GenerationCreationService:
         )
 
         self.db.add(generation)
+        _p = time.perf_counter()
         await self.db.flush()  # assigns generation.id for downstream writers
+        _phase("db_flush_generation", _p)
 
         # Extract {{character:id}} refs from the final prompt and record
         # per-generation usage tied to prompt_version_id. Guarded so a
         # tracking failure never blocks generation creation.
         try:
+            _p = time.perf_counter()
             await self._track_character_refs_for_generation(generation)
+            _phase("track_character_refs", _p)
         except Exception as exc:
             logger.warning(
                 f"character_ref_tracking_failed gen={generation.id} err={exc!r}"
             )
 
+        _p = time.perf_counter()
         await self.db.commit()
+        _phase("db_commit", _p)
+        _p = time.perf_counter()
         await self.db.refresh(generation)
+        _phase("db_refresh", _p)
 
         # Increment user's job count
+        _p = time.perf_counter()
         await self.users.increment_job_count(user)
+        _phase("increment_job_count", _p)
 
         # === PHASE 6: Store hash for deduplication ===
+        _p = time.perf_counter()
         await self.cache.store_hash(dedup_hash, generation.id)
+        _phase("cache_store_hash", _p)
 
         # === PHASE 6: Cache generation if strategy permits ===
         if cache_key:
             # Note: We cache the generation ID immediately, even if not yet completed
             # This prevents duplicate requests during processing
             # Cache will be refreshed on completion in lifecycle service
+            _p = time.perf_counter()
             await self.cache.cache_generation(cache_key, generation.id, strategy)
+            _phase("cache_generation", _p)
 
         # Emit event for orchestration
+        _p = time.perf_counter()
         await event_bus.publish(JOB_CREATED, {
             "job_id": generation.id,  # Keep "job_id" for backward compatibility
             "generation_id": generation.id,
@@ -559,12 +644,15 @@ class GenerationCreationService:
             "params": canonical_params,  # Use canonical params for consistency
             "priority": priority,
         })
+        _phase("event_bus_publish", _p)
 
         # Queue generation for processing via ARQ
         try:
             debug.generation(f"Enqueuing generation {generation.id}...")
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+            _p = time.perf_counter()
             arq_pool = await get_arq_pool()
+            _phase("get_arq_pool", _p)
             enqueued_deferred = False
             if (
                 generation.preferred_account_id
@@ -642,7 +730,9 @@ class GenerationCreationService:
                     enqueued_deferred = True
 
             if not enqueued_deferred:
+                _p = time.perf_counter()
                 result = await enqueue_generation_fresh_job(arq_pool, generation.id)
+                _phase("enqueue_fresh_job", _p)
                 logger.info(f"Generation {generation.id} queued for processing")
             else:
                 result = None
@@ -653,6 +743,24 @@ class GenerationCreationService:
             logger.error(f"Failed to queue generation {generation.id}: {e}")
             # Don't fail generation creation if ARQ is down
             # Worker can pick it up later via scheduled polling
+
+        # Per-phase timing — only emit when total wall time is suspicious.
+        # 1s threshold matches the launcher's 0.8s /health probe window: any
+        # create that breaches it almost certainly contributed to a "briefly
+        # unhealthy" flip in the launcher dashboard.
+        _total_ms = (time.perf_counter() - _create_t0) * 1000
+        if _total_ms > 1000:
+            logger.warning(
+                "create_generation_phases",
+                extra={
+                    "total_ms": round(_total_ms, 1),
+                    "phases": _phases,
+                    "operation_type": operation_type.value,
+                    "provider_id": provider_id,
+                    "user_id": user.id,
+                    "generation_id": generation.id,
+                },
+            )
 
         return generation
 
@@ -689,14 +797,6 @@ class GenerationCreationService:
     ) -> Dict[str, Any]:
         """Canonicalize structured parameters from unified generations API."""
         return _canonicalize_params_impl(params, operation_type, provider_id)
-
-    def _warn_legacy_asset_params(
-        self,
-        canonical: Dict[str, Any],
-        operation_type: OperationType
-    ) -> None:
-        """Log warning/error for legacy URL params usage."""
-        _warn_legacy_asset_params_impl(canonical, operation_type)
 
     def _extract_inputs(
         self,

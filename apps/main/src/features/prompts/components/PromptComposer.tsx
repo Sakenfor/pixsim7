@@ -66,6 +66,12 @@ import {
 } from '../lib/promptAnalysisCache';
 import { shadowAnalysisExtension } from '../lib/shadowAnalysisExtension';
 import { shiftCandidates } from '../lib/shiftAnalysisPositions';
+import {
+  addSpanProvenance,
+  getSpanProvenance,
+  spanProvenanceField,
+  type SpanProvenanceEntry,
+} from '../lib/spanProvenanceExtension';
 import { tagPillExtension } from '../lib/tagPillExtension';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { useMediaCompareTargetStore } from '../stores/mediaCompareTargetStore';
@@ -220,6 +226,12 @@ export interface PromptComposerProps {
     guidance_patch?: Record<string, unknown>;
     composition_assets_patch?: Array<Record<string, unknown>>;
   } | null) => void;
+  /** Phase 2b of plan:op-runtime-span-popover. Fires after each Adjust-tab
+   *  acceptance with the live snapshot of op-derived span provenance.
+   *  Positions auto-shift with later edits (CM StateField). Parent should
+   *  hold the most-recent snapshot and ship it with the prompt-save payload
+   *  so PromptVersion.span_provenance gets persisted. */
+  onSpanProvenanceChange?: (entries: SpanProvenanceEntry[]) => void;
 }
 
 function truncate(text: string, maxLen: number) {
@@ -317,6 +329,7 @@ export function PromptComposer({
   onHistoryScopeChange,
   runContextSeed,
   onPromptToolRunContextPatch,
+  onSpanProvenanceChange,
 }: PromptComposerProps) {
   const composerId = useId();
   const api = useApi();
@@ -455,14 +468,26 @@ export function PromptComposer({
    * but skips the schema fetch — the AdjustTab already has the text from
    * the live executor preview.
    *
-   * The overlay arg carries source_op / op_params / op_refs provenance.
-   * Phase 2b will stamp it into the prompt's persisted block_overlay so
-   * later passes (re-tweak, the live-blocks decision gate) can identify
-   * op-derived spans without re-deriving from text alone. For now we
-   * only consume the prose.
+   * Phase 2b: alongside the text-replace dispatch, stamp the overlay's
+   * provenance into the spanProvenanceField StateField. The marker
+   * auto-shifts with later edits so getSpanProvenance(view.state) at
+   * save time always reports the current position. onSpanProvenanceChange
+   * fires with the snapshot so the parent can hold the latest state to
+   * ship with the prompt-save payload.
    */
   const handleAcceptOpOutput = useCallback(
-    (text: string, overlay: { source_op: string; block_id: string }) => {
+    (
+      text: string,
+      overlay: {
+        source_op: string;
+        block_id: string;
+        op_params?: Record<string, unknown>;
+        op_refs?: Record<string, string>;
+        signature_id?: string | null;
+        category?: string | null;
+        role?: string | null;
+      },
+    ) => {
       // Phase 4: read from focusedCandidateRef (see handleAcceptHypothesis note).
       const candidate = focusedCandidateRef.current;
       if (!candidate) return;
@@ -479,27 +504,43 @@ export function PromptComposer({
         setFocusedCandidate(null);
         return;
       }
+      const insertFrom = candidate.start_pos;
+      const insertTo = insertFrom + text.length;
+      // Single dispatch — the addSpanProvenance effect references the
+      // POST-change positions (insertFrom..insertTo). CM applies the
+      // change first then the effect against the new doc, so the marker
+      // lands on the inserted range exactly.
       view.dispatch({
         changes: {
           from: candidate.start_pos,
           to: candidate.end_pos,
           insert: text,
         },
+        effects: addSpanProvenance.of({
+          from: insertFrom,
+          to: insertTo,
+          data: {
+            block_id: overlay.block_id,
+            source_op: overlay.source_op,
+            op_params: overlay.op_params ?? {},
+            op_refs: overlay.op_refs ?? {},
+            signature_id: overlay.signature_id ?? null,
+            category: overlay.category ?? null,
+            role: overlay.role ?? null,
+          },
+        }),
       });
-      // Phase 2b pickup point: the overlay carries source_op + op_params
-      // + op_refs provenance. For now we log it as a soft pickup point so
-      // it's discoverable when Phase 2b adds persistence into the prompt's
-      // block_overlay. logEvent rather than console so it flows through
-      // the project's logging stack.
       logEvent('INFO', 'prompt_composer_op_accept', {
         source_op: overlay.source_op,
         block_id: overlay.block_id,
         text_length: text.length,
       });
+      // Snapshot AFTER dispatch so the new entry is included.
+      onSpanProvenanceChange?.(getSpanProvenance(view.state));
       setCmShadowPopover(null);
       setFocusedCandidate(null);
     },
-    [],
+    [onSpanProvenanceChange],
   );
 
   // --- Phase 4: publish focused candidate as a capability + detach handler ---
@@ -1239,6 +1280,10 @@ export function PromptComposer({
       }),
       cmRefInput.extension,
       tagPillExtension(),
+      // Phase 2b: live op-derived span provenance with auto-shifting
+      // positions. Markers are added by handleAcceptOpOutput; consumers
+      // snapshot via getSpanProvenance(view.state) at save time.
+      spanProvenanceField,
       operatorEditExtension(cmShadowTokenLines, {
         onOperatorClick: (operator, anchor) => {
           setCmOperatorPopover({ operator, anchor });

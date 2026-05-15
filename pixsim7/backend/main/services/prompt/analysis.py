@@ -7,12 +7,13 @@ Keeps adapters pure (no DB), handles storage decisions here.
 
 import hashlib
 import logging
+import time
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from pixsim7.backend.main.domain.prompt import PromptVersion
@@ -150,6 +151,7 @@ class PromptAnalysisService:
         semantic_context: Optional[PromptSemanticContext] = None,
         precomputed_analysis: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
+        span_provenance: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find or create PromptVersion with analysis.
@@ -194,11 +196,23 @@ class PromptAnalysisService:
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
 
-        # Look up by the uq_prompt_versions_hash_family key: (prompt_hash, family_id)
-        # with NULLS NOT DISTINCT. Scoping by family_id prevents cross-family
-        # reuse of one-off rows and matches the exact constraint the retry
-        # path catches below on IntegrityError.
+        # Cheap pre-check before grabbing the advisory lock — most calls
+        # find an existing version and avoid the lock round-trip entirely.
         existing = await self._find_by_hash_and_family(prompt_hash, family_hint)
+        if existing is None:
+            # Hash-keyed Postgres advisory lock to coalesce concurrent
+            # creates of the same prompt. Without this, N simultaneous
+            # POSTs with identical text each run the analyzer (1-2s) and
+            # only the IntegrityError fallback below catches the duplicate
+            # row — wasting (N-1) analyzer runs and serializing the burst.
+            #
+            # Auto-released on outer-txn commit/rollback. Per-prompt-hash
+            # granularity, so distinct prompts never block each other.
+            # Followers wait here until the leader's INSERT commits, then
+            # the re-check below finds the winner and returns immediately.
+            existing = await self._acquire_lock_and_recheck(
+                prompt_hash, family_hint
+            )
 
         if existing:
             # Check if we need to (re)analyze
@@ -250,10 +264,16 @@ class PromptAnalysisService:
                 user_id=user_id,
             )
 
+        # Phase 2b of plan:op-runtime-span-popover. span_provenance is set
+        # at create time only — PromptVersion is immutable, so dedup by hash
+        # means same text → same row → first-write provenance wins. Same
+        # text assembled via different op invocations would collide on hash;
+        # accepted limitation for this push.
         new_version = PromptVersion(
             prompt_text=normalized,
             prompt_hash=prompt_hash,
             prompt_analysis=analysis,
+            span_provenance=span_provenance if span_provenance else None,
             author=author,
             created_at=datetime.now(timezone.utc),
         )
@@ -314,6 +334,80 @@ class PromptAnalysisService:
             )
         result = await self.db.execute(stmt)
         return result.scalars().first()
+
+    async def _acquire_lock_and_recheck(
+        self,
+        prompt_hash: str,
+        family_id: Optional[UUID],
+    ) -> Optional[PromptVersion]:
+        """Take a hash-keyed advisory lock, then re-check by hash.
+
+        Used to coalesce concurrent first-time creates of the same prompt
+        so the analyzer runs once across N siblings instead of N times.
+        Returns the existing PromptVersion if the leader committed one
+        while we were waiting on the lock; None means we ARE the leader
+        and should proceed with analyzer + insert.
+
+        The lock is auto-released when the caller's outer transaction
+        commits or rolls back. Family is folded into the key so two
+        concurrent creates on the same prompt text but different
+        family_hints don't unnecessarily serialize.
+        """
+        # SQLite test backends don't have pg_advisory_xact_lock — skip the
+        # call there. The unique-constraint + IntegrityError fallback at
+        # the call site still protects correctness; we just give up the
+        # work-coalescing optimization.
+        bind = self.db.get_bind() if hasattr(self.db, "get_bind") else None
+        dialect = getattr(getattr(bind, "dialect", None), "name", None)
+        if dialect not in ("postgresql", "postgres", None):
+            return None
+
+        # 8 hex chars → signed int64 (pg_advisory_xact_lock takes bigint).
+        # First 8 hex chars of SHA-256 give 32 bits of entropy, more than
+        # enough to keep distinct prompts on distinct lock slots.
+        hash_part = bytes.fromhex(prompt_hash[:16])
+        lock_key = int.from_bytes(hash_part, "big", signed=True)
+        # Mix in the family so different families don't collide on the
+        # same lock slot. xor with a 64-bit hash of the family UUID.
+        if family_id is not None:
+            fam_bytes = family_id.bytes[:8]
+            lock_key ^= int.from_bytes(fam_bytes, "big", signed=True)
+
+        _wait_t0 = time.perf_counter()
+        try:
+            await self.db.execute(
+                sa_text("SELECT pg_advisory_xact_lock(:k)"),
+                {"k": lock_key},
+            )
+        except Exception as exc:
+            # If the lock acquisition itself fails (e.g. lock manager
+            # exhausted, connection issue), fall back to the unprotected
+            # path. The IntegrityError fallback below still ensures
+            # correctness — we just lose work-coalescing on this call.
+            logger.debug(
+                "prompt_version_lock_acquire_failed",
+                extra={"prompt_hash_prefix": prompt_hash[:16], "error": repr(exc)},
+            )
+            return None
+
+        _wait_ms = (time.perf_counter() - _wait_t0) * 1000
+        if _wait_ms > 500:
+            # Long lock waits = a leader is taking a long time inside the
+            # protected region (analyzer + insert + outer-txn commit).
+            # If this fires often, consider tightening the leader's
+            # transaction scope or making the analyzer faster.
+            logger.warning(
+                "prompt_version_lock_wait_slow",
+                extra={
+                    "wait_ms": round(_wait_ms, 1),
+                    "prompt_hash_prefix": prompt_hash[:16],
+                    "family_hint": str(family_id) if family_id else None,
+                },
+            )
+
+        # Re-check inside the lock. If the leader committed, we now see
+        # the row and can return early without running the analyzer.
+        return await self._find_by_hash_and_family(prompt_hash, family_id)
 
     async def reanalyze_version(
         self,
