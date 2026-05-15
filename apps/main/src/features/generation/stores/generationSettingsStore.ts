@@ -66,6 +66,14 @@ export interface GenerationSettingsState {
   providerId: string;
   generating: boolean;
   uiState: Record<string, any>;
+  /** Phase 2b of plan:op-runtime-span-popover. Live snapshot of op-derived
+   *  span provenance from the composer's spanProvenanceField. Updated by
+   *  PromptComposer's onSpanProvenanceChange callback as the user accepts
+   *  Adjust-tab outputs; consumed by useQuickGenerateController at submit
+   *  time and shipped as `span_provenance` in the generation request body
+   *  so PromptVersion.span_provenance gets persisted. NOT persisted to
+   *  localStorage (session-scoped — refs go stale). */
+  spanProvenance: Array<Record<string, unknown>>;
 
   // ── UI ──
   showSettings: boolean;
@@ -77,6 +85,7 @@ export interface GenerationSettingsState {
   setProvider: (id: string) => void;
   setGenerating: (value: boolean) => void;
   setUiState: (key: string, value: any) => void;
+  setSpanProvenance: (entries: Array<Record<string, unknown>>) => void;
 
   // ── Params actions ──
   /** @deprecated Use setOperationType — kept as alias */
@@ -111,6 +120,7 @@ export function createGenerationSettingsStore(
         providerId: 'pixverse',
         generating: false,
         uiState: {},
+        spanProvenance: [],
         showSettings: true,
         _hasHydrated: false,
 
@@ -217,6 +227,10 @@ export function createGenerationSettingsStore(
 
         setUiState: (key, value) => {
           set({ uiState: { ...get().uiState, [key]: value } });
+        },
+
+        setSpanProvenance: (entries) => {
+          set({ spanProvenance: entries });
         },
 
         // ── Params actions ──
@@ -377,6 +391,7 @@ export function createGenerationSettingsStore(
           providerId: 'pixverse',
           generating: false,
           uiState: {},
+          spanProvenance: [],
           showSettings: true,
           _hasHydrated: true,
         }),
@@ -475,6 +490,7 @@ export function createGenerationSettingsStore(
             state.generating = false; // always reset — never carry over stale in-progress flag
             state.promptMap = state.promptMap ?? {};
             state.uiState = state.uiState ?? {};
+            state.spanProvenance = state.spanProvenance ?? [];
             state._hasHydrated = true;
           }
         },

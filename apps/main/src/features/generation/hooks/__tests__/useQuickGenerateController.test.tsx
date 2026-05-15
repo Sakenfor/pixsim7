@@ -24,11 +24,13 @@ const testState = vi.hoisted(() => {
     generating: false,
     prompt: 'base prompt',
     uiState: {} as Record<string, unknown>,
+    spanProvenance: [] as Array<Record<string, unknown>>,
     setProvider: vi.fn(),
     setOperationType: vi.fn(),
     setGenerating: setGeneratingMock,
     setPrompt: vi.fn(),
     setUiState: vi.fn(),
+    setSpanProvenance: vi.fn(),
   };
 
   const settingsState = {
@@ -142,6 +144,7 @@ vi.mock('@features/generation', () => {
       useSettingsStore,
       useInputStore,
     }),
+    usePersistedScopeState: <T,>(_key: string, initial: T) => [initial, vi.fn()] as const,
     useGenerationsStore,
     createPendingGeneration: (input: any) => input,
   };
@@ -406,5 +409,47 @@ describe('useQuickGenerateController.generate with assetOverrides', () => {
     const buildContext = testState.buildGenerationRequestMock.mock.calls[0][0];
     expect(buildContext.dynamicParams).toEqual({ strength: 0.5 });
     expect(buildContext.activeAsset).toMatchObject({ id: 123 });
+  });
+
+  it('surfaces prompt rejection when errorCode arrives after initial failed patch', async () => {
+    const { result, rerender } = renderHook(() => useQuickGenerateController());
+    const asset = {
+      id: 123,
+      mediaType: 'image',
+      providerUploads: {},
+      lastUploadStatusByProvider: {},
+    } as any;
+
+    await act(async () => {
+      await result.current.generate({ assetOverrides: [asset] });
+    });
+    expect(result.current.generationId).toBe(42);
+    expect(result.current.error).toBeNull();
+
+    testState.generationsState.generations = new Map([
+      [42, { id: 42, status: 'failed', errorMessage: 'Generation failed', errorCode: null }],
+    ]);
+    await act(async () => {
+      rerender();
+    });
+    expect(result.current.error).toBeNull();
+
+    testState.generationsState.generations = new Map([
+      [
+        42,
+        {
+          id: 42,
+          status: 'failed',
+          errorMessage: 'Generation failed',
+          errorCode: 'content_prompt_rejected',
+        },
+      ],
+    ]);
+    await act(async () => {
+      rerender();
+    });
+    expect(result.current.error).toBe(
+      'Content filtered: Your prompt may contain sensitive content. Please revise and try again.',
+    );
   });
 });
