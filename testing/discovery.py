@@ -99,11 +99,91 @@ def _infer_suite_path(file_path: Path, rel_path: str) -> str:
     return rel_path
 
 
+def _path_after_tests_root(rel_path: str) -> list[str]:
+    """Return path segments after the first ``tests`` (or ``scripts``) ancestor.
+
+    For ``pixsim7/backend/tests/client/test_agent_errors.py`` returns
+    ``["client", "test_agent_errors.py"]``. Used by the inference helpers
+    to derive a stable id / category from filesystem position alone.
+    """
+    parts = rel_path.split("/")
+    for anchor in ("tests", "scripts"):
+        if anchor in parts:
+            idx = parts.index(anchor)
+            return parts[idx + 1 :]
+    return parts
+
+
+def _infer_backend_suite_id(rel_path: str) -> str:
+    """Build a kebab-case suite id from a test file's path.
+
+    Examples:
+      ``pixsim7/backend/tests/client/test_agent_errors.py`` →
+        ``client-agent-errors``
+      ``pixsim7/backend/tests/api/test_chat_session_api.py`` →
+        ``api-chat-session-api``
+      ``pixsim7/backend/tests/services/llm/test_remote_bridge.py`` →
+        ``services-llm-remote-bridge``
+      ``pixsim7/backend/tests/workers/conftest.py`` →
+        ``workers-conftest``
+    """
+    tail = _path_after_tests_root(rel_path)
+    if not tail:
+        return Path(rel_path).stem
+    *folders, filename = tail
+    stem = Path(filename).stem
+    if stem.startswith("test_"):
+        stem = stem[len("test_") :]
+    segments = [*folders, stem] if stem else folders
+    return _kebab("-".join(s for s in segments if s))
+
+
+def _infer_backend_category(rel_path: str) -> str | None:
+    """Category = the first folder after ``tests/``.
+
+    For ``pixsim7/backend/tests/client/test_x.py`` returns ``client``;
+    for files directly in ``tests/`` returns ``None``.
+    """
+    tail = _path_after_tests_root(rel_path)
+    if len(tail) <= 1:
+        return None
+    return tail[0]
+
+
+def _infer_backend_subcategory(rel_path: str) -> str | None:
+    """Subcategory = the deepest sub-folder, or the file's stem.
+
+    For ``tests/client/test_agent_errors.py`` returns ``agent-errors``;
+    for ``tests/services/llm/test_x.py`` returns ``llm``.
+    """
+    tail = _path_after_tests_root(rel_path)
+    if len(tail) <= 1:
+        # File sits directly under tests/ — use the stem.
+        stem = Path(tail[0]).stem if tail else ""
+        if stem.startswith("test_"):
+            stem = stem[len("test_") :]
+        return _kebab(stem) or None
+    if len(tail) == 2:
+        # tests/<folder>/<file> — use the file stem so each test is its own
+        # subcategory rather than collapsing every file in the folder.
+        stem = Path(tail[1]).stem
+        if stem.startswith("test_"):
+            stem = stem[len("test_") :]
+        return _kebab(stem) or None
+    # Deeper nesting — use the immediate parent folder.
+    return _kebab(tail[-2])
+
+
 def discover_suites(
     root: Path,
     scan_roots: Sequence[Path] | None = None,
 ) -> list[DiscoveredSuite]:
-    """Walk scan roots and collect all TEST_SUITE declarations.
+    """Walk scan roots and collect all test suites.
+
+    TEST_SUITE is **optional** — when absent, every metadata field is
+    inferred from the file's path (id, label, category, subcategory all
+    derive from where the test lives). When present, explicit fields
+    override the inferred defaults; missing fields still get inferred.
 
     Args:
         root: Project root for computing relative paths.
@@ -124,18 +204,33 @@ def discover_suites(
             if not (py_file.name.startswith("test_") or py_file.name == "conftest.py"):
                 continue
             raw, docstring = _extract_test_file_metadata(py_file)
+            # ``raw`` may be None — that's now valid. We still want this
+            # file in the catalog with fully-inferred metadata.
             if raw is None:
-                continue
+                raw = {}
 
             rel_path = py_file.relative_to(root).as_posix()
             suite_path = _infer_suite_path(py_file, rel_path)
             layer = _infer_layer(rel_path)
 
-            suite_id = raw.get("id")
-            suite_label = raw.get("label")
-            if not isinstance(suite_id, str) or not isinstance(suite_label, str):
-                logger.warning("Skipping %s: TEST_SUITE missing id or label", rel_path)
-                continue
+            # Inferred defaults from path — apply when TEST_SUITE doesn't
+            # override the field. Authors only need to spell out the parts
+            # they want to differ from filesystem layout.
+            inferred_id = _infer_backend_suite_id(rel_path)
+            inferred_category = _infer_backend_category(rel_path)
+            inferred_subcategory = _infer_backend_subcategory(rel_path)
+
+            explicit_id = raw.get("id") if isinstance(raw.get("id"), str) and raw["id"].strip() else None
+            explicit_label = raw.get("label") if isinstance(raw.get("label"), str) and raw["label"].strip() else None
+            explicit_category = raw.get("category") if isinstance(raw.get("category"), str) and raw["category"].strip() else None
+            explicit_subcategory = raw.get("subcategory") if isinstance(raw.get("subcategory"), str) and raw["subcategory"].strip() else None
+            explicit_kind = raw.get("kind") if isinstance(raw.get("kind"), str) and raw["kind"].strip() else None
+
+            suite_id = explicit_id or inferred_id
+            suite_label = explicit_label or _humanize_label(suite_id)
+            category = explicit_category or inferred_category
+            subcategory = explicit_subcategory or inferred_subcategory
+            kind = explicit_kind or "unit"
 
             covers_raw = raw.get("covers", [])
             covers = tuple(covers_raw) if isinstance(covers_raw, list) else ()
@@ -151,9 +246,9 @@ def discover_suites(
                 label=suite_label,
                 path=suite_path,
                 layer=layer,
-                kind=raw.get("kind") if isinstance(raw.get("kind"), str) else None,
-                category=raw.get("category") if isinstance(raw.get("category"), str) else None,
-                subcategory=raw.get("subcategory") if isinstance(raw.get("subcategory"), str) else None,
+                kind=kind,
+                category=category,
+                subcategory=subcategory,
                 covers=covers,
                 order=order,
                 description=description,

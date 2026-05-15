@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 def _get_root() -> Path:
     """Resolve project root from this file's location."""
-    # services/testing/catalog.py -> backend/main/services/testing/
-    return Path(__file__).resolve().parents[5]
+    # testing/catalog.py -> repo root
+    return Path(__file__).resolve().parents[1]
 
 
 def build_catalog(
