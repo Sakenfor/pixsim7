@@ -10,13 +10,15 @@ the inferred defaults.
 """
 from __future__ import annotations
 
-import ast
 import json
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
+
+from pixsim7.common.ast_metadata import extract_module_metadata
+from pixsim7.common.naming import humanize_label, kebab, path_after_anchor
 
 logger = logging.getLogger(__name__)
 
@@ -54,33 +56,14 @@ class DiscoveredSuite:
 def _extract_test_file_metadata(file_path: Path) -> tuple[dict[str, Any] | None, str | None]:
     """Parse a Python file's AST and extract TEST_SUITE dict + module docstring.
 
-    Returns ``(suite_dict_or_none, docstring_or_none)``.
+    Returns ``(suite_dict_or_none, docstring_or_none)``. Thin wrapper
+    around :func:`pixsim7.common.ast_metadata.extract_module_metadata`
+    that filters ``TEST_SUITE`` to dicts (the literal could parse to a
+    list or other type — we only want dicts).
     """
-    try:
-        source = file_path.read_text(encoding="utf-8-sig")
-        tree = ast.parse(source, filename=str(file_path))
-    except (SyntaxError, UnicodeDecodeError):
-        return None, None
-
-    docstring = ast.get_docstring(tree)
-
-    suite: dict[str, Any] | None = None
-    for node in ast.iter_child_nodes(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name) or target.id != "TEST_SUITE":
-            continue
-        try:
-            value = ast.literal_eval(node.value)
-        except (ValueError, TypeError):
-            continue
-        if isinstance(value, dict):
-            suite = value
-            break
-
+    literals, docstring = extract_module_metadata(file_path, "TEST_SUITE")
+    value = literals.get("TEST_SUITE")
+    suite = value if isinstance(value, dict) else None
     return suite, docstring
 
 
@@ -100,18 +83,17 @@ def _infer_suite_path(file_path: Path, rel_path: str) -> str:
 
 
 def _path_after_tests_root(rel_path: str) -> list[str]:
-    """Return path segments after the first ``tests`` (or ``scripts``) ancestor.
+    """Return path segments after the first scan-root ancestor.
 
     For ``pixsim7/backend/tests/client/test_agent_errors.py`` returns
     ``["client", "test_agent_errors.py"]``. Used by the inference helpers
     to derive a stable id / category from filesystem position alone.
+
+    ``scripts`` is checked **before** ``tests`` so that files under
+    ``scripts/tests/`` (where both anchors appear) split at the outer
+    ``scripts`` scan root rather than collapsing to just the filename.
     """
-    parts = rel_path.split("/")
-    for anchor in ("tests", "scripts"):
-        if anchor in parts:
-            idx = parts.index(anchor)
-            return parts[idx + 1 :]
-    return parts
+    return path_after_anchor(rel_path, "scripts", "tests")
 
 
 def _infer_backend_suite_id(rel_path: str) -> str:
@@ -135,7 +117,7 @@ def _infer_backend_suite_id(rel_path: str) -> str:
     if stem.startswith("test_"):
         stem = stem[len("test_") :]
     segments = [*folders, stem] if stem else folders
-    return _kebab("-".join(s for s in segments if s))
+    return kebab("-".join(s for s in segments if s))
 
 
 def _infer_backend_category(rel_path: str) -> str | None:
@@ -162,16 +144,16 @@ def _infer_backend_subcategory(rel_path: str) -> str | None:
         stem = Path(tail[0]).stem if tail else ""
         if stem.startswith("test_"):
             stem = stem[len("test_") :]
-        return _kebab(stem) or None
+        return kebab(stem) or None
     if len(tail) == 2:
         # tests/<folder>/<file> — use the file stem so each test is its own
         # subcategory rather than collapsing every file in the folder.
         stem = Path(tail[1]).stem
         if stem.startswith("test_"):
             stem = stem[len("test_") :]
-        return _kebab(stem) or None
+        return kebab(stem) or None
     # Deeper nesting — use the immediate parent folder.
-    return _kebab(tail[-2])
+    return kebab(tail[-2])
 
 
 def discover_suites(
@@ -228,7 +210,10 @@ def discover_suites(
 
             suite_id = explicit_id or inferred_id
             suite_label = explicit_label or _humanize_label(suite_id)
-            category = explicit_category or inferred_category
+            # Files sitting directly under a scan root (no subfolder) have
+            # no folder-derived category — fall back to the layer name so
+            # every suite always has a category for grouping.
+            category = explicit_category or inferred_category or layer
             subcategory = explicit_subcategory or inferred_subcategory
             kind = explicit_kind or "unit"
 
@@ -302,12 +287,6 @@ def _extract_ts_test_suite(file_path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _kebab(text: str) -> str:
-    """Convert camelCase / PascalCase to kebab-case."""
-    result = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", text)
-    return result.lower().replace("_", "-")
-
-
 def _infer_frontend_category(rel_path: str) -> str:
     """Derive a category string from the repo-relative path."""
     parts = rel_path.replace("\\", "/").split("/")
@@ -343,7 +322,7 @@ def _infer_frontend_subcategory(rel_path: str) -> str:
     # Walk backwards past __tests__ to find the meaningful parent
     for i in range(len(parts) - 2, -1, -1):
         if parts[i] != "__tests__":
-            return _kebab(parts[i])
+            return kebab(parts[i])
     return "general"
 
 
@@ -367,12 +346,17 @@ def _infer_frontend_suite_id(rel_path: str) -> str:
     category = _infer_frontend_category(rel_path)
     # category is e.g. "frontend/generation" — take the part after /
     domain = category.split("/", 1)[1] if "/" in category else category
-    return f"{domain}-{_kebab(stem)}-ui"
+    return f"{domain}-{kebab(stem)}-ui"
 
 
 def _humanize_label(suite_id: str) -> str:
-    """Convert kebab-case id to a human-readable label."""
-    return suite_id.replace("-", " ").title() + " Tests"
+    """Convert a kebab-case suite id to a human-readable test-suite label.
+
+    Test-suite convention is ``"<Title Case> Tests"`` — the bare
+    :func:`pixsim7.common.naming.humanize_label` skips the suffix so
+    other registries can reuse it.
+    """
+    return f"{humanize_label(suite_id)} Tests"
 
 
 _SKIP_DIRS = {"node_modules", ".git", "dist", "build", "__pycache__"}

@@ -62,9 +62,10 @@ python scripts/tests/validate_catalog.py
 `apps/main/src/features/devtools/services/testCatalogRegistry.ts`:
 
 - unique suite IDs
-- required suite fields: `category`, `subcategory`, `kind`, `covers`
+- required suite fields: `category`, `kind` (everything else is inferred from path or optional)
 - valid `layer` / `kind` values
-- existing `path` / `covers` filesystem targets
+- existing `path` filesystem targets
+- `covers` path existence (only when present — `covers` itself is optional)
 - generated registry artifact exists (`scripts/tests/test-registry.json`)
 
 ## Maintenance

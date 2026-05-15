@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
-from pixsim7.backend.main.services.testing.catalog import (
+from testing.catalog import (
     build_catalog,
     validate_catalog,
     validate_runner_alignment,
@@ -139,22 +139,30 @@ _CONVENTIONS: List[TestConventionsSection] = [
         ],
     ),
     TestConventionsSection(
-        title="Self-registration (TEST_SUITE dict)",
+        title="Self-registration (TEST_SUITE dict — optional)",
         rules=[
             TestConventionRule(
-                rule="Every Python test file (or conftest.py for directory suites) must declare a module-level TEST_SUITE dict.",
+                rule=(
+                    "TEST_SUITE is OPTIONAL. Backend and frontend discovery both "
+                    "infer id / label / category / subcategory / kind from the file's "
+                    "path. Declare TEST_SUITE only to override defaults or add covers."
+                ),
+                example=(
+                    '# A bare test file — no TEST_SUITE needed.\n'
+                    '# Auto-cataloged from path as:\n'
+                    '#   id="api-ui-catalog-meta"  label="Api Ui Catalog Meta Tests"\n'
+                    '#   category="api"  subcategory="ui-catalog-meta"  kind="unit"\n'
+                    'def test_something(): ...'
+                ),
+            ),
+            TestConventionRule(
+                rule="Override only when defaults are wrong. Common reasons: non-unit kind, explicit covers for plan-coverage, sharper category.",
                 example=(
                     'TEST_SUITE = {\n'
-                    '    "id": "ui-catalog-meta-api",\n'
-                    '    "label": "UI Catalog Meta API Tests",\n'
-                    '    "kind": "contract",\n'
-                    '    "category": "backend/api",\n'
-                    '    "subcategory": "meta-ui",\n'
+                    '    "kind": "contract",  # default would be "unit"\n'
                     '    "covers": [\n'
                     '        "pixsim7/backend/main/api/v1/meta_ui.py",\n'
-                    '        "pixsim7/backend/main/services/meta/ui_catalog_registry.py",\n'
                     '    ],\n'
-                    '    "order": 25,\n'
                     '}'
                 ),
             ),
@@ -162,14 +170,17 @@ _CONVENTIONS: List[TestConventionsSection] = [
                 rule="TEST_SUITE must be a plain dict literal (no variables, no function calls) — it's extracted via AST, not imported.",
             ),
             TestConventionRule(
-                rule="id must be unique across the entire catalog. Use kebab-case: <domain>-<feature>[-<aspect>].",
-                example="meta-contract-conformance, assets-upload-api, prompt-block-fit-scoring",
+                rule=(
+                    "Inferred id is kebab(folder-segments + file-stem-without-test-prefix). "
+                    "Override id only if you need a stable handle that's independent of file location."
+                ),
+                example="path pixsim7/backend/tests/client/test_agent_errors.py → id client-agent-errors",
             ),
             TestConventionRule(
-                rule='covers must list the source file paths this test verifies. This enables auto-discovery in plan coverage.',
+                rule="covers is opt-in (not required for the catalog). Add it to enable plan-coverage auto-discovery for that suite.",
             ),
             TestConventionRule(
-                rule="Frontend suites are auto-discovered from *.test.{ts,tsx} files. Optional: add export const TEST_SUITE = {...} to override inferred metadata.",
+                rule="Frontend suites are auto-discovered from *.test.{ts,tsx} files the same way. Optional: add export const TEST_SUITE = {...} to override inferred metadata.",
             ),
         ],
     ),
@@ -211,22 +222,24 @@ _CONVENTIONS: List[TestConventionsSection] = [
 ]
 
 _TEST_SUITE_TEMPLATE: Dict[str, Any] = {
-    "id": "<domain>-<feature>",
-    "label": "<Human-Readable Label> Tests",
-    "kind": "unit | contract | integration | e2e | smoke",
-    "category": "<layer>/<domain>",
-    "subcategory": "<specific-area>",
-    "covers": ["<repo-relative-path-to-source-file>"],
-    "order": 25,
+    # All fields below are OPTIONAL — discovery infers each from path
+    # when absent. Declare only the keys you need to override.
+    "kind": "unit | contract | integration | e2e | smoke",  # default: "unit"
+    "covers": ["<repo-relative-path-to-source-file>"],      # default: ()
+    # Less commonly overridden — inferred from filesystem position:
+    # "id":          "<folder>-<stem>"        e.g. "client-agent-errors"
+    # "label":       "<Title Case> Tests"
+    # "category":    "<first-folder-after-tests>"  or layer for top-level
+    # "subcategory": "<deeper-folder>" or "<stem>"
+    # "order":       float for catalog display sort (nulls sort last)
 }
 
 _CHECKLIST = [
-    "Determine kind: unit (isolated), contract (API/service boundary), integration (cross-layer), smoke (sanity).",
-    "Place file in the correct directory for the layer (see file placement conventions).",
-    "Add TEST_SUITE dict at module level — must be a plain dict literal.",
-    "Set covers to the source files this test verifies — enables plan coverage auto-discovery.",
-    "Use a unique kebab-case id: <domain>-<feature>[-<aspect>].",
-    "Run pnpm test:registry:check to validate the suite is discoverable.",
+    "Place file in the correct directory for the layer (see file placement conventions). The path becomes the suite's default id and category — choose location accordingly.",
+    "Write your tests. No TEST_SUITE block needed by default — discovery auto-cataloges every test_*.py file with inferred metadata.",
+    "Add a TEST_SUITE dict only if defaults are wrong: usually for non-'unit' kind, or to declare 'covers' for plan-coverage linkage.",
+    "If you do declare TEST_SUITE, it must be a plain dict literal (extracted via AST — no variables, no function calls).",
+    "Run pnpm test:registry:check to validate (catches missing required path/layer, invalid kind/layer values, broken cover paths).",
     "Link to plan evidence if applicable: POST /dev/plans/progress/{plan_id} with append_evidence.",
 ]
 
@@ -352,7 +365,7 @@ async def get_coverage_gaps(
     A source file is considered covered if any suite's cover path is a prefix
     of the source file path (or vice versa).
     """
-    from pixsim7.backend.main.services.testing.catalog import _get_root
+    from testing.catalog import _get_root
 
     root = _get_root()
     scope_dir = root / scope

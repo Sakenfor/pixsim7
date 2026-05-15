@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from pixsim7.common.naming import humanize_label
+
 import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -212,6 +214,16 @@ def _plans_db_only_mode() -> bool:
     return bool(getattr(settings, "plans_db_only_mode", False))
 
 
+_FS_EXPORT_TAG = "fs-export"
+
+
+def _should_export_plan(bundle: "PlanBundle") -> bool:
+    if _plans_db_only_mode():
+        return False
+    tags = bundle.doc.tags or []
+    return _FS_EXPORT_TAG in tags
+
+
 class PlanNotFoundError(ValueError):
     pass
 
@@ -353,10 +365,19 @@ def _build_manifest_data(bundle: PlanBundle) -> Dict[str, Any]:
     return data
 
 
-def export_plan_to_disk(bundle: PlanBundle) -> List[Path]:
+def export_plan_to_disk(
+    bundle: PlanBundle,
+    *,
+    scope_override: Optional[str] = None,
+) -> List[Path]:
     """Write manifest.yaml and plan.md to disk. Returns written paths."""
     repo_root = _resolve_repo_root()
-    scope = status_to_scope(bundle.doc.status)
+    if scope_override is not None:
+        if scope_override not in PLAN_SCOPES:
+            raise ValueError(f"Invalid scope_override: {scope_override!r}")
+        scope = scope_override
+    else:
+        scope = status_to_scope(bundle.doc.status)
     plan_dir = repo_root / PLANS_DIR / scope / bundle.plan.id
 
     manifest_path = plan_dir / "manifest.yaml"
@@ -557,7 +578,7 @@ def _read_plan_document(
         logger.warning("plan_doc_read_failed", plan_id=plan_id, path=doc_path)
         return None
 
-    title = full_path.stem.replace("-", " ").replace("_", " ").title()
+    title = humanize_label(full_path.stem)
     for line in markdown.split("\n", 5):
         if line.startswith("# "):
             title = line[2:].strip()
@@ -1028,9 +1049,9 @@ async def update_plan(
     await _emit_plan_notification(db, plan_id, doc.title, changes, principal=principal)
     await db.commit()
 
-    # Optional commit-back to filesystem (disabled in DB-only mode)
+    # Opt-in commit-back to filesystem (tagged plans only; killswitch disables all)
     sha: Optional[str] = None
-    if not _plans_db_only_mode():
+    if _should_export_plan(bundle):
         try:
             new_scope = status_to_scope(doc.status)
             needs_move = new_scope != old_scope

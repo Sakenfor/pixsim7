@@ -23,6 +23,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# Ensure project root is importable so we can use repo-level helpers.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pixsim7.common.ast_metadata import find_top_level_assign
+
 # Packages that map to source directories
 _PACKAGE_ROOTS = {
     "pixsim7.backend.main": "pixsim7/backend/main",
@@ -100,19 +106,6 @@ def infer_covers_for_file(file_path: Path) -> list[str]:
     return sorted(covers)
 
 
-def _extract_test_suite_node(tree: ast.Module) -> ast.Assign | None:
-    """Find the AST node for the TEST_SUITE assignment."""
-    for node in ast.iter_child_nodes(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if isinstance(target, ast.Name) and target.id == "TEST_SUITE":
-            return node
-    return None
-
-
 def _extract_covers_from_suite(raw: dict[str, Any]) -> list[str]:
     """Get current covers list from a TEST_SUITE dict."""
     covers = raw.get("covers", [])
@@ -121,7 +114,7 @@ def _extract_covers_from_suite(raw: dict[str, Any]) -> list[str]:
 
 def audit_all_suites() -> None:
     """Print coverage audit for all discovered suites."""
-    from pixsim7.backend.main.services.testing.discovery import discover_suites, _extract_test_suite
+    from testing.discovery import discover_suites
 
     suites = discover_suites(ROOT)
     needs_backfill: list[tuple[str, str, list[str]]] = []
@@ -193,7 +186,7 @@ def show_file_covers(file_path_str: str) -> None:
 
 def patch_suites(write: bool = False) -> None:
     """Scan all test files with TEST_SUITE dicts and add inferred source covers."""
-    from pixsim7.backend.main.services.testing.discovery import _extract_test_suite
+    from testing.discovery import _extract_test_file_metadata
 
     scan_roots = [
         ROOT / "pixsim7" / "backend" / "tests",
@@ -210,7 +203,7 @@ def patch_suites(write: bool = False) -> None:
             if not (py_file.name.startswith("test_") or py_file.name == "conftest.py"):
                 continue
 
-            raw = _extract_test_suite(py_file)
+            raw, _docstring = _extract_test_file_metadata(py_file)
             if raw is None:
                 continue
 
@@ -251,7 +244,7 @@ def _rewrite_covers_in_file(file_path: Path, new_covers: list[str]) -> None:
     """Rewrite the covers list in a TEST_SUITE dict literal in-place."""
     source = file_path.read_text(encoding="utf-8-sig")
     tree = ast.parse(source, filename=str(file_path))
-    node = _extract_test_suite_node(tree)
+    node = find_top_level_assign(tree, "TEST_SUITE")
     if node is None:
         return
 

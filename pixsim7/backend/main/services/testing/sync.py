@@ -16,7 +16,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
-from pixsim7.backend.main.services.testing.catalog import build_catalog
+from testing.catalog import build_catalog
 from pixsim7.backend.main.services.sync.ttl import TtlSync
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 

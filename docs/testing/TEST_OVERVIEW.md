@@ -73,44 +73,76 @@ pnpm test:registry:check   # validate suite metadata and covers paths
 
 ## Suite Registration
 
-Test suites register themselves — no central manifest needed for new suites.
+Test suites register themselves automatically — discovery walks the filesystem
+and infers all required metadata from each file's path. `TEST_SUITE` blocks
+are **optional overrides**, not required boilerplate.
+
+Discovery code lives at the repo-level `testing/` package (`testing/discovery.py`
++ `testing/catalog.py`) — pure stdlib, no backend deps. The DB-sync side
+(`pixsim7/backend/main/services/testing/sync.py`) imports from there.
 
 ### Backend / Scripts (Python)
 
-Add a `TEST_SUITE` dict at module level in your test file (after imports):
+**Minimum viable test file** — no `TEST_SUITE` block, no boilerplate:
+
+```python
+# pixsim7/backend/tests/client/test_agent_errors.py
+"""Module docstring becomes the suite description."""
+
+def test_something():
+    ...
+```
+
+This auto-cataloges as:
+- `id`: `client-agent-errors` (folder + stem, kebab-case)
+- `label`: `Client Agent Errors Tests`
+- `category`: `client` (first folder after `tests/`)
+- `subcategory`: `agent-errors` (file stem)
+- `kind`: `unit`
+- `description`: the module docstring
+- `path`, `layer`: derived from file location
+
+Add `TEST_SUITE` only to **override** defaults:
 
 ```python
 TEST_SUITE = {
-    "id": "my-feature-tests",
-    "label": "My Feature Tests",
-    "kind": "contract",
-    "category": "backend/my-domain",
-    "subcategory": "my-feature",
-    "covers": ["pixsim7/backend/main/services/my_feature.py"],
-    "order": 30,
+    "kind": "contract",                              # default is "unit"
+    "covers": ["pixsim7/backend/main/api/v1/x.py"],  # default is ()
 }
 ```
+
+Required fields (when present) are still validated: `id`, `label`, `path`,
+`layer`, `kind`, `category`. Discovery always provides defaults, so absent
+fields don't fail validation. `subcategory` and `covers` are optional.
 
 For directory-level suites, put `TEST_SUITE` in `conftest.py` — the discovery
 script uses the directory as the suite path.
 
-`path` and `layer` are derived automatically from the file location.
-
 Discovery: `scripts/tests/discover_backend_suites.py` scans `pixsim7/backend/tests/`
-and `scripts/` for `TEST_SUITE` dicts via AST parsing (no imports executed).
+and `scripts/` via AST parsing (no imports executed).
 
 ### Frontend (TypeScript)
 
-Frontend suites register via `testCatalogRegistry.ts`:
-
-- `registerTestSuite(...)` / `registerTestCatalogPlugin(...)`
+Frontend works the same way — `discover_frontend_suites` globs
+`apps/**/*.test.{ts,tsx}` and `packages/**/*.test.{ts,tsx}`, inferring
+metadata from path. Add `export const TEST_SUITE = {...}` only to override
+inferred defaults. There's no required registration call.
 
 ### Metadata fields
 
-- `category`: stable high-level area (`backend/api`, `frontend/project-bundle`, `scripts/bananza`)
-- `subcategory`: focused domain inside a category (`codegen`, `lifecycle`, `runtime-meta`)
-- `kind`: `unit | contract | integration | e2e | smoke`
-- `covers`: source paths that the suite validates
+- `category`: stable high-level area (`backend/api`, `frontend/project-bundle`, `scripts/bananza`) — inferred from first folder under the scan root
+- `subcategory`: focused domain inside a category — inferred from deeper folder or file stem
+- `kind`: `unit | contract | integration | e2e | smoke` — defaults to `unit`
+- `covers`: source paths the suite validates — optional, enables plan-coverage auto-discovery
+- `order`: float for catalog display sort (nulls sort last) — display-only, doesn't affect test execution
+
+### Shared helpers
+
+Three pure-stdlib utilities back this system. Other registries that want
+the same path-based id/catalog pattern can use them directly:
+
+- `pixsim7/common/naming.py` — `kebab()`, `humanize_label()`, `path_after_anchor()`
+- `pixsim7/common/ast_metadata.py` — `extract_module_metadata()`, `find_top_level_assign()`
 
 ### Validation
 

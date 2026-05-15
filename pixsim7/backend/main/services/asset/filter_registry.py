@@ -13,6 +13,8 @@ from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, e
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB  # still used by provider_uploads cast
 
+from pixsim7.common.naming import humanize_label
+
 from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.upload_attribution import UPLOAD_METHOD_LABELS
@@ -469,7 +471,7 @@ def _label_from_slug(slug: str, display_name: str | None) -> str:
         return display_name
     # "has:character" → "Character", "operation:image-to-image" → "Image To Image"
     _, _, name = slug.partition(":")
-    return (name or slug).replace("_", " ").replace("-", " ").title()
+    return humanize_label(name or slug)
 
 
 def _make_namespace_tag_loader(

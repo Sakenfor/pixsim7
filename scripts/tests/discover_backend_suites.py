@@ -1,6 +1,6 @@
-"""Discover TEST_SUITE metadata from backend and scripts test files.
+"""Discover test-suite metadata from backend and scripts test files.
 
-Thin CLI wrapper around ``pixsim7.backend.main.services.testing.discovery``.
+Thin CLI wrapper around :mod:`testing.discovery`.
 
 Usage:
     python scripts/tests/discover_backend_suites.py           # JSON to stdout
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from pixsim7.backend.main.services.testing.discovery import discover_suites
+from testing.discovery import discover_suites
 
 
 def main() -> int:

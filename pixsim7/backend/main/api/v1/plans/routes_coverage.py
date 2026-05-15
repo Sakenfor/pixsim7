@@ -44,7 +44,7 @@ async def get_plan_coverage(
     Returns both explicitly linked suites (from checkpoint evidence) and
     auto-discovered suites (from ``code_paths ∩ suite.covers`` overlap).
     """
-    from pixsim7.backend.main.services.testing.catalog import build_catalog
+    from testing.catalog import build_catalog
 
     bundle = await _h.get_plan_bundle(db, plan_id)
     if not bundle:

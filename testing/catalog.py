@@ -70,13 +70,24 @@ def validate_catalog(
     suites: list[dict[str, Any]],
     root: Path | None = None,
 ) -> list[str]:
-    """Validate suite metadata. Returns a list of error strings (empty = OK)."""
+    """Validate suite metadata. Returns a list of error strings (empty = OK).
+
+    Required fields are the ones :func:`testing.discovery.discover_suites`
+    guarantees to populate either explicitly or via path-inference:
+    ``id``, ``label``, ``path``, ``layer``, ``kind``, ``category``.
+
+    ``subcategory`` and ``covers`` are optional — discovery infers
+    ``subcategory`` from path but it can legitimately be absent for tests
+    sitting directly under a scan root, and ``covers`` is only validated
+    when present (the value-add of ``covers`` is plan coverage linkage,
+    which is per-author opt-in, not a catalog correctness invariant).
+    """
     if root is None:
         root = _get_root()
 
     allowed_kinds = {"unit", "contract", "integration", "e2e", "smoke"}
     allowed_layers = {"backend", "frontend", "scripts"}
-    required_fields = ("id", "label", "path", "layer", "kind", "category", "subcategory")
+    required_fields = ("id", "label", "path", "layer", "kind", "category")
 
     errors: list[str] = []
     seen_ids: set[str] = set()
@@ -109,13 +120,10 @@ def validate_catalog(
         if suite_path and not (root / suite_path).exists():
             errors.append(f"suite '{suite_id}' path does not exist: {suite_path}")
 
-        covers = suite.get("covers", [])
-        if not covers:
-            errors.append(f"suite '{suite_id}' missing required field: covers")
-        else:
-            for cover in covers:
-                if not (root / cover).exists():
-                    errors.append(f"suite '{suite_id}' cover path does not exist: {cover}")
+        # covers is optional — only validate path existence when present.
+        for cover in suite.get("covers", []) or []:
+            if not (root / cover).exists():
+                errors.append(f"suite '{suite_id}' cover path does not exist: {cover}")
 
     return errors
 

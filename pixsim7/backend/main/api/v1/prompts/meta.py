@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from pixsim7.common.naming import humanize_label
 from pixsim7.backend.main.api.dependencies import get_current_user
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     DEFAULT_PROMPT_ANALYZER_ID,
@@ -255,7 +256,7 @@ def _coerce_label(preset_id: str, payload: Any) -> str:
             value = payload.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
-    return preset_id.replace("_", " ").replace("-", " ").title()
+    return humanize_label(preset_id)
 
 
 def _coerce_description(payload: Any) -> Optional[str]:

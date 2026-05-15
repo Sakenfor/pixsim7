@@ -18,7 +18,11 @@ except ImportError:
 
 ALLOWED_SUITE_KINDS = {"unit", "contract", "integration", "e2e", "smoke"}
 ALLOWED_SUITE_LAYERS = {"backend", "frontend", "scripts"}
-REQUIRED_SUITE_FIELDS = ("category", "subcategory", "kind")
+# Kept in sync with testing.catalog.validate_catalog. ``subcategory`` and
+# ``covers`` are intentionally NOT required — discovery infers subcategory
+# from path (may be absent for files directly under a scan root), and
+# covers is opt-in plan-coverage metadata, not a catalog invariant.
+REQUIRED_SUITE_FIELDS = ("category", "kind")
 
 
 def _validate_suite(
@@ -54,12 +58,10 @@ def _validate_suite(
     if suite.kind and suite.kind not in ALLOWED_SUITE_KINDS:
         errors.append(f"suite '{suite_label}' has invalid kind '{suite.kind}'")
 
-    if not suite.covers:
-        errors.append(f"suite '{suite_label}' is missing required field: covers")
-    else:
-        for cover in suite.covers:
-            if not (ROOT / cover).exists():
-                errors.append(f"suite '{suite_label}' cover path does not exist: {cover}")
+    # covers is optional — only validate path existence when present.
+    for cover in suite.covers or ():
+        if not (ROOT / cover).exists():
+            errors.append(f"suite '{suite_label}' cover path does not exist: {cover}")
 
     return errors
 

@@ -18,15 +18,14 @@ These tests pin the early-return behavior at the top of ``main()``.
 from __future__ import annotations
 
 TEST_SUITE = {
-    "id": "hook-pretool-env-gate",
+    "id": "client-hook-pretool-env-gate",
     "label": "Hook pretool bridge-managed env gate",
     "kind": "unit",
-    "category": "client",
-    "subcategory": "agent-confirmation-hooks",
+    "category": "client/agent-confirmation-hooks",
     "covers": [
         "pixsim7/client/hook_pretool.py",
     ],
-    "order": 37.1,
+    "order": 19.2,
 }
 
 import io

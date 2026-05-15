@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from pixsim7.backend.main.services.testing.catalog import (
+from testing.catalog import (
     _expand_braces,
     _glob_matches_filename,
     _parse_pytest_file_patterns,
@@ -26,8 +26,8 @@ TEST_SUITE = {
     "category": "backend/testing",
     "subcategory": "catalog",
     "covers": [
-        "pixsim7/backend/main/services/testing/catalog.py",
-        "pixsim7/backend/main/services/testing/discovery.py",
+        "testing/catalog.py",
+        "testing/discovery.py",
     ],
     "order": 26,
 }
@@ -203,7 +203,7 @@ class TestValidateRunnerAlignment:
 
         If this fails, a real drift has been introduced.
         """
-        from pixsim7.backend.main.services.testing.catalog import build_catalog, _get_root
+        from testing.catalog import build_catalog, _get_root
 
         root = _get_root()
         if not (root / "pytest.ini").exists():

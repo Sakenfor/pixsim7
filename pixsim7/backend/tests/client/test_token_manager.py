@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 TEST_SUITE = {
-    "id": "token-manager",
+    "id": "client-token-manager",
     "label": "Token Manager & MCP Config",
     "kind": "unit",
-    "category": "client",
-    "subcategory": "token-management",
+    "category": "client/token-management",
     "covers": [
         "pixsim7/client/token_manager.py",
     ],
-    "order": 35,
+    "order": 19.1,
 }
 
 import json
