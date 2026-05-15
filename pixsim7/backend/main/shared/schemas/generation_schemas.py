@@ -292,6 +292,17 @@ class CreateGenerationRequest(BaseModel):
         description="Analyzer ID for prompt parsing (e.g., 'parser:simple', 'llm:claude'). See GET /api/v1/analyzers for available options."
     )
 
+    # Phase 2b of plan:op-runtime-span-popover. Snapshot of op-derived
+    # spans in the prompt at submit time, captured by PromptComposer's
+    # spanProvenanceField. Persisted into PromptVersion.span_provenance
+    # at create time (one-time only — PromptVersion is immutable). Each
+    # entry: {start_pos, end_pos, source_op, op_params, op_refs,
+    # signature_id, block_id, category, role}.
+    span_provenance: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Op-derived span provenance from the composer. See plan:op-runtime-span-popover Phase 2b."
+    )
+
     model_config = ConfigDict(
         populate_by_name=True,
         json_schema_extra={

@@ -23,6 +23,14 @@ export interface GenerationSessionFields {
   generating: boolean;
   /** Generic bag for persisted UI state (burst count, combination strategy, etc.) */
   uiState: Record<string, any>;
+  /** Phase 2b of plan:op-runtime-span-popover. Live snapshot of op-derived
+   *  span provenance from the composer's spanProvenanceField. Updated by
+   *  PromptComposer's onSpanProvenanceChange callback as the user accepts
+   *  Adjust-tab outputs; consumed by useQuickGenerateController at submit
+   *  time and shipped as `span_provenance` in the generation request body
+   *  so PromptVersion.span_provenance gets persisted. NOT persisted to
+   *  localStorage (session-scoped — refs go stale). */
+  spanProvenance: Array<Record<string, unknown>>;
 }
 
 /**
@@ -34,6 +42,7 @@ export interface GenerationSessionActions {
   setProvider: (id: string) => void;
   setGenerating: (value: boolean) => void;
   setUiState: (key: string, value: any) => void;
+  setSpanProvenance: (entries: Array<Record<string, unknown>>) => void;
   reset: () => void;
 }
 
@@ -56,6 +65,7 @@ export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   providerId: 'pixverse',
   generating: false,
   uiState: {},
+  spanProvenance: [],
 };
 
 export type GenerationSessionStoreHook = (<T>(
@@ -122,6 +132,9 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
         },
         setUiState: (key, value) => {
           set({ uiState: { ...get().uiState, [key]: value } });
+        },
+        setSpanProvenance: (entries) => {
+          set({ spanProvenance: entries });
         },
         reset: () => set({ ...DEFAULT_SESSION_FIELDS }),
       }),

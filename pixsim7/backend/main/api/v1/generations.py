@@ -441,6 +441,12 @@ async def create_generation(
         }
         if isinstance(artificial_extend, dict):
             canonical_params["artificial_extend"] = artificial_extend
+        # Phase 2b of plan:op-runtime-span-popover. Lift span_provenance
+        # to a top-level sidecar so create_generation extracts it before
+        # canonicalization (which is a generation-param projection that
+        # would strip unknown fields). Persisted onto the new PromptVersion.
+        if request.span_provenance is not None:
+            canonical_params["span_provenance"] = request.span_provenance
 
         # Build prompt config if template_id or prompt_version_id provided
         prompt_config = None

@@ -14,6 +14,12 @@ export interface GenerateAssetRequest {
   operationType?: OperationType;
   extraParams?: Record<string, any>;
   runContext?: GenerationRunContext;
+  /** Phase 2b of plan:op-runtime-span-popover. Snapshot of op-derived
+   *  span provenance from the composer at submit time. Persisted into
+   *  PromptVersion.span_provenance on the new row. Optional — surfaces
+   *  that don't track provenance (legacy tools, internal probes) just
+   *  omit it. */
+  spanProvenance?: Array<Record<string, unknown>>;
 }
 
 export interface GenerateAssetResponse {
@@ -146,11 +152,16 @@ function buildGenerationConfig(
     constraints.rating = rating;
   }
 
-  // Build the config object (matches GenerationNodeConfigSchema)
-  const sourceAssetId =
-    merged.sourceAssetId ?? merged.source_asset_id ?? merged.original_video_id;
-  const sourceAssetIds = merged.sourceAssetIds ?? merged.source_asset_ids;
-
+  // Build the config object (matches GenerationNodeConfigSchema).
+  //
+  // composition_assets is the canonical input list — quickGenerateLogic
+  // always assembles it for asset-input operations (i2i, fusion,
+  // video_transition, etc.), so legacy spreads (image_url, video_url,
+  // image_urls, sourceAssetId, sourceAssetIds) were pure dead weight: the
+  // backend prefers composition_assets and only falls back to legacy keys
+  // when it's missing — and the camelCase variants weren't even read by the
+  // snake_case fallback. They've been dropped here. CANONICAL_CONFIG_KEYS
+  // still filters them defensively so they can't leak into style.<provider>.
   const config: GenerationNodeConfigSchema = {
     generationType,
     purpose: 'gap_fill',
@@ -164,12 +175,7 @@ function buildGenerationConfig(
     enabled: true,
     version: 1,
     ...(merged.prompt ? { prompt: merged.prompt } : {}),
-    ...(merged.image_url ? { image_url: merged.image_url } : {}),
-    ...(merged.video_url ? { video_url: merged.video_url } : {}),
-    ...(merged.image_urls ? { image_urls: merged.image_urls } : {}),
     ...(merged.prompts ? { prompts: merged.prompts } : {}),
-    ...(sourceAssetId !== undefined ? { sourceAssetId } : {}),
-    ...(sourceAssetIds ? { sourceAssetIds } : {}),
     ...(merged.composition_assets ? { composition_assets: merged.composition_assets } : {}),
     ...(merged.mask_url ? { mask_url: merged.mask_url } : {}),
     ...(artificialExtend !== undefined ? { artificial_extend: artificialExtend } : {}),
@@ -197,7 +203,14 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
 
   // Create generation request
   // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
-  const generationRequest: CreateGenerationRequest & { preferred_account_id?: number } = {
+  // Cast widens the type so we can include span_provenance — the OpenAPI
+  // codegen lags one server-restart behind backend schema edits, so the
+  // generated CreateGenerationRequest may not yet declare the field. Once
+  // the codegen catches up this cast can be dropped.
+  const generationRequest: CreateGenerationRequest & {
+    preferred_account_id?: number;
+    span_provenance?: Array<Record<string, unknown>>;
+  } = {
     config: prepared.generationConfig,
     provider_id: prepared.providerId,
     name: prepared.name,
@@ -205,6 +218,9 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
     version_intent: 'new',
     force_new: true,
     ...(prepared.preferredAccountId ? { preferred_account_id: prepared.preferredAccountId } : {}),
+    ...(req.spanProvenance && req.spanProvenance.length > 0
+      ? { span_provenance: req.spanProvenance }
+      : {}),
   };
   if (import.meta.env.DEV) {
     (globalThis as any).__quickgenLastCreateGenerationRequest = {

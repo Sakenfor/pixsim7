@@ -18,16 +18,15 @@ that previously got called without ``session_id`` / ``profile_id``).
 from __future__ import annotations
 
 TEST_SUITE = {
-    "id": "bridge-per-session-mcp",
+    "id": "client-bridge-per-session-mcp",
     "label": "Bridge per-session HTTP MCP config",
     "kind": "unit",
-    "category": "client",
-    "subcategory": "mcp-reliability",
+    "category": "client/mcp-reliability",
     "covers": [
         "pixsim7/client/bridge.py",
         "pixsim7/client/token_manager.py",
     ],
-    "order": 37,
+    "order": 19.0,
 }
 
 import json

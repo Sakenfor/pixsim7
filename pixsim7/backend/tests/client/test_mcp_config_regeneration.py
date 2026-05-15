@@ -15,16 +15,15 @@ refuses to start, surfaces the error.
 from __future__ import annotations
 
 TEST_SUITE = {
-    "id": "mcp-config-regeneration",
+    "id": "client-mcp-config-regeneration",
     "label": "MCP Config Regeneration Robustness",
     "kind": "unit",
-    "category": "client",
-    "subcategory": "mcp-reliability",
+    "category": "client/mcp-reliability",
     "covers": [
         "pixsim7/client/session.py",
         "pixsim7/client/agent_pool.py",
     ],
-    "order": 36,
+    "order": 18.9,
 }
 
 from unittest.mock import MagicMock

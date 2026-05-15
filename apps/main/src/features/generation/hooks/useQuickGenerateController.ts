@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { createContext, createElement, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
 import { rollTemplate } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
@@ -386,7 +386,13 @@ function recoverMaskInput(
  *
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
-export function useQuickGenerateController() {
+/**
+ * Internal implementation — runs the full 1800-line hook body. Consumers
+ * should NOT call this directly; use `useQuickGenerateController()` instead,
+ * which reads from `GenerationControllerContext` when a provider is mounted
+ * (so the hook body runs once per scope instead of once per consumer).
+ */
+function useQuickGenerateControllerImpl() {
   const { useSettingsStore, useSessionStore, useInputStore } = useGenerationScopeStores();
 
   // Generation session state (scoped)
@@ -410,6 +416,11 @@ export function useQuickGenerateController() {
   const promptToolRunContextPatch = useSessionStore(
     (s) => s.uiState?.[PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY],
   );
+  // Phase 2b of plan:op-runtime-span-popover. PromptComposer pushes the
+  // live snapshot into session via setSpanProvenance after each Adjust-tab
+  // accept; we read it here at submit time and ship it as request.spanProvenance
+  // so the new PromptVersion row carries the provenance.
+  const spanProvenance = useSessionStore((s) => s.spanProvenance);
 
   // Probe-mode state read directly from scope. When ON, every generation entry
   // point auto-applies ephemeral=true + the bound preset's params (if any) so
@@ -460,24 +471,65 @@ export function useQuickGenerateController() {
   );
   const watchedStatus = watchedGeneration?.status;
   const watchedErrorMessage = watchedGeneration?.errorMessage;
+  const watchedErrorCode = watchedGeneration?.errorCode;
 
   // Track which generation we've already shown error for (prevents re-triggering)
   const errorShownForRef = useRef<number | null>(null);
 
+  // ─── Closure-stability infrastructure ────────────────────────────────────
+  // The generation helpers below (executeGeneration, buildRequest, submitOne,
+  // maybeRollTemplate, submitEachViaBackendExecution, withServerTemplateRollRunContext)
+  // historically captured `bindings`, `prompt`, `providerId`, `operationType`,
+  // `pinnedTemplateId`, `templateRollMode`, and `promptToolRunContextPatch`
+  // from the React render scope. That made every exported action — `generate`,
+  // `executeGeneration`, `generateCurrentOnly`, `generateSequentialBurst`,
+  // `generateEach` — a fresh ref each render. Consumers couldn't use them as
+  // `useEffect` deps and `React.memo` was useless.
+  //
+  // We funnel all those captures through a single ref updated each render. The
+  // helpers read from `latestStateRef.current` instead of from closure, so they
+  // can be wrapped in `useCallback([], …)` and remain referentially stable
+  // while still seeing the latest state at call-time.
+  //
+  // Things that stay direct (no ref needed):
+  //   - useState setters (setError, setGenerating, setGenerationId, setQueueProgress)
+  //   - zustand actions read via selectors (setProvider, addOrUpdateGeneration, …)
+  //   - other refs (probeStateRef, errorShownForRef)
+  //   - the scope-store hooks themselves (useSessionStore, useInputStore, …)
+  //     — their identity is provided by GenerationScopeProvider's memo
+  const latestStateRef = useRef({
+    bindings,
+    prompt,
+    providerId,
+    operationType,
+    pinnedTemplateId,
+    templateRollMode,
+    promptToolRunContextPatch,
+  });
+  latestStateRef.current = {
+    bindings,
+    prompt,
+    providerId,
+    operationType,
+    pinnedTemplateId,
+    templateRollMode,
+    promptToolRunContextPatch,
+  };
+
   useEffect(() => {
-    // Skip if no generation, not failed, no error message, or already shown
-    if (!generationId || watchedStatus !== 'failed' || !watchedErrorMessage) return;
+    // Skip if no generation, not failed, or already shown
+    if (!generationId || watchedStatus !== 'failed') return;
     if (errorShownForRef.current === generationId) return;
 
     // Show error in prompt box for prompt rejections and input validation errors
     // (not for other failures like quota, network errors, output rejections, etc.)
     // Primary: dispatch on structured errorCode. Fallback: string matching for legacy.
-    const errorCode = watchedGeneration?.errorCode;
-    const lowerError = watchedErrorMessage.toLowerCase();
+    const errorCode = watchedErrorCode;
+    const lowerError = watchedErrorMessage?.toLowerCase() ?? '';
 
     const isPromptRejection = errorCode === 'content_prompt_rejected'
       || errorCode === 'content_text_rejected'
-      || (!errorCode && (
+      || (
         lowerError.includes('content filtered (prompt)')
         || lowerError.includes('content filtered (text)')
         || lowerError.includes('prompt rejected')
@@ -485,15 +537,15 @@ export function useQuickGenerateController() {
         || lowerError.includes('sensitive')
         || lowerError.includes('500063')
         || (lowerError.includes('content') && lowerError.includes('text'))
-      ));
+      );
 
     const isPromptTooLong = errorCode === 'param_too_long'
-      || (!errorCode && (
+      || (
         lowerError.includes('too-long parameters')
         || lowerError.includes('cannot exceed')
         || lowerError.includes('prompt is too long')
         || lowerError.includes('input is too long')
-      ));
+      );
 
     if (!isPromptRejection && !isPromptTooLong) return;
 
@@ -505,7 +557,7 @@ export function useQuickGenerateController() {
     } else {
       setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
     }
-  }, [generationId, watchedStatus, watchedErrorMessage]);
+  }, [generationId, watchedStatus, watchedErrorMessage, watchedErrorCode]);
 
   // ─── Shared generation helpers ───
 
@@ -552,7 +604,7 @@ export function useQuickGenerateController() {
   /** Read operation from store at call-time so commands don't depend on stale closures. */
   function getActiveOperationType(): OperationType {
     const sessionState = (useSessionStore as any).getState?.();
-    return (sessionState?.operationType as OperationType | undefined) ?? operationType;
+    return (sessionState?.operationType as OperationType | undefined) ?? latestStateRef.current.operationType;
   }
 
   /** Read current input state from store (avoids stale React hook values) */
@@ -621,11 +673,12 @@ export function useQuickGenerateController() {
    *  Throws on failure so the caller can show a visible error instead of
    *  silently falling back to the manual prompt. */
   async function maybeRollTemplate(): Promise<string | null> {
-    if (!pinnedTemplateId) return null;
+    const { pinnedTemplateId: activeTemplateId } = latestStateRef.current;
+    if (!activeTemplateId) return null;
     const { draftCharacterBindings: bindings, controlValues } = useBlockTemplateStore.getState();
     const hasBindings = Object.keys(bindings).length > 0;
     const hasControlOverrides = Object.keys(controlValues).length > 0;
-    const result = await rollTemplate(pinnedTemplateId, {
+    const result = await rollTemplate(activeTemplateId, {
       character_bindings: hasBindings ? bindings : undefined,
       control_values: hasControlOverrides ? controlValues : undefined,
     });
@@ -651,28 +704,33 @@ export function useQuickGenerateController() {
     inputAssetIds: number[];
     historyAssets: HistoryAsset[];
   }> {
+    const {
+      providerId: activeProviderId,
+      prompt: activePrompt,
+      bindings: activeBindings,
+    } = latestStateRef.current;
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
-    const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', activeOperationType);
+    const opSpec = providerCapabilityRegistry.getOperationSpec(activeProviderId ?? '', activeOperationType);
     const model = dynamicParams?.model as string | undefined;
-    const maxChars = resolvePromptLimitForModel(providerId, model, opSpec?.parameters);
+    const maxChars = resolvePromptLimitForModel(activeProviderId, model, opSpec?.parameters);
 
     // Clamp inputs to max slots. Callers should already clamp (so tracking agrees),
     // but we defensively clamp here too since buildRequest has multiple call sites.
-    const clampedInputs = clampInputsToMaxSlots(operationInputs, activeOperationType, model, providerId);
+    const clampedInputs = clampInputsToMaxSlots(operationInputs, activeOperationType, model, activeProviderId);
 
     // activeAsset: null means explicitly skip gallery fallback (e.g. empty carousel slot).
     // undefined means "not provided" → use gallery fallback.
     const resolvedActiveAsset = overrides && 'activeAsset' in overrides
       ? overrides.activeAsset ?? undefined
-      : bindings.lastSelectedAsset;
+      : activeBindings.lastSelectedAsset;
 
     const buildResult = await buildGenerationRequest({
       operationType: activeOperationType,
-      prompt: overrides?.promptOverride ?? prompt,
+      prompt: overrides?.promptOverride ?? activePrompt,
       dynamicParams,
       operationInputs: clampedInputs,
-      prompts: bindings.prompts,
-      transitionDurations: bindings.transitionDurations,
+      prompts: activeBindings.prompts,
+      transitionDurations: activeBindings.transitionDurations,
       activeAsset: resolvedActiveAsset,
       currentInput,
       maxChars,
@@ -958,16 +1016,21 @@ export function useQuickGenerateController() {
   function withServerTemplateRollRunContext(
     runContext?: GenerationRunContext,
   ): GenerationRunContext | undefined {
-    const promptToolPatch = normalizePromptToolRunContextPatch(promptToolRunContextPatch);
+    const {
+      promptToolRunContextPatch: activePatch,
+      pinnedTemplateId: activeTemplateId,
+      templateRollMode: activeRollMode,
+    } = latestStateRef.current;
+    const promptToolPatch = normalizePromptToolRunContextPatch(activePatch);
     const mergedRunContext = mergePromptToolRunContextPatch(runContext, promptToolPatch);
-    if (!mergedRunContext || !pinnedTemplateId || templateRollMode !== 'each') {
+    if (!mergedRunContext || !activeTemplateId || activeRollMode !== 'each') {
       return mergedRunContext;
     }
     const draftBindings = useBlockTemplateStore.getState().draftCharacterBindings;
     const hasBindings = Object.keys(draftBindings).length > 0;
     return {
       ...mergedRunContext,
-      block_template_id: pinnedTemplateId,
+      block_template_id: activeTemplateId,
       ...(hasBindings ? { character_bindings: draftBindings } : {}),
     };
   }
@@ -977,19 +1040,21 @@ export function useQuickGenerateController() {
     request: { finalPrompt: string; params: any; effectiveOperationType: OperationType },
     runContext?: GenerationRunContext,
   ) {
+    const { providerId: activeProviderId } = latestStateRef.current;
     const result = await generateAsset({
       prompt: request.finalPrompt,
-      providerId,
+      providerId: activeProviderId,
       operationType: request.effectiveOperationType,
       extraParams: request.params,
       runContext: withServerTemplateRollRunContext(runContext),
+      spanProvenance: spanProvenance.length > 0 ? spanProvenance : undefined,
     });
 
     const genId = result.job_id;
     addOrUpdateGeneration(createPendingGeneration({
       id: genId,
       operationType: request.effectiveOperationType,
-      providerId,
+      providerId: activeProviderId,
       finalPrompt: request.finalPrompt,
       params: request.params,
       status: result.status || 'pending',
@@ -1035,12 +1100,17 @@ export function useQuickGenerateController() {
       onError,
       emptyErrorMessage: `No valid items could be prepared for backend ${executionMode === 'sequential' ? 'sequential Each' : 'fanout'}`,
       prepareItem: async ({ index: i, total, group, primaryInput }) => {
+        const {
+          bindings: activeBindings,
+          providerId: activeProviderId,
+          operationType: activeOperationType,
+        } = latestStateRef.current;
         const resolvedGroup = prePickSetRefs(group, setCache, transientPickStateByInputId);
         const resolvedPrimary = resolvedGroup[0] ?? primaryInput;
-        const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
+        const dynamicParams = { ...activeBindings.dynamicParams, ...overrideParams };
         await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
         const request = await buildRequest(
-          operationType,
+          activeOperationType,
           dynamicParams,
           resolvedGroup,
           resolvedPrimary,
@@ -1056,7 +1126,7 @@ export function useQuickGenerateController() {
         });
         const prepared = prepareGenerateAssetSubmission({
           prompt: request.finalPrompt,
-          providerId,
+          providerId: activeProviderId,
           operationType: request.effectiveOperationType,
           extraParams: request.params,
           runContext: withServerTemplateRollRunContext(runContext),
@@ -1097,8 +1167,11 @@ export function useQuickGenerateController() {
       },
     });
 
+    const {
+      providerId: dispatchProviderId,
+    } = latestStateRef.current;
     const request = prepareEachBackendExecutionPayload({
-      providerId: providerId || 'pixverse',
+      providerId: dispatchProviderId || 'pixverse',
       strategy,
       onError,
       executionMode,
@@ -1117,11 +1190,16 @@ export function useQuickGenerateController() {
       executionMode,
       onProgress: (progress) => setQueueProgress(progress),
       onNewGenerationId: (genId) => {
+        const {
+          operationType: trackerOperationType,
+          providerId: trackerProviderId,
+          prompt: trackerPrompt,
+        } = latestStateRef.current;
         addOrUpdateGeneration(createPendingGeneration({
           id: genId,
-          operationType,
-          providerId,
-          finalPrompt: prompt,
+          operationType: trackerOperationType,
+          providerId: trackerProviderId,
+          finalPrompt: trackerPrompt,
           params: {},
           status: 'pending',
         }));
@@ -1151,6 +1229,12 @@ export function useQuickGenerateController() {
     rawOverrides?: GenerateOverrides,
     callbacks?: { onProgress?: (progress: { queued: number; total: number } | null) => void },
   ): Promise<GenerationPipelineResult> {
+    const {
+      bindings: activeBindings,
+      providerId: activeProviderId,
+      pinnedTemplateId: activeTemplateId,
+      templateRollMode: activeRollMode,
+    } = latestStateRef.current;
     const overrides = applyProbeState(rawOverrides);
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
@@ -1160,7 +1244,7 @@ export function useQuickGenerateController() {
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
     const probeDefaults = overrides?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
     const dynamicParams = {
-      ...bindings.dynamicParams,
+      ...activeBindings.dynamicParams,
       ...(probeDefaults || {}),
       ...overrides?.paramOverrides,
     };
@@ -1219,7 +1303,7 @@ export function useQuickGenerateController() {
       // only" split-button behavior so tracking/history stay in sync with
       // what the user sees selected.
       const model = dynamicParams?.model as string | undefined;
-      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', activeOperationType);
+      const opSpec = providerCapabilityRegistry.getOperationSpec(activeProviderId ?? '', activeOperationType);
       const resolvedMax = resolveMaxSlotsFromSpecs(opSpec?.parameters, activeOperationType, model)
         ?? resolveMaxSlotsForModel(activeOperationType, model);
       if (resolvedMax === 1 && effectiveCurrentInput?.asset && effectiveInputs.length > 1) {
@@ -1244,7 +1328,7 @@ export function useQuickGenerateController() {
     // - Caller-provided promptOverride skips template rolling entirely
     // - 'each' mode: backend rolls per request using run_context
     // - 'once' mode: roll once client-side and pass prompt override
-    const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+    const useServerRolling = activeTemplateId && activeRollMode === 'each';
     const rolledOnce = overrides?.promptOverride
       ? null  // skip template roll when caller provides explicit prompt
       : (!useServerRolling ? await maybeRollTemplate() : null);
@@ -1335,7 +1419,7 @@ export function useQuickGenerateController() {
           logEvent('INFO', 'burst_generation_created', {
             generationId: result.value,
             operationType: activeOperationType,
-            providerId: providerId || 'pixverse',
+            providerId: activeProviderId || 'pixverse',
             burstIndex: i + 1,
             burstTotal: burstCount,
           });
@@ -1357,7 +1441,7 @@ export function useQuickGenerateController() {
         queued: generatedIds.length,
         total: burstCount,
         operationType: activeOperationType,
-        providerId: providerId || 'pixverse',
+        providerId: activeProviderId || 'pixverse',
       });
 
       return { generationIds: generatedIds, pickStateUpdates: baseRequest.pickStateUpdates };
@@ -1399,7 +1483,7 @@ export function useQuickGenerateController() {
     logEvent('INFO', 'generation_created', {
       generationId: genId,
       operationType: activeOperationType,
-      providerId: providerId || 'pixverse',
+      providerId: activeProviderId || 'pixverse',
       status: 'pending',
     });
 
@@ -1440,6 +1524,12 @@ export function useQuickGenerateController() {
     count: number,
     rawOptions?: { overrideDynamicParams?: Record<string, any>; ephemeral?: boolean },
   ) => {
+    const {
+      bindings: activeBindings,
+      providerId: activeProviderId,
+      pinnedTemplateId: activeTemplateId,
+      templateRollMode: activeRollMode,
+    } = latestStateRef.current;
     const options = applyProbeStateAlt(rawOptions);
     if (count <= 1) return generate({ paramOverrides: options?.overrideDynamicParams, ephemeral: options?.ephemeral });
 
@@ -1459,14 +1549,14 @@ export function useQuickGenerateController() {
       const { currentInputs: rawCurrentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
       const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
       const baseDynamicParams = {
-        ...bindings.dynamicParams,
+        ...activeBindings.dynamicParams,
         ...(probeDefaults || {}),
         ...options?.overrideDynamicParams,
       };
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
 
-      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const useServerRolling = activeTemplateId && activeRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
       // No per-step buildRequest to derive from (steps 2+ use previous output),
@@ -1476,7 +1566,7 @@ export function useQuickGenerateController() {
         rawCurrentInputs,
         activeOperationType,
         baseDynamicParams?.model as string | undefined,
-        providerId,
+        activeProviderId,
       );
       if (!options?.ephemeral) {
         recordInputHistory(activeOperationType, buildHistoryAssets(currentInputs));
@@ -1575,16 +1665,13 @@ export function useQuickGenerateController() {
       setGenerating(false);
       setTimeout(() => setQueueProgress(null), 2000);
     }
-  }, [
-    generate,
-    operationType,
-    pinnedTemplateId,
-    templateRollMode,
-    bindings.dynamicParams,
-    useInputStore,
-    setWatchingGeneration,
-    setGenerating,
-  ]);
+    // Empty deps: this callback's body reads all changing state via
+    // `latestStateRef.current`, and only references functions/setters that are
+    // either intrinsically stable (useState setters, store actions, refs) or
+    // first-render closures of helpers that themselves read via the ref. See
+    // the `Closure-stability infrastructure` block near the top of this hook.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Generate individually for each queued input asset (or group of assets
@@ -1600,6 +1687,11 @@ export function useQuickGenerateController() {
     fanoutOptions?: Partial<FanoutRunOptions>;
     ephemeral?: boolean;
   }) => {
+    const {
+      operationType: activeOperationType,
+      pinnedTemplateId: activeTemplateId,
+      templateRollMode: activeRollMode,
+    } = latestStateRef.current;
     const options = applyProbeStateAlt(rawOptions);
     let { currentInputs } = getInputState();
     // Auto-upload any local-only assets before building each-generation requests
@@ -1658,12 +1750,12 @@ export function useQuickGenerateController() {
         }
         setQueueProgress({ queued: 0, total });
 
-        const probeDefaults = options?.ephemeral ? getProbeParamOverrides(operationType) : null;
+        const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
         const overrideParams = {
           ...(probeDefaults || {}),
           ...(options?.overrideDynamicParams || {}),
         };
-        const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+        const useServerRolling = activeTemplateId && activeRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
         await submitEachViaBackendExecution({
           groups,
@@ -1700,7 +1792,7 @@ export function useQuickGenerateController() {
     setQueueProgress({ queued: 0, total });
 
     try {
-      const probeDefaults = options?.ephemeral ? getProbeParamOverrides(operationType) : null;
+      const probeDefaults = options?.ephemeral ? getProbeParamOverrides(activeOperationType) : null;
       const overrideParams = {
         ...(probeDefaults || {}),
         ...(options?.overrideDynamicParams || {}),
@@ -1709,7 +1801,7 @@ export function useQuickGenerateController() {
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
       // - 'once' mode: roll once client-side, pass prompt override for all items
-      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const useServerRolling = activeTemplateId && activeRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
       await submitEachViaBackendExecution({
         groups,
@@ -1728,22 +1820,9 @@ export function useQuickGenerateController() {
     } finally {
       setGenerating(false);
     }
-  }, [
-    generate,
-    operationType,
-    prompt,
-    providerId,
-    pinnedTemplateId,
-    templateRollMode,
-    bindings.dynamicParams,
-    bindings.prompts,
-    bindings.transitionDurations,
-    bindings.lastSelectedAsset,
-    useInputStore,
-    addOrUpdateGeneration,
-    setWatchingGeneration,
-    setGenerating,
-  ]);
+    // Empty deps — same rationale as generateSequentialBurst above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Generate using only the currently selected carousel input (ignores other queued inputs). */
   async function generateCurrentOnly(
@@ -1772,6 +1851,36 @@ export function useQuickGenerateController() {
     return generate({ assetOverrides: [currentInput.asset], count, ephemeral: options?.ephemeral, paramOverrides: options?.paramOverrides });
   }
 
+  // ─── Stable-ref shells for the action callbacks ──────────────────────────
+  // The three plain `async function` declarations above (executeGeneration,
+  // generate, generateCurrentOnly) are recreated each render but only ever
+  // read changing state via `latestStateRef.current`. We wrap them in
+  // `useCallback([], ...)` so the externally-visible refs stay stable across
+  // renders — consumers can pass them to `useEffect` deps, `React.memo`'d
+  // children, etc., without churn. The first-render closures captured here
+  // forward to themselves, so behavior is unchanged.
+  // generateSequentialBurst / generateEach are already useCallback-wrapped
+  // above (with `[]` deps) — no shell needed.
+  const stableExecuteGeneration = useCallback(
+    (
+      rawOverrides?: GenerateOverrides,
+      callbacks?: { onProgress?: (progress: { queued: number; total: number } | null) => void },
+    ) => executeGeneration(rawOverrides, callbacks),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const stableGenerate = useCallback(
+    (overrides?: GenerateOverrides) => generate(overrides),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const stableGenerateCurrentOnly = useCallback(
+    (count?: number, options?: { ephemeral?: boolean; paramOverrides?: Record<string, any> }) =>
+      generateCurrentOnly(count, options),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   return {
     // Core control center state
     operationType,
@@ -1794,11 +1903,77 @@ export function useQuickGenerateController() {
     // Bindings to assets/inputs and params
     ...bindings,
 
-    // Actions
-    generate,
-    executeGeneration,
-    generateCurrentOnly,
+    // Actions (referentially stable across renders)
+    generate: stableGenerate,
+    executeGeneration: stableExecuteGeneration,
+    generateCurrentOnly: stableGenerateCurrentOnly,
     generateSequentialBurst,
     generateEach,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Controller context — single mount per scope
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Background: a typical QuickGen scope (control center, viewer's quickgen
+// embed, prompt-authoring workbench) mounts the controller in THREE separate
+// React subtrees — PromptPanel, AssetPanel's `useAssetPanelState`, and
+// SettingsBlocksPanels — each via dockview-managed panel components. Each
+// independent mount runs the 1800-line hook body (16+ store subscriptions,
+// many useMemo/useCallback) on every render, so a single keystroke or op-type
+// change re-fired 3× the work it needed to.
+//
+// `<GenerationControllerProvider>` mounts the controller ONCE near the scope
+// root (today: inside `QuickGenWidget`, between `GenerationScopeProvider` and
+// the panel host). All consumers calling `useQuickGenerateController()` read
+// from this context, sharing one hook-body execution per render.
+//
+// Backwards compatibility: when no provider is mounted (e.g. `MiniGallery`,
+// `GenerationPresetsPanel`, tests via `renderHook`), the public hook falls
+// back to mounting its own controller. That preserves the previous behavior
+// at those call sites — the only consumers that share are the ones that
+// actually sit beneath a provider.
+
+export type QuickGenerateController = ReturnType<typeof useQuickGenerateControllerImpl>;
+
+const GenerationControllerContext = createContext<QuickGenerateController | null>(null);
+GenerationControllerContext.displayName = 'GenerationControllerContext';
+
+export interface GenerationControllerProviderProps {
+  children: ReactNode;
+}
+
+/**
+ * Mounts ONE `useQuickGenerateController` instance for the scope subtree.
+ * Must be rendered inside a `GenerationScopeProvider` (or in the global
+ * scope) so the controller binds to the correct scoped stores.
+ */
+export function GenerationControllerProvider({ children }: GenerationControllerProviderProps) {
+  const controller = useQuickGenerateControllerImpl();
+  // `createElement` (rather than JSX) keeps this file `.ts` — JSX would
+  // require renaming to `.tsx` and updating import paths across consumers.
+  return createElement(GenerationControllerContext.Provider, { value: controller }, children);
+}
+
+/**
+ * Public hook — read the scope's shared controller from context, or fall
+ * back to mounting a standalone one if no provider is in the tree. Existing
+ * call sites work unchanged: they just get the shared instance instead of
+ * a private one when a provider is mounted above them.
+ *
+ * The hook order changes depending on whether a provider is present, which
+ * normally violates the Rules of Hooks. It's safe here because the answer
+ * to "is there a provider above me?" is stable for a given consumer's
+ * lifetime — a `<GenerationControllerProvider>` doesn't appear or disappear
+ * at runtime — so a given component's hook order never changes across its
+ * own renders. Cold-path consumers (MiniGallery, GenerationPresetsPanel,
+ * useHistoryGalleryItems) sit outside any provider and continue mounting
+ * their own controller; hot-path QuickGen panels read from context.
+ */
+export function useQuickGenerateController(): QuickGenerateController {
+  const fromContext = useContext(GenerationControllerContext);
+  if (fromContext) return fromContext;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useQuickGenerateControllerImpl();
 }

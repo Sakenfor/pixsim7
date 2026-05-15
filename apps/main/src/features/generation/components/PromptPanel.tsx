@@ -84,6 +84,13 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const controller = useQuickGenerateController();
   const { useSessionStore } = useGenerationScopeStores();
   const setSessionUiState = useSessionStore((s) => s.setUiState);
+  // Phase 2b: PromptComposer fires onSpanProvenanceChange after each
+  // Adjust-tab acceptance with the live snapshot (auto-shifting positions
+  // from spanProvenanceField). The session store holds it, then
+  // useQuickGenerateController reads it at submit time and includes it
+  // in the generation request body so PromptVersion.span_provenance gets
+  // persisted on the resulting row.
+  const setSpanProvenance = useSessionStore((s) => s.setSpanProvenance);
   const maskRegionsByAsset = useAssetRegionStore((s) => s.regionsByAsset);
   const maskLayersByAsset = useAssetRegionStore((s) => s.layersByAsset);
   const captureRegionsByAsset = useCaptureRegionStore((s) => s.regionsByAsset);
@@ -415,6 +422,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
       maxChars,
       runContextSeed: promptToolsRunContextSeed,
       onPromptToolRunContextPatch: handlePromptToolRunContextPatch,
+      onSpanProvenanceChange: setSpanProvenance,
       disabled: generating || (isTransitionMode && transitionCount === 0),
       placeholder: promptPlaceholder,
     }),
@@ -424,6 +432,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
       maxChars,
       promptToolsRunContextSeed,
       handlePromptToolRunContextPatch,
+      setSpanProvenance,
       generating,
       isTransitionMode,
       transitionCount,
