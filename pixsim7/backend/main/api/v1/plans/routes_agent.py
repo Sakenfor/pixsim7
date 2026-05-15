@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
@@ -358,6 +358,12 @@ async def get_agent_context(
                 "description": "Fetch companion and handoff documents for a plan",
             },
             {
+                "action": "get_work_log",
+                "method": "GET",
+                "url": "/dev/plans/work-log/{plan_id}",
+                "description": "List work_summary entries for the plan, newest first. Returns hydrated decisions/next/blockers/evidence from the activity log so a fresh session can resume cold.",
+            },
+            {
                 "action": "archive_plan",
                 "method": "POST",
                 "url": "/dev/plans/archive/{plan_id}",
@@ -382,3 +388,92 @@ async def get_agent_context(
 
 
 # ── Plan documents endpoint ───────────────────────────────────────
+
+
+# ── Plan work log ─────────────────────────────────────────────────
+
+
+class PlanWorkLogEntry(BaseModel):
+    id: str
+    session_id: str
+    run_id: Optional[str] = None
+    agent_type: str
+    timestamp: str
+    summary: str
+    decisions: List[str] = Field(default_factory=list)
+    next: Optional[str] = None
+    blockers: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list)
+    extra: Optional[Dict[str, Any]] = None
+
+
+class PlanWorkLogResponse(BaseModel):
+    plan_id: str
+    entries: List[PlanWorkLogEntry] = Field(default_factory=list)
+    total: int
+
+
+def _coerce_str_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    return []
+
+
+@router.get("/work-log/{plan_id}", response_model=PlanWorkLogResponse)
+async def get_plan_work_log(
+    plan_id: str,
+    _user: CurrentUser,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_database),
+):
+    """Return work_summary entries for a plan, newest first.
+
+    Hydrates `decisions`, `next`, `blockers`, `evidence` out of the JSON metadata
+    column so callers don't have to know the underlying shape. Used to resume a
+    plan cold from the prior session's handoff notes.
+    """
+    from pixsim7.backend.main.domain.docs.models import AgentActivityLog
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    base_stmt = (
+        select(AgentActivityLog)
+        .where(AgentActivityLog.plan_id == plan_id)
+        .where(AgentActivityLog.action == "work_summary")
+    )
+
+    total = (
+        await db.execute(select(func.count()).select_from(base_stmt.subquery()))
+    ).scalar() or 0
+
+    rows = (
+        await db.execute(
+            base_stmt.order_by(AgentActivityLog.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    entries: List[PlanWorkLogEntry] = []
+    for r in rows:
+        meta = r.extra if isinstance(r.extra, dict) else {}
+        entries.append(
+            PlanWorkLogEntry(
+                id=str(r.id),
+                session_id=r.session_id or "",
+                run_id=r.run_id,
+                agent_type=r.agent_type or "claude",
+                timestamp=r.timestamp.isoformat() if r.timestamp else "",
+                summary=r.detail or "",
+                decisions=_coerce_str_list(meta.get("decisions")),
+                next=(str(meta["next"]) if meta.get("next") else None),
+                blockers=_coerce_str_list(meta.get("blockers")),
+                evidence=_coerce_str_list(meta.get("evidence")),
+                extra=meta or None,
+            )
+        )
+
+    return PlanWorkLogResponse(plan_id=plan_id, entries=entries, total=int(total))

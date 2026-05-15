@@ -27,7 +27,7 @@ from pixsim7.common.scope_helpers import (
     normalize_profile_id as _normalize_profile_id,
     normalize_scope_value as _normalize_scope_value,
 )
-from sqlalchemy import select, func, distinct, update, or_
+from sqlalchemy import Text, cast, select, func, distinct, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_current_user_optional, get_database
@@ -715,6 +715,15 @@ async def get_agent_history(
     contract_id: Optional[str] = Query(None, description="Filter by contract"),
     action: Optional[str] = Query(None, description="Filter by action (e.g. work_summary, tool_use)"),
     exclude_action: Optional[str] = Query(None, description="Exclude entries with this action"),
+    q: Optional[str] = Query(
+        None,
+        description=(
+            "Free-text substring search (case-insensitive) across `detail` and the "
+            "`metadata` JSON column. Catches matches in `decisions[*]`, `next`, "
+            "`blockers[*]`, and `evidence[*]` because metadata is cast to text for "
+            "the LIKE. Intended for rationale discovery, not exact lookup."
+        ),
+    ),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
@@ -734,6 +743,15 @@ async def get_agent_history(
         stmt = stmt.where(AgentActivityLog.action == action)
     if exclude_action:
         stmt = stmt.where(AgentActivityLog.action != exclude_action)
+    if q:
+        needle = f"%{q.strip()}%"
+        if needle != "%%":
+            stmt = stmt.where(
+                or_(
+                    AgentActivityLog.detail.ilike(needle),
+                    cast(AgentActivityLog.extra, Text).ilike(needle),
+                )
+            )
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar() or 0
