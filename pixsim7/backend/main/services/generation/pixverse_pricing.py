@@ -35,15 +35,10 @@ except Exception:  # pragma: no cover
     _SDK_NATIVE_AUDIO = 10  # type: ignore
 
 # Last-resort fallbacks (only used if the SDK import fails entirely).
-# Per-model overrides live on VideoModelSpec.pricing in the SDK — they are
-# not duplicated here.
-_FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
-    "qwen-image": {"720p": 5, "1080p": 10},
-    "gemini-3.0": {"1080p": 50, "1440p": 50, "2160p": 90, "2k": 50, "4k": 90},
-    "gemini-2.5-flash": {"1080p": 15},
-    "seedream-4.0": {"1080p": 10, "1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
-    "seedream-4.5": {"1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
-}
+# Image per-model pricing is NOT duplicated here — it lives solely on
+# ImageModelSpec.pricing in the SDK (single source of truth). If the SDK
+# import fails, image credit estimates degrade to None rather than risk
+# serving a hand-copied table that silently drifts.
 _FALLBACK_WEBAPI_BASE_COSTS: dict[str, int] = {
     "360p": 4,
     "540p": 6,
@@ -65,10 +60,11 @@ def get_image_credit_change(model: str, quality: str) -> Optional[int]:
         if result is not None:
             return result
 
-    # Fallback to local table
-    credits_table = _SDK_IMAGE_CREDITS if _SDK_IMAGE_CREDITS else _FALLBACK_IMAGE_CREDITS
+    # SDK-derived table only; no hand-copied fallback (degrades to None).
+    if not _SDK_IMAGE_CREDITS:
+        return None
     model_lower = model.lower()
-    for m, qualities in credits_table.items():
+    for m, qualities in _SDK_IMAGE_CREDITS.items():
         if m.lower() == model_lower:
             for q, credits in qualities.items():
                 if q.lower() == quality_normalized:
@@ -178,13 +174,11 @@ def get_client_pricing_payload() -> Optional[dict[str, Any]]:
         existing = model_pricing.setdefault(model_id, dict(webapi_defaults))
         existing.update(dict(qualities))
 
-    image_credits: dict[str, dict[str, int]] = {}
-    if _SDK_IMAGE_CREDITS:
-        for model_id, qualities in _SDK_IMAGE_CREDITS.items():
-            image_credits[model_id] = dict(qualities)
-    else:
-        for model_id, qualities in _FALLBACK_IMAGE_CREDITS.items():
-            image_credits[model_id] = dict(qualities)
+    # SDK-derived only; empty if the SDK import failed (no hand-copied table).
+    image_credits: dict[str, dict[str, int]] = {
+        model_id: dict(qualities)
+        for model_id, qualities in (_SDK_IMAGE_CREDITS or {}).items()
+    }
 
     return {
         "provider": "pixverse",

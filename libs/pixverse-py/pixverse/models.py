@@ -294,11 +294,14 @@ class ImageModel:
                                    pricing=(("2k", 10), ("4k", 10)))
     SEEDREAM_5_LITE = ImageModelSpec("seedream-5.0-lite", qualities=("1440p", "2160p"), max_images=6,
                                       pricing=(("2k", 15), ("4k", 15)))
+    KLING_IMAGE_O3 = ImageModelSpec("kling-image-o3", qualities=("1080p", "1440p", "2160p"), max_images=10,
+                                     aspect_ratios=("21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"),
+                                     pricing=(("1080p", 10), ("2k", 10), ("4k", 20)))
     QWEN_IMAGE = ImageModelSpec("qwen-image", qualities=("720p", "1080p"), aspect_ratios=ASPECT_RATIOS_LEGACY,
                                  pricing=(("720p", 5), ("1080p", 10)))
 
     # All models (order matters for UI)
-    ALL: List[ImageModelSpec] = [NANO_BANANA_PRO, NANO_BANANA, GEMINI_3_1_FLASH, SEEDREAM_4, SEEDREAM_4_5, SEEDREAM_5_LITE, QWEN_IMAGE]
+    ALL: List[ImageModelSpec] = [NANO_BANANA_PRO, NANO_BANANA, GEMINI_3_1_FLASH, SEEDREAM_4, SEEDREAM_4_5, SEEDREAM_5_LITE, KLING_IMAGE_O3, QWEN_IMAGE]
     DEFAULT: ImageModelSpec = NANO_BANANA_PRO
 
     @classmethod
