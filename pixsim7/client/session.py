@@ -21,12 +21,27 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Awaitable, Callable, Optional
 
+from pixsim7.client.agent_errors import AgentError, generic_agent_error
 from pixsim7.client.log import get_logger
 
 # Asyncio stream buffer limit for subprocess stdout/stderr.
 # Codex app-server can emit large JSON lines (e.g. mcpServerStatus/list with
 # full tool schemas exceeds 200KB). The asyncio default of 64KB is too small.
 SUBPROCESS_STREAM_LIMIT = 1024 * 1024  # 1MB
+
+
+class AgentTaskError(RuntimeError):
+    """Typed exception raised when an agent turn ends with an error event.
+
+    Carries the structured :class:`AgentError` so the bridge can map it
+    to a per-category error_code, decide whether to retry, and surface
+    actionable details to the frontend. Subclasses ``RuntimeError`` for
+    backward compatibility with callers that catch broad exception types.
+    """
+
+    def __init__(self, err: AgentError) -> None:
+        super().__init__(err.message)
+        self.err = err
 
 
 class SessionState(str, Enum):
@@ -318,12 +333,13 @@ class AgentCmdSession:
                 if "error" in event:
                     err = event["error"]
                     message = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-                    raise RuntimeError(message)
+                    raise AgentTaskError(generic_agent_error(message, event))
                 return event.get("result", {})
 
             parsed = self._protocol.parse_event(event)
             if parsed.kind == "error":
-                raise RuntimeError(parsed.text or f"{method} failed")
+                err = parsed.error or generic_agent_error(parsed.text or f"{method} failed", parsed.raw)
+                raise AgentTaskError(err)
             if parsed.kind == "progress" and parsed.text:
                 self._log.debug("session_init_progress", detail=parsed.text)
 
@@ -358,7 +374,8 @@ class AgentCmdSession:
             if method.startswith("codex/event/mcp_startup_"):
                 saw_mcp_event = True
                 if parsed.kind == "error":
-                    raise RuntimeError(parsed.text or "MCP startup failed")
+                    err = parsed.error or generic_agent_error(parsed.text or "MCP startup failed", parsed.raw)
+                    raise AgentTaskError(err)
                 if parsed.kind == "progress" and parsed.text:
                     self._log.debug("session_init_progress", detail=parsed.text)
                 if method == "codex/event/mcp_startup_complete":
@@ -389,7 +406,8 @@ class AgentCmdSession:
                 continue
 
             if parsed.kind == "error":
-                raise RuntimeError(parsed.text)
+                err = parsed.error or generic_agent_error(parsed.text, parsed.raw)
+                raise AgentTaskError(err)
             if parsed.kind == "progress" and parsed.text:
                 self._log.debug("session_init_progress", detail=parsed.text)
 
@@ -711,7 +729,13 @@ class AgentCmdSession:
                 elif parsed.kind == "error":
                     self.stats.errors += 1
                     self._mark_ready()
-                    raise RuntimeError(f"Agent error: {parsed.text}")
+                    # Protocols that classify (Claude) attach a structured
+                    # AgentError; the others (Codex variants now route through
+                    # _codex_error_event which also attaches one) — so this
+                    # backstop only fires for any future protocol that emits
+                    # a kind="error" ParsedEvent without populating .error.
+                    err = parsed.error or generic_agent_error(parsed.text, parsed.raw)
+                    raise AgentTaskError(err)
 
                 elif parsed.kind == "progress":
                     # Capture agent message text from completed items (both exec JSONL and app-server JSON-RPC)

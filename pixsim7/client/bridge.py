@@ -32,8 +32,9 @@ except ImportError:
     websockets = None  # type: ignore
     ws_connect = None  # type: ignore
 
+from pixsim7.client.agent_errors import wire_error_code
 from pixsim7.client.agent_pool import AgentPool, SessionBusyError
-from pixsim7.client.session import SessionState
+from pixsim7.client.session import AgentTaskError, SessionState
 from pixsim7.client.log import get_logger, redact_url
 from pixsim7.client.token_manager import (
     TokenFile,
@@ -1215,13 +1216,30 @@ class Bridge:
 
     @staticmethod
     def _format_task_error(error: BaseException) -> dict:
-        """Normalize low-level task errors into actionable structured data."""
+        """Normalize low-level task errors into actionable structured data.
+
+        The wire-format category → error_code mapping lives in
+        :mod:`pixsim7.client.agent_errors` so it stays next to the category
+        vocabulary it depends on.
+        """
         text = str(error or "").strip() or error.__class__.__name__
         if isinstance(error, SessionBusyError):
             return {
                 "error": text,
                 "error_code": error.error_code,
                 "error_details": error.error_details,
+            }
+        if isinstance(error, AgentTaskError):
+            err = error.err
+            return {
+                "error": err.message or text,
+                "error_code": wire_error_code(err.category),
+                "error_details": {
+                    "category": err.category,
+                    "http_status": err.http_status,
+                    "retryable": err.retryable,
+                    "retry_after_ms": err.retry_after_ms,
+                },
             }
         if "Scoped session '" in text and " is busy" in text:
             return {
@@ -1529,11 +1547,15 @@ class Bridge:
 
         except Exception as e:
             error_payload = self._format_task_error(e)
+            details = error_payload.get("error_details") or {}
             get_logger().error(
                 "task_error",
                 task=task_id[:8],
                 error=error_payload["error"],
                 error_code=error_payload["error_code"],
+                category=details.get("category"),
+                http_status=details.get("http_status"),
+                retryable=details.get("retryable"),
             )
             error_msg = {
                 "type": "error",

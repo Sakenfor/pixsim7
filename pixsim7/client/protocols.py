@@ -13,6 +13,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+# Re-export from the error model module. Existing imports
+# (`from pixsim7.client.protocols import AgentError, _classify_claude_error`)
+# keep working — tests and external callers don't need to change.
+from pixsim7.client.agent_errors import (
+    AGENT_ERROR_CATEGORY,
+    AgentError,
+    _dict_message,
+    classify_claude_error as _classify_claude_error,
+    generic_agent_error as _generic_agent_error,
+)
+
+__all__ = [
+    "AGENT_ERROR_CATEGORY",
+    "AgentError",
+    "AgentProtocol",
+    "ClaudeProtocol",
+    "CodexAppServerProtocol",
+    "CodexExecProtocol",
+    "ParsedEvent",
+    "PROTOCOL_REGISTRY",
+    "get_protocol",
+]
+
 
 @dataclass
 class ParsedEvent:
@@ -23,6 +46,7 @@ class ParsedEvent:
     model: Optional[str] = None
     duration_ms: int = 0
     raw: dict | None = None
+    error: AgentError | None = None    # populated when kind == "error"
 
 
 # Map of CLI-specific flags to their equivalents in other CLIs.
@@ -162,35 +186,27 @@ def _short_path(path: str) -> str:
     return "/".join(parts[-3:]) if len(parts) > 3 else path
 
 
-def _extract_claude_error_message(raw: dict) -> str:
-    """Best-effort extraction of a human-readable error from Claude's
-    ``is_error=true`` result event.
+def _codex_error_event(prefix: str, raw: dict, *, detail: str = "") -> ParsedEvent:
+    """Build a structured error :class:`ParsedEvent` for Codex protocols.
 
-    Claude's shape varies: sometimes an ``errors: [{message: ...}, ...]``
-    list, sometimes a ``subtype`` like ``error_during_execution`` /
-    ``error_max_turns``, sometimes just a ``stop_reason``. Walk these in
-    priority order so the eventual ``RuntimeError("Agent error: …")``
-    raised by session.py carries something the user can act on, not the
-    bare empty string that would otherwise render as "No response from
-    agent".
+    Codex events come in many shapes (``codex/event/error``, ``turn/failed``,
+    MCP startup failures, ``thread/status/changed → systemError``) but they
+    all collapse to "prefix + truncated detail" — and they all need a typed
+    :class:`AgentError` so the session-layer raise becomes an
+    :class:`AgentTaskError` instead of a bare ``RuntimeError``. Codex
+    doesn't expose enough signal to categorize further today, so all
+    Codex-side errors land as ``category="unknown"``; the bridge maps that
+    to ``error_code="agent_unknown"``.
     """
-    errors = raw.get("errors")
-    if isinstance(errors, list) and errors:
-        first = errors[0]
-        if isinstance(first, dict):
-            msg = first.get("message") or first.get("detail") or first.get("error") or ""
-            if isinstance(msg, str) and msg.strip():
-                return msg.strip()
-        elif isinstance(first, str) and first.strip():
-            return first.strip()
-    subtype = raw.get("subtype")
-    if isinstance(subtype, str) and subtype.strip():
-        # Render snake_case → readable: "error_during_execution" → "error during execution"
-        return subtype.replace("_", " ").strip()
-    stop_reason = raw.get("stop_reason")
-    if isinstance(stop_reason, str) and stop_reason.strip():
-        return f"stop_reason: {stop_reason.strip()}"
-    return "Claude returned an error result (no detail)"
+    detail_text = (detail or "").strip()
+    suffix = f": {detail_text[:300]}" if detail_text else ""
+    text = f"{prefix}{suffix}"
+    return ParsedEvent(
+        kind="error",
+        text=text,
+        error=_generic_agent_error(text, raw),
+        raw=raw,
+    )
 
 
 class ClaudeProtocol(AgentProtocol):
@@ -259,16 +275,15 @@ class ClaudeProtocol(AgentProtocol):
             # so session.py:711 raises a RuntimeError with a useful message.
             subtype = str(raw.get("subtype") or "")
             if raw.get("is_error") or subtype.startswith("error"):
-                msg = _extract_claude_error_message(raw)
-                return ParsedEvent(kind="error", text=msg, raw=raw)
+                err = _classify_claude_error(raw)
+                return ParsedEvent(kind="error", text=err.message, error=err, raw=raw)
             return ParsedEvent(
                 kind="result", text=raw.get("result", ""), session_id=raw.get("session_id"),
                 duration_ms=raw.get("duration_ms", 0), raw=raw,
             )
         if t == "error":
-            err = raw.get("error", {})
-            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-            return ParsedEvent(kind="error", text=msg, raw=raw)
+            err = _classify_claude_error(raw)
+            return ParsedEvent(kind="error", text=err.message, error=err, raw=raw)
         if t == "assistant":
             content = raw.get("message", {}).get("content", [{}])
             block = content[0] if isinstance(content, list) and content else content
@@ -427,23 +442,23 @@ class CodexAppServerProtocol(AgentProtocol):
                     return ParsedEvent(kind="result", text=text, raw=raw)
             return ParsedEvent(kind="other", raw=raw)
 
-        # Error responses
+        # JSON-RPC error response (response envelope, not a notification).
         if "error" in raw:
-            return ParsedEvent(kind="error", text=raw["error"].get("message", ""), raw=raw)
+            err = raw["error"]
+            detail = _dict_message(err) if isinstance(err, dict) else str(err)
+            return _codex_error_event("Codex error", raw, detail=detail)
 
-        # Codex internal error event — contains the actual error message
+        # Codex internal error notification — contains the actual error message
         if method_norm == "codex/event/error":
             msg = params.get("msg", params)
-            message = msg.get("message", "") if isinstance(msg, dict) else str(msg)
-            return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
+            detail = _dict_message(msg) if isinstance(msg, dict) else str(msg)
+            return _codex_error_event("Codex error", raw, detail=detail)
         if method_norm == "error":
             err = params.get("error", params)
-            message = ""
-            if isinstance(err, dict):
-                message = str(err.get("message", "") or err.get("detail", "") or "")
-            if not message:
-                message = str(params.get("message", "") or "Unknown error")
-            return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
+            detail = _dict_message(err) if isinstance(err, dict) else ""
+            if not detail:
+                detail = str(params.get("message", "") or "Unknown error")
+            return _codex_error_event("Codex error", raw, detail=detail)
 
         # Streaming text deltas
         if method_norm in {"item/agentMessage/delta", "item/agent_message/delta"}:
@@ -473,12 +488,11 @@ class CodexAppServerProtocol(AgentProtocol):
         # Terminal turn errors
         if method_norm in {"turn/failed", "turn/error", "turn/cancelled", "turn/aborted"}:
             detail = (
-                str(params.get("error", "") or "")
-                or str(params.get("message", "") or "")
-                or str(params.get("detail", "") or "")
+                _dict_message(params)
+                or str(params.get("error", "") or "")
                 or "turn failed"
             )
-            return ParsedEvent(kind="error", text=f"Codex turn failed: {detail[:300]}", raw=raw)
+            return _codex_error_event("Codex turn failed", raw, detail=detail)
 
         # MCP startup progress
         if method_norm == "codex/event/mcp_startup_update":
@@ -488,7 +502,7 @@ class CodexAppServerProtocol(AgentProtocol):
             state = status.get("state", "")
             if state == "failed":
                 err = status.get("error", "unknown error")
-                return ParsedEvent(kind="error", text=f"MCP startup failed for {server}: {err}", raw=raw)
+                return _codex_error_event(f"MCP startup failed for {server}", raw, detail=str(err))
             if state == "ready":
                 return ParsedEvent(kind="progress", text=f"MCP ready: {server}", raw=raw)
             if state == "starting":
@@ -506,7 +520,7 @@ class CodexAppServerProtocol(AgentProtocol):
                     f"{entry.get('server', 'unknown')}: {entry.get('error', 'unknown error')}"
                     for entry in failed
                 )
-                return ParsedEvent(kind="error", text=f"MCP startup failed: {details}", raw=raw)
+                return _codex_error_event("MCP startup failed", raw, detail=details)
             if ready:
                 return ParsedEvent(kind="progress", text=f"MCP tools loaded: {', '.join(ready)}", raw=raw)
             return ParsedEvent(kind="progress", text="MCP startup complete (no servers ready)", raw=raw)
@@ -519,10 +533,9 @@ class CodexAppServerProtocol(AgentProtocol):
                 status_type = status.get("type", "")
                 if status_type in ("systemError", "error"):
                     err = params.get("error", "")
-                    if isinstance(err, dict):
-                        err = err.get("message", "") or err.get("detail", "") or str(err)
-                    detail = status.get("message", "") or status.get("detail", "") or params.get("message", "") or err
-                    return ParsedEvent(kind="error", text=f"Codex {status_type}: {detail or 'unknown'}", raw=raw)
+                    err_text = _dict_message(err) if isinstance(err, dict) else str(err or "")
+                    detail = _dict_message(status) or _dict_message(params) or err_text or "unknown"
+                    return _codex_error_event(f"Codex {status_type}", raw, detail=detail)
                 return ParsedEvent(kind="progress", text=f"Status: {status_type}", raw=raw)
             if status:
                 return ParsedEvent(kind="progress", text=f"Status: {status}", raw=raw)
