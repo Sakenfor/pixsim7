@@ -136,6 +136,7 @@ const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
 const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
 const MSG_KEY_PREFIX = 'ai-assistant:msg:';
 const SESSION_MSG_PREFIX = 'ai-assistant:session-msg:';
+const THINKING_KEY_PREFIX = 'ai-assistant:thinking:';
 
 // =============================================================================
 // Helpers
@@ -278,6 +279,65 @@ function runGreenfieldMigrationIfNeeded(): void {
     localStorage.setItem(VERSION_KEY, STORE_VERSION);
   } catch {
     /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Orphan key sweep — clean up localStorage caches whose owning tab/session
+// is gone (e.g. tab deleted on another device, never ran local closeTab).
+// Without this, msg:/draft:/thinking:/session-msg:/tab-prefs entries
+// accumulate indefinitely and eventually exhaust the origin's quota.
+// Runs once per app load on the first hydrated chat-tabs snapshot.
+// ---------------------------------------------------------------------------
+
+const TAB_KEYED_PREFIXES = [MSG_KEY_PREFIX, DRAFT_KEY_PREFIX, THINKING_KEY_PREFIX] as const;
+
+function sweepOrphanedAssistantKeys(
+  knownTabIds: Set<string>,
+  knownSessionIds: Set<string>,
+): void {
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      let orphan = false;
+      for (const prefix of TAB_KEYED_PREFIXES) {
+        if (key.startsWith(prefix)) {
+          const tabId = key.slice(prefix.length);
+          if (!knownTabIds.has(tabId)) orphan = true;
+          break;
+        }
+      }
+      if (!orphan && key.startsWith(SESSION_MSG_PREFIX)) {
+        const sessionId = key.slice(SESSION_MSG_PREFIX.length);
+        if (!knownSessionIds.has(sessionId)) orphan = true;
+      }
+      if (orphan) toRemove.push(key);
+    }
+    for (const key of toRemove) {
+      try { localStorage.removeItem(key); } catch { /* ignore */ }
+    }
+
+    // Prune tab-prefs entries for unknown tab ids.
+    const raw = localStorage.getItem(TAB_PREFS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object') {
+        const pruned: Record<string, unknown> = {};
+        let removed = 0;
+        for (const [id, prefs] of Object.entries(parsed)) {
+          if (knownTabIds.has(id)) pruned[id] = prefs;
+          else removed += 1;
+        }
+        if (removed > 0) {
+          if (Object.keys(pruned).length === 0) localStorage.removeItem(TAB_PREFS_KEY);
+          else localStorage.setItem(TAB_PREFS_KEY, JSON.stringify(pruned));
+        }
+      }
+    }
+  } catch {
+    /* ignore — sweep is best-effort */
   }
 }
 
@@ -704,8 +764,6 @@ function flushDraftSyncNow(
 // =============================================================================
 // Thinking entries persistence (survives full reload during streaming)
 // =============================================================================
-
-const THINKING_KEY_PREFIX = 'ai-assistant:thinking:';
 
 function thinkingKey(tabId: string): string {
   return `${THINKING_KEY_PREFIX}${tabId}`;
@@ -1256,6 +1314,7 @@ export const useAssistantChatStore = hmrSingleton(
     // server-core + client-only prefs and flip `tabsLoading` to match the
     // hydration flag. Single subscription per module load (hmrSingleton
     // guarantees this initializer runs at most once across HMR).
+    let orphanSweepDone = false;
     const applySnapshot = (snap: ChatTabsSnapshot) => {
       const prefs = store.getState().tabPrefsByTabId;
       const next = snap.tabs.map((srv) => deriveTab(srv, prefs[srv.id]));
@@ -1264,6 +1323,17 @@ export const useAssistantChatStore = hmrSingleton(
         tabsLoading: !snap.hydrated,
         tabsError: snap.lastError,
       });
+      // One-shot: once we have the authoritative server tab list, sweep
+      // localStorage caches whose owning tab/session is gone. Done after
+      // setState so any in-memory consumers already see the snapshot.
+      if (!orphanSweepDone && snap.hydrated) {
+        orphanSweepDone = true;
+        const knownTabIds = new Set(snap.tabs.map((t) => t.id));
+        const knownSessionIds = new Set(
+          snap.tabs.map((t) => t.sessionId).filter((s): s is string => !!s),
+        );
+        sweepOrphanedAssistantKeys(knownTabIds, knownSessionIds);
+      }
     };
     // Hand over the current snapshot synchronously so any selector reading
     // `tabs` between store creation and the first poll tick sees consistent

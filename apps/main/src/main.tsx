@@ -6,6 +6,11 @@ import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
 import { panelSelectors } from '@lib/plugins/catalogSelectors'
 import { pruneOrphans as pruneStoreOrphans } from '@lib/stores'
 
+import { registerModules, moduleRegistry } from '@app/modules'
+
+import App from './App.tsx'
+import { sweepMaskOverlayDrafts } from './components/media/viewer/overlays/builtins/maskOverlayCleanup'
+
 // Side-effect imports: feature-level store registry declarations (deprecated
 // patterns, managed prefixes). Imported eagerly so pruneStoreOrphans() at
 // bootstrap sees them. Keep these modules tiny — no React / heavy deps.
@@ -24,12 +29,10 @@ import '@features/generation/hooks/useGenerationWebSocket'
 import { configureKVStorage, configureMetricPreviewApi } from '@pixsim7/game.engine'
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core'
 
-import { registerModules, moduleRegistry } from '@app/modules'
 
-import App from './App.tsx'
+import { API_BASE_URL } from './lib/api/client'
 import { initializeConsole } from './lib/dev/console'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
-import { API_BASE_URL } from './lib/api/client'
 import { initWebLogger, logEvent } from './lib/utils/logging'
 
 import '@lib/dockview' // Register auto-context menu presets
@@ -108,6 +111,21 @@ async function bootstrapApp() {
     logEvent('INFO', 'store_registry_pruned', {
       deprecated: pruneResult.deprecatedRemoved,
       orphans: pruneResult.orphansRemoved,
+    })
+  }
+
+  // Cap mask-overlay draft retention (LRU + age TTL). Drafts are 100-300 KB
+  // each and there's no orphan signal for them — bounded retention is the
+  // only mechanism keeping the prefix from exhausting localStorage quota.
+  const maskSweepResult = sweepMaskOverlayDrafts()
+  const maskRemoved =
+    maskSweepResult.removedByAge + maskSweepResult.removedByCap + maskSweepResult.removedInvalid
+  if (maskRemoved > 0) {
+    logEvent('INFO', 'mask_overlay_drafts_pruned', {
+      scanned: maskSweepResult.scanned,
+      removed_by_age: maskSweepResult.removedByAge,
+      removed_by_cap: maskSweepResult.removedByCap,
+      removed_invalid: maskSweepResult.removedInvalid,
     })
   }
 

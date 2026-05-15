@@ -13,7 +13,7 @@ import { AssetId } from '@pixsim7/shared.types';
 import { PanelShell, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { API_BASE_URL, deleteAsset } from '@lib/api';
+import { API_BASE_URL, deleteAsset, getAsset } from '@lib/api';
 import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
@@ -56,13 +56,12 @@ import {
 } from '../shared/OverlaySidePanel';
 import type { MediaOverlayComponentProps } from '../types';
 
-
+import { MASK_DRAFT_STORAGE_PREFIX } from './maskOverlayCleanup';
 import { useMaskOverlayStore, type MaskLayerInfo } from './maskOverlayStore';
 
 // ── Constants ──────────────────────────────────────────────────────────
 
 const MASK_LAYER_PREFIX = 'mask-layer';
-const MASK_DRAFT_STORAGE_PREFIX = 'ps7_mask_overlay_draft_v2';
 const MASK_DRAFT_SAVE_DEBOUNCE_MS = 250;
 
 type MaskDraftMode = 'draw' | 'erase' | 'view';
@@ -84,6 +83,13 @@ interface MaskOverlayDraft {
   brushOpacity: number;
   activeLayerId: string;
   layers: MaskLayerDraft[];
+  /**
+   * The mask asset id this editing session is versioning. Optional — older
+   * drafts won't have it, in which case it's inferred from the first layer
+   * with a savedAssetId on restore. Persisting it explicitly avoids having
+   * to derive intent from layer state across reloads.
+   */
+  editingTargetMaskId?: number | null;
 }
 
 let _layerCounter = 0;
@@ -430,6 +436,104 @@ function renderMaskComposite(
   return canvas;
 }
 
+/**
+ * Render a single layer's raster data (strokes + base image, no polygons) to
+ * a PNG dataURL. Returns null when the layer has nothing to bake — i.e. an
+ * empty layer with no base image. Used to persist per-layer raster across
+ * save / re-import so layer organization survives the round-trip.
+ */
+function renderLayerToRasterDataUrl(
+  layer: InteractionLayer,
+  width: number,
+  height: number,
+  baseImage: ImageBitmap | undefined,
+  forceFullAlpha: boolean,
+): string | null {
+  const hasRasterContent = layer.elements.some(
+    (el) => el.type === 'stroke' || el.type === 'region',
+  );
+  if (!hasRasterContent && !baseImage) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  // Black background — same convention as renderMaskComposite output.
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, width, height);
+  renderLayerToContext(ctx, layer.elements, width, height, baseImage, 'raster-only');
+
+  if (forceFullAlpha) {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0) {
+        d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * Per-layer payload stored inside `upload_context.layers` of a saved mask
+ * asset. Lets a re-import reconstruct the same drawing-layer stack — names,
+ * order, visibility, polygons-per-layer, and per-layer rasterised strokes.
+ *
+ * The asset's PNG file remains the flat composite (what providers consume);
+ * this structured payload is purely for editor round-trip.
+ */
+interface SavedMaskLayerPayload {
+  /** Frontend-generated id (matches the editor's layer id at save time). */
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  /**
+   * Polygon / curve elements that belong to this layer. Stored as vectors so
+   * they remain editable on re-open. Their `layerId` field will be rewritten
+   * to the new layer's id when imported.
+   */
+  polygons: PolygonElement[];
+  /**
+   * PNG dataURL of THIS layer's raster (strokes + any imported base image,
+   * no polygons baked in). Omitted for purely-vector or empty layers.
+   */
+  raster_data_url?: string;
+}
+
+/**
+ * Helper: convert a PNG dataURL into an ImageBitmap with black→transparent
+ * conversion (so the bitmap composites correctly as an editing base image).
+ * Mirrors the conversion in `fetchMaskAsBaseImage` and the rasterDataUrl
+ * branch of `handleImportSavedMask`.
+ */
+async function rasterDataUrlToBitmap(dataUrl: string): Promise<ImageBitmap> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const img = await loadImageFromBlob(blob);
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Failed to prepare layer raster canvas.');
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] + d[i + 1] + d[i + 2] < 384) {
+      d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+    } else {
+      d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return createImageBitmap(canvas);
+}
+
 // ── MaskOverlayMain ───────────────────────────────────────────────────
 
 export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponentProps) {
@@ -528,6 +632,15 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const autoImportedKeyRef = useRef<string | null>(null);
   const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
+  /**
+   * The mask asset that the current editing session is "targeting" for versioning.
+   * Set when the user opens an existing mask (import / draft restore of a saved
+   * mask), advanced after each successful Save, and cleared by Save-as-new and
+   * "New mask". When null, Save creates a fresh mask family. Replaces the older
+   * sibling-walk + lastSavedCompositeId heuristic, which silently versioned the
+   * wrong mask when an empty new layer was added.
+   */
+  const [editingTargetMaskId, setEditingTargetMaskId] = useState<number | null>(null);
 
   /** Base images for imported mask layers (layerId → ImageBitmap). */
   const baseImagesRef = useRef<Map<string, ImageBitmap>>(new Map());
@@ -644,12 +757,21 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     if (restoredDraftKeyRef.current === draftStorageKey) return;
     restoredDraftKeyRef.current = draftStorageKey;
 
-    // Reset save-tracking refs so a new asset doesn't chain to the previous one
-    lastSavedCompositeIdRef.current = null;
+    // Reset save-tracking state so a new asset doesn't chain to the previous one.
+    // editingTargetMaskId may be re-set below if the draft restores an imported mask.
     autoSavedSourceAssetIdRef.current = null;
+    setEditingTargetMaskId(null);
 
     const draft = readMaskDraft(asset);
     if (draft && draft.layers.length > 0) {
+      // Restore version target from draft if present, else infer from any layer
+      // that was loaded from a saved mask.
+      const draftTarget =
+        typeof draft.editingTargetMaskId === 'number'
+          ? draft.editingTargetMaskId
+          : (draft.layers.find((l) => typeof l.savedAssetId === 'number')?.savedAssetId ?? null);
+      if (draftTarget) setEditingTargetMaskId(draftTarget);
+
       // Remove any auto-created layers before restoring draft
       for (const existing of state.layers) {
         if (existing.type === 'mask') {
@@ -672,19 +794,63 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
             opacity: layerDraft.opacity,
           });
         }
-        // Re-fetch base image for layers that were imported from a saved mask
-        if (layerDraft.savedAssetId) {
-          const assetId = layerDraft.savedAssetId;
-          const layerId = layerDraft.id;
-          fetchMaskAsBaseImage(assetId).then((bitmap) => {
-            baseImagesRef.current.set(layerId, bitmap);
-            // Force a re-render so the canvas picks up the base image
-            updateLayer(layerId, {});
-          }).catch((err) => {
-            console.warn('[MaskOverlay] Failed to restore base image for layer:', err);
-          });
-        }
       }
+      // Re-fetch base images for layers that were imported from a saved mask.
+      // For multi-layer masks (new format), match each layer by id against
+      // the asset's `upload_context.layers[]` so each layer recovers its own
+      // raster (not the flat composite). Legacy single-layer masks fall back
+      // to fetching the composite as the layer's base.
+      const restoreBaseImages = async () => {
+        const layersWithSavedId = draft.layers.filter((l) => typeof l.savedAssetId === 'number');
+        if (layersWithSavedId.length === 0) return;
+
+        // Group draft layers by the parent mask asset they came from.
+        const byAsset = new Map<number, MaskLayerDraft[]>();
+        for (const ld of layersWithSavedId) {
+          const aid = ld.savedAssetId as number;
+          if (!byAsset.has(aid)) byAsset.set(aid, []);
+          byAsset.get(aid)!.push(ld);
+        }
+
+        for (const [assetId, drafts] of byAsset) {
+          try {
+            // Fetch the asset's metadata once and look for the new-format
+            // per-layer payload before falling back to the composite.
+            const assetModel = await getAsset(AssetId(assetId));
+            const ctxLayers =
+              Array.isArray(assetModel.uploadContext?.layers)
+                ? (assetModel.uploadContext!.layers as SavedMaskLayerPayload[])
+                : null;
+
+            for (const ld of drafts) {
+              try {
+                let bitmap: ImageBitmap | null = null;
+                if (ctxLayers) {
+                  // Match draft layer's id with payload's id; if no match,
+                  // skip — the user likely deleted that layer post-import.
+                  const payload = ctxLayers.find((p) => p.id === ld.id);
+                  if (payload?.raster_data_url) {
+                    bitmap = await rasterDataUrlToBitmap(payload.raster_data_url);
+                  }
+                } else {
+                  // Legacy: every layer that came from this asset shares the
+                  // single composite as its base.
+                  bitmap = await fetchMaskAsBaseImage(assetId);
+                }
+                if (bitmap) {
+                  baseImagesRef.current.set(ld.id, bitmap);
+                  updateLayer(ld.id, {}); // force re-render
+                }
+              } catch (err) {
+                console.warn('[MaskOverlay] Failed to restore base image for layer:', err);
+              }
+            }
+          } catch (err) {
+            console.warn('[MaskOverlay] Failed to fetch asset metadata for draft restore:', err);
+          }
+        }
+      };
+      void restoreBaseImages();
       interactionSetActiveLayer(draft.activeLayerId);
       setMode(draft.mode);
       setBrushSize(draft.brushSize);
@@ -697,7 +863,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         }
       }
       const id = nextMaskLayerId();
-      addLayer({ type: 'mask', name: 'Mask 1', id });
+      addLayer({ type: 'mask', name: 'Layer 1', id });
       interactionSetActiveLayer(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -764,7 +930,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const handleAddLayer = useCallback(() => {
     const count = state.layers.filter((l) => l.type === 'mask').length;
     const id = nextMaskLayerId();
-    addLayer({ type: 'mask', name: `Mask ${count + 1}`, id });
+    addLayer({ type: 'mask', name: `Layer ${count + 1}`, id });
     interactionSetActiveLayer(id);
   }, [addLayer, interactionSetActiveLayer, state.layers]);
 
@@ -805,9 +971,24 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const handleImportSavedMask = useCallback(async (maskAssetId: number, options?: { targetLayerId?: string }) => {
     if (isImportingSavedMask) return;
 
-    // If caller specifies a target layer (e.g. version navigator), always
-    // replace that layer in-place. Otherwise: replace the active layer when
-    // it's empty, else create a new layer.
+    // Look up asset metadata: prefer the structured per-layer payload
+    // (`upload_context.layers`) and fall back to the legacy flat shape
+    // (`vector_layers` + `raster_data_url`) for masks saved before the
+    // multi-layer round-trip was wired.
+    const assetModel = [...maskAssetsQuery.items, ...anyMaskAssetsQuery.items]
+      .find((a) => a.id === maskAssetId);
+    const ctx = assetModel?.uploadContext;
+    const layerPayloads: SavedMaskLayerPayload[] | null =
+      Array.isArray(ctx?.layers) && ctx.layers.length > 0
+        ? (ctx.layers as SavedMaskLayerPayload[])
+        : null;
+    const legacyVectorElements = Array.isArray(ctx?.vector_layers) ? ctx.vector_layers as AnyElement[] : [];
+    const legacyRasterDataUrl = typeof ctx?.raster_data_url === 'string' ? ctx.raster_data_url : null;
+
+    // The "replace one layer in-place" path is only used for legacy single-
+    // layer round-trip and the per-layer version navigator. Multi-layer
+    // payloads always replace the entire editor — opening a saved mask means
+    // editing all of its layers, not splicing one of them somewhere.
     const explicitTargetId = options?.targetLayerId ?? null;
     const explicitLayer = explicitTargetId ? getLayer(explicitTargetId) : null;
     const activeLayer = activeLayerId ? getLayer(activeLayerId) : null;
@@ -816,72 +997,96 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       ? true
       : !!(targetLayer && targetLayer.elements.length === 0 && !baseImagesRef.current.has(activeLayerId!));
 
-    // Look up asset metadata for vector layers / raster-only data URL
-    const assetModel = [...maskAssetsQuery.items, ...anyMaskAssetsQuery.items]
-      .find((a) => a.id === maskAssetId);
-    const ctx = assetModel?.uploadContext;
-    const vectorElements = Array.isArray(ctx?.vector_layers) ? ctx.vector_layers as AnyElement[] : [];
-    const rasterDataUrl = typeof ctx?.raster_data_url === 'string' ? ctx.raster_data_url : null;
-
     setIsImportingSavedMask(true);
     try {
-      // If we have a raster-only data URL, use that (strokes only, no baked vectors).
-      // Otherwise fall back to the full composite asset file.
-      let bitmap: ImageBitmap;
-      if (rasterDataUrl) {
-        const img = await loadImageFromBlob(await (await fetch(rasterDataUrl)).blob());
-        const canvas = document.createElement('canvas');
-        const w = img.naturalWidth || img.width;
-        const h = img.naturalHeight || img.height;
-        canvas.width = w;
-        canvas.height = h;
-        const c = canvas.getContext('2d', { willReadFrequently: true })!;
-        c.drawImage(img, 0, 0);
-        // Convert black→transparent (same as fetchMaskAsBaseImage)
-        const imageData = c.getImageData(0, 0, w, h);
-        const d = imageData.data;
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i] + d[i + 1] + d[i + 2] < 384) {
-            d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
-          } else {
-            d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = 255;
+      // ── New format: reconstruct the full layer stack ────────────────
+      // Multi-layer payloads always replace the entire editor — opening or
+      // swapping versions of a saved mask means editing all of its layers as
+      // a unit. The `targetLayerId` option is honoured only for legacy
+      // single-layer masks below; the per-layer version navigator's "swap
+      // this layer" semantics don't carry over once a mask is multi-layer.
+      if (layerPayloads) {
+        for (const existing of state.layers) {
+          if (existing.type === 'mask') {
+            interactionRemoveLayer(existing.id);
           }
         }
-        c.putImageData(imageData, 0, 0);
-        bitmap = await createImageBitmap(canvas);
+        baseImagesRef.current.clear();
+
+        let firstNewLayerId: string | null = null;
+        for (const payload of layerPayloads) {
+          const newId = nextMaskLayerId();
+          if (!firstNewLayerId) firstNewLayerId = newId;
+          addLayer({
+            type: 'mask',
+            id: newId,
+            name: payload.name,
+            config: { savedAssetId: maskAssetId },
+          });
+          // Restore polygon elements onto the newly-created layer.
+          const polygons = (payload.polygons ?? []).map((p) => ({ ...p, layerId: newId }));
+          updateLayer(newId, {
+            elements: polygons,
+            visible: payload.visible,
+            opacity: payload.opacity,
+          });
+          // Restore per-layer raster as a base image.
+          if (payload.raster_data_url) {
+            try {
+              const bitmap = await rasterDataUrlToBitmap(payload.raster_data_url);
+              baseImagesRef.current.set(newId, bitmap);
+              // Force a re-render so the canvas picks up the base image.
+              updateLayer(newId, {});
+            } catch (err) {
+              console.warn('[MaskOverlay] Failed to restore per-layer raster:', err);
+            }
+          }
+        }
+        if (firstNewLayerId) interactionSetActiveLayer(firstNewLayerId);
+        toast.success(`Imported mask #${maskAssetId} (${layerPayloads.length} layer${layerPayloads.length === 1 ? '' : 's'}).`);
+        setEditingTargetMaskId(maskAssetId);
+        return;
+      }
+
+      // ── Legacy format: single-layer reconstruct (or explicit-target swap) ──
+      let bitmap: ImageBitmap;
+      if (legacyRasterDataUrl) {
+        bitmap = await rasterDataUrlToBitmap(legacyRasterDataUrl);
       } else {
         bitmap = await fetchMaskAsBaseImage(maskAssetId);
       }
 
       if (replaceActive && targetLayer) {
         baseImagesRef.current.set(targetLayer.id, bitmap);
-        // Restore vector elements with correct layerId
-        const restoredVectors = vectorElements.map((el) => ({ ...el, layerId: targetLayer.id }));
+        const restoredVectors = legacyVectorElements.map((el) => ({ ...el, layerId: targetLayer.id }));
         updateLayer(targetLayer.id, {
           elements: restoredVectors,
-          name: `Mask #${maskAssetId}`,
+          name: `Layer (from #${maskAssetId})`,
           config: { savedAssetId: maskAssetId },
         });
         toast.success(`Loaded mask #${maskAssetId} into "${targetLayer.name}".`);
       } else {
         const id = nextMaskLayerId();
-        addLayer({ type: 'mask', name: `Mask #${maskAssetId}`, id, config: { savedAssetId: maskAssetId } });
+        addLayer({ type: 'mask', name: `Layer (from #${maskAssetId})`, id, config: { savedAssetId: maskAssetId } });
         baseImagesRef.current.set(id, bitmap);
-        // Restore vector elements with correct layerId
-        if (vectorElements.length > 0) {
-          const restoredVectors = vectorElements.map((el) => ({ ...el, layerId: id }));
+        if (legacyVectorElements.length > 0) {
+          const restoredVectors = legacyVectorElements.map((el) => ({ ...el, layerId: id }));
           updateLayer(id, { elements: restoredVectors });
         }
         interactionSetActiveLayer(id);
         toast.success(`Imported mask #${maskAssetId} as new layer.`);
       }
+      // Set the editing target so the next Save chains as a new version of this
+      // mask. Explicit user intent ("I'm editing this saved mask"), unlike the
+      // old sibling-walk heuristic which inferred it.
+      setEditingTargetMaskId(maskAssetId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load saved mask.';
       toast.error(message);
     } finally {
       setIsImportingSavedMask(false);
     }
-  }, [activeLayerId, addLayer, getLayer, interactionSetActiveLayer, isImportingSavedMask, toast, updateLayer, maskAssetsQuery.items, anyMaskAssetsQuery.items]);
+  }, [activeLayerId, addLayer, getLayer, interactionSetActiveLayer, interactionRemoveLayer, isImportingSavedMask, state.layers, toast, updateLayer, maskAssetsQuery.items, anyMaskAssetsQuery.items]);
 
   // Auto-import the most recent saved mask when opening an asset with no
   // in-progress draft. Restores the expected round-trip: save mask → reopen
@@ -944,6 +1149,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
           elements: l.elements,
           savedAssetId: l.config?.savedAssetId as number | undefined,
         })),
+        editingTargetMaskId,
       });
     }, MASK_DRAFT_SAVE_DEBOUNCE_MS);
 
@@ -953,7 +1159,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         persistDraftTimerRef.current = null;
       }
     };
-  }, [asset, state.layers, state.mode, state.tool.size, state.tool.opacity, activeLayerId]);
+  }, [asset, state.layers, state.mode, state.tool.size, state.tool.opacity, activeLayerId, editingTargetMaskId]);
 
   // Sync state to bridge store
   const currentZoom = state.view.zoom;
@@ -1006,6 +1212,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     clearLayer: () => { if (activeLayerId) { baseImagesRef.current.delete(activeLayerId); clearLayer(activeLayerId); } },
     exportMask: async () => {},
     saveAsNew: async () => {},
+    resetMask: () => {},
     resetView,
     addLayer: handleAddLayer,
     removeLayer: handleRemoveLayer,
@@ -1033,33 +1240,18 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
   // ── Composite export ───────────────────────────────────────────────
 
-  /** Tracks the last saved composite mask asset ID so subsequent saves overwrite it. */
-  const lastSavedCompositeIdRef = useRef<number | null>(null);
   /** Caches the backend asset ID if the source image was auto-saved to library. */
   const autoSavedSourceAssetIdRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
 
-  /** Resolve version parent from ref, any layer's savedAssetId, or existing saved masks. */
-  const resolveVersionParent = useCallback((): number | null => {
-    if (lastSavedCompositeIdRef.current) return lastSavedCompositeIdRef.current;
-    // Check all visible mask layers for a savedAssetId (first one wins)
-    for (const layer of state.layers) {
-      if (layer.type === 'mask' && layer.visible && (layer.elements.length > 0 || baseImagesRef.current.has(layer.id))) {
-        const savedId = layer.config?.savedAssetId as number | undefined;
-        if (savedId) return savedId;
-      }
-    }
-    // Fallback: if there are already saved masks for this source asset, version from the latest
-    if (sourceMaskAssets.length > 0) {
-      return sourceMaskAssets[0].id;
-    }
-    return null;
-  }, [state.layers, sourceMaskAssets]);
-
-  // Sync hasVersionParent to store so toolbar can show Save vs Save As
+  // Sync version-target state to bridge store so toolbar can show Save vs
+  // Save As, and the layers sidebar can label the editing context.
   useEffect(() => {
-    store.getState()._syncState({ hasVersionParent: resolveVersionParent() !== null });
-  }, [resolveVersionParent, store]);
+    store.getState()._syncState({
+      hasVersionParent: editingTargetMaskId !== null,
+      editingTargetMaskId,
+    });
+  }, [editingTargetMaskId, store]);
 
   const doExportMask = useCallback(async (forceNew: boolean) => {
     if (isSavingRef.current) return;
@@ -1078,23 +1270,48 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       return;
     }
 
-    // ── Collect vector elements for metadata (polygons/curves across all visible layers)
     const visibleLayers = state.layers.filter(
       (l) => l.type === 'mask' && l.visible && (l.elements.length > 0 || baseImagesRef.current.has(l.id)),
     );
-    const vectorElements = visibleLayers.flatMap((l) =>
-      l.elements.filter((el) => el.type === 'polygon'),
-    );
 
-    // ── Render raster-only PNG (strokes + base images, no vectors) for re-editing
-    let rasterOnlyDataUrl: string | undefined;
-    if (vectorElements.length > 0) {
-      const rasterCanvas = renderMaskComposite(
-        state.layers, width, height, baseImagesRef.current, 'raster-only', forceFullAlpha,
+    // ── Per-layer payload — preserves layer organization across save/import.
+    // Each entry carries the layer's polygons (vectors) and a per-layer raster
+    // (strokes + base image, no polygons baked) so reopening the mask
+    // reconstructs the same layer stack instead of flattening to one layer.
+    const layerPayloads: SavedMaskLayerPayload[] = visibleLayers.map((layer) => {
+      const polygons = layer.elements.filter(
+        (el) => el.type === 'polygon',
+      ) as PolygonElement[];
+      const rasterDataUrl = renderLayerToRasterDataUrl(
+        layer,
+        width,
+        height,
+        baseImagesRef.current.get(layer.id),
+        forceFullAlpha,
       );
-      if (rasterCanvas) {
-        rasterOnlyDataUrl = rasterCanvas.toDataURL('image/png');
+      return {
+        id: layer.id,
+        name: layer.name,
+        visible: layer.visible,
+        opacity: layer.opacity,
+        polygons,
+        ...(rasterDataUrl ? { raster_data_url: rasterDataUrl } : {}),
+      };
+    });
+
+    // Snapshot stroke/region element ids per layer at save start. These got
+    // baked into raster_data_url, so post-save we'll strip them from
+    // `elements` and adopt the saved raster as the new base image. Strokes
+    // drawn DURING the upload have different ids and survive the cleanup.
+    const bakedElementIdsByLayer = new Map<string, Set<string>>();
+    for (const layer of visibleLayers) {
+      const ids = new Set<string>();
+      for (const el of layer.elements) {
+        if (el.type === 'stroke' || el.type === 'region') {
+          ids.add(el.id);
+        }
       }
+      bakedElementIdsByLayer.set(layer.id, ids);
     }
 
     const maskDataUrl = compositeCanvas.toDataURL('image/png');
@@ -1165,21 +1382,21 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         save_target: saveTarget,
       };
 
-      // Stash editing data: vector elements + raster-only PNG for clean re-editing
-      if (vectorElements.length > 0) {
-        uploadContext.vector_layers = vectorElements;
-        if (rasterOnlyDataUrl) {
-          uploadContext.raster_data_url = rasterOnlyDataUrl;
-        }
+      // Stash structured per-layer payload so reopening this mask reconstructs
+      // the original drawing-layer stack (names, order, polygons-per-layer,
+      // per-layer raster). The asset's PNG file remains the flat composite for
+      // generation providers; this is purely editor round-trip metadata.
+      if (layerPayloads.length > 0) {
+        uploadContext.layers = layerPayloads;
       }
 
-      // Chain as a version unless forced new
-      if (!forceNew) {
-        const versionParentId = resolveVersionParent();
-        if (versionParentId) {
-          uploadContext.version_parent_id = versionParentId;
-          uploadContext.version_message = 'Mask updated';
-        }
+      // Chain as a version of the explicit editing target, unless forced new.
+      // The target is set when the user opens an existing mask (import / draft
+      // restore), advanced after each save, and cleared by Save-as-new / "New
+      // mask". An empty new layer added mid-session no longer affects this.
+      if (!forceNew && editingTargetMaskId !== null) {
+        uploadContext.version_parent_id = editingTargetMaskId;
+        uploadContext.version_message = 'Mask updated';
       }
 
       const uploadResult = await uploadAsset({
@@ -1210,13 +1427,50 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         broadcastMaskUrlToGenerationScopes(`asset:${newAssetId}`);
         attachedToGeneration = true;
 
-        // Track so next save versions from this composite
-        lastSavedCompositeIdRef.current = newAssetId;
+        // Advance the editing target so a subsequent Save chains to THIS new
+        // version (not the prior parent). Save-as-new also lands here and so
+        // becomes the new chain root — that's intentional, since the user can
+        // now keep iterating on the just-saved mask.
+        setEditingTargetMaskId(newAssetId);
 
-        // Stamp savedAssetId on all visible layers so reopening the overlay
-        // chains from the correct parent (not stale or missing).
+        // ── Flatten saved strokes into baseImage ────────────────────────
+        // For each layer with raster content, decode its just-saved raster
+        // and adopt it as the layer's baseImage; then drop the strokes and
+        // regions that got baked from `elements`. This makes the on-screen
+        // representation match what's persisted: strokes live in baseImage
+        // (a single bitmap) instead of being duplicated as both elements
+        // (JSON) and pixels (PNG). It also fixes the latent double-render
+        // bug on close → reopen for opacity-aware (non-full-alpha) masks.
+        //
+        // Strokes drawn DURING the upload have ids that aren't in the
+        // bakedElementIdsByLayer snapshot, so they survive — the user
+        // never loses in-flight work.
+        const promotionResults = await Promise.allSettled(
+          layerPayloads
+            .filter((p): p is SavedMaskLayerPayload & { raster_data_url: string } =>
+              typeof p.raster_data_url === 'string',
+            )
+            .map(async (p) => ({
+              layerId: p.id,
+              bitmap: await rasterDataUrlToBitmap(p.raster_data_url),
+            })),
+        );
+        for (const result of promotionResults) {
+          if (result.status !== 'fulfilled') continue;
+          const { layerId, bitmap } = result.value;
+          baseImagesRef.current.set(layerId, bitmap);
+          const baked = bakedElementIdsByLayer.get(layerId) ?? new Set<string>();
+          const currentLayer = getLayer(layerId);
+          if (!currentLayer) continue;
+          const newElements = currentLayer.elements.filter((el) => !baked.has(el.id));
+          updateLayer(layerId, { elements: newElements });
+        }
+
+        // Stamp savedAssetId on every visible layer. Now that strokes live
+        // in baseImage rather than elements, refetching a layer's raster on
+        // close → reopen reconstructs it correctly without double-render.
         for (const layer of visibleLayers) {
-          updateLayer(layer.id, { config: { ...layer.config, savedAssetId: newAssetId } });
+          updateLayer(layer.id, { config: { ...(layer.config ?? {}), savedAssetId: newAssetId } });
         }
 
         maskAssetsQuery.reset();
@@ -1239,13 +1493,36 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       isSavingRef.current = false;
       store.getState()._syncState({ isSaving: false });
     }
-  }, [asset, resolvedMediaDimensions, state.layers, toast, store, updateLayer, maskAssetsQuery.reset, anyMaskAssetsQuery.reset, resolveVersionParent]);
+  }, [asset, resolvedMediaDimensions, state.layers, toast, store, updateLayer, getLayer, maskAssetsQuery.reset, anyMaskAssetsQuery.reset, editingTargetMaskId]);
 
   const exportMask = useCallback(() => doExportMask(false), [doExportMask]);
   const saveAsNew = useCallback(() => doExportMask(true), [doExportMask]);
 
+  /**
+   * Discard the entire editing session for this asset and start fresh:
+   * remove every drawing layer, drop base images, clear the version target,
+   * and wipe the persisted draft. The user lands on a single empty "Layer 1"
+   * with no chain to any prior saved mask. Useful when you've been iterating
+   * on a loaded mask and want a brand-new one without leaving the viewer.
+   */
+  const handleResetMask = useCallback(() => {
+    for (const existing of state.layers) {
+      if (existing.type === 'mask') {
+        interactionRemoveLayer(existing.id);
+      }
+    }
+    baseImagesRef.current.clear();
+    setEditingTargetMaskId(null);
+    autoImportedKeyRef.current = draftStorageKey; // suppress auto-import on this asset
+    writeMaskDraft(asset, null);
+    const id = nextMaskLayerId();
+    addLayer({ type: 'mask', name: 'Layer 1', id });
+    interactionSetActiveLayer(id);
+  }, [state.layers, interactionRemoveLayer, addLayer, interactionSetActiveLayer, asset, draftStorageKey]);
+
   callbacksRef.current.exportMask = exportMask;
   callbacksRef.current.saveAsNew = saveAsNew;
+  callbacksRef.current.resetMask = handleResetMask;
 
   // Register stable wrapper callbacks into bridge store (once)
   useEffect(() => {
@@ -1258,6 +1535,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       clearLayer: () => callbacksRef.current.clearLayer(),
       exportMask: () => callbacksRef.current.exportMask(),
       saveAsNew: () => callbacksRef.current.saveAsNew(),
+      resetMask: () => callbacksRef.current.resetMask(),
       resetView: () => callbacksRef.current.resetView(),
       addLayer: () => callbacksRef.current.addLayer(),
       removeLayer: (id) => callbacksRef.current.removeLayer(id),
@@ -1335,12 +1613,17 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         return;
       }
     }
+    // If we just deleted the version target, clear it so the next Save creates
+    // a fresh family rather than chaining to a tombstoned id.
+    if (editingTargetMaskId === assetId) {
+      setEditingTargetMaskId(null);
+    }
     // Remove the layer from the editing session
     interaction.removeLayer(layerId);
     maskAssetsQuery.reset();
     anyMaskAssetsQuery.reset();
     toast.success(`Mask #${assetId} deleted.`);
-  }, [interaction, maskAssetsQuery, anyMaskAssetsQuery, toast]);
+  }, [interaction, maskAssetsQuery, anyMaskAssetsQuery, toast, editingTargetMaskId]);
 
   const media = useMemo(
     () => resolvedSrc ? { type: 'image' as const, url: resolvedSrc } : null,
@@ -1434,6 +1717,7 @@ function MaskToolsPanel() {
     clearLayer,
     exportMask,
     saveAsNew,
+    resetMask,
     resetView,
     setForceFullAlpha,
     hoveredVertex,
@@ -1582,6 +1866,19 @@ function MaskToolsPanel() {
         <span className="text-[10px] text-th-secondary leading-none">Full alpha</span>
       </label>
 
+      {hasVersionParent && (
+        <div className="px-2 pb-1">
+          <button
+            type="button"
+            onClick={resetMask}
+            className="w-full text-[10px] text-th-muted hover:text-th-secondary py-1 underline-offset-2 hover:underline"
+            title="Discard current edits and start a brand-new mask (clears the version chain)"
+          >
+            New mask
+          </button>
+        </div>
+      )}
+
       <div className="px-2">
         <div className="flex w-full rounded overflow-hidden">
           <button
@@ -1590,9 +1887,9 @@ function MaskToolsPanel() {
             className={`flex-1 py-2 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               !hasContent || isSaving ? 'bg-th/10 text-th-muted' : 'bg-accent hover:bg-accent-hover text-accent-text'
             } ${hasVersionParent ? 'rounded-l' : 'rounded'}`}
-            title={hasVersionParent ? 'Overwrite current mask version' : 'Save as new mask asset'}
+            title={hasVersionParent ? 'Save as new version of the loaded mask' : 'Save as new mask asset'}
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? 'Saving...' : (hasVersionParent ? 'Save version' : 'Save')}
           </button>
           {hasVersionParent && (
             <button
