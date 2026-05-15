@@ -712,6 +712,83 @@ def _builtin_plans_management() -> MetaContract:
                 },
                 tags=["sync", "admin", "planning"],
             ),
+            MetaContractEndpoint(
+                id="plans.export",
+                method="POST",
+                path="/api/v1/dev/plans/{plan_id}/export",
+                summary=(
+                    "One-shot FS snapshot of a single plan to docs/plans/<scope>/<id>/. "
+                    "Works regardless of the 'fs-export' tag; killswitch returns 409."
+                ),
+                requires_admin=True,
+                permissions=["admin"],
+                availability={
+                    "status": "conditional",
+                    "reason": "Only available when DB-only mode is disabled.",
+                    "conditions": ["settings.plans_db_only_mode == false"],
+                },
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "commit": {
+                                    "type": "boolean",
+                                    "description": "Stage and commit written files (default true).",
+                                },
+                                "scope_override": {
+                                    "type": "string",
+                                    "enum": ["active", "done", "parked"],
+                                    "description": "Override the destination scope dir; default derives from plan status.",
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["export", "admin", "planning"],
+            ),
+            MetaContractEndpoint(
+                id="plans.export_batch",
+                method="POST",
+                path="/api/v1/dev/plans/export",
+                summary=(
+                    "Batch FS export. Single git commit per batch. Exactly one selector: "
+                    "ids, all_tagged, or changed_since."
+                ),
+                requires_admin=True,
+                permissions=["admin"],
+                availability={
+                    "status": "conditional",
+                    "reason": "Only available when DB-only mode is disabled.",
+                    "conditions": ["settings.plans_db_only_mode == false"],
+                },
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "ids": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Explicit plan IDs to export.",
+                                },
+                                "all_tagged": {
+                                    "type": "boolean",
+                                    "description": "Export all plans tagged 'fs-export'.",
+                                },
+                                "changed_since": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "Export all tagged plans changed at/after this ISO timestamp.",
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["export", "admin", "planning"],
+            ),
         ],
     )
 

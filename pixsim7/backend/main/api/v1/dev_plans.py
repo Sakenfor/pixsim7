@@ -92,11 +92,13 @@ from pixsim7.backend.main.api.v1.plans.routes_admin import router as _admin_rout
 from pixsim7.backend.main.api.v1.plans.routes_agent import router as _agent_router
 from pixsim7.backend.main.api.v1.plans.routes_coverage import router as _coverage_router
 from pixsim7.backend.main.api.v1.plans.routes_todo import router as _todo_router
+from pixsim7.backend.main.api.v1.plans.routes_export import router as _export_router
 router.include_router(_review_router)
 router.include_router(_admin_router)
 router.include_router(_agent_router)
 router.include_router(_coverage_router)
 router.include_router(_todo_router)
+router.include_router(_export_router)
 
 
 # ── Response models ──────────────────────────────────────────────
