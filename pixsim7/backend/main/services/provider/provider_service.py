@@ -186,6 +186,64 @@ def _is_video_extend_silent_filter_candidate(status_result: ProviderStatusResult
     return not has_retrievable
 
 
+async def _try_pixverse_image_cdn_salvage(
+    *,
+    submission: Any,
+    status_result: ProviderStatusResult,
+    poll_cache: Optional[Dict[str, Any]],
+    original_status: str,
+) -> bool:
+    """HEAD-probe the pre-allocated Pixverse image object; on a real image,
+    rewrite ``status_result`` to COMPLETED via the early-CDN contract.
+
+    Pixverse's image_status is unreliable — 7/8/9 (filtered/failed) and a
+    permanently-stale "processing" (consumed completion notification) are
+    all returned for jobs that actually rendered. The pre-allocated CDN
+    object is ground truth: 404 = genuine non-result, 2xx = the image
+    exists.
+
+    ``original_status`` is the canonical pre-recovery status:
+    ``"filtered"`` -> downstream billing-skip + provider_flagged (Pixverse
+    auto-refunds); ``"failed"``/``"processing"`` -> early-CDN-terminal,
+    normal billing (never a moderation/fail verdict). Probe result is
+    cached per poll tick keyed by job id so a generation's retries (and
+    the FILTERED/FAILED + PROCESSING call sites) don't re-probe the same
+    object. Returns True iff recovered.
+    """
+    candidate_url = status_result.video_url
+    if not candidate_url and isinstance(submission.response, dict):
+        candidate_url = (
+            submission.response.get("asset_url")
+            or submission.response.get("image_url")
+        )
+    if not (candidate_url and str(candidate_url).startswith("http")):
+        return False
+    if _is_pixverse_placeholder_url(candidate_url):
+        return False
+
+    cache_key = f"pixverse:image_cdn_probe:{submission.provider_job_id}"
+    if poll_cache is not None and cache_key in poll_cache:
+        exists = poll_cache[cache_key]
+    else:
+        exists = await cdn_head_probe(candidate_url)
+        if poll_cache is not None:
+            poll_cache[cache_key] = exists
+    if exists is not True:
+        return False
+
+    status_result.status = ProviderStatus.COMPLETED
+    status_result.video_url = candidate_url
+    if not status_result.thumbnail_url:
+        status_result.thumbnail_url = candidate_url
+    status_result.metadata = {
+        **(status_result.metadata or {}),
+        "image_false_filter_recovered": True,
+        "video_early_cdn_terminal": True,
+        "video_original_status": original_status,
+    }
+    return True
+
+
 class ProviderService:
     """
     Provider orchestration service
@@ -1073,6 +1131,28 @@ class ProviderService:
                         error=str(fallback_err),
                     )
 
+                # Still PROCESSING past the fallback threshold and the list
+                # search couldn't resolve it: the completion notification was
+                # consumed and the status API is permanently stale. The
+                # pre-allocated CDN object is ground truth — if it serves a
+                # real image the render finished. Recover as early-CDN
+                # *terminal* (original_status="processing" -> not filtered,
+                # so normal billing, no provider_flagged) rather than letting
+                # it die at the 2-hour stuck-PROCESSING timeout.
+                if status_result.status == ProviderStatus.PROCESSING:
+                    if await _try_pixverse_image_cdn_salvage(
+                        submission=submission,
+                        status_result=status_result,
+                        poll_cache=poll_cache,
+                        original_status="processing",
+                    ):
+                        logger.warning(
+                            "pixverse_image_stuck_processing_recovered",
+                            submission_id=submission.id,
+                            provider_job_id=submission.provider_job_id,
+                            elapsed_seconds=int(elapsed_seconds),
+                        )
+
         # Pixverse video fallback: for extend/video jobs that keep returning
         # "processing" from direct status APIs, check the personal video list.
         if (
@@ -1144,70 +1224,34 @@ class ProviderService:
                     "extend_silent_filter_threshold_seconds": threshold_seconds,
                 }
 
-        # Pixverse image false-filter salvage.
-        #
-        # Pixverse returns image_status 7/8/9 (-> FILTERED/FAILED) for a
-        # meaningful fraction of jobs that actually rendered an image — the
-        # integer status is the only signal the API exposes and it lies.
-        # The pre-allocated CDN object is ground truth: a genuine filter
-        # 404s (S3 NoSuchKey), a real image serves 2xx. A header-only HEAD
-        # on the candidate URL recovers these instead of silently dropping
-        # a real image. Anonymous, same CDN host we already download every
-        # completed image from; cached per poll tick so a generation's
-        # retries don't re-probe the same object.
+        # Pixverse image false-filter salvage. Pixverse returns image_status
+        # 7/8/9 (-> FILTERED/FAILED) for a meaningful fraction of jobs that
+        # actually rendered; the pre-allocated CDN object is ground truth.
+        # See _try_pixverse_image_cdn_salvage. prior=filtered routes the
+        # deterministic billing-skip + provider_flagged path Pixverse
+        # auto-refunds; prior=failed bills normally.
         if (
             submission.provider_id == "pixverse"
             and operation_type in get_image_operations()
             and status_result.status in (ProviderStatus.FILTERED, ProviderStatus.FAILED)
             and submission.provider_job_id
         ):
-            candidate_url = status_result.video_url
-            if not candidate_url and isinstance(submission.response, dict):
-                candidate_url = (
-                    submission.response.get("asset_url")
-                    or submission.response.get("image_url")
-                )
-            if (
-                candidate_url
-                and str(candidate_url).startswith("http")
-                and not _is_pixverse_placeholder_url(candidate_url)
+            prior_status = status_result.status.value
+            if await _try_pixverse_image_cdn_salvage(
+                submission=submission,
+                status_result=status_result,
+                poll_cache=poll_cache,
+                original_status=prior_status,
             ):
-                cache_key = f"pixverse:image_cdn_probe:{submission.provider_job_id}"
-                if poll_cache is not None and cache_key in poll_cache:
-                    exists = poll_cache[cache_key]
-                else:
-                    exists = await cdn_head_probe(candidate_url)
-                    if poll_cache is not None:
-                        poll_cache[cache_key] = exists
-
-                if exists is True:
-                    prior_status = status_result.status.value
-                    logger.warning(
-                        "pixverse_image_false_filter_recovered",
-                        submission_id=submission.id,
-                        provider_job_id=submission.provider_job_id,
-                        prior_status=prior_status,
-                        provider_status=(status_result.metadata or {}).get(
-                            "provider_status"
-                        ),
-                        url_preview=str(candidate_url)[:120],
-                    )
-                    status_result.status = ProviderStatus.COMPLETED
-                    status_result.video_url = candidate_url
-                    if not status_result.thumbnail_url:
-                        status_result.thumbnail_url = candidate_url
-                    # Reuse the early-CDN contract (media-type agnostic). A
-                    # genuine policy filter (prior=filtered) then flows to the
-                    # deterministic billing-skip + provider_flagged path Pixverse
-                    # auto-refunds; a flaky failure code (prior=failed) bills
-                    # normally. Keeps images consistent with the video path
-                    # instead of laundering flagged content into a clean asset.
-                    status_result.metadata = {
-                        **(status_result.metadata or {}),
-                        "image_false_filter_recovered": True,
-                        "video_early_cdn_terminal": True,
-                        "video_original_status": prior_status,
-                    }
+                logger.warning(
+                    "pixverse_image_false_filter_recovered",
+                    submission_id=submission.id,
+                    provider_job_id=submission.provider_job_id,
+                    prior_status=prior_status,
+                    provider_status=(status_result.metadata or {}).get(
+                        "provider_status"
+                    ),
+                )
 
         # Update submission response with latest status
         if submission.response is None:

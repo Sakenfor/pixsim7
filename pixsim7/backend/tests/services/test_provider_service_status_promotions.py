@@ -770,3 +770,121 @@ async def test_pixverse_video_terminal_does_not_trigger_image_salvage(
 
     assert calls == []  # image salvage must not fire for video ops
     assert returned.status == ProviderStatus.FILTERED
+
+
+# ---------------------------------------------------------------------------
+# Pixverse image stuck-PROCESSING CDN salvage
+#
+# Consumed completion notification leaves status permanently "processing".
+# Past the fallback threshold, with the list search exhausted, the CDN
+# object is probed; a real image is recovered as early-CDN *terminal*
+# (original_status="processing" -> normal billing, NOT provider_flagged).
+# ---------------------------------------------------------------------------
+
+
+class _FakeProviderWithImageList(_FakeProvider):
+    """Fake provider that also exposes check_image_status_from_list so the
+    image-fallback block (and the nested PROCESSING CDN salvage) runs."""
+
+    async def check_image_status_from_list(self, **_kwargs) -> ProviderStatusResult:
+        # List search can't resolve it either (notification consumed,
+        # job past the searchable window).
+        return ProviderStatusResult(
+            status=ProviderStatus.PROCESSING,
+            metadata={"is_image": True, "source": "list_fallback", "matched": False},
+        )
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_stuck_processing_recovered_via_cdn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # submitted 6 min ago (default) -> past the 90s non-qwen threshold.
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 5, "is_image": True},
+    )
+    provider = _FakeProviderWithImageList(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == [_IMAGE_URL]
+    assert returned.status == ProviderStatus.COMPLETED
+    meta = submission.response["metadata"]
+    assert meta["image_false_filter_recovered"] is True
+    assert meta["video_early_cdn_terminal"] is True
+    # NOT "filtered" -> is_early_cdn_filtered() stays False -> normal billing,
+    # no provider_flagged (a stale-processing render was never a verdict).
+    assert meta["video_original_status"] == "processing"
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_stuck_processing_not_recovered_when_cdn_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(response={"metadata": {"provider_status": 5}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 5, "is_image": True},
+    )
+    provider = _FakeProviderWithImageList(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == [_IMAGE_URL]
+    assert returned.status == ProviderStatus.PROCESSING
+    meta = submission.response.get("metadata") or {}
+    assert "image_false_filter_recovered" not in meta
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_recent_processing_not_probed_before_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Submitted 5s ago -> below the fallback threshold; no list search,
+    # no CDN probe (don't hammer normal in-flight images).
+    submission = _make_submission(
+        response={"metadata": {"provider_status": 5}},
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=5),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 5, "is_image": True},
+    )
+    provider = _FakeProviderWithImageList(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == []
+    assert returned.status == ProviderStatus.PROCESSING
