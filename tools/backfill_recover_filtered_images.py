@@ -73,10 +73,65 @@ def parse_args() -> argparse.Namespace:
                         "(default 40). These chains have 60-70 attempts; the "
                         "rendered one is almost always recent. Raise to be "
                         "exhaustive at the cost of speed.")
+    p.add_argument("--before", type=str, default=None,
+                   help="ISO timestamp upper bound (scan generations created "
+                        "strictly before this). Overrides the saved --apply "
+                        "cursor for this run.")
+    p.add_argument("--reset-cursor", action="store_true",
+                   help="Delete the saved --apply progress cursor and start "
+                        "from the newest candidates again.")
     return p.parse_args()
 
 
-async def _candidates(session, *, since_days: int, limit: Optional[int]):
+# --apply progress cursor. Non-recoverable / not-targetable generations are
+# never mutated (they stay FAILED), so without a cursor every --apply run
+# re-scans the same stuck head of the created_at-desc window forever. The
+# cursor records the oldest created_at already scanned by --apply so each
+# batch pages strictly older. Cursor is --apply-only: --dry-run / --count
+# are read-only inspection and must not consume it.
+_CURSOR_PATH = Path(__file__).with_name(
+    ".backfill_recover_filtered_images.cursor.json"
+)
+
+
+def _load_cursor() -> Optional[datetime]:
+    try:
+        import json
+        data = json.loads(_CURSOR_PATH.read_text())
+        raw = data.get("cursor_created_at")
+        return datetime.fromisoformat(raw) if raw else None
+    except Exception:
+        return None
+
+
+def _save_cursor(dt: datetime, add_scanned: int) -> None:
+    import json
+    prior = 0
+    try:
+        prior = int(json.loads(_CURSOR_PATH.read_text()).get("scanned_total", 0))
+    except Exception:
+        prior = 0
+    _CURSOR_PATH.write_text(json.dumps({
+        "cursor_created_at": dt.isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "scanned_total": prior + add_scanned,
+    }, indent=1))
+
+
+def _reset_cursor() -> bool:
+    try:
+        _CURSOR_PATH.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+
+
+async def _candidates(
+    session, *, since_days: int, limit: Optional[int],
+    before: Optional[datetime] = None,
+):
     from pixsim7.backend.main.domain import Generation
     from pixsim7.backend.main.domain.enums import GenerationStatus
     from pixsim7.backend.main.domain.assets import Asset
@@ -93,6 +148,8 @@ async def _candidates(session, *, since_days: int, limit: Optional[int]):
         .where(Generation.created_at >= cutoff)
         .order_by(desc(Generation.created_at))
     )
+    if before is not None:
+        q = q.where(Generation.created_at < before)
     if limit:
         q = q.limit(limit)
     gens = (await session.execute(q)).scalars().all()
@@ -224,14 +281,35 @@ async def main() -> None:
               "poll loop; use small batches, e.g. --limit 25).")
         return
 
+    if args.reset_cursor:
+        print("cursor reset" if _reset_cursor() else "no cursor to reset")
+
+    before: Optional[datetime] = None
+    if args.before:
+        try:
+            before = datetime.fromisoformat(args.before)
+        except ValueError:
+            print(f"--before is not a valid ISO timestamp: {args.before!r}")
+            return
+    elif args.apply and not args.reset_cursor:
+        before = _load_cursor()
+    if before is not None and before.tzinfo is None:
+        before = before.replace(tzinfo=timezone.utc)
+
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
     from pixsim7.backend.main.domain import Generation
     from pixsim7.backend.main.domain.enums import GenerationStatus
 
     async with get_async_session() as session:
         cands = await _candidates(
-            session, since_days=args.since_days, limit=args.limit
+            session, since_days=args.since_days, limit=args.limit,
+            before=before,
         )
+        if args.apply:
+            print(
+                f"cursor: {before.isoformat() if before else 'none (newest)'} "
+                f"-> scanning {len(cands)} candidates"
+            )
 
         if args.count_only:
             print(f"{len(cands)} terminal/asset-less pixverse IMAGE generations "
@@ -289,10 +367,23 @@ async def main() -> None:
             print(f"Scanned {len(cands)}; {recoverable} recoverable "
                   f"(real image still live on the CDN).")
         else:
-            print(f"Scanned {len(cands)}; {recoverable} recoverable; "
-                  f"{rearmed} re-armed for the poller; {skipped} skipped. "
-                  f"The deployed poller will recover the re-armed ones; "
-                  f"re-run --dry-run later to confirm they got assets.")
+            if cands:
+                oldest = min(g.created_at for g in cands)
+                _save_cursor(oldest, len(cands))
+                print(
+                    f"Scanned {len(cands)}; {recoverable} recoverable; "
+                    f"{rearmed} re-armed; {skipped} skipped. "
+                    f"cursor advanced -> {oldest.isoformat()}. "
+                    f"Re-run the same command for the next older batch "
+                    f"(non-recoverable gens are NOT re-scanned)."
+                )
+            else:
+                print(
+                    "No more FAILED/asset-less candidates older than the "
+                    "cursor within --since-days. Backlog drained for this "
+                    "window. Raise --since-days to go further back, or "
+                    "--reset-cursor to rescan from newest."
+                )
 
 
 if __name__ == "__main__":
