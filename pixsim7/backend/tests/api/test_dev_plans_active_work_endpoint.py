@@ -74,8 +74,9 @@ class TestDevPlansActiveWorkEndpoint:
                         "id": "phase_4",
                         "label": "Phase 4",
                         "status": "active",
-                        "points_done": 3,
-                        "points_total": 5,
+                        # No explicit points_*: steps[] is canonical (steps win
+                        # per the authoring contract). The 5 steps below, 3 done,
+                        # derive to points_done=3 / points_total=5.
                         "tests": ["entity-crud-policy-router"],
                         "evidence": [
                             {"kind": "test_suite", "ref": "entity-crud-policy-router"},
@@ -93,6 +94,9 @@ class TestDevPlansActiveWorkEndpoint:
                                 "label": "Surface checkpoint details",
                                 "status": "pending",
                             },
+                            {"label": "Wire confidence scoring", "done": True},
+                            {"label": "Add audit fallback", "done": True},
+                            {"label": "Document the endpoint", "done": False},
                         ],
                         "last_update": {"at": "2026-04-03T10:00:00Z"},
                     }

@@ -247,6 +247,128 @@ class TestDevPlansProgressEndpoint:
         assert "Checkpoint not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_progress_rejects_points_on_stepped_checkpoint(self):
+        """Points sent for a checkpoint with a non-empty steps[] are rejected
+        with 409. steps[] is the canonical points signal — explicit points
+        would be silently overridden by _derive_checkpoint_points and never
+        persist, so fail loud and tell the caller to mark steps done instead.
+        """
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1",
+                        "label": "CP 1",
+                        "status": "active",
+                        "steps": [
+                            {"label": "step one", "done": False},
+                            {"label": "step two", "done": True},
+                        ],
+                    }
+                ]
+            )
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
+            new=AsyncMock(return_value=bundle),
+        ):
+            async with _client(app) as c:
+                for body in (
+                    {"checkpoint_id": "cp1", "points_delta": 2},
+                    {"checkpoint_id": "cp1", "points_done": 2},
+                    {"checkpoint_id": "cp1", "points_total": 9},
+                ):
+                    response = await c.post(
+                        "/api/v1/dev/plans/progress/plan-a", json=body
+                    )
+                    assert response.status_code == 409, body
+                    detail = response.json()["detail"]
+                    assert "step-tracked" in detail["message"]
+                    assert detail["checkpoint_id"] == "cp1"
+                    assert detail["steps_total"] == 2
+                    assert detail["steps_done"] == 1
+
+    @pytest.mark.asyncio
+    async def test_progress_allows_status_only_on_stepped_checkpoint(self):
+        """A stepped checkpoint still accepts status / note updates — only the
+        points fields are gated, so closing via status='done' keeps working.
+        """
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1",
+                        "label": "CP 1",
+                        "status": "active",
+                        "steps": [{"label": "only step", "done": True}],
+                    }
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a",
+            changes=[{"field": "checkpoints"}],
+            revision=None,
+            commit_sha=None,
+            new_scope=None,
+        )
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/dev/plans/progress/plan-a",
+                    json={"checkpoint_id": "cp1", "status": "done", "note": "verified"},
+                )
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        assert checkpoint["status"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_progress_allows_points_when_steps_empty(self):
+        """Absent/empty steps[] is the 'not yet decomposed' mode — explicit
+        points must still pass through. Guard must not over-trigger on [].
+        """
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1",
+                        "label": "CP 1",
+                        "status": "pending",
+                        "steps": [],
+                        "points_done": 0,
+                        "points_total": 4,
+                    }
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], revision=None, commit_sha=None, new_scope=None,
+        )
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/dev/plans/progress/plan-a",
+                    json={"checkpoint_id": "cp1", "points_delta": 2},
+                )
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        assert checkpoint["points_done"] == 2
+
+    @pytest.mark.asyncio
     async def test_progress_commit_sha_added_as_evidence(self):
         """commit_sha field is auto-converted to git_commit evidence."""
         app = _app(authenticated=True)
