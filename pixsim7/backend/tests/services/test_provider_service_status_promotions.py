@@ -567,3 +567,206 @@ async def test_video_extend_status5_promotes_to_filtered_after_silent_filter_thr
     assert returned.status == ProviderStatus.FILTERED
     assert submission.response["status"] == "filtered"
     assert submission.response["metadata"]["extend_silent_filter"] is True
+
+
+# ---------------------------------------------------------------------------
+# Pixverse image false-filter CDN salvage
+#
+# Pixverse returns image_status 7/8/9 (-> FILTERED/FAILED) for jobs that
+# actually rendered an image; the pre-allocated CDN object is ground truth.
+# check_status HEAD-probes it and, on a real image, recovers the result as
+# COMPLETED while reusing the early-CDN contract so the downstream
+# billing-skip + provider_flagged path stays correct.
+# ---------------------------------------------------------------------------
+
+_IMAGE_URL = "https://media.pixverse.ai/pixverse/i2i/ori/abc-123.png"
+_PLACEHOLDER_IMAGE_URL = "https://media.pixverse.ai/pixverse/jpg/media/default.jpg"
+
+
+def _patch_common(monkeypatch, provider) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.registry.get",
+        lambda _provider_id: provider,
+    )
+
+    async def _fake_publish(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.event_bus.publish",
+        _fake_publish,
+    )
+
+
+def _patch_probe(monkeypatch, result):
+    """Mock cdn_head_probe; return a call-counter list."""
+    calls: list[str] = []
+
+    async def _fake_probe(url: str):
+        calls.append(url)
+        return result
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.provider.provider_service.cdn_head_probe",
+        _fake_probe,
+    )
+    return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prior_status, provider_status_int, expected_original",
+    [
+        (ProviderStatus.FILTERED, 7, "filtered"),
+        (ProviderStatus.FAILED, 8, "failed"),
+        (ProviderStatus.FAILED, 9, "failed"),
+    ],
+)
+async def test_pixverse_image_false_filter_recovered_when_cdn_serves(
+    monkeypatch: pytest.MonkeyPatch,
+    prior_status: ProviderStatus,
+    provider_status_int: int,
+    expected_original: str,
+) -> None:
+    submission = _make_submission(response={"metadata": {"provider_status": provider_status_int}})
+    status_result = ProviderStatusResult(
+        status=prior_status,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": provider_status_int, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == [_IMAGE_URL]  # probed exactly once
+    assert returned.status == ProviderStatus.COMPLETED
+    assert returned.video_url == _IMAGE_URL
+    assert returned.thumbnail_url == _IMAGE_URL
+    meta = submission.response["metadata"]
+    assert meta["image_false_filter_recovered"] is True
+    assert meta["video_early_cdn_terminal"] is True
+    assert meta["video_original_status"] == expected_original
+    assert submission.response["status"] == "completed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("probe_result", [False, None])
+async def test_pixverse_image_not_recovered_when_cdn_absent_or_inconclusive(
+    monkeypatch: pytest.MonkeyPatch,
+    probe_result,
+) -> None:
+    submission = _make_submission(response={"metadata": {"provider_status": 7}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, probe_result)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == [_IMAGE_URL]  # we did probe
+    assert returned.status == ProviderStatus.FILTERED
+    meta = submission.response.get("metadata") or {}
+    assert "image_false_filter_recovered" not in meta
+    assert "video_early_cdn_terminal" not in meta
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_placeholder_url_skips_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(response={"metadata": {"provider_status": 7}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=_PLACEHOLDER_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert calls == []  # placeholder URL must not be probed
+    assert returned.status == ProviderStatus.FILTERED
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_probe_cached_per_poll_tick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+    poll_cache: dict = {}
+
+    for _ in range(3):
+        await service.check_status(
+            submission=_make_submission(response={"metadata": {"provider_status": 7}}),
+            account=SimpleNamespace(id=11),
+            operation_type=OperationType.IMAGE_TO_IMAGE,
+            poll_cache=poll_cache,
+        )
+
+    # Same job id across the tick -> probed once, served from poll_cache after.
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_pixverse_video_terminal_does_not_trigger_image_salvage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submission = _make_submission(response={"metadata": {"provider_status": 7}})
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url="https://media.pixverse.ai/pixverse/mp4/x.mp4",
+        thumbnail_url=None,
+        metadata={"provider_status": 7},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.TEXT_TO_VIDEO,
+        poll_cache=None,
+    )
+
+    assert calls == []  # image salvage must not fire for video ops
+    assert returned.status == ProviderStatus.FILTERED
