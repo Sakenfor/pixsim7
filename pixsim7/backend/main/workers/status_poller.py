@@ -282,6 +282,30 @@ def _compute_adaptive_poll_defer_seconds(
 
 
 
+def _moderation_recheck_eligible(
+    *,
+    media_type: str | None,
+    is_early_cdn: bool,
+    has_provider_job_id: bool,
+) -> bool:
+    """Whether a completed asset should get a post-delivery moderation recheck.
+
+    Videos: always (Pixverse retro-flags delivered videos). Images: only the
+    early-CDN *salvaged* ones — they need the Pixverse auto-refund reconciled
+    (status-7 -> provider_flagged + billing skipped) and post-delivery
+    flagging caught. Cleanly-completed images are skipped (Pixverse rarely
+    retro-pulls a normal image; blanket image recheck would add a probe per
+    generation).
+    """
+    if not has_provider_job_id:
+        return False
+    if media_type == "video":
+        return True
+    if media_type == "image":
+        return is_early_cdn
+    return False
+
+
 def _schedule_moderation_recheck(
     *,
     asset_id: int,
@@ -1397,11 +1421,16 @@ async def _poll_single_generation(
                     _is_early_cdn = is_early_cdn_terminal(status_result.metadata)
                     _is_filtered_completion = is_early_cdn_filtered(status_result.metadata)
 
-                    # Schedule delayed moderation re-check for videos.
-                    # For early-CDN-terminal completions use a shorter first delay
-                    # (30 s) — Pixverse typically issues the refund quickly, and we
-                    # want to capture it promptly rather than waiting 90 s.
-                    if asset.media_type and asset.media_type.value == "video" and submission.provider_job_id:
+                    # Schedule delayed moderation re-check (see
+                    # _moderation_recheck_eligible). For early-CDN-terminal
+                    # completions use a shorter first delay (15 s) — Pixverse
+                    # issues the refund quickly.
+                    _recheck_eligible = _moderation_recheck_eligible(
+                        media_type=asset.media_type.value if asset.media_type else None,
+                        is_early_cdn=_is_early_cdn,
+                        has_provider_job_id=bool(submission.provider_job_id),
+                    )
+                    if _recheck_eligible:
                         _first_recheck_delay = _EARLY_CDN_RECHECK_DELAY_SEC if _is_early_cdn else _MODERATION_RECHECK_DELAYS_SEC[0]
                         _schedule_moderation_recheck(
                             asset_id=asset.id,
@@ -1771,7 +1800,8 @@ async def _run_moderation_rechecks_phase(
     *,
     account_service: AccountService,
 ) -> None:
-    """Re-check recently completed videos at staggered intervals to detect post-delivery flagging."""
+    """Re-check recently completed media at staggered intervals to detect
+    post-delivery flagging (all videos; early-CDN-salvaged images)."""
     now_mono = time.monotonic()
     due_rechecks = [
         (asset_id, info) for asset_id, info in _moderation_recheck.items()

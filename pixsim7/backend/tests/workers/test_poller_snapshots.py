@@ -1338,3 +1338,33 @@ async def test_poll_job_statuses_moderation_recheck_filtered_triggers_flag_and_r
     assert len(refresh_calls) == 1
     assert refresh_calls[0][1].get("success_log_event") == "moderation_recheck_credits_refreshed"
     assert asset_id not in status_poller._moderation_recheck
+
+
+# ---------------------------------------------------------------------------
+# _moderation_recheck_eligible — which completed media gets a post-delivery
+# recheck. Videos always; images only when early-CDN salvaged.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "media_type, is_early_cdn, has_job, expected",
+    [
+        ("video", False, True, True),    # normal video -> always
+        ("video", True, True, True),     # early-cdn video -> always
+        ("video", False, False, False),  # no job id -> never
+        ("image", True, True, True),     # salvaged image -> yes
+        ("image", False, True, False),   # cleanly-completed image -> no
+        ("image", True, False, False),   # salvaged but no job id -> no
+        (None, True, True, False),       # unknown media type -> no
+        ("audio", True, True, False),    # other media -> no
+    ],
+)
+def test_moderation_recheck_eligible(media_type, is_early_cdn, has_job, expected):
+    assert (
+        status_poller._moderation_recheck_eligible(
+            media_type=media_type,
+            is_early_cdn=is_early_cdn,
+            has_provider_job_id=has_job,
+        )
+        is expected
+    )
