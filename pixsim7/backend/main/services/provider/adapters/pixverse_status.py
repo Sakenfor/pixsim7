@@ -189,6 +189,154 @@ def _is_invalid_media_error(error: Exception) -> bool:
     return "provided media is invalid" in message or "invalid media" in message
 
 
+# Cached at the per-account batch key when one list-batch call fails, so the
+# remaining submissions in the same poll cycle don't each retry the batch.
+# Distinct from an empty dict (which means "batch ran, id not present").
+PIXVERSE_BATCH_FAILED_SENTINEL = "batch_failed"
+
+
+def pixverse_status_batch_cache_key(account_id: Any, *, is_image: bool) -> str:
+    """Per-account per-poll-tick batch cache key.
+
+    Shared contract: ``ProviderService.check_status`` writes and reads this
+    key; the status-poller last-ditch recovery also writes it. A drift in
+    the string here would silently break recovery (injected results would
+    never be read back), so both sides must derive the key from here.
+    """
+    kind = "image" if is_image else "video"
+    return f"pixverse:{kind}_status_batch:{account_id}"
+
+
+async def _scan_video_list(
+    client: Any,
+    video_id: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    max_pages: int = 8,
+) -> ProviderStatusResult:
+    """Paginate the personal video list for ``video_id``.
+
+    Bypasses the openapi/video-result + message-notification path (the
+    latter is one-shot: a consumed notification makes get_video report
+    "processing" even for finished jobs). Shared by both the public
+    ``check_video_status_from_list`` and the inline ``check_status``
+    fallback so the two cannot drift.
+    """
+    current_offset = offset
+    for page in range(max_pages):
+        videos = await client.list_videos(limit=limit, offset=current_offset)
+        if not videos:
+            break
+
+        for video in videos:
+            raw_video_id = _get_field(video, "video_id", "VideoId", "id")
+            if str(raw_video_id) != str(video_id):
+                continue
+
+            raw_status = _get_field(video, "video_status", "status")
+            status = _map_pixverse_status_for(video, is_image=False)
+            video_url_raw = _get_field(video, "url", "video_url")
+            # Strict: only accept the last-frame URL. `first_frame`,
+            # `thumbnail_url`, and `thumbnail` are semantically ambiguous —
+            # stamping them here would poison submission.response and
+            # self-heal asset.media_metadata.provider_thumbnail_url with a
+            # first-frame value, silently breaking the synthetic extend seed.
+            thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
+            video_url, thumb_url, media_url_signals = (
+                _extract_sanitized_video_urls(video_url_raw, thumb_raw)
+            )
+
+            return ProviderStatusResult(
+                status=status,
+                video_url=video_url,
+                thumbnail_url=thumb_url,
+                width=_get_field(video, "output_width", "width"),
+                height=_get_field(video, "output_height", "height"),
+                duration_sec=_get_field(video, "video_duration", "duration"),
+                provider_video_id=str(raw_video_id or video_id),
+                suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
+                has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
+                metadata={
+                    "provider_status": raw_status,
+                    "is_image": False,
+                    "source": "list_fallback",
+                    "matched": True,
+                    "page": page,
+                    **media_url_signals,
+                },
+            )
+
+        if len(videos) < limit:
+            break
+        current_offset += limit
+
+    return ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        provider_video_id=str(video_id),
+        metadata={"is_image": False, "source": "list_fallback", "matched": False},
+    )
+
+
+async def _scan_image_list(
+    client: Any,
+    image_id: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    max_pages: int = 3,
+) -> ProviderStatusResult:
+    """Paginate the personal image list for ``image_id``.
+
+    Image counterpart of :func:`_scan_video_list` — same one-shot
+    consumed-notification problem on the Web API path. Shared by the
+    public ``check_image_status_from_list`` and the inline fallback.
+    """
+    current_offset = offset
+    for page in range(max_pages):
+        images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
+            account=client.pool.get_next(),
+            limit=limit,
+            offset=current_offset,
+        )
+        if not images:
+            break
+
+        for img in images:
+            if str(img.get("image_id")) != str(image_id):
+                continue
+            image_url_raw = img.get("image_url") or img.get("url")
+            image_url = _sanitize_pixverse_url(image_url_raw)
+            status = _map_pixverse_status_for(img, is_image=True)
+            raw_status = img.get("image_status") or img.get("status") or 0
+            return ProviderStatusResult(
+                status=status,
+                video_url=image_url,
+                thumbnail_url=image_url,
+                width=img.get("width"),
+                height=img.get("height"),
+                duration_sec=None,
+                provider_video_id=str(img.get("image_id") or image_id),
+                metadata={
+                    "provider_status": raw_status,
+                    "is_image": True,
+                    "source": "list_fallback",
+                    "matched": True,
+                    "page": page,
+                },
+            )
+
+        if len(images) < limit:
+            break
+        current_offset += limit
+
+    return ProviderStatusResult(
+        status=ProviderStatus.PROCESSING,
+        provider_video_id=str(image_id),
+        metadata={"is_image": True, "source": "list_fallback", "matched": False},
+    )
+
+
 class PixverseStatusMixin:
     """Mixin for Pixverse video/image status checking and status mapping."""
 
@@ -235,71 +383,6 @@ class PixverseStatusMixin:
         image_ops = get_image_operations()
         is_image_operation = operation_type in image_ops if operation_type else False
 
-        async def _check_video_status_from_list_with_client(
-            client: Any,
-            video_id: str,
-            *,
-            limit: int = 200,
-            offset: int = 0,
-            max_pages: int = 5,
-        ) -> ProviderStatusResult:
-            current_offset = offset
-            for page in range(max_pages):
-                videos = await client.list_videos(limit=limit, offset=current_offset)
-                if not videos:
-                    break
-
-                for video in videos:
-                    raw_video_id = _get_field(video, "video_id", "VideoId", "id")
-                    if str(raw_video_id) != str(video_id):
-                        continue
-
-                    raw_status = _get_field(video, "video_status", "status")
-                    status = self._map_pixverse_status(video)
-                    video_url_raw = _get_field(video, "url", "video_url")
-                    # Strict: only accept the last-frame URL. `first_frame`,
-                    # `thumbnail_url`, and `thumbnail` are semantically ambiguous
-                    # — stamping them here would poison submission.response
-                    # and self-heal asset.media_metadata.provider_thumbnail_url
-                    # with a first-frame value, silently breaking the synthetic
-                    # extend seed path.
-                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
-                    video_url, thumb_url, media_url_signals = (
-                        _extract_sanitized_video_urls(video_url_raw, thumb_raw)
-                    )
-
-                    return ProviderStatusResult(
-                        status=status,
-                        video_url=video_url,
-                        thumbnail_url=thumb_url,
-                        width=_get_field(video, "output_width", "width"),
-                        height=_get_field(video, "output_height", "height"),
-                        duration_sec=_get_field(video, "video_duration", "duration"),
-                        provider_video_id=str(raw_video_id or video_id),
-                        # Only suppress when we actually got a placeholder
-                        # (e.g. /default.jpg on filtered videos).  Real
-                        # thumbnails are the last-frame URL we want to keep.
-                        suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
-                        has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
-                        metadata={
-                            "provider_status": raw_status,
-                            "source": "list_fallback",
-                            "matched": True,
-                            "page": page,
-                            **media_url_signals,
-                        },
-                    )
-
-                if len(videos) < limit:
-                    break
-                current_offset += limit
-
-            return ProviderStatusResult(
-                status=ProviderStatus.PROCESSING,
-                provider_video_id=str(video_id),
-                metadata={"source": "list_fallback", "matched": False},
-            )
-
         async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client(account)
 
@@ -312,6 +395,21 @@ class PixverseStatusMixin:
                     image_url_raw = _get_field(result, "image_url", "url")
                     image_url = _sanitize_pixverse_url(image_url_raw)
                     status = self._map_pixverse_image_status(result)
+
+                    # get_image's WebAPI path returns "processing" once the
+                    # completion notification has been consumed (e.g. an open
+                    # Pixverse browser tab acked it).  A just-completed image
+                    # is at the head of the list, so a single page is enough
+                    # to recover it on this same tick; the per-account batch
+                    # and elapsed-time fallback cover deeper history.
+                    if status == ProviderStatus.PROCESSING:
+                        list_result = await _scan_image_list(
+                            client,
+                            provider_job_id,
+                            max_pages=1,
+                        )
+                        if (list_result.metadata or {}).get("matched"):
+                            return list_result
 
                     if status in (ProviderStatus.COMPLETED, ProviderStatus.FILTERED):
                         logger.debug(
@@ -336,11 +434,9 @@ class PixverseStatusMixin:
                 else:
                     if operation_type == OperationType.VIDEO_EXTEND:
                         # Extend jobs can be absent from /openapi/v2/video/result but present in list_videos.
-                        list_result = await _check_video_status_from_list_with_client(
-                            client=client,
-                            video_id=provider_job_id,
-                            limit=200,
-                            offset=0,
+                        list_result = await _scan_video_list(
+                            client,
+                            provider_job_id,
                             max_pages=5,
                         )
                         if (list_result.metadata or {}).get("matched"):
@@ -373,11 +469,9 @@ class PixverseStatusMixin:
                     # direct list search to catch completed videos whose
                     # notification was already acked.
                     if status == ProviderStatus.PROCESSING:
-                        list_result = await _check_video_status_from_list_with_client(
-                            client=client,
-                            video_id=provider_job_id,
-                            limit=200,
-                            offset=0,
+                        list_result = await _scan_video_list(
+                            client,
+                            provider_job_id,
                             max_pages=5,
                         )
                         if (list_result.metadata or {}).get("matched"):
@@ -438,11 +532,9 @@ class PixverseStatusMixin:
                         operation_type=operation_type.value if operation_type else None,
                         error=str(exc),
                     )
-                    fallback_result = await _check_video_status_from_list_with_client(
-                        client=client,
-                        video_id=provider_job_id,
-                        limit=200,
-                        offset=0,
+                    fallback_result = await _scan_video_list(
+                        client,
+                        provider_job_id,
                         max_pages=8,
                     )
                     fallback_result.metadata = {
@@ -500,63 +592,12 @@ class PixverseStatusMixin:
         """
         async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client_from_session(session, account)
-            current_offset = offset
-
-            for page in range(max_pages):
-                videos = await client.list_videos(limit=limit, offset=current_offset)
-                if not videos:
-                    break
-
-                for video in videos:
-                    raw_video_id = _get_field(video, "video_id", "VideoId", "id")
-                    if str(raw_video_id) != str(video_id):
-                        continue
-
-                    raw_status = _get_field(video, "video_status", "status")
-                    status = self._map_pixverse_status(video)
-                    video_url_raw = _get_field(video, "url", "video_url")
-                    # Strict: only accept the last-frame URL. `first_frame`,
-                    # `thumbnail_url`, and `thumbnail` are semantically ambiguous
-                    # — stamping them here would poison submission.response
-                    # and self-heal asset.media_metadata.provider_thumbnail_url
-                    # with a first-frame value, silently breaking the synthetic
-                    # extend seed path.
-                    thumb_raw = _get_field(video, "customer_video_last_frame_url", "last_frame")
-                    video_url, thumb_url, media_url_signals = (
-                        _extract_sanitized_video_urls(video_url_raw, thumb_raw)
-                    )
-
-                    return ProviderStatusResult(
-                        status=status,
-                        video_url=video_url,
-                        thumbnail_url=thumb_url,
-                        width=_get_field(video, "output_width", "width"),
-                        height=_get_field(video, "output_height", "height"),
-                        duration_sec=_get_field(video, "video_duration", "duration"),
-                        provider_video_id=str(raw_video_id or video_id),
-                        # Only suppress when we actually got a placeholder
-                        # (e.g. /default.jpg on filtered videos).  Real
-                        # thumbnails are the last-frame URL we want to keep.
-                        suppress_thumbnail=media_url_signals["thumbnail_url_is_placeholder"],
-                        has_retrievable_media_url=media_url_signals["has_retrievable_media_url"],
-                        metadata={
-                            "provider_status": raw_status,
-                            "is_image": False,
-                            "source": "list_fallback",
-                            "matched": True,
-                            "page": page,
-                            **media_url_signals,
-                        },
-                    )
-
-                if len(videos) < limit:
-                    break
-                current_offset += limit
-
-            return ProviderStatusResult(
-                status=ProviderStatus.PROCESSING,
-                provider_video_id=str(video_id),
-                metadata={"is_image": False, "source": "list_fallback", "matched": False},
+            return await _scan_video_list(
+                client,
+                video_id,
+                limit=limit,
+                offset=offset,
+                max_pages=max_pages,
             )
 
         return await self.session_manager.run_with_session(
@@ -584,47 +625,12 @@ class PixverseStatusMixin:
         """
         async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client_from_session(session, account)
-            current_offset = offset
-            page = 0
-
-            for page in range(max_pages):
-                images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
-                    account=client.pool.get_next(),
-                    limit=limit,
-                    offset=current_offset,
-                )
-
-                for img in images:
-                    if str(img.get("image_id")) == str(image_id):
-                        image_url_raw = img.get("image_url") or img.get("url")
-                        image_url = _sanitize_pixverse_url(image_url_raw)
-                        status = self._map_pixverse_image_status(img)
-                        raw_status = img.get("image_status") or img.get("status") or 0
-
-                        return ProviderStatusResult(
-                            status=status,
-                            video_url=image_url,
-                            thumbnail_url=image_url,
-                            width=img.get("width"),
-                            height=img.get("height"),
-                            duration_sec=None,
-                            provider_video_id=str(img.get("image_id") or image_id),
-                            metadata={
-                                "provider_status": raw_status,
-                                "is_image": True,
-                                "source": "list_fallback",
-                                "page": page,
-                            },
-                        )
-
-                if len(images) < limit:
-                    break
-                current_offset += limit
-
-            return ProviderStatusResult(
-                status=ProviderStatus.PROCESSING,
-                provider_video_id=str(image_id),
-                metadata={"is_image": True, "source": "list_fallback", "pages_searched": min(page + 1, max_pages)},
+            return await _scan_image_list(
+                client,
+                image_id,
+                limit=limit,
+                offset=offset,
+                max_pages=max_pages,
             )
 
         return await self.session_manager.run_with_session(

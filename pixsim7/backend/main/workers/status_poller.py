@@ -28,7 +28,10 @@ from pixsim7.backend.main.domain.enums import (
     OperationType,
     GenerationErrorCode,
 )
-from pixsim7.backend.main.shared.operation_mapping import get_video_operations
+from pixsim7.backend.main.shared.operation_mapping import (
+    get_image_operations,
+    get_video_operations,
+)
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.workers._poller_backoff import (
     _TransientPollBackoffState,
@@ -738,6 +741,84 @@ async def _handle_provider_check_error(
         )
 
 
+async def _attempt_last_ditch_recovery(
+    *,
+    generation: _ProcessingGenerationSnapshot,
+    submission: Any,
+    account: ProviderAccount,
+    operation_type: Any,
+    poll_cache: dict,
+) -> bool:
+    """Deep paginated list-search for a stuck pixverse generation.
+
+    The per-tick batch (1 page) and elapsed-time fallback (5 pages) can
+    both miss a completed job whose provider-side history has scrolled
+    past page 5 on a busy account. Pixverse's completion notification is
+    one-shot — a consumed ack leaves a deep list search as the only
+    recovery path. On a terminal hit the result is seeded into the
+    per-tick poll_cache so the caller's normal check_status completes it
+    instead of failing on the 2-hour timeout. Returns True iff recovered.
+    """
+    if generation.provider_id != "pixverse" or not submission.provider_job_id:
+        return False
+
+    try:
+        provider = _provider_registry.get(generation.provider_id)
+    except Exception:
+        provider = None
+    if provider is None:
+        return False
+
+    is_image = operation_type in get_image_operations()
+    try:
+        if is_image and hasattr(provider, "check_image_status_from_list"):
+            result = await provider.check_image_status_from_list(
+                account=account,
+                image_id=submission.provider_job_id,
+                max_pages=20,
+            )
+        elif operation_type in get_video_operations() and hasattr(
+            provider, "check_video_status_from_list"
+        ):
+            result = await provider.check_video_status_from_list(
+                account=account,
+                video_id=submission.provider_job_id,
+                max_pages=20,
+            )
+        else:
+            return False
+    except Exception as err:
+        logger.warning(
+            "generation_last_ditch_search_failed",
+            generation_id=generation.id,
+            provider_job_id=submission.provider_job_id,
+            error=str(err),
+        )
+        return False
+
+    if result is None or result.status == ProviderStatus.PROCESSING:
+        return False
+
+    logger.warning(
+        "generation_recovered_via_last_ditch",
+        generation_id=generation.id,
+        provider_job_id=submission.provider_job_id,
+        recovered_status=str(result.status),
+        age_hours=round(
+            (datetime.now(timezone.utc) - generation.started_at).total_seconds() / 3600,
+            2,
+        ),
+    )
+    ProviderService.seed_poll_cache(
+        poll_cache,
+        account_id=account.id,
+        provider_job_id=submission.provider_job_id,
+        is_image=is_image,
+        result=result,
+    )
+    return True
+
+
 async def _poll_single_generation(
     generation: _ProcessingGenerationSnapshot,
     poll_cache: dict[str, object],
@@ -1065,17 +1146,25 @@ async def _poll_single_generation(
                 )
 
             if generation.started_at and generation.started_at < timeout_threshold:
-                logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
-                return await _fail_with_timeout(
-                    db,
-                    generation_id=generation_id,
-                    failure_reason=f"Generation timed out after {timeout_hours} hours",
-                    final_submission=submission,
+                recovered = await _attempt_last_ditch_recovery(
+                    generation=generation,
+                    submission=submission,
                     account=account,
-                    generation_service=generation_service,
-                    account_service=account_service,
-                    missing_provider_job=missing_provider_job,
+                    operation_type=generation_operation_type,
+                    poll_cache=poll_cache,
                 )
+                if not recovered:
+                    logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
+                    return await _fail_with_timeout(
+                        db,
+                        generation_id=generation_id,
+                        failure_reason=f"Generation timed out after {timeout_hours} hours",
+                        final_submission=submission,
+                        account=account,
+                        generation_service=generation_service,
+                        account_service=account_service,
+                        missing_provider_job=missing_provider_job,
+                    )
 
             try:
                 submission_model = await db.get(ProviderSubmission, submission.id)

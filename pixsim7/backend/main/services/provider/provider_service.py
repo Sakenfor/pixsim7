@@ -40,6 +40,11 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
     is_pixverse_placeholder_url as _is_pixverse_placeholder_url,
     has_retrievable_pixverse_media_url as _has_retrievable_pixverse_media_url,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_status import (
+    pixverse_status_batch_cache_key,
+    PIXVERSE_BATCH_FAILED_SENTINEL,
+)
+from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
 logger = configure_logging("provider_service").bind(channel="pipeline")
 
 
@@ -893,6 +898,31 @@ class ProviderService:
 
         return status_result
 
+    @staticmethod
+    def seed_poll_cache(
+        poll_cache: Dict[str, Any],
+        *,
+        account_id: Any,
+        provider_job_id: str,
+        is_image: bool,
+        result: ProviderStatusResult,
+    ) -> None:
+        """Inject a recovered status into the per-tick batch cache.
+
+        Owns the key derivation and the cache value shape so external
+        callers (the status-poller last-ditch recovery) don't have to. A
+        later ``check_status`` for the same submission then reads it back
+        through the batch fast-path instead of re-hitting the provider.
+        Overwrites the batch-failed sentinel if present (a single
+        recovered id still seeds a usable map).
+        """
+        key = pixverse_status_batch_cache_key(account_id, is_image=is_image)
+        existing = poll_cache.get(key)
+        if isinstance(existing, dict):
+            existing[str(provider_job_id)] = result
+        else:
+            poll_cache[key] = {str(provider_job_id): result}
+
     async def check_status(
         self,
         submission: ProviderSubmission,
@@ -922,7 +952,6 @@ class ProviderService:
 
         # Pixverse image status batch fast-path (per-poll cache): one image list
         # call can satisfy many IMAGE_TO_IMAGE checks on the same account.
-        _BATCH_FAILED_SENTINEL = "batch_failed"
         if (
             poll_cache is not None
             and submission.provider_id == "pixverse"
@@ -930,7 +959,7 @@ class ProviderService:
             and submission.provider_job_id
             and hasattr(provider, "check_image_statuses_from_list")
         ):
-            cache_key = f"pixverse:image_status_batch:{account.id}"
+            cache_key = pixverse_status_batch_cache_key(account.id, is_image=True)
             status_map = poll_cache.get(cache_key)
             if status_map is None:
                 try:
@@ -947,10 +976,7 @@ class ProviderService:
                         account_id=account.id,
                         error=str(batch_err),
                     )
-                    # Mark as failed so we don't retry the batch for every
-                    # image in this poll cycle, but don't cache an empty dict
-                    # that would look like "batch succeeded, image not found".
-                    poll_cache[cache_key] = _BATCH_FAILED_SENTINEL
+                    poll_cache[cache_key] = PIXVERSE_BATCH_FAILED_SENTINEL
 
             if isinstance(status_map, dict):
                 cached_result = status_map.get(str(submission.provider_job_id))
@@ -975,7 +1001,7 @@ class ProviderService:
             and submission.provider_job_id
             and hasattr(provider, "check_video_statuses_from_list")
         ):
-            cache_key = f"pixverse:video_status_batch:{account.id}"
+            cache_key = pixverse_status_batch_cache_key(account.id, is_image=False)
             status_map = poll_cache.get(cache_key)
             if status_map is None:
                 try:
@@ -992,7 +1018,7 @@ class ProviderService:
                         account_id=account.id,
                         error=str(batch_err),
                     )
-                    poll_cache[cache_key] = _BATCH_FAILED_SENTINEL
+                    poll_cache[cache_key] = PIXVERSE_BATCH_FAILED_SENTINEL
 
             if isinstance(status_map, dict):
                 cached_result = status_map.get(str(submission.provider_job_id))
@@ -1029,9 +1055,13 @@ class ProviderService:
 
             if elapsed_seconds >= threshold_seconds:
                 try:
+                    # Paginate deeper than the default (3) so older submissions
+                    # past the first page still resolve here instead of stalling
+                    # until the 2-hour stuck-PROCESSING timeout.
                     fallback_result = await provider.check_image_status_from_list(
                         account=account,
                         image_id=submission.provider_job_id,
+                        max_pages=5,
                     )
                     if fallback_result.status != ProviderStatus.PROCESSING:
                         status_result = fallback_result
@@ -1113,6 +1143,71 @@ class ProviderService:
                     "extend_silent_filter_elapsed_seconds": int(elapsed_seconds),
                     "extend_silent_filter_threshold_seconds": threshold_seconds,
                 }
+
+        # Pixverse image false-filter salvage.
+        #
+        # Pixverse returns image_status 7/8/9 (-> FILTERED/FAILED) for a
+        # meaningful fraction of jobs that actually rendered an image — the
+        # integer status is the only signal the API exposes and it lies.
+        # The pre-allocated CDN object is ground truth: a genuine filter
+        # 404s (S3 NoSuchKey), a real image serves 2xx. A header-only HEAD
+        # on the candidate URL recovers these instead of silently dropping
+        # a real image. Anonymous, same CDN host we already download every
+        # completed image from; cached per poll tick so a generation's
+        # retries don't re-probe the same object.
+        if (
+            submission.provider_id == "pixverse"
+            and operation_type in get_image_operations()
+            and status_result.status in (ProviderStatus.FILTERED, ProviderStatus.FAILED)
+            and submission.provider_job_id
+        ):
+            candidate_url = status_result.video_url
+            if not candidate_url and isinstance(submission.response, dict):
+                candidate_url = (
+                    submission.response.get("asset_url")
+                    or submission.response.get("image_url")
+                )
+            if (
+                candidate_url
+                and str(candidate_url).startswith("http")
+                and not _is_pixverse_placeholder_url(candidate_url)
+            ):
+                cache_key = f"pixverse:image_cdn_probe:{submission.provider_job_id}"
+                if poll_cache is not None and cache_key in poll_cache:
+                    exists = poll_cache[cache_key]
+                else:
+                    exists = await cdn_head_probe(candidate_url)
+                    if poll_cache is not None:
+                        poll_cache[cache_key] = exists
+
+                if exists is True:
+                    prior_status = status_result.status.value
+                    logger.warning(
+                        "pixverse_image_false_filter_recovered",
+                        submission_id=submission.id,
+                        provider_job_id=submission.provider_job_id,
+                        prior_status=prior_status,
+                        provider_status=(status_result.metadata or {}).get(
+                            "provider_status"
+                        ),
+                        url_preview=str(candidate_url)[:120],
+                    )
+                    status_result.status = ProviderStatus.COMPLETED
+                    status_result.video_url = candidate_url
+                    if not status_result.thumbnail_url:
+                        status_result.thumbnail_url = candidate_url
+                    # Reuse the early-CDN contract (media-type agnostic). A
+                    # genuine policy filter (prior=filtered) then flows to the
+                    # deterministic billing-skip + provider_flagged path Pixverse
+                    # auto-refunds; a flaky failure code (prior=failed) bills
+                    # normally. Keeps images consistent with the video path
+                    # instead of laundering flagged content into a clean asset.
+                    status_result.metadata = {
+                        **(status_result.metadata or {}),
+                        "image_false_filter_recovered": True,
+                        "video_early_cdn_terminal": True,
+                        "video_original_status": prior_status,
+                    }
 
         # Update submission response with latest status
         if submission.response is None:
