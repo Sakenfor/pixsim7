@@ -47,6 +47,14 @@ def _compute_provider_status(asset) -> str:
     return "unknown"
 
 
+def _compute_recovered(asset) -> bool:
+    """True when the asset was CDN-salvaged from a Pixverse false-filter /
+    stuck-processing state (provider_service._try_pixverse_image_cdn_salvage
+    stamps media_metadata.image_false_filter_recovered)."""
+    meta = getattr(asset, "media_metadata", None) or {}
+    return bool(isinstance(meta, dict) and meta.get("image_false_filter_recovered"))
+
+
 async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetResponse:
     """
     Build AssetResponse with tags loaded from database.
@@ -63,6 +71,7 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
 
     ar = AssetResponse.model_validate(asset)
     ar.provider_status = _compute_provider_status(asset)
+    ar.recovered = _compute_recovered(asset)
     ar.tags = [TagSummary.model_validate(tag) for tag in tags]
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
     ar.has_children = has_children_map.get(asset.id, False)
@@ -86,6 +95,7 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
     for asset in assets:
         ar = AssetResponse.model_validate(asset)
         ar.provider_status = _compute_provider_status(asset)
+        ar.recovered = _compute_recovered(asset)
         ar.tags = [TagSummary.model_validate(tag) for tag in tags_map.get(asset.id, [])]
         ar.has_children = has_children_map.get(asset.id, False)
         responses.append(ar)

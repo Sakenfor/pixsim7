@@ -200,6 +200,12 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
+    # Recovered from a Pixverse false-filter / stuck-processing state
+    # (derived from media_metadata.image_false_filter_recovered). Set for
+    # every CDN-salvaged image regardless of the original 7/8/9/processing
+    # status, so the gallery can surface a distinct "recovered" indicator.
+    recovered: bool = False
+
     # Asset kind (purpose)
     asset_kind: AssetKind = "content"
 
