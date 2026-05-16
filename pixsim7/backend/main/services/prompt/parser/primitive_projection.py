@@ -139,6 +139,36 @@ _CAMERA_MOTION_SIGNAL_TOKENS = {
     "push",
     "pull",
 }
+_LIGHT_SIGNAL_TOKENS = {
+    "light",
+    "lighting",
+    "lit",
+    "lighted",
+    "shadow",
+    "shadows",
+    "shadowy",
+    "glow",
+    "glows",
+    "glowing",
+    "illuminate",
+    "illuminated",
+    "illuminating",
+    "illumination",
+    "backlit",
+    "moonlit",
+    "sunlit",
+    "candlelit",
+    "tungsten",
+    "candlelight",
+    "fluorescent",
+    "overcast",
+    "neon",
+    "lamp",
+    "lamps",
+    "lantern",
+    "spotlight",
+    "floodlight",
+}
 _CAMERA_FRAMING_SIGNAL_TOKENS = {
     "shot",
     "close",
@@ -156,18 +186,115 @@ _CAMERA_FRAMING_SIGNAL_TOKENS = {
 _SUBJECT_MOTION_SIGNAL_TOKENS = {
     "walk",
     "walking",
+    "walked",
     "run",
     "runs",
     "running",
+    "ran",
     "step",
     "steps",
+    "stepped",
+    "stepping",
     "turn",
     "turns",
     "turned",
     "turning",
     "drift",
+    "drifts",
+    "drifting",
     "crouch",
+    "crouches",
     "crouching",
+    "jog",
+    "jogs",
+    "jogging",
+    "stride",
+    "strides",
+    "striding",
+    "leap",
+    "leaps",
+    "leaping",
+    "pace",
+    "pacing",
+}
+_SUBJECT_HANDS_SIGNAL_TOKENS = {
+    "hand",
+    "hands",
+    "finger",
+    "fingers",
+    "palm",
+    "palms",
+    "fist",
+    "fists",
+    "knuckle",
+    "knuckles",
+    "wrist",
+    "wrists",
+    "gesture",
+    "gestures",
+    "gesturing",
+    "gestured",
+    "point",
+    "points",
+    "pointing",
+    "pointed",
+    "grip",
+    "grips",
+    "gripping",
+    "gripped",
+    "grasp",
+    "grasps",
+    "grasping",
+    "grasped",
+    "clench",
+    "clenches",
+    "clenching",
+    "clenched",
+    "wave",
+    "waves",
+    "waving",
+    "waved",
+    "clap",
+    "clapping",
+    "applaud",
+    "applauds",
+    "applauding",
+}
+_SUBJECT_LOOK_SIGNAL_TOKENS = {
+    "look",
+    "looks",
+    "looking",
+    "looked",
+    "gaze",
+    "gazes",
+    "gazing",
+    "gazed",
+    "glance",
+    "glances",
+    "glancing",
+    "glanced",
+    "stare",
+    "stares",
+    "staring",
+    "stared",
+    "peer",
+    "peers",
+    "peering",
+    "peered",
+    "watch",
+    "watches",
+    "watching",
+    "watched",
+    "eye",
+    "eyes",
+    "eyed",
+    "blink",
+    "blinks",
+    "blinking",
+    "blinked",
+    "wink",
+    "winks",
+    "winking",
 }
 _CAMERA_CONTEXT_CUE_TOKENS = {
     "camera",
@@ -372,6 +499,24 @@ def _iter_tag_tokens(tags: Mapping[str, Any]) -> Iterable[str]:
                         yield token
 
 
+def _iter_tag_phrases(tags: Mapping[str, Any]) -> Iterable[str]:
+    """Yield multi-word phrases (lowercase, single-spaced) from list-valued tags.
+
+    Synonym tags like `grade_synonyms: ["warm sunlight", "golden hour"]` carry
+    adjacency information that gets lost when individual tokens are indexed.
+    """
+    for raw_value in tags.values():
+        if not isinstance(raw_value, list):
+            continue
+        for item in raw_value:
+            if not isinstance(item, str):
+                continue
+            normalized = " ".join(item.lower().split())
+            if " " not in normalized or len(normalized) < 3:
+                continue
+            yield normalized
+
+
 def _iter_op_tokens(op_payload: Mapping[str, Any]) -> Iterable[str]:
     op_id = _as_text(op_payload.get("op_id"))
     if op_id:
@@ -482,6 +627,7 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         tokens.update(_tokenize(category))
     tokens.update(_iter_tag_tokens(tags))
     tokens.update(_iter_op_tokens(op_payload))
+    phrases = frozenset(_iter_tag_phrases(tags))
 
     filtered_tokens = {
         token
@@ -516,6 +662,7 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         "role_in_sequence": role_in_sequence,
         "continuity_focus": continuity_focus,
         "continuity_priority": continuity_priority,
+        "phrases": phrases,
     }
 
 
@@ -674,6 +821,16 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         phrase_hints.add("subject_turn_around")
         text_tokens.update({"turn", "around"})
 
+    matched_keywords_text = ""
+    if isinstance(matched_keywords, list):
+        matched_keywords_text = " ".join(
+            kw for kw in matched_keywords if isinstance(kw, str)
+        ).lower()
+    phrase_haystack_raw = f"{text_lower} {matched_keywords_text}".strip()
+    phrase_haystack = " " + " ".join(
+        _TOKEN_RE.findall(phrase_haystack_raw.replace("_", " ").replace("-", " "))
+    ) + " "
+
     return {
         "text_tokens": text_tokens,
         "keyword_tokens": keyword_tokens,
@@ -684,6 +841,7 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "primary_relation": primary_relation,
         "sequence_role_hints": sequence_role_hints,
         "has_sequence_cues": bool(sequence_role_hints) or ("continuity" in text_tokens),
+        "phrase_haystack": phrase_haystack,
     }
 
 
@@ -767,12 +925,22 @@ def _score_entry(
     block_id_overlap = sorted(probe_tokens & entry_block_tokens)
     block_id_bonus = min(0.24, 0.12 * len(block_id_overlap))
 
+    entry_phrases = entry.get("phrases") or frozenset()
+    phrase_haystack = evidence.get("phrase_haystack") or ""
+    matched_phrases: List[str] = []
+    if entry_phrases and phrase_haystack:
+        for phrase in entry_phrases:
+            if f" {phrase} " in phrase_haystack:
+                matched_phrases.append(phrase)
+    phrase_bonus = min(0.2, 0.12 * len(matched_phrases))
+
     score = min(
         1.0,
         lexical_score
         + keyword_bonus
         + specific_bonus
         + block_id_bonus
+        + phrase_bonus
         + role_bonus
         + category_bonus
         + cross_bonus,
@@ -788,6 +956,9 @@ def _score_entry(
     has_camera_motion_signal = bool(probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS)
     has_camera_framing_signal = bool(probe_token_set & _CAMERA_FRAMING_SIGNAL_TOKENS)
     has_subject_motion_signal = bool(probe_token_set & _SUBJECT_MOTION_SIGNAL_TOKENS)
+    has_subject_hands_signal = bool(probe_token_set & _SUBJECT_HANDS_SIGNAL_TOKENS)
+    has_subject_look_signal = bool(probe_token_set & _SUBJECT_LOOK_SIGNAL_TOKENS)
+    has_light_signal = bool(probe_token_set & _LIGHT_SIGNAL_TOKENS)
     has_narrative_cues = bool(probe_token_set & _NARRATIVE_CUE_TOKENS)
     sequence_role_hints = set(evidence.get("sequence_role_hints") or set())
     has_sequence_cues = bool(evidence.get("has_sequence_cues"))
@@ -804,6 +975,12 @@ def _score_entry(
         or op_id.startswith("camera.pov.")
     )
     is_subject_motion = op_id.startswith("subject.move.")
+    is_subject_hands = op_id.startswith("subject.hands.")
+    is_subject_action = op_id.startswith("subject.action.")
+    is_subject_expression = op_id.startswith("subject.expression.")
+    is_manner = op_id.startswith("manner.")
+    is_light = op_id.startswith("light.state.") or op_id.startswith("light.intent.")
+    is_color = op_id.startswith("color.grade.")
 
     domain_multiplier = 1.0
     if has_camera_motion_signal:
@@ -818,12 +995,28 @@ def _score_entry(
             domain_multiplier *= 0.75
     if has_subject_motion_signal and not has_camera_motion_signal:
         if is_subject_motion:
-            domain_multiplier *= 1.15
+            domain_multiplier *= 1.25
         elif is_direction_axis:
             domain_multiplier *= 0.8
 
+    if has_light_signal and is_light:
+        domain_multiplier *= 1.25
+
+    if has_subject_hands_signal and is_subject_hands:
+        domain_multiplier *= 1.25
+
+    if has_subject_look_signal and is_subject_look and not has_camera_motion_signal:
+        domain_multiplier *= 1.25
+
     if has_camera_motion_signal and is_subject_look:
         domain_multiplier *= 0.85
+
+    # Non-camera subject/manner ops collide on common words ("wide", "full", "back").
+    # Suppress them when camera signal dominates and the candidate isn't role-tagged otherwise.
+    if (has_camera_motion_signal or has_camera_framing_signal) and (
+        is_subject_action or is_subject_expression or is_manner
+    ):
+        domain_multiplier *= 0.6
 
     placement_relation_overlap = probe_token_set & _PLACEMENT_RELATION_TOKENS
     if is_scene_anchor and placement_relation_overlap:
@@ -832,6 +1025,8 @@ def _score_entry(
             domain_multiplier *= 1.25
     if is_scene_anchor and has_camera_motion_signal and not has_explicit_anchor_phrase:
         domain_multiplier *= 0.55
+    if is_scene_anchor and has_subject_motion_signal and not has_explicit_anchor_phrase:
+        domain_multiplier *= 0.6
 
     camera_motion_overlap = probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS
     has_directional_tokens = bool(probe_token_set & _DIRECTIONAL_TOKENS)
@@ -975,7 +1170,24 @@ def _score_entry(
         "overlap_family_variant": overlap_family_variant,
         "competing_family_variant": competing_family_variant,
         "family_penalty": family_penalty,
+        "matched_phrases": sorted(matched_phrases),
     }
+
+
+def _competing_group_key(entry: Mapping[str, Any]) -> str:
+    """Group entries that compete for the same slot in a candidate.
+
+    Same op family (e.g. `color.grade.*`) means only one variant can apply at a
+    time — surfacing three variants as separate hypotheses is noise. Different
+    op families with different categories are non-competing.
+    """
+    family = _op_family(_as_text(entry.get("op_id")))
+    if family:
+        return f"family:{family}"
+    category = _as_text(entry.get("category"))
+    if category:
+        return f"category:{category}"
+    return f"block_id:{_as_text(entry.get('block_id')) or ''}"
 
 
 def _primitive_domain(entry: Mapping[str, Any]) -> str | None:
@@ -1035,6 +1247,7 @@ def _build_hypothesis_payload(
         "category": entry.get("category"),
         "overlap_tokens": list(scored.get("overlap_tokens") or []),
         "stem_overlap_tokens": list(scored.get("stem_overlap_tokens") or []),
+        "matched_phrases": list(scored.get("matched_phrases") or []),
     }
     if isinstance(entry.get("role_in_sequence"), str):
         payload["role_in_sequence"] = entry["role_in_sequence"]
@@ -1054,6 +1267,30 @@ def _build_hypothesis_payload(
     if op_payload:
         payload["op"] = op_payload
     return payload
+
+
+def _select_op_preferred_index(hypotheses: Sequence[Mapping[str, Any]]) -> int:
+    """Prefer the first op-backed hypothesis within ambiguity-delta of the leader.
+
+    Static-text-only primitives (no `op.op_id`) can win on raw token overlap when
+    a large pack like `latin_*` dominates the index — but they leave the popover's
+    Adjust tab hidden because it gates on `selectedHypothesis.op.op_id`. When a
+    close-runner-up is op-backed, surface that one as the primary selection so the
+    user can tweak op params; the original leader remains visible in Matches.
+    """
+    if not hypotheses:
+        return 0
+    leader_score = float(hypotheses[0].get("score") or 0.0)
+    if (hypotheses[0].get("op") or {}).get("op_id"):
+        return 0
+    for idx in range(1, len(hypotheses)):
+        op_id = (hypotheses[idx].get("op") or {}).get("op_id")
+        if not op_id:
+            continue
+        contender_score = float(hypotheses[idx].get("score") or 0.0)
+        if leader_score - contender_score <= _CROSS_DOMAIN_AMBIGUITY_DELTA:
+            return idx
+    return 0
 
 
 def project_candidate_to_primitives(
@@ -1111,13 +1348,24 @@ def project_candidate_to_primitives(
         )
     )
 
+    # Dedupe by competing-slot group: keep the top scorer per op-family so we
+    # don't surface three variants of color.grade.* as separate hypotheses.
+    seen_groups: set[str] = set()
+    deduped_matches: List[Tuple[Dict[str, Any], Mapping[str, Any]]] = []
+    for scored, entry in ranked_matches:
+        group_key = _competing_group_key(entry)
+        if group_key in seen_groups:
+            continue
+        seen_groups.add(group_key)
+        deduped_matches.append((scored, entry))
+
     projection["hypotheses"] = [
         _build_hypothesis_payload(
             scored=scored,
             entry=entry,
             mode=normalized_mode,
         )
-        for scored, entry in ranked_matches[:_MAX_HYPOTHESES]
+        for scored, entry in deduped_matches[:_MAX_HYPOTHESES]
     ]
 
     best_scored, _best_entry = ranked_matches[0]
@@ -1133,7 +1381,7 @@ def project_candidate_to_primitives(
         return projection
 
     projection["status"] = "matched"
-    projection["selected_index"] = 0
+    projection["selected_index"] = _select_op_preferred_index(projection["hypotheses"])
     return projection
 
 

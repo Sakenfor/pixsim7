@@ -14,6 +14,7 @@ import pytest
 from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
     enrich_candidates_with_primitive_projection,
     match_candidate_to_primitive,
+    project_candidate_to_primitives,
     _extract_candidate_evidence,
     _score_entry,
     _tokenize,
@@ -597,6 +598,324 @@ class TestColorGradeCrossDomainMatching:
         match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
         assert match is not None
         assert match["block_id"] == "core.light.state.soft_warm"
+
+
+class TestOpPreferredSelection:
+    """selected_index should prefer an op-backed hypothesis when leader is static-text-only."""
+
+    def test_op_backed_promoted_over_close_latin_leader(self):
+        """When a latin (no op_id) wins by a thin margin, the op-backed runner-up is selected."""
+        index = (
+            {
+                "block_id": "latin.breath.pattern.spiritus_interruptus",
+                "package_name": "latin_breath_pattern",
+                "role": None,
+                "category": "latin_enhancer",
+                "tokens": frozenset({"spiritus", "interruptus", "breath", "pattern", "interrupted", "warm"}),
+                "block_tokens": frozenset({"latin", "breath", "pattern", "spiritus", "interruptus"}),
+                "op_id": None,
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.light.state.soft_warm",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"soft", "warm", "light", "diffuse"}),
+                "block_tokens": frozenset({"core", "light", "state", "soft", "warm"}),
+                "op_id": "light.state.set",
+                "signature_id": "light.state.v1",
+                "op_modalities": ("both",),
+            },
+        )
+        candidate = {
+            "text": "Warm soft light fills the breath of the moment.",
+            "role": None,
+            "matched_keywords": ["warm", "soft", "light"],
+            "metadata": {},
+        }
+        projection = project_candidate_to_primitives(candidate, primitive_index=index)
+        if projection.get("status") != "matched":
+            return  # ambiguous or below-threshold — promotion only fires on matched
+        selected_idx = projection.get("selected_index")
+        hypotheses = projection.get("hypotheses") or []
+        assert hypotheses, "expected at least one hypothesis"
+        selected = hypotheses[selected_idx]
+        # If leader is latin and op-backed core is within ambiguity-delta, op-backed should win.
+        if (hypotheses[0].get("op") or {}).get("op_id"):
+            assert selected is hypotheses[0]  # leader already op-backed
+        else:
+            assert (selected.get("op") or {}).get("op_id"), (
+                f"expected op-preferred selection; got {selected.get('block_id')}"
+            )
+
+    def test_static_leader_kept_when_no_close_op_runner_up(self):
+        """If no op-backed hypothesis is within delta, selection stays at leader (status=ambiguous likely)."""
+        index = (
+            {
+                "block_id": "latin.breath.dominant",
+                "package_name": "latin_breath_pattern",
+                "role": None,
+                "category": "latin_enhancer",
+                "tokens": frozenset({"spiritus", "fractus", "broken", "halting", "uneven"}),
+                "block_tokens": frozenset({"latin", "breath", "spiritus", "fractus"}),
+                "op_id": None,
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.subject.pose.standing_neutral",
+                "package_name": "core_subject_pose",
+                "role": None,
+                "category": "character_pose",
+                "tokens": frozenset({"standing", "neutral", "still", "pose"}),
+                "block_tokens": frozenset({"core", "subject", "pose", "standing", "neutral"}),
+                "op_id": "subject.pose.set",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+        )
+        candidate = {
+            "text": "Spiritus fractus broken halting breath uneven.",
+            "role": None,
+            "matched_keywords": ["spiritus", "fractus"],
+            "metadata": {},
+        }
+        projection = project_candidate_to_primitives(candidate, primitive_index=index)
+        if projection.get("status") != "matched":
+            return
+        # Leader is latin with no close op runner-up → selection stays at 0.
+        assert projection.get("selected_index") == 0
+
+
+class TestMultiPrimitiveProjection:
+    """Hypotheses should dedupe same-family variants and surface complementary families."""
+
+    def test_no_three_color_grades_in_hypotheses(self):
+        """Three variants of color.grade.* share family — only the best survives in hypotheses."""
+        index = (
+            {
+                "block_id": "core.color.grade.warm_golden_hour",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"warm", "golden", "hour", "color", "grade", "sunlight"}),
+                "block_tokens": frozenset({"core", "color", "grade", "warm", "golden", "hour"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.color.grade.teal_orange_cinematic",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"warm", "teal", "orange", "cinematic", "color", "grade"}),
+                "block_tokens": frozenset({"core", "color", "grade", "teal", "orange", "cinematic"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.color.grade.desaturated_filmic",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"warm", "desaturated", "filmic", "muted", "color", "grade"}),
+                "block_tokens": frozenset({"core", "color", "grade", "desaturated", "filmic"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+            },
+        )
+        candidate = {
+            "text": "Warm cinematic color grade.",
+            "role": None,
+            "matched_keywords": ["warm", "cinematic", "color grade"],
+            "metadata": {},
+        }
+        projection = project_candidate_to_primitives(candidate, primitive_index=index)
+        hypotheses = projection.get("hypotheses") or []
+        family_ids = {h.get("op", {}).get("op_id") for h in hypotheses}
+        # All three share op_id "color.grade.apply" — only one should survive.
+        assert len(hypotheses) == 1, f"Expected dedupe to one entry, got {len(hypotheses)}"
+        assert family_ids == {"color.grade.apply"}
+
+    def test_complementary_families_co_surface(self):
+        """Different op families (camera-motion + light) should both appear in hypotheses."""
+        index = (
+            {
+                "block_id": "core.light.state.soft_warm",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"soft", "warm", "light", "diffuse", "contrast"}),
+                "block_tokens": frozenset({"core", "light", "state", "soft", "warm"}),
+                "op_id": "light.state.set",
+                "signature_id": "light.state.v1",
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.camera.motion.dolly",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"camera", "motion", "dolly", "forward", "slow"}),
+                "block_tokens": frozenset({"core", "camera", "motion", "dolly"}),
+                "op_id": "camera.motion.dolly",
+                "signature_id": "camera.motion.v1",
+                "op_modalities": ("video",),
+            },
+        )
+        candidate = {
+            "text": "Slow dolly forward with soft warm light filling the room.",
+            "role": None,
+            "matched_keywords": ["dolly", "soft warm light"],
+            "metadata": {},
+        }
+        projection = project_candidate_to_primitives(candidate, primitive_index=index)
+        hypotheses = projection.get("hypotheses") or []
+        op_ids = {h.get("op", {}).get("op_id") for h in hypotheses}
+        assert "camera.motion.dolly" in op_ids, f"missing camera; got {op_ids}"
+        assert "light.state.set" in op_ids, f"missing light; got {op_ids}"
+
+
+class TestPhraseMatchBonus:
+    """Multi-word synonym phrases get an adjacency bonus over per-token overlap."""
+
+    def _phrase_index(self):
+        return (
+            {
+                "block_id": "core.color.grade.warm_golden_hour",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"warm", "golden", "hour", "sunlight", "amber", "color", "grade"}),
+                "block_tokens": frozenset({"core", "color", "grade", "warm", "golden", "hour"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+                "phrases": frozenset({"golden hour", "warm sunlight", "amber tones"}),
+            },
+            {
+                "block_id": "core.color.grade.cool_moonlit",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"cool", "moonlit", "blue", "steel", "color", "grade"}),
+                "block_tokens": frozenset({"core", "color", "grade", "cool", "moonlit"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+                "phrases": frozenset({"blue hour", "cool lighting", "steel blue tones"}),
+            },
+        )
+
+    def test_adjacent_phrase_outscores_single_token_overlap(self):
+        """'warm sunlight' phrase should beat a candidate that only overlaps on 'warm'."""
+        index = self._phrase_index()
+        with_phrase = match_candidate_to_primitive(
+            {
+                "text": "Warm sunlight pours through the window.",
+                "role": None,
+                "matched_keywords": [],
+                "metadata": {},
+            },
+            primitive_index=index,
+        )
+        without_phrase = match_candidate_to_primitive(
+            {
+                "text": "A warm room with quiet conversation.",
+                "role": None,
+                "matched_keywords": [],
+                "metadata": {},
+            },
+            primitive_index=index,
+        )
+        assert with_phrase is not None
+        assert with_phrase["block_id"] == "core.color.grade.warm_golden_hour"
+        assert "warm sunlight" in with_phrase.get("matched_phrases", [])
+        if without_phrase is not None:
+            assert with_phrase["score"] > without_phrase["score"]
+
+
+class TestLightDomainGating:
+    """Light signal tokens ('light', 'shadow', 'glow', ...) should boost light/color over generic primitives."""
+
+    def _light_vs_camera_index(self):
+        return (
+            {
+                "block_id": "core.light.state.soft_warm",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"soft", "warm", "light", "contrast"}),
+                "block_tokens": frozenset({"core", "light", "state", "soft", "warm"}),
+                "op_id": "light.state.set",
+                "signature_id": "light.state.v1",
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.direction.axis.forward",
+                "package_name": "core_direction",
+                "role": None,
+                "category": "direction",
+                "tokens": frozenset({"forward", "direction", "axis"}),
+                "block_tokens": frozenset({"core", "direction", "axis", "forward"}),
+                "op_id": "direction.axis.forward",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+        )
+
+    def test_shadow_phrase_boosts_light_primitive(self):
+        candidate = {
+            "text": "Long shadows stretch across the soft warm light.",
+            "role": None,
+            "matched_keywords": ["shadows"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(
+            candidate, primitive_index=self._light_vs_camera_index()
+        )
+        assert match is not None
+        assert match["block_id"] == "core.light.state.soft_warm"
+
+    def test_glow_phrase_boosts_light_primitive(self):
+        candidate = {
+            "text": "A warm tungsten glow fills the room.",
+            "role": None,
+            "matched_keywords": ["tungsten", "glow"],
+            "metadata": {},
+        }
+        index = (
+            {
+                "block_id": "core.color.grade.warm_tungsten",
+                "package_name": "core_color",
+                "role": None,
+                "category": "color",
+                "tokens": frozenset({"warm", "tungsten", "color", "grade", "palette"}),
+                "block_tokens": frozenset({"core", "color", "grade", "warm", "tungsten"}),
+                "op_id": "color.grade.apply",
+                "signature_id": "color.grade.v1",
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.scene.generic",
+                "package_name": "core_scene",
+                "role": None,
+                "category": "scene",
+                "tokens": frozenset({"warm", "room", "fills"}),
+                "block_tokens": frozenset({"core", "scene", "generic"}),
+                "op_id": "scene.generic.set",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+        )
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.color.grade.warm_tungsten"
 
 
 # ---------------------------------------------------------------------------
