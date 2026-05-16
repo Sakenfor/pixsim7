@@ -176,6 +176,12 @@ class Bridge:
         self._mcp_server_task: asyncio.Task | None = None
         self._mcp_http_port: int = 9100
         self._mcp_http_url: str | None = None
+        # Loud-signal: when MCP wiring degrades the launcher must SEE it
+        # rather than agents silently "going dumb". None = healthy; else
+        # {"severity": "warning"|"error", "reason": str, "at": iso8601}.
+        # Surfaced via status() → hook /status → launcher service card.
+        # Plan: mcp-server-reliability / loud-signal-on-mcp-degradation.
+        self._mcp_degradation: Optional[dict] = None
         self._repo_root: Path = Path(__file__).resolve().parents[2]
         # Per-session MCP HTTP config + JWT cache.
         # Plan: mcp-http-bridge-session-resolution. When the
@@ -330,8 +336,23 @@ class Bridge:
                             error=str(exc),
                             error_type=type(exc).__name__,
                         )
+                        # Recoverable: all agents lose MCP tools until the
+                        # relaunched uvicorn rebinds. Surface as a warning.
+                        self._set_mcp_degradation(
+                            "warning",
+                            f"MCP HTTP server crashed "
+                            f"({type(exc).__name__}), relaunching",
+                        )
                         self._mcp_server_task = asyncio.create_task(self._start_mcp_http_server())
                         await asyncio.sleep(0.3)  # give uvicorn a moment to bind
+                elif (
+                    self._mcp_server_task is not None
+                    and not self._mcp_server_task.done()
+                    and self._mcp_degradation is not None
+                    and self._mcp_degradation.get("severity") == "warning"
+                ):
+                    # Relaunched task survived a supervisor tick → recovered.
+                    self._clear_mcp_degradation()
 
                 try:
                     await self._connect_and_serve()
@@ -451,6 +472,9 @@ class Bridge:
             # Extract system prompt and generate MCP config
             server_system_prompt = welcome.get("system_prompt")
             mcp_config_path = self._ensure_mcp_config(scope=scope, token=service_token)
+            if mcp_config_path:
+                # Healthy (re)connect — clear any stale degradation badge.
+                self._clear_mcp_degradation()
 
             # Wire a base-regenerator into the pool so sessions can recover when
             # the cached MCP config file is swept (Windows %TEMP% cleanup, etc.).
@@ -462,7 +486,25 @@ class Bridge:
                 # fresh file instead of returning the (now missing) cached one.
                 self._mcp_config_cache.pop(frozenset({"__default__"}), None)
                 self._mcp_config_path = None
-                return self._ensure_mcp_config(scope=_scope, token=_token)
+                try:
+                    path = self._ensure_mcp_config(scope=_scope, token=_token)
+                except Exception as exc:
+                    # Base config can't be rebuilt → every session that needs
+                    # regen will be refused. Unrecoverable until this clears.
+                    self._set_mcp_degradation(
+                        "error",
+                        f"MCP base config regeneration raised "
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                    raise
+                if not path:
+                    self._set_mcp_degradation(
+                        "error",
+                        "MCP base config regeneration returned no path",
+                    )
+                else:
+                    self._clear_mcp_degradation()
+                return path
 
             self._pool.set_base_mcp_config_regenerator(_regen_base_mcp_config)
 
@@ -1802,6 +1844,37 @@ class Bridge:
             self._pending_confirmations.pop(confirmation_id, None)
             self._confirmation_results.pop(confirmation_id, None)
 
+    def _set_mcp_degradation(self, severity: str, reason: str) -> None:
+        """Flag degraded MCP wiring so the launcher card shows it.
+
+        ``severity``: ``"warning"`` (recoverable — regen will retry, transient
+        transport blip) or ``"error"`` (unrecoverable without intervention —
+        base config can't be rebuilt, HTTP server can't rebind). Idempotent:
+        re-flagging the same severity keeps the original ``at`` so the badge
+        doesn't flicker its age on every retry.
+        """
+        prev = self._mcp_degradation
+        if prev and prev.get("severity") == severity and prev.get("reason") == reason:
+            return
+        from datetime import datetime, timezone
+        self._mcp_degradation = {
+            "severity": severity,
+            "reason": reason,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        log = get_logger()
+        (log.error if severity == "error" else log.warning)(
+            "mcp_degraded", severity=severity, reason=reason,
+        )
+
+    def _clear_mcp_degradation(self) -> None:
+        """MCP wiring is healthy again — drop the badge. No-op if not set."""
+        if self._mcp_degradation is not None:
+            get_logger().info(
+                "mcp_recovered", was=self._mcp_degradation.get("severity"),
+            )
+            self._mcp_degradation = None
+
     def status(self) -> dict:
         """Bridge status summary — exposed via hook server /status for launcher UI.
 
@@ -1827,6 +1900,7 @@ class Bridge:
             "mcp_http_url": self._mcp_http_url,
             "mcp_http_port": self._mcp_http_port if self._mcp_http_url else None,
             "pending_confirmations": len(self._pending_confirmations),
+            "mcp_degradation": self._mcp_degradation,
             "pool": self._pool.status(),
             "scope": {
                 "shared_flag": bool(self._shared),

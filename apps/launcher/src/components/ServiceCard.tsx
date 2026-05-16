@@ -279,6 +279,29 @@ export function ServiceCard({ service, services, selected, desktopAvailable, onS
               <span className="text-gray-500">hooks</span>
             </>
           )}
+          {(() => {
+            const deg = (service.extras?.bridge_status as
+              | { mcp_degradation?: { severity?: string; reason?: string } | null }
+              | undefined)?.mcp_degradation
+            if (!deg) return null
+            const isError = deg.severity === 'error'
+            return (
+              <>
+                <span className="text-gray-700 mx-0.5">|</span>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    isError ? 'bg-red-500 animate-pulse' : 'bg-amber-400'
+                  }`}
+                />
+                <span
+                  className={isError ? 'text-red-400' : 'text-amber-400'}
+                  title={deg.reason || 'MCP wiring degraded'}
+                >
+                  ⚠ MCP {isError ? 'error' : 'degraded'}
+                </span>
+              </>
+            )
+          })()}
         </div>
       )}
 

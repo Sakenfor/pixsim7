@@ -606,3 +606,54 @@ class TestHookConfirmRouting:
         assert bridge._cli_session_to_task.get("sess-stable") == "task-A"
         # All three routed to task-A.
         assert [tid for tid, _ in captured] == ["task-A", "task-A", "task-A"]
+
+
+# ===============================================================
+# Loud signal: MCP degradation badge
+# Plan: mcp-server-reliability / loud-signal-on-mcp-degradation
+# ===============================================================
+
+
+class TestMcpDegradationSignal:
+    """Bridge flags degraded MCP wiring in status() so the launcher card
+    shows it instead of agents silently 'going dumb'.
+    """
+
+    def test_fresh_bridge_is_not_degraded(self):
+        bridge = _make_bridge()
+        assert bridge._mcp_degradation is None
+        assert bridge.status()["mcp_degradation"] is None
+
+    def test_set_degradation_surfaces_in_status(self):
+        bridge = _make_bridge()
+        bridge._set_mcp_degradation("warning", "MCP HTTP server crashed, relaunching")
+
+        deg = bridge.status()["mcp_degradation"]
+        assert deg["severity"] == "warning"
+        assert "crashed" in deg["reason"]
+        assert deg["at"]  # iso timestamp present
+
+    def test_reflagging_same_state_is_idempotent(self):
+        bridge = _make_bridge()
+        bridge._set_mcp_degradation("error", "base regen failed")
+        first_at = bridge._mcp_degradation["at"]
+        # Same severity + reason on a retry must not bump the timestamp
+        # (badge would flicker its age otherwise).
+        bridge._set_mcp_degradation("error", "base regen failed")
+        assert bridge._mcp_degradation["at"] == first_at
+
+    def test_severity_escalates(self):
+        bridge = _make_bridge()
+        bridge._set_mcp_degradation("warning", "transient blip")
+        bridge._set_mcp_degradation("error", "unrecoverable: base config gone")
+        assert bridge._mcp_degradation["severity"] == "error"
+
+    def test_clear_resets_and_is_noop_when_healthy(self):
+        bridge = _make_bridge()
+        bridge._clear_mcp_degradation()  # no-op, nothing set
+        assert bridge._mcp_degradation is None
+
+        bridge._set_mcp_degradation("error", "boom")
+        bridge._clear_mcp_degradation()
+        assert bridge._mcp_degradation is None
+        assert bridge.status()["mcp_degradation"] is None
