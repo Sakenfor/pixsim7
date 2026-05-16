@@ -61,6 +61,8 @@ export { cancelAnalysis, cancelAnalysisBackfill, createAnalysis, createAnalysisB
 export type { AnalysisBackfillListResponse, AnalysisBackfillResponse, AnalysisBackfillStatus, AnalysisListResponse, AnalysisResponse, AnalysisStatus, CreateAnalysisBackfillRequest, CreateAnalysisRequest, ListAnalysisBackfillsOptions, ListAssetAnalysesOptions } from './analyses';
 export { getUserPreferences, updatePreferenceKey, updateUserPreferences } from './userPreferences';
 export type { AnalyzerPreferences, AutoTagsPreferences, DebugPreferences, DevToolSettingValue, DevToolsPreferences, TagDisplayPreferences, UserPreferences, UserPreferencesResponse } from './userPreferences';
+export { getCurrentUserProfile, updateCurrentUserProfile } from './userProfile';
+export type { UserProfile, UpdateUserProfileParams } from './userProfile';
 export { adminDeactivateUser, adminUpdateUser, listAdminUsers, listBridgeMachines, updateAdminUserPermissions } from './adminUsers';
 export type { AdminUpdateUserParams, AdminUserPermissions, AdminUsersListResponse, BridgeMachine, BridgeMachinesResponse, ListAdminUsersParams, ListBridgeMachinesParams } from './adminUsers';
 export { listCodegenTasks, runCodegenTask } from './codegen';

@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 
 import type { IconName } from '@lib/icons';
 
+import { AccountView } from './views/AccountView';
 import { BrowseView } from './views/BrowseView';
 import { ChatView } from './views/ChatView';
 import { PackagesView } from './views/PackagesView';
@@ -38,9 +39,16 @@ export const COMMUNITY_VIEWS: CommunityView[] = [
     component: PackagesView,
   },
   {
-    id: 'profile',
-    label: 'Profile',
+    id: 'account',
+    label: 'Account',
     icon: 'user',
+    component: AccountView,
+  },
+  {
+    // Bridge identity + review-delegation management (not personal profile).
+    id: 'access',
+    label: 'Access',
+    icon: 'shield',
     component: ProfileView,
   },
 ];
