@@ -69,6 +69,13 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: manner.v1
+    op_namespace: manner
+    requires_variant_template: false
+    required_params: [quality, intensity, delay]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: scene.anchor.v1
     op_namespace: scene.anchor
     requires_variant_template: false
@@ -90,6 +97,20 @@ signatures:
     required_refs: []
     allowed_modalities: [image, video]
 
+  - id: subject.action.v1
+    op_namespace: subject.action
+    requires_variant_template: false
+    required_params: [action_verb, target_involvement, body_region]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: subject.expression.v1
+    op_namespace: subject.expression
+    requires_variant_template: false
+    required_params: [expression, intensity]
+    required_refs: []
+    allowed_modalities: [image, video]
+
   - id: subject.hands.v1
     op_namespace: subject.hands
     requires_variant_template: false
@@ -107,7 +128,8 @@ signatures:
   - id: subject.look.v1
     op_namespace: subject.look
     requires_variant_template: false
-    required_params: [focus, intensity]
+    # intensity is delegated to core_manner per manifest design — not required here.
+    required_params: [focus]
     required_refs: []
     allowed_modalities: [image, video]
 
