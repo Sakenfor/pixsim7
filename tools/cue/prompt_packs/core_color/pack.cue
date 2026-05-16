@@ -14,7 +14,43 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.color.grade"
 				category:  "color"
 				capabilities: ["color.grade"]
-				text_template: "Color grade token: {variant}."
+				// Param-aware prose (see core_light for the pattern). Default
+				// values (temperature=neutral, saturation=medium,
+				// contrast=medium, exposure=balanced) map to "" so they elide;
+				// an all-default grade renders as the minimal "Color grade.".
+				text_synthesis: {
+					template: "{temperature} {saturation} {contrast} {exposure} color grade."
+					word_tables: {
+						temperature: {
+							very_warm: "very warm"
+							warm:      "warm"
+							neutral:   ""
+							cool:      "cool"
+							very_cool: "very cool"
+						}
+						saturation: {
+							muted:   "muted"
+							low:     "desaturated"
+							medium:  ""
+							high:    "saturated"
+							vibrant: "vibrant"
+						}
+						contrast: {
+							soft:   "soft-contrast"
+							low:    "low-contrast"
+							medium: ""
+							high:   "high-contrast"
+							punchy: "punchy-contrast"
+						}
+						exposure: {
+							dark:     "dark"
+							low:      "low-key"
+							balanced: ""
+							bright:   "bright"
+							high:     "high-key"
+						}
+					}
+				}
 				tags: {
 					modifier_family:      "color_grade"
 					modality_support:     "both"
