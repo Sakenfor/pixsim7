@@ -85,7 +85,7 @@ async def update_current_user(
     """
     Update current user profile
 
-    Allows updating username and full_name for the current user.
+    Allows updating username and display_name for the current user.
     Email and role cannot be changed through this endpoint.
     """
     try:
@@ -93,8 +93,8 @@ async def update_current_user(
         updates = {}
         if request.username is not None:
             updates["username"] = request.username
-        if request.full_name is not None:
-            updates["full_name"] = request.full_name
+        if request.display_name is not None:
+            updates["display_name"] = request.display_name
 
         # Update user
         if updates:

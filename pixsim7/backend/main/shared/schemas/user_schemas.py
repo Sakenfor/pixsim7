@@ -166,7 +166,7 @@ class UserPreferences(BaseModel):
 class UpdateUserRequest(BaseModel):
     """Update user profile request"""
     username: str | None = Field(None, min_length=3, max_length=50)
-    full_name: str | None = Field(None, max_length=100)
+    display_name: str | None = Field(None, max_length=100)
 
 
 class UpdateUserPreferencesRequest(BaseModel):
@@ -194,7 +194,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
-    full_name: str | None = None
+    display_name: str | None = None
     role: str
     permissions: List[str] = Field(default_factory=list)
     is_active: bool
