@@ -172,6 +172,20 @@ package promptpacks
 	[string]: _
 }
 
+// Param-aware prose synthesis. The compiler bakes each variant's `.text`
+// from `template` (a str.format string over param names + {variant}) and
+// `word_tables` (per-param value→fragment maps; map a value to "" to elide
+// it, e.g. default values, so prose stays natural). Single source of truth:
+// the same enum space the op declares drives the prose — no second table.
+#TextSynthesis: {
+	template: string
+	word_tables?: {
+		[string]: {
+			[string]: string
+		}
+	}
+}
+
 #BlockSchema: {
 	id_prefix: #IdPrefix
 	mode?:    *"surface" | #BlockMode
@@ -179,6 +193,7 @@ package promptpacks
 	role?:     #SimpleId
 	capabilities?: [...#CapabilityId]
 	text_template?: string
+	text_synthesis?: #TextSynthesis
 	descriptors?: #DescriptorOverlay
 	tags?: {
 		[string]: #TagValue

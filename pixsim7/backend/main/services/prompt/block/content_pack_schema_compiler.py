@@ -1,6 +1,7 @@
 """Schema-first block compiler extracted from content_pack_loader."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -19,6 +20,79 @@ from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
 
 class SchemaCompilerValidationError(ValueError):
     """Raised when schema-first block definitions are invalid."""
+
+
+class _DefaultEmptyDict(dict):
+    """str.format_map backing dict that yields '' for unreferenced params.
+
+    Lets a `text_synthesis.template` reference a param the variant doesn't
+    set without raising KeyError — the slot just collapses to whitespace,
+    which the post-pass trims.
+    """
+
+    def __missing__(self, key: str) -> str:  # noqa: D401 - dict protocol
+        return ""
+
+
+def _render_text_synthesis(
+    synthesis: Any,
+    *,
+    variant_key: str,
+    op_args: Dict[str, Any],
+    src: Path,
+) -> str:
+    """Render a variant's prose from `(template, word_tables)` + resolved op_args.
+
+    `template` is a str.format string referencing param names (and `{variant}`).
+    `word_tables[param][value]` maps an enum value to its prose fragment; a
+    mapping to "" elides that param (used for default values so prose stays
+    natural). Unmapped values fall through verbatim. After substitution we
+    collapse the whitespace left by elided params, tidy spacing before
+    punctuation, and capitalize the first character.
+
+    This is the single source of truth for op-block prose — the compiler bakes
+    the result into `block.text` exactly where `text_template.format(variant=)`
+    used to, so no downstream pipeline change is needed.
+    """
+    if not isinstance(synthesis, dict):
+        raise SchemaCompilerValidationError(
+            f"{src}: block_schema.text_synthesis must be an object"
+        )
+    template = synthesis.get("template")
+    if not isinstance(template, str) or not template.strip():
+        raise SchemaCompilerValidationError(
+            f"{src}: block_schema.text_synthesis.template must be a non-empty string"
+        )
+    word_tables = synthesis.get("word_tables", {})
+    if word_tables is None:
+        word_tables = {}
+    if not isinstance(word_tables, dict):
+        raise SchemaCompilerValidationError(
+            f"{src}: block_schema.text_synthesis.word_tables must be an object"
+        )
+
+    subs: Dict[str, str] = {"variant": variant_key}
+    for param, raw_value in op_args.items():
+        value = str(raw_value)
+        table = word_tables.get(param)
+        if isinstance(table, dict):
+            subs[param] = str(table.get(value, value))
+        else:
+            subs[param] = value
+
+    try:
+        rendered = template.format_map(_DefaultEmptyDict(subs))
+    except Exception as exc:  # noqa: BLE001 - surface as schema error
+        raise SchemaCompilerValidationError(
+            f"{src}: block_schema.text_synthesis.template failed for "
+            f"variant '{variant_key}': {exc}"
+        ) from exc
+
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    rendered = re.sub(r"\s+([.,;:!?])", r"\1", rendered)
+    if rendered:
+        rendered = rendered[0].upper() + rendered[1:]
+    return rendered
 
 
 def _normalize_tag_value_with_aliases(
@@ -425,6 +499,12 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
     if text_template is not None and not isinstance(text_template, str):
         raise SchemaCompilerValidationError(f"{src}: block_schema.text_template must be a string")
 
+    text_synthesis = block_schema.get("text_synthesis")
+    if text_synthesis is not None and not isinstance(text_synthesis, dict):
+        raise SchemaCompilerValidationError(
+            f"{src}: block_schema.text_synthesis must be an object"
+        )
+
     base_descriptors = _normalize_descriptors_map(
         value=block_schema.get("descriptors"),
         field="block_schema.descriptors",
@@ -460,7 +540,7 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         else:
             block_mode = "surface"
 
-    reserved_schema_keys = {"id_prefix", "mode", "text_template", "descriptors", "tags", "variants", "op"}
+    reserved_schema_keys = {"id_prefix", "mode", "text_template", "text_synthesis", "descriptors", "tags", "variants", "op"}
     base_block = {k: v for k, v in block_schema.items() if k not in reserved_schema_keys}
     known_tag_keys = load_prompt_block_tag_keys()
     tag_value_alias_map = get_block_tag_value_alias_map()
@@ -497,6 +577,25 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         text = variant.get("text")
         if text is not None and not isinstance(text, str):
             raise SchemaCompilerValidationError(f"{src}: block_schema.variants[{i}].text must be a string")
+        if text is None and text_synthesis is not None:
+            # Resolve effective op_args (schema default_args ← variant op_args)
+            # for prose synthesis. Mirrors the canonical merge done later at
+            # `effective_op_args`; computed locally because text must be set
+            # before the block-mode / has_text checks below.
+            _synth_defaults: Dict[str, Any] = {}
+            if isinstance(schema_op, dict) and isinstance(schema_op.get("default_args"), dict):
+                _synth_defaults = dict(schema_op.get("default_args") or {})
+            _synth_variant_args = variant.get("op_args")
+            if isinstance(_synth_variant_args, dict):
+                _synth_args = {**_synth_defaults, **_synth_variant_args}
+            else:
+                _synth_args = dict(_synth_defaults)
+            text = _render_text_synthesis(
+                text_synthesis,
+                variant_key=variant_key,
+                op_args=_synth_args,
+                src=src,
+            )
         if text is None and text_template is not None:
             try:
                 text = text_template.format(variant=variant_key)

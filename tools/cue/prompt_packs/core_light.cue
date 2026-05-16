@@ -14,7 +14,38 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.light.state"
 				category:  "light"
 				capabilities: ["light.state"]
-				text_template: "Lighting token: {variant}."
+				// Param-aware prose. Default values (intensity=medium,
+				// temperature=neutral, contrast=medium) map to "" so they
+				// elide — keeps "Diffused lighting." from becoming
+				// "balanced neutral moderate-contrast diffused lighting.".
+				text_synthesis: {
+					template: "{intensity} {temperature} {contrast} {key_light} lighting."
+					word_tables: {
+						intensity: {
+							low:    "dim"
+							medium: ""
+							high:   "bright"
+						}
+						temperature: {
+							warm:    "warm"
+							cool:    "cool"
+							neutral: ""
+							mixed:   "mixed-temperature"
+						}
+						contrast: {
+							low:    "low-contrast"
+							medium: ""
+							high:   "high-contrast"
+						}
+						key_light: {
+							diffuse: "diffused"
+							soft:    "soft"
+							hard:    "hard"
+							rim:     "rim-lit"
+							backlit: "backlit"
+						}
+					}
+				}
 				tags: {
 					modifier_family:  "light"
 					modality_support: "both"
