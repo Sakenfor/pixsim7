@@ -7,6 +7,7 @@ import {
   subscribeAuthoringProjectBundleDirtyState,
   startAutosave,
 } from "@lib/game/projectBundle";
+import { resolveSavedGameProjects } from "@lib/resolvers";
 import { isBeforeUnloadPromptSuppressed } from "@lib/utils/beforeUnloadGuard";
 
 import {
@@ -82,6 +83,43 @@ export function ContextHubRootProviders() {
     const stopAutosave = startAutosave(() => editorContext.world.id);
     return stopAutosave;
   }, [editorContext.world.id]);
+
+  // Robust project→world resolution: a project may be *selected* (no world
+  // open in the editor, Project panel closed) yet carry a null
+  // `currentProjectSourceWorldId` — stale localStorage-only state, or a
+  // selection that landed before the project catalog finished loading. In
+  // that case authoring panels (Routine Graph, Scene Graph, …) would fall
+  // back to "No world selected" even though the project has a source world.
+  // Resolve it from the catalog and self-heal the session store so every
+  // CAP_PROJECT_CONTEXT consumer recovers without the user re-selecting.
+  useEffect(() => {
+    if (currentProjectId == null || currentProjectSourceWorldId != null) {
+      return;
+    }
+    let cancelled = false;
+    void resolveSavedGameProjects(
+      {},
+      { consumerId: "ContextHubRootProviders.backfillSourceWorld" },
+    )
+      .then((projectList) => {
+        if (cancelled) return;
+        const matched = projectList.find(
+          (entry) => entry.id === currentProjectId,
+        );
+        const sourceWorldId = matched?.source_world_id ?? null;
+        if (sourceWorldId == null) return;
+        useProjectSessionStore.getState().setCurrentProject({
+          projectId: currentProjectId,
+          projectName: matched?.name ?? null,
+          projectSourceWorldId: sourceWorldId,
+          projectUpdatedAt: matched?.updated_at ?? null,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId, currentProjectSourceWorldId]);
 
   const sceneValue = useMemo<SceneContextSummary>(
     () => {
