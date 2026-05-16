@@ -44,6 +44,25 @@ class AgentTaskError(RuntimeError):
         self.err = err
 
 
+# ── MCP config resolution contract (single source of truth) ──────────
+# A regenerator is a zero-arg callable the AgentPool wires in so a session
+# can recover when its MCP config file was swept. Every layer
+# (session ↔ pool ↔ bridge) speaks exactly this contract:
+#   • returns a path string → caller MUST verify it exists on disk
+#   • returns None          → unrecoverable; fail loud
+#   • raises                → unrecoverable; fail loud (detail preserved)
+MCPConfigRegenerator = Callable[[], Optional[str]]
+
+
+class MCPConfigUnavailable(RuntimeError):
+    """The session's MCP config is missing and could not be regenerated.
+
+    Raised by ``AgentCmdSession._resolve_mcp_config``; ``start()`` turns it
+    into ``state=STOPPED`` + ``_last_error`` and refuses to launch (rather
+    than silently starting an MCP-less agent).
+    """
+
+
 class SessionState(str, Enum):
     IDLE = "idle"
     STARTING = "starting"
@@ -83,12 +102,13 @@ class AgentCmdSession:
         command: str = "claude",
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
-        mcp_config_regenerator: "Callable[[], Optional[str]] | None" = None,
+        mcp_config_regenerator: "MCPConfigRegenerator | None" = None,
         resume_session_id: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
         workdir: str | None = None,
         token_file_path: str | None = None,
+        owned_mcp_config_path: str | None = None,
     ):
         from pixsim7.client.protocols import get_protocol
         self.session_id = session_id
@@ -110,6 +130,13 @@ class AgentCmdSession:
         self._reasoning_effort = reasoning_effort
         self._workdir = workdir
         self.token_file_path = token_file_path
+        # Path to the private per-session MCP config clone this pool created
+        # (STDIO mode only). None when the session shares the bridge's base
+        # config (HTTP mode) — teardown must NOT delete a shared base.
+        # Decoupled from _mcp_config_path on purpose: configure()/regenerator
+        # reassign _mcp_config_path, but the file we own to clean up does not
+        # change. Plan: mcp-server-reliability / cleanup-must-not-delete-shared-base.
+        self._owned_mcp_config_path = owned_mcp_config_path
         self._log = get_logger().bind(session=session_id)
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
@@ -190,6 +217,62 @@ class AgentCmdSession:
             parts.append("process=not_alive")
         return ", ".join(parts)
 
+    def _resolve_mcp_config(self) -> Optional[str]:
+        """Resolve the MCP config path to launch with, or fail loud.
+
+        The single home for the regenerate-or-fail decision tree. MCP config
+        files can be swept (Windows Storage Sense / AV / our own stale-file
+        sweep) — see plan mcp-server-reliability.
+
+          • no configured path, or path still exists → use it as-is
+          • path missing, no regenerator wired       → return None (legacy:
+            launch WITHOUT MCP rather than refuse — back-compat for tests /
+            standalone Session construction without an AgentPool)
+          • path missing, regenerator wired (per the MCPConfigRegenerator
+            contract):
+              – regenerator raises                   → MCPConfigUnavailable
+              – returns falsy / non-existent path    → MCPConfigUnavailable
+              – returns an existing path             → adopt it and use it
+        """
+        mcp_config = self._mcp_config_path
+        if not mcp_config or os.path.exists(mcp_config):
+            return mcp_config
+
+        self._log.warning("mcp_config_missing", path=mcp_config)
+        if self._mcp_config_regenerator is None:
+            # No regenerator wired — preserve legacy launch-without-MCP.
+            return None
+
+        try:
+            fresh = self._mcp_config_regenerator()
+        except Exception as exc:
+            self._log.error(
+                "mcp_config_regeneration_failed",
+                path=mcp_config,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise MCPConfigUnavailable(
+                f"MCP config missing at {mcp_config!r} and regeneration "
+                f"raised {type(exc).__name__}: {exc}. Refusing to start "
+                f"session without MCP."
+            ) from exc
+
+        if fresh and os.path.exists(fresh):
+            self._mcp_config_path = fresh
+            self._log.info("mcp_config_regenerated", path=fresh)
+            return fresh
+
+        self._log.error(
+            "mcp_config_regeneration_unrecoverable",
+            original=mcp_config,
+            returned=fresh,
+        )
+        raise MCPConfigUnavailable(
+            f"MCP config missing at {mcp_config!r} and regenerator "
+            f"returned {fresh!r}. Refusing to start session without MCP."
+        )
+
     async def start(self) -> bool:
         """Start the CLI process. Returns True if successful."""
         if self.is_alive:
@@ -202,54 +285,15 @@ class AgentCmdSession:
         # aren't found by asyncio.create_subprocess_exec with bare names
         resolved_command = shutil.which(self._command) or self._command
 
-        # Validate MCP config still exists. Temp files in %TEMP% can be cleaned
-        # up by Windows Storage Sense, antivirus, etc. — see plan
-        # mcp-server-reliability for the failure analysis.
-        #
-        # If a regenerator is wired (production path via AgentPool), try to get
-        # a fresh path and fail loud on regeneration failure. Without a
-        # regenerator (legacy / test construction), fall back to launching
-        # without MCP rather than refusing to start — preserves back-compat.
-        mcp_config = self._mcp_config_path
-        if mcp_config and not os.path.exists(mcp_config):
-            self._log.warning("mcp_config_missing", path=mcp_config)
-            fresh: Optional[str] = None
-            if self._mcp_config_regenerator is not None:
-                try:
-                    fresh = self._mcp_config_regenerator()
-                except Exception as exc:
-                    self._log.error(
-                        "mcp_config_regeneration_failed",
-                        path=mcp_config,
-                        error=str(exc),
-                        error_type=type(exc).__name__,
-                    )
-                    self.state = SessionState.STOPPED
-                    self._last_error = (
-                        f"MCP config missing at {mcp_config!r} and regeneration "
-                        f"raised {type(exc).__name__}: {exc}. Refusing to start "
-                        f"session without MCP."
-                    )
-                    return False
-                if fresh and os.path.exists(fresh):
-                    self._mcp_config_path = fresh
-                    mcp_config = fresh
-                    self._log.info("mcp_config_regenerated", path=fresh)
-                else:
-                    self._log.error(
-                        "mcp_config_regeneration_unrecoverable",
-                        original=mcp_config,
-                        returned=fresh,
-                    )
-                    self.state = SessionState.STOPPED
-                    self._last_error = (
-                        f"MCP config missing at {mcp_config!r} and regenerator "
-                        f"returned {fresh!r}. Refusing to start session without MCP."
-                    )
-                    return False
-            else:
-                # No regenerator wired — preserve legacy behavior.
-                mcp_config = None
+        # Resolve the MCP config (regenerate-or-fail-loud lives in one
+        # place — see _resolve_mcp_config and the MCPConfigRegenerator
+        # contract). Plan: mcp-server-reliability.
+        try:
+            mcp_config = self._resolve_mcp_config()
+        except MCPConfigUnavailable as exc:
+            self.state = SessionState.STOPPED
+            self._last_error = str(exc)
+            return False
 
         cmd = self._protocol.build_start_cmd(
             resolved_command,

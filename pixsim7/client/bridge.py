@@ -772,7 +772,13 @@ class Bridge:
         mcp_python_cmd, mcp_python_prefix = self._mcp_python_runtime
 
         if not self._token_file:
-            self._token_file = TokenFile.create(seed_token=token, prefix="pixsim-mcp")
+            # Stable base token (immune to %TEMP% sweeps). Shared per bridge;
+            # rewritten with per-request tokens, so a swept file is re-created
+            # on the next write as long as the durable stable dir exists.
+            # Plan: mcp-server-reliability / extend-stable-location-to-all-mcp-files.
+            self._token_file = TokenFile.create(
+                seed_token=token, name="pixsim-mcp-base.token",
+            )
 
         env = build_mcp_env(
             api_base=api_base,
@@ -780,11 +786,15 @@ class Bridge:
             scope=mcp_scope,
             api_token=token,
         )
+        # Deterministic stable filename (same scheme as the HTTP branch:
+        # default.json / focus<hash>.json) so the regenerator-on-missing
+        # path keeps working and %TEMP% sweeps no longer apply.
         path = write_claude_mcp_config(
             env,
             python_cmd=mcp_python_cmd,
             python_prefix=mcp_python_prefix,
             mcp_server_script=mcp_server_script,
+            name=_legacy_mcp_config_name(focus),
         )
 
         if focus:

@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from pixsim7.client.session import AgentCmdSession, SessionState
+from pixsim7.client.session import AgentCmdSession, MCPConfigRegenerator, SessionState
 from pixsim7.client.log import get_logger
 
 MAX_SESSIONS = 10
@@ -87,9 +87,14 @@ async def probe_engine(command: str, *, timeout: float = ENGINE_PROBE_TIMEOUT_S)
     success or a short error reason on failure (logged for diagnosis,
     not surfaced to the user).
     """
+    # Resolve to the concrete executable path first so the startup probe uses
+    # the same launch target as AgentCmdSession.start(). On Windows this avoids
+    # bare-name ambiguity when multiple Codex shims/exes are present on PATH.
+    resolved_command = shutil.which(command) or command
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            command, "--version",
+            resolved_command, "--version",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -154,7 +159,7 @@ class AgentPool:
         # Optional callback the bridge wires up to regenerate the pool's base
         # MCP config (e.g. when Windows sweeps the temp file out from under us).
         # See plan: mcp-server-reliability — robust-fix-regenerate-on-missing.
-        self._base_mcp_config_regenerator: Optional[Callable[[], Optional[str]]] = None
+        self._base_mcp_config_regenerator: Optional[MCPConfigRegenerator] = None
         self._resume_session_id: Optional[str] = None
         self._sessions: Dict[str, AgentCmdSession] = {}
         self._health_task: Optional[asyncio.Task] = None
@@ -265,18 +270,39 @@ class AgentPool:
         self._drop_indexes_for_session(oldest.session_id)
         return True
 
-    @staticmethod
-    def _cleanup_session_files(session: AgentCmdSession) -> None:
-        """Remove per-session temp files (token file + MCP config)."""
-        for path in (session.token_file_path, session._mcp_config_path):
-            if path:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+    def _cleanup_session_files(self, session: AgentCmdSession) -> None:
+        """Remove files genuinely private to this session.
+
+        The per-session token file (``clone_token_for_session``) is always a
+        fresh temp file and is safe to unlink unconditionally.
+
+        ``session._mcp_config_path`` is NOT always private. In HTTP mode there
+        is no per-session clone (identity rides in headers), so every session
+        points at the SHARED base config — ``~/.pixsim/mcp/default.json`` (or a
+        cached focused config). Deleting that on evict/idle-evict yanks MCP out
+        from under every other live session and the bridge's cache, forcing a
+        regenerate storm. Only unlink an MCP config that is not the current
+        base and not any path the bridge still has cached.
+        Plan: mcp-server-reliability / cleanup-must-not-delete-shared-base.
+        """
+        if session.token_file_path:
+            try:
+                os.unlink(session.token_file_path)
+            except OSError:
+                pass
+
+        # Only the private per-session clone is ours to delete. HTTP-mode
+        # sessions carry the shared base in _mcp_config_path (and configure()/
+        # the regenerator may reassign it to the base too) — never unlink that.
+        owned = session._owned_mcp_config_path
+        if owned:
+            try:
+                os.unlink(owned)
+            except OSError:
+                pass
 
     def set_base_mcp_config_regenerator(
-        self, regenerator: Callable[[], Optional[str]] | None,
+        self, regenerator: MCPConfigRegenerator | None,
     ) -> None:
         """Wire a bridge-provided callback that returns a fresh base MCP config
         path. The pool calls this when its cached base config has been swept
@@ -286,7 +312,7 @@ class AgentPool:
 
     def _make_session_mcp_regenerator(
         self, pool_key: str,
-    ) -> Callable[[], Optional[str]]:
+    ) -> MCPConfigRegenerator:
         """Build a closure that regenerates this pool_key's per-session MCP
         config. Tries `_create_session_mcp_config` first; if the pool's base
         config is also missing, asks the bridge via the base regenerator and
@@ -323,7 +349,9 @@ class AgentPool:
                     return None
                 self._mcp_config_path = fresh_base
             # Step 2: re-clone per-session config from the (now-fresh) base.
-            _, new_path = self._create_session_mcp_config(pool_key)
+            # (Ownership-refresh of the session's owned clone on STDIO regen
+            # is tracked under plan checkpoint consolidate-mcp-config-resolution.)
+            _, new_path, _ = self._create_session_mcp_config(pool_key)
             if not new_path:
                 get_logger().error(
                     "mcp_session_clone_failed",
@@ -333,41 +361,67 @@ class AgentPool:
             return new_path
         return _regenerate
 
-    def _create_session_mcp_config(self, pool_key: str, base_config_path: str | None = None) -> tuple[str | None, str | None]:
-        """Create a per-session token file + MCP config.
+    def _create_session_mcp_config(
+        self, pool_key: str, base_config_path: str | None = None,
+    ) -> tuple[str | None, str | None, bool]:
+        """Resolve the MCP config path the session should use, plus an
+        optional per-session token file and whether the config is a private
+        per-session clone this pool created (and therefore owns the lifecycle
+        of — see ``_cleanup_session_files``).
 
-        Clones the base MCP config and overrides PIXSIM_TOKEN_FILE to point
-        to a session-specific token file. Seeds the file from the base config's
-        token file (service token) so MCP tools work immediately.
-        Returns (token_file_path, mcp_config_path).
-        If no base config exists, returns (None, None).
+        Returns ``(token_file_path, mcp_config_path, owns_private_clone)``:
+          - STDIO base: clones the base config, overrides ``PIXSIM_TOKEN_FILE``
+            with a fresh per-session token file seeded from the base's service
+            token. Returns ``(session_tf.path, cloned_config_path, True)``.
+          - HTTP-only base: identity rides in headers, so no per-session
+            clone is needed and no per-session token file is created. Returns
+            ``(None, base, False)`` — caller uses the SHARED base directly and
+            must NOT delete it on session teardown.
+          - Failure (base missing/unreadable, clone write failed): returns
+            ``(None, None, False)``.
+
+        The HTTP fall-through mirrors the contract documented on
+        ``clone_mcp_config_for_session`` in ``token_manager.py``.
         """
-        from pixsim7.client.token_manager import TokenFile, clone_token_for_session, clone_mcp_config_for_session
+        from pixsim7.client.token_manager import (
+            TokenFile,
+            clone_token_for_session,
+            clone_mcp_config_for_session,
+            is_http_mcp_config,
+        )
 
         base = base_config_path or self._mcp_config_path
         if not base or not os.path.exists(base):
-            return None, None
+            return None, None, False
 
-        # Seed per-session token file from base config's token file
-        seed_source = ""
         try:
             with open(base) as f:
                 config = json.load(f)
-            for server in config.get("mcpServers", {}).values():
-                env = server.get("env", {})
-                seed_source = env.get("PIXSIM_TOKEN_FILE", "") or env.get("PIXSIM_API_TOKEN", "")
-                if seed_source:
-                    break
         except (json.JSONDecodeError, OSError):
-            return None, None
+            return None, None, False
+
+        if is_http_mcp_config(config):
+            # HTTP-only base: per-session config is the SHARED base itself.
+            # Not owned by this session — teardown must not unlink it.
+            return None, base, False
+
+        # STDIO: seed the per-session token file from the base's token.
+        seed_source = ""
+        for server in config.get("mcpServers", {}).values():
+            if "url" in server:
+                continue  # HTTP server in a mixed config
+            env = server.get("env", {})
+            seed_source = env.get("PIXSIM_TOKEN_FILE", "") or env.get("PIXSIM_API_TOKEN", "")
+            if seed_source:
+                break
 
         session_tf = clone_token_for_session(seed_source, session_id=pool_key)
-        cloned_config = clone_mcp_config_for_session(base, session_tf)
+        cloned_config = clone_mcp_config_for_session(base, session_tf, session_id=pool_key)
         if not cloned_config:
             session_tf.cleanup()
-            return None, None
+            return None, None, False
 
-        return session_tf.path, cloned_config
+        return session_tf.path, cloned_config, True
 
     async def _spawn_session(
         self,
@@ -392,8 +446,10 @@ class AgentPool:
         if pool_key in self._sessions:
             pool_key = f"{pool_key}-{self._next_dynamic_id}"
 
-        # Per-session token file + MCP config (isolates concurrent sessions)
-        token_file, session_mcp_config = self._create_session_mcp_config(
+        # Per-session token file + MCP config (isolates concurrent sessions).
+        # owns_clone is True only when a private STDIO clone was created — the
+        # one file teardown is allowed to delete. HTTP sessions share the base.
+        token_file, session_mcp_config, owns_clone = self._create_session_mcp_config(
             pool_key, base_config_path=mcp_config_path,
         )
 
@@ -409,6 +465,7 @@ class AgentPool:
             reasoning_effort=reasoning_effort,
             workdir=workdir,
             token_file_path=token_file,
+            owned_mcp_config_path=(session_mcp_config if owns_clone else None),
         )
         self._sessions[pool_key] = session
 

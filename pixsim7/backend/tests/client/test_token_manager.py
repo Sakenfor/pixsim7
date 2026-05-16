@@ -23,8 +23,11 @@ from pixsim7.client.token_manager import (
     build_mcp_env,
     clone_mcp_config_for_session,
     clone_token_for_session,
+    is_http_mcp_config,
+    pixsim_mcp_config_dir,
     render_claude_mcp_config,
     render_codex_mcp_config,
+    sweep_old_mcp_configs,
     write_claude_mcp_config,
     write_codex_mcp_config,
 )
@@ -376,3 +379,126 @@ class TestSessionTokenIsolation:
         session = clone_token_for_session("/nonexistent/path", session_id="x")
         assert session.read() == ""
         session.cleanup()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P1: all MCP-related files live in the stable dir, not %TEMP%
+# Plan: mcp-server-reliability / extend-stable-location-to-all-mcp-files
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestStableLocationForAllFiles:
+    """The %TEMP% sweep problem was only half-fixed (HTTP base only).
+    STDIO base, per-session clones, and token files must also live in
+    ``pixsim_mcp_config_dir()`` so Storage Sense / Disk Cleanup can't yank
+    them out from under a running session.
+    """
+
+    def _stable_dir(self):
+        return pixsim_mcp_config_dir()
+
+    def test_tokenfile_create_with_name_lands_in_stable_dir(self):
+        tf = TokenFile.create(seed_token="seed", name="probe.token")
+        assert Path(tf.path).parent == self._stable_dir()
+        assert tf.read() == "seed"
+
+    def test_write_stdio_config_with_name_lands_in_stable_dir(self):
+        env = McpEnv(api_base="http://x", api_token="t",
+                     token_file="/t.token", scope="dev")
+        path = write_claude_mcp_config(
+            env, python_cmd="python", mcp_server_script="/mcp.py",
+            name="default.json",
+        )
+        assert Path(path).parent == self._stable_dir()
+        assert Path(path).name == "default.json"
+
+    def test_write_stdio_config_without_name_is_legacy_tempfile(self):
+        env = McpEnv(api_base="http://x", api_token="t",
+                     token_file="/t.token", scope="dev")
+        path = write_claude_mcp_config(
+            env, python_cmd="python", mcp_server_script="/mcp.py",
+        )
+        # Back-compat: standalone callers still get a mkstemp path.
+        assert Path(path).parent != self._stable_dir()
+        Path(path).unlink()
+
+    def test_session_clone_with_session_id_is_stable_and_deterministic(self, tmp_path):
+        env = McpEnv(api_base="http://x", api_token="t",
+                     token_file="/base.token", scope="dev")
+        base_path = write_claude_mcp_config(
+            env, python_cmd="python", mcp_server_script="/mcp.py",
+            name="default.json",
+        )
+        tf = TokenFile.create(seed_token="s", name="probe2.token")
+
+        p1 = clone_mcp_config_for_session(base_path, tf, session_id="claude-7")
+        p2 = clone_mcp_config_for_session(base_path, tf, session_id="claude-7")
+
+        assert p1 is not None
+        assert Path(p1).parent == self._stable_dir()
+        # Deterministic: same session_id reuses the same file across reconnects.
+        assert p1 == p2
+
+    def test_clone_token_for_session_is_stable_and_deterministic(self):
+        base = TokenFile.create(seed_token="svc", name="base.token")
+        a1 = clone_token_for_session(base, session_id="claude-9")
+        a2 = clone_token_for_session(base, session_id="claude-9")
+
+        assert Path(a1.path).parent == self._stable_dir()
+        assert a1.path == a2.path  # same session → same file
+
+    def test_swept_token_file_is_recreated_by_next_write(self):
+        # Recovery property: the bridge rewrites the per-session token file
+        # on every request. If a sweep deletes it, the next write re-creates
+        # it (the stable dir persists) — no separate regenerator needed.
+        tf = TokenFile.create(seed_token="initial", name="recover.token")
+        assert tf.exists
+        Path(tf.path).unlink()          # simulate sweep
+        assert not tf.exists
+        tf.write("fresh-per-request-token")  # bridge's per-request write
+        assert tf.exists
+        assert tf.read() == "fresh-per-request-token"
+
+    def test_sweep_removes_stale_token_files_too(self):
+        import os
+        import time
+
+        tf = TokenFile.create(seed_token="old", name="stale.token")
+        old = time.time() - (49 * 3600)
+        os.utime(tf.path, (old, old))
+
+        removed = sweep_old_mcp_configs(max_age_seconds=48 * 3600)
+
+        assert removed >= 1
+        assert not Path(tf.path).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P2/A: single source of transport truth
+# Plan: mcp-server-reliability / consolidate-mcp-config-resolution
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestIsHttpMcpConfig:
+    """`is_http_mcp_config` is the one predicate clone + pool both use."""
+
+    def test_http_only_is_http(self):
+        cfg = {"mcpServers": {"pixsim": {"url": "http://x/mcp", "headers": {}}}}
+        assert is_http_mcp_config(cfg) is True
+
+    def test_stdio_only_is_not_http(self):
+        cfg = {"mcpServers": {"pixsim": {"command": "python", "args": []}}}
+        assert is_http_mcp_config(cfg) is False
+
+    def test_mixed_is_not_http(self):
+        # Any STDIO server means cloning is required → not HTTP.
+        cfg = {"mcpServers": {
+            "a": {"url": "http://x/mcp"},
+            "b": {"command": "python"},
+        }}
+        assert is_http_mcp_config(cfg) is False
+
+    def test_empty_is_http(self):
+        # Nothing to clone → treat as HTTP (use base directly).
+        assert is_http_mcp_config({"mcpServers": {}}) is True
+        assert is_http_mcp_config({}) is True

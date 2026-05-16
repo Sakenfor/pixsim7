@@ -49,8 +49,21 @@ class TokenFile:
         seed_token: str = "",
         prefix: str = "pixsim",
         suffix: str = ".token",
+        name: str | None = None,
     ) -> "TokenFile":
-        """Create a new token file, optionally seeded with an initial token."""
+        """Create a new token file, optionally seeded with an initial token.
+
+        When ``name`` is provided, the file lands in
+        ``pixsim_mcp_config_dir()/<name>`` — stable across restarts and
+        immune to ``%TEMP%`` sweeps. The bridge rewrites this file on every
+        request (per-request user token), so a swept file is re-created on
+        the next message as long as the (durable) stable dir exists — that
+        per-request rewrite IS the token-file recovery path; no separate
+        regenerator is needed once the file is no longer in %TEMP%.
+        Plan: mcp-server-reliability / extend-stable-location-to-all-mcp-files.
+        """
+        if name is not None:
+            return cls(path=_write_stable_file(name, seed_token))
         fd, path = tempfile.mkstemp(suffix=suffix, prefix=f"{prefix}-")
         with os.fdopen(fd, "w") as f:
             f.write(seed_token)
@@ -177,14 +190,22 @@ def write_claude_mcp_config(
     python_prefix: list[str] | None = None,
     mcp_server_script: str,
     prefix: str = "pixsim-mcp",
+    name: str | None = None,
 ) -> str:
-    """Render and write a Claude MCP config file. Returns the file path."""
+    """Render and write a Claude MCP (STDIO) config file. Returns the path.
+
+    When ``name`` is provided, writes to ``pixsim_mcp_config_dir()/<name>``
+    — stable across restarts, immune to ``%TEMP%`` sweeps. Otherwise falls
+    back to ``tempfile.mkstemp`` (legacy/standalone callers).
+    """
     content = render_claude_mcp_config(
         env,
         python_cmd=python_cmd,
         python_prefix=python_prefix,
         mcp_server_script=mcp_server_script,
     )
+    if name is not None:
+        return _write_stable_file(name, content)
     fd, path = tempfile.mkstemp(suffix=".json", prefix=f"{prefix}-")
     with os.fdopen(fd, "w") as f:
         f.write(content)
@@ -261,11 +282,15 @@ def pixsim_mcp_config_dir() -> Path:
 
 
 def sweep_old_mcp_configs(max_age_seconds: int = 48 * 3600) -> int:
-    """Remove stale MCP config files from the stable directory.
+    """Remove stale files from the stable MCP directory.
 
-    Files older than ``max_age_seconds`` are unlinked. Returns the count
-    removed. Never raises — sweep failures must not block bridge startup.
-    Cheap enough to call once per bridge launch.
+    Covers every file class that now lives here — HTTP/STDIO base configs,
+    per-session clones, and per-session token files — by mtime alone (no
+    extension filter). Files older than ``max_age_seconds`` are unlinked.
+    Active sessions rewrite their token/config files, keeping mtime fresh,
+    so only genuinely stale files (idle > cutoff, ~JWT TTL) are reaped.
+    Returns the count removed. Never raises — sweep failures must not block
+    bridge startup. Cheap enough to call once per bridge launch.
     """
     import time
 
@@ -289,6 +314,32 @@ def sweep_old_mcp_configs(max_age_seconds: int = 48 * 3600) -> int:
         except OSError:
             continue
     return removed
+
+
+def _safe_stable_name(value: str, *, suffix: str, max_length: int = 60) -> str:
+    """Deterministic, filesystem-safe name for a file in the stable MCP dir.
+
+    Same value always maps to the same name so reopening across process
+    restarts reuses the file (and the 48h sweep can age it out cleanly).
+    """
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in value)
+    safe = safe[:max_length] or "_"
+    return f"{safe}{suffix}"
+
+
+def _write_stable_file(name: str, content: str) -> str:
+    """Write ``content`` to ``pixsim_mcp_config_dir()/<name>``; return path.
+
+    Deterministic location, immune to ``%TEMP%`` sweeps (Storage Sense / Disk
+    Cleanup leave the per-user dir alone). 0600 on Unix; Windows ignores the
+    mode bits and relies on the parent dir's profile-scoped ACLs.
+    Plan: mcp-server-reliability / extend-stable-location-to-all-mcp-files.
+    """
+    target = pixsim_mcp_config_dir() / name
+    fd = os.open(str(target), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    return str(target)
 
 
 def write_claude_mcp_http_config(
@@ -316,17 +367,7 @@ def write_claude_mcp_http_config(
         profile_id=profile_id,
     )
     if name is not None:
-        target = pixsim_mcp_config_dir() / name
-        # 0600 perms on Unix; Windows ignores the mode bits and relies on
-        # the parent dir's profile-scoped ACLs.
-        fd = os.open(
-            str(target),
-            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-            0o600,
-        )
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        return str(target)
+        return _write_stable_file(name, content)
     fd, path = tempfile.mkstemp(suffix=".json", prefix=f"{prefix}-")
     with os.fdopen(fd, "w") as f:
         f.write(content)
@@ -496,7 +537,9 @@ def clone_token_for_session(
     """Create a per-session token file seeded from a shared base.
 
     Each concurrent agent session gets its own token file so the bridge
-    can write per-request user tokens without races.
+    can write per-request user tokens without races. Lands in the stable
+    MCP dir under a deterministic per-session name (immune to %TEMP%
+    sweeps); same session_id reuses the same file across reconnects.
     """
     seed = ""
     if isinstance(base_token_file, TokenFile):
@@ -507,18 +550,46 @@ def clone_token_for_session(
                 seed = f.read().strip()
         except OSError:
             pass
-    return TokenFile.create(seed_token=seed, prefix=f"pixsim-{session_id}")
+    return TokenFile.create(
+        seed_token=seed,
+        name=_safe_stable_name(f"session-{session_id}", suffix=".token"),
+    )
+
+
+def is_http_mcp_config(config: dict) -> bool:
+    """Single source of transport truth for a parsed Claude MCP config.
+
+    Returns True iff the config has NO STDIO server — i.e. transport is
+    purely HTTP (``url``/``headers``: identity rides in headers, there is
+    no per-session ``env`` to patch, so no per-session clone is needed and
+    the shared base config is used directly). An empty/serverless config
+    counts as HTTP (nothing to clone). A mixed config (any STDIO server)
+    is NOT HTTP — it needs cloning.
+
+    NOTE: this is about a config *dict's shape*. It is unrelated to
+    ``Bridge._mcp_http_url`` (whether the shared HTTP server process is
+    running) — do not conflate the two.
+    """
+    servers = config.get("mcpServers", {})
+    return all("url" in s for s in servers.values())
 
 
 def clone_mcp_config_for_session(
     base_config_path: str,
     session_token_file: TokenFile,
+    session_id: str | None = None,
 ) -> Optional[str]:
     """Clone a Claude MCP JSON config, overriding the token file path.
 
     For STDIO configs (command+args+env): overrides PIXSIM_TOKEN_FILE in env.
     For HTTP configs (url+headers): no cloning needed — returns None so
-    the caller falls back to the unmodified base config.
+    the caller falls back to the unmodified base config (see
+    ``is_http_mcp_config``).
+
+    When ``session_id`` is provided the clone lands in the stable MCP dir
+    under a deterministic per-session name (immune to %TEMP% sweeps; same
+    session reuses the file across reconnects); otherwise ``tempfile.mkstemp``
+    (legacy/standalone callers).
 
     Returns the cloned config path, or None on error / not applicable.
     """
@@ -528,19 +599,19 @@ def clone_mcp_config_for_session(
     except (json.JSONDecodeError, OSError):
         return None
 
-    has_stdio = False
+    if is_http_mcp_config(config):
+        return None
+
     for server in config.get("mcpServers", {}).values():
         if "url" in server:
-            # HTTP transport — token is in headers, no env to patch
-            continue
-        has_stdio = True
+            continue  # HTTP server in a mixed config — no env to patch
         env = server.get("env", {})
         env["PIXSIM_TOKEN_FILE"] = session_token_file.path
         server["env"] = env
 
-    if not has_stdio:
-        return None
-
+    if session_id is not None:
+        name = _safe_stable_name(f"session-{session_id}-mcp", suffix=".json")
+        return _write_stable_file(name, json.dumps(config, indent=2))
     fd, path = tempfile.mkstemp(suffix=".json", prefix="pixsim-session-mcp-")
     with os.fdopen(fd, "w") as f:
         json.dump(config, f, indent=2)

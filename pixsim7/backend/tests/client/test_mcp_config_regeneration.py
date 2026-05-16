@@ -30,7 +30,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pixsim7.client.session import AgentCmdSession, SessionState
+from pixsim7.client.session import (
+    AgentCmdSession,
+    MCPConfigUnavailable,
+    SessionState,
+)
 from pixsim7.client.agent_pool import AgentPool
 
 
@@ -233,11 +237,12 @@ class TestPoolMcpRegenerator:
         pool.set_base_mcp_config_regenerator(base_regen)
 
         # Mock _create_session_mcp_config to skip heavy clone logic.
+        # 3-tuple: (token_file, mcp_config, owns_private_clone).
         cloned_path = str(tmp_path / "session_clone.json")
         monkeypatch.setattr(
             pool,
             "_create_session_mcp_config",
-            lambda pool_key, base_config_path=None: (None, cloned_path),
+            lambda pool_key, base_config_path=None: (None, cloned_path, True),
         )
 
         regen = pool._make_session_mcp_regenerator("pool-key-1")
@@ -264,7 +269,7 @@ class TestPoolMcpRegenerator:
         monkeypatch.setattr(
             pool,
             "_create_session_mcp_config",
-            lambda pool_key, base_config_path=None: (None, cloned_path),
+            lambda pool_key, base_config_path=None: (None, cloned_path, True),
         )
 
         regen = pool._make_session_mcp_regenerator("pool-key-1")
@@ -283,14 +288,252 @@ class TestPoolMcpRegenerator:
         pool = AgentPool(pool_size=1)
         pool._mcp_config_path = str(base)
 
-        # _create_session_mcp_config returns (None, None) on failure.
+        # _create_session_mcp_config returns (None, None, False) on real failure.
         monkeypatch.setattr(
             pool,
             "_create_session_mcp_config",
-            lambda pool_key, base_config_path=None: (None, None),
+            lambda pool_key, base_config_path=None: (None, None, False),
         )
 
         regen = pool._make_session_mcp_regenerator("pool-key-1")
         result = regen()
 
         assert result is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HTTP-only base: no per-session clone, fall back to base directly
+# ═══════════════════════════════════════════════════════════════════
+
+
+HTTP_BASE_CONFIG = (
+    '{"mcpServers": {"pixsim": {"type": "http",'
+    ' "url": "http://127.0.0.1:9999/mcp",'
+    ' "headers": {"Authorization": "Bearer fake-token"}}}}'
+)
+
+
+class TestHttpOnlyBaseNoClone:
+    """For HTTP-mode bases, ``clone_mcp_config_for_session`` returns None by
+    design — token rides in headers, nothing per-session to override.
+    ``_create_session_mcp_config`` must surface that as ``(None, base)`` so
+    both the spawn site and the regenerator hand the base path back to the
+    session. Returning ``(None, None)`` here would conflate "no clone needed"
+    with "real failure" and break the regenerator path (the original symptom:
+    "regenerator returned None" after %TEMP% sweep recovery).
+    """
+
+    def test_http_only_base_returns_base_path(self, tmp_path):
+        base = tmp_path / "default.json"
+        base.write_text(HTTP_BASE_CONFIG)
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(base)
+
+        token_path, mcp_path, owns = pool._create_session_mcp_config("pool-key-http")
+
+        # No per-session token file — HTTP identity is in headers.
+        assert token_path is None
+        # MCP path is the base itself (not None — that would mean failure).
+        assert mcp_path == str(base)
+        # NOT owned — it's the shared base; teardown must not delete it.
+        assert owns is False
+
+    def test_stdio_base_still_clones(self, tmp_path):
+        # Sanity: STDIO bases still go through clone_mcp_config_for_session
+        # and produce a session-specific token file + cloned config path.
+        base = tmp_path / "default.json"
+        base.write_text(
+            '{"mcpServers": {"pixsim": {"command": "python",'
+            ' "args": ["mcp_server.py"],'
+            ' "env": {"PIXSIM_API_TOKEN": "seed-token-value"}}}}'
+        )
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(base)
+
+        token_path, mcp_path, owns = pool._create_session_mcp_config("pool-key-stdio")
+
+        assert token_path is not None
+        assert mcp_path is not None
+        # Cloned path is distinct from base.
+        assert mcp_path != str(base)
+        # Private clone — this pool owns it and must clean it up.
+        assert owns is True
+
+    def test_regenerator_recovers_when_http_base_swept(self, tmp_path):
+        # Integration shape: pool's cached HTTP base path is missing (Windows
+        # %TEMP% / Storage Sense sweep). Bridge regenerator re-writes it.
+        # Regenerator's step 2 must hand the (rewritten) base path back to
+        # the session, not return None. This is the exact path that produced
+        # the symptom: "MCP config missing at ... and regenerator returned
+        # None. Refusing to start session without MCP."
+        missing = tmp_path / "default.json"
+        # Don't write yet — pool starts with cached path that doesn't exist.
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(missing)
+
+        def base_regen() -> str:
+            # Simulate the bridge re-writing the HTTP base config.
+            missing.write_text(HTTP_BASE_CONFIG)
+            return str(missing)
+
+        pool.set_base_mcp_config_regenerator(base_regen)
+
+        regen = pool._make_session_mcp_regenerator("pool-key-http-recover")
+        result = regen()
+
+        # Must NOT be None — that's the bug we're fixing. Session would
+        # refuse to start otherwise.
+        assert result == str(missing)
+        # And the rewritten base is on disk for the session to consume.
+        import os as _os
+        assert _os.path.exists(result)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P0: session teardown must not unlink the SHARED base config
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCleanupDoesNotDeleteSharedBase:
+    """`_cleanup_session_files` must only delete files genuinely private to
+    the session. In HTTP mode every session points at the shared base
+    (`~/.pixsim/mcp/default.json`), so an unconditional unlink on evict /
+    idle-evict deletes MCP out from under every other live session and the
+    bridge cache — a regenerate storm.
+    Plan: mcp-server-reliability / cleanup-must-not-delete-shared-base.
+    """
+
+    def test_http_session_teardown_preserves_shared_base(self, tmp_path):
+        base = tmp_path / "default.json"
+        base.write_text(HTTP_BASE_CONFIG)
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(base)
+
+        # HTTP session: no token file, no owned clone, _mcp_config_path = base.
+        session = AgentCmdSession(
+            session_id="http-sess",
+            mcp_config_path=str(base),
+            token_file_path=None,
+            owned_mcp_config_path=None,
+        )
+
+        pool._cleanup_session_files(session)
+
+        # The shared base must survive teardown.
+        assert base.exists()
+
+    def test_stdio_session_teardown_removes_private_clone(self, tmp_path):
+        base = tmp_path / "default.json"
+        base.write_text('{"mcpServers": {"pixsim": {"command": "python"}}}')
+        clone = tmp_path / "session_clone.json"
+        clone.write_text("{}")
+        tok = tmp_path / "session.token"
+        tok.write_text("t")
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(base)
+
+        session = AgentCmdSession(
+            session_id="stdio-sess",
+            mcp_config_path=str(clone),
+            token_file_path=str(tok),
+            owned_mcp_config_path=str(clone),
+        )
+
+        pool._cleanup_session_files(session)
+
+        # Private clone + token file removed; shared base untouched.
+        assert not clone.exists()
+        assert not tok.exists()
+        assert base.exists()
+
+    def test_owned_path_decoupled_from_reassigned_mcp_config_path(self, tmp_path):
+        # Regression guard: configure()/regenerator reassign _mcp_config_path
+        # to the shared base even on STDIO sessions. Cleanup keys off the
+        # decoupled owned path, so it still deletes the right (private) file
+        # and never the base — regardless of _mcp_config_path's current value.
+        base = tmp_path / "default.json"
+        base.write_text(HTTP_BASE_CONFIG)
+        clone = tmp_path / "old_clone.json"
+        clone.write_text("{}")
+
+        pool = AgentPool(pool_size=1)
+        pool._mcp_config_path = str(base)
+
+        session = AgentCmdSession(
+            session_id="reassigned-sess",
+            mcp_config_path=str(clone),
+            owned_mcp_config_path=str(clone),
+        )
+        # Simulate configure() stamping the base onto the session.
+        session._mcp_config_path = str(base)
+
+        pool._cleanup_session_files(session)
+
+        assert not clone.exists()  # owned file still cleaned
+        assert base.exists()       # base never touched despite being _mcp_config_path
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P2/B: one home for the regenerate-or-fail decision tree
+# Plan: mcp-server-reliability / consolidate-mcp-config-resolution
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestResolveMcpConfigDecisionMatrix:
+    """`_resolve_mcp_config` is the single place the regenerate-or-fail
+    contract lives. Cover the full matrix directly (sync, no subprocess).
+    """
+
+    def _session(self, path, regen=None):
+        return AgentCmdSession(
+            session_id="resolve-test",
+            mcp_config_path=path,
+            mcp_config_regenerator=regen,
+        )
+
+    def test_no_path_returns_none(self):
+        assert self._session(None)._resolve_mcp_config() is None
+
+    def test_existing_path_used_as_is(self, tmp_path):
+        cfg = tmp_path / "c.json"
+        cfg.write_text("{}")
+        s = self._session(str(cfg))
+        assert s._resolve_mcp_config() == str(cfg)
+
+    def test_missing_no_regenerator_legacy_none(self, tmp_path):
+        # Back-compat: standalone Session w/o pool launches MCP-less.
+        s = self._session(str(tmp_path / "gone.json"))
+        assert s._resolve_mcp_config() is None
+
+    def test_missing_regenerator_raises_is_unavailable(self, tmp_path):
+        def boom():
+            raise RuntimeError("bridge down")
+
+        s = self._session(str(tmp_path / "gone.json"), regen=boom)
+        with pytest.raises(MCPConfigUnavailable, match="regeneration raised"):
+            s._resolve_mcp_config()
+
+    def test_missing_regenerator_returns_none_is_unavailable(self, tmp_path):
+        s = self._session(str(tmp_path / "gone.json"), regen=lambda: None)
+        with pytest.raises(MCPConfigUnavailable, match="regenerator returned"):
+            s._resolve_mcp_config()
+
+    def test_missing_regenerator_returns_nonexistent_is_unavailable(self, tmp_path):
+        ghost = str(tmp_path / "still-gone.json")
+        s = self._session(str(tmp_path / "gone.json"), regen=lambda: ghost)
+        with pytest.raises(MCPConfigUnavailable, match="regenerator returned"):
+            s._resolve_mcp_config()
+
+    def test_missing_regenerator_returns_valid_path_adopts_it(self, tmp_path):
+        fresh = tmp_path / "fresh.json"
+        fresh.write_text("{}")
+        s = self._session(str(tmp_path / "gone.json"), regen=lambda: str(fresh))
+        resolved = s._resolve_mcp_config()
+        assert resolved == str(fresh)
+        # Adopted onto the session for the subsequent launch.
+        assert s._mcp_config_path == str(fresh)

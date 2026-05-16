@@ -41,17 +41,8 @@ from pixsim7.client.agent_pool import AgentPool
 
 
 # ── Test isolation ───────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _isolated_mcp_config_dir(tmp_path, monkeypatch):
-    """Redirect ``pixsim_mcp_config_dir()`` per-test so stable-path writes
-    land in ``tmp_path`` instead of the developer's real ``~/.pixsim/mcp/``.
-
-    Plan: launcher-health-probe-stability / stable-config-location.
-    """
-    monkeypatch.setenv("PIXSIM_MCP_CONFIG_DIR", str(tmp_path / "mcp"))
-    yield
+# Stable-dir redirect is now an autouse fixture in tests/client/conftest.py
+# (shared across token_manager / agent_pool / bridge / mcp-regeneration).
 
 
 # ── Helpers ──────────────────────────────────────────────────────
