@@ -1368,3 +1368,48 @@ def test_moderation_recheck_eligible(media_type, is_early_cdn, has_job, expected
         )
         is expected
     )
+
+
+# ---------------------------------------------------------------------------
+# _effective_cancel_grace (C+) — pixverse images that got a provider job get
+# a widened cancel-finalisation window so the committed CDN salvage can fire
+# before a deferred cancel is finalised.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "provider_id, op, has_job, expected",
+    [
+        ("pixverse", OperationType.IMAGE_TO_IMAGE, True,
+         status_poller._IMAGE_CANCEL_SALVAGE_WINDOW_SEC),
+        ("pixverse", OperationType.TEXT_TO_IMAGE, True,
+         status_poller._IMAGE_CANCEL_SALVAGE_WINDOW_SEC),
+        ("pixverse", OperationType.IMAGE_TO_IMAGE, False, 15),   # no job -> base
+        ("pixverse", OperationType.IMAGE_TO_VIDEO, True, 15),    # video -> base
+        ("kling", OperationType.IMAGE_TO_IMAGE, True, 15),       # other provider -> base
+    ],
+)
+def test_effective_cancel_grace(provider_id, op, has_job, expected):
+    assert (
+        status_poller._effective_cancel_grace(
+            base_grace_sec=15,
+            provider_id=provider_id,
+            operation_type=op,
+            has_provider_job=has_job,
+        )
+        == expected
+    )
+
+
+def test_effective_cancel_grace_never_shrinks_base():
+    # If the base grace already exceeds the salvage window, keep the larger.
+    big = status_poller._IMAGE_CANCEL_SALVAGE_WINDOW_SEC + 50
+    assert (
+        status_poller._effective_cancel_grace(
+            base_grace_sec=big,
+            provider_id="pixverse",
+            operation_type=OperationType.IMAGE_TO_IMAGE,
+            has_provider_job=True,
+        )
+        == big
+    )

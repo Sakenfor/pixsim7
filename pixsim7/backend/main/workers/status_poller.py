@@ -204,6 +204,37 @@ def _cancel_grace_period_for(operation_type: Any) -> int:
             return value
     return int(getattr(ws, "cancel_grace_period_seconds", 30) or 30)
 
+
+# C+ cancel-salvage window (seconds). Must exceed the committed image
+# PROCESSING-fallback elapsed gate (90s for non-qwen/seedream models) plus
+# a poll tick, so that salvage path can fire before a deferred cancel is
+# finalised for a pixverse image that may have rendered post-cancel.
+_IMAGE_CANCEL_SALVAGE_WINDOW_SEC = 120
+
+
+def _effective_cancel_grace(
+    *,
+    base_grace_sec: int,
+    provider_id: str | None,
+    operation_type: Any,
+    has_provider_job: bool,
+) -> int:
+    """Cancel-finalisation window, widened for recoverable-candidate images.
+
+    A pixverse image generation that actually got a provider job may still
+    render after the short (15s) image cancel grace; widen the window so
+    the committed PROCESSING/FILTERED CDN salvage can fire during continued
+    polling before the deferred cancel is finalised. Everything else keeps
+    the base grace.
+    """
+    if (
+        provider_id == "pixverse"
+        and has_provider_job
+        and operation_type in get_image_operations()
+    ):
+        return max(base_grace_sec, _IMAGE_CANCEL_SALVAGE_WINDOW_SEC)
+    return base_grace_sec
+
 # In-flight guard: prevents overlapping poll cycles from processing
 # the same generation concurrently (important at ≤2s poll intervals).
 _poll_in_flight: set[int] = set()  # generation IDs currently being polled
@@ -626,7 +657,35 @@ async def _maybe_finalize_deferred_cancel(
     op_type = getattr(generation_model, "operation_type", None) or generation.operation_type
     grace_sec = _cancel_grace_period_for(op_type)
     op_log = getattr(op_type, "value", None) or (str(op_type) if op_type is not None else None)
-    if elapsed < grace_sec:
+
+    # C+ salvage window: the 15s image cancel grace finalises CANCELLED
+    # *before* the committed PROCESSING/FILTERED CDN salvage's elapsed gate
+    # (45/90s) — so a Pixverse image that renders post-cancel (status stuck
+    # at 10 from a consumed notification) is killed before we can recover
+    # it. For pixverse image gens that actually got a provider job (so an
+    # image could exist), hold finalisation open long enough for the
+    # already-deployed salvage to fire during continued polling; the
+    # existing "honour completion over pending cancel" path then delivers
+    # the asset. Bounded — a genuinely-unrecoverable cancel still finalises,
+    # just later. Renders landing minutes after cancel remain out of scope.
+    has_provider_job = False
+    if generation_model.provider_id == "pixverse" and op_type in get_image_operations():
+        has_provider_job = (
+            await db.execute(
+                select(ProviderSubmission.id)
+                .where(ProviderSubmission.generation_id == generation.id)
+                .where(ProviderSubmission.provider_job_id.is_not(None))
+                .limit(1)
+            )
+        ).first() is not None
+    effective_grace = _effective_cancel_grace(
+        base_grace_sec=grace_sec,
+        provider_id=generation_model.provider_id,
+        operation_type=op_type,
+        has_provider_job=has_provider_job,
+    )
+
+    if elapsed < effective_grace:
         logger.info(
             "generation_cancel_grace_period",
             generation_id=generation.id,
@@ -634,7 +693,8 @@ async def _maybe_finalize_deferred_cancel(
             provider_id=generation_model.provider_id,
             elapsed_sec=round(elapsed, 1),
             grace_period_sec=grace_sec,
-            grace_remaining_sec=round(grace_sec - elapsed, 1),
+            effective_grace_sec=effective_grace,
+            grace_remaining_sec=round(effective_grace - elapsed, 1),
         )
         return False
     logger.info(
