@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic import ConfigDict
 
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
+from pixsim7.backend.main.services.docs.plan_stages import DEFAULT_PLAN_TYPE
 
 
 # ── Checkpoint schema ───────────────────────────────────────────
@@ -903,6 +904,16 @@ class PlanStageOptionEntry(ApiModel):
     aliases: List[str] = Field(default_factory=list)
 
 
+class PlanTypeOptionEntry(ApiModel):
+    value: str
+    label: str
+    description: str
+    icon: str
+    color: str
+
+
 class PlanStagesResponse(ApiModel):
     default_stage: str
     stages: List[PlanStageOptionEntry] = Field(default_factory=list)
+    default_plan_type: str = DEFAULT_PLAN_TYPE
+    plan_types: List[PlanTypeOptionEntry] = Field(default_factory=list)

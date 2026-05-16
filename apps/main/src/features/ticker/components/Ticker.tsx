@@ -22,6 +22,8 @@ import {
   type CSSProperties,
 } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { handleTickerEventClick } from '../lib/clickThrough';
 import {
   listTickerSources,
@@ -56,7 +58,7 @@ interface TickerProps {
   /**
    * Override the marquee width with an explicit value (e.g. for narrow
    * surfaces). When omitted, the ticker is greedy: flex-grows to fill
-   * available horizontal space within `min-w-[14rem]` … `max-w-[48rem]`.
+   * available horizontal space with a floor of `min-w-[14rem]`.
    * Pass an explicit value to opt out of the greedy layout.
    */
   width?: CSSProperties['width'];
@@ -158,6 +160,10 @@ export function Ticker({
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    setOffset(0);
+  }, [events]);
+
   // Scrolling animation. Pauses on hover. Skips when content fits.
   useEffect(() => {
     if (!expanded || paused || events.length === 0) return undefined;
@@ -189,12 +195,12 @@ export function Ticker({
 
     animationFrame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationFrame);
-  }, [expanded, paused, events.length]);
+  }, [expanded, paused, events]);
 
   // We DON'T early-return when `events.length === 0` — the chevron must
   // remain reachable so the user can enable a source for the first time
-  // (chicken-and-egg: no events yet because no source is on yet). The
-  // marquee itself still only renders when there's something to scroll.
+  // (chicken-and-egg: no events yet because no source is on yet). When
+  // empty, the ticker shows a small placeholder instead of disappearing.
   const hasEvents = events.length > 0;
 
   // Greedy layout: when no explicit `width` is given, the wrapper takes
@@ -207,7 +213,7 @@ export function Ticker({
     <div
       className={clsx(
         'flex items-center gap-1',
-        greedy && 'flex-1 min-w-0',
+        greedy && 'flex-1 basis-0 min-w-0',
         className,
       )}
     >
@@ -245,30 +251,36 @@ export function Ticker({
         <NewsSourcesPicker />
       </Popover>
 
-      {expanded && hasEvents && (
+      {expanded && (
         <div
           ref={tickerRef}
           className={clsx(
             'relative overflow-hidden h-5 bg-neutral-100/50 dark:bg-neutral-800/50 rounded text-[10px]',
-            greedy && 'flex-1 min-w-[14rem] max-w-[48rem]',
+            greedy && 'flex-1 w-full min-w-[14rem]',
           )}
           style={greedy ? undefined : { width }}
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
         >
-          <div
-            ref={contentRef}
-            className="absolute whitespace-nowrap flex items-center h-full gap-4 px-2"
-            style={{ transform: `translateX(-${offset}px)` }}
-          >
-            {/* Render the buffer twice for seamless loop */}
-            {events.map((event) => (
-              <TickerItem key={event.id} event={event} />
-            ))}
-            {events.map((event) => (
-              <TickerItem key={`${event.id}-dup`} event={event} />
-            ))}
-          </div>
+          {hasEvents ? (
+            <div
+              ref={contentRef}
+              className="absolute whitespace-nowrap flex items-center h-full gap-4 px-2"
+              style={{ transform: `translateX(-${offset}px)` }}
+            >
+              {/* Render the buffer twice for seamless loop */}
+              {events.map((event) => (
+                <TickerItem key={event.id} event={event} />
+              ))}
+              {events.map((event) => (
+                <TickerItem key={`${event.id}-dup`} event={event} />
+              ))}
+            </div>
+          ) : (
+            <div className="h-full px-2 flex items-center text-neutral-500 dark:text-neutral-400">
+              No recent items from enabled sources
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -306,7 +318,12 @@ function TickerItem({ event }: { event: TickerEvent }) {
           : undefined
       }
     >
-      {event.icon && <span aria-hidden="true">{event.icon}</span>}
+      {event.icon && (
+        // `Icon` renders registered names (e.g. plan-type icons like
+        // `sparkles`) as SVGs and gracefully falls back to rendering the raw
+        // string for emoji sources (📋, 🎬, …).
+        <Icon name={event.icon} size={12} aria-hidden="true" />
+      )}
       <span>{event.message}</span>
     </span>
   );

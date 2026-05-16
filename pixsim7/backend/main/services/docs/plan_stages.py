@@ -52,6 +52,69 @@ CANONICAL_PLAN_STAGES: tuple[str, ...] = (
 DEFAULT_PLAN_STAGE = "proposed"
 LEGACY_FALLBACK_STAGE = "implementation"
 
+DEFAULT_PLAN_TYPE = "feature"
+
+# Display metadata for plan types. ``icon`` values are semantic icon names from
+# the frontend icon registry (apps/main/src/lib/icons.tsx) so the same glyph can
+# render anywhere a plan is referenced (Plans panel, graph, ticker,
+# notification bell). ``color`` is a Tailwind colour stem for optional accenting.
+_PLAN_TYPE_METADATA: Dict[str, Dict[str, str]] = {
+    "proposal": {
+        "label": "Proposal",
+        "description": "An idea pitched for consideration before commitment.",
+        "icon": "fileText",
+        "color": "neutral",
+    },
+    "feature": {
+        "label": "Feature",
+        "description": "New user-facing capability or enhancement.",
+        "icon": "sparkles",
+        "color": "blue",
+    },
+    "bugfix": {
+        "label": "Bugfix",
+        "description": "Correcting incorrect or broken behaviour.",
+        "icon": "wrench",
+        "color": "red",
+    },
+    "refactor": {
+        "label": "Refactor",
+        "description": "Internal restructuring without behaviour change.",
+        "icon": "refreshCw",
+        "color": "amber",
+    },
+    "exploration": {
+        "label": "Exploration",
+        "description": "Research or spike to reduce uncertainty.",
+        "icon": "search",
+        "color": "purple",
+    },
+    "task": {
+        "label": "Task",
+        "description": "A discrete, well-scoped unit of work.",
+        "icon": "checkSquare",
+        "color": "green",
+    },
+    "strategy": {
+        "label": "Strategy",
+        "description": "Direction-setting or cross-cutting planning.",
+        "icon": "target",
+        "color": "purple",
+    },
+    "reference": {
+        "label": "Reference",
+        "description": "Durable reference material, not active work.",
+        "icon": "library",
+        "color": "neutral",
+    },
+    "umbrella": {
+        "label": "Umbrella",
+        "description": "Container coordinating related child plans.",
+        "icon": "layers",
+        "color": "cyan",
+    },
+}
+
 _STAGE_METADATA: Dict[str, Dict[str, str]] = {
     "backlog": {
         "label": "Backlog",
@@ -192,6 +255,23 @@ def plan_stage_options() -> List[Dict[str, object]]:
                 "label": meta["label"],
                 "description": meta["description"],
                 "aliases": aliases_by_stage.get(stage, []),
+            }
+        )
+    return options
+
+
+def plan_type_options() -> List[Dict[str, object]]:
+    """Return canonical plan-type options (with display metadata) for API/UI."""
+    options: List[Dict[str, object]] = []
+    for plan_type in CANONICAL_PLAN_TYPES:
+        meta = _PLAN_TYPE_METADATA[plan_type]
+        options.append(
+            {
+                "value": plan_type,
+                "label": meta["label"],
+                "description": meta["description"],
+                "icon": meta["icon"],
+                "color": meta["color"],
             }
         )
     return options

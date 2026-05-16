@@ -805,6 +805,7 @@ async def _emit_plan_notification(
     title: str,
     changes: List[Dict[str, Any]],
     principal=None,
+    plan_type: Optional[str] = None,
 ) -> None:
     """Emit a notification for significant plan changes."""
     from pixsim7.backend.main.api.v1.notifications import emit_notification
@@ -855,6 +856,7 @@ async def _emit_plan_notification(
                 for c in significant
             ],
             "planTitle": title,
+            "planType": plan_type,
         },
     )
 
@@ -864,6 +866,7 @@ async def emit_plan_created_notification(
     plan_id: str,
     title: str,
     principal=None,
+    plan_type: Optional[str] = None,
     # Legacy kwargs kept for any remaining callers
     actor: Optional[str] = None,
     actor_name: Optional[str] = None,
@@ -888,7 +891,7 @@ async def emit_plan_created_notification(
         actor_user_id=uid,
         ref_type="plan",
         ref_id=plan_id,
-        payload={"planTitle": title},
+        payload={"planTitle": title, "planType": plan_type},
     )
 
 
@@ -1046,7 +1049,14 @@ async def update_plan(
         restore_from_revision=restore_from_revision,
     )
     result.revision = revision_row.revision
-    await _emit_plan_notification(db, plan_id, doc.title, changes, principal=principal)
+    await _emit_plan_notification(
+        db,
+        plan_id,
+        doc.title,
+        changes,
+        principal=principal,
+        plan_type=getattr(bundle.plan, "plan_type", None),
+    )
     await db.commit()
 
     # Opt-in commit-back to filesystem (tagged plans only; killswitch disables all)

@@ -11,11 +11,13 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import { formatActorLabel } from '@lib/identity/actorDisplay';
 
-import { useNotifications, type NotificationItem } from '../hooks/useNotifications';
+import { planTypeIconName } from '@features/panels/components/dev/plans/detail/types';
 import { navigateToAgentProfile, navigateToPlan } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { NavIcon } from '@/components/navigation/ActivityBar';
+
+import { useNotifications, type NotificationItem } from '../hooks/useNotifications';
 
 // ── Severity/Category styling ────────────────────────────────────
 
@@ -32,6 +34,22 @@ const CATEGORY_ICONS: Record<string, string> = {
   agent: 'activity',
   system: 'settings',
 };
+
+/**
+ * Icon for a notification row. Plan notifications resolve to their per-type
+ * icon (shared with the Plans panel / graph / ticker); everything else falls
+ * back to the category icon.
+ */
+function iconForNotification(n: NotificationItem): string {
+  if (n.refType === 'plan') {
+    const planType = n.payload?.planType;
+    if (typeof planType === 'string') return planTypeIconName(planType);
+    return planTypeIconName(null);
+  }
+  // Subcategories like "plan.created" share the "plan" base key.
+  const baseCategory = n.category.split('.')[0];
+  return CATEGORY_ICONS[baseCategory] ?? 'bell';
+}
 
 function formatTimeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -213,7 +231,7 @@ function NotificationPanel({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <Icon
-                            name={(CATEGORY_ICONS[n.category] ?? 'bell') as any}
+                            name={iconForNotification(n) as any}
                             size={12}
                             className="text-neutral-400 shrink-0"
                           />

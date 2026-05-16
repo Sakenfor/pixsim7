@@ -479,6 +479,19 @@ export const PLAN_TYPE_ICONS: Record<string, string> = {
   umbrella: 'layers',
 };
 
+/** Fallback icon when a plan's type is unknown / missing. */
+export const DEFAULT_PLAN_TYPE_ICON = 'fileText';
+
+/**
+ * Resolve the semantic icon name for a plan type. Single source of truth for
+ * every surface that references a plan (Plans panel, graph, ticker,
+ * notification bell). Mirrors the backend `plan_type_options()` metadata.
+ */
+export function planTypeIconName(planType: string | null | undefined): string {
+  if (!planType) return DEFAULT_PLAN_TYPE_ICON;
+  return PLAN_TYPE_ICONS[planType] ?? DEFAULT_PLAN_TYPE_ICON;
+}
+
 export const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   backlog: 'gray',
   proposed: 'gray',

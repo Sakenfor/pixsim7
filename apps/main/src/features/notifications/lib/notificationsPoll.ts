@@ -20,6 +20,8 @@ export interface NotificationItem {
   actorName: string | null;
   refType: string | null;
   refId: string | null;
+  /** Event-specific structured data (e.g. plan notifications carry `planType`). */
+  payload: Record<string, unknown> | null;
   broadcast: boolean;
   read: boolean;
   createdAt: string;

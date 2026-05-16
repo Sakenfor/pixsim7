@@ -18,6 +18,7 @@ import {
   getNotificationsSnapshot,
   type NotificationItem,
 } from '@features/notifications/lib/notificationsPoll';
+import { planTypeIconName } from '@features/panels/components/dev/plans/detail/types';
 
 import type { TickerEvent, TickerSource } from '../lib/sourceRegistry';
 
@@ -34,6 +35,8 @@ interface NotificationSourceConfig {
   refType: string;
   icon: string;
   color: string;
+  /** Optional per-notification icon override (falls back to `icon`). */
+  resolveIcon?: (n: NotificationItem) => string | undefined;
 }
 
 function severityColor(severity: string, fallback: string): string {
@@ -60,7 +63,7 @@ function toTickerEvent(
     id: `${config.id}:${n.id}`,
     sourceId: config.id,
     message: n.title,
-    icon: config.icon,
+    icon: config.resolveIcon?.(n) ?? config.icon,
     color: severityColor(n.severity, config.color),
     refType: config.refType,
     refId: n.refId ?? undefined,
@@ -121,6 +124,10 @@ export const notificationsPlanSource = makeNotificationSource({
   refType: 'plan',
   icon: '📋',
   color: 'text-purple-500',
+  resolveIcon: (n) => {
+    const planType = n.payload?.planType;
+    return typeof planType === 'string' ? planTypeIconName(planType) : undefined;
+  },
 });
 
 export const notificationsGenerationSource = makeNotificationSource({

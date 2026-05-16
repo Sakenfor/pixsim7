@@ -521,6 +521,7 @@ async def create_plan(
         payload.id,
         payload.title,
         principal=principal,
+        plan_type=getattr(plan, "plan_type", None),
     )
 
     await db.commit()
@@ -1250,6 +1251,44 @@ async def log_plan_progress(
             detail={
                 "message": "Plan authoring policy violation",
                 "errors": progress_policy_violations,
+                "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+            },
+        )
+
+    # Fail loud when points are sent for a step-tracked checkpoint. Per the
+    # authoring contract, steps[] is the canonical points signal when present:
+    # _derive_checkpoint_points() overrides explicit points_* with the steps
+    # tally. Silently honoring points here would write a value that the very
+    # next read (todo_summary, this endpoint's own next call) re-derives away,
+    # so the caller's progress never sticks. Reject instead of no-op, and point
+    # them at the only mechanism that actually moves a stepped checkpoint:
+    # flipping steps[].done via the plans.update checkpoints PATCH.
+    _cp_steps = checkpoint.get("steps")
+    _stepped = isinstance(_cp_steps, list) and any(
+        isinstance(s, dict) for s in _cp_steps
+    )
+    _points_requested = (
+        payload.points_delta != 0
+        or payload.points_done is not None
+        or payload.points_total is not None
+    )
+    if _stepped and _points_requested:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    f"Checkpoint {payload.checkpoint_id!r} is step-tracked: its "
+                    "points are derived from steps[] (steps win per the authoring "
+                    "contract). Points sent via plans.progress are silently "
+                    "overridden by the steps tally and will not persist. Mark the "
+                    "relevant steps done:true via the plans.update checkpoints "
+                    "PATCH instead, or send status / owner / note only (no points)."
+                ),
+                "checkpoint_id": payload.checkpoint_id,
+                "steps_total": sum(1 for s in _cp_steps if isinstance(s, dict)),
+                "steps_done": sum(
+                    1 for s in _cp_steps if isinstance(s, dict) and bool(s.get("done"))
+                ),
                 "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
             },
         )

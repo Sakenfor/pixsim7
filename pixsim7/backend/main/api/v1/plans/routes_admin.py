@@ -24,13 +24,16 @@ from pixsim7.backend.main.services.docs.plan_write import (
 )
 from pixsim7.backend.main.services.docs.plan_stages import (
     DEFAULT_PLAN_STAGE,
+    DEFAULT_PLAN_TYPE,
     plan_stage_options,
+    plan_type_options,
 )
 from pixsim7.backend.main.api.v1.plans.schemas import (
     PlanRuntimeSettingsResponse,
     PlanRuntimeSettingsUpdateRequest,
     PlanStageOptionEntry,
     PlanStagesResponse,
+    PlanTypeOptionEntry,
     SyncResultResponse,
     PlanSyncRunEntry,
     PlanSyncRunsResponse,
@@ -64,6 +67,8 @@ async def list_plan_stages(
     return PlanStagesResponse(
         default_stage=DEFAULT_PLAN_STAGE,
         stages=[PlanStageOptionEntry(**opt) for opt in plan_stage_options()],
+        default_plan_type=DEFAULT_PLAN_TYPE,
+        plan_types=[PlanTypeOptionEntry(**opt) for opt in plan_type_options()],
     )
 
 
