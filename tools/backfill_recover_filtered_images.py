@@ -33,6 +33,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -63,6 +65,14 @@ def parse_args() -> argparse.Namespace:
                    help="Max candidate generations (most recent first). Required for --apply.")
     p.add_argument("--since-days", type=int, default=14,
                    help="Only scan generations created within the last N days (default 14).")
+    p.add_argument("--concurrency", type=int, default=16,
+                   help="Concurrent CDN HEAD probes (default 16; one pooled "
+                        "keep-alive connection set, anonymous read-only).")
+    p.add_argument("--max-probes-per-gen", type=int, default=40,
+                   help="Cap probes per generation, newest submissions first "
+                        "(default 40). These chains have 60-70 attempts; the "
+                        "rendered one is almost always recent. Raise to be "
+                        "exhaustive at the cost of speed.")
     return p.parse_args()
 
 
@@ -112,15 +122,41 @@ def _candidate_urls(resp: dict) -> list[str]:
     return list(dict.fromkeys(urls))
 
 
-async def _find_recoverable(session, gen):
-    """Return (submission, url, provider_status) for the first submission of
-    ``gen`` whose pre-allocated CDN object still serves a real image, else
-    None. Authoritative probe (not the stale scan)."""
+def make_probe_client(concurrency: int):
+    """One pooled keep-alive client for the whole run. cdn_head_probe spins
+    a fresh AsyncClient (new TLS handshake) per call — fine for the prod
+    poll path's occasional probe, ruinous for a bulk scan of 60-70 URLs
+    per generation. Reuse connections to media.pixverse.ai instead."""
+    return httpx.AsyncClient(
+        timeout=4.0,
+        follow_redirects=True,
+        headers={"User-Agent": "PixSim7/1.0"},
+        limits=httpx.Limits(
+            max_connections=concurrency,
+            max_keepalive_connections=concurrency,
+        ),
+    )
+
+
+async def _probe(client: httpx.AsyncClient, sem, url: str) -> bool:
+    """True iff the CDN object serves (2xx). 4xx = genuine non-result;
+    anything else (timeout/5xx) treated as not-recoverable for the scan."""
+    async with sem:
+        try:
+            r = await client.head(url)
+            return 200 <= r.status_code < 300
+        except Exception:
+            return False
+
+
+async def _find_recoverable(session, gen, *, client, sem, max_probes: int):
+    """Return (submission, url, provider_status) for the most-recent
+    submission of ``gen`` whose pre-allocated CDN object still serves a
+    real image, else None. Probes concurrently, newest-first, capped."""
     from pixsim7.backend.main.domain.providers import ProviderSubmission
     from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
         is_pixverse_placeholder_url as _is_placeholder,
     )
-    from pixsim7.backend.main.services.provider.cdn_probe import cdn_head_probe
 
     subs = (
         await session.execute(
@@ -129,6 +165,9 @@ async def _find_recoverable(session, gen):
             .order_by(desc(ProviderSubmission.submitted_at))
         )
     ).scalars().all()
+
+    # Newest-first candidate (submission, url) pairs, capped.
+    cands: list[tuple] = []
     for s in subs:
         if not s.provider_job_id:
             continue
@@ -138,8 +177,22 @@ async def _find_recoverable(session, gen):
         for url in _candidate_urls(resp):
             if _is_placeholder(url):
                 continue
-            if (await cdn_head_probe(url)) is True:
-                return s, url, ps
+            cands.append((s, url, ps))
+            if len(cands) >= max_probes:
+                break
+        if len(cands) >= max_probes:
+            break
+
+    if not cands:
+        return None
+
+    results = await asyncio.gather(
+        *[_probe(client, sem, url) for (_s, url, _ps) in cands]
+    )
+    # cands is newest-first; first hit is the most-recent recoverable.
+    for (s, url, ps), ok in zip(cands, results):
+        if ok:
+            return s, url, ps
     return None
 
 
@@ -186,8 +239,14 @@ async def main() -> None:
             return
 
         recoverable = rearmed = skipped = 0
-        for g in cands:
-            found = await _find_recoverable(session, g)
+        sem = asyncio.Semaphore(args.concurrency)
+        async with make_probe_client(args.concurrency) as probe_client:
+          for g in cands:
+            found = await _find_recoverable(
+                session, g,
+                client=probe_client, sem=sem,
+                max_probes=args.max_probes_per_gen,
+            )
             if not found:
                 continue
             sub, url, ps = found
