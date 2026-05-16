@@ -146,6 +146,13 @@ class AgentCmdSession:
         self.stats = SessionStats()
         self._last_error: Optional[str] = None
         self.cli_session_id: Optional[str] = None   # conversation UUID from init event
+        # Panel-facing conversation handle this subprocess is currently bound
+        # to. Distinct from cli_session_id (Claude's internal resume UUID):
+        # the panel addresses a conversation by this id, the pool resumes
+        # Claude by cli_session_id. Stamped by AgentPool.send_message on
+        # affinity dispatch. Conflating the two broke routing — see the
+        # _update_index regression from the 2026-03-31 claude_session rename.
+        self.bridge_session_id: Optional[str] = None
         self.cli_model: Optional[str] = None         # model reported by CLI
         self.available_models: list[dict] = []       # models from model/list (JSON-RPC agents)
         self._pending_restart: bool = False

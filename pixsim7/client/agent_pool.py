@@ -225,13 +225,24 @@ class AgentPool:
                 self._scope_key_index.pop(key, None)
 
     def _update_index(self, session: AgentCmdSession) -> None:
-        """Update the bridge_session_id -> pool key index and CLI ID map."""
-        if session.cli_session_id:
-            self._session_id_index[session.cli_session_id] = session.session_id
-            # Persist the mapping from our session ID to the CLI's conversation UUID
-            # so we can --resume correctly even after eviction
-            if session.cli_session_id and session.cli_session_id != session.cli_session_id:
-                self._cli_id_map[session.cli_session_id] = session.cli_session_id
+        """Update the bridge_session_id -> pool key index and CLI ID map.
+
+        ``handle`` is the panel-facing conversation id. For follow-up/resumed
+        turns the bridge stamps ``session.bridge_session_id`` explicitly; for a
+        brand-new conversation it's not known until Claude's init event, so we
+        fall back to ``cli_session_id`` (which the bridge then adopts as the
+        handle anyway). Keying by ``cli_session_id`` *unconditionally* — the
+        2026-03-31 ``claude_session`` find/replace regression — broke
+        conversation→subprocess affinity and left ``_cli_id_map`` permanently
+        empty (the guard had degenerated to ``x != x``).
+        """
+        handle = session.bridge_session_id or session.cli_session_id
+        if handle:
+            self._session_id_index[handle] = session.session_id
+            # Persist the mapping from the panel handle to the CLI's
+            # conversation UUID so we can --resume correctly even after eviction
+            if session.cli_session_id and session.cli_session_id != handle:
+                self._cli_id_map[handle] = session.cli_session_id
 
     async def _evict_oldest_idle(self) -> bool:
         """Stop the oldest idle on-demand session to make room. Returns True if one was evicted.
@@ -786,6 +797,12 @@ class AgentPool:
                     session = await self._spawn_session(command=command, workdir=workdir)
                 else:
                     await self._ensure_session_workdir(session, workdir=workdir)
+
+        # Bind the panel-facing conversation handle so _update_index (called
+        # below and after the turn) keys affinity routing by the id the panel
+        # actually dispatches with — not Claude's internal resume UUID.
+        if bridge_session_id:
+            session.bridge_session_id = bridge_session_id
 
         try:
             # Pre-flight: ensure session process is alive (may have died since routing)

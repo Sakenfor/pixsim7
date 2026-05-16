@@ -93,6 +93,70 @@ class TestSessionLookup:
         # Index updated
         assert pool._session_id_index["conv-abc"] == "claude"
 
+    # ── Regression: 2026-03-31 claude_session rename clobbered the
+    #    bridge_session_id/cli_session_id split in _update_index, breaking
+    #    conversation→subprocess affinity and leaving _cli_id_map empty.
+    #    Symptom: a tab gets a false "conversation … is busy" because the
+    #    panel handle resolves to the wrong (busy) pooled subprocess.
+
+    def test_index_keyed_by_panel_handle_not_cli_uuid(self):
+        """The panel addresses a conversation by bridge_session_id; the index
+        must be keyed by that handle, not Claude's internal resume UUID."""
+        pool = AgentPool(pool_size=1)
+        session = AgentCmdSession(session_id="claude-r-deadbeef")
+        session.bridge_session_id = "auto-tab-7"   # what the panel dispatches with
+        session.cli_session_id = "9f1c-real-uuid"  # Claude's resume id (differs)
+        pool._sessions["claude-r-deadbeef"] = session
+        pool._update_index(session)
+
+        # Affinity lookup uses the panel handle and resolves the subprocess.
+        assert pool._session_id_index.get("auto-tab-7") == "claude-r-deadbeef"
+        assert pool._find_by_session_id("auto-tab-7") is session
+
+    def test_cli_id_map_is_populated(self):
+        """Regression: the guard had degenerated to ``x != x`` (always False),
+        so _cli_id_map never filled and --resume affinity silently broke."""
+        pool = AgentPool(pool_size=1)
+        session = AgentCmdSession(session_id="claude")
+        session.bridge_session_id = "auto-tab-7"
+        session.cli_session_id = "9f1c-real-uuid"
+        pool._sessions["claude"] = session
+        pool._update_index(session)
+
+        assert pool._cli_id_map.get("auto-tab-7") == "9f1c-real-uuid"
+
+    def test_new_conversation_falls_back_to_cli_id(self):
+        """Brand-new conversations have no panel handle until Claude's init
+        event — fall back to cli_session_id (which the bridge then adopts)."""
+        pool = AgentPool(pool_size=1)
+        session = AgentCmdSession(session_id="claude")
+        session.bridge_session_id = None
+        session.cli_session_id = "conv-fresh"
+        pool._sessions["claude"] = session
+        pool._update_index(session)
+
+        assert pool._session_id_index.get("conv-fresh") == "claude"
+        # No spurious self-map when handle == cli id.
+        assert "conv-fresh" not in pool._cli_id_map
+
+    def test_distinct_conversations_do_not_collide(self):
+        """Two tabs with distinct handles must resolve to their own
+        subprocess — never cross-resolve into each other's (busy) session."""
+        pool = AgentPool(pool_size=2)
+        a = AgentCmdSession(session_id="claude-a")
+        a.bridge_session_id = "tab-A"
+        a.cli_session_id = "uuid-A"
+        b = AgentCmdSession(session_id="claude-b")
+        b.bridge_session_id = "tab-B"
+        b.cli_session_id = "uuid-B"
+        pool._sessions["claude-a"] = a
+        pool._sessions["claude-b"] = b
+        pool._update_index(a)
+        pool._update_index(b)
+
+        assert pool._find_by_session_id("tab-A") is a
+        assert pool._find_by_session_id("tab-B") is b
+
 
 class TestGetAvailable:
     """get_available — pick any READY session."""
