@@ -88,6 +88,7 @@ export function Ticker({
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const tickerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const firstGroupRef = useRef<HTMLDivElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
 
   // Which sources are currently active (after settings + registry).
@@ -170,14 +171,27 @@ export function Ticker({
 
     const content = contentRef.current;
     const ticker = tickerRef.current;
-    if (!content || !ticker) return undefined;
+    const firstGroup = firstGroupRef.current;
+    if (!content || !ticker || !firstGroup) return undefined;
 
-    const contentWidth = content.scrollWidth;
+    // One copy of the buffer. The marquee renders this buffer twice; a
+    // seamless loop scrolls by exactly ONE copy's width (plus the seam gap
+    // between the two copies) and then wraps — copy 2 is sitting exactly
+    // where copy 1 started, so the wrap is invisible. The previous code
+    // scrolled past BOTH copies before resetting, which is why every item
+    // was visibly shown twice with a blank gap on wrap.
+    const oneCopyWidth = firstGroup.scrollWidth;
     const tickerWidth = ticker.clientWidth;
-    if (contentWidth <= tickerWidth) {
+    if (oneCopyWidth <= tickerWidth) {
       setOffset(0);
       return undefined;
     }
+
+    // Seam gap = the outer flex gap between the two copy groups. Read it
+    // off computed style so the period stays exact regardless of rem size.
+    const seamGap =
+      parseFloat(getComputedStyle(content).columnGap || '0') || 0;
+    const period = oneCopyWidth + seamGap;
 
     let animationFrame = 0;
     let lastTime = performance.now();
@@ -187,8 +201,7 @@ export function Ticker({
       lastTime = time;
       setOffset((prev) => {
         const nextOffset = prev + (SCROLL_SPEED * delta) / 1000;
-        if (nextOffset > contentWidth) return -tickerWidth;
-        return nextOffset;
+        return nextOffset >= period ? nextOffset - period : nextOffset;
       });
       animationFrame = requestAnimationFrame(animate);
     };
@@ -268,13 +281,20 @@ export function Ticker({
               className="absolute whitespace-nowrap flex items-center h-full gap-4 px-2"
               style={{ transform: `translateX(-${offset}px)` }}
             >
-              {/* Render the buffer twice for seamless loop */}
-              {events.map((event) => (
-                <TickerItem key={event.id} event={event} />
-              ))}
-              {events.map((event) => (
-                <TickerItem key={`${event.id}-dup`} event={event} />
-              ))}
+              {/* The buffer is rendered twice so the scroll can wrap
+                  seamlessly (see the scroll effect). The first group is
+                  measured to derive the wrap period; the second is an
+                  aria-hidden visual continuation only. */}
+              <div ref={firstGroupRef} className="flex items-center gap-4">
+                {events.map((event) => (
+                  <TickerItem key={event.id} event={event} />
+                ))}
+              </div>
+              <div className="flex items-center gap-4" aria-hidden="true">
+                {events.map((event) => (
+                  <TickerItem key={`${event.id}-dup`} event={event} />
+                ))}
+              </div>
             </div>
           ) : (
             <div className="h-full px-2 flex items-center text-neutral-500 dark:text-neutral-400">
