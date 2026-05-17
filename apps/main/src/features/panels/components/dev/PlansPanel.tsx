@@ -39,6 +39,8 @@ import {
   STATUS_ICONS,
   STATUS_ORDER,
 } from './plans/detail/types';
+import { PlanActiveAgentsSection } from './plans/PlanActiveAgentsSection';
+import { useActiveAgentsRoster } from './plans/useActiveAgentsRoster';
 
 // =============================================================================
 // Main Component
@@ -50,6 +52,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const activeAgentsRoster = useActiveAgentsRoster();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'stage' | 'updated' | 'priority' | 'title'>('stage');
@@ -447,8 +450,14 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     );
   } else {
     content = (
-      <div className="flex items-center justify-center h-full">
-        <EmptyState message="Select a plan from the sidebar" icon={<Icon name="fileText" size={20} />} />
+      <div className="h-full overflow-y-auto">
+        <PlanActiveAgentsSection
+          roster={activeAgentsRoster}
+          onOpenPlan={(id) => nav.navigate(`plan:${id}`)}
+        />
+        <div className="flex items-center justify-center py-8">
+          <EmptyState message="Select a plan from the sidebar" icon={<Icon name="fileText" size={20} />} />
+        </div>
       </div>
     );
   }
@@ -470,6 +479,15 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             placeholder="Search plans..."
             size="sm"
           />
+          {activeAgentsRoster.totalActive > 0 && (
+            <div
+              className="flex items-center gap-1 text-[10px] text-green-700 dark:text-green-400 px-0.5"
+              title="Agents currently active across all plans"
+            >
+              <Icon name="activity" size={11} />
+              <span>{activeAgentsRoster.totalActive} agent{activeAgentsRoster.totalActive === 1 ? '' : 's'} active</span>
+            </div>
+          )}
           {statusOptions.length > 1 && (
             <FilterPillGroup
               options={statusOptions}

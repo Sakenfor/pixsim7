@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from pixsim7.backend.main.domain.docs.models import (
+    Document,
     PlanParticipant,
     PlanReviewDelegation,
     PlanReviewLink,
@@ -930,6 +931,45 @@ async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
         row.last_action = "release:run_end"
         released += 1
     return released
+
+
+# ── Cross-plan active-agent roster ───────────────────────────────
+
+
+async def list_active_participants(
+    db: AsyncSession, *, now: Optional[datetime] = None
+) -> List[PlanParticipant]:
+    """Participants whose last signal is within the stale TTL (SQL prefilter).
+
+    Coarse on purpose — callers still refine with participant_is_stale and
+    the terminal-run check. The prefilter just bounds the scan; the roster
+    is small relative to the full participant ledger.
+    """
+    if not hasattr(db, "execute"):
+        return []
+    cutoff = (now or utcnow()) - _participant_stale_ttl()
+    stmt = select(PlanParticipant).where(
+        or_(
+            PlanParticipant.last_heartbeat_at >= cutoff,
+            PlanParticipant.last_seen_at >= cutoff,
+        )
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def resolve_plan_titles(
+    db: AsyncSession, plan_ids: Set[str]
+) -> Dict[str, str]:
+    """Best-effort {plan_id: title} for a small set of plan ids."""
+    wanted = {p for p in plan_ids if p}
+    if not wanted or not hasattr(db, "execute"):
+        return {}
+    stmt = (
+        select(PlanRegistry.id, Document.title)
+        .join(Document, PlanRegistry.document_id == Document.id)
+        .where(PlanRegistry.id.in_(wanted))
+    )
+    return {pid: title for pid, title in (await db.execute(stmt)).all()}
 
 
 def _participant_to_entry(

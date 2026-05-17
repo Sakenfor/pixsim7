@@ -591,3 +591,97 @@ async def release_plan_checkpoint(
     return ReleaseResponse(
         plan_id=plan_id, checkpoint_id=payload.checkpoint_id, released=released
     )
+
+
+# ── Cross-plan active-agent roster ───────────────────────────────
+
+
+class ActiveAgentEntry(BaseModel):
+    participant_id: str
+    role: str
+    agent_id: Optional[str] = None
+    agent_type: Optional[str] = None
+    run_id: Optional[str] = None
+    session_id: Optional[str] = None
+    user_id: Optional[int] = None
+    checkpoint_id: Optional[str] = None
+    claimed: bool = False
+    last_action: Optional[str] = None
+    last_heartbeat_at: Optional[str] = None
+    heartbeat_age_seconds: int
+
+
+class ActivePlanGroup(BaseModel):
+    plan_id: str
+    plan_title: Optional[str] = None
+    active_count: int
+    agents: List[ActiveAgentEntry] = Field(default_factory=list)
+
+
+class ActiveAgentsResponse(BaseModel):
+    generated_at: str
+    total_active: int
+    plans: List[ActivePlanGroup] = Field(default_factory=list)
+
+
+@router.get("/active-agents", response_model=ActiveAgentsResponse)
+async def list_active_agents(
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Cross-plan roster of agents currently active (non-stale, owning run
+    not terminal), grouped by plan. The at-a-glance "who is working on
+    what right now" overview."""
+    now = utcnow()
+    rows = await _h.list_active_participants(db, now=now)
+    terminal = await _h.load_terminal_run_ids(
+        db, {r.run_id for r in rows if r.run_id}
+    )
+
+    groups: Dict[str, List[ActiveAgentEntry]] = {}
+    for r in rows:
+        if r.run_id in terminal:
+            continue
+        if _h.participant_is_stale(r, now=now):
+            continue
+        seen = _h.participant_liveness_at(r)
+        age = int((now - seen).total_seconds()) if seen else -1
+        claim = _h.participant_claim(r)
+        groups.setdefault(r.plan_id, []).append(
+            ActiveAgentEntry(
+                participant_id=str(r.id),
+                role=r.role,
+                agent_id=r.agent_id,
+                agent_type=r.agent_type,
+                run_id=r.run_id,
+                session_id=r.session_id,
+                user_id=r.user_id,
+                checkpoint_id=(claim or {}).get("checkpoint_id"),
+                claimed=_h.claim_is_open(claim),
+                last_action=r.last_action,
+                last_heartbeat_at=(
+                    r.last_heartbeat_at.isoformat()
+                    if getattr(r, "last_heartbeat_at", None)
+                    else None
+                ),
+                heartbeat_age_seconds=age,
+            )
+        )
+
+    titles = await _h.resolve_plan_titles(db, set(groups.keys()))
+    plans = [
+        ActivePlanGroup(
+            plan_id=pid,
+            plan_title=titles.get(pid),
+            active_count=len(entries),
+            agents=sorted(entries, key=lambda e: e.heartbeat_age_seconds),
+        )
+        for pid, entries in groups.items()
+    ]
+    # Busiest plans first, stable by id.
+    plans.sort(key=lambda g: (-g.active_count, g.plan_id))
+    return ActiveAgentsResponse(
+        generated_at=now.isoformat(),
+        total_active=sum(g.active_count for g in plans),
+        plans=plans,
+    )
