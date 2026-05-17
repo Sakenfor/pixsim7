@@ -14,11 +14,25 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.subject.look"
 				category:  "character_pose"
 				capabilities: ["subject.look"]
+				// Domain-signal gate for primitive projection (ported from
+				// the former Python _SUBJECT_LOOK_SIGNAL_TOKENS set).
+				projection_hints: {boost: 1.25}
 				text_template: "Subject look token: {variant}."
 				tags: {
 					modifier_family:  "subject_look"
 					modality_support: "both"
 					temporal:         "neutral"
+					look_context_synonyms: [
+						"look", "looks", "looking", "looked",
+						"gaze", "gazes", "gazing", "gazed",
+						"glance", "glances", "glancing", "glanced",
+						"stare", "stares", "staring", "stared",
+						"peer", "peers", "peering", "peered",
+						"watch", "watches", "watching", "watched",
+						"eye", "eyes", "eyed",
+						"blink", "blinks", "blinking", "blinked",
+						"wink", "winks", "winking",
+					]
 				}
 				op: {
 					op_id:        "subject.look.apply"

@@ -14,6 +14,11 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.light.state"
 				category:  "light"
 				capabilities: ["light.state"]
+				// Domain-signal gate for primitive projection: a prompt
+				// mentioning any of these boosts light primitives. Single
+				// source of truth (ported from the former Python
+				// _LIGHT_SIGNAL_TOKENS set); see primitive_projection.py.
+				projection_hints: {boost: 1.25}
 				// Param-aware prose. Default values (intensity=medium,
 				// temperature=neutral, contrast=medium) map to "" so they
 				// elide — keeps "Diffused lighting." from becoming
@@ -50,6 +55,15 @@ pack: #PromptBlockPackV1 & {
 					modifier_family:  "light"
 					modality_support: "both"
 					temporal:         "neutral"
+					light_context_synonyms: [
+						"light", "lighting", "lit", "lighted",
+						"shadow", "shadows", "shadowy",
+						"glow", "glows", "glowing",
+						"illuminate", "illuminated", "illuminating", "illumination",
+						"backlit", "moonlit", "sunlit", "candlelit",
+						"tungsten", "candlelight", "fluorescent", "overcast", "neon",
+						"lamp", "lamps", "lantern", "spotlight", "floodlight",
+					]
 				}
 				op: {
 					op_id: "light.state.set"

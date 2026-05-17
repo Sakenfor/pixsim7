@@ -11,10 +11,45 @@ blocks:
       capabilities:
         - subject.move
       text_template: 'Subject motion token: {variant}.'
+      projection_hints:
+        boost: 1.25
       tags:
         modifier_family: subject_motion
         modality_support: video
         temporal: dynamic
+        motion_context_synonyms:
+          - walk
+          - walking
+          - walked
+          - run
+          - runs
+          - running
+          - ran
+          - step
+          - steps
+          - stepped
+          - stepping
+          - turn
+          - turns
+          - turned
+          - turning
+          - drift
+          - drifts
+          - drifting
+          - crouch
+          - crouches
+          - crouching
+          - jog
+          - jogs
+          - jogging
+          - stride
+          - strides
+          - striding
+          - leap
+          - leaps
+          - leaping
+          - pace
+          - pacing
       op:
         op_id: subject.move.apply
         signature_id: subject.motion.v1

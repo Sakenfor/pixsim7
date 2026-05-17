@@ -32,10 +32,41 @@ blocks:
             hard: hard
             rim: rim-lit
             backlit: backlit
+      projection_hints:
+        boost: 1.25
       tags:
         modifier_family: light
         modality_support: both
         temporal: neutral
+        light_context_synonyms:
+          - light
+          - lighting
+          - lit
+          - lighted
+          - shadow
+          - shadows
+          - shadowy
+          - glow
+          - glows
+          - glowing
+          - illuminate
+          - illuminated
+          - illuminating
+          - illumination
+          - backlit
+          - moonlit
+          - sunlit
+          - candlelit
+          - tungsten
+          - candlelight
+          - fluorescent
+          - overcast
+          - neon
+          - lamp
+          - lamps
+          - lantern
+          - spotlight
+          - floodlight
       op:
         op_id: light.state.set
         signature_id: light.state.v1

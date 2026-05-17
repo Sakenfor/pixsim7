@@ -11,10 +11,47 @@ blocks:
       capabilities:
         - subject.look
       text_template: 'Subject look token: {variant}.'
+      projection_hints:
+        boost: 1.25
       tags:
         modifier_family: subject_look
         modality_support: both
         temporal: neutral
+        look_context_synonyms:
+          - look
+          - looks
+          - looking
+          - looked
+          - gaze
+          - gazes
+          - gazing
+          - gazed
+          - glance
+          - glances
+          - glancing
+          - glanced
+          - stare
+          - stares
+          - staring
+          - stared
+          - peer
+          - peers
+          - peering
+          - peered
+          - watch
+          - watches
+          - watching
+          - watched
+          - eye
+          - eyes
+          - eyed
+          - blink
+          - blinks
+          - blinking
+          - blinked
+          - wink
+          - winks
+          - winking
       op:
         op_id: subject.look.apply
         signature_id: subject.look.v1

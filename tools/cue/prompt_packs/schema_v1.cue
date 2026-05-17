@@ -186,6 +186,18 @@ package promptpacks
 	}
 }
 
+// Primitive-projection gate hints. The shadow-mode projection engine
+// (services/prompt/parser/primitive_projection.py) derives its domain-signal
+// gate from declared `*_context_synonyms` tags; `boost` is the per-domain
+// score multiplier applied when a candidate's tokens overlap those synonyms.
+// This is the single source of truth for the multiplier — there is no Python
+// constant. `boost` only; the token list lives in the `*_context_synonyms`
+// tag, never here.
+#ProjectionHints: {
+	boost?:   number
+	[string]: _
+}
+
 #BlockSchema: {
 	id_prefix: #IdPrefix
 	mode?:    *"surface" | #BlockMode
@@ -195,6 +207,7 @@ package promptpacks
 	text_template?: string
 	text_synthesis?: #TextSynthesis
 	descriptors?: #DescriptorOverlay
+	projection_hints?: #ProjectionHints
 	tags?: {
 		[string]: #TagValue
 	}

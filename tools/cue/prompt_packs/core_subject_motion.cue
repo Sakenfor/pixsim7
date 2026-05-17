@@ -14,11 +14,29 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.subject.motion"
 				category:  "character_pose"
 				capabilities: ["subject.move"]
+				// Domain-signal gate for primitive projection (ported from
+				// the former Python _SUBJECT_MOTION_SIGNAL_TOKENS set). Also
+				// demotes competing direction.axis / scene.anchor primitives
+				// when subject-motion language dominates — see
+				// primitive_projection.py.
+				projection_hints: {boost: 1.25}
 				text_template: "Subject motion token: {variant}."
 				tags: {
 					modifier_family:  "subject_motion"
 					modality_support: "video"
 					temporal:         "dynamic"
+					motion_context_synonyms: [
+						"walk", "walking", "walked",
+						"run", "runs", "running", "ran",
+						"step", "steps", "stepped", "stepping",
+						"turn", "turns", "turned", "turning",
+						"drift", "drifts", "drifting",
+						"crouch", "crouches", "crouching",
+						"jog", "jogs", "jogging",
+						"stride", "strides", "striding",
+						"leap", "leaps", "leaping",
+						"pace", "pacing",
+					]
 				}
 				op: {
 					op_id: "subject.move.apply"

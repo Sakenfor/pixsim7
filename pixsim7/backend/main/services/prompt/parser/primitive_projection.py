@@ -139,36 +139,6 @@ _CAMERA_MOTION_SIGNAL_TOKENS = {
     "push",
     "pull",
 }
-_LIGHT_SIGNAL_TOKENS = {
-    "light",
-    "lighting",
-    "lit",
-    "lighted",
-    "shadow",
-    "shadows",
-    "shadowy",
-    "glow",
-    "glows",
-    "glowing",
-    "illuminate",
-    "illuminated",
-    "illuminating",
-    "illumination",
-    "backlit",
-    "moonlit",
-    "sunlit",
-    "candlelit",
-    "tungsten",
-    "candlelight",
-    "fluorescent",
-    "overcast",
-    "neon",
-    "lamp",
-    "lamps",
-    "lantern",
-    "spotlight",
-    "floodlight",
-}
 _CAMERA_FRAMING_SIGNAL_TOKENS = {
     "shot",
     "close",
@@ -182,119 +152,6 @@ _CAMERA_FRAMING_SIGNAL_TOKENS = {
     "worm",
     "dutch",
     "bokeh",
-}
-_SUBJECT_MOTION_SIGNAL_TOKENS = {
-    "walk",
-    "walking",
-    "walked",
-    "run",
-    "runs",
-    "running",
-    "ran",
-    "step",
-    "steps",
-    "stepped",
-    "stepping",
-    "turn",
-    "turns",
-    "turned",
-    "turning",
-    "drift",
-    "drifts",
-    "drifting",
-    "crouch",
-    "crouches",
-    "crouching",
-    "jog",
-    "jogs",
-    "jogging",
-    "stride",
-    "strides",
-    "striding",
-    "leap",
-    "leaps",
-    "leaping",
-    "pace",
-    "pacing",
-}
-_SUBJECT_HANDS_SIGNAL_TOKENS = {
-    "hand",
-    "hands",
-    "finger",
-    "fingers",
-    "palm",
-    "palms",
-    "fist",
-    "fists",
-    "knuckle",
-    "knuckles",
-    "wrist",
-    "wrists",
-    "gesture",
-    "gestures",
-    "gesturing",
-    "gestured",
-    "point",
-    "points",
-    "pointing",
-    "pointed",
-    "grip",
-    "grips",
-    "gripping",
-    "gripped",
-    "grasp",
-    "grasps",
-    "grasping",
-    "grasped",
-    "clench",
-    "clenches",
-    "clenching",
-    "clenched",
-    "wave",
-    "waves",
-    "waving",
-    "waved",
-    "clap",
-    "clapping",
-    "applaud",
-    "applauds",
-    "applauding",
-}
-_SUBJECT_LOOK_SIGNAL_TOKENS = {
-    "look",
-    "looks",
-    "looking",
-    "looked",
-    "gaze",
-    "gazes",
-    "gazing",
-    "gazed",
-    "glance",
-    "glances",
-    "glancing",
-    "glanced",
-    "stare",
-    "stares",
-    "staring",
-    "stared",
-    "peer",
-    "peers",
-    "peering",
-    "peered",
-    "watch",
-    "watches",
-    "watching",
-    "watched",
-    "eye",
-    "eyes",
-    "eyed",
-    "blink",
-    "blinks",
-    "blinking",
-    "blinked",
-    "wink",
-    "winks",
-    "winking",
 }
 _CAMERA_CONTEXT_CUE_TOKENS = {
     "camera",
@@ -425,6 +282,7 @@ def normalize_primitive_projection_mode(mode: Any) -> str:
 def refresh_primitive_projection_cache() -> None:
     """Clear cached primitive index (used by tests/dev tooling)."""
     _get_primitive_index.cache_clear()
+    _get_domain_signal_tokens.cache_clear()
 
 
 def _as_text(value: Any) -> str | None:
@@ -497,6 +355,43 @@ def _iter_tag_tokens(tags: Mapping[str, Any]) -> Iterable[str]:
                 if isinstance(item, str):
                     for token in _tokenize(item):
                         yield token
+
+
+_CONTEXT_SYNONYM_TAG_SUFFIX = "_context_synonyms"
+
+# Op-id prefixes per projection domain. The domain-signal token sets used to
+# live as hardcoded Python constants (_LIGHT_SIGNAL_TOKENS, etc.); they are now
+# DERIVED at index-build time by unioning every entry's declared
+# `*_context_synonyms` tag for the matching op family. Single source of truth:
+# the CUE packs (see core_light/core_hands/core_subject_look/core_subject_motion).
+_PROJECTION_DOMAIN_OP_PREFIXES: dict[str, tuple[str, ...]] = {
+    "light": ("light.state.", "light.intent."),
+    "subject_hands": ("subject.hands.",),
+    "subject_look": ("subject.look.",),
+    "subject_motion": ("subject.move.",),
+}
+_DEFAULT_DOMAIN_BOOST = 1.25
+
+
+def _iter_context_synonym_tokens(tags: Mapping[str, Any]) -> set[str]:
+    """Collect tokens from any ``*_context_synonyms`` tag.
+
+    These declare the domain-signal vocabulary a prompt must mention for the
+    block's projection gate to fire (e.g. ``light_context_synonyms``). They
+    drive the per-domain boost only; they are NOT a lexical-identity token list
+    (lexical overlap still flows through ``_iter_tag_tokens`` unchanged).
+    """
+    out: set[str] = set()
+    for key, raw_value in tags.items():
+        if not isinstance(key, str) or not key.endswith(_CONTEXT_SYNONYM_TAG_SUFFIX):
+            continue
+        if isinstance(raw_value, str):
+            out.update(_tokenize(raw_value))
+        elif isinstance(raw_value, list):
+            for item in raw_value:
+                if isinstance(item, str):
+                    out.update(_tokenize(item))
+    return out
 
 
 def _iter_tag_phrases(tags: Mapping[str, Any]) -> Iterable[str]:
@@ -625,9 +520,39 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         tokens.update(_tokenize(role))
     if category:
         tokens.update(_tokenize(category))
-    tokens.update(_iter_tag_tokens(tags))
+    # `*_context_synonyms` are a domain-signal vocabulary, not lexical-identity
+    # tokens. For gated domains (light/subject.hands/subject.look/subject.move)
+    # they are gate-only — those packs carried no synonyms before this refactor,
+    # so excluding them from lexical keeps scoring parity-by-construction. For
+    # non-gated packs that already declared them (color/placement/manner/
+    # direction) they continue to feed lexical, preserving prior behavior.
+    tags_for_lexical = {
+        key: value
+        for key, value in tags.items()
+        if not (
+            isinstance(key, str) and key.endswith(_CONTEXT_SYNONYM_TAG_SUFFIX)
+        )
+    }
+    tokens.update(_iter_tag_tokens(tags_for_lexical))
     tokens.update(_iter_op_tokens(op_payload))
     phrases = frozenset(_iter_tag_phrases(tags))
+    context_synonyms = frozenset(_iter_context_synonym_tokens(tags))
+
+    op_id_for_domain = _as_text(op_payload.get("op_id")) or ""
+    _is_gated_domain = any(
+        op_id_for_domain.startswith(prefix)
+        for prefixes in _PROJECTION_DOMAIN_OP_PREFIXES.values()
+        for prefix in prefixes
+    )
+    if context_synonyms and not _is_gated_domain:
+        tokens.update(context_synonyms)
+
+    projection_hints_raw = block.get("projection_hints")
+    projection_boost: float | None = None
+    if isinstance(projection_hints_raw, Mapping):
+        raw_boost = projection_hints_raw.get("boost")
+        if isinstance(raw_boost, (int, float)) and not isinstance(raw_boost, bool):
+            projection_boost = float(raw_boost)
 
     filtered_tokens = {
         token
@@ -663,6 +588,8 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         "continuity_focus": continuity_focus,
         "continuity_priority": continuity_priority,
         "phrases": phrases,
+        "context_synonyms": context_synonyms,
+        "projection_boost": projection_boost,
     }
 
 
@@ -783,6 +710,36 @@ def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
     _annotate_category_distinguishing_tokens(entries)
     _annotate_family_variant_tokens(entries)
     return tuple(entries)
+
+
+def _build_domain_signal_tokens(
+    index: Sequence[Mapping[str, Any]],
+) -> Dict[str, frozenset[str]]:
+    """Union every entry's declared ``*_context_synonyms`` per projection domain.
+
+    Replaces the former hardcoded ``_LIGHT_SIGNAL_TOKENS`` /
+    ``_SUBJECT_{HANDS,LOOK,MOTION}_SIGNAL_TOKENS`` constants: the vocabulary now
+    lives in the CUE packs and is reconstructed here at index-build time, so the
+    cross-domain gate logic in ``_score_entry`` is unchanged — only its source.
+    """
+    acc: Dict[str, set[str]] = {
+        domain: set() for domain in _PROJECTION_DOMAIN_OP_PREFIXES
+    }
+    for entry in index:
+        synonyms = entry.get("context_synonyms")
+        if not synonyms:
+            continue
+        op_id = _as_text(entry.get("op_id")) or ""
+        for domain, prefixes in _PROJECTION_DOMAIN_OP_PREFIXES.items():
+            if any(op_id.startswith(prefix) for prefix in prefixes):
+                acc[domain].update(synonyms)
+    return {domain: frozenset(tokens) for domain, tokens in acc.items()}
+
+
+@lru_cache(maxsize=1)
+def _get_domain_signal_tokens() -> Dict[str, frozenset[str]]:
+    """Cached domain-signal sets for the default (global) primitive index."""
+    return _build_domain_signal_tokens(_get_primitive_index())
 
 
 def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
@@ -953,12 +910,27 @@ def _score_entry(
     phrase_hints = set(evidence.get("phrase_hints") or set())
     has_explicit_anchor_phrase = bool(evidence.get("has_explicit_anchor_phrase"))
     primary_relation = _as_text(evidence.get("primary_relation"))
+    # Domain-signal sets derived from declared *_context_synonyms (built once
+    # per index in project_candidate_to_primitives); empty fallback keeps
+    # synthetic/partial indexes from raising.
+    domain_signal_tokens: Mapping[str, frozenset[str]] = (
+        evidence.get("domain_signal_tokens") or {}
+    )
+    _EMPTY: frozenset[str] = frozenset()
     has_camera_motion_signal = bool(probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS)
     has_camera_framing_signal = bool(probe_token_set & _CAMERA_FRAMING_SIGNAL_TOKENS)
-    has_subject_motion_signal = bool(probe_token_set & _SUBJECT_MOTION_SIGNAL_TOKENS)
-    has_subject_hands_signal = bool(probe_token_set & _SUBJECT_HANDS_SIGNAL_TOKENS)
-    has_subject_look_signal = bool(probe_token_set & _SUBJECT_LOOK_SIGNAL_TOKENS)
-    has_light_signal = bool(probe_token_set & _LIGHT_SIGNAL_TOKENS)
+    has_subject_motion_signal = bool(
+        probe_token_set & domain_signal_tokens.get("subject_motion", _EMPTY)
+    )
+    has_subject_hands_signal = bool(
+        probe_token_set & domain_signal_tokens.get("subject_hands", _EMPTY)
+    )
+    has_subject_look_signal = bool(
+        probe_token_set & domain_signal_tokens.get("subject_look", _EMPTY)
+    )
+    has_light_signal = bool(
+        probe_token_set & domain_signal_tokens.get("light", _EMPTY)
+    )
     has_narrative_cues = bool(probe_token_set & _NARRATIVE_CUE_TOKENS)
     sequence_role_hints = set(evidence.get("sequence_role_hints") or set())
     has_sequence_cues = bool(evidence.get("has_sequence_cues"))
@@ -982,6 +954,16 @@ def _score_entry(
     is_light = op_id.startswith("light.state.") or op_id.startswith("light.intent.")
     is_color = op_id.startswith("color.grade.")
 
+    # Per-domain boost declared via projection_hints.boost in the CUE pack;
+    # falls back to the historical 1.25 when an entry omits it (e.g. synthetic
+    # test indexes), preserving prior behavior.
+    raw_boost = entry.get("projection_boost")
+    entry_boost = (
+        float(raw_boost)
+        if isinstance(raw_boost, (int, float)) and not isinstance(raw_boost, bool)
+        else _DEFAULT_DOMAIN_BOOST
+    )
+
     domain_multiplier = 1.0
     if has_camera_motion_signal:
         if is_camera_motion:
@@ -995,18 +977,18 @@ def _score_entry(
             domain_multiplier *= 0.75
     if has_subject_motion_signal and not has_camera_motion_signal:
         if is_subject_motion:
-            domain_multiplier *= 1.25
+            domain_multiplier *= entry_boost
         elif is_direction_axis:
             domain_multiplier *= 0.8
 
     if has_light_signal and is_light:
-        domain_multiplier *= 1.25
+        domain_multiplier *= entry_boost
 
     if has_subject_hands_signal and is_subject_hands:
-        domain_multiplier *= 1.25
+        domain_multiplier *= entry_boost
 
     if has_subject_look_signal and is_subject_look and not has_camera_motion_signal:
-        domain_multiplier *= 1.25
+        domain_multiplier *= entry_boost
 
     if has_camera_motion_signal and is_subject_look:
         domain_multiplier *= 0.85
@@ -1328,6 +1310,13 @@ def project_candidate_to_primitives(
         return projection
 
     evidence = _extract_candidate_evidence(candidate)
+    # Domain-signal sets are a property of the index, not the candidate. Use the
+    # cached global build for the default index; recompute for an explicitly
+    # supplied (e.g. test) index so synthetic entries still gate correctly.
+    if primitive_index is None:
+        evidence["domain_signal_tokens"] = _get_domain_signal_tokens()
+    else:
+        evidence["domain_signal_tokens"] = _build_domain_signal_tokens(index)
     ranked_matches: List[Tuple[Dict[str, Any], Mapping[str, Any]]] = []
 
     for entry in index:

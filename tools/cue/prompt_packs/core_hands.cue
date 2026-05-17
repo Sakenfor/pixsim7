@@ -14,11 +14,25 @@ pack: #PromptBlockPackV1 & {
 				id_prefix: "core.subject.hands"
 				category:  "character_pose"
 				capabilities: ["subject.hands"]
+				// Domain-signal gate for primitive projection (ported from
+				// the former Python _SUBJECT_HANDS_SIGNAL_TOKENS set).
+				projection_hints: {boost: 1.25}
 				text_template: "Hands token: {variant}."
 				tags: {
 					modifier_family:  "hands"
 					modality_support: "both"
 					temporal:         "neutral"
+					hands_context_synonyms: [
+						"hand", "hands", "finger", "fingers", "palm", "palms",
+						"fist", "fists", "knuckle", "knuckles", "wrist", "wrists",
+						"gesture", "gestures", "gesturing", "gestured",
+						"point", "points", "pointing", "pointed",
+						"grip", "grips", "gripping", "gripped",
+						"grasp", "grasps", "grasping", "grasped",
+						"clench", "clenches", "clenching", "clenched",
+						"wave", "waves", "waving", "waved",
+						"clap", "clapping", "applaud", "applauds", "applauding",
+					]
 				}
 				op: {
 					op_id: "subject.hands.set"
