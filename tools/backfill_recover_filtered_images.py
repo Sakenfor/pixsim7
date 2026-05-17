@@ -206,15 +206,20 @@ async def main() -> None:
             status = await rearm_generation(
                 session, generation_id=g.id, submission=sub,
             )
-            if status is RearmStatus.REARMED:
+            if status in (
+                RearmStatus.REARMED,
+                RearmStatus.REARMED_ISOLATED_SIBLING,
+            ):
                 rearmed += 1
+                isolated = status is RearmStatus.REARMED_ISOLATED_SIBLING
                 print(f"REARM gen#{g.id} -> PROCESSING "
                       f"attempt_id={sub.generation_attempt_id} "
-                      f"(sub#{sub.id} job={sub.provider_job_id} prov_st={ps})")
+                      f"(sub#{sub.id} job={sub.provider_job_id} prov_st={ps})"
+                      f"{' [isolated superseded sibling]' if isolated else ''}")
             elif status is RearmStatus.SKIPPED_NOT_TARGETABLE:
                 skipped += 1
-                print(f"SKIP gen#{g.id}: recoverable sub#{sub.id} not cleanly "
-                      f"targetable (attempt_id={sub.generation_attempt_id}); "
+                print(f"SKIP gen#{g.id}: recoverable sub#{sub.id} row "
+                      f"missing/foreign (attempt_id={sub.generation_attempt_id}); "
                       f"manual: {url}")
             else:  # SKIPPED_RESOLVED — already recovered / not terminal
                 skipped += 1

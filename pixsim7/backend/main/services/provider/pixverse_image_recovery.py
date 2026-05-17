@@ -34,7 +34,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import httpx
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.assets import Asset
@@ -79,11 +79,15 @@ class RecoverableMatch:
 
 class RearmStatus(str, Enum):
     REARMED = "rearmed"
+    # Re-armed after re-grouping a superseded sibling submission into its
+    # own attempt id so the poller can select it (burst/duplicate-submit
+    # hole — see asset 107327 / gen 134026).
+    REARMED_ISOLATED_SIBLING = "rearmed_isolated_sibling"
     # Already recovered / no longer terminal (idempotent re-run, or a
     # concurrent poll resolved it).
     SKIPPED_RESOLVED = "skipped_resolved"
-    # Recoverable submission isn't the latest of a positive attempt id, so
-    # the poller wouldn't select it — needs manual handling.
+    # Submission row is missing / not owned by the generation — cannot
+    # safely re-point it.
     SKIPPED_NOT_TARGETABLE = "skipped_not_targetable"
 
 
@@ -221,9 +225,11 @@ async def find_recoverable(
 
 
 async def _is_targetable(session, gen: Generation, sub: ProviderSubmission) -> bool:
-    """The poller selects the latest submission of generation.attempt_id.
-    Re-arm only works cleanly when ``sub`` has a positive attempt id and is
-    the latest submission within it (true for ~1-per-attempt retry chains)."""
+    """True when ``sub`` can be re-armed without isolation: it has a
+    positive attempt id and is already the latest submission within it (the
+    poller selects the latest of ``generation.attempt_id``; ~1-per-attempt
+    retry chains hit this). False means the caller must instead re-group
+    ``sub`` into its own attempt — see ``rearm_generation``."""
     aid = sub.generation_attempt_id
     if not isinstance(aid, int) or aid <= 0:
         return False
@@ -239,26 +245,76 @@ async def _is_targetable(session, gen: Generation, sub: ProviderSubmission) -> b
     return latest == sub.id
 
 
+async def _next_attempt_id(session, generation_id: int) -> int:
+    """A generation-attempt id no submission of this generation uses yet
+    (max existing + 1, treating NULL as 0). Used to re-group a superseded
+    sibling so it becomes the sole — hence latest — submission within its
+    own attempt and the poller selects it deterministically."""
+    current_max = (
+        await session.execute(
+            select(func.max(ProviderSubmission.generation_attempt_id)).where(
+                ProviderSubmission.generation_id == generation_id
+            )
+        )
+    ).scalar()
+    return (int(current_max) if current_max is not None else 0) + 1
+
+
 async def rearm_generation(
     session,
     *,
     generation_id: int,
     submission: ProviderSubmission,
+    accept_processing: bool = False,
 ) -> RearmStatus:
     """Re-arm one recoverable generation for the live poller and commit.
 
     Re-fetches under the session (guards against a concurrent poll having
-    resolved it), enforces the targetability invariant, then flips it to
-    PROCESSING with a backdated ``started_at`` and the cancel intent
-    cleared so the poller's deferred-cancel finalize / ``_has_pending_cancel``
-    can't re-terminate it before the salvage tick runs. Idempotent — safe
-    to call repeatedly; a no-longer-terminal row is skipped, not mutated.
+    resolved it), then flips it to PROCESSING with a backdated
+    ``started_at`` and the cancel intent cleared so the poller's
+    deferred-cancel finalize / ``_has_pending_cancel`` can't re-terminate
+    it before the salvage tick runs. Idempotent — safe to call repeatedly;
+    a no-longer-terminal row is skipped, not mutated.
+
+    The poller selects the latest-by-``submitted_at`` submission within
+    ``generation.attempt_id``. When ``submission`` is *not* that latest one
+    (a burst/duplicate-submit superseded sibling — two jobs in one attempt,
+    only one of which rendered), it is structurally unpollable. Rather than
+    bail (the old ``SKIPPED_NOT_TARGETABLE`` behaviour, which is exactly why
+    asset 107327 was lost), re-group it into its own fresh attempt id so it
+    becomes the sole=latest submission there. ``generation_attempt_id`` is
+    an internal correlation id, not provider truth — the job id, response
+    and ``submitted_at`` are left intact.
+
+    ``accept_processing`` lets the live poller invoke this from its
+    pre-finalize hook (generation row still PROCESSING in the DB, but the
+    provider has returned a terminal status this tick). The backfill tool
+    leaves it False so only genuinely terminal rows are re-armed.
     """
+    allowed = _RECOVERABLE_STATUSES + (
+        (GenerationStatus.PROCESSING,) if accept_processing else ()
+    )
     gen = await session.get(Generation, generation_id)
-    if gen is None or gen.asset_id or gen.status not in _RECOVERABLE_STATUSES:
+    if gen is None or gen.asset_id or gen.status not in allowed:
         return RearmStatus.SKIPPED_RESOLVED
+
+    isolated = False
     if not await _is_targetable(session, gen, submission):
-        return RearmStatus.SKIPPED_NOT_TARGETABLE
+        sub = await session.get(ProviderSubmission, submission.id)
+        if sub is None or sub.generation_id != gen.id:
+            return RearmStatus.SKIPPED_NOT_TARGETABLE
+        new_attempt_id = await _next_attempt_id(session, gen.id)
+        sub.generation_attempt_id = new_attempt_id
+        await session.flush()
+        submission = sub
+        isolated = True
+        logger.info(
+            "pixverse_image_recovery_isolated_sibling",
+            generation_id=gen.id,
+            submission_id=sub.id,
+            provider_job_id=sub.provider_job_id,
+            new_attempt_id=new_attempt_id,
+        )
 
     gen.status = GenerationStatus.PROCESSING
     gen.started_at = datetime.now(timezone.utc) - timedelta(
@@ -278,5 +334,58 @@ async def rearm_generation(
         submission_id=submission.id,
         provider_job_id=submission.provider_job_id,
         attempt_id=submission.generation_attempt_id,
+        isolated_sibling=isolated,
     )
-    return RearmStatus.REARMED
+    return (
+        RearmStatus.REARMED_ISOLATED_SIBLING if isolated else RearmStatus.REARMED
+    )
+
+
+async def sweep_and_rearm_sibling(
+    session,
+    *,
+    generation_id: int,
+    selected_submission_id: Optional[int],
+    accept_processing: bool = True,
+    concurrency: int = 4,
+    max_probes: int = DEFAULT_MAX_PROBES_PER_GEN,
+) -> Optional[RearmStatus]:
+    """Last-chance recovery for a pixverse image generation about to be
+    finalized terminal/cancelled with no asset.
+
+    Probes every sibling submission's pre-allocated CDN object; if a
+    submission *other than the one the poller selected* still serves a real
+    image (the burst / duplicate-submit superseded-sibling hole — asset
+    107327 / gen 134026), re-arm via it so the already-deployed forward
+    salvage recovers the asset through the real pipeline on the next tick.
+
+    Returns the :class:`RearmStatus` when it acted, else ``None`` (nothing
+    recoverable, or only the already-selected submission is recoverable —
+    that path is owned by the forward salvage in ``provider_service`` and
+    must not be double-handled here). The caller wraps this in a guard;
+    a transient CDN failure simply yields ``None`` (no recovery this tick).
+    """
+    gen = await session.get(Generation, generation_id)
+    if gen is None or gen.asset_id:
+        return None
+    client = make_probe_client(concurrency)
+    try:
+        sem = asyncio.Semaphore(concurrency)
+        match = await find_recoverable(
+            session, gen, client=client, sem=sem, max_probes=max_probes
+        )
+    finally:
+        await client.aclose()
+    if match is None:
+        return None
+    if (
+        selected_submission_id is not None
+        and match.submission.id == selected_submission_id
+    ):
+        return None
+    return await rearm_generation(
+        session,
+        generation_id=generation_id,
+        submission=match.submission,
+        accept_processing=accept_processing,
+    )

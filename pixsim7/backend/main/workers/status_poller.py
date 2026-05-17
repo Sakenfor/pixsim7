@@ -118,6 +118,10 @@ from pixsim7.backend.main.services.provider.early_cdn import (
     is_early_cdn_filtered,
     is_early_cdn_terminal,
 )
+from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
+    RearmStatus,
+    sweep_and_rearm_sibling,
+)
 from pixsim7.backend.main.domain.providers.registry import registry as _provider_registry
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
@@ -511,6 +515,21 @@ async def _handle_no_submission_case(
             "generation_cancel_before_submission",
             generation_id=generation.id,
         )
+        # No submission for the current attempt, but an earlier attempt's
+        # job may have rendered before the cancel. On re-arm the row is
+        # PROCESSING again, so return early *before* the orphan-counter
+        # decrement to keep the account slot.
+        if await _maybe_recover_pixverse_image_sibling(
+            db,
+            generation_id=generation.id,
+            operation_type=generation.operation_type,
+            provider_id=generation.provider_id,
+            selected_submission_id=None,
+        ):
+            return _PollGenerationResult(
+                generation_id=generation.id,
+                outcome='still_processing',
+            )
         gen_model.deferred_action = None
         await db.commit()
         timeout_account_id = generation.account_id
@@ -622,6 +641,64 @@ async def _handle_processing_status(
     )
 
 
+async def _maybe_recover_pixverse_image_sibling(
+    db: AsyncSession,
+    *,
+    generation_id: int,
+    operation_type: Any,
+    provider_id: str | None,
+    selected_submission_id: int | None,
+) -> bool:
+    """Last-chance superseded-sibling salvage shared by every pixverse
+    image finalize site (terminal status + deferred-cancel grace).
+
+    A burst / duplicate submit can leave one generation with two pixverse
+    jobs in the same attempt; the poller only ever selects the latest, so
+    when an *earlier* sibling is the one that actually rendered it is
+    structurally unpollable and every forward salvage path (all bound to
+    the selected submission) misses it — the rendered image is lost until
+    a manual extension resync (asset 107327 / gen 134026). Probe every
+    sibling's pre-allocated CDN object; if a recoverable one is found,
+    re-group it into its own attempt and re-arm so the deployed forward
+    salvage recovers it through the real pipeline next tick.
+
+    ``selected_submission_id`` is the submission the poller already polled
+    this tick (terminal path) — its own object is owned by the forward
+    salvage and must not be double-handled here. Pass ``None`` from the
+    deferred-cancel path, where recovering *any* rendered sibling
+    (including the tracked job that landed post-cancel — the documented
+    0781dafdb scenario) is the goal.
+
+    Returns True iff a generation was re-armed (caller must skip
+    finalization and keep polling). Defensive — a transient CDN/probe
+    failure never blocks a genuine terminal/cancel.
+    """
+    if provider_id != "pixverse" or operation_type not in get_image_operations():
+        return False
+    try:
+        rearm = await sweep_and_rearm_sibling(
+            db,
+            generation_id=generation_id,
+            selected_submission_id=selected_submission_id,
+        )
+    except Exception:
+        logger.warning(
+            "pixverse_sibling_sweep_failed",
+            generation_id=generation_id,
+            exc_info=True,
+        )
+        return False
+    if rearm in (RearmStatus.REARMED, RearmStatus.REARMED_ISOLATED_SIBLING):
+        logger.warning(
+            "pixverse_image_recovered_via_superseded_sibling",
+            generation_id=generation_id,
+            selected_submission_id=selected_submission_id,
+            rearm_status=rearm.value,
+        )
+        return True
+    return False
+
+
 async def _maybe_finalize_deferred_cancel(
     db: AsyncSession,
     *,
@@ -705,6 +782,19 @@ async def _maybe_finalize_deferred_cancel(
         grace_elapsed_sec=round(elapsed, 1),
         grace_period_sec=grace_sec,
     )
+    # Grace elapsed — the cancel-grace cutoff where the documented
+    # post-cancel-render hole (0781dafdb) bites. selected_submission_id=None
+    # so the tracked job (not just burst siblings) counts. Returning False
+    # keeps the caller polling without finalizing the cancel. Past the
+    # early-return above, so this fires once at the cutoff, not per tick.
+    if await _maybe_recover_pixverse_image_sibling(
+        db,
+        generation_id=generation.id,
+        operation_type=op_type,
+        provider_id=generation_model.provider_id,
+        selected_submission_id=None,
+    ):
+        return False
     generation_model.deferred_action = None
     await db.commit()
     await account_service.release_account(account.id)
@@ -1573,6 +1663,23 @@ async def _poll_single_generation(
                     ProviderStatus.FILTERED,
                     ProviderStatus.CANCELLED,
                 }:
+                    # Last-chance superseded-sibling salvage before
+                    # finalizing terminal with no asset (asset 107327 /
+                    # gen 134026 hole). See
+                    # _maybe_recover_pixverse_image_sibling.
+                    if await _maybe_recover_pixverse_image_sibling(
+                        db,
+                        generation_id=generation.id,
+                        operation_type=generation_operation_type,
+                        provider_id=generation.provider_id,
+                        selected_submission_id=submission.id,
+                    ):
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='still_processing',
+                            missing_provider_job=missing_provider_job,
+                        )
+
                     # Re-check: generation may have a deferred cancel or
                     # been cancelled while we polled
                     generation_model = await db.get(Generation, generation.id)
