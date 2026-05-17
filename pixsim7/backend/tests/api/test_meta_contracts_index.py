@@ -210,3 +210,22 @@ async def test_policies_index_is_sorted_and_has_required_fields() -> None:
     assert by_domain["plans"].rules_count >= 1
     assert by_domain["prompts"].rules_count >= 1
     assert by_domain["game"].rules_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_plans_management_exposes_claim_and_roster_endpoints() -> None:
+    result = await list_contract_endpoints()
+
+    plans = next(
+        (c for c in result.contracts if c.id == "plans.management"), None
+    )
+    assert plans is not None
+    assert plans.version == "2.5.1"
+
+    by_id = {ep.id: ep for ep in plans.sub_endpoints}
+    assert by_id["plans.claim"].method == "POST"
+    assert by_id["plans.claim"].path == "/api/v1/dev/plans/{plan_id}/claim"
+    assert by_id["plans.release"].method == "POST"
+    assert by_id["plans.release"].path == "/api/v1/dev/plans/{plan_id}/release"
+    assert by_id["plans.active_agents"].method == "GET"
+    assert by_id["plans.active_agents"].path == "/api/v1/dev/plans/active-agents"

@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from pixsim_logging import get_logger
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-11.1"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-05-17.2"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 PLAN_SUMMARY_MAX_LENGTH = 280
 logger = get_logger()
@@ -236,6 +236,28 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "message": (
             "Include metadata.next when logging a work_summary on an active plan "
             "— it seeds the next session's context."
+        ),
+    },
+    {
+        "id": "plans.claim.self_assign_on_start",
+        "endpoint_id": "plans.claim",
+        "field": "plan_id",
+        "level": "suggested",
+        "applies_to_principal_types": ["agent", "service"],
+        "description": (
+            "When starting work on an assigned plan, call "
+            "POST /dev/plans/{plan_id}/claim (optionally with the checkpoint "
+            "you are taking) to explicitly register presence. This makes the "
+            "cross-plan active-agent roster accurate and surfaces conflicts "
+            "when two agents target the same checkpoint. The claim is soft "
+            "(never rejected), heartbeats while you work, and auto-releases "
+            "when the run ends — but logging progress alone already records "
+            "you implicitly, so an explicit claim is recommended, not required."
+        ),
+        "constraint": {"type": "advisory"},
+        "message": (
+            "Consider POST /dev/plans/{plan_id}/claim at session start for "
+            "live multi-agent visibility (soft, auto-released on run end)."
         ),
     },
 ]

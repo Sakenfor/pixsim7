@@ -291,3 +291,18 @@ def test_work_summary_does_not_apply_to_user_principal() -> None:
     )
 
     assert not any("metadata.next" in w for w in warnings)
+
+
+def test_self_assign_on_start_rule_present_and_advisory() -> None:
+    rules = {r["id"]: r for r in policy.get_plan_authoring_rules()}
+    rule = rules.get("plans.claim.self_assign_on_start")
+
+    assert rule is not None
+    assert rule["endpoint_id"] == "plans.claim"
+    assert rule["level"] == "suggested"
+    assert rule["severity"] == "warning"  # derived from level
+    assert rule["constraint"] == {"type": "advisory"}
+    assert "agent" in rule["applies_to_principal_types"]
+    # New rule ships at the bumped contract version.
+    assert policy.PLAN_AUTHORING_CONTRACT_VERSION == "2026-05-17.2"
+    assert rule["since_version"] == "2026-05-17.2"

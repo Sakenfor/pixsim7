@@ -347,7 +347,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.5.0",
+        version="2.5.1",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -788,6 +788,68 @@ def _builtin_plans_management() -> MetaContract:
                     },
                 },
                 tags=["export", "admin", "planning"],
+            ),
+            MetaContractEndpoint(
+                id="plans.claim",
+                method="POST",
+                path="/api/v1/dev/plans/{plan_id}/claim",
+                summary=(
+                    "Explicitly claim a (plan, checkpoint) for the calling agent. "
+                    "Soft: an existing live claimant is returned in 'conflicts' "
+                    "rather than rejected. Advances the participant heartbeat. "
+                    "Auto-released when the agent run ends. Omit checkpoint_id for "
+                    "a plan-level claim."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "checkpoint_id": {
+                                    "type": "string",
+                                    "description": "Checkpoint to claim. Omit for a plan-level claim.",
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["agent", "planning", "claim"],
+            ),
+            MetaContractEndpoint(
+                id="plans.release",
+                method="POST",
+                path="/api/v1/dev/plans/{plan_id}/release",
+                summary=(
+                    "Release the caller's open claim(s) on a plan (or one "
+                    "checkpoint if checkpoint_id is given)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "checkpoint_id": {
+                                    "type": "string",
+                                    "description": "Checkpoint to release. Omit to release all of the caller's claims on the plan.",
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["agent", "planning", "claim"],
+            ),
+            MetaContractEndpoint(
+                id="plans.active_agents",
+                method="GET",
+                path="/api/v1/dev/plans/active-agents",
+                summary=(
+                    "Cross-plan roster of agents currently active (non-stale, "
+                    "owning run not terminal), grouped by plan. The at-a-glance "
+                    "'who is working on what right now' overview."
+                ),
+                tags=["agent", "planning", "observability"],
             ),
         ],
     )

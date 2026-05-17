@@ -396,6 +396,26 @@ async def get_agent_context(
                 "url": "/dev/plans/{plan_id}?hard=false",
                 "description": "Soft-delete (status=removed) or hard-delete (?hard=true) a plan. Soft is recoverable. Admin only.",
             },
+            {
+                "action": "claim_plan",
+                "method": "POST",
+                "url": "/dev/plans/{plan_id}/claim",
+                "body": '{"checkpoint_id": "optional-checkpoint-id"}',
+                "description": "Recommended at session start on your assigned plan: explicitly register presence / claim a checkpoint. Soft (returns conflicts[], never rejects), heartbeats while you work, auto-released on run end.",
+            },
+            {
+                "action": "release_claim",
+                "method": "POST",
+                "url": "/dev/plans/{plan_id}/release",
+                "body": '{"checkpoint_id": "optional-checkpoint-id"}',
+                "description": "Release your open claim(s) on a plan (or one checkpoint). Optional — claims auto-release when the run ends.",
+            },
+            {
+                "action": "list_active_agents",
+                "method": "GET",
+                "url": "/dev/plans/active-agents",
+                "description": "Cross-plan roster of agents currently active (non-stale, run not terminal), grouped by plan. Use to see who is working on what before claiming.",
+            },
         ],
     )
 
