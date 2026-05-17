@@ -16,7 +16,7 @@ Can be disabled via AUTO_RETRY_ENABLED=false in .env
 """
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.logging import get_event_logger
@@ -45,6 +45,37 @@ def _is_pinned_generation(generation: Generation) -> bool:
 
 def _is_poll_time_content_filtered(generation: Generation) -> bool:
     return generation.error_code == GenerationErrorCode.CONTENT_FILTERED.value
+
+
+async def _claim_failed_generation_for_retry(db, generation_id: int) -> bool:
+    """Atomically claim a FAILED generation for exactly one retry.
+
+    Duplicate ``job:failed`` events for one generation are unavoidable: a
+    retry storm leaves several abandoned in-flight provider jobs that each
+    emit a late terminal. Without a single-flight gate, two concurrent
+    handlers both pass ``should_auto_retry`` and each re-enqueues — the
+    duplicate-submit that stranded asset 107327 on a superseded sibling
+    job (gen 134026, jobs ...566/...006 1.18s apart). The Redis enqueue
+    lease does not cover this window: ``process_generation`` releases it
+    the instant the worker starts consuming, *before* the provider
+    submission. A conditional UPDATE is the real single-flight — only the
+    transaction that flips status out of FAILED proceeds; a loser sees
+    rowcount 0 and bails. Postgres row-locks the matched row and
+    re-evaluates the predicate under READ COMMITTED, so this is correct
+    even for genuinely simultaneous handlers, and it also naturally drops
+    a stale event when the generation has since moved on (cancelled, or
+    already retried)."""
+    result = await db.execute(
+        update(Generation)
+        .where(Generation.id == generation_id)
+        .where(Generation.status == GenerationStatus.FAILED)
+        .values(
+            status=GenerationStatus.PENDING,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    await db.commit()
+    return (result.rowcount or 0) == 1
 
 
 async def _count_pending_pinned_siblings(db, preferred_account_id: int, exclude_generation_id: int) -> int:
@@ -132,6 +163,20 @@ async def handle_event(event: Event) -> None:
                     max_attempts=gen_settings.auto_retry_max_attempts,
                 )
                 return
+
+            # Single-flight claim. Duplicate job:failed events (late
+            # terminals from abandoned retry-storm siblings) otherwise each
+            # enqueue a submission — the duplicate-submit root cause behind
+            # the stranded-sibling hole. Only the handler that atomically
+            # flips this generation out of FAILED proceeds.
+            if not await _claim_failed_generation_for_retry(db, generation_id):
+                logger.info(
+                    "auto_retry_claim_lost",
+                    generation_id=generation_id,
+                    retry_count=generation.retry_count,
+                )
+                return
+            await db.refresh(generation)
 
             defer_seconds: int | None = None
             rotate_account_from: int | None = None
