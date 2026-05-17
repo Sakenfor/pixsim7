@@ -90,6 +90,19 @@ class AgentTrackingService:
             new_value=status,
             actor=actor,
         )
+
+        # Auto-release any open plan-participant claims owned by this run so a
+        # crashed/finished agent doesn't keep a checkpoint claimed. Best-effort
+        # and lazily imported (api layer) — must never break run completion.
+        try:
+            from pixsim7.backend.main.api.v1.plans.helpers import (
+                release_claims_for_run,
+            )
+
+            await release_claims_for_run(self.db, run_id)
+        except Exception:
+            pass
+
         return run
 
     async def list_runs(

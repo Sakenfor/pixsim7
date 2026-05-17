@@ -882,12 +882,19 @@ class TestDevPlansReviewGraph:
                 meta={"request_id": "req-1"},
             ),
         ]
+        # Two queries: participants, then the terminal-run batch lookup
+        # (load_terminal_run_ids) added by the liveness run-link.
+        participants_result = SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: rows),
+            scalar_one_or_none=lambda: None,
+        )
+        terminal_runs_result = SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: []),
+            scalar_one_or_none=lambda: None,
+        )
         db = SimpleNamespace(
             execute=AsyncMock(
-                return_value=SimpleNamespace(
-                    scalars=lambda: SimpleNamespace(all=lambda: rows),
-                    scalar_one_or_none=lambda: None,
-                )
+                side_effect=[participants_result, terminal_runs_result]
             )
         )
         app = _app(db_obj=db)

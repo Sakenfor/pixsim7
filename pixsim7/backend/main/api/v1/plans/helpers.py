@@ -762,6 +762,176 @@ async def touch_participant_heartbeat(
     return len(rows)
 
 
+# ── Participant claims ───────────────────────────────────────────
+#
+# A "claim" is an explicit, soft assignment of an agent to a (plan,
+# checkpoint). Stored on the participant row's meta JSON
+# (meta["claim"] = {checkpoint_id, claimed_at, released_at}) rather
+# than a new column — claims are soft state and the per-plan
+# participant set is small. Claiming never hard-blocks: an existing
+# live claimant is surfaced as a conflict, not an error. A terminal
+# agent run (completed/failed) closes the claim, via load_terminal_
+# run_ids (derived) and release_claims_for_run (explicit, on run end).
+
+CLAIM_META_KEY = "claim"
+
+
+def participant_claim(row: PlanParticipant) -> Optional[Dict[str, Any]]:
+    meta = row.meta if isinstance(row.meta, dict) else None
+    if not meta:
+        return None
+    claim = meta.get(CLAIM_META_KEY)
+    return claim if isinstance(claim, dict) else None
+
+
+def claim_is_open(claim: Optional[Dict[str, Any]]) -> bool:
+    return bool(claim) and not claim.get("released_at")
+
+
+def participant_is_live_claimant(
+    row: PlanParticipant,
+    *,
+    checkpoint_id: Optional[str] = None,
+    now: Optional[datetime] = None,
+    run_terminal: bool = False,
+) -> bool:
+    """Open, non-stale claim whose run hasn't ended. checkpoint_id=None
+    matches any checkpoint (plan-level overview)."""
+    claim = participant_claim(row)
+    if not claim_is_open(claim):
+        return False
+    if checkpoint_id is not None and claim.get("checkpoint_id") != checkpoint_id:
+        return False
+    if run_terminal:
+        return False
+    return not participant_is_stale(row, now=now)
+
+
+def _actor_owns_participant(row: PlanParticipant, actor: Dict[str, Any]) -> bool:
+    """True when a participant row belongs to the acting principal.
+
+    Mirrors the identity tuple _record_plan_participant upserts on:
+    (agent_id + run_id) for agents, user_id for human principals.
+    """
+    agent_id = _normalize_participant_value(actor.get("agent_id"))
+    run_id = _normalize_participant_value(actor.get("run_id"))
+    user_id = actor.get("user_id") or None
+    if agent_id is not None:
+        return row.agent_id == agent_id and row.run_id == run_id
+    if user_id is not None:
+        return row.user_id == user_id and row.agent_id is None
+    return False
+
+
+async def list_plan_builders(db: AsyncSession, plan_id: str) -> List[PlanParticipant]:
+    if not hasattr(db, "execute"):
+        return []
+    stmt = select(PlanParticipant).where(
+        PlanParticipant.plan_id == plan_id,
+        PlanParticipant.role == "builder",
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def claim_checkpoint(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    checkpoint_id: Optional[str],
+) -> Tuple[Optional[PlanParticipant], List[PlanParticipant]]:
+    """Upsert the caller's builder row with an open claim.
+
+    Returns (own_row, conflicts) where conflicts are *other* live
+    claimants of the same checkpoint — surfaced, never rejected. The
+    upsert + heartbeat advance + principal normalization stay
+    single-sourced via _record_plan_participant_from_principal.
+    """
+    now = utcnow()
+    claim = {
+        "checkpoint_id": checkpoint_id,
+        "claimed_at": now.isoformat(),
+        "released_at": None,
+    }
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="builder",
+        action="claim",
+        principal=principal,
+        meta={CLAIM_META_KEY: claim},
+    )
+    if hasattr(db, "flush"):
+        await db.flush()
+
+    actor = _principal_actor_fields(principal)
+    builders = await list_plan_builders(db, plan_id)
+    own_row = next((r for r in builders if _actor_owns_participant(r, actor)), None)
+
+    others = [r for r in builders if r is not own_row]
+    terminal = await load_terminal_run_ids(db, {r.run_id for r in others if r.run_id})
+    conflicts = [
+        r
+        for r in others
+        if participant_is_live_claimant(
+            r,
+            checkpoint_id=checkpoint_id,
+            now=now,
+            run_terminal=r.run_id in terminal,
+        )
+    ]
+    return own_row, conflicts
+
+
+async def release_checkpoint(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    checkpoint_id: Optional[str],
+) -> int:
+    """Close the caller's open claim(s) on a plan (optionally one checkpoint)."""
+    actor = _principal_actor_fields(principal)
+    builders = await list_plan_builders(db, plan_id)
+    now_iso = utcnow().isoformat()
+    released = 0
+    for row in builders:
+        if not _actor_owns_participant(row, actor):
+            continue
+        claim = participant_claim(row)
+        if not claim_is_open(claim):
+            continue
+        if checkpoint_id is not None and claim.get("checkpoint_id") != checkpoint_id:
+            continue
+        row.meta = _participant_merge_meta(
+            row.meta, {CLAIM_META_KEY: {**claim, "released_at": now_iso}}
+        )
+        row.last_action = "release"
+        released += 1
+    return released
+
+
+async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
+    """Auto-close any open claims owned by an agent run (called on run end)."""
+    rid = _normalize_participant_value(run_id)
+    if rid is None or not hasattr(db, "execute"):
+        return 0
+    stmt = select(PlanParticipant).where(PlanParticipant.run_id == rid)
+    rows = (await db.execute(stmt)).scalars().all()
+    now_iso = utcnow().isoformat()
+    released = 0
+    for row in rows:
+        claim = participant_claim(row)
+        if not claim_is_open(claim):
+            continue
+        row.meta = _participant_merge_meta(
+            row.meta, {CLAIM_META_KEY: {**claim, "released_at": now_iso}}
+        )
+        row.last_action = "release:run_end"
+        released += 1
+    return released
+
+
 def _participant_to_entry(
     row: PlanParticipant,
     *,

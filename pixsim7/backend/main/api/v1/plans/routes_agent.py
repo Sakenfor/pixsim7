@@ -490,3 +490,104 @@ async def get_plan_work_log(
         )
 
     return PlanWorkLogResponse(plan_id=plan_id, entries=entries, total=int(total))
+
+
+# ── Explicit claim / release ─────────────────────────────────────
+
+
+class ClaimRequest(BaseModel):
+    checkpoint_id: Optional[str] = Field(
+        None, description="Checkpoint to claim/release. Omit for a plan-level claim."
+    )
+
+
+class ClaimConflict(BaseModel):
+    agent_id: Optional[str] = None
+    agent_type: Optional[str] = None
+    run_id: Optional[str] = None
+    session_id: Optional[str] = None
+    checkpoint_id: Optional[str] = None
+    claimed_at: Optional[str] = None
+    last_heartbeat_at: Optional[str] = None
+
+
+class ClaimResponse(BaseModel):
+    plan_id: str
+    checkpoint_id: Optional[str] = None
+    claimed: bool
+    participant_id: Optional[str] = None
+    conflicts: List[ClaimConflict] = Field(
+        default_factory=list,
+        description="Other live claimants of the same checkpoint. Surfaced, not blocked.",
+    )
+
+
+class ReleaseResponse(BaseModel):
+    plan_id: str
+    checkpoint_id: Optional[str] = None
+    released: int
+
+
+@router.post("/{plan_id}/claim", response_model=ClaimResponse)
+async def claim_plan_checkpoint(
+    plan_id: str,
+    payload: ClaimRequest,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Explicitly claim a (plan, checkpoint) for the calling principal.
+
+    Soft: an existing live claimant is returned in ``conflicts`` rather
+    than rejected. Upserts the builder participant row and advances its
+    heartbeat. Auto-released when the agent run ends (see release).
+    """
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    own, conflicts = await _h.claim_checkpoint(
+        db, principal=_user, plan_id=plan_id, checkpoint_id=payload.checkpoint_id
+    )
+    await db.commit()
+
+    return ClaimResponse(
+        plan_id=plan_id,
+        checkpoint_id=payload.checkpoint_id,
+        claimed=own is not None,
+        participant_id=str(own.id) if own else None,
+        conflicts=[
+            ClaimConflict(
+                agent_id=c.agent_id,
+                agent_type=c.agent_type,
+                run_id=c.run_id,
+                session_id=c.session_id,
+                checkpoint_id=(_h.participant_claim(c) or {}).get("checkpoint_id"),
+                claimed_at=(_h.participant_claim(c) or {}).get("claimed_at"),
+                last_heartbeat_at=(
+                    c.last_heartbeat_at.isoformat() if c.last_heartbeat_at else None
+                ),
+            )
+            for c in conflicts
+        ],
+    )
+
+
+@router.post("/{plan_id}/release", response_model=ReleaseResponse)
+async def release_plan_checkpoint(
+    plan_id: str,
+    payload: ClaimRequest,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Release the caller's open claim(s) on a plan (or one checkpoint)."""
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    released = await _h.release_checkpoint(
+        db, principal=_user, plan_id=plan_id, checkpoint_id=payload.checkpoint_id
+    )
+    await db.commit()
+    return ReleaseResponse(
+        plan_id=plan_id, checkpoint_id=payload.checkpoint_id, released=released
+    )
