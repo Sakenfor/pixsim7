@@ -22,6 +22,13 @@ from pixsim7.client.log import get_logger
 
 MAX_SESSIONS = 10
 IDLE_EVICT_SECONDS = 30 * 60  # 30 minutes
+# A session BUSY while still alive but with no activity for this long is
+# treated as stuck (a prior turn that never settled back to READY — Claude
+# still streaming after an apparent "done", a hung tool call, or a cancel
+# that never landed). Without recovery, every subsequent message to that
+# conversation gets a false `conversation_session_busy`. Generous bound so
+# legitimately long single turns are never killed mid-flight.
+STUCK_BUSY_SECONDS = 10 * 60  # 10 minutes
 
 
 def _lookup_cli_session_id(bridge_session_id: str) -> str | None:
@@ -919,6 +926,8 @@ class AgentPool:
                         get_logger().info("pool_session_died", session=session.session_id)
                         await session.restart()
                         self._update_index(session)
+                    elif session.state == SessionState.BUSY and session.is_alive:
+                        await self._maybe_recover_stuck_busy(session)
                     elif session.state == SessionState.READY and not session.is_alive:
                         # Exited while idle — don't restart, just mark stopped.
                         # It will be restarted on-demand when the next message arrives.
@@ -942,6 +951,38 @@ class AgentPool:
 
         except asyncio.CancelledError:
             return
+
+    async def _maybe_recover_stuck_busy(self, session) -> bool:
+        """Restart a session stuck BUSY while still alive.
+
+        A prior turn never settled back to READY — Claude still streaming
+        after an apparent "done", a hung tool call, or a cancel that never
+        landed. ``send_message``'s own except/finally only covers turns it is
+        actively awaiting; an outlived task is invisible to it, so without
+        this the session stays BUSY forever and every subsequent message to
+        the conversation gets a false ``conversation_session_busy`` (the
+        real-UUID flow that ``45b0582f8``'s derived-id fix explicitly
+        no-ops). ``STUCK_BUSY_SECONDS`` is generous so a legitimately long
+        single turn is never killed mid-flight.
+
+        Returns True if the session was restarted.
+        """
+        from datetime import datetime, timezone
+
+        last = session.stats.last_activity
+        if last is None:
+            return False
+        stuck_secs = (datetime.now(timezone.utc) - last).total_seconds()
+        if stuck_secs <= STUCK_BUSY_SECONDS:
+            return False
+        get_logger().warning(
+            "pool_session_stuck_busy",
+            session=session.session_id,
+            stuck_secs=int(stuck_secs),
+        )
+        await session.restart()
+        self._update_index(session)
+        return True
 
     def status(self) -> dict:
         """Pool status summary."""

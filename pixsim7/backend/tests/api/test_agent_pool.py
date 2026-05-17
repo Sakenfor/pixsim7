@@ -4,7 +4,12 @@ from __future__ import annotations
 import pytest
 
 try:
-    from pixsim7.client.agent_pool import AgentPool, MAX_SESSIONS, IDLE_EVICT_SECONDS
+    from pixsim7.client.agent_pool import (
+        AgentPool,
+        MAX_SESSIONS,
+        IDLE_EVICT_SECONDS,
+        STUCK_BUSY_SECONDS,
+    )
     from pixsim7.client.session import AgentCmdSession, SessionState
 
     IMPORTS_AVAILABLE = True
@@ -449,6 +454,78 @@ class TestEvictOldestIdle:
         assert evicted is True
         assert oldest_id not in pool._sessions
         assert len(pool._sessions) == 9
+
+
+class TestRecoverStuckBusy:
+    """Stuck-BUSY watchdog — recovers a session left BUSY while still alive.
+
+    Regression for the false ``conversation_session_busy`` on real-UUID
+    sessions: a prior turn never settled back to READY, and the
+    health-monitor previously had no branch for BUSY-but-alive, so every
+    later message to that conversation was rejected. ``45b0582f8`` (derived
+    bridge/cli id split) explicitly no-ops the real-UUID flow, so it does
+    not cover this; the watchdog does.
+    """
+
+    @staticmethod
+    def _busy(session_id: str, last_activity_secs_ago: float):
+        from datetime import datetime, timedelta, timezone
+
+        s = AgentCmdSession(session_id=session_id)
+        s.state = SessionState.BUSY
+        s.stats.last_activity = datetime.now(timezone.utc) - timedelta(
+            seconds=last_activity_secs_ago
+        )
+        return s
+
+    @pytest.mark.asyncio
+    async def test_restarts_session_stuck_busy_past_threshold(self, monkeypatch):
+        pool = AgentPool(pool_size=1, max_sessions=10)
+        s = self._busy("claude-r-5bb91fe1", STUCK_BUSY_SECONDS + 60)
+        pool._sessions = {s.session_id: s}
+
+        restarts: list[str] = []
+
+        async def _fake_restart():
+            restarts.append(s.session_id)
+            return True
+
+        monkeypatch.setattr(s, "restart", _fake_restart)
+
+        recovered = await pool._maybe_recover_stuck_busy(s)
+
+        assert recovered is True
+        assert restarts == ["claude-r-5bb91fe1"]
+
+    @pytest.mark.asyncio
+    async def test_leaves_legitimately_long_running_turn_alone(self, monkeypatch):
+        """A turn busy for less than the threshold must NOT be killed mid-flight."""
+        pool = AgentPool(pool_size=1, max_sessions=10)
+        s = self._busy("claude-r-longturn", STUCK_BUSY_SECONDS - 60)
+        pool._sessions = {s.session_id: s}
+
+        async def _fake_restart():
+            raise AssertionError("must not restart a still-progressing turn")
+
+        monkeypatch.setattr(s, "restart", _fake_restart)
+
+        recovered = await pool._maybe_recover_stuck_busy(s)
+        assert recovered is False
+
+    @pytest.mark.asyncio
+    async def test_no_last_activity_is_not_treated_as_stuck(self, monkeypatch):
+        pool = AgentPool(pool_size=1, max_sessions=10)
+        s = self._busy("claude-r-fresh", 0)
+        s.stats.last_activity = None
+        pool._sessions = {s.session_id: s}
+
+        async def _fake_restart():
+            raise AssertionError("no timestamp → cannot conclude stuck")
+
+        monkeypatch.setattr(s, "restart", _fake_restart)
+
+        recovered = await pool._maybe_recover_stuck_busy(s)
+        assert recovered is False
 
 
 class TestHealthMonitorIdleEviction:
