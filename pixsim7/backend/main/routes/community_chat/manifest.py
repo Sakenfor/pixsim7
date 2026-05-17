@@ -10,7 +10,7 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.api.v1.community_chat import router
 
 manifest = PluginManifest(
-    id="community-chat",
+    id="community_chat",
     name="Community Chat API",
     version="1.0.0",
     description="Shared-room community chat: REST send/history + WebSocket live channel",
