@@ -2140,6 +2140,22 @@ async def save_chat_session_messages(
     capped = merged[-50:] if len(merged) > 50 else merged
     session.messages = capped
     session.message_count = len(capped)
+
+    # Revive sessions stranded by the placeholder-prune race. The bridge
+    # registers a `CLI session (…)` row with message_count=0; any
+    # list_chat_sessions call in the window before the first message-persist
+    # archives it (message_count==0 AND label LIKE 'CLI session (%'). Without
+    # this, the conversation then accumulates 19+ real messages here but the
+    # row stays status='archived' forever — invisible to the resume picker
+    # despite holding the full transcript. A non-empty persist is proof the
+    # session is live, so un-archive and bump last_used_at (this endpoint
+    # otherwise never touched it, leaving the picker's sort key frozen at
+    # registration time).
+    if capped:
+        if session.status == "archived":
+            session.status = "active"
+        session.last_used_at = utcnow()
+
     await db.commit()
     return {"ok": True, "count": len(capped)}
 

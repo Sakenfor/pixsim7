@@ -350,6 +350,58 @@ class TestSaveChatSessionMessages:
         assert len(session_obj.messages) == 50
 
     @pytest.mark.asyncio
+    async def test_save_revives_session_stranded_by_placeholder_prune(self):
+        """A non-empty persist un-archives + bumps last_used_at.
+
+        Regression: the bridge registers a `CLI session (…)` placeholder with
+        message_count=0; a list_chat_sessions call before the first persist
+        archives it. The conversation then accumulates real messages here but
+        the row used to stay status='archived' forever — invisible to the
+        resume picker despite holding the full transcript.
+        """
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1", label="CLI session (sess-1)")
+        session_obj.messages = None
+        session_obj.status = "archived"  # stranded by the prune race
+        session_obj.last_used_at = SimpleNamespace(isoformat=lambda: "2026-03-20T10:00:00")
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        messages = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00Z"},
+            {"role": "assistant", "text": "Hi!", "timestamp": "2026-04-01T00:00:01Z"},
+        ]
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": messages},
+            )
+
+        assert r.status_code == 200
+        assert session_obj.status == "active"  # revived
+        # last_used_at replaced with a real datetime (was the stub namespace)
+        assert not isinstance(session_obj.last_used_at, SimpleNamespace)
+
+    @pytest.mark.asyncio
+    async def test_save_empty_list_does_not_revive_archived(self):
+        """An empty persist must NOT resurrect a deliberately-archived row."""
+        db = _FakeDB()
+        session_obj = _make_session_obj("sess-1")
+        session_obj.messages = None
+        session_obj.status = "archived"
+        db.get_values["sess-1"] = session_obj
+
+        app = _app(db)
+        async with _client(app) as c:
+            r = await c.patch(
+                "/api/v1/meta/agents/chat-sessions/sess-1/messages",
+                json={"messages": []},
+            )
+
+        assert r.status_code == 200
+        assert session_obj.status == "archived"  # unchanged
+
+    @pytest.mark.asyncio
     async def test_save_messages_nonexistent_session_returns_404(self):
         db = _FakeDB()
         app = _app(db)
