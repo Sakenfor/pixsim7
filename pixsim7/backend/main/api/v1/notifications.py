@@ -769,6 +769,83 @@ async def mark_all_read(
     return {"ok": True, "marked": result.rowcount}
 
 
+# ── Per-surface scoped unread (notification-system Phase 4a) ───────
+#
+# These power per-key unread pips on surfaces other than the bell (first
+# consumer: AI Assistant chat tabs, ref_type='chat_session'). They
+# DELIBERATELY bypass the category-suppression that `list_notifications`
+# applies: the `chat` category is off-by-default precisely so chat pings
+# never inflate the global bell, but the per-tab pip must still see them.
+
+
+class UnreadByRefResponse(BaseModel):
+    refType: str
+    # ref_id -> unread count. Only keys with count > 0 are returned;
+    # callers treat a missing key as zero.
+    counts: Dict[str, int]
+
+
+@router.get("/unread-by-ref", response_model=UnreadByRefResponse)
+async def unread_by_ref(
+    user: CurrentUser,
+    ref_type: str = Query(..., min_length=1, max_length=32),
+    ref_id: List[str] = Query(default_factory=list),
+    db: AsyncSession = Depends(get_database),
+):
+    """Unread counts grouped by ``ref_id`` for one ``ref_type``.
+
+    Batch-shaped so a surface with N visible keys (e.g. open chat tabs)
+    polls once. Visibility is broadcasts + this user's targeted rows;
+    category suppression is intentionally NOT applied (see module note).
+    """
+    stmt = (
+        select(Notification.ref_id, func.count())
+        .where(_user_filter(user))
+        .where(Notification.read == False)  # noqa: E712
+        .where(Notification.ref_type == ref_type)
+        .group_by(Notification.ref_id)
+    )
+    # Empty ref_id list = "all keys of this ref_type"; otherwise restrict.
+    wanted = {r for r in ref_id if r}
+    if wanted:
+        stmt = stmt.where(Notification.ref_id.in_(wanted))
+
+    rows = (await db.execute(stmt)).all()
+    counts = {rid: int(c) for rid, c in rows if rid is not None and c}
+    return UnreadByRefResponse(refType=ref_type, counts=counts)
+
+
+class MarkReadByRefRequest(BaseModel):
+    ref_type: str = Field(..., min_length=1, max_length=32)
+    ref_id: str = Field(..., min_length=1, max_length=120)
+
+
+@router.post("/mark-read-by-ref")
+async def mark_read_by_ref(
+    payload: MarkReadByRefRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Clear unread for one (ref_type, ref_id) — the pip's clear-on-focus.
+
+    Scoped strictly to the caller's own targeted rows (``user_id == me``),
+    mirroring the chat-tabs DELETE cleanup (chat_tabs.py): a single shared
+    ``read`` bool means a broadcast can't be read per-user, so we never flip
+    broadcasts here and risk clobbering them for everyone else.
+    """
+    stmt = (
+        update(Notification)
+        .where(Notification.user_id == user.id)
+        .where(Notification.ref_type == payload.ref_type)
+        .where(Notification.ref_id == payload.ref_id)
+        .where(Notification.read == False)  # noqa: E712
+        .values(read=True)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"ok": True, "marked": result.rowcount}
+
+
 # ── Service helper (for plan hooks, agents) ───────────────────────
 
 

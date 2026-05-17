@@ -2106,7 +2106,10 @@ async def get_chat_session(
 # pixsim7/backend/main/shared/chat_messages.py for the full rationale.
 # Kept as a local alias here so existing call sites in this file (and the
 # tests that monkey-patch `_merge_chat_messages`) don't need to change.
-from pixsim7.backend.main.shared.chat_messages import merge_chat_messages as _merge_chat_messages
+from pixsim7.backend.main.shared.chat_messages import (
+    chat_message_key as _chat_message_key,
+    merge_chat_messages as _merge_chat_messages,
+)
 
 
 @router.patch("/agents/chat-sessions/{session_id}/messages")
@@ -2728,12 +2731,89 @@ async def _store_session_response(
             # closed without SELECT FOR UPDATE, but the merge keeps both sides'
             # rows even if a PATCH commits during our transaction.
             await db.refresh(session, ["messages"])
+            # Was this assistant reply genuinely new? `_store_session_response`
+            # is re-entered from both the bridge persist and the WS handler
+            # with the same text; the merge collapses them by identity. We
+            # gate the unread ping on the same identity so the pip fires once.
+            pre_keys = {
+                _chat_message_key(m)
+                for m in (session.messages or [])
+                if isinstance(m, dict)
+            }
+            assistant_is_new = _chat_message_key(entry) not in pre_keys
             merged = _merge_chat_messages(session.messages, new_rows)
             session.messages = merged[-50:]
             session.last_used_at = utcnow()
+            # Capture before commit — expire_on_commit would detach these.
+            notif_session_id = session.id
+            notif_user_id = session.user_id
+            notif_label = session.label
             await db.commit()
+
+        # Per-tab unread pip source (notification-system Phase 4a).
+        # ref_type='chat_session' so cross-device tabs on the same session
+        # share one unread state (convention: chat_tabs.py:27-34). Targeted,
+        # not broadcast — chat tabs are user-private. Isolated from the
+        # message-persist transaction so a notification failure can never
+        # roll back the reply we just saved.
+        if assistant_is_new and assistant_response and assistant_response.strip():
+            await _emit_chat_message_notification(
+                session_id=notif_session_id,
+                user_id=notif_user_id,
+                label=notif_label,
+                preview=assistant_response,
+            )
     except Exception as e:
         log.warning("store_session_response_failed session_id=%s err=%s", session_id, e)
+
+
+async def _emit_chat_message_notification(
+    *,
+    session_id: str,
+    user_id: int,
+    label: str,
+    preview: str,
+) -> None:
+    """Emit the chat-tab unread ping for one assistant reply.
+
+    Best-effort and fully isolated: its own DB session + swallowed errors so
+    it can never disturb `_store_session_response`'s message persistence.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        from pixsim7.backend.main.api.v1.notifications import emit_notification
+        from pixsim7.backend.main.infrastructure.database.session import (
+            AsyncSessionLocal,
+        )
+
+        snippet = preview.strip().replace("\n", " ")
+        if len(snippet) > 140:
+            snippet = snippet[:139].rstrip() + "…"
+
+        async with AsyncSessionLocal() as db:
+            await emit_notification(
+                db,
+                title=label or "AI Assistant",
+                body=snippet or None,
+                category="chat",
+                severity="info",
+                source="assistant",
+                event_type="chat.message",
+                ref_type="chat_session",
+                ref_id=str(session_id),
+                broadcast=False,
+                user_id=user_id,
+                payload={"sessionId": str(session_id)},
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning(
+            "emit_chat_message_notification_failed session_id=%s err=%s",
+            session_id,
+            e,
+        )
 
 
 # =============================================================================

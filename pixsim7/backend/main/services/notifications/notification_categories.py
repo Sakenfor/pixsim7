@@ -197,6 +197,21 @@ _BUILTIN_CATEGORIES: List[NotificationCategorySpec] = [
         granularity_options=_ALL_OFF,
         sort_order=90,
     ),
+    # Chat-tab message pings. Off by default so they never inflate the
+    # global bell — they exist only to drive the per-tab unread pip
+    # (notification-system Phase 4a). The scoped unread query
+    # (/notifications/unread-by-ref) deliberately bypasses category
+    # suppression, so the pip still works while the bell stays quiet.
+    NotificationCategorySpec(
+        id="chat",
+        label="Chat",
+        description="Replies in AI Assistant chat tabs",
+        icon="messageSquare",
+        default_enabled=False,
+        default_granularity="off",
+        granularity_options=_ALL_OFF,
+        sort_order=95,
+    ),
 ]
 
 
@@ -294,6 +309,17 @@ _BUILTIN_EVENT_TYPES: List[NotificationEventTypeSpec] = [
         required_payload_fields=frozenset({"changes"}),
         required_ref_type="plan",
         description="Emitted when a plan has significant field changes.",
+    ),
+    NotificationEventTypeSpec(
+        id="chat.message",
+        default_category="chat",
+        default_severity="info",
+        required_payload_fields=frozenset({"sessionId"}),
+        required_ref_type="chat_session",
+        description=(
+            "Emitted when an assistant reply lands on a chat session. "
+            "Drives the per-tab unread pip (notification-system Phase 4a)."
+        ),
     ),
     NotificationEventTypeSpec(
         id="notification.manual",

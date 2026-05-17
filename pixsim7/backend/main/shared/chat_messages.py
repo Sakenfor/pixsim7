@@ -37,6 +37,21 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 
+def chat_message_key(m: Any) -> tuple:
+    """Dedupe identity for a chat row: ``(role, stripped text, kind)``.
+
+    The single source of truth for "is this the same message". Used by the
+    merge below and by callers that need to tell whether a row they're about
+    to merge is genuinely new (e.g. emit-once notification sourcing).
+    """
+    if not isinstance(m, dict):
+        return ("", str(m), "")
+    role = m.get("role") or ""
+    text = (m.get("text") or "").strip() if isinstance(m.get("text"), str) else ""
+    kind = m.get("kind") or ""
+    return (role, text, kind)
+
+
 def merge_chat_messages(
     server_msgs: List[Any] | None,
     new_msgs: List[Any],
@@ -53,13 +68,7 @@ def merge_chat_messages(
     Returns:
         Ordered list of dict rows. Each input row appears at most once.
     """
-    def key(m: Any) -> tuple:
-        if not isinstance(m, dict):
-            return ("", str(m), "")
-        role = m.get("role") or ""
-        text = (m.get("text") or "").strip() if isinstance(m.get("text"), str) else ""
-        kind = m.get("kind") or ""
-        return (role, text, kind)
+    key = chat_message_key
 
     def ts_of(m: Any) -> str:
         if not isinstance(m, dict):

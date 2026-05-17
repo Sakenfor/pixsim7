@@ -34,11 +34,42 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="backend deps not available")
 
 
-def _make_session(session_id: str = "sess-1", messages: list | None = None):
+@pytest.fixture(autouse=True)
+def _stub_chat_notification():
+    """Neutralise the Phase 4a chat-message emit by default.
+
+    In production the notification uses its OWN ``AsyncSessionLocal``; the
+    suite's ``_patch_db`` collapses every ``AsyncSessionLocal`` onto one
+    shared mock, so without this the notification's commit would pollute the
+    message-persistence ``db.commit`` call counts. Source-specific tests
+    request this fixture and assert on the returned mock instead.
+    """
+    with patch(
+        "pixsim7.backend.main.api.v1.meta_contracts._emit_chat_message_notification",
+        new_callable=AsyncMock,
+    ) as m:
+        yield m
+
+
+def _make_session(
+    session_id: str = "sess-1",
+    messages: list | None = None,
+    *,
+    status: str = "active",
+    user_id: int = 7,
+    label: str = "Test Session",
+):
+    # status/user_id/label are read by the archived-guard (commit f5857102d)
+    # and the Phase 4a chat-message notification source — a bare namespace
+    # without them makes _store_session_response's broad except swallow an
+    # AttributeError and silently no-op.
     return SimpleNamespace(
         id=session_id,
         messages=messages,
         last_used_at=None,
+        status=status,
+        user_id=user_id,
+        label=label,
     )
 
 
@@ -188,10 +219,13 @@ class TestDeduplication:
 
 
     @pytest.mark.asyncio
-    async def test_skips_when_assistant_tail_already_matches(self):
-        """Second call with the same assistant text no-ops — bridge-side
-        and WS-side persistence can both fire for the same reply, and the
-        dedupe guard prevents a double-append."""
+    async def test_dedupe_reentry_is_idempotent(self):
+        """Bridge-side and WS-side persistence can both fire for the same
+        reply. The merge dedupes by (role, stripped-text, kind), so a
+        re-entry adds no rows. The commit still runs unconditionally —
+        re-persisting an identical, idempotent merge is harmless and
+        cheaper than a dirty-check (there has never been a no-op skip;
+        the merge module is the documented source of truth here)."""
         existing = [
             {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00"},
             {"role": "assistant", "text": "Hi there!", "timestamp": "2026-04-01T00:00:01"},
@@ -205,8 +239,7 @@ class TestDeduplication:
         # Tail unchanged, no new entries appended.
         assert len(session.messages) == 2
         assert session.messages[1]["text"] == "Hi there!"
-        # commit should NOT run on the dedupe path.
-        db.commit.assert_not_awaited()
+        db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_assistant_dedupe_does_not_block_different_response(self):
@@ -256,7 +289,17 @@ class TestMessageCap:
 
     @pytest.mark.asyncio
     async def test_caps_at_50_messages(self):
-        existing = [{"role": "user", "text": f"msg-{i}", "timestamp": "t"} for i in range(49)]
+        # Realistic monotonic ISO timestamps: the merge sorts by timestamp,
+        # so the old fixture's literal "t" sorted *after* the new rows' real
+        # ISO stamps and the cap dropped the wrong end.
+        existing = [
+            {
+                "role": "user",
+                "text": f"msg-{i}",
+                "timestamp": f"2026-04-01T00:{i // 60:02d}:{i % 60:02d}",
+            }
+            for i in range(49)
+        ]
         session = _make_session(messages=existing)
         db = _mock_db(session)
         with _patch_db(db):
@@ -364,3 +407,80 @@ class TestTimestamps:
         # ISO format: contains T separator and has reasonable length
         assert "T" in ts
         assert len(ts) > 10
+
+
+# ── Phase 4a: chat-message unread source ─────────────────────────
+#
+# `_store_session_response` is the single server-side convergence point
+# for assistant replies, so it's where the per-tab unread ping is sourced
+# (notification-system Phase 4a). These assert the *gating* — emit fires
+# once per genuinely-new reply and is suppressed on dedupe re-entry,
+# archived sessions, and empty replies.
+
+
+class TestChatMessageNotificationSource:
+
+    @pytest.mark.asyncio
+    async def test_emits_on_new_assistant_reply(self, _stub_chat_notification):
+        session = _make_session(messages=[], user_id=42, label="My Chat")
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi there!")
+
+        _stub_chat_notification.assert_awaited_once()
+        kwargs = _stub_chat_notification.await_args.kwargs
+        assert kwargs["session_id"] == "sess-1"
+        assert kwargs["user_id"] == 42
+        assert kwargs["label"] == "My Chat"
+        assert kwargs["preview"] == "Hi there!"
+
+    @pytest.mark.asyncio
+    async def test_no_emit_on_dedupe_reentry(self, _stub_chat_notification):
+        """Bridge-side and WS-side persist both fire for one reply; the
+        ping must be sourced once, gated on the same identity as the merge."""
+        existing = [
+            {"role": "user", "text": "Hello", "timestamp": "2026-04-01T00:00:00"},
+            {"role": "assistant", "text": "Hi there!", "timestamp": "2026-04-01T00:00:01"},
+        ]
+        session = _make_session(messages=existing)
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi there!")
+
+        _stub_chat_notification.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_emit_for_archived_session(self, _stub_chat_notification):
+        session = _make_session(messages=[], status="archived")
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "Hi!")
+
+        _stub_chat_notification.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_emit_for_blank_assistant_reply(self, _stub_chat_notification):
+        session = _make_session(messages=[])
+        db = _mock_db(session)
+        with _patch_db(db):
+            await _store_session_response("sess-1", "Hello", "   ")
+
+        _stub_chat_notification.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_emit_failure_does_not_break_persistence(self):
+        """The emit is best-effort: a notification blow-up must not lose the
+        reply we just persisted."""
+        session = _make_session(messages=[])
+        db = _mock_db(session)
+        with _patch_db(db), patch(
+            "pixsim7.backend.main.api.v1.meta_contracts._emit_chat_message_notification",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("notif backend down"),
+        ):
+            await _store_session_response("sess-1", "Hello", "Hi!")
+
+        # Reply still persisted + committed despite the emit raising.
+        assert len(session.messages) == 2
+        assert session.messages[1]["text"] == "Hi!"
+        db.commit.assert_awaited_once()
