@@ -305,6 +305,11 @@ class PlanParticipant(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, index=True)
     first_seen_at: datetime = Field(default_factory=utcnow, index=True)
     last_seen_at: datetime = Field(default_factory=utcnow, index=True)
+    # Liveness signal: advanced by work logging AND cheap pings (agent-context
+    # fetch). Distinct from last_seen_at so the roster can tell "last actual
+    # work" from "last alive". Staleness/active is derived from this; see
+    # plans/helpers.py participant_is_stale().
+    last_heartbeat_at: datetime = Field(default_factory=utcnow, index=True)
     touches: int = Field(default=1)
     last_action: Optional[str] = Field(default=None, max_length=64)
     meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))

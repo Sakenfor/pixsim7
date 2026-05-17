@@ -542,7 +542,16 @@ async def list_plan_participants(
         stmt = stmt.where(PlanParticipant.role == role)
 
     rows = (await db.execute(stmt)).scalars().all()
-    participants = [_dp._participant_to_entry(row) for row in rows]
+    now = utcnow()
+    terminal_runs = await _dp.load_terminal_run_ids(
+        db, {r.run_id for r in rows if r.run_id}
+    )
+    participants = [
+        _dp._participant_to_entry(
+            row, now=now, run_terminal=row.run_id in terminal_runs
+        )
+        for row in rows
+    ]
     reviewers = [entry for entry in participants if entry.role == "reviewer"]
     builders = [entry for entry in participants if entry.role == "builder"]
     return PlanParticipantsResponse(

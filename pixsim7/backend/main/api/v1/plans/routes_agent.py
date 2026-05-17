@@ -143,6 +143,19 @@ async def get_agent_context(
             ],
         )
 
+    # Cheap liveness ping: keep this agent's existing participant rows fresh so
+    # a working agent doesn't drift to "stale" between progress logs. Isolated
+    # commit, best-effort — must never break the read.
+    if target is not None:
+        try:
+            touched = await _h.touch_participant_heartbeat(
+                db, principal=_user, plan_id=target.id
+            )
+            if touched:
+                await db.commit()
+        except Exception:
+            await db.rollback()
+
     # Fetch recent work summaries for the assigned plan (or all plans if none assigned)
     work_summaries: List[WorkSummaryEntry] = []
     try:

@@ -758,6 +758,11 @@ class PlanParticipantEntry(ApiModel):
     last_action: Optional[str] = None
     first_seen_at: str
     last_seen_at: str
+    last_heartbeat_at: str = ""
+    # Liveness: is_stale = no signal within the TTL (pure heartbeat check);
+    # is_active = not stale AND owning agent run is not terminal.
+    is_stale: bool = False
+    is_active: bool = True
     meta: Optional[Dict[str, Any]] = None
 
 

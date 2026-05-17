@@ -5,8 +5,10 @@ Extracted from dev_plans.py. Used by route modules in the plans package.
 """
 import asyncio
 import json
+import os
 import re
 from collections import defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set, Tuple
 from uuid import UUID, uuid4
@@ -27,7 +29,7 @@ from pixsim7.backend.main.domain.docs.models import (
     PlanRevision,
     PlanSyncRun,
 )
-from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile, AgentRun
 from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
@@ -575,6 +577,7 @@ async def _record_plan_participant(
             user_id=normalized_user_id,
             first_seen_at=observed_at,
             last_seen_at=observed_at,
+            last_heartbeat_at=observed_at,
             touches=1,
             last_action=action,
             meta=initial_meta or None,
@@ -583,6 +586,7 @@ async def _record_plan_participant(
         return
 
     row.last_seen_at = observed_at
+    row.last_heartbeat_at = observed_at
     row.touches = int(row.touches or 0) + 1
     row.last_action = action
     if not row.agent_type and normalized_agent_type:
@@ -659,7 +663,114 @@ def _review_node_to_entry(row: PlanReviewNode) -> PlanReviewNodeEntry:
     )
 
 
-def _participant_to_entry(row: PlanParticipant) -> PlanParticipantEntry:
+# ── Participant liveness ─────────────────────────────────────────
+#
+# A participant is "live" if its most recent liveness signal (max of
+# last_heartbeat_at / last_seen_at) is within the stale TTL AND its
+# owning agent run (if any) has not reached a terminal state. Implicit
+# progress-based recording stays the zero-effort baseline; this just
+# makes "is this agent still here?" answerable without manual cleanup.
+
+
+def _participant_stale_ttl() -> timedelta:
+    """Stale-after window. Override via PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES (default 15)."""
+    raw = os.getenv("PIXSIM_PLAN_PARTICIPANT_STALE_MINUTES")
+    minutes = 15.0
+    if raw:
+        try:
+            parsed = float(raw)
+            if parsed > 0:
+                minutes = parsed
+        except (TypeError, ValueError):
+            pass
+    return timedelta(minutes=minutes)
+
+
+def participant_liveness_at(row: PlanParticipant) -> Optional[datetime]:
+    """Most recent liveness signal: max of last_heartbeat_at and last_seen_at."""
+    candidates = [
+        t for t in (getattr(row, "last_heartbeat_at", None), row.last_seen_at) if t is not None
+    ]
+    return max(candidates) if candidates else None
+
+
+def participant_is_stale(
+    row: PlanParticipant,
+    *,
+    now: Optional[datetime] = None,
+    ttl: Optional[timedelta] = None,
+) -> bool:
+    """True when the participant has not signalled liveness within the TTL.
+
+    Pure: no DB, no run check. The run-terminal override is applied by
+    callers that have AgentRun status loaded (see load_terminal_run_ids).
+    """
+    seen = participant_liveness_at(row)
+    if seen is None:
+        return True
+    reference = now or utcnow()
+    window = ttl or _participant_stale_ttl()
+    return (reference - seen) > window
+
+
+async def load_terminal_run_ids(db: AsyncSession, run_ids: Set[str]) -> Set[str]:
+    """Subset of run_ids whose AgentRun is terminal (completed/failed).
+
+    Such participants are never 'active' regardless of heartbeat freshness.
+    """
+    wanted = {r for r in run_ids if r}
+    if not wanted or not hasattr(db, "execute"):
+        return set()
+    stmt = select(AgentRun.run_id).where(
+        AgentRun.run_id.in_(wanted),
+        AgentRun.status.in_(("completed", "failed")),
+    )
+    return set((await db.execute(stmt)).scalars().all())
+
+
+async def touch_participant_heartbeat(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: Optional[str] = None,
+) -> int:
+    """Cheap best-effort liveness ping for an agent's existing participant rows.
+
+    Only advances rows already created via work logging — never creates one
+    (claiming-without-working is checkpoint 2). Returns the number of rows
+    touched. Callers should treat failures as non-fatal.
+    """
+    if not hasattr(db, "execute"):
+        return 0
+    actor = _principal_actor_fields(principal)
+    agent_id = _normalize_participant_value(actor.get("agent_id"))
+    run_id = _normalize_participant_value(actor.get("run_id"))
+    if agent_id is None and run_id is None:
+        return 0
+    conds = []
+    if agent_id is not None:
+        conds.append(PlanParticipant.agent_id == agent_id)
+    if run_id is not None:
+        conds.append(PlanParticipant.run_id == run_id)
+    stmt = select(PlanParticipant).where(or_(*conds) if len(conds) > 1 else conds[0])
+    if plan_id:
+        stmt = stmt.where(PlanParticipant.plan_id == plan_id)
+    rows = (await db.execute(stmt)).scalars().all()
+    now = utcnow()
+    for r in rows:
+        r.last_heartbeat_at = now
+    return len(rows)
+
+
+def _participant_to_entry(
+    row: PlanParticipant,
+    *,
+    now: Optional[datetime] = None,
+    run_terminal: bool = False,
+) -> PlanParticipantEntry:
+    reference = now or utcnow()
+    stale = participant_is_stale(row, now=reference)
+    heartbeat = getattr(row, "last_heartbeat_at", None)
     return PlanParticipantEntry(
         id=str(row.id),
         plan_id=row.plan_id,
@@ -675,6 +786,9 @@ def _participant_to_entry(row: PlanParticipant) -> PlanParticipantEntry:
         last_action=row.last_action,
         first_seen_at=row.first_seen_at.isoformat() if row.first_seen_at else "",
         last_seen_at=row.last_seen_at.isoformat() if row.last_seen_at else "",
+        last_heartbeat_at=heartbeat.isoformat() if heartbeat else "",
+        is_stale=stale,
+        is_active=(not stale) and (not run_terminal),
         meta=row.meta,
     )
 
