@@ -39,6 +39,7 @@ manifest = DomainModelManifest(
         "pixsim7.backend.main.domain.system_config",
         "pixsim7.backend.main.domain.docs.models",
         "pixsim7.backend.main.domain.platform.agent_profile",
+        "pixsim7.backend.main.domain.platform.conversation",
         "pixsim7.backend.main.domain.local_folder_hash_cache",
     ],
     auto_discover=True,
