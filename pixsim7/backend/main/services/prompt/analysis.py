@@ -617,6 +617,43 @@ class PromptAnalysisService:
                 role_registry=role_registry,
             )
 
+        # Optional LLM semantic fallback for candidates the token-overlap
+        # projection engine left weak. Self-gates on the admin settings flag
+        # (default off) and only runs when token-overlap projection envelopes
+        # are actually present, so LLM-analyzer results aren't swept in.
+        result_candidates = result.get("candidates")
+        if isinstance(result_candidates, list) and any(
+            isinstance(c, dict)
+            and isinstance(c.get("primitive_projection"), dict)
+            for c in result_candidates
+        ):
+            try:
+                from pixsim7.backend.main.services.prompt.parser.primitive_projection_settings import (
+                    get_primitive_projection_settings,
+                )
+
+                pp_settings = get_primitive_projection_settings()
+                if getattr(pp_settings, "llm_fallback_enabled", False):
+                    from pixsim7.backend.main.services.prompt.parser.primitive_projection_llm import (
+                        enrich_candidates_with_llm_projection_fallback,
+                    )
+
+                    result["candidates"] = (
+                        await enrich_candidates_with_llm_projection_fallback(
+                            result_candidates,
+                            db=self.db,
+                            user_id=user_id,
+                            settings=pp_settings,
+                            provider_id=resolved_execution.provider_id,
+                            model_id=resolved_execution.model_id,
+                        )
+                    )
+            except Exception:  # noqa: BLE001 - fallback must never break analysis
+                logger.exception(
+                    "primitive_projection llm fallback wiring failed; "
+                    "keeping token-overlap result"
+                )
+
         # Emit structured log
         log_analyzer_run(
             provenance,
