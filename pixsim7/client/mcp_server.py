@@ -760,6 +760,33 @@ def _extract_agent_type(token: str) -> str:
     return "claude"
 
 
+def _identity_headers(token: str) -> dict[str, str]:
+    """Auth + agent-identity headers for an API request.
+
+    The forwarded token is not always a full agent token — bridge
+    per-request tokens, the login-token fallback, and refreshed tokens
+    may lack ``profile_id`` / ``run_id``. The backend recovers identity
+    from the ``X-Agent-Id`` / ``X-Run-Id`` headers when the JWT claims
+    are absent (RequestPrincipal.from_jwt_payload fallbacks), so always
+    send them when resolvable rather than relying on the JWT alone.
+    Without this, attribution collapses to agent_id='unknown'/run_id=null
+    and distinct agents become indistinguishable in the participant ledger.
+    """
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    profile_id = (
+        _normalize_profile_id(_extract_profile_from_token(token))
+        or _resolved_profile_id
+    )
+    if profile_id:
+        headers["X-Agent-Id"] = profile_id
+    run_id = _decode_token_claims(token).get("run_id")
+    if isinstance(run_id, str) and run_id.strip():
+        headers["X-Run-Id"] = run_id.strip()
+    return headers
+
+
 _process_start = str(os.getpid())  # stable within one MCP process, differs across launches
 
 
@@ -1700,10 +1727,7 @@ async def _proxy(
     """
     try:
         token = _get_token()
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-        # Pass resolved profile so backend attributes actions to the right agent
-        if _resolved_profile_id:
-            headers["X-Agent-Id"] = _resolved_profile_id
+        headers = _identity_headers(token)
         client = _get_client()
 
         resp = await client.request(
@@ -1718,7 +1742,7 @@ async def _proxy(
         if resp.status_code == 401:
             new_token = await _try_refresh_token()
             if new_token:
-                headers = {"Authorization": f"Bearer {new_token}"}
+                headers = _identity_headers(new_token)
                 resp = await client.request(
                     method=method.upper(),
                     url=path,
