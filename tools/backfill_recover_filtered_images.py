@@ -7,6 +7,15 @@ ground truth. The forward fix (provider_service._try_pixverse_image_cdn_salvage)
 recovers these going forward; this tool finds + recovers the ones lost
 *before* the fix shipped.
 
+Scans both FAILED and CANCELLED image generations. A genuine i2i that
+rendered can land terminal CANCELLED rather than FAILED when something
+removes it from the poll set the instant it goes terminal — most
+commonly quickgen burst-cancel of superseded in-flight probes (the
+single-shot salvage 404'd that one tick because Pixverse flips the
+status int a few seconds before the CDN object is flushed). Those are
+invisible to a FAILED-only scan yet just as recoverable: the ori object
+persists for hours.
+
 ``--apply`` does NOT reimplement asset creation. It re-arms each
 recoverable generation for the live poller (status=PROCESSING,
 started_at = now-150s so the PROCESSING-salvage elapsed gate is already
@@ -33,21 +42,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import httpx
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from sqlalchemy import select, desc
-
-# Re-arm started_at offset: older than the 90s PROCESSING-salvage elapsed
-# gate (so that fallback path is reachable on the first poll tick even if
-# live get_image no longer returns a clean 7/8/9), far younger than the
-# 2h stuck-PROCESSING timeout.
-_REARM_AGE_SECONDS = 150
+# DB query + CDN probe + re-arm live in the shared service module so this
+# CLI and any maintenance endpoint run identical recovery logic. The tool
+# owns only argparse, the --apply progress cursor, and console output.
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,7 +87,7 @@ def parse_args() -> argparse.Namespace:
 
 
 # --apply progress cursor. Non-recoverable / not-targetable generations are
-# never mutated (they stay FAILED), so without a cursor every --apply run
+# never mutated (they stay FAILED/CANCELLED), so without a cursor every --apply run
 # re-scans the same stuck head of the created_at-desc window forever. The
 # cursor records the oldest created_at already scanned by --apply so each
 # batch pages strictly older. Cursor is --apply-only: --dry-run / --count
@@ -128,152 +131,6 @@ def _reset_cursor() -> bool:
         return False
 
 
-async def _candidates(
-    session, *, since_days: int, limit: Optional[int],
-    before: Optional[datetime] = None,
-):
-    from pixsim7.backend.main.domain import Generation
-    from pixsim7.backend.main.domain.enums import GenerationStatus
-    from pixsim7.backend.main.domain.assets import Asset
-    from pixsim7.backend.main.shared.operation_mapping import get_image_operations
-
-    image_ops = list(get_image_operations())
-    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-
-    q = (
-        select(Generation)
-        .where(Generation.provider_id == "pixverse")
-        .where(Generation.operation_type.in_(image_ops))
-        .where(Generation.status == GenerationStatus.FAILED)
-        .where(Generation.created_at >= cutoff)
-        .order_by(desc(Generation.created_at))
-    )
-    if before is not None:
-        q = q.where(Generation.created_at < before)
-    if limit:
-        q = q.limit(limit)
-    gens = (await session.execute(q)).scalars().all()
-
-    out = []
-    for g in gens:
-        asset = await session.get(Asset, g.asset_id) if g.asset_id else None
-        if not (asset and (asset.remote_url or asset.local_path)):
-            out.append(g)
-    return out
-
-
-def _candidate_urls(resp: dict) -> list[str]:
-    if not isinstance(resp, dict):
-        return []
-    urls = []
-    for k in ("asset_url", "image_url", "video_url"):
-        v = resp.get(k)
-        if isinstance(v, str) and v.startswith("http"):
-            urls.append(v)
-    meta = resp.get("metadata")
-    if isinstance(meta, dict):
-        for k in ("asset_url", "image_url"):
-            v = meta.get(k)
-            if isinstance(v, str) and v.startswith("http"):
-                urls.append(v)
-    return list(dict.fromkeys(urls))
-
-
-def make_probe_client(concurrency: int):
-    """One pooled keep-alive client for the whole run. cdn_head_probe spins
-    a fresh AsyncClient (new TLS handshake) per call — fine for the prod
-    poll path's occasional probe, ruinous for a bulk scan of 60-70 URLs
-    per generation. Reuse connections to media.pixverse.ai instead."""
-    return httpx.AsyncClient(
-        timeout=4.0,
-        follow_redirects=True,
-        headers={"User-Agent": "PixSim7/1.0"},
-        limits=httpx.Limits(
-            max_connections=concurrency,
-            max_keepalive_connections=concurrency,
-        ),
-    )
-
-
-async def _probe(client: httpx.AsyncClient, sem, url: str) -> bool:
-    """True iff the CDN object serves (2xx). 4xx = genuine non-result;
-    anything else (timeout/5xx) treated as not-recoverable for the scan."""
-    async with sem:
-        try:
-            r = await client.head(url)
-            return 200 <= r.status_code < 300
-        except Exception:
-            return False
-
-
-async def _find_recoverable(session, gen, *, client, sem, max_probes: int):
-    """Return (submission, url, provider_status) for the most-recent
-    submission of ``gen`` whose pre-allocated CDN object still serves a
-    real image, else None. Probes concurrently, newest-first, capped."""
-    from pixsim7.backend.main.domain.providers import ProviderSubmission
-    from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
-        is_pixverse_placeholder_url as _is_placeholder,
-    )
-
-    subs = (
-        await session.execute(
-            select(ProviderSubmission)
-            .where(ProviderSubmission.generation_id == gen.id)
-            .order_by(desc(ProviderSubmission.submitted_at))
-        )
-    ).scalars().all()
-
-    # Newest-first candidate (submission, url) pairs, capped.
-    cands: list[tuple] = []
-    for s in subs:
-        if not s.provider_job_id:
-            continue
-        resp = s.response if isinstance(s.response, dict) else {}
-        meta = resp.get("metadata") if isinstance(resp.get("metadata"), dict) else {}
-        ps = resp.get("provider_status") or meta.get("provider_status")
-        for url in _candidate_urls(resp):
-            if _is_placeholder(url):
-                continue
-            cands.append((s, url, ps))
-            if len(cands) >= max_probes:
-                break
-        if len(cands) >= max_probes:
-            break
-
-    if not cands:
-        return None
-
-    results = await asyncio.gather(
-        *[_probe(client, sem, url) for (_s, url, _ps) in cands]
-    )
-    # cands is newest-first; first hit is the most-recent recoverable.
-    for (s, url, ps), ok in zip(cands, results):
-        if ok:
-            return s, url, ps
-    return None
-
-
-async def _is_targetable(session, gen, sub) -> bool:
-    """The poller selects the latest submission of generation.attempt_id.
-    Re-arm only works cleanly when ``sub`` has a positive attempt id and is
-    the latest submission within it (true for ~1-per-attempt retry chains)."""
-    from pixsim7.backend.main.domain.providers import ProviderSubmission
-
-    aid = sub.generation_attempt_id
-    if not isinstance(aid, int) or aid <= 0:
-        return False
-    latest = (
-        await session.execute(
-            select(ProviderSubmission.id)
-            .where(ProviderSubmission.generation_id == gen.id)
-            .where(ProviderSubmission.generation_attempt_id == aid)
-            .order_by(desc(ProviderSubmission.submitted_at))
-            .limit(1)
-        )
-    ).scalar()
-    return latest == sub.id
-
-
 async def main() -> None:
     args = parse_args()
     if args.apply and not args.limit:
@@ -297,11 +154,16 @@ async def main() -> None:
         before = before.replace(tzinfo=timezone.utc)
 
     from pixsim7.backend.main.infrastructure.database.session import get_async_session
-    from pixsim7.backend.main.domain import Generation
-    from pixsim7.backend.main.domain.enums import GenerationStatus
+    from pixsim7.backend.main.services.provider.pixverse_image_recovery import (
+        RearmStatus,
+        find_recoverable,
+        make_probe_client,
+        query_candidate_generations,
+        rearm_generation,
+    )
 
     async with get_async_session() as session:
-        cands = await _candidates(
+        cands = await query_candidate_generations(
             session, since_days=args.since_days, limit=args.limit,
             before=before,
         )
@@ -320,14 +182,14 @@ async def main() -> None:
         sem = asyncio.Semaphore(args.concurrency)
         async with make_probe_client(args.concurrency) as probe_client:
           for g in cands:
-            found = await _find_recoverable(
+            match = await find_recoverable(
                 session, g,
                 client=probe_client, sem=sem,
                 max_probes=args.max_probes_per_gen,
             )
-            if not found:
+            if not match:
                 continue
-            sub, url, ps = found
+            sub, url, ps = match.submission, match.url, match.provider_status
             recoverable += 1
 
             if args.dry_run:
@@ -339,28 +201,23 @@ async def main() -> None:
                 print(f"    {url}")
                 continue
 
-            # --apply: re-arm for the poller.
-            gen = await session.get(Generation, g.id)
-            if gen is None or gen.asset_id or gen.status != GenerationStatus.FAILED:
-                skipped += 1  # already recovered / not terminal anymore
-                continue
-            if not await _is_targetable(session, gen, sub):
+            # --apply: re-arm for the poller (re-fetch guard, targetability
+            # check, mutation + commit all live in the shared service).
+            status = await rearm_generation(
+                session, generation_id=g.id, submission=sub,
+            )
+            if status is RearmStatus.REARMED:
+                rearmed += 1
+                print(f"REARM gen#{g.id} -> PROCESSING "
+                      f"attempt_id={sub.generation_attempt_id} "
+                      f"(sub#{sub.id} job={sub.provider_job_id} prov_st={ps})")
+            elif status is RearmStatus.SKIPPED_NOT_TARGETABLE:
                 skipped += 1
                 print(f"SKIP gen#{g.id}: recoverable sub#{sub.id} not cleanly "
                       f"targetable (attempt_id={sub.generation_attempt_id}); "
                       f"manual: {url}")
-                continue
-
-            gen.status = GenerationStatus.PROCESSING
-            gen.started_at = datetime.now(timezone.utc) - timedelta(
-                seconds=_REARM_AGE_SECONDS
-            )
-            gen.attempt_id = sub.generation_attempt_id
-            gen.error_code = None
-            await session.commit()
-            rearmed += 1
-            print(f"REARM gen#{g.id} -> PROCESSING attempt_id={sub.generation_attempt_id} "
-                  f"(sub#{sub.id} job={sub.provider_job_id} prov_st={ps})")
+            else:  # SKIPPED_RESOLVED — already recovered / not terminal
+                skipped += 1
 
         print("=" * 72)
         if args.dry_run:
@@ -379,7 +236,7 @@ async def main() -> None:
                 )
             else:
                 print(
-                    "No more FAILED/asset-less candidates older than the "
+                    "No more FAILED/CANCELLED/asset-less candidates older than the "
                     "cursor within --since-days. Backlog drained for this "
                     "window. Raise --since-days to go further back, or "
                     "--reset-cursor to rescan from newest."

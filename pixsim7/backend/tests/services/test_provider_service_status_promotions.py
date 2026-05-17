@@ -888,3 +888,150 @@ async def test_pixverse_image_recent_processing_not_probed_before_threshold(
 
     assert calls == []
     assert returned.status == ProviderStatus.PROCESSING
+
+
+# ---------------------------------------------------------------------------
+# Terminal-salvage deferral (finalize-site agnostic). Pixverse flips
+# image_status to 8/9 a few seconds before the i2i/ori object is flushed; a
+# generation removed from the poll set the instant it goes terminal
+# (quickgen burst-cancel, retries-exhausted, deferred cancel) gets no later
+# salvage tick. Within a bounded window the job is kept PROCESSING so the
+# salvage re-probes on subsequent ticks, regardless of who would finalize it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_terminal_deferred_within_window_then_recovered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Genuine i2i: Pixverse returned status 9 (FAILED) but the ori url is
+    # already stamped in submission.response from a prior list-batch match.
+    # The object isn't flushed yet on this tick (probe False) — instead of
+    # finalising terminal, defer (PROCESSING) so a later tick re-probes.
+    submission = _make_submission(
+        response={
+            "asset_url": _IMAGE_URL,
+            "metadata": {"provider_status": 9},
+        },
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+
+    def _status_9_failed() -> ProviderStatusResult:
+        return ProviderStatusResult(
+            status=ProviderStatus.FAILED,
+            video_url=None,
+            thumbnail_url=None,
+            metadata={"provider_status": 9, "is_image": True},
+        )
+
+    service = ProviderService(_FakeDB())
+
+    # Tick 1: object not on the CDN yet -> deferred, not terminal.
+    provider = _FakeProvider(_status_9_failed())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, False)
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+    assert calls == [_IMAGE_URL]  # salvage did probe
+    assert returned.status == ProviderStatus.PROCESSING
+    meta = submission.response["metadata"]
+    assert meta["image_terminal_salvage_deferred"] is True
+    assert meta["image_terminal_salvage_deferred_status"] == "failed"
+    assert submission.response["status"] == "processing"
+    assert "image_false_filter_recovered" not in meta
+
+    # Tick 2: object now flushed -> recovered to COMPLETED via the existing
+    # early-CDN-terminal contract, original status preserved as "failed"
+    # (normal billing, never provider_flagged).
+    provider = _FakeProvider(_status_9_failed())
+    _patch_common(monkeypatch, provider)
+    calls = _patch_probe(monkeypatch, True)
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+    assert returned.status == ProviderStatus.COMPLETED
+    assert returned.video_url == _IMAGE_URL
+    meta = submission.response["metadata"]
+    assert meta["image_false_filter_recovered"] is True
+    assert meta["video_early_cdn_terminal"] is True
+    assert meta["video_original_status"] == "failed"
+    assert submission.response["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_terminal_not_deferred_after_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Past the bounded window with the object still absent: emit the real
+    # terminal status (genuine fail), no indefinite deferral.
+    submission = _make_submission(
+        response={
+            "asset_url": _IMAGE_URL,
+            "metadata": {"provider_status": 9},
+        },
+        submitted_at=datetime.now(timezone.utc) - timedelta(minutes=6),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FAILED,
+        video_url=None,
+        thumbnail_url=None,
+        metadata={"provider_status": 9, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.FAILED
+    meta = submission.response.get("metadata") or {}
+    assert "image_terminal_salvage_deferred" not in meta
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_terminal_deferral_requires_candidate_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Recent submission but no real pre-allocated object (placeholder url):
+    # nothing to re-probe, so don't needlessly delay a genuine filter.
+    submission = _make_submission(
+        response={
+            "asset_url": _PLACEHOLDER_IMAGE_URL,
+            "metadata": {"provider_status": 7},
+        },
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=_PLACEHOLDER_IMAGE_URL,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.FILTERED
+    meta = submission.response.get("metadata") or {}
+    assert "image_terminal_salvage_deferred" not in meta

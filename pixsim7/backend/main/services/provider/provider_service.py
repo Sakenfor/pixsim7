@@ -186,6 +186,40 @@ def _is_video_extend_silent_filter_candidate(status_result: ProviderStatusResult
     return not has_retrievable
 
 
+# Bounded window (seconds, from submission.submitted_at) during which a
+# pixverse image whose CDN salvage probe missed is kept PROCESSING instead
+# of finalised terminal, so subsequent poll ticks re-probe. Mirrors the
+# poller's _IMAGE_CANCEL_SALVAGE_WINDOW_SEC (120) — must exceed the 90s
+# image PROCESSING-fallback gate plus a poll tick. See the deferral block
+# in check_status for the full rationale.
+_PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC = 120
+
+
+def _pixverse_image_salvage_candidate_url(
+    submission: Any,
+    status_result: ProviderStatusResult,
+) -> Optional[str]:
+    """The pre-allocated Pixverse image URL the CDN salvage would probe.
+
+    Prefers the status object's url, falling back to the one already
+    stamped in ``submission.response`` (a prior poll's list-batch match
+    surfaces the ``i2i/ori/<uuid>.png`` url even when the current tick's
+    status object carries none). ``None`` when there is no real candidate
+    to probe (missing, non-http, or a Pixverse placeholder).
+    """
+    candidate_url = status_result.video_url
+    if not candidate_url and isinstance(submission.response, dict):
+        candidate_url = (
+            submission.response.get("asset_url")
+            or submission.response.get("image_url")
+        )
+    if not (candidate_url and str(candidate_url).startswith("http")):
+        return None
+    if _is_pixverse_placeholder_url(candidate_url):
+        return None
+    return candidate_url
+
+
 async def _try_pixverse_image_cdn_salvage(
     *,
     submission: Any,
@@ -210,15 +244,8 @@ async def _try_pixverse_image_cdn_salvage(
     the FILTERED/FAILED + PROCESSING call sites) don't re-probe the same
     object. Returns True iff recovered.
     """
-    candidate_url = status_result.video_url
-    if not candidate_url and isinstance(submission.response, dict):
-        candidate_url = (
-            submission.response.get("asset_url")
-            or submission.response.get("image_url")
-        )
-    if not (candidate_url and str(candidate_url).startswith("http")):
-        return False
-    if _is_pixverse_placeholder_url(candidate_url):
+    candidate_url = _pixverse_image_salvage_candidate_url(submission, status_result)
+    if not candidate_url:
         return False
 
     cache_key = f"pixverse:image_cdn_probe:{submission.provider_job_id}"
@@ -1251,6 +1278,54 @@ class ProviderService:
                     provider_status=(status_result.metadata or {}).get(
                         "provider_status"
                     ),
+                )
+
+        # Pixverse image terminal-salvage deferral (finalize-site agnostic).
+        # Pixverse flips image_status to 8/9 (-> FAILED) — and even surfaces
+        # the i2i/ori/<uuid>.png url in the list payload — a few seconds
+        # BEFORE that CDN object is actually flushed. The single-shot salvage
+        # above probes once and 404s on that tick. A normally-retried
+        # generation recovers on a later tick; but one removed from the poll
+        # set the instant it goes terminal (quickgen burst-cancel,
+        # retries-exhausted, deferred cancel) gets no later tick and the
+        # rendered image is lost until a manual resync. Keep the job
+        # PROCESSING for a bounded window so the salvage re-probes on
+        # subsequent ticks regardless of who would finalize it — only emit
+        # the real terminal status once the window elapses with the object
+        # still absent. Gated on a real candidate url so genuine filters with
+        # no pre-allocated object aren't needlessly delayed past the window.
+        # Mirrors the video-extend silent-filter grace and the poller's
+        # _IMAGE_CANCEL_SALVAGE_WINDOW_SEC.
+        if (
+            submission.provider_id == "pixverse"
+            and operation_type in get_image_operations()
+            and status_result.status in (ProviderStatus.FILTERED, ProviderStatus.FAILED)
+            and submission.provider_job_id
+            and submission.submitted_at
+            and _pixverse_image_salvage_candidate_url(submission, status_result)
+        ):
+            elapsed_seconds = (
+                datetime.now(timezone.utc) - submission.submitted_at
+            ).total_seconds()
+            if elapsed_seconds < _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC:
+                deferred_terminal = status_result.status.value
+                status_result.status = ProviderStatus.PROCESSING
+                status_result.metadata = {
+                    **(status_result.metadata or {}),
+                    "image_terminal_salvage_deferred": True,
+                    "image_terminal_salvage_deferred_status": deferred_terminal,
+                    "image_terminal_salvage_elapsed_seconds": int(elapsed_seconds),
+                    "image_terminal_salvage_window_seconds": (
+                        _PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC
+                    ),
+                }
+                logger.info(
+                    "pixverse_image_terminal_salvage_deferred",
+                    submission_id=submission.id,
+                    provider_job_id=submission.provider_job_id,
+                    deferred_status=deferred_terminal,
+                    elapsed_seconds=int(elapsed_seconds),
+                    window_seconds=_PIXVERSE_IMAGE_TERMINAL_SALVAGE_WINDOW_SEC,
                 )
 
         # Update submission response with latest status
