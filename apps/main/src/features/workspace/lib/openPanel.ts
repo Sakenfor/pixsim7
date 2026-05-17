@@ -27,11 +27,17 @@ export function openFloatingWorkspacePanel(
 // Typed recipes for "open panel X, land on section Y, focus entity Z".
 // Single-instance panels are focused if already open; context is merged.
 
+// Monotonic nonce so repeat navigations to the SAME plan still re-focus it.
+// Without it, an already-open Plans panel whose `targetPlanId` is unchanged
+// won't re-run its nav effect (e.g. user manually browsed elsewhere in the
+// sidebar, then clicked the same plan again in the ticker/notifications).
+let navSeq = 0;
+
 /** Open the Plans panel and navigate to a specific plan. */
 export function navigateToPlan(planId: string): void {
   try { localStorage.setItem('plans-panel:nav', `plan:${planId}`); } catch { /* */ }
   useWorkspaceStore.getState().openFloatingPanel('plans', {
-    context: { targetPlanId: planId },
+    context: { targetPlanId: planId, navNonce: ++navSeq },
   });
 }
 

@@ -368,15 +368,19 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     storageKey: 'plans-panel:nav',
   });
 
-  // Navigate to a specific plan when opened via notification or cross-panel link
+  // Navigate to a specific plan when opened via notification or cross-panel
+  // link. `navNonce` changes on every navigateToPlan() call so repeat
+  // navigations to the same plan (after the user browsed elsewhere) still
+  // re-focus it.
   const targetPlanId = context?.targetPlanId;
+  const navNonce = context?.navNonce;
   useEffect(() => {
     if (!targetPlanId) return;
     const navId = `plan:${targetPlanId}`;
     if (nav.activeId !== navId) {
       nav.navigate(navId);
     }
-  }, [targetPlanId]); // eslint-disable-line react-hooks/exhaustive-deps -- only react to context changes
+  }, [targetPlanId, navNonce]); // eslint-disable-line react-hooks/exhaustive-deps -- only react to context changes
 
   if (loading && plans.length === 0) {
     return (

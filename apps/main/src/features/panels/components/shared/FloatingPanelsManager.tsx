@@ -514,7 +514,14 @@ const FloatingPanel = memo(function FloatingPanel({
       return <Component context={panelContext} />;
     }
 
-    const rendered = <Component {...panelContext} />;
+    // Pass context BOTH ways: spread (legacy panels that read top-level
+    // props) AND as a `context` prop. Panel-definition components
+    // (PlansPanel, PromptLibraryInspectorPanel, CompositionRolesPanel, …)
+    // uniformly read `props.context?.X`; the dev-tool path and the dockview
+    // host already pass `context={...}`, so without this, context-driven
+    // navigation (e.g. navigateToPlan → targetPlanId) silently no-ops when
+    // the panel is opened as a floating window.
+    const rendered = <Component {...panelContext} context={panelContext} />;
     if (!panelDefForScope) return rendered;
 
     return (
