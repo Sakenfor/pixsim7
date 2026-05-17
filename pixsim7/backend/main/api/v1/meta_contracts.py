@@ -2832,6 +2832,127 @@ async def _emit_chat_message_notification(
         )
 
 
+async def _emit_ask_user_pending(
+    *,
+    tab_id: str,
+    user_id: int | None,
+    title: str | None = None,
+    description: str | None = None,
+) -> None:
+    """Emit the per-tab 'pending question' nudge (notification-system Phase 4b).
+
+    GENERIC across ask paths: this fires from the bridge confirmation gate
+    (``ws_chat.py`` ``confirmation_request``), so it covers the PixSim
+    ``ask_user`` MCP tool *and* Claude's harness ``AskUserQuestion`` — both
+    funnel through that one gate.
+
+    Keyed ``ref_type='chat_tab'`` / ``ref_id=tab_id`` (the cli_session_id is
+    not reliably known mid-turn; tab_id always is, and the Phase 4a frontend
+    already supports per-tab keying). At most ONE unread nudge per tab: the
+    agent blocks on a single question at a time, so we clear any prior
+    pending for this tab before inserting, keeping the scoped count binary.
+    Best-effort + fully isolated (own DB session, swallowed errors) so it can
+    never disturb the dispatch path.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    if not tab_id or user_id is None:
+        return
+    try:
+        from sqlalchemy import update
+
+        from pixsim7.backend.main.api.v1.notifications import emit_notification
+        from pixsim7.backend.main.domain.platform.notification import (
+            Notification,
+        )
+        from pixsim7.backend.main.infrastructure.database.session import (
+            AsyncSessionLocal,
+        )
+
+        snippet = (title or "").strip().replace("\n", " ")
+        if len(snippet) > 140:
+            snippet = snippet[:139].rstrip() + "…"
+        body = (description or "").strip().replace("\n", " ") or None
+
+        async with AsyncSessionLocal() as db:
+            # Collapse to one: clear any prior unread pending for this tab.
+            await db.execute(
+                update(Notification)
+                .where(Notification.user_id == user_id)
+                .where(Notification.ref_type == "chat_tab")
+                .where(Notification.ref_id == str(tab_id))
+                .where(Notification.event_type == "ask_user.pending")
+                .where(Notification.read == False)  # noqa: E712
+                .values(read=True)
+            )
+            await emit_notification(
+                db,
+                title=snippet or "Agent needs your input",
+                body=body,
+                category="agent_question",
+                severity="warning",
+                source="assistant",
+                event_type="ask_user.pending",
+                ref_type="chat_tab",
+                ref_id=str(tab_id),
+                broadcast=False,
+                user_id=user_id,
+                payload={"tabId": str(tab_id)},
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning(
+            "emit_ask_user_pending_failed tab_id=%s err=%s", tab_id, e
+        )
+
+
+async def _clear_ask_user_pending(
+    *,
+    tab_id: str,
+    user_id: int | None,
+) -> None:
+    """Clear the per-tab pending-question nudge (Phase 4b s4).
+
+    Called when the question is answered (``confirmation_response``) or the
+    dispatch is aborted (``cancel``). Deliberately NOT called on generic
+    turn-end/disconnect: a question can still be genuinely pending across a
+    page reload, and that's exactly when the nudge must survive. Stale
+    timed-out nudges self-heal via clear-on-focus (reuses Phase 4a
+    ``mark-read-by-ref``). Best-effort + isolated.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    if not tab_id or user_id is None:
+        return
+    try:
+        from sqlalchemy import update
+
+        from pixsim7.backend.main.domain.platform.notification import (
+            Notification,
+        )
+        from pixsim7.backend.main.infrastructure.database.session import (
+            AsyncSessionLocal,
+        )
+
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                update(Notification)
+                .where(Notification.user_id == user_id)
+                .where(Notification.ref_type == "chat_tab")
+                .where(Notification.ref_id == str(tab_id))
+                .where(Notification.event_type == "ask_user.pending")
+                .where(Notification.read == False)  # noqa: E712
+                .values(read=True)
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning(
+            "clear_ask_user_pending_failed tab_id=%s err=%s", tab_id, e
+        )
+
+
 # =============================================================================
 # Internal helpers — assistant routing
 # =============================================================================

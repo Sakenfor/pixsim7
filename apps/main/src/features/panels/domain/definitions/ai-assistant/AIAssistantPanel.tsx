@@ -21,6 +21,7 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
 
+import { useChatUnread } from '@features/notifications/hooks/useChatUnread';
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
 import { chatBridge } from './assistantChatBridge';
@@ -46,6 +47,7 @@ import {
   ModelSelector,
   SystemPromptPreview,
   BridgeSettingsPopover,
+  NotificationMutePopover,
   QUICK_SHORTCUTS,
 } from './assistantSubPanels';
 import {
@@ -1053,6 +1055,15 @@ export function AIAssistantPanel() {
   const tabs = useAssistantChatStore((s) => s.tabs);
   const activeTabId = useAssistantChatStore((s) => s.activeTabId);
   const unreadByTab = useAssistantChatStore((s) => s.unreadByTab);
+  // Server-backed per-session unread (notification-system Phase 4a). Distinct
+  // from the client-side `unreadByTab` (which flags instantly on WS arrival);
+  // this survives reload and reflects the bell-suppressed `chat` category.
+  const {
+    countsBySessionId: chatUnreadBySession,
+    markReadBySession,
+    questionsByTabId,
+    markQuestionReadByTab,
+  } = useChatUnread();
   const tabsLoading = useAssistantChatStore((s) => s.tabsLoading);
   const tabsError = useAssistantChatStore((s) => s.tabsError);
   const store = useAssistantChatStore;
@@ -1136,6 +1147,33 @@ export function AIAssistantPanel() {
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // Clear-on-focus: when a bound session becomes the active tab and the
+  // server says it has unread chat pings, mark them read. This decrements
+  // BOTH the per-tab pip and the activity-bar aggregate badge (one
+  // mark-read-by-ref call, both surfaces read the same poll). Mirrors the
+  // store's client-side `setActiveTab` unread clear, server-side.
+  const activeSessionId = activeTab?.sessionId ?? null;
+  useEffect(() => {
+    if (activeSessionId && (chatUnreadBySession[activeSessionId] ?? 0) > 0) {
+      void markReadBySession(activeSessionId);
+    }
+  }, [activeSessionId, chatUnreadBySession, markReadBySession]);
+
+  // Clear-on-focus for the Phase 4b orange question nudge. Keyed by tab id
+  // (the nudge is emitted ref_type='chat_tab'/ref_id=tab_id). Focusing the
+  // tab means the user can see the prompt, so the nudge has done its job —
+  // this also self-heals a stale nudge left by a timed-out question.
+  const activeTabIdForQuestion = activeTab?.id ?? null;
+  useEffect(() => {
+    if (
+      activeTabIdForQuestion &&
+      (questionsByTabId[activeTabIdForQuestion] ?? 0) > 0
+    ) {
+      void markQuestionReadByTab(activeTabIdForQuestion);
+    }
+  }, [activeTabIdForQuestion, questionsByTabId, markQuestionReadByTab]);
+
   const connected = bridge?.connected ?? 0;
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1296,7 +1334,12 @@ export function AIAssistantPanel() {
         profiles={profiles}
         tabCount={tabs.length}
         isSending={isSending}
-        hasUnread={!isActive && !!unreadByTab[tab.id]}
+        hasUnread={
+          !isActive &&
+          (!!unreadByTab[tab.id] ||
+            !!(tab.sessionId && chatUnreadBySession[tab.sessionId]))
+        }
+        hasPendingQuestion={!isActive && !!questionsByTabId[tab.id]}
         renamingTabId={renamingTabId}
         renameValue={renameValue}
         onSetActive={setActiveTab}
@@ -1413,6 +1456,7 @@ export function AIAssistantPanel() {
               });
             }} />
             <BridgeSettingsPopover />
+            <NotificationMutePopover />
             <div className="ml-auto flex items-center gap-1">
               {connected === 0 && !bridge?.process_alive && (
                 <button

@@ -15,6 +15,8 @@ import { getEngineBrand } from '@lib/agent/engineBrands';
 import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
 
+import { refreshChatUnread } from '@features/notifications/lib/chatUnreadPoll';
+
 import type { AgentEngine } from './assistantChatStore';
 import type { ChatSessionEntry, UnifiedProfile } from './assistantTypes';
 import { AGENT_COMMANDS } from './assistantTypes';
@@ -1042,6 +1044,157 @@ export function BridgeSettingsPopover() {
               onChange={(v) => updateField(field.key, v)}
             />
           ))}
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+/**
+ * Quick-mute popover for the per-tab chat / question nudges
+ * (notification-system Phase 4b s2). The full per-category matrix lives in
+ * Settings → Notifications; this is the in-context shortcut next to the
+ * nudge itself so users don't have to dig into global settings to silence
+ * an orange question pip or blue chat pip.
+ *
+ * Writes through the per-category-safe `PATCH /notifications/categories/{id}`
+ * endpoint (Phase 3 s1) — NOT the generic full-dict preference path — so
+ * toggling one category never disturbs the user's other notification prefs.
+ */
+interface NudgeMuteCategory {
+  id: string;
+  label: string;
+  description: string;
+  currentGranularity: string;
+}
+
+const NUDGE_MUTE_CATEGORY_IDS: readonly string[] = ['agent_question', 'chat'];
+
+export function NotificationMutePopover() {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [cats, setCats] = useState<NudgeMuteCategory[] | null>(null);
+
+  const reload = useCallback(() => {
+    pixsimClient
+      .get<{ categories: NudgeMuteCategory[] }>('/notifications/categories')
+      .then((d) =>
+        setCats(
+          d.categories.filter((c) =>
+            NUDGE_MUTE_CATEGORY_IDS.includes(c.id),
+          ),
+        ),
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (open) reload();
+  }, [open, reload]);
+
+  const anyMuted = cats?.some((c) => c.currentGranularity === 'off') ?? false;
+
+  const setGranularity = (id: string, granularity: string) => {
+    // Optimistic — the pip/badge should feel instant.
+    setCats((prev) =>
+      prev
+        ? prev.map((c) =>
+            c.id === id ? { ...c, currentGranularity: granularity } : c,
+          )
+        : prev,
+    );
+    pixsimClient
+      .patch<NudgeMuteCategory>(`/notifications/categories/${id}`, {
+        granularity,
+      })
+      .then((updated) => {
+        setCats((prev) =>
+          prev
+            ? prev.map((c) =>
+                c.id === updated.id
+                  ? { ...c, currentGranularity: updated.currentGranularity }
+                  : c,
+              )
+            : prev,
+        );
+        // Muting flows through the scoped unread query — re-poll so the
+        // orange/blue surfaces reflect it without waiting for the 15s tick.
+        void refreshChatUnread();
+      })
+      .catch(reload); // revert to server truth on failure
+  };
+
+  return (
+    <>
+      <button
+        ref={ref}
+        onClick={() => setOpen(!open)}
+        className={
+          anyMuted
+            ? 'text-orange-500 hover:text-orange-600'
+            : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+        }
+        title={anyMuted ? 'Nudges muted' : 'Mute chat / question nudges'}
+      >
+        <Icon name="bell" size={12} />
+      </button>
+
+      <Popover
+        anchor={ref.current}
+        placement="top"
+        align="start"
+        offset={6}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={ref}
+        className="w-64 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
+      >
+        <div className="p-3 space-y-3">
+          <div className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">
+            Nudge mute
+          </div>
+          <div className="text-[9px] text-neutral-400">
+            Silence these per-tab nudges. Full controls in Settings →
+            Notifications.
+          </div>
+
+          {!cats && (
+            <div className="text-[10px] text-neutral-400 py-2 text-center">
+              Loading...
+            </div>
+          )}
+
+          {cats?.map((c) => {
+            const muted = c.currentGranularity === 'off';
+            return (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
+                    {c.label}
+                  </div>
+                  <div className="text-[9px] text-neutral-400 truncate">
+                    {c.description}
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    setGranularity(c.id, muted ? 'all' : 'off')
+                  }
+                  className={`shrink-0 px-2 py-0.5 text-[9px] rounded border transition-colors ${
+                    muted
+                      ? 'bg-orange-500/15 border-orange-500/40 text-orange-500'
+                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-300 dark:hover:border-neutral-600'
+                  }`}
+                  title={muted ? 'Muted — click to unmute' : 'On — click to mute'}
+                >
+                  {muted ? 'Muted' : 'On'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </Popover>
     </>

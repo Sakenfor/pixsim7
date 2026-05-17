@@ -17,6 +17,12 @@ export interface SessionItemProps {
   isSending: boolean;
   /** Tab has an unseen assistant reply (active tab is always read). */
   hasUnread?: boolean;
+  /**
+   * Tab has an unanswered agent question waiting on the user (Phase 4b).
+   * Rendered as a distinct orange pip that takes precedence over the blue
+   * unread pip — a blocked agent is more urgent than an unread reply.
+   */
+  hasPendingQuestion?: boolean;
   renamingTabId: string | null;
   renameValue: string;
   onSetActive: (id: string) => void;
@@ -43,6 +49,7 @@ export function SessionItem({
   tabCount,
   isSending,
   hasUnread = false,
+  hasPendingQuestion = false,
   renamingTabId,
   renameValue,
   onSetActive,
@@ -83,6 +90,11 @@ export function SessionItem({
             className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-1 ring-white dark:ring-neutral-950"
             title="Couldn't save this tab to the server — retry or dismiss"
           />
+        ) : hasPendingQuestion ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500 ring-1 ring-white dark:ring-neutral-950 animate-pulse"
+            title="Agent is waiting on your answer"
+          />
         ) : isSending ? (
           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         ) : hasUnread ? (
@@ -109,7 +121,7 @@ export function SessionItem({
           />
         ) : (
           <div
-            className={`text-[11px] truncate ${hasUnread && !isActive ? 'font-semibold text-neutral-900 dark:text-neutral-100' : 'font-medium'}`}
+            className={`text-[11px] truncate ${(hasUnread || hasPendingQuestion) && !isActive ? 'font-semibold text-neutral-900 dark:text-neutral-100' : 'font-medium'}`}
             onDoubleClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
           >
             {tab.label}

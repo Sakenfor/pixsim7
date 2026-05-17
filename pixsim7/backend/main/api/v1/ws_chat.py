@@ -640,6 +640,27 @@ async def _handle_message(
                     if event.get(key) is not None:
                         msg[key] = event[key]
                 await websocket.send_json(msg)
+                # Phase 4b: surface the unanswered question as a per-tab
+                # nudge so it isn't silently missed if the prompt UI is off
+                # screen / the page reloaded. GENERIC — this gate is shared
+                # by PixSim ask_user and Claude's AskUserQuestion. Isolated
+                # so a notification failure can't disturb the dispatch.
+                try:
+                    from pixsim7.backend.main.api.v1.meta_contracts import (
+                        _emit_ask_user_pending,
+                    )
+                    await _emit_ask_user_pending(
+                        tab_id=tab_id,
+                        user_id=user_id,
+                        title=event.get("title"),
+                        description=event.get("description"),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "ws_chat_ask_user_pending_emit_failed",
+                        tab_id=tab_id,
+                        error=str(exc),
+                    )
             elif event.get("type") == "result":
                 duration_ms = int((time.monotonic() - start) * 1000)
                 response_text = extract_response_text(event)
@@ -1042,6 +1063,19 @@ async def websocket_chat(
                 tab_id = data.get("tab_id", "")
                 existing = active_dispatches.pop(tab_id, None)
                 await _cancel_dispatch_task(existing, tab_id=tab_id, reason="cancel")
+                # Phase 4b: dispatch aborted — any pending question on this
+                # tab is moot, so clear its nudge.
+                try:
+                    from pixsim7.backend.main.api.v1.meta_contracts import (
+                        _clear_ask_user_pending,
+                    )
+                    await _clear_ask_user_pending(tab_id=tab_id, user_id=user_id)
+                except Exception as exc:
+                    logger.warning(
+                        "ws_chat_ask_user_clear_failed",
+                        tab_id=tab_id,
+                        error=str(exc),
+                    )
                 # Always ack so client knows server processed the cancel
                 await websocket.send_json({
                     "type": "result", "tab_id": tab_id,
@@ -1064,6 +1098,21 @@ async def websocket_chat(
                     extra["text"] = data["text"]
                 if conf_id:
                     remote_cmd_bridge.resolve_confirmation(conf_id, approved, **extra)
+                # Phase 4b: question answered — clear its pending nudge.
+                try:
+                    from pixsim7.backend.main.api.v1.meta_contracts import (
+                        _clear_ask_user_pending,
+                    )
+                    await _clear_ask_user_pending(
+                        tab_id=data.get("tab_id", ""),
+                        user_id=user_id,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "ws_chat_ask_user_clear_failed",
+                        tab_id=data.get("tab_id", ""),
+                        error=str(exc),
+                    )
 
             elif msg_type == "reconnect":
                 tab_id = data.get("tab_id", "")

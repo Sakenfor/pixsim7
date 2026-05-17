@@ -4,9 +4,10 @@
 the per-tab unread pip (notification-system Phase 4a). The two invariants
 that matter most and aren't obvious from the handler in isolation:
 
-* The scoped query DELIBERATELY bypasses category suppression — the
-  `chat` category is off-by-default so chat pings never inflate the bell,
-  but the pip must still see them.
+* The scoped query DELIBERATELY bypasses *registry default-off*
+  suppression — the `chat` category is off-by-default so chat pings
+  never inflate the bell, but the pip must still see them. A
+  *user-explicit* mute is different and IS respected (Phase 4a s5).
 * `mark-read-by-ref` only flips the caller's OWN targeted rows, never
   broadcasts (one shared `read` bool ⇒ a broadcast can't be read
   per-user without clobbering it for everyone).
@@ -100,6 +101,18 @@ class _ScopedDbStub:
         if in_match:
             wanted = {s.strip().strip("'") for s in in_match.group(1).split(",")}
             rows = [r for r in rows if r.ref_id in wanted]
+        # User-explicit mute: ~_category_scope_expr(cid) compiles to
+        # NOT (category = 'cid' OR category LIKE 'cid.%'). Exclude matches.
+        for cid in re.findall(
+            r"not \([\w.]*notifications\.category = '([^']+)' "
+            r"or [\w.]*notifications\.category like '[^']+'\)",
+            sql,
+        ):
+            rows = [
+                r
+                for r in rows
+                if r.category != cid and not r.category.startswith(f"{cid}.")
+            ]
         return rows
 
     async def execute(self, stmt: Any) -> Any:
@@ -147,7 +160,7 @@ def _notif(
     )
 
 
-def _app(db_stub: _ScopedDbStub) -> FastAPI:
+def _app(db_stub: _ScopedDbStub, *, preferences: Any = None) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
@@ -159,8 +172,7 @@ def _app(db_stub: _ScopedDbStub) -> FastAPI:
         id=1,
         username="notif-user",
         display_name="Notif User",
-        # `chat` is off in prefs — the scoped query must ignore that.
-        preferences={"notifications": {"chat": {"granularity": "off"}}},
+        preferences=preferences,
     )
     return app
 
@@ -197,15 +209,53 @@ class TestUnreadByRef:
         assert body["counts"] == {"s1": 2, "s2": 1}
 
     @pytest.mark.asyncio
-    async def test_ignores_category_suppression(self):
-        """`chat` is suppressed in user prefs; the pip must still count it."""
+    async def test_ignores_registry_default_off(self):
+        """`chat` is registry default-off; with no explicit user pref the
+        pip must still count it (the whole point of the scoped query)."""
         db = _ScopedDbStub(
             rows=[
                 _notif(ref_type="chat_session", ref_id="s1", read=False,
                        user_id=1, broadcast=False, category="chat"),
             ]
         )
-        async with _client(_app(db)) as c:
+        async with _client(_app(db, preferences=None)) as c:
+            resp = await c.get(
+                "/api/v1/notifications/unread-by-ref",
+                params={"ref_type": "chat_session", "ref_id": "s1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["counts"] == {"s1": 1}
+
+    @pytest.mark.asyncio
+    async def test_respects_user_explicit_mute(self):
+        """Phase 4a s5: if the user EXPLICITLY mutes `chat`, the pip goes
+        quiet — unlike the registry default-off, which it ignores."""
+        db = _ScopedDbStub(
+            rows=[
+                _notif(ref_type="chat_session", ref_id="s1", read=False,
+                       user_id=1, broadcast=False, category="chat"),
+            ]
+        )
+        prefs = {"notifications": {"chat": {"granularity": "off"}}}
+        async with _client(_app(db, preferences=prefs)) as c:
+            resp = await c.get(
+                "/api/v1/notifications/unread-by-ref",
+                params={"ref_type": "chat_session", "ref_id": "s1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["counts"] == {}
+
+    @pytest.mark.asyncio
+    async def test_user_explicit_non_off_pref_still_counts(self):
+        """An explicit pref that is NOT 'off' must not silence the pip."""
+        db = _ScopedDbStub(
+            rows=[
+                _notif(ref_type="chat_session", ref_id="s1", read=False,
+                       user_id=1, broadcast=False, category="chat"),
+            ]
+        )
+        prefs = {"notifications": {"chat": {"granularity": "all"}}}
+        async with _client(_app(db, preferences=prefs)) as c:
             resp = await c.get(
                 "/api/v1/notifications/unread-by-ref",
                 params={"ref_type": "chat_session", "ref_id": "s1"},

@@ -212,6 +212,21 @@ _BUILTIN_CATEGORIES: List[NotificationCategorySpec] = [
         granularity_options=_ALL_OFF,
         sort_order=95,
     ),
+    # Unanswered agent questions (notification-system Phase 4b). Its OWN
+    # category — distinct from `chat` — so muting chat replies does NOT also
+    # silence "an agent is waiting on you". Off-by-default like `chat` so it
+    # never inflates the global bell; it drives the per-tab orange nudge via
+    # the scoped unread-by-ref query.
+    NotificationCategorySpec(
+        id="agent_question",
+        label="Agent Questions",
+        description="Unanswered questions an agent is waiting on",
+        icon="messageSquare",
+        default_enabled=False,
+        default_granularity="off",
+        granularity_options=_ALL_OFF,
+        sort_order=96,
+    ),
 ]
 
 
@@ -319,6 +334,20 @@ _BUILTIN_EVENT_TYPES: List[NotificationEventTypeSpec] = [
         description=(
             "Emitted when an assistant reply lands on a chat session. "
             "Drives the per-tab unread pip (notification-system Phase 4a)."
+        ),
+    ),
+    NotificationEventTypeSpec(
+        id="ask_user.pending",
+        default_category="agent_question",
+        default_severity="warning",
+        required_payload_fields=frozenset({"tabId"}),
+        required_ref_type="chat_tab",
+        description=(
+            "Emitted when an agent has an unanswered ask-user question on a "
+            "chat tab. Drives the per-tab 'question pending' nudge "
+            "(notification-system Phase 4b). GENERIC across ask paths: fired "
+            "from the bridge confirmation gate, so it covers the PixSim "
+            "ask_user MCP tool and Claude's harness AskUserQuestion alike."
         ),
     ),
     NotificationEventTypeSpec(

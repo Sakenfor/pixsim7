@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import CurrentUser, UserSvc, get_database
 from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry
 from pixsim7.backend.main.domain.platform.notification import Notification
 from pixsim7.backend.main.domain.user import User
@@ -446,6 +446,29 @@ def _get_suppressed_categories(
     return suppressed
 
 
+def _get_user_muted_categories(
+    user: User,
+    *,
+    user_prefs: Optional[Dict[str, NotificationCategoryPref]] = None,
+) -> Set[str]:
+    """Categories the user *explicitly* set to 'off' in their own prefs.
+
+    Distinct from :func:`_get_suppressed_categories`, which also folds in
+    registry ``default_enabled=False`` defaults (e.g. ``chat``). This set
+    contains only categories the user actively muted — it is the seam the
+    Phase 4a scoped-unread query consumes so the per-tab chat pip can keep
+    *ignoring* chat's default-off while still *respecting* a user's explicit
+    mute. (notification-system Phase 3 s1 → Phase 4a s5.)
+    """
+    if user_prefs is None:
+        user_prefs = _get_user_notification_prefs(user)
+    return {
+        category_id
+        for category_id, pref in user_prefs.items()
+        if pref.granularity == "off"
+    }
+
+
 def _passes_granularity_filter(
     *,
     category: Optional[str],
@@ -530,34 +553,116 @@ async def _resolve_plan_titles(
 # ── Endpoints ─────────────────────────────────────────────────────
 
 
+def _build_category_response(
+    spec,
+    user_prefs: Dict[str, NotificationCategoryPref],
+) -> CategoryResponse:
+    return CategoryResponse(
+        id=spec.id,
+        label=spec.label,
+        description=spec.description,
+        icon=spec.icon,
+        defaultGranularity=spec.default_granularity,
+        granularityOptions=[
+            CategoryGranularityOptionResponse(
+                id=opt.id, label=opt.label, description=opt.description
+            )
+            for opt in spec.granularity_options
+        ],
+        sortOrder=spec.sort_order,
+        currentGranularity=_resolve_granularity(spec.id, user_prefs),
+        systemId=spec.system_id,
+        systemLabel=spec.system_label,
+        parentCategoryId=spec.parent_category_id,
+    )
+
+
 @router.get("/categories", response_model=CategoriesListResponse)
 async def list_categories(user: CurrentUser):
     """List all notification categories with defaults and user's current selections."""
     user_prefs = _get_user_notification_prefs(user)
-    categories: List[CategoryResponse] = []
-    for spec in notification_category_registry.get_sorted():
-        current = _resolve_granularity(spec.id, user_prefs)
-        categories.append(
-            CategoryResponse(
-                id=spec.id,
-                label=spec.label,
-                description=spec.description,
-                icon=spec.icon,
-                defaultGranularity=spec.default_granularity,
-                granularityOptions=[
-                    CategoryGranularityOptionResponse(
-                        id=opt.id, label=opt.label, description=opt.description
-                    )
-                    for opt in spec.granularity_options
-                ],
-                sortOrder=spec.sort_order,
-                currentGranularity=current,
-                systemId=spec.system_id,
-                systemLabel=spec.system_label,
-                parentCategoryId=spec.parent_category_id,
-            )
+    return CategoriesListResponse(
+        categories=[
+            _build_category_response(spec, user_prefs)
+            for spec in notification_category_registry.get_sorted()
+        ]
+    )
+
+
+class SetCategoryGranularityRequest(BaseModel):
+    granularity: str = Field(
+        ...,
+        min_length=1,
+        max_length=32,
+        description="Granularity option id valid for this category (e.g. 'all', 'off', 'failures_only').",
+    )
+
+
+@router.patch("/categories/{category_id}", response_model=CategoryResponse)
+async def set_category_preference(
+    category_id: str,
+    payload: SetCategoryGranularityRequest,
+    user: CurrentUser,
+    user_service: UserSvc,
+):
+    """Set the current user's preference for one notification category.
+
+    Per-category-safe: this merges only the targeted category into
+    ``user.preferences['notifications']`` and leaves every sibling category
+    pref (and every other preference subtree) untouched. The generic
+    ``PATCH /users/me/preferences`` merges at the top level, so sending a
+    partial ``notifications`` map there would clobber the rest — callers
+    muting a single category should use this endpoint instead.
+    """
+    normalized = _normalize_category_id(category_id)
+    spec = (
+        notification_category_registry.get_or_none(normalized)
+        if normalized
+        else None
+    )
+    if spec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown notification category: {category_id}",
         )
-    return CategoriesListResponse(categories=categories)
+
+    valid_granularities = {opt.id for opt in spec.granularity_options} or {
+        "all",
+        "off",
+    }
+    if payload.granularity not in valid_granularities:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid granularity '{payload.granularity}' for category "
+                f"'{normalized}'. Valid options: {sorted(valid_granularities)}"
+            ),
+        )
+
+    if user.id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Preference changes require an authenticated user account",
+        )
+
+    # Per-category merge: preserve every other pref subtree verbatim and only
+    # touch this one category. Validate the per-category shape via the typed
+    # schema rather than round-tripping the whole UserPreferences (which would
+    # couple this path to unrelated canonicalization, e.g. analyzer prefs).
+    raw_prefs: Dict[str, Any] = dict(getattr(user, "preferences", None) or {})
+    notif_prefs: Dict[str, Any] = dict(raw_prefs.get("notifications") or {})
+    existing = notif_prefs.get(normalized)
+    merged_pref = dict(existing) if isinstance(existing, dict) else {}
+    merged_pref["granularity"] = payload.granularity
+    # Raises pydantic ValidationError -> 422 if the shape is somehow invalid.
+    NotificationCategoryPref.model_validate(merged_pref)
+    notif_prefs[normalized] = merged_pref
+    raw_prefs["notifications"] = notif_prefs
+
+    updated_user = await user_service.update_user(user.id, preferences=raw_prefs)
+    return _build_category_response(
+        spec, _get_user_notification_prefs(updated_user)
+    )
 
 
 @router.get("", response_model=NotificationListResponse)
@@ -773,9 +878,17 @@ async def mark_all_read(
 #
 # These power per-key unread pips on surfaces other than the bell (first
 # consumer: AI Assistant chat tabs, ref_type='chat_session'). They
-# DELIBERATELY bypass the category-suppression that `list_notifications`
-# applies: the `chat` category is off-by-default precisely so chat pings
-# never inflate the global bell, but the per-tab pip must still see them.
+# DELIBERATELY bypass the *registry default-off* suppression that
+# `list_notifications` applies: the `chat` category is off-by-default
+# precisely so chat pings never inflate the global bell, but the per-tab
+# pip must still see them.
+#
+# Phase 4a s5: a USER-EXPLICIT mute is different from that default-off.
+# If the user actively sets a category to 'off' in their prefs, the pip
+# must go quiet too. `unread_by_ref` therefore excludes only
+# `_get_user_muted_categories(user)` (explicit mutes), never the registry
+# defaults — the precise distinction `_get_user_muted_categories` exists
+# to draw (Phase 3 s1).
 
 
 class UnreadByRefResponse(BaseModel):
@@ -795,8 +908,9 @@ async def unread_by_ref(
     """Unread counts grouped by ``ref_id`` for one ``ref_type``.
 
     Batch-shaped so a surface with N visible keys (e.g. open chat tabs)
-    polls once. Visibility is broadcasts + this user's targeted rows;
-    category suppression is intentionally NOT applied (see module note).
+    polls once. Visibility is broadcasts + this user's targeted rows.
+    Registry default-off suppression is intentionally NOT applied, but a
+    user-explicit category mute IS respected (Phase 4a s5; see module note).
     """
     stmt = (
         select(Notification.ref_id, func.count())
@@ -809,6 +923,13 @@ async def unread_by_ref(
     wanted = {r for r in ref_id if r}
     if wanted:
         stmt = stmt.where(Notification.ref_id.in_(wanted))
+
+    # Phase 4a s5: honor user-explicit mutes only (not registry default-off).
+    # Reuses the same category-scope exclusion as the bell so dotted
+    # subcategories (e.g. a muted parent) are covered consistently.
+    muted = _get_user_muted_categories(user)
+    if muted:
+        stmt = _apply_suppressed_scope_filters(stmt, muted)
 
     rows = (await db.execute(stmt)).all()
     counts = {rid: int(c) for rid, c in rows if rid is not None and c}
