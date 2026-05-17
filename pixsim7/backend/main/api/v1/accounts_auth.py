@@ -28,6 +28,41 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        if isinstance(value, bool):
+            return None
+        parsed = int(value)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _resolve_extracted_max_concurrent_jobs(
+    provider_id: str,
+    extracted: Dict[str, Any],
+) -> tuple[int | None, str | None]:
+    """Resolve whether extracted concurrency should mutate account capacity.
+
+    For Pixverse, only trust values sourced from explicit plan payload fields
+    (``provider_gen_simultaneously``). User-info normalized values such as
+    ``sdk_normalized_or_fallback`` are kept in metadata for diagnostics, but do
+    not override account-level concurrency caps.
+    """
+    parsed = _coerce_positive_int(extracted.get("max_concurrent_jobs"))
+    source_raw = extracted.get("max_concurrent_jobs_source")
+    source = str(source_raw).strip() if source_raw is not None else None
+    if parsed is None:
+        return None, source
+
+    if str(provider_id or "").strip().lower() != "pixverse":
+        return parsed, source
+
+    if (source or "").strip().lower() == "provider_gen_simultaneously":
+        return parsed, source
+    return None, source
+
+
 def _to_response(account: ProviderAccount, current_user_id: int) -> AccountResponse:
     """Auth-flow account response — delegates to the canonical converter
     in ``accounts.py``. ``include_api_keys=False`` preserves this module's
@@ -83,14 +118,27 @@ async def _apply_extracted_account_data(
         account.provider_metadata = existing_meta
         updated_fields.append("provider_metadata")
 
-    extracted_max_concurrent = extracted.get("max_concurrent_jobs")
+    resolved_max_concurrent, max_concurrent_source = _resolve_extracted_max_concurrent_jobs(
+        account.provider_id,
+        extracted,
+    )
     if (
-        isinstance(extracted_max_concurrent, int)
-        and extracted_max_concurrent > 0
-        and account.max_concurrent_jobs != extracted_max_concurrent
+        isinstance(resolved_max_concurrent, int)
+        and resolved_max_concurrent > 0
+        and account.max_concurrent_jobs != resolved_max_concurrent
     ):
-        account.max_concurrent_jobs = extracted_max_concurrent
+        account.max_concurrent_jobs = resolved_max_concurrent
         updated_fields.append("max_concurrent_jobs")
+    elif (
+        str(account.provider_id or "").strip().lower() == "pixverse"
+        and _coerce_positive_int(extracted.get("max_concurrent_jobs")) is not None
+    ):
+        logger.debug(
+            "pixverse_extracted_concurrency_ignored",
+            account_id=account.id,
+            extracted_max_concurrent=extracted.get("max_concurrent_jobs"),
+            source=max_concurrent_source,
+        )
 
     await db.commit()
     await db.refresh(account)
@@ -547,15 +595,28 @@ async def import_cookies(
                 existing.provider_metadata = existing_meta
                 updated_fields.append("provider_metadata")
 
-            extracted_max_concurrent = extracted.get("max_concurrent_jobs")
+            resolved_max_concurrent, max_concurrent_source = _resolve_extracted_max_concurrent_jobs(
+                request.provider_id,
+                extracted,
+            )
             if (
-                isinstance(extracted_max_concurrent, int)
-                and extracted_max_concurrent > 0
-                and existing.max_concurrent_jobs != extracted_max_concurrent
+                isinstance(resolved_max_concurrent, int)
+                and resolved_max_concurrent > 0
+                and existing.max_concurrent_jobs != resolved_max_concurrent
             ):
-                existing.max_concurrent_jobs = extracted_max_concurrent
+                existing.max_concurrent_jobs = resolved_max_concurrent
                 if "max_concurrent_jobs" not in updated_fields:
                     updated_fields.append("max_concurrent_jobs")
+            elif (
+                request.provider_id == "pixverse"
+                and _coerce_positive_int(extracted.get("max_concurrent_jobs")) is not None
+            ):
+                logger.debug(
+                    "pixverse_import_extracted_concurrency_ignored",
+                    account_id=existing.id,
+                    extracted_max_concurrent=extracted.get("max_concurrent_jobs"),
+                    source=max_concurrent_source,
+                )
 
             existing.updated_at = datetime.now(timezone.utc)
 
@@ -672,9 +733,22 @@ async def import_cookies(
                 account.provider_user_id = provider_user_id
             if provider_metadata:
                 account.provider_metadata = provider_metadata
-            extracted_max_concurrent = extracted.get("max_concurrent_jobs")
-            if isinstance(extracted_max_concurrent, int) and extracted_max_concurrent > 0:
-                account.max_concurrent_jobs = extracted_max_concurrent
+            resolved_max_concurrent, max_concurrent_source = _resolve_extracted_max_concurrent_jobs(
+                request.provider_id,
+                extracted,
+            )
+            if isinstance(resolved_max_concurrent, int) and resolved_max_concurrent > 0:
+                account.max_concurrent_jobs = resolved_max_concurrent
+            elif (
+                request.provider_id == "pixverse"
+                and _coerce_positive_int(extracted.get("max_concurrent_jobs")) is not None
+            ):
+                logger.debug(
+                    "pixverse_create_extracted_concurrency_ignored",
+                    account_id=account.id,
+                    extracted_max_concurrent=extracted.get("max_concurrent_jobs"),
+                    source=max_concurrent_source,
+                )
 
             await db.commit()
             await db.refresh(account)

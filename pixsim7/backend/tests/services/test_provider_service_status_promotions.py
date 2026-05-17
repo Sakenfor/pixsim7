@@ -1035,3 +1035,40 @@ async def test_pixverse_image_terminal_deferral_requires_candidate_url(
     assert returned.status == ProviderStatus.FILTERED
     meta = submission.response.get("metadata") or {}
     assert "image_terminal_salvage_deferred" not in meta
+
+
+@pytest.mark.asyncio
+async def test_pixverse_image_filtered_not_deferred_with_candidate_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Even with a real candidate URL and a recent submission, FILTERED should
+    # remain terminal. Deferral is reserved for FAILED (8/9) so filtered runs
+    # don't consume synthetic processing slots for the full salvage window.
+    submission = _make_submission(
+        response={
+            "asset_url": _IMAGE_URL,
+            "metadata": {"provider_status": 7},
+        },
+        submitted_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+    status_result = ProviderStatusResult(
+        status=ProviderStatus.FILTERED,
+        video_url=None,
+        thumbnail_url=None,
+        metadata={"provider_status": 7, "is_image": True},
+    )
+    provider = _FakeProvider(status_result)
+    service = ProviderService(_FakeDB())
+    _patch_common(monkeypatch, provider)
+    _patch_probe(monkeypatch, False)
+
+    returned = await service.check_status(
+        submission=submission,
+        account=SimpleNamespace(id=11),
+        operation_type=OperationType.IMAGE_TO_IMAGE,
+        poll_cache=None,
+    )
+
+    assert returned.status == ProviderStatus.FILTERED
+    meta = submission.response.get("metadata") or {}
+    assert "image_terminal_salvage_deferred" not in meta

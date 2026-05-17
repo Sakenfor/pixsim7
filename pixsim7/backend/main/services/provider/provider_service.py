@@ -1292,14 +1292,16 @@ class ProviderService:
         # PROCESSING for a bounded window so the salvage re-probes on
         # subsequent ticks regardless of who would finalize it — only emit
         # the real terminal status once the window elapses with the object
-        # still absent. Gated on a real candidate url so genuine filters with
-        # no pre-allocated object aren't needlessly delayed past the window.
-        # Mirrors the video-extend silent-filter grace and the poller's
-        # _IMAGE_CANCEL_SALVAGE_WINDOW_SEC.
+        # still absent.
+        #
+        # IMPORTANT: apply deferral only to FAILED (8/9), not FILTERED (7).
+        # FILTERED verdicts are terminal for provider slot accounting; holding
+        # them in synthetic PROCESSING for the full salvage window can starve
+        # local concurrency while the provider shows fewer active jobs.
         if (
             submission.provider_id == "pixverse"
             and operation_type in get_image_operations()
-            and status_result.status in (ProviderStatus.FILTERED, ProviderStatus.FAILED)
+            and status_result.status == ProviderStatus.FAILED
             and submission.provider_job_id
             and submission.submitted_at
             and _pixverse_image_salvage_candidate_url(submission, status_result)
