@@ -701,6 +701,31 @@ async def _handle_message(
                     # tab is already bound.
                     await _bind_tab_to_session(tab_id, cli_session_id, user_id)
 
+                    # One-directional chat→plan bridge: make a chat-driven
+                    # agent visible in the cross-plan active-agent roster
+                    # (it never calls progress/claim, so it would otherwise
+                    # be invisible). Lightweight, best-effort; the canonical
+                    # boundary vs ChatSession.last_plan_id is documented on
+                    # record_chat_plan_participant.
+                    if chat_plan_id:
+                        try:
+                            from pixsim7.backend.main.api.v1.plans.helpers import (
+                                record_chat_plan_participant,
+                            )
+                            await record_chat_plan_participant(
+                                plan_id=chat_plan_id,
+                                profile_id=resolved_profile_id,
+                                session_id=cli_session_id,
+                                user_id=user_id or None,
+                                agent_type=engine,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "ws_chat_record_participant_failed",
+                                session_id=cli_session_id,
+                                error=str(exc),
+                            )
+
                     # Belt-and-suspenders durability:
                     #   * Bridge-side `resolve_task` already scheduled a
                     #     fire-and-forget `_store_session_response` the moment

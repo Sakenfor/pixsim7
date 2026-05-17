@@ -933,6 +933,72 @@ async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
     return released
 
 
+# ── Chat ↔ plan bridge ───────────────────────────────────────────
+#
+# Canonical boundary (do not merge these two systems):
+#
+#   ChatSession.last_plan_id  — "what plan context is this chat session
+#       about". Passive, set from message context on every turn, drives
+#       resume / UI affinity / context injection. Owned by the chat path
+#       (ws_chat -> _upsert_chat_session). Can legitimately drift.
+#
+#   PlanParticipant           — "who is actively building/reviewing this
+#       plan, live". Active, heartbeated, claim/role-aware. Owned by the
+#       plans path. Source of truth for the active-agent roster.
+#
+# They answer different questions and each owns chat- vs plan-specific
+# state, so they stay separate tables. The ONE gap is that an agent
+# working purely through chat (never calling progress/claim) was
+# invisible to the roster. This helper is the deliberate one-directional
+# bridge that closes it: chat-with-a-plan also drops a lightweight
+# participant. It is NOT a merge and the chat path never reads back.
+
+
+async def record_chat_plan_participant(
+    *,
+    plan_id: Optional[str],
+    profile_id: Optional[str],
+    session_id: Optional[str],
+    user_id: Optional[int],
+    agent_type: Optional[str] = None,
+) -> None:
+    """Best-effort: surface a chat-bound agent in the active-agent roster.
+
+    Own session, fully swallowed on failure — must never disturb chat.
+    Marked ``meta.source='chat'`` / ``last_action='chat'`` so it is
+    distinguishable from an explicit builder claim, and reuses the
+    ``builder`` role (no schema ripple). Skips when there is no real
+    agent profile (sentinels / pure-human chat don't belong on the
+    agent roster) or no plan.
+    """
+    pid = _normalize_participant_value(plan_id)
+    profile = _normalize_participant_value(profile_id)
+    if pid is None or profile is None or profile.lower() in {"unknown", "agent"}:
+        return
+    try:
+        from pixsim7.backend.main.infrastructure.database.session import (
+            AsyncSessionLocal,
+        )
+
+        async with AsyncSessionLocal() as db:
+            await _record_plan_participant(
+                db,
+                plan_id=pid,
+                role="builder",
+                action="chat",
+                principal_type="agent",
+                agent_id=profile,
+                agent_type=_normalize_participant_value(agent_type),
+                profile_id=profile,
+                session_id=session_id,
+                user_id=user_id,
+                meta={"source": "chat"},
+            )
+            await db.commit()
+    except Exception:
+        pass
+
+
 # ── Cross-plan active-agent roster ───────────────────────────────
 
 
