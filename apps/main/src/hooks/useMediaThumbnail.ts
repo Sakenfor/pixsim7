@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { createBlobCache } from '@lib/media/blobCache';
+import { fetchAuthBlob, FetchAuthBlobHttpError } from '@lib/media/fetchAuthBlob';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -23,37 +24,6 @@ export const thumbnailBlobCache = _blobCache;
 export function clearThumbnailBlobCache(): void {
   _blobCache.clear();
 }
-
-// ── Concurrency cap for thumbnail fetches ───────────────────────────────
-// First-paint of a 20-card gallery used to fire 20 parallel HTTP requests,
-// saturating the TCP window on thin links (mobile / VPN). A tight semaphore
-// keeps the link from going head-of-line-blocked while still making forward
-// progress quickly.  The cap is intentionally small — image bodies are
-// already small, so the wall-clock saving is from queueing, not bandwidth.
-const MAX_CONCURRENT_THUMB_FETCHES = 4;
-let activeThumbFetches = 0;
-const thumbFetchQueue: Array<() => void> = [];
-
-function acquireThumbFetchSlot(): Promise<void> {
-  return new Promise((resolve) => {
-    if (activeThumbFetches < MAX_CONCURRENT_THUMB_FETCHES) {
-      activeThumbFetches++;
-      resolve();
-    } else {
-      thumbFetchQueue.push(() => {
-        activeThumbFetches++;
-        resolve();
-      });
-    }
-  });
-}
-
-function releaseThumbFetchSlot(): void {
-  activeThumbFetches = Math.max(0, activeThumbFetches - 1);
-  const next = thumbFetchQueue.shift();
-  if (next) next();
-}
-
 
 export interface UseMediaThumbnailOptions {
   /**
@@ -118,6 +88,7 @@ export function useMediaThumbnailFull(
   const [retryTrigger, setRetryTrigger] = useState(0);
   const globalPreventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const galleryQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
+  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
 
   const preventDiskCache = options?.preventDiskCache ?? globalPreventDiskCache;
 
@@ -125,13 +96,16 @@ export function useMediaThumbnailFull(
   const shouldPreferPreview = options?.preferPreview ??
     (galleryQualityMode === 'preview' || galleryQualityMode === 'auto');
 
-  // Select URL with fallback chain: preview (if preferred) → thumbnail → preview.
-  // The viewer loads originals via `useAuthenticatedMedia(fullUrl)` directly,
-  // so this hook never needs to upgrade to remoteUrl — that path used to lag
-  // on local folders whose linked AssetModel has remoteUrl=/api/v1/assets/<id>/file.
-  const selectedUrl = shouldPreferPreview && previewUrl
-    ? previewUrl
-    : (thumbUrl || previewUrl);
+  // Select URL with fallback chain:
+  // - If preferOriginal is enabled, use remoteUrl directly (skips derivatives).
+  //   Known tradeoff: every visible card loads full-resolution bytes, which
+  //   can lag large galleries. The toggle is opt-in and off by default.
+  // - Otherwise: preview (if preferred) → thumbnail → preview (fallback).
+  const selectedUrl = preferOriginal && remoteUrl
+    ? remoteUrl
+    : shouldPreferPreview && previewUrl
+      ? previewUrl
+      : (thumbUrl || previewUrl);
 
   const retryCountRef = useRef(0);
   const exhaustionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -165,7 +139,6 @@ export function useMediaThumbnailFull(
 
   useEffect(() => {
     let cancelled = false;
-    const abortController = new AbortController();
     retryCountRef.current = 0;
     setLoading(true);
     setFailed(false);
@@ -229,119 +202,84 @@ export function useMediaThumbnailFull(
       scheduleExhaustionRetry();
     };
 
-    // ── Unified fetch with retry ─────────────────────────────────────────
-    // cache: 'no-store' prevents Chrome from holding a second copy of the
-    // response body in its HTTP cache — we already keep blobs in our own
-    // LRU cache, so a duplicate cache wastes gigabytes on large galleries.
-    const signal = AbortSignal.any([abortController.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
-    const fetchOpts: RequestInit = isBackend
-      ? { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal }
-      : { mode: 'cors', cache: 'no-store', signal };
-
+    // ── Fetch via shared primitive, with thumbnail retry policy ──────────
+    // fetchAuthBlob owns token attach, cache:'no-store', the LRU blob cache,
+    // the post-blob race re-check, and in-flight HTTP dedup (so two cards
+    // showing the same thumb share one request).  This hook keeps only the
+    // thumbnail-specific policy: 202 regen retry, 404 CDN-propagation retry,
+    // remote-URL fallback chain, and the exhaustion timer.
     const fetchWithRetry = async () => {
-      // Wait for a free slot before consuming network. Cancellation between
-      // queueing and acquiring is handled by the post-acquire `cancelled`
-      // checks below — release immediately if the caller already bailed.
-      await acquireThumbFetchSlot();
-      if (cancelled) {
-        releaseThumbFetchSlot();
-        return;
-      }
-      let slotReleased = false;
-      const releaseSlot = () => {
-        if (!slotReleased) {
-          slotReleased = true;
-          releaseThumbFetchSlot();
-        }
-      };
       try {
-        const res = await fetch(fullUrl, fetchOpts);
-
-        // 202 Accepted — thumbnail regeneration in progress (backend only)
-        if (isBackend && res.status === 202) {
-          if (retryCountRef.current < MAX_RETRIES) {
-            retryCountRef.current++;
-            console.log(`[useMediaThumbnail] 202 for ${fullUrl}, regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
-            // Release before sleeping — slot stays free during the backoff.
-            releaseSlot();
-            setTimeout(() => { if (!cancelled) fetchWithRetry(); }, REGEN_RETRY_DELAY_MS);
-            return;
-          }
-          console.warn(`[useMediaThumbnail] Regeneration timed out for ${fullUrl}`);
-          markFailed(undefined);
-          return;
+        const { blobUrl } = await fetchAuthBlob(fullUrl, {
+          cache: _blobCache,
+          // Per-attempt timeout only.  We deliberately do NOT pass an
+          // unmount-driven signal: the fetch is dedup'd across cards, so one
+          // card unmounting must not abort a request the others still need.
+          // The `cancelled` flag gates state updates instead.
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        if (!cancelled) {
+          setThumbSrc(blobUrl);
+          setLoading(false);
         }
+      } catch (err) {
+        if (cancelled) return;
 
-        // 404 — retry for CDN propagation delays
-        if (res.status === 404) {
-          if (retryCountRef.current < MAX_RETRIES) {
-            retryCountRef.current++;
-            console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
-            releaseSlot();
-            setTimeout(() => { if (!cancelled) fetchWithRetry(); }, RETRY_DELAY_MS);
+        if (err instanceof FetchAuthBlobHttpError) {
+          // 202 Accepted — backend regeneration in progress
+          if (isBackend && err.status === 202) {
+            if (retryCountRef.current < MAX_RETRIES) {
+              retryCountRef.current++;
+              console.log(`[useMediaThumbnail] 202 for ${fullUrl}, regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
+              setTimeout(() => { if (!cancelled) fetchWithRetry(); }, REGEN_RETRY_DELAY_MS);
+              return;
+            }
+            console.warn(`[useMediaThumbnail] Regeneration timed out for ${fullUrl}`);
+            markFailed(undefined);
             return;
           }
-          console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${MAX_RETRIES} retries`);
-          if (!cancelled) {
+
+          // 404 — retry for CDN propagation delays
+          if (err.status === 404) {
+            if (retryCountRef.current < MAX_RETRIES) {
+              retryCountRef.current++;
+              console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+              setTimeout(() => { if (!cancelled) fetchWithRetry(); }, RETRY_DELAY_MS);
+              return;
+            }
+            console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${MAX_RETRIES} retries`);
             setThumbSrc(remoteUrl);
             setFailed(!remoteUrl);
             setLoading(false);
             if (!remoteUrl) scheduleExhaustionRetry();
+            return;
           }
-          return;
-        }
 
-        // Other non-OK — fall back to remote URL
-        if (!res.ok) {
-          if (!cancelled) {
-            setThumbSrc(remoteUrl || fullUrl);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // Success — create blob URL and cache it
-        const blob = await res.blob();
-        // Re-check cache: another concurrent fetch for the same URL may have
-        // already cached a blob URL.  Reuse it to avoid revoking the existing
-        // one (which could still be referenced by another component's <img>,
-        // causing ERR_FILE_NOT_FOUND for revoked blob URLs).
-        const raceCached = _blobCache.get(fullUrl);
-        if (raceCached) {
-          if (!cancelled) {
-            setThumbSrc(raceCached);
-            setLoading(false);
-          }
-          return;
-        }
-        const objectUrl = URL.createObjectURL(blob);
-        _blobCache.set(fullUrl, objectUrl, blob.size);
-        if (!cancelled) {
-          setThumbSrc(objectUrl);
+          // Other non-OK — fall back to remote URL
+          setThumbSrc(remoteUrl || fullUrl);
           setLoading(false);
+          return;
         }
-      } catch (err) {
+
+        // Defensive: no unmount AbortController anymore, but a stray
+        // AbortError should stay silent rather than mark the card failed.
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        // TimeoutError falls through to markFailed below
+
+        // Network / timeout error — TimeoutError lands here
         if (isBackend && remoteUrl) {
-          // Backend failure with remote fallback — use remote URL without marking failed
-          if (!cancelled) {
-            setThumbSrc(remoteUrl);
-            setLoading(false);
-          }
+          // Backend failure with remote fallback — use remote, don't mark failed
+          setThumbSrc(remoteUrl);
+          setLoading(false);
         } else {
           console.warn(`[useMediaThumbnail] Error fetching ${fullUrl}`);
           markFailed(undefined);
         }
-      } finally {
-        releaseSlot();
       }
     };
     fetchWithRetry();
 
     return () => {
       cancelled = true;
-      abortController.abort();
       if (exhaustionTimerRef.current) {
         clearTimeout(exhaustionTimerRef.current);
         exhaustionTimerRef.current = null;

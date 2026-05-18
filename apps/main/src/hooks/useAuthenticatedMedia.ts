@@ -7,9 +7,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 import { createBlobCache } from '@lib/media/blobCache';
+import { fetchAuthBlob, FetchAuthBlobHttpError } from '@lib/media/fetchAuthBlob';
 
 import { BACKEND_BASE } from '../lib/api/client';
 
@@ -70,14 +70,6 @@ export interface UseAuthenticatedMediaOptions {
   mediaType?: 'video' | 'image';
 }
 
-class MediaHttpError extends Error {
-  readonly status: number;
-  constructor(status: number) {
-    super(`HTTP ${status}`);
-    this.status = status;
-  }
-}
-
 export function useAuthenticatedMedia(
   url: string | undefined,
   options: UseAuthenticatedMediaOptions = {},
@@ -119,20 +111,8 @@ export function useAuthenticatedMedia(
       return;
     }
 
-    // Backend path - needs authentication
-
-    const token = authService.getStoredToken();
-
-    // Backend media endpoints require Authorization. Avoid falling back to a raw
-    // backend URL because that creates noisy 401s from <img>/<video> elements.
-    if (!token) {
-      setSrc(undefined);
-      setLoading(false);
-      setError(true);
-      return;
-    }
-
-    // Check module-level cache first
+    // Backend path — needs authentication.  Instant cache hit avoids the
+    // loading flash when a component remounts onto an already-fetched URL.
     const requestChanged = lastRequestUrlRef.current !== fullUrl;
     lastRequestUrlRef.current = fullUrl;
     const cached = cache.get(fullUrl);
@@ -143,58 +123,33 @@ export function useAuthenticatedMedia(
       return;
     }
 
-    // Fetch with authentication
     if (requestChanged) {
       setSrc(undefined);
     }
     setLoading(true);
     setError(false);
 
-    const fetchMedia = async () => {
-      try {
-        const blobUrl = await cache.deduplicatedFetch(fullUrl, async () => {
-          // Another caller may have cached while this request was waiting in-flight.
-          const cachedAgain = cache.get(fullUrl);
-          if (cachedAgain) return cachedAgain;
-
-          // cache: 'no-store' prevents Chrome from holding a second copy of
-          // the response body in its HTTP cache on top of our blob cache.
-          const res = await fetch(fullUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-            cache: 'no-store',
-          });
-          if (!res.ok) throw new MediaHttpError(res.status);
-
-          const blob = await res.blob();
-          // Re-check cache after blob read in case another in-flight path
-          // populated it during this await.
-          const raceCached = cache.get(fullUrl);
-          if (raceCached) return raceCached;
-
-          const objectUrl = URL.createObjectURL(blob);
-          cache.set(fullUrl, objectUrl, blob.size);
-          return objectUrl;
-        });
-
-        if (!cancelled) {
-          setSrc(blobUrl);
-          setLoading(false);
+    // Token attach, no-store, in-flight dedup, and the post-blob race
+    // re-check all live in fetchAuthBlob.  A missing token / non-OK status
+    // rejects — we map both to the error state, deliberately NOT falling
+    // back to a raw backend URL (that produces noisy 401s from <img>/<video>).
+    fetchAuthBlob(fullUrl, { cache })
+      .then(({ blobUrl }) => {
+        if (cancelled) return;
+        setSrc(blobUrl);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof FetchAuthBlobHttpError) {
+          console.warn(`[useAuthenticatedMedia] Failed to fetch ${fullUrl}: ${err.status}`);
+        } else {
+          console.warn(`[useAuthenticatedMedia] Error fetching ${fullUrl}:`, err);
         }
-      } catch (err) {
-        if (!cancelled) {
-          if (err instanceof MediaHttpError) {
-            console.warn(`[useAuthenticatedMedia] Failed to fetch ${fullUrl}: ${err.status}`);
-          } else {
-            console.warn(`[useAuthenticatedMedia] Error fetching ${fullUrl}:`, err);
-          }
-          setError(true);
-          setLoading(false);
-          setSrc(undefined);
-        }
-      }
-    };
-
-    fetchMedia();
+        setError(true);
+        setLoading(false);
+        setSrc(undefined);
+      });
 
     return () => {
       cancelled = true;
