@@ -622,7 +622,18 @@ _LOG_WORK_TOOL = types.Tool(
             "decisions": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Non-obvious decisions, trade-offs, and ruled-out approaches / dead-ends (e.g. 'chose Zustand over context because X'; 'tried Y, abandoned because Z'). A primary payload of this tool. Optional.",
+                "description": (
+                    "Non-obvious decisions, trade-offs, and ruled-out "
+                    "approaches / dead-ends (e.g. 'chose Zustand over context "
+                    "because X'; 'tried Y, abandoned because Z'). A primary "
+                    "payload of this tool. Boundary vs the plan checkpoint "
+                    "note: a decision ABOUT advancing this checkpoint (why "
+                    "this impl, what code trade-off) belongs in the checkpoint "
+                    "note next to its evidence; put here only "
+                    "session/workflow-level decisions or ones spanning "
+                    "checkpoints — otherwise it just moves the duplication "
+                    "from summary to here. Optional."
+                ),
             },
             "blockers": {
                 "type": "array",
