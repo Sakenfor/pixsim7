@@ -15,4 +15,5 @@ export default definePanel({
   description: 'Browse and search prompt blocks from content packs',
   supportsCompactMode: false,
   supportsMultipleInstances: false,
+  providesCapabilities: ['blockSelection'],
 });
