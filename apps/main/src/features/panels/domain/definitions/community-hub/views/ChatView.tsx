@@ -114,44 +114,63 @@ export function ChatView() {
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let pingTimer: ReturnType<typeof setInterval> | undefined;
 
+    const scheduleReconnect = () => {
+      if (!mountedRef.current) return;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => void connect(), 3000);
+    };
+
     const connect = async () => {
       if (!mountedRef.current) return;
-      const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
-      if (!mountedRef.current) return;
-
-      const ws = new WebSocket(computeCommunityWsUrl(token));
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        if (!mountedRef.current) return;
-        setConnected(true);
-        pingTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) ws.send('ping');
-        }, 30000);
-      };
-
-      ws.onmessage = (ev) => {
-        if (typeof ev.data !== 'string' || ev.data === 'pong') return;
+      try {
+        // Token may be momentarily unavailable right after mount; treat
+        // that as a transient failure to retry, not a permanent abort.
+        let token: string | null = null;
         try {
-          const data = JSON.parse(ev.data);
-          if (data?.type === 'message' && data.message) {
-            addMessages([data.message as CommunityChatMessage]);
-            if (mountedRef.current) markRead();
+          token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
+        } catch (err) {
+          console.warn('[community-chat] token unavailable, will retry', err);
+        }
+        if (!mountedRef.current) return;
+
+        const ws = new WebSocket(computeCommunityWsUrl(token));
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!mountedRef.current) return;
+          setConnected(true);
+          pingTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+          }, 30000);
+        };
+
+        ws.onmessage = (ev) => {
+          if (typeof ev.data !== 'string' || ev.data === 'pong') return;
+          try {
+            const data = JSON.parse(ev.data);
+            if (data?.type === 'message' && data.message) {
+              addMessages([data.message as CommunityChatMessage]);
+              if (mountedRef.current) markRead();
+            }
+          } catch {
+            /* ignore non-JSON frames */
           }
-        } catch {
-          /* ignore non-JSON frames */
-        }
-      };
+        };
 
-      ws.onclose = () => {
+        ws.onclose = () => {
+          setConnected(false);
+          if (pingTimer) clearInterval(pingTimer);
+          scheduleReconnect();
+        };
+
+        ws.onerror = () => ws.close();
+      } catch (err) {
+        // new WebSocket() can throw synchronously (bad URL). Without this
+        // there is no socket -> no onclose -> reconnect never fires.
+        console.error('[community-chat] WS connect failed, retrying', err);
         setConnected(false);
-        if (pingTimer) clearInterval(pingTimer);
-        if (mountedRef.current) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-
-      ws.onerror = () => ws.close();
+        scheduleReconnect();
+      }
     };
 
     void connect();
