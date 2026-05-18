@@ -97,6 +97,13 @@ interface ChatTab {
   focusAreas: string[];
   injectToken: boolean;
   planId: string | null;
+  /**
+   * Derived plan the sidebar groups this tab under (server `primaryPlanId`):
+   * the manual @-mention binding when set, else the session's most-recent
+   * open claim. Optional — local/optimistic tabs omit it and fall back to
+   * `planId` until the next list poll. Read via `tabPrimaryPlanId()`.
+   */
+  primaryPlanId?: string | null;
   createdAt: string;
   /**
    * Server-side draft (composer text). Mirrors `ServerChatTab.draft`. The
@@ -371,6 +378,7 @@ function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab 
     focusAreas: p.focusAreas,
     injectToken: p.injectToken,
     planId: server.planId,
+    primaryPlanId: server.primaryPlanId ?? server.planId ?? null,
     createdAt: server.createdAt,
     draft: server.draft,
   };
@@ -1480,16 +1488,18 @@ export function buildResumedTab(session: {
  * tab across sidebar groups. Any sidebar grouping MUST key off this
  * accessor, not a raw claim list.
  *
- * Primary = the tab's manual @-mention binding (`ChatTab.planId`) when set.
- * When unset it resolves to `null` today (tab → ungrouped bucket), which
- * is behaviour-preserving. The "else most-recent open claim" fallback is
- * wired in step 3 once per-tab claims are plumbed into the store — this
- * accessor is the single seam where that lands, so callers never change.
+ * Primary = the server-derived `primaryPlanId` (the manual @-mention
+ * binding when set, else the session's most-recent open claim — so a tab
+ * an agent self-assigned but the user never @-mentioned still groups).
+ * Falls back to the raw `planId` for local/optimistic tabs that have no
+ * server-derived value yet; converges on the next tabs-list poll.
  *
  * Plan `plan-participant-liveness` / `unify-tab-plan-categorization`.
  */
-export function tabPrimaryPlanId(tab: Pick<ChatTab, 'planId'>): string | null {
-  return tab.planId ?? null;
+export function tabPrimaryPlanId(
+  tab: Pick<ChatTab, 'planId' | 'primaryPlanId'>,
+): string | null {
+  return tab.primaryPlanId ?? tab.planId ?? null;
 }
 
 // =============================================================================

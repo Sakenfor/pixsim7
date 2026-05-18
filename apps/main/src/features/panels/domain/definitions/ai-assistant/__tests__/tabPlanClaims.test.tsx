@@ -14,6 +14,7 @@ vi.mock('../chatTabsApi', () => ({
 }));
 
 import type { ChatTab } from '../assistantChatStore';
+import { tabPrimaryPlanId } from '../assistantChatStore';
 import type { TabPlanClaim } from '../chatTabsApi';
 import { ContextBar } from '../ContextBar';
 import { useTabPlanClaims } from '../useTabPlanClaims';
@@ -51,6 +52,29 @@ function tabFixture(over: Partial<ChatTab> = {}): ChatTab {
     ...over,
   };
 }
+
+describe('tabPrimaryPlanId (sidebar placement seam)', () => {
+  it('prefers the server-derived primaryPlanId (covers self-assigned-only tabs)', () => {
+    expect(tabPrimaryPlanId({ planId: null, primaryPlanId: 'plan-claim' })).toBe(
+      'plan-claim',
+    );
+    // Manual binding still wins via server-derived value.
+    expect(tabPrimaryPlanId({ planId: 'plan-a', primaryPlanId: 'plan-a' })).toBe(
+      'plan-a',
+    );
+  });
+
+  it('falls back to planId for local/optimistic tabs (no derived value yet)', () => {
+    expect(tabPrimaryPlanId({ planId: 'plan-a', primaryPlanId: undefined })).toBe(
+      'plan-a',
+    );
+  });
+
+  it('is null when neither is set (ungrouped)', () => {
+    expect(tabPrimaryPlanId({ planId: null, primaryPlanId: null })).toBeNull();
+    expect(tabPrimaryPlanId({ planId: null })).toBeNull();
+  });
+});
 
 describe('useTabPlanClaims', () => {
   it('returns [] and does not fetch when tabId is null', () => {

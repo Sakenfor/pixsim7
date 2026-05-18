@@ -31,6 +31,15 @@ export interface ServerChatTab {
   draft: string | null;
   orderIndex: number;
   planId: string | null;
+  /**
+   * Derived plan the left sidebar groups this tab under: `planId` if set,
+   * else the most-recent open session claim (so an agent-self-assigned-only
+   * tab still groups). List-endpoint only; create/PATCH echo `planId`.
+   * Plan `unify-tab-plan-categorization`. Optional (mirrors `icon`/
+   * `subtitle`): older payloads / non-list responses omit it and the
+   * store falls back to `planId`.
+   */
+  primaryPlanId?: string | null;
   scopeKey: string | null;
   pinned: boolean;
   createdAt: string;

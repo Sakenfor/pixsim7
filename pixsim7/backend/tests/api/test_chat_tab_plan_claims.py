@@ -278,3 +278,44 @@ async def test_plan_claims_owner_scoped() -> None:
     with pytest.raises(HTTPException) as exc:
         await ct.list_tab_plan_claims(tab_id=tab.id, user=_user(1), db=db)
     assert exc.value.status_code == 403
+
+
+# ── _derive_primary_plan_ids (sidebar grouping source) ───────────────
+
+
+@pytest.mark.asyncio
+async def test_derive_primary_uses_manual_binding_first() -> None:
+    """A tab with a manual @-mention binding never needs a claim lookup."""
+    tab = _tab(1, session_id="s1", plan_id="plan-mention")
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result([])))
+    out = await ct._derive_primary_plan_ids(db, [tab])
+    assert out == {str(tab.id): "plan-mention"}
+    db.execute.assert_not_awaited()  # no session_ids needed a claim query
+
+
+@pytest.mark.asyncio
+async def test_derive_primary_falls_back_to_recent_open_claim() -> None:
+    """Self-assigned-only tab (no manual binding) groups under its claim."""
+    tab = _tab(1, session_id="s1", plan_id=None)
+    older = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    parts = [
+        _participant("plan-old", "s1", _open_claim(claimed_at=older)),
+        _participant("plan-new", "s1", _open_claim()),  # most recent
+    ]
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(parts)))
+    out = await ct._derive_primary_plan_ids(db, [tab])
+    assert out == {str(tab.id): "plan-new"}
+
+
+@pytest.mark.asyncio
+async def test_derive_primary_ignores_released_and_sessionless() -> None:
+    bound = _tab(1, session_id="s1", plan_id=None)
+    nosess = _tab(1, session_id=None, plan_id=None)
+    released = (datetime.now(timezone.utc)).isoformat()
+    parts = [
+        _participant("plan-x", "s1", {**_open_claim(), "released_at": released}),
+    ]
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(parts)))
+    out = await ct._derive_primary_plan_ids(db, [bound, nosess])
+    # Released claim → not grouped; no session → not grouped.
+    assert out == {}

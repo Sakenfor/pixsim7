@@ -58,6 +58,14 @@ class ChatTabResponse(BaseModel):
     draft: Optional[str] = None
     orderIndex: int
     planId: Optional[str] = None
+    # Derived single plan the left sidebar groups this tab under: the
+    # manual @-mention binding (`planId`) when set, else the most-recent
+    # open session claim (so a tab an agent self-assigned — never
+    # @-mentioned — still groups). Computed only on the list endpoint
+    # (the sidebar source); create/PATCH echo `planId` and converge on
+    # the next poll. Plan `plan-participant-liveness` /
+    # `unify-tab-plan-categorization`.
+    primaryPlanId: Optional[str] = None
     scopeKey: Optional[str] = None
     pinned: bool
     createdAt: str
@@ -142,7 +150,12 @@ class ChatTabReorderRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _to_response(tab: ChatTab) -> ChatTabResponse:
+def _to_response(
+    tab: ChatTab, *, primary_plan_id: Optional[str] = None
+) -> ChatTabResponse:
+    # Default the derived primary to the manual binding; the list endpoint
+    # overrides with the claim-derived value. create/PATCH leave it == planId
+    # and the next list poll fills the self-assigned-only case.
     return ChatTabResponse(
         id=str(tab.id),
         sessionId=tab.session_id,
@@ -152,11 +165,57 @@ def _to_response(tab: ChatTab) -> ChatTabResponse:
         draft=tab.draft,
         orderIndex=tab.order_index,
         planId=tab.plan_id,
+        primaryPlanId=primary_plan_id if primary_plan_id is not None else tab.plan_id,
         scopeKey=tab.scope_key,
         pinned=tab.pinned,
         createdAt=tab.created_at.isoformat(),
         updatedAt=tab.updated_at.isoformat(),
     )
+
+
+async def _derive_primary_plan_ids(
+    db: AsyncSession, tabs: List[ChatTab]
+) -> dict[str, str]:
+    """{tab.id: derived primary plan} for tabs the sidebar should group.
+
+    Primary = the tab's manual `plan_id` when set, else the plan of the
+    session's most-recent OPEN builder claim (the participant-claim
+    ledger keyed by `session_id` — shared with MCP self-assign). One
+    batched query over the caller's session ids; tabs with a manual
+    binding or no session never need a claim lookup.
+    """
+    session_ids = {t.session_id for t in tabs if t.session_id and not t.plan_id}
+    out: dict[str, str] = {}
+    for t in tabs:
+        if t.plan_id:
+            out[str(t.id)] = t.plan_id
+    if not session_ids:
+        return out
+
+    from pixsim7.backend.main.api.v1.plans import helpers as _ph
+
+    stmt = select(PlanParticipant).where(
+        PlanParticipant.session_id.in_(session_ids),
+        PlanParticipant.role == "builder",
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    # session_id -> (claimed_at, plan_id) of the most-recent open claim.
+    best: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        claim = _ph.participant_claim(row)
+        if not _ph.claim_is_open(claim):
+            continue
+        at = claim.get("claimed_at") or ""
+        cur = best.get(row.session_id)
+        if cur is None or at > cur[0]:
+            best[row.session_id] = (at, row.plan_id)
+    for t in tabs:
+        if t.plan_id or not t.session_id:
+            continue
+        hit = best.get(t.session_id)
+        if hit:
+            out[str(t.id)] = hit[1]
+    return out
 
 
 async def _load_owned_tab(db: AsyncSession, tab_id: UUID, user_id: int) -> ChatTab:
@@ -238,7 +297,10 @@ async def list_chat_tabs(
         .order_by(ChatTab.order_index, ChatTab.created_at)
     )
     rows = list((await db.execute(stmt)).scalars().all())
-    return ChatTabsListResponse(tabs=[_to_response(r) for r in rows])
+    primary = await _derive_primary_plan_ids(db, rows)
+    return ChatTabsListResponse(
+        tabs=[_to_response(r, primary_plan_id=primary.get(str(r.id))) for r in rows]
+    )
 
 
 @router.post("", response_model=ChatTabResponse)
