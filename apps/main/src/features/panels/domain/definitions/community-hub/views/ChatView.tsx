@@ -124,7 +124,12 @@ export function ChatView() {
     };
 
     const connect = () => {
-      if (!mountedRef.current) return;
+      // NOTE: intentionally no `mountedRef` guard here. connect() is
+      // synchronous and called straight from effect setup (and from
+      // scheduleReconnect, which has its own guard). A guard here let
+      // React StrictMode's mount→cleanup→remount leave the live socket
+      // uncreated (cleanup flips the ref false before the 2nd setup's
+      // call resolved), silently killing live updates forever.
       try {
         // Synchronous token read (browser auth storage = localStorage,
         // key TOKEN_KEY). No async getter that could hang and silently
