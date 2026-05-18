@@ -660,6 +660,39 @@ _REGISTER_SESSION_TOOL = types.Tool(
 )
 
 
+_SET_TAB_IDENTITY_TOOL = types.Tool(
+    name="set_tab_identity",
+    description=(
+        "Set the icon and/or subtitle of YOUR OWN chat tab — the tab this "
+        "session runs in. Optional and freeform: use it to make the tab "
+        "self-describe what you're working on (e.g. on self-assigning a "
+        "plan, or when the focus shifts). The target tab is resolved from "
+        "your token; you cannot address another tab.\n\n"
+        "- icon: an @lib/icons IconName (lucide-style, e.g. 'wrench', "
+        "'bug', 'sparkles', 'flask', 'clipboard', 'rocket'). Unknown names "
+        "fall back to a default glyph — prefer a common, recognisable name.\n"
+        "- subtitle: a short secondary line shown under the tab title "
+        "(where the profile name otherwise sits). Keep it terse (≤ ~40 "
+        "chars), e.g. 'refactoring auth' or 'plan: tab-identity'.\n\n"
+        "Pass empty string to clear a field; omit a field to leave it "
+        "untouched. Never required — skip it if nothing meaningful changed."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "icon": {
+                "type": "string",
+                "description": "An @lib/icons IconName. Empty string clears.",
+            },
+            "subtitle": {
+                "type": "string",
+                "description": "Short secondary line under the tab title. Empty string clears.",
+            },
+        },
+    },
+)
+
+
 _ASK_USER_TOOL = types.Tool(
     name="ask_user",
     description=(
@@ -919,6 +952,46 @@ async def _handle_register_session(arguments: dict[str, Any]) -> list[types.Text
     print(f"[pixsim-mcp] Heartbeat started for session {session_id[:8]}", file=sys.stderr)
 
     return result
+
+
+async def _handle_set_tab_identity(arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Set this session's own tab icon / subtitle (plan agent-freeform-tab-identity).
+
+    Only keys the agent actually supplied are forwarded. An empty/whitespace
+    value is sent as JSON ``null`` so the backend clears that field (the UI
+    then falls back to the default glyph / profile label). The target tab is
+    resolved server-side from the token's ``scope_key`` / ``chat_session_id``;
+    ``session_id`` is forwarded only as a last-resort resolver hint.
+    """
+    token = _get_token()
+    if not token:
+        return [types.TextContent(type="text", text="No API token available — cannot set tab identity.")]
+
+    body: dict[str, Any] = {}
+    for field in ("icon", "subtitle"):
+        if field in arguments and arguments[field] is not None:
+            val = str(arguments[field]).strip()
+            body[field] = val or None  # "" / whitespace → explicit clear
+
+    if not body:
+        return [types.TextContent(
+            type="text",
+            text="Nothing to set — pass 'icon' and/or 'subtitle' (empty string clears).",
+        )]
+
+    # Last-resort resolver hint; ignored when the token carries a tab scope_key
+    # or chat_session_id (the authoritative, non-spoofable binding).
+    fallback = _extract_chat_session_id_from_token(token) or (
+        _registered_session_id if _registered_session_id != "__bridge__" else None
+    )
+    if fallback:
+        body["session_id"] = fallback
+
+    return await _proxy(
+        method="POST",
+        path="/api/v1/chat-tabs/self/identity",
+        body=body,
+    )
 
 
 _bridge_session_cache: dict[tuple[str | None, str | None, str | None], str] = {}
@@ -1342,7 +1415,7 @@ async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
-    all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL, _ASK_USER_TOOL] + _dynamic_tools
+    all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL, _SET_TAB_IDENTITY_TOOL, _ASK_USER_TOOL] + _dynamic_tools
 
     # In HTTP mode, filter tools by the per-request scope header
     scope = _request_scope.get()
@@ -1556,6 +1629,8 @@ async def handle_call_tool(
         return await _handle_register_session(arguments)
     if name == "log_work":
         return await _handle_log_work(arguments)
+    if name == "set_tab_identity":
+        return await _handle_set_tab_identity(arguments)
     if name == "ask_user":
         return await _handle_ask_user(arguments)
 
@@ -1870,7 +1945,7 @@ def _build_http_app(mcp_path: str = "/mcp") -> Any:
         """Return the list of available MCP tool names with group info."""
         await _init_tools()
         tools = []
-        for t in [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL] + _dynamic_tools:
+        for t in [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL, _SET_TAB_IDENTITY_TOOL] + _dynamic_tools:
             full_name = t.name
             if "__" in full_name:
                 group, short_name = full_name.split("__", 1)

@@ -21,6 +21,13 @@ export interface ServerChatTab {
    */
   sessionId: string | null;
   label: string;
+  /**
+   * Agent-set tab identity (plan `agent-freeform-tab-identity`). `icon` is an
+   * `@lib/icons` IconName; `subtitle` renders under the tab title in the
+   * profile-name slot. Null until the agent sets them via `set_tab_identity`.
+   */
+  icon: string | null;
+  subtitle: string | null;
   draft: string | null;
   orderIndex: number;
   planId: string | null;
@@ -48,6 +55,8 @@ export interface CreateChatTabPayload {
   id?: string;
   session_id?: string;
   label?: string;
+  icon?: string | null;
+  subtitle?: string | null;
   plan_id?: string | null;
   scope_key?: string | null;
   pinned?: boolean;
@@ -61,6 +70,9 @@ export interface CreateChatTabPayload {
 /** PATCH body — only fields present are written. `null` clears nullable cols. */
 export interface UpdateChatTabPayload {
   label?: string;
+  /** Agent-set identity. `null` clears (plan `agent-freeform-tab-identity`). */
+  icon?: string | null;
+  subtitle?: string | null;
   plan_id?: string | null;
   scope_key?: string | null;
   pinned?: boolean;

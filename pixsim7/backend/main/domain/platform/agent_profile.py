@@ -173,6 +173,15 @@ class ChatTab(SQLModel, table=True):
         max_length=120,
     )
     label: str = Field(default="Untitled", max_length=255)
+    # Agent-set tab identity (plan `plan-participant-liveness` /
+    # `agent-freeform-tab-identity`). `icon` is an @lib/icons IconName the
+    # agent picks freely (constrained to the existing set, not arbitrary);
+    # `subtitle` is a secondary line rendered under the tab title in the
+    # slot that otherwise shows the profile name. Both are agent-driven via
+    # the set_tab_identity MCP tool — never auto-copied from the plan or
+    # agent profile, never mutated by tool/MCP traffic.
+    icon: Optional[str] = Field(default=None, max_length=50)
+    subtitle: Optional[str] = Field(default=None, max_length=255)
     draft: Optional[str] = Field(
         default=None,
         sa_column=Column(Text),

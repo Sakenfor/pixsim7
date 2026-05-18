@@ -1136,6 +1136,8 @@ export function AIAssistantPanel() {
     const newTab: ChatTab = {
       id,
       label: profile?.label || 'New Chat',
+      icon: null,
+      subtitle: null,
       sessionId: null,
       profileId: resolvedProfileId,
       engine: (profile ? engineFromProfile(profile) : 'claude') as AgentEngine,
@@ -1259,6 +1261,8 @@ export function AIAssistantPanel() {
       const newTab: ChatTab = {
         id,
         label: planTitle ? `Plan: ${planTitle}` : `Plan: ${planId}`,
+        icon: null,
+        subtitle: null,
         sessionId: null,
         profileId: defaultProfile?.id ?? null,
         engine: (defaultProfile ? engineFromProfile(defaultProfile) : 'claude') as AgentEngine,

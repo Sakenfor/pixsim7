@@ -3,7 +3,7 @@
  * Extracted from the former `renderSessionItem` useCallback in AIAssistantPanel.
  */
 
-import { Icon } from '@lib/icons';
+import { Icon, getIcon } from '@lib/icons';
 
 import type { ChatTab } from './assistantChatStore';
 import type { UnifiedProfile } from './assistantTypes';
@@ -63,10 +63,20 @@ export function SessionItem({
   onDismissFailedCreate,
 }: SessionItemProps) {
   const tabProfile = profiles.find((p) => p.id === tab.profileId);
+  // Agent-set tab identity (plan `agent-freeform-tab-identity`). The
+  // freeform icon wins as the leading glyph, but only when it resolves to a
+  // real @lib/icons entry — an unknown/garbage name falls back to the
+  // profile/engine glyph rather than rendering raw text inside the badge.
+  const agentIcon = tab.icon?.trim();
+  const validAgentIcon = agentIcon && getIcon(agentIcon) ? agentIcon : null;
   const tabIcon = resolveProfileIcon(
     tab.engine,
-    tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'),
+    validAgentIcon || tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu'),
   );
+  // Secondary line: agent-set subtitle, falling back to the profile label
+  // (the slot's prior sole content) when the agent hasn't set one.
+  const subtitle = tab.subtitle?.trim() || null;
+  const secondaryLine = subtitle || (tab.profileId && tabProfile ? tabProfile.label : null);
   const isRenaming = renamingTabId === tab.id;
   const isFailedCreate = tab.pending === 'create-failed';
 
@@ -127,8 +137,13 @@ export function SessionItem({
             {tab.label}
           </div>
         )}
-        {tab.profileId && tabProfile && !isRenaming && (
-          <div className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate">{tabProfile.label}</div>
+        {secondaryLine && !isRenaming && (
+          <div
+            className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate"
+            title={subtitle ?? undefined}
+          >
+            {secondaryLine}
+          </div>
         )}
       </div>
       {isFailedCreate ? (

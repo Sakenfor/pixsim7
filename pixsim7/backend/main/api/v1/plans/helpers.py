@@ -922,6 +922,81 @@ async def release_checkpoint(
     return released
 
 
+# ── Tab-identity soft nudge (plan `agent-freeform-tab-identity`) ──
+#
+# A one-line, never-mandatory suggestion that the agent *may* brand its
+# chat tab via the set_tab_identity MCP tool. Surfaced ONLY at the
+# lifecycle anchors the agent already hits — first self-assign (claim) and
+# first checkpoint/plan completion — never on tool/MCP traffic. State is a
+# small ledger on the caller's PlanParticipant.meta (same row the claim
+# lives on, keyed by the chat session): once per anchor-type, hard global
+# cap so it can never spam. Scoping note: the ledger is per
+# (plan, session) participant row — effectively per-session since a chat
+# session almost always works one plan; the cap bounds it regardless.
+
+TAB_IDENTITY_NUDGE_META_KEY = "tab_identity_nudges"
+TAB_IDENTITY_NUDGE_GLOBAL_CAP = 2
+_TAB_IDENTITY_NUDGE_TEXT = {
+    "claim": (
+        "Optional: you can give this chat tab its own icon + subtitle so it "
+        "self-describes at a glance — call set_tab_identity (e.g. an "
+        "@lib/icons name matching this work, and a short subtitle). Skip it "
+        "if nothing meaningful would change."
+    ),
+    "completion": (
+        "Optional: if this tab's focus has shifted, you can refresh its "
+        "subtitle/icon via set_tab_identity. Never required."
+    ),
+}
+
+
+async def _get_caller_builder_participant(
+    db: AsyncSession, principal: CurrentUser, plan_id: str
+) -> Optional[PlanParticipant]:
+    """The caller's own builder row for a plan (or None), via the same
+    actor-identity match release/claim use."""
+    actor = _principal_actor_fields(principal)
+    for row in await list_plan_builders(db, plan_id):
+        if _actor_owns_participant(row, actor):
+            return row
+    return None
+
+
+async def maybe_tab_identity_nudge(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    anchor: str,
+) -> Optional[str]:
+    """Return the soft tab-identity nudge for *anchor* once, else None.
+
+    Idempotent per anchor-type and globally capped: writes a tiny ledger
+    onto the caller's participant ``meta`` (merged, never clobbers the
+    claim). Mutates the row in the caller's transaction — the endpoint
+    commits. Best-effort by contract: callers swallow failures so a nudge
+    never breaks claim/progress.
+    """
+    text = _TAB_IDENTITY_NUDGE_TEXT.get(anchor)
+    if text is None:
+        return None
+    row = await _get_caller_builder_participant(db, principal, plan_id)
+    if row is None:
+        return None
+    meta = row.meta if isinstance(row.meta, dict) else {}
+    ledger = meta.get(TAB_IDENTITY_NUDGE_META_KEY)
+    ledger = dict(ledger) if isinstance(ledger, dict) else {}
+    if anchor in ledger:
+        return None  # once per anchor-type
+    if len(ledger) >= TAB_IDENTITY_NUDGE_GLOBAL_CAP:
+        return None  # hard global cap — anchors compete for the budget
+    ledger[anchor] = utcnow().isoformat()
+    row.meta = _participant_merge_meta(
+        row.meta, {TAB_IDENTITY_NUDGE_META_KEY: ledger}
+    )
+    return text
+
+
 async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:
     """Auto-close any open claims owned by an agent run (called on run end)."""
     rid = _normalize_participant_value(run_id)

@@ -79,6 +79,15 @@ interface ChatMessage {
 interface ChatTab {
   id: string;
   label: string;
+  /**
+   * Agent-set tab identity (plan `agent-freeform-tab-identity`). `icon` is an
+   * `@lib/icons` IconName; `subtitle` renders under the tab title in the
+   * profile-name slot. Null until the agent sets them via `set_tab_identity`.
+   * Mirrors `ServerChatTab.icon` / `.subtitle`; rendering lands in the
+   * `render-subtitle` step.
+   */
+  icon: string | null;
+  subtitle: string | null;
   sessionId: string | null;
   profileId: string | null;
   engine: AgentEngine;
@@ -351,6 +360,8 @@ function deriveTab(server: ServerChatTab, prefs: TabPrefs | undefined): ChatTab 
   const derived: ChatTab = {
     id: server.id,
     label: server.label,
+    icon: server.icon ?? null,
+    subtitle: server.subtitle ?? null,
     sessionId: server.sessionId || null,
     profileId: p.profileId,
     engine: p.engine,
@@ -1443,6 +1454,8 @@ export function buildResumedTab(session: {
   return {
     id: createTabId(),
     label: session.label || 'Resumed',
+    icon: null,
+    subtitle: null,
     sessionId: session.id,
     profileId,
     engine: (session.engine || 'claude') as AgentEngine,

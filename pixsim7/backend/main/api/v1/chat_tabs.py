@@ -50,6 +50,11 @@ class ChatTabResponse(BaseModel):
     # ``chat-tab-server-persistence`` — first-turn resume-failure fix.
     sessionId: Optional[str] = None
     label: str
+    # Agent-set identity (plan `agent-freeform-tab-identity`). `icon` is an
+    # @lib/icons IconName; `subtitle` renders under the tab title in the
+    # profile-name slot. Both null until the agent sets them.
+    icon: Optional[str] = None
+    subtitle: Optional[str] = None
     draft: Optional[str] = None
     orderIndex: int
     planId: Optional[str] = None
@@ -83,6 +88,8 @@ class ChatTabCreateRequest(BaseModel):
         max_length=120,
     )
     label: Optional[str] = Field(None, max_length=255)
+    icon: Optional[str] = Field(None, max_length=50)
+    subtitle: Optional[str] = Field(None, max_length=255)
     plan_id: Optional[str] = Field(None, max_length=120)
     scope_key: Optional[str] = Field(None, max_length=255)
     pinned: bool = False
@@ -106,6 +113,11 @@ class ChatTabUpdateRequest(BaseModel):
     """
 
     label: Optional[str] = Field(None, max_length=255)
+    # Agent-set identity (plan `agent-freeform-tab-identity`). Pass an
+    # explicit ``null`` to clear (model_dump(exclude_unset=True) below
+    # distinguishes "clear" from "leave untouched").
+    icon: Optional[str] = Field(None, max_length=50)
+    subtitle: Optional[str] = Field(None, max_length=255)
     plan_id: Optional[str] = Field(None, max_length=120)
     scope_key: Optional[str] = Field(None, max_length=255)
     pinned: Optional[bool] = None
@@ -135,6 +147,8 @@ def _to_response(tab: ChatTab) -> ChatTabResponse:
         id=str(tab.id),
         sessionId=tab.session_id,
         label=tab.label,
+        icon=tab.icon,
+        subtitle=tab.subtitle,
         draft=tab.draft,
         orderIndex=tab.order_index,
         planId=tab.plan_id,
@@ -283,6 +297,8 @@ async def create_chat_tab(
         user_id=user.id,
         session_id=session_id,
         label=payload.label or "Untitled",
+        icon=payload.icon,
+        subtitle=payload.subtitle,
         plan_id=payload.plan_id,
         scope_key=payload.scope_key,
         pinned=payload.pinned,
@@ -341,6 +357,114 @@ async def update_chat_tab(
             new_plan_id=tab.plan_id,
         )
 
+    await db.commit()
+    await db.refresh(tab)
+    return _to_response(tab)
+
+
+# ── Agent-set tab identity (plan `agent-freeform-tab-identity`) ───
+
+
+class TabIdentityRequest(BaseModel):
+    """Agent-set icon / subtitle for *its own* tab.
+
+    Partial: only fields present are written; pass an explicit ``null`` to
+    clear (``model_dump(exclude_unset=True)`` distinguishes "clear" from
+    "leave untouched", same convention as ``ChatTabUpdateRequest``).
+
+    The tab is resolved server-side from the caller's token — never from a
+    client-supplied tab id — so an agent can only ever brand the tab it was
+    minted for. ``session_id`` is an optional last-resort resolver hint for
+    tokens that carry neither a ``tab:`` scope_key nor a ``chat_session_id``
+    claim; it is still owner-scoped before any write.
+    """
+
+    icon: Optional[str] = Field(None, max_length=50)
+    subtitle: Optional[str] = Field(None, max_length=255)
+    session_id: Optional[str] = Field(None, max_length=120)
+
+
+async def _resolve_self_tab(
+    db: AsyncSession,
+    principal,
+    *,
+    fallback_session_id: Optional[str],
+) -> ChatTab:
+    """Resolve the caller's *own* chat tab from its token, owner-scoped.
+
+    Priority (all from the validated JWT, not tool args):
+      1. ``scope_key == 'tab:<uuid>'`` — the tab the token was minted for.
+      2. ``chat_session_id`` claim — the bound session → its ChatTab.
+      3. ``fallback_session_id`` from the request body (last resort).
+
+    Raises 404 when nothing resolves, 403 when the resolved tab is not the
+    caller's (mirrors ``_load_owned_tab``). Never trusts a client-supplied
+    tab id: the agent can only brand a tab owned by the principal it acts
+    for, and the token binding pins it to *its* tab specifically.
+    """
+    tab: Optional[ChatTab] = None
+
+    scope_key = getattr(principal, "scope_key", None)
+    if scope_key and scope_key.startswith("tab:"):
+        raw = scope_key[len("tab:") :]
+        try:
+            tab = await db.get(ChatTab, UUID(raw))
+        except (ValueError, AttributeError):
+            tab = None
+
+    async def _by_session(sid: Optional[str]) -> Optional[ChatTab]:
+        if not sid:
+            return None
+        stmt = (
+            select(ChatTab)
+            .where(ChatTab.session_id == sid)
+            .order_by(ChatTab.updated_at.desc())
+        )
+        return (await db.execute(stmt)).scalars().first()
+
+    if tab is None:
+        tab = await _by_session(getattr(principal, "chat_session_id", None))
+    if tab is None:
+        tab = await _by_session(fallback_session_id)
+
+    if tab is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No chat tab resolvable for this session (token carries no tab scope_key / chat_session_id).",
+        )
+    if tab.user_id != principal.id:
+        raise HTTPException(status_code=403, detail="Not your tab")
+    return tab
+
+
+@router.post("/self/identity", response_model=ChatTabResponse)
+async def set_self_tab_identity(
+    payload: TabIdentityRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Set the calling agent's own tab icon / subtitle (freeform, opt-in).
+
+    Backs the ``set_tab_identity`` MCP tool. ``icon`` is stored as a plain
+    short string; the frontend constrains it to the ``@lib/icons`` set and
+    falls back to a default glyph for an unknown/unset value (no server-side
+    icon enum — the icon registry lives client-side). Never auto-driven:
+    only an explicit agent call lands here.
+    """
+    updates = payload.model_dump(exclude_unset=True)
+    updates.pop("session_id", None)
+    if not updates:
+        # Nothing to write — resolve+return current state so the agent can
+        # read back what's set without a separate endpoint.
+        tab = await _resolve_self_tab(
+            db, user, fallback_session_id=payload.session_id
+        )
+        return _to_response(tab)
+
+    tab = await _resolve_self_tab(db, user, fallback_session_id=payload.session_id)
+    for key, value in updates.items():
+        setattr(tab, key, value)
+    tab.updated_at = utcnow()
     await db.commit()
     await db.refresh(tab)
     return _to_response(tab)

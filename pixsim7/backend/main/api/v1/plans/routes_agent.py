@@ -1,4 +1,5 @@
 """Agent context routes — plan assignment for Claude Code agents."""
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,6 +21,8 @@ from pixsim7.backend.main.services.docs.plan_authoring_policy import (
 )
 from pixsim7.backend.main.api.v1.plans.schemas import PlanSummary
 from pixsim7.backend.main.api.v1.plans import helpers as _h
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -540,6 +543,14 @@ class ClaimResponse(BaseModel):
         default_factory=list,
         description="Other live claimants of the same checkpoint. Surfaced, not blocked.",
     )
+    nudge: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional one-line, never-mandatory suggestion (e.g. that you "
+            "may brand this chat tab via set_tab_identity). Surfaced at most "
+            "once per anchor-type per session — ignore if not actionable."
+        ),
+    )
 
 
 class ReleaseResponse(BaseModel):
@@ -568,6 +579,18 @@ async def claim_plan_checkpoint(
     own, conflicts = await _h.claim_checkpoint(
         db, principal=_user, plan_id=plan_id, checkpoint_id=payload.checkpoint_id
     )
+
+    # Soft tab-identity nudge — first self-assign anchor. Best-effort: a
+    # nudge must never fail the claim (plan `agent-freeform-tab-identity`).
+    nudge: Optional[str] = None
+    if own is not None:
+        try:
+            nudge = await _h.maybe_tab_identity_nudge(
+                db, principal=_user, plan_id=plan_id, anchor="claim"
+            )
+        except Exception:  # noqa: BLE001 — nudge is non-critical
+            logger.warning("tab-identity claim nudge failed", exc_info=True)
+
     await db.commit()
 
     return ClaimResponse(
@@ -575,6 +598,7 @@ async def claim_plan_checkpoint(
         checkpoint_id=payload.checkpoint_id,
         claimed=own is not None,
         participant_id=str(own.id) if own else None,
+        nudge=nudge,
         conflicts=[
             ClaimConflict(
                 agent_id=c.agent_id,

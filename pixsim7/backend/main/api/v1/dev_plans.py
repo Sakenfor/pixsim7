@@ -578,10 +578,23 @@ class PlanUpdateRequest(BaseModel):
     depends_on: Optional[List[str]] = Field(None)
     phases: Optional[List[str]] = Field(None, description="Ordered list of child plan IDs representing plan phases.")
     target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
-    checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list (replaces all).")
+    checkpoints: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description=(
+            "DESTRUCTIVE full-replace of the checkpoints list — any checkpoint "
+            "or field not re-sent is dropped. Use only for structural rewrites "
+            "(reorder/remove). For incremental edits use checkpoints_append; to "
+            "flip a step use plans.progress mark_steps_done."
+        ),
+    )
     checkpoints_append: Optional[List[Dict[str, Any]]] = Field(
         None,
-        description="Append checkpoints to existing list. Existing checkpoints with same ID are updated in-place.",
+        description=(
+            "Non-destructive per-id deep-merge into the existing checkpoints "
+            "list. Matched ids merge field-by-field (un-sent fields preserved); "
+            "steps[] merge by id/label (un-sent steps preserved); new ids are "
+            "appended. Preferred for incremental progress edits."
+        ),
     )
     patch: Optional[Dict[str, Any]] = Field(
         None,
@@ -686,12 +699,20 @@ async def update_plan_endpoint(
             if not bundle:
                 raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
             existing = list(bundle.plan.checkpoints or [])
-        # Merge: update in-place by ID, append new ones
-        existing_by_id = {c.get("id"): i for i, c in enumerate(existing) if c.get("id")}
+        # Per-id deep-merge: matched ids merge field-by-field (un-sent fields
+        # preserved, steps[] merged by id/label), new ids appended. Non-
+        # destructive — un-resent fields/steps are never dropped, unlike the
+        # full-replace `checkpoints` field.
+        existing_by_id = {
+            c.get("id"): i
+            for i, c in enumerate(existing)
+            if isinstance(c, dict) and c.get("id")
+        }
         for cp in checkpoints_append:
-            cp_id = cp.get("id")
+            cp_id = cp.get("id") if isinstance(cp, dict) else None
             if cp_id and cp_id in existing_by_id:
-                existing[existing_by_id[cp_id]] = cp
+                idx = existing_by_id[cp_id]
+                existing[idx] = _deep_merge_checkpoint(existing[idx], cp)
             else:
                 existing.append(cp)
         updates["checkpoints"] = existing
@@ -1004,6 +1025,20 @@ class PlanProgressRequest(BaseModel):
         False,
         description="When true, verify all commit SHAs exist in the repository before recording.",
     )
+    mark_steps_done: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Step ids or labels on this checkpoint to set done=true. This is "
+            "the canonical, non-destructive way to advance a step-tracked "
+            "checkpoint — points/status are re-derived from the new steps "
+            "tally. Do NOT round-trip the whole checkpoints array via "
+            "plans.update just to flip a step."
+        ),
+    )
+    mark_steps_undone: Optional[List[str]] = Field(
+        None,
+        description="Step ids or labels on this checkpoint to set done=false.",
+    )
     note: Optional[str] = Field(None, description="Short progress note.")
     sync_plan_stage: bool = Field(
         False,
@@ -1020,6 +1055,15 @@ class PlanProgressResponse(BaseModel):
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
+    nudge: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional one-line, never-mandatory suggestion (e.g. that you "
+            "may refresh this chat tab's subtitle/icon via set_tab_identity "
+            "now a checkpoint completed). At most once per anchor-type per "
+            "session — ignore if not actionable."
+        ),
+    )
 
 
 def _checkpoint_progress_summary(checkpoint: Dict[str, Any], fallback_id: str) -> str:
@@ -1029,6 +1073,140 @@ def _checkpoint_progress_summary(checkpoint: Dict[str, Any], fallback_id: str) -
     if points_total is not None and points_total > 0:
         return f"{checkpoint_id} [{status}] {points_done}/{points_total}"
     return f"{checkpoint_id} [{status}] {points_done}"
+
+
+def _match_steps(steps: List[Any], key: str) -> List[int]:
+    """Indexes of steps matching *key* by id (exact), then label (exact, then
+    casefolded/trimmed). First non-empty tier wins so an id never collides
+    with a same-named label."""
+    key_norm = key.strip()
+    by_id = [
+        i for i, s in enumerate(steps)
+        if isinstance(s, dict) and s.get("id") == key
+    ]
+    if by_id:
+        return by_id
+    by_label = [
+        i for i, s in enumerate(steps)
+        if isinstance(s, dict) and str(s.get("label") or "").strip() == key_norm
+    ]
+    if by_label:
+        return by_label
+    kf = key_norm.casefold()
+    return [
+        i for i, s in enumerate(steps)
+        if isinstance(s, dict) and str(s.get("label") or "").strip().casefold() == kf
+    ]
+
+
+def _apply_step_toggles(
+    checkpoint: Dict[str, Any],
+    *,
+    mark_done: Optional[List[str]],
+    mark_undone: Optional[List[str]],
+) -> bool:
+    """Flip ``steps[].done`` on a single checkpoint dict in place.
+
+    This is the targeted, non-destructive path for advancing a step-tracked
+    checkpoint — callers never round-trip the whole checkpoints array. Returns
+    True if any step changed. Raises ValueError (→ 400) when the checkpoint has
+    no steps[] or a key matches no step.
+    """
+    if not mark_done and not mark_undone:
+        return False
+    steps = checkpoint.get("steps")
+    if not isinstance(steps, list) or not any(isinstance(s, dict) for s in steps):
+        raise ValueError(
+            f"Checkpoint {checkpoint.get('id')!r} has no steps[] to toggle. Use "
+            "points_done/points_delta for non-stepped checkpoints, or seed "
+            "steps[] via the plans.update checkpoints field first."
+        )
+
+    changed = False
+    unknown: List[str] = []
+    for key, target in (
+        *((k, True) for k in (mark_done or [])),
+        *((k, False) for k in (mark_undone or [])),
+    ):
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError(
+                "mark_steps_done / mark_steps_undone entries must be non-empty strings"
+            )
+        idxs = _match_steps(steps, key)
+        if not idxs:
+            unknown.append(key)
+            continue
+        for i in idxs:
+            if bool(steps[i].get("done")) != target:
+                steps[i]["done"] = target
+                changed = True
+    if unknown:
+        valid = [
+            (s.get("id") or s.get("label"))
+            for s in steps
+            if isinstance(s, dict)
+        ]
+        raise ValueError(
+            f"No step on checkpoint {checkpoint.get('id')!r} matches {unknown!r}. "
+            f"Valid step ids/labels: {valid!r}"
+        )
+    return changed
+
+
+def _merge_checkpoint_steps(base_steps: Any, incoming_steps: Any) -> Any:
+    """Merge ``steps[]`` by id (fallback label): un-sent steps preserved,
+    sent fields overlaid, unmatched incoming steps appended. None values in an
+    incoming step are treated as 'not provided'."""
+    if not isinstance(incoming_steps, list):
+        return base_steps
+    if not isinstance(base_steps, list):
+        return incoming_steps
+    merged = [dict(s) if isinstance(s, dict) else s for s in base_steps]
+    for inc in incoming_steps:
+        if not isinstance(inc, dict):
+            merged.append(inc)
+            continue
+        idxs: List[int] = []
+        inc_id = inc.get("id")
+        if inc_id:
+            idxs = [
+                i for i, s in enumerate(merged)
+                if isinstance(s, dict) and s.get("id") == inc_id
+            ]
+        if not idxs:
+            inc_label = str(inc.get("label") or "").strip()
+            if inc_label:
+                idxs = [
+                    i for i, s in enumerate(merged)
+                    if isinstance(s, dict) and str(s.get("label") or "").strip() == inc_label
+                ]
+        if idxs:
+            for i in idxs:
+                merged[i].update({k: v for k, v in inc.items() if v is not None})
+        else:
+            merged.append(inc)
+    return merged
+
+
+def _deep_merge_checkpoint(base: Any, incoming: Any) -> Any:
+    """Field-level merge: incoming keys overlay *base*; un-sent keys preserved.
+
+    None values in *incoming* are treated as 'not provided' (preserve base) —
+    matching the system's exclude_none convention. ``steps[]`` is merged by
+    id/label so a partial steps list never drops un-sent steps. To clear a
+    field or remove a step, use the destructive full-replace ``checkpoints``.
+    """
+    if not isinstance(base, dict) or not isinstance(incoming, dict):
+        return incoming
+    merged = dict(base)
+    for k, v in incoming.items():
+        if v is None:
+            continue
+        if k == "steps":
+            merged["steps"] = _merge_checkpoint_steps(base.get("steps"), v)
+        else:
+            merged[k] = v
+    return merged
 
 
 def _extract_checkpoint_test_suite_refs(evidence_value: Any) -> List[str]:
@@ -1183,6 +1361,8 @@ async def log_plan_progress(
             payload.auto_head,
             bool((payload.note or "").strip()),
             payload.sync_plan_stage,
+            bool(payload.mark_steps_done),
+            bool(payload.mark_steps_undone),
         )
     )
     if not has_action:
@@ -1213,6 +1393,18 @@ async def log_plan_progress(
     checkpoint_raw = checkpoints[checkpoint_index]
     checkpoint = dict(checkpoint_raw) if isinstance(checkpoint_raw, dict) else {}
     old_checkpoint_summary = _checkpoint_progress_summary(checkpoint, payload.checkpoint_id)
+
+    # Targeted step toggle — the safe path for step-tracked checkpoints. Applied
+    # before the points guard / derivation below so _derive_checkpoint_points
+    # sees the new tally and auto-recomputes points + status.
+    try:
+        steps_changed = _apply_step_toggles(
+            checkpoint,
+            mark_done=payload.mark_steps_done,
+            mark_undone=payload.mark_steps_undone,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     referenced_test_suite_ids: list[str] = []
     for suite_id in payload.append_tests or []:
@@ -1261,8 +1453,7 @@ async def log_plan_progress(
     # tally. Silently honoring points here would write a value that the very
     # next read (todo_summary, this endpoint's own next call) re-derives away,
     # so the caller's progress never sticks. Reject instead of no-op, and point
-    # them at the only mechanism that actually moves a stepped checkpoint:
-    # flipping steps[].done via the plans.update checkpoints PATCH.
+    # them at the safe targeted path: mark_steps_done on this same endpoint.
     _cp_steps = checkpoint.get("steps")
     _stepped = isinstance(_cp_steps, list) and any(
         isinstance(s, dict) for s in _cp_steps
@@ -1280,9 +1471,11 @@ async def log_plan_progress(
                     f"Checkpoint {payload.checkpoint_id!r} is step-tracked: its "
                     "points are derived from steps[] (steps win per the authoring "
                     "contract). Points sent via plans.progress are silently "
-                    "overridden by the steps tally and will not persist. Mark the "
-                    "relevant steps done:true via the plans.update checkpoints "
-                    "PATCH instead, or send status / owner / note only (no points)."
+                    "overridden by the steps tally and will not persist. Re-send "
+                    "this same plans.progress call with mark_steps_done (step ids "
+                    "or labels) instead — points and status are re-derived "
+                    "automatically. status / owner / note (no points) are also "
+                    "accepted as-is."
                 ),
                 "checkpoint_id": payload.checkpoint_id,
                 "steps_total": sum(1 for s in _cp_steps if isinstance(s, dict)),
@@ -1319,7 +1512,7 @@ async def log_plan_progress(
 
     if payload.status is not None:
         checkpoint["status"] = payload.status
-    elif points_changed:
+    elif points_changed or steps_changed:
         existing_status = str(checkpoint.get("status") or "").lower()
         if existing_status != "blocked":
             if points_total is not None and points_total > 0 and points_done >= points_total:
@@ -1469,6 +1662,22 @@ async def log_plan_progress(
         new_summary=new_checkpoint_summary,
         principal=principal,
     )
+
+    # Soft tab-identity nudge — fires once when this call flips the
+    # checkpoint to done (the completion anchor), never mid-progress.
+    # Best-effort: a nudge must never fail progress logging (plan
+    # `agent-freeform-tab-identity`).
+    nudge: Optional[str] = None
+    _old_status = str((checkpoint_raw or {}).get("status") or "pending") if isinstance(checkpoint_raw, dict) else "pending"
+    _new_status = str(checkpoint.get("status") or "pending")
+    if _new_status == "done" and _old_status != "done":
+        try:
+            nudge = await maybe_tab_identity_nudge(
+                db, principal=principal, plan_id=plan_id, anchor="completion"
+            )
+        except Exception:  # noqa: BLE001 — nudge is non-critical
+            logger.warning("tab-identity completion nudge failed", exc_info=True)
+
     await db.commit()
 
     return PlanProgressResponse(
@@ -1480,6 +1689,7 @@ async def log_plan_progress(
         commitSha=result.commit_sha,
         newScope=result.new_scope,
         warnings=progress_policy_warnings,
+        nudge=nudge,
     )
 
 

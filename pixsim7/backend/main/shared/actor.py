@@ -75,6 +75,14 @@ class RequestPrincipal(BaseModel):
     agent_label: Optional[str] = Field(default=None, description="Resolved profile display name.")
     run_id: Optional[str] = Field(default=None, description="Unique run/invocation ID.")
     plan_id: Optional[str] = Field(default=None, description="Plan being worked on.")
+    scope_key: Optional[str] = Field(
+        default=None,
+        description="Tab/plan scope the token was minted for, e.g. 'tab:<uuid>' | 'plan:<id>'. JWT claim: scope_key.",
+    )
+    chat_session_id: Optional[str] = Field(
+        default=None,
+        description="Bound chat session id for a tab-minted token. JWT claim: chat_session_id.",
+    )
     on_behalf_of: Optional[int] = Field(default=None, description="User ID the agent acts for.")
     on_behalf_of_name: Optional[str] = Field(default=None, description="Resolved display name of delegating user.")
 
@@ -189,6 +197,8 @@ class RequestPrincipal(BaseModel):
                 agent_type=payload.get("agent_type"),
                 run_id=payload.get("run_id") or x_run_id,
                 plan_id=payload.get("plan_id") or x_plan_id,
+                scope_key=payload.get("scope_key"),
+                chat_session_id=payload.get("chat_session_id"),
                 on_behalf_of=delegated_user_id if delegated_user_id > 0 else None,
                 role="agent",
                 admin=False,
