@@ -15,6 +15,7 @@ import { Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,6 +86,11 @@ export function Ticker({
   const [expanded, setExpanded] = useState(true);
   const [paused, setPaused] = useState(false);
   const [offset, setOffset] = useState(0);
+  // True only when one copy of the buffer overflows the ticker width. The
+  // marquee renders the buffer twice ONLY in this case (for a seamless
+  // wrap). When the content fits we render a single copy — otherwise the
+  // leftover space shows the start of copy 2 and every item looks doubled.
+  const [needsScroll, setNeedsScroll] = useState(false);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const tickerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -165,27 +171,49 @@ export function Ticker({
     setOffset(0);
   }, [events]);
 
-  // Scrolling animation. Pauses on hover. Skips when content fits.
+  // Measure whether one copy overflows the ticker. Drives both the
+  // single-vs-double render and whether the scroll animation runs.
+  // Re-measures on events/expand changes and on container resize (greedy
+  // layout means width changes as the toolbar reflows).
+  useLayoutEffect(() => {
+    const ticker = tickerRef.current;
+    const firstGroup = firstGroupRef.current;
+    if (!expanded || !ticker || !firstGroup) {
+      setNeedsScroll(false);
+      return undefined;
+    }
+    const measure = () => {
+      const fg = firstGroupRef.current;
+      const tk = tickerRef.current;
+      if (!fg || !tk) return;
+      setNeedsScroll(fg.scrollWidth > tk.clientWidth + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(ticker);
+    ro.observe(firstGroup);
+    return () => ro.disconnect();
+  }, [events, expanded]);
+
+  // Scrolling animation. Pauses on hover. Only runs when content overflows.
   useEffect(() => {
-    if (!expanded || paused || events.length === 0) return undefined;
+    if (!expanded || paused || !needsScroll || events.length === 0) {
+      setOffset(0);
+      return undefined;
+    }
 
     const content = contentRef.current;
     const ticker = tickerRef.current;
     const firstGroup = firstGroupRef.current;
     if (!content || !ticker || !firstGroup) return undefined;
 
-    // One copy of the buffer. The marquee renders this buffer twice; a
-    // seamless loop scrolls by exactly ONE copy's width (plus the seam gap
-    // between the two copies) and then wraps — copy 2 is sitting exactly
-    // where copy 1 started, so the wrap is invisible. The previous code
-    // scrolled past BOTH copies before resetting, which is why every item
-    // was visibly shown twice with a blank gap on wrap.
+    // Seamless loop: the buffer is rendered twice and we scroll by exactly
+    // ONE copy's width (plus the seam gap between the two copies), then
+    // wrap — copy 2 is sitting exactly where copy 1 started, so the wrap is
+    // invisible. (The old code scrolled past BOTH copies before resetting,
+    // so every item was visibly shown twice with a blank gap on wrap.)
     const oneCopyWidth = firstGroup.scrollWidth;
-    const tickerWidth = ticker.clientWidth;
-    if (oneCopyWidth <= tickerWidth) {
-      setOffset(0);
-      return undefined;
-    }
 
     // Seam gap = the outer flex gap between the two copy groups. Read it
     // off computed style so the period stays exact regardless of rem size.
@@ -208,7 +236,7 @@ export function Ticker({
 
     animationFrame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationFrame);
-  }, [expanded, paused, events]);
+  }, [expanded, paused, needsScroll, events]);
 
   // We DON'T early-return when `events.length === 0` — the chevron must
   // remain reachable so the user can enable a source for the first time
@@ -281,20 +309,24 @@ export function Ticker({
               className="absolute whitespace-nowrap flex items-center h-full gap-4 px-2"
               style={{ transform: `translateX(-${offset}px)` }}
             >
-              {/* The buffer is rendered twice so the scroll can wrap
-                  seamlessly (see the scroll effect). The first group is
-                  measured to derive the wrap period; the second is an
-                  aria-hidden visual continuation only. */}
+              {/* The first group is always rendered and is measured to
+                  derive the wrap period. The second group is a duplicate
+                  that ONLY exists while scrolling — it provides the
+                  seamless wrap. Rendering it when the content already fits
+                  would show the start of copy 2 in the leftover space,
+                  which looks like every item is doubled. */}
               <div ref={firstGroupRef} className="flex items-center gap-4">
                 {events.map((event) => (
                   <TickerItem key={event.id} event={event} />
                 ))}
               </div>
-              <div className="flex items-center gap-4" aria-hidden="true">
-                {events.map((event) => (
-                  <TickerItem key={`${event.id}-dup`} event={event} />
-                ))}
-              </div>
+              {needsScroll && (
+                <div className="flex items-center gap-4" aria-hidden="true">
+                  {events.map((event) => (
+                    <TickerItem key={`${event.id}-dup`} event={event} />
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-full px-2 flex items-center text-neutral-500 dark:text-neutral-400">
