@@ -19,3 +19,4 @@ export {
   upsertSessionGameObjects,
   toGameObjectRef,
 } from './gameObjectStore';
+export { GameObjectEntity } from './GameObjectEntity';

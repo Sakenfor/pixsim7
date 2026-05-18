@@ -16,7 +16,6 @@ import type {
   TemplateKind,
   SessionFlags,
 } from '@pixsim7/shared.types';
-import { Ref } from '@pixsim7/shared.ref.core';
 import { createTemplateRefKey } from '@pixsim7/core.links';
 import type {
   GameRuntime as IGameRuntime,
@@ -61,6 +60,8 @@ import {
   listSessionGameObjects,
   upsertSessionGameObjects,
 } from './gameObjectStore';
+import { GameObjectEntity } from './GameObjectEntity';
+import { buildEntityRefForKind } from './entityRefStrategy';
 
 type TemplateResolution = {
   runtimeId: number | null;
@@ -489,41 +490,7 @@ export class GameRuntime implements IGameRuntime {
     const numeric = Number(normalizedId);
     const hasNumber = Number.isFinite(numeric);
 
-    switch (normalizedKind) {
-      case 'npc':
-        if (!hasNumber) break;
-        return Ref.npc(numeric);
-      case 'location':
-        if (!hasNumber) break;
-        return Ref.location(numeric);
-      case 'scene':
-        if (!hasNumber) break;
-        return Ref.scene(numeric);
-      case 'asset':
-        if (!hasNumber) break;
-        return Ref.asset(numeric);
-      case 'generation':
-        if (!hasNumber) break;
-        return Ref.generation(numeric);
-      case 'world':
-        if (!hasNumber) break;
-        return Ref.world(numeric);
-      case 'session':
-        if (!hasNumber) break;
-        return Ref.session(numeric);
-      case 'item':
-      case 'prop':
-      case 'trigger':
-      case 'player':
-        return `${normalizedKind}:${normalizedId}` as EntityRef;
-      default:
-        if (hasNumber) {
-          return `${normalizedKind}:${numeric}` as EntityRef;
-        }
-        return `${normalizedKind}:${normalizedId}` as EntityRef;
-    }
-
-    return `${normalizedKind}:${normalizedId}` as EntityRef;
+    return buildEntityRefForKind(normalizedKind, normalizedId, numeric, hasNumber);
   }
 
   private resolveParticipantFromGameObjects(
@@ -531,35 +498,36 @@ export class GameRuntime implements IGameRuntime {
   ): InteractionParticipant {
     if (!this.session) return participant;
 
-    let runtimeObject = null;
+    let entity: GameObjectEntity | null = null;
 
     if (typeof participant.ref === 'string' && participant.ref.trim().length > 0) {
-      runtimeObject = getSessionGameObject(this.session, participant.ref);
+      entity = this.getGameObjectEntity(participant.ref);
     }
 
-    if (!runtimeObject && participant.kind && participant.id != null) {
-      runtimeObject = getSessionGameObject(this.session, {
+    if (!entity && participant.kind && participant.id != null) {
+      entity = this.getGameObjectEntity({
         kind: participant.kind,
         id: participant.id,
       });
     }
 
-    if (!runtimeObject) {
+    if (!entity) {
       return participant;
     }
 
-    const resolvedKind =
-      this.normalizeRuntimeKind(runtimeObject.runtimeKind ?? runtimeObject.kind) ??
-      runtimeObject.runtimeKind ??
-      runtimeObject.kind;
-    const resolvedRef = typeof runtimeObject.ref === 'string'
-      ? runtimeObject.ref
-      : this.buildEntityRef(resolvedKind, runtimeObject.id);
+    // Runtime holds the entity; the store stayed the POJO edge. Behavior-
+    // preserving: `entity.runtimeKind` encodes the store's `runtimeKind ?? kind`
+    // rule, and store reads always normalize `ref` to a string, so `entity.ref`
+    // is exactly the value the old raw-POJO branch produced (the old
+    // `buildEntityRef` fallback there was dead code in this path).
+    const baseKind = entity.runtimeKind;
+    const resolvedKind = this.normalizeRuntimeKind(baseKind) ?? baseKind;
+    const resolvedRef = entity.ref;
 
     return {
       ...participant,
       kind: participant.kind ?? resolvedKind,
-      id: participant.id ?? runtimeObject.id,
+      id: participant.id ?? entity.id,
       ref: (participant.ref ?? resolvedRef) as EntityRef | undefined,
     };
   }
@@ -718,14 +686,34 @@ export class GameRuntime implements IGameRuntime {
     return this.world;
   }
 
-  listGameObjects(query: RuntimeGameObjectQuery = {}): GameObject[] {
+  /**
+   * Internal object-core accessors. Runtime logic operates on
+   * `GameObjectEntity`; the store remains the POJO edge and public API methods
+   * project back via `toPOJO()`. Per-call store reads already return fresh
+   * objects (the store rebuilds every call), so wrapping/cloning introduces no
+   * shared-mutation behavior change.
+   */
+  private getGameObjectEntity(
+    lookup: RuntimeGameObjectLookup
+  ): GameObjectEntity | null {
+    if (!this.session) return null;
+    const pojo = getSessionGameObject(this.session, lookup);
+    return pojo ? GameObjectEntity.fromPOJO(pojo) : null;
+  }
+
+  private listGameObjectEntities(
+    query: RuntimeGameObjectQuery = {}
+  ): GameObjectEntity[] {
     if (!this.session) return [];
-    return listSessionGameObjects(this.session, query);
+    return GameObjectEntity.fromPOJOs(listSessionGameObjects(this.session, query));
+  }
+
+  listGameObjects(query: RuntimeGameObjectQuery = {}): GameObject[] {
+    return this.listGameObjectEntities(query).map((entity) => entity.toPOJO());
   }
 
   getGameObject(lookup: RuntimeGameObjectLookup): GameObject | null {
-    if (!this.session) return null;
-    return getSessionGameObject(this.session, lookup);
+    return this.getGameObjectEntity(lookup)?.toPOJO() ?? null;
   }
 
   upsertGameObjects(objects: GameObject[]): void {
