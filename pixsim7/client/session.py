@@ -716,14 +716,41 @@ class AgentCmdSession:
         self.stats.last_activity = datetime.now(timezone.utc)
 
         result_text = ""
+        # Path-1 inactivity guard. `timeout` bounds the gap between subprocess
+        # stdout lines — but a tool the agent invoked (built-in, Bash, or a
+        # *blocking* MCP call such as ask_user / a confirmation) emits zero
+        # stdout while it runs. That silence is legitimate, not a hang: we
+        # already saw the tool_use line, so the agent is alive and waiting on
+        # the tool (often on a human, on mobile). While a tool_use is
+        # outstanding and the process is alive, re-arm the wait instead of
+        # killing the turn (mirrors the backend heartbeat-extend in
+        # remote_cmd_bridge.dispatch_task_streaming).
+        tool_inflight = False
         try:
             while True:
-                event_raw = await asyncio.wait_for(
-                    self._response_queue.get(),
-                    timeout=timeout,
-                )
+                while True:
+                    slice_to = min(timeout, 30) if tool_inflight else timeout
+                    try:
+                        event_raw = await asyncio.wait_for(
+                            self._response_queue.get(),
+                            timeout=slice_to,
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        if tool_inflight and self.is_alive:
+                            self._log.info(
+                                "session_tool_inflight_extend",
+                                last_action=self._busy_last_action,
+                                last_detail=self._busy_last_detail,
+                            )
+                            continue
+                        raise
 
                 parsed = self._protocol.parse_event(event_raw)
+                # Any fresh stdout line ends the silent window. A tool_use
+                # block re-opens it (the tool is about to run); every other
+                # event means the agent is streaming again.
+                tool_inflight = False
 
                 if parsed.kind == "init":
                     if parsed.session_id:
@@ -840,6 +867,9 @@ class AgentCmdSession:
                         _probe_input = _first_block.get("input") or {}
                         _probe_keys = sorted(_probe_input.keys()) if isinstance(_probe_input, dict) else []
                         self._log.info("tool_use_seen", name=_probe_name, input_keys=_probe_keys)
+                        # Tool is about to run → reopen the silent-gap window so
+                        # the inactivity timeout extends until its result lands.
+                        tool_inflight = True
 
                     # ── Tool gate: pause stdout reader until user approves ──
                     if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
