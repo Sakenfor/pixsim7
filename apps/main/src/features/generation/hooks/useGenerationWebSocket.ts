@@ -248,6 +248,17 @@ function handleJobEvent(message: WebSocketRecord): void {
     }).catch(err => {
       console.error('[WebSocket] Failed to fetch generation:', generationId, err);
     });
+  } else if (message.type === 'job:retrying') {
+    // Non-terminal requeue that bumped retry_count (e.g. content-filter retry
+    // loop). Status stays pending/processing so the optimistic path never
+    // refreshes retryCount/attemptCount — they'd freeze at the first-observed
+    // value. Refetch authoritatively, same as terminal events.
+    debugFlags.log('websocket', 'Job retrying, refetching for updated retry/attempt counts');
+    pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
+      addOrUpdateGeneration(fromGenerationResponse(data));
+    }).catch(err => {
+      console.error('[WebSocket] Failed to fetch generation on retrying event:', generationId, err);
+    });
   } else {
     // job:created, job:started, job:running, job:paused, job:resumed
     // — optimistic patch is sufficient, no fetch needed

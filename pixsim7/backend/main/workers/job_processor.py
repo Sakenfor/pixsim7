@@ -104,6 +104,7 @@ from pixsim7.backend.main.workers.job_processor_requeue import (  # noqa: F401
     _requeue_generation_for_account_rotation,
     _defer_pinned_generation,
     _count_pending_pinned_siblings,
+    _publish_job_retrying,
 )
 
 # Cooldown applied when an account fails authentication/session checks.
@@ -1456,6 +1457,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 retry_attempt=generation.retry_count,
                                 max_retries=MAX_CONTENT_FILTER_RETRIES,
                                 enqueue_deduped=bool(enqueue_result.get("deduped")),
+                            )
+
+                            await _publish_job_retrying(
+                                generation,
+                                reason="content_filtered_retry",
+                                gen_logger=gen_logger,
                             )
 
                             return {

@@ -20,6 +20,41 @@ from pixsim7.backend.main.workers.worker_concurrency import (
 )
 
 
+async def _publish_job_retrying(
+    generation: Generation,
+    *,
+    reason: str,
+    gen_logger,
+) -> None:
+    """Emit JOB_RETRYING so the frontend refetches retry/attempt counts.
+
+    Non-terminal requeues (content-filter retry, account rotation) bump
+    ``retry_count`` but keep status pending/processing, so the optimistic
+    WebSocket path never refreshes the counters. This event tells the client
+    to do an authoritative refetch. Best-effort: a publish failure must not
+    break the requeue.
+    """
+    try:
+        from pixsim7.backend.main.infrastructure.events.bus import event_bus
+        from pixsim7.backend.main.services.generation.events import JOB_RETRYING
+
+        await event_bus.publish(JOB_RETRYING, {
+            "job_id": generation.id,
+            "generation_id": generation.id,
+            "user_id": generation.user_id,
+            "status": generation.status.value if hasattr(generation.status, "value") else str(generation.status),
+            "retry_attempt": generation.retry_count or 0,
+            "reason": reason,
+        })
+    except Exception:
+        gen_logger.debug(
+            "job_retrying_event_publish_failed",
+            generation_id=generation.id,
+            reason=reason,
+            exc_info=True,
+        )
+
+
 async def _requeue_generation_for_account_rotation(
     *,
     db: AsyncSession,
@@ -82,6 +117,9 @@ async def _requeue_generation_for_account_rotation(
         if defer_seconds is not None and enqueue_result.get("actual_defer_seconds") is not None:
             payload["defer_seconds"] = int(enqueue_result["actual_defer_seconds"])
         gen_logger.info(log_event, **payload)
+
+        if increment_retry:
+            await _publish_job_retrying(generation, reason=reason, gen_logger=gen_logger)
 
         result = {
             "status": "requeued",
