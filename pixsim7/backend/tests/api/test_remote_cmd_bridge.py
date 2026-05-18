@@ -354,6 +354,35 @@ class TestAgentRouting:
         assert bridge.get_available_agent(agent_type="codex") is agent
         assert bridge.get_available_agent(agent_type="CODEX") is agent
 
+    def test_multi_engine_bridge_matches_pool_engine(self):
+        """A bridge registered as `claude` whose pool also runs `codex`
+        (reported in pool_status["engines"]) must match an `agent_type=
+        "codex"` request. Regression: matching only on the single
+        registered agent_type made codex requests miss this bridge, so the
+        WS handler fell back to claude and ran a codex profile's model
+        (gpt-5.3-codex) on the claude binary."""
+        bridge = RemoteCommandBridge()
+        multi = _make_agent(agent_id="multi")
+        multi.agent_type = "claude-cli"
+        multi.pool_status = {"engines": ["claude", "codex"]}
+        bridge._agents["multi"] = multi
+
+        assert bridge.get_available_agent(agent_type="codex") is multi
+        assert bridge.get_available_agent(agent_type="claude") is multi
+        assert bridge.get_available_agent(agent_type="gemini") is None
+
+    def test_multi_engine_falls_back_to_session_prefixes(self):
+        """When pool_status has no explicit `engines` list, engine
+        capability is inferred from active pool session-id prefixes
+        (`codex-1` → codex), mirroring the status endpoint."""
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a")
+        agent.agent_type = "claude-cli"
+        agent.pool_status = {"sessions": [{"session_id": "codex-1"}]}
+        bridge._agents["a"] = agent
+
+        assert bridge.get_available_agent(agent_type="codex") is agent
+
     def test_agent_type_filter_handles_no_suffix(self):
         """Bridges that report bare engine names (no `-cli` suffix) still
         match — the suffix strip is permissive in both directions."""

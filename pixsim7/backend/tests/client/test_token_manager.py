@@ -221,6 +221,30 @@ class TestCodexMcpConfig:
         assert "[mcp_servers.pixsim.env]" in result
         assert 'PIXSIM_API_URL = "http://localhost:8000"' in result
 
+    def test_render_pins_chatgpt_auth_by_default(self):
+        env = McpEnv(api_base="http://x", api_token="t", token_file="/t", scope="dev")
+        result = render_codex_mcp_config(
+            env, python_cmd="python", mcp_server_script="/mcp.py",
+        )
+        assert 'preferred_auth_method = "chatgpt"' in result
+        # Top-level key MUST precede the first [table] header (valid TOML).
+        assert result.index("preferred_auth_method") < result.index("[mcp_servers.pixsim]")
+
+    def test_render_omits_auth_method_when_none(self):
+        env = McpEnv(api_base="http://x", api_token="t", token_file="/t", scope="dev")
+        result = render_codex_mcp_config(
+            env, python_cmd="python", mcp_server_script="/mcp.py",
+            preferred_auth_method=None,
+        )
+        assert "preferred_auth_method" not in result
+
+    def test_render_http_pins_chatgpt_auth_by_default(self):
+        from pixsim7.client.token_manager import render_codex_mcp_http_config
+
+        result = render_codex_mcp_http_config(mcp_url="http://localhost:9999/mcp")
+        assert 'preferred_auth_method = "chatgpt"' in result
+        assert result.index("preferred_auth_method") < result.index("[mcp_servers.pixsim]")
+
     def test_render_with_enabled_tools(self):
         env = McpEnv(api_base="http://x", api_token="t", token_file="/t", scope="dev")
         result = render_codex_mcp_config(

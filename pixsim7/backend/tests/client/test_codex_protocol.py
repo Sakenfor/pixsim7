@@ -25,6 +25,16 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="client deps not available")
 
 
+class TestCodexAuthMethodOverride:
+    def test_forces_chatgpt_auth_on_every_spawn(self):
+        p = CodexAppServerProtocol()
+        cmd = p.build_start_cmd("codex", model="gpt-5.3-codex")
+        assert "preferred_auth_method=chatgpt" in cmd
+        # -c override must be present even with no model/effort.
+        bare = p.build_start_cmd("codex")
+        assert "preferred_auth_method=chatgpt" in bare
+
+
 class TestCodexReasoningEffortNormalization:
     def test_maps_claude_max_to_xhigh(self):
         p = CodexAppServerProtocol()

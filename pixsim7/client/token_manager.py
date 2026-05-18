@@ -395,14 +395,28 @@ def render_codex_mcp_config(
     python_prefix: list[str] | None = None,
     mcp_server_script: str,
     enabled_tools: list[str] | None = None,
+    preferred_auth_method: str | None = "chatgpt",
 ) -> str:
     """Render a Codex-compatible MCP config (TOML).
 
     Returns the TOML string. Caller writes it to
     ``<workdir>/.codex/config.toml``.
+
+    ``preferred_auth_method`` is pinned per-focus so bridge-spawned codex
+    sessions don't inherit the machine-global ``~/.codex/config.toml``
+    value. Defaults to ``"chatgpt"``: the bridge rides the user's
+    ChatGPT/Codex subscription auth (which carries subscription-only
+    models like ``gpt-5.3-codex``), not a platform API key that would
+    404 on those models. Pass ``None`` to omit the key and fall back to
+    the global config.
     """
     args = [mcp_server_script] if not python_prefix else [*python_prefix, mcp_server_script]
-    lines: list[str] = [
+    lines: list[str] = []
+    # Top-level keys must precede any [table] header in TOML.
+    if preferred_auth_method:
+        lines.append(f"preferred_auth_method = {_toml_quote(preferred_auth_method)}")
+        lines.append("")
+    lines += [
         "[mcp_servers.pixsim]",
         f"command = {_toml_quote(python_cmd)}",
         f"args = {_toml_string_list(args)}",
@@ -432,13 +446,22 @@ def render_codex_mcp_http_config(
     api_token: str = "",
     scope: str = "",
     enabled_tools: list[str] | None = None,
+    preferred_auth_method: str | None = "chatgpt",
 ) -> str:
     """Render a Codex-compatible MCP config pointing to an HTTP MCP server.
 
     Instead of ``command``/``args`` (STDIO), uses ``url`` (HTTP).
     Returns TOML string for ``<workdir>/.codex/config.toml``.
+
+    See :func:`render_codex_mcp_config` for why ``preferred_auth_method``
+    is pinned per-focus (default ``"chatgpt"``).
     """
-    lines: list[str] = [
+    lines: list[str] = []
+    # Top-level keys must precede any [table] header in TOML.
+    if preferred_auth_method:
+        lines.append(f"preferred_auth_method = {_toml_quote(preferred_auth_method)}")
+        lines.append("")
+    lines += [
         "[mcp_servers.pixsim]",
         f"url = {_toml_quote(mcp_url)}",
     ]
@@ -468,6 +491,7 @@ def write_codex_mcp_http_config(
     api_token: str = "",
     scope: str = "",
     enabled_tools: list[str] | None = None,
+    preferred_auth_method: str | None = "chatgpt",
     workdir: str | Path,
 ) -> str:
     """Write an HTTP-based Codex MCP config to ``<workdir>/.codex/config.toml``.
@@ -479,6 +503,7 @@ def write_codex_mcp_http_config(
         api_token=api_token,
         scope=scope,
         enabled_tools=enabled_tools,
+        preferred_auth_method=preferred_auth_method,
     )
     codex_dir = Path(workdir) / ".codex"
     codex_dir.mkdir(parents=True, exist_ok=True)
@@ -501,6 +526,7 @@ def write_codex_mcp_config(
     python_prefix: list[str] | None = None,
     mcp_server_script: str,
     enabled_tools: list[str] | None = None,
+    preferred_auth_method: str | None = "chatgpt",
     workdir: str | Path,
 ) -> str:
     """Render and write a Codex MCP config to ``<workdir>/.codex/config.toml``.
@@ -513,6 +539,7 @@ def write_codex_mcp_config(
         python_prefix=python_prefix,
         mcp_server_script=mcp_server_script,
         enabled_tools=enabled_tools,
+        preferred_auth_method=preferred_auth_method,
     )
     codex_dir = Path(workdir) / ".codex"
     codex_dir.mkdir(parents=True, exist_ok=True)

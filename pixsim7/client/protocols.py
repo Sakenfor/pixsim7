@@ -372,9 +372,21 @@ class CodexAppServerProtocol(AgentProtocol):
             return mapped
         return None
 
+    # Auth method forced for every bridge-spawned codex session. The
+    # machine-global ~/.codex/config.toml may set preferred_auth_method
+    # = "apikey" (a platform key), but subscription-only models like
+    # gpt-5.3-codex are NOT served by the platform API and 404. The
+    # bridge must ride the user's ChatGPT/Codex subscription auth (tokens
+    # already in the shared ~/.codex/auth.json). Passed as a CLI `-c`
+    # override — highest precedence, applied on every spawn regardless of
+    # cwd / workdir cache / project-config discovery.
+    BRIDGE_PREFERRED_AUTH_METHOD: str = "chatgpt"
+
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         # app-server is always long-running; resume is handled via thread/resume RPC
         cmd = [command, "app-server"]
+        if self.BRIDGE_PREFERRED_AUTH_METHOD:
+            cmd.extend(["-c", f"preferred_auth_method={self.BRIDGE_PREFERRED_AUTH_METHOD}"])
         if model:
             cmd.extend(["-c", f"model={model}"])
         normalized_effort = self._normalize_reasoning_effort(reasoning_effort)

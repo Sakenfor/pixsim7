@@ -104,6 +104,35 @@ class RemoteAgent:
     def busy(self) -> bool:
         return self.active_tasks >= self.max_concurrent
 
+    def supported_engines(self) -> set:
+        """Normalized engine capabilities this bridge can actually serve.
+
+        A single bridge registers with one ``agent_type`` (e.g. ``claude``)
+        but its pool can run multiple engines — the bridge reports the real
+        list as ``pool_status["engines"]`` at connect (same source the
+        status endpoint surfaces). Falls back to active session-id prefixes,
+        then the registered ``agent_type``, so legacy/empty pool_status
+        bridges still resolve.
+        """
+        engines: set = set()
+        pool = self.pool_status or {}
+        for raw in pool.get("engines", []) or []:
+            norm = normalize_engine(raw)
+            if norm:
+                engines.add(norm)
+        if not engines:
+            for s in pool.get("sessions", []) or []:
+                sid = s.get("session_id") if isinstance(s, dict) else None
+                if sid:
+                    norm = normalize_engine(str(sid).split("-")[0])
+                    if norm:
+                        engines.add(norm)
+        if not engines:
+            norm = normalize_engine(self.agent_type)
+            if norm:
+                engines.add(norm)
+        return engines
+
 
 @dataclass
 class ConfirmationGate:
@@ -371,13 +400,14 @@ class RemoteCommandBridge:
         1. User's own bridge (if user_id provided and user has one)
         2. Shared/admin bridge — least-loaded (fewest active tasks)
 
-        When ``agent_type`` is given, only agents matching that engine
-        (e.g. "claude", "codex") are eligible. The match is normalized so
-        ``claude`` matches a bridge registered as ``claude-cli`` (and
-        vice-versa). This prevents silently running a Codex chat tab on
-        a Claude bridge and labelling the result as the wrong engine.
-        ``agent_type=None`` keeps the legacy any-engine behavior for
-        callers that don't care.
+        When ``agent_type`` is given, only agents that can actually serve
+        that engine (e.g. "claude", "codex") are eligible. Matching uses the
+        bridge's full engine capability set — a single bridge registered as
+        ``claude`` whose pool also runs ``codex`` matches a ``codex``
+        request. Without this a multi-engine bridge would reject codex
+        lookups and the caller would silently fall back to claude (running
+        a codex profile's model on the claude binary). ``agent_type=None``
+        keeps the legacy any-engine behavior for callers that don't care.
         """
         wanted = normalize_engine(agent_type)
 
@@ -386,7 +416,7 @@ class RemoteCommandBridge:
                 return False
             if wanted is None:
                 return True
-            return normalize_engine(a.agent_type) == wanted
+            return wanted in a.supported_engines()
 
         if user_id is not None:
             # First try user's own bridge

@@ -389,11 +389,68 @@ async def _handle_message(
         })
         return
 
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
+
+    # ── Parse request fields needed for profile resolution ──
+    model_raw = data.get("model")
+    model = model_raw.strip() if isinstance(model_raw, str) else model_raw
+    if isinstance(model, str) and not model:
+        model = None
+    assistant_id_raw = data.get("assistant_id")
+    assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
+    if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
+        assistant_id = None
+    skip_persona = data.get("skip_persona", False)
+    request_engine = (data.get("engine") or "").strip().lower() or None
+
+    # ── Resolve the profile FIRST: its agent_type is the authoritative
+    # engine intent. The chat tab's `engine` field can lag the selected
+    # profile (e.g. a codex "Code Reviewer" picked in a claude tab); if we
+    # let the tab/bridge decide the engine, a codex profile's model_id
+    # (gpt-5.3-codex) would be dispatched to the claude binary and 404.
+    # Resolve once here and reuse the result downstream (no double lookup).
+    profile = None
+    profile_prompt: str | None = None
+    profile_config: dict | None = None
+    system_prompt: str | None = None
+    resolved_profile_id: str | None = None
+    profile_engine: str | None = None
+    try:
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
+
+            agent_type_hint = request_engine if request_engine in {"claude", "codex"} else None
+            if assistant_id:
+                profile = await resolve_agent_profile(db, user_id or 0, assistant_id)
+            if not profile:
+                profile = await resolve_agent_profile(
+                    db, user_id or 0, None, agent_type=agent_type_hint,
+                )
+            if profile:
+                resolved_profile_id = profile.id
+                profile_engine = normalize_engine(getattr(profile, "agent_type", None))
+                if not skip_persona:
+                    profile_prompt = profile.system_prompt
+                if not (model or "").strip() and profile.model_id:
+                    prof_model = str(profile.model_id).strip()
+                    if prof_model:
+                        model = prof_model
+                merged_config = dict(profile.config or {})
+                if profile.reasoning_effort:
+                    merged_config["reasoning_effort"] = profile.reasoning_effort
+                if merged_config:
+                    profile_config = merged_config
+            elif assistant_id:
+                resolved_profile_id = assistant_id
+    except Exception:
+        pass
+
     # Engine match: pick a bridge that actually serves the requested engine.
-    # Without this filter, a Codex tab dispatched to a Claude bridge would
-    # silently run on Claude and the resulting ChatSession row would be
-    # labelled with whatever the request claimed — masking the mismatch.
-    requested_engine = (data.get("engine") or "").strip().lower() or None
+    # Profile agent_type wins (user's actual selection); the tab's `engine`
+    # field is only a fallback. Without this a multi-engine bridge would
+    # silently run a codex profile's model on the claude binary.
+    requested_engine = profile_engine or request_engine
     agent = remote_cmd_bridge.get_available_agent(
         user_id=user_id,
         agent_type=requested_engine,
@@ -435,25 +492,21 @@ async def _handle_message(
             return
         agent = min(agents, key=lambda a: a.active_tasks)
 
-    # Resolve profile + system prompt.
-    # Engine-from-request is the user's intent; agent.agent_type is the
-    # ground truth (the bridge that actually answers). Prefer the agent's
-    # normalized type when persisting so a missing/wrong `engine` field
-    # on the WS payload can't silently mislabel the ChatSession row.
-    # `agent_type` is registered as `claude-cli` / `codex-cli`; strip the
-    # `-cli` suffix so the persisted value matches the user-facing form.
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import normalize_engine
-    _agent_engine = normalize_engine(agent.agent_type)
-    engine = _agent_engine or (data.get("engine") or "").strip().lower() or "claude"
-    model_raw = data.get("model")
-    model = model_raw.strip() if isinstance(model_raw, str) else model_raw
-    if isinstance(model, str) and not model:
-        model = None
-    assistant_id_raw = data.get("assistant_id")
-    assistant_id = assistant_id_raw.strip() if isinstance(assistant_id_raw, str) else assistant_id_raw
-    if isinstance(assistant_id, str) and assistant_id.lower() in {"unknown", "none", "null"}:
-        assistant_id = None
-    skip_persona = data.get("skip_persona", False)
+    # Engine resolution. The profile's agent_type (resolved above) is the
+    # user's actual selection and wins. The tab's `engine` field is a
+    # fallback for profile-less chats; the bridge's registered agent_type
+    # is only a last resort. Deriving engine from agent.agent_type (a
+    # multi-engine bridge registers as just "claude") was the bug that ran
+    # codex profiles on the claude binary.
+    engine = (
+        profile_engine
+        or request_engine
+        or normalize_engine(agent.agent_type)
+        or "claude"
+    )
+
+    # Remaining request fields (model / assistant_id / skip_persona +
+    # profile already resolved before bridge selection).
     custom_instructions = (data.get("custom_instructions") or "").strip()
     focus = data.get("focus")
     bridge_session_id = data.get("bridge_session_id")
@@ -462,53 +515,6 @@ async def _handle_message(
     context = data.get("context") or {}
     timeout_val = min(max(int(data.get("timeout", 900)), 10), 1800)
     user_token = data.get("user_token")
-
-    # Resolve profile
-    profile_prompt: str | None = None
-    profile_config: dict | None = None
-    system_prompt: str | None = None
-    resolved_profile_id: str | None = None
-    try:
-        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
-        async with AsyncSessionLocal() as db:
-            from pixsim7.backend.main.api.v1.agent_profiles import resolve_agent_profile
-
-            profile = None
-            agent_type_hint = engine if engine in {"claude", "codex"} else None
-            if assistant_id:
-                profile = await resolve_agent_profile(db, user_id or 0, assistant_id)
-            if not profile:
-                profile = await resolve_agent_profile(
-                    db,
-                    user_id or 0,
-                    None,
-                    agent_type=agent_type_hint,
-                )
-
-            if profile:
-                resolved_profile_id = profile.id
-                if not skip_persona:
-                    profile_prompt = profile.system_prompt
-                # Profile.model_id is a *default*, not a pin: an explicit
-                # `data["model"]` (from the toolbar model dropdown) wins.
-                # Otherwise the dropdown is dead UI for any profile with
-                # model_id set, and the only way to try another model
-                # would be to edit the profile.
-                if not (model or "").strip() and profile.model_id:
-                    prof_model = str(profile.model_id).strip()
-                    if prof_model:
-                        model = prof_model
-                # Build profile_config from first-class fields + legacy config dict
-                merged_config = dict(profile.config or {})
-                if profile.reasoning_effort:
-                    merged_config["reasoning_effort"] = profile.reasoning_effort
-                if merged_config:
-                    profile_config = merged_config
-            elif assistant_id:
-                # Keep explicit non-sentinel IDs when resolution fails.
-                resolved_profile_id = assistant_id
-    except Exception:
-        pass
 
     # Resolve default model when profile didn't specify one.
     # For Codex the bridge reports available models; for Claude it doesn't,
