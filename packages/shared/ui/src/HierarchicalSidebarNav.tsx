@@ -32,6 +32,11 @@ export interface HierarchicalSidebarNavProps {
   ) => 'inactive' | 'active';
   variant?: 'light' | 'dark';
   className?: string;
+  /**
+   * Render child `extra` content inline on the same row (right-aligned)
+   * instead of wrapping to a second line. Keeps rows single-height/dense.
+   */
+  inlineChildExtra?: boolean;
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -70,11 +75,17 @@ function getItemClasses(variant: 'light' | 'dark', state: HierarchicalSidebarNav
   return `${base} ${tone}`;
 }
 
-function getChildClasses(variant: 'light' | 'dark', active: boolean, hasExtra: boolean) {
+function getChildClasses(
+  variant: 'light' | 'dark',
+  active: boolean,
+  hasExtra: boolean,
+  inlineExtra: boolean,
+) {
+  const stacked = hasExtra && !inlineExtra;
   const base =
     variant === 'light'
-      ? `w-full flex ${hasExtra ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors`
-      : `w-full flex ${hasExtra ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} rounded-r px-2 py-1.5 text-left text-[11px] transition-colors`;
+      ? `w-full flex ${stacked ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors`
+      : `w-full flex ${stacked ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} rounded-r px-2 py-1.5 text-left text-[11px] transition-colors`;
 
   if (variant === 'light') {
     const tone = active
@@ -111,6 +122,7 @@ export function HierarchicalSidebarNav({
   getChildState,
   variant = 'light',
   className,
+  inlineChildExtra = false,
 }: HierarchicalSidebarNavProps) {
   return (
     <div className={className}>
@@ -158,16 +170,22 @@ export function HierarchicalSidebarNav({
                       key={child.id}
                       type="button"
                       onClick={() => onSelectChild?.(item.id, child.id)}
-                      className={`group/child ${getChildClasses(variant, isChildActive, hasExtra)}`}
+                      className={`group/child ${getChildClasses(variant, isChildActive, hasExtra, inlineChildExtra)}`}
                     >
-                      <span className="flex items-center gap-2 w-full min-w-0">
+                      <span className={`flex items-center gap-2 min-w-0 ${inlineChildExtra ? 'flex-1' : 'w-full'}`}>
                         {child.icon ? <span className="flex-shrink-0">{child.icon}</span> : null}
                         <span className="truncate flex-1">{child.label}</span>
                       </span>
                       {hasExtra && (
-                        <span className="flex items-center gap-1 pl-5 w-full text-[9px] opacity-75">
-                          {child.extra}
-                        </span>
+                        inlineChildExtra ? (
+                          <span className="flex items-center gap-1 text-[9px] opacity-75 flex-shrink-0">
+                            {child.extra}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 pl-5 w-full text-[9px] opacity-75">
+                            {child.extra}
+                          </span>
+                        )
                       )}
                     </button>
                   );

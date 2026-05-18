@@ -89,10 +89,9 @@ export function PlanDetailView({
   const [updating, setUpdating] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
-  const [contentView, setContentView] = useState<'full' | 'checkpoints' | 'tasks' | 'activity'>(
+  const [contentView, setContentView] = useState<'full' | 'checkpoints' | 'tasks' | 'activity' | 'summaries'>(
     view === 'tasks' ? 'tasks' : 'full',
   );
-  const [showSummaries, setShowSummaries] = useState(false);
   const [planSummaries, setPlanSummaries] = useState<{ detail: string; timestamp: string; agent_type?: string; session_id?: string }[]>([]);
   const [coverage, setCoverage] = useState<{
     code_paths: string[];
@@ -299,9 +298,9 @@ export function PlanDetailView({
     return () => clearInterval(interval);
   }, [hasInProgressRequests, loadReviewGraph]);
 
-  // Load work summaries for this plan when toggled on
+  // Load work summaries for this plan when the Summaries view is active
   useEffect(() => {
-    if (!showSummaries || !detail) { setPlanSummaries([]); return; }
+    if (contentView !== 'summaries' || !detail) { setPlanSummaries([]); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -312,7 +311,7 @@ export function PlanDetailView({
       } catch { if (!cancelled) setPlanSummaries([]); }
     })();
     return () => { cancelled = true; };
-  }, [showSummaries, detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [contentView, detail?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdate = useCallback(() => {
     loadDetail();
@@ -1165,6 +1164,7 @@ export function PlanDetailView({
             { id: 'checkpoints', label: 'Checkpoints' },
             { id: 'tasks', label: 'Tasks' },
             { id: 'activity', label: 'Activity' },
+            { id: 'summaries', label: 'Summaries' },
           ] as const).map((option) => {
             const active = contentView === option.id;
             return (
@@ -1182,19 +1182,6 @@ export function PlanDetailView({
               </button>
             );
           })}
-          <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
-          <button
-            type="button"
-            onClick={() => setShowSummaries((v) => !v)}
-            className={`text-xs rounded-md border px-2 py-1 transition-colors flex items-center gap-1 ${
-              showSummaries
-                ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
-                : 'border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800'
-            }`}
-          >
-            <Icon name="fileText" size={11} />
-            Summaries
-          </button>
         </div>
 
         {contentView === 'activity' ? (
@@ -1204,6 +1191,42 @@ export function PlanDetailView({
             loadingParticipants={loadingParticipants}
             profileLabels={reviewProfileLabels}
           />
+        ) : contentView === 'summaries' ? (
+          <div className="rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+            <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2">
+              <Icon name="fileText" size={12} className="text-neutral-500" />
+              <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Work Summaries</span>
+              <span className="text-[10px] text-neutral-400 ml-auto">{planSummaries.length} entries</span>
+            </div>
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[400px] overflow-y-auto">
+              {planSummaries.length === 0 ? (
+                <div className="px-3 py-4 text-xs text-neutral-400 italic text-center">
+                  No work summaries logged for this plan yet
+                </div>
+              ) : planSummaries.map((entry, i) => (
+                <div key={i} className="px-3 py-2.5">
+                  <div className="text-xs text-neutral-700 dark:text-neutral-200 leading-relaxed whitespace-pre-wrap">
+                    {entry.detail.split(/\s*\((\d+)\)\s*/).reduce<React.ReactNode[]>((acc, part, idx) => {
+                      if (idx === 0) return part.trim() ? [...acc, part.trim(), '\n'] : acc;
+                      if (idx % 2 === 1) return [...acc, `(${part}) `];
+                      return [...acc, part.trim(), '\n'];
+                    }, []).slice(0, -1)}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-neutral-400">{new Date(entry.timestamp).toLocaleString()}</span>
+                    {entry.agent_type && (
+                      <span className={`text-[9px] px-1 rounded ${entry.agent_type === 'claude' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}`}>
+                        {entry.agent_type}
+                      </span>
+                    )}
+                    {entry.session_id && (
+                      <span className="text-[9px] text-neutral-400 font-mono">{entry.session_id.slice(0, 12)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : contentView !== 'tasks' ? (
           <PlanDetailSections
             detail={detail}
@@ -1324,45 +1347,6 @@ export function PlanDetailView({
             inputClassName={inputClassName}
             textAreaClassName={textAreaClassName}
           />
-        )}
-
-        {/* Work Summaries section (togglable, shown alongside any view) */}
-        {showSummaries && (
-          <div className="rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden">
-            <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2">
-              <Icon name="fileText" size={12} className="text-neutral-500" />
-              <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Work Summaries</span>
-              <span className="text-[10px] text-neutral-400 ml-auto">{planSummaries.length} entries</span>
-            </div>
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[400px] overflow-y-auto">
-              {planSummaries.length === 0 ? (
-                <div className="px-3 py-4 text-xs text-neutral-400 italic text-center">
-                  No work summaries logged for this plan yet
-                </div>
-              ) : planSummaries.map((entry, i) => (
-                <div key={i} className="px-3 py-2.5">
-                  <div className="text-xs text-neutral-700 dark:text-neutral-200 leading-relaxed whitespace-pre-wrap">
-                    {entry.detail.split(/\s*\((\d+)\)\s*/).reduce<React.ReactNode[]>((acc, part, idx) => {
-                      if (idx === 0) return part.trim() ? [...acc, part.trim(), '\n'] : acc;
-                      if (idx % 2 === 1) return [...acc, `(${part}) `];
-                      return [...acc, part.trim(), '\n'];
-                    }, []).slice(0, -1)}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-neutral-400">{new Date(entry.timestamp).toLocaleString()}</span>
-                    {entry.agent_type && (
-                      <span className={`text-[9px] px-1 rounded ${entry.agent_type === 'claude' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}`}>
-                        {entry.agent_type}
-                      </span>
-                    )}
-                    {entry.session_id && (
-                      <span className="text-[9px] text-neutral-400 font-mono">{entry.session_id.slice(0, 12)}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
 

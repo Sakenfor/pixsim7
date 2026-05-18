@@ -44,6 +44,8 @@ export interface SidebarContentLayoutProps {
   detachable?: SidebarPaneShellProps['detachable'];
   /** Hide title when inside a floating panel or when dockview tabs are visible. */
   autoHideTitle?: boolean;
+  /** Render child `extra` inline (right-aligned, single row) instead of a 2nd line. */
+  inlineChildExtra?: boolean;
 }
 
 export function SidebarContentLayout({
@@ -70,11 +72,12 @@ export function SidebarContentLayout({
   onCollapsedChange,
   detachable,
   autoHideTitle,
+  inlineChildExtra,
 }: SidebarContentLayoutProps) {
   const items: HierarchicalSidebarNavItem[] = sections;
 
   return (
-    <div className={clsx('flex-1 flex min-h-0', className)}>
+    <div className={clsx('flex-1 flex min-h-0 h-full', className)}>
       <SidebarPaneShell
         title={sidebarTitle}
         widthClassName={sidebarWidth}
@@ -96,6 +99,7 @@ export function SidebarContentLayout({
           onSelectItem={onSelectSection}
           onToggleExpand={onToggleExpand}
           onSelectChild={onSelectChild}
+          inlineChildExtra={inlineChildExtra}
           getItemState={(item) => {
             if (item.id !== activeSectionId) return 'inactive';
             return activeChildId ? 'ancestor' : 'active';

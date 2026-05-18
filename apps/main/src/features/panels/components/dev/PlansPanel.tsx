@@ -168,6 +168,16 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     return result;
   }, [plans, statusFilter, searchQuery, sortBy]);
 
+  // Per-plan active-agent counts (sidebar badge). Sourced from the same
+  // roster poll used by the header / empty-state, so there is one fetch loop.
+  const activeAgentCountByPlan = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of activeAgentsRoster.data?.plans ?? []) {
+      if (g.active_count > 0) map.set(g.plan_id, g.active_count);
+    }
+    return map;
+  }, [activeAgentsRoster.data]);
+
   // Status filter pills
   const statusOptions = useMemo<FilterPillOption<string>[]>(() => {
     const counts = new Map<string, number>();
@@ -215,18 +225,21 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     for (const s of allKeys) orderedKeys.push(s);
 
     type SectionChild = NonNullable<SidebarContentLayoutSection['children']>[number];
-    const treePrefix = (depth: number) => (depth > 0 ? `${'|  '.repeat(depth)}|- ` : '');
 
     const makePlanEntry = (p: PlanSummary, depth = 0): SectionChild => {
       const reviewCount = p.reviewRoundCount ?? 0;
       const activeReviews = p.activeReviewRoundCount ?? 0;
       const isPinned = pinnedIds.has(p.id);
+      const activeAgents = activeAgentCountByPlan.get(p.id) ?? 0;
 
       return {
         id: `plan:${p.id}`,
-        label: `${treePrefix(depth)}${p.title}`,
+        label: p.title,
         icon: (
-          <span className="relative flex items-center justify-center">
+          <span
+            className="relative flex items-center justify-center"
+            style={depth > 0 ? { marginLeft: depth * 12 } : undefined}
+          >
             {depth > 0
               ? <Icon name="git-branch" size={10} className="text-neutral-500" />
               : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={12} />
@@ -236,13 +249,15 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
         ),
         extra: (
           <span className="flex items-center gap-2 text-[10px]">
-            <span
-              className={`inline-flex items-center justify-center rounded border px-1 py-0.5 cursor-pointer ${isPinned ? 'border-blue-400 text-blue-600 dark:border-blue-500 dark:text-blue-300' : 'border-neutral-300 text-neutral-500 dark:border-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
-              onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
-              title={isPinned ? 'Unpin' : 'Pin to top'}
-            >
-              <Icon name="pin" size={10} />
-            </span>
+            {activeAgents > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-green-600 dark:text-green-400"
+                title={`${activeAgents} agent${activeAgents !== 1 ? 's' : ''} active on this plan`}
+              >
+                <Icon name="activity" size={10} />
+                <span className="leading-none">{activeAgents}</span>
+              </span>
+            )}
             {reviewCount > 0 && (
               <span
                 className={`inline-flex items-center gap-1 ${activeReviews > 0 ? '' : 'opacity-70'}`}
@@ -260,6 +275,13 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
                 <span>High</span>
               </span>
             )}
+            <span
+              className={`inline-flex items-center justify-center rounded border px-1 py-0.5 cursor-pointer transition-opacity ${isPinned ? 'border-blue-400 text-blue-600 dark:border-blue-500 dark:text-blue-300' : 'opacity-0 group-hover/child:opacity-100 focus-within:opacity-100 border-neutral-300 text-neutral-500 dark:border-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+              onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
+              title={isPinned ? 'Unpin' : 'Pin to top'}
+            >
+              <Icon name="pin" size={10} />
+            </span>
           </span>
         ),
       };
@@ -361,6 +383,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     stageOptions,
     stageOptionsByValue,
     togglePin,
+    activeAgentCountByPlan,
   ]);
 
   const nav = useSidebarNav({
@@ -484,13 +507,15 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             size="sm"
           />
           {activeAgentsRoster.totalActive > 0 && (
-            <div
-              className="flex items-center gap-1 text-[10px] text-green-700 dark:text-green-400 px-0.5"
-              title="Agents currently active across all plans"
+            <button
+              type="button"
+              onClick={() => nav.navigate('roster')}
+              className="flex items-center gap-1 text-[10px] text-green-700 dark:text-green-400 px-0.5 hover:underline cursor-pointer"
+              title="Show the active-agents roster"
             >
               <Icon name="activity" size={11} />
               <span>{activeAgentsRoster.totalActive} agent{activeAgentsRoster.totalActive === 1 ? '' : 's'} active</span>
-            </div>
+            </button>
           )}
           {statusOptions.length > 1 && (
             <FilterPillGroup
@@ -529,6 +554,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       expandedWidth={208}
       persistKey="plans-panel-sidebar"
       autoHideTitle={false}
+      inlineChildExtra
       contentClassName="overflow-y-auto"
     >
       {content}
