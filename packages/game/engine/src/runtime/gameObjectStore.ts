@@ -12,6 +12,7 @@ import type {
   Transform,
 } from '@pixsim7/shared.types';
 import { getInventory } from '../session/state';
+import { GameObjectEntity } from './GameObjectEntity';
 
 export const GAME_OBJECT_STORE_SCHEMA_VERSION = 1;
 
@@ -298,6 +299,14 @@ export function getSessionGameObjectStore(
   const legacyNpcObjects = hydrateLegacyNpcObjects(session);
   const legacyInventoryObjects = hydrateLegacyInventoryObjects(session);
 
+  // GUARDRAIL (migration_rollout_v1 / feature-guard): canonical-first
+  // precedence. Legacy npc/inventory hydration is fallback-only - when a ref
+  // exists in both, the canonical `flags.gameObjects` entry MUST win. Legacy
+  // is spread first, then overwritten by canonical. This invariant is the
+  // rollout safety net while flags.npcs/flags.inventory remain the working
+  // store for narrative ECS + inventory plugins (retirement is a deferred
+  // code refactor, not a data migration - there is no data). Locked by
+  // gameObjectEdgeCases: "canonical entry overrides legacy ... by ref".
   const merged: Record<string, GameObject> = { ...legacyNpcObjects, ...legacyInventoryObjects };
   for (const [ref, object] of Object.entries(base.objects)) {
     merged[ref] = object;
@@ -364,6 +373,30 @@ export function getSessionGameObject(
       ? lookup
       : toGameObjectRef(lookup.kind, lookup.id);
   return store.objects[ref] ?? null;
+}
+
+/**
+ * Hydration -> object-core seam (migration_rollout_v1 / hydration-entry).
+ *
+ * The single place session hydration (canonical `flags.gameObjects` + legacy
+ * npc/inventory fallback) is projected into runtime `GameObjectEntity`
+ * instances. Runtime callers should consume entities via these (or the
+ * `GameRuntime` accessors that delegate here); the plain-POJO functions stay
+ * the persistence/API edge per the POJO-boundary policy.
+ */
+export function listSessionGameObjectEntities(
+  session: Pick<GameSessionDTO, 'world_id' | 'flags'>,
+  query: GameObjectQuery = {}
+): GameObjectEntity[] {
+  return GameObjectEntity.fromPOJOs(listSessionGameObjects(session, query));
+}
+
+export function getSessionGameObjectEntity(
+  session: Pick<GameSessionDTO, 'world_id' | 'flags'>,
+  lookup: GameObjectLookup
+): GameObjectEntity | null {
+  const pojo = getSessionGameObject(session, lookup);
+  return pojo ? GameObjectEntity.fromPOJO(pojo) : null;
 }
 
 export function upsertSessionGameObjects(

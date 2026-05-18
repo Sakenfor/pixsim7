@@ -56,11 +56,11 @@ import {
 } from '../world/turnHelpers';
 import { loadWorldSession, saveWorldSession } from '../session/storage';
 import {
-  getSessionGameObject,
-  listSessionGameObjects,
   upsertSessionGameObjects,
+  listSessionGameObjectEntities,
+  getSessionGameObjectEntity,
 } from './gameObjectStore';
-import { GameObjectEntity } from './GameObjectEntity';
+import type { GameObjectEntity } from './GameObjectEntity';
 import { buildEntityRefForKind } from './entityRefStrategy';
 
 type TemplateResolution = {
@@ -697,15 +697,14 @@ export class GameRuntime implements IGameRuntime {
     lookup: RuntimeGameObjectLookup
   ): GameObjectEntity | null {
     if (!this.session) return null;
-    const pojo = getSessionGameObject(this.session, lookup);
-    return pojo ? GameObjectEntity.fromPOJO(pojo) : null;
+    return getSessionGameObjectEntity(this.session, lookup);
   }
 
   private listGameObjectEntities(
     query: RuntimeGameObjectQuery = {}
   ): GameObjectEntity[] {
     if (!this.session) return [];
-    return GameObjectEntity.fromPOJOs(listSessionGameObjects(this.session, query));
+    return listSessionGameObjectEntities(this.session, query);
   }
 
   listGameObjects(query: RuntimeGameObjectQuery = {}): GameObject[] {

@@ -18,6 +18,8 @@ export {
   getSessionGameObject,
   upsertSessionGameObjects,
   toGameObjectRef,
+  listSessionGameObjectEntities,
+  getSessionGameObjectEntity,
 } from './gameObjectStore';
 export { GameObjectEntity } from './GameObjectEntity';
 export {

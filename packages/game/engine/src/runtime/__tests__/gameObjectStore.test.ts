@@ -5,7 +5,10 @@ import {
   getSessionGameObject,
   listSessionGameObjects,
   upsertSessionGameObjects,
+  listSessionGameObjectEntities,
+  getSessionGameObjectEntity,
 } from '../gameObjectStore';
+import { GameObjectEntity } from '../GameObjectEntity';
 
 function createSession(flags: Record<string, unknown> = {}): GameSessionDTO {
   return {
@@ -169,5 +172,34 @@ describe('runtime game object store', () => {
         quantity: 3,
       },
     ]);
+  });
+
+  it('hydration->entity seam yields GameObjectEntity from legacy + canonical', () => {
+    const session = upsertSessionGameObjects(
+      createSession({
+        npcs: { 'npc:9': { name: 'Legacy Only' } },
+      }),
+      [
+        {
+          kind: 'item',
+          id: 'gem',
+          ref: 'item:gem',
+          name: 'Gem',
+          runtimeKind: 'item',
+          transform: createTransform(),
+          itemData: { itemDefId: 'gem', quantity: 1 },
+        } as GameObject,
+      ]
+    );
+
+    const entities = listSessionGameObjectEntities(session);
+    expect(entities.every((e) => e instanceof GameObjectEntity)).toBe(true);
+    // legacy npc and canonical item both surface through the seam
+    expect(entities.map((e) => e.ref).sort()).toEqual(['item:gem', 'npc:9']);
+
+    const one = getSessionGameObjectEntity(session, 'npc:9');
+    expect(one).toBeInstanceOf(GameObjectEntity);
+    expect(one?.kind).toBe('npc');
+    expect(getSessionGameObjectEntity(session, 'npc:404')).toBeNull();
   });
 });
