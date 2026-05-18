@@ -38,6 +38,16 @@ def reset_resolved():
     mcp._resolved_profile_id = saved
 
 
+@pytest.fixture
+def reset_ctx():
+    """Isolate the HTTP-mode per-request contextvars between tests."""
+    pt = mcp._request_profile_id.set(None)
+    st = mcp._request_session_id.set(None)
+    yield
+    mcp._request_profile_id.reset(pt)
+    mcp._request_session_id.reset(st)
+
+
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestIdentityHeaders:
     def test_full_token_propagates_profile_and_run(self, monkeypatch, reset_resolved):
@@ -100,7 +110,7 @@ class TestIdentityHeaders:
         assert "X-Agent-Id" not in h
         assert "X-Run-Id" not in h
 
-    def test_blank_run_id_claim_is_omitted(self, monkeypatch, reset_resolved):
+    def test_blank_run_id_claim_is_omitted(self, monkeypatch, reset_resolved, reset_ctx):
         mcp._resolved_profile_id = None
         monkeypatch.setattr(mcp, "_extract_profile_from_token", lambda _t: "p1")
         monkeypatch.setattr(mcp, "_decode_token_claims", lambda _t: {"run_id": "   "})
@@ -109,3 +119,46 @@ class TestIdentityHeaders:
 
         assert h["X-Agent-Id"] == "p1"
         assert "X-Run-Id" not in h
+
+    def test_http_mode_uses_request_contextvars(
+        self, monkeypatch, reset_resolved, reset_ctx
+    ):
+        # HTTP/bridge: identity-less token, no STDIO global — identity
+        # comes from the per-request X-Profile-Id / X-Chat-Session-Id.
+        mcp._resolved_profile_id = None
+        monkeypatch.setattr(mcp, "_extract_profile_from_token", lambda _t: None)
+        monkeypatch.setattr(mcp, "_decode_token_claims", lambda _t: {})
+        mcp._request_profile_id.set("profile-http")
+        mcp._request_session_id.set("sess-http")
+
+        h = mcp._identity_headers("tok-stripped")
+
+        assert h["X-Agent-Id"] == "profile-http"
+        # No run_id anywhere -> session id is the stable discriminator.
+        assert h["X-Run-Id"] == "sess-http"
+
+    def test_token_identity_wins_over_contextvars(
+        self, monkeypatch, reset_resolved, reset_ctx
+    ):
+        mcp._resolved_profile_id = "profile-global"
+        monkeypatch.setattr(mcp, "_extract_profile_from_token", lambda _t: "profile-tok")
+        monkeypatch.setattr(mcp, "_decode_token_claims", lambda _t: {"run_id": "run-tok"})
+        mcp._request_profile_id.set("profile-http")
+        mcp._request_session_id.set("sess-http")
+
+        h = mcp._identity_headers("tok-full")
+
+        assert h["X-Agent-Id"] == "profile-tok"  # token beats contextvar/global
+        assert h["X-Run-Id"] == "run-tok"  # real run_id beats session fallback
+
+    def test_request_profile_beats_resolved_global(
+        self, monkeypatch, reset_resolved, reset_ctx
+    ):
+        mcp._resolved_profile_id = "profile-global"
+        monkeypatch.setattr(mcp, "_extract_profile_from_token", lambda _t: None)
+        monkeypatch.setattr(mcp, "_decode_token_claims", lambda _t: {})
+        mcp._request_profile_id.set("profile-http")
+
+        h = mcp._identity_headers("tok")
+
+        assert h["X-Agent-Id"] == "profile-http"

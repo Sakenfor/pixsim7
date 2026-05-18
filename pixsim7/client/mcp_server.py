@@ -771,17 +771,33 @@ def _identity_headers(token: str) -> dict[str, str]:
     send them when resolvable rather than relying on the JWT alone.
     Without this, attribution collapses to agent_id='unknown'/run_id=null
     and distinct agents become indistinguishable in the participant ledger.
+
+    Identity sources differ by transport:
+      * STDIO  — identity is on the token / the ``_resolved_profile_id``
+        global set during auto-registration.
+      * HTTP/bridge — the token is often identity-less; identity arrives
+        per-request via the ``X-Profile-Id`` / ``X-Chat-Session-Id``
+        headers (set by token_manager.render_claude_mcp_http_config) and
+        is held in the ``_request_profile_id`` / ``_request_session_id``
+        contextvars. There is no run_id in this path at all, so the
+        chat session id is used as a stable per-session run discriminator
+        so distinct agents/sessions don't collapse onto one row.
     """
     headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     profile_id = (
         _normalize_profile_id(_extract_profile_from_token(token))
+        or _normalize_profile_id(_request_profile_id.get())
         or _resolved_profile_id
     )
     if profile_id:
         headers["X-Agent-Id"] = profile_id
     run_id = _decode_token_claims(token).get("run_id")
+    if not (isinstance(run_id, str) and run_id.strip()):
+        # No run_id in HTTP/bridge mode — fall back to the per-request
+        # chat session id so two sessions remain distinguishable.
+        run_id = _request_session_id.get()
     if isinstance(run_id, str) and run_id.strip():
         headers["X-Run-Id"] = run_id.strip()
     return headers
