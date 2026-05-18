@@ -874,6 +874,57 @@ async def update_llm_config(
     return ls
 
 
+# ===== PRIMITIVE PROJECTION CONFIG (LLM FALLBACK TUNING) =====
+
+from pixsim7.backend.main.services.prompt.parser.primitive_projection_settings import (
+    PrimitiveProjectionSettings,
+    get_primitive_projection_settings,
+)
+
+PrimitiveProjectionConfigUpdate = PrimitiveProjectionSettings.get_update_model()
+
+
+@router.get(
+    "/admin/primitive-projection/config", response_model=PrimitiveProjectionSettings
+)
+async def get_primitive_projection_config(user: CurrentUser):
+    """Get current primitive-projection LLM-fallback config (any authenticated user)."""
+    return get_primitive_projection_settings()
+
+
+@router.patch(
+    "/admin/primitive-projection/config", response_model=PrimitiveProjectionSettings
+)
+async def update_primitive_projection_config(
+    body: PrimitiveProjectionConfigUpdate,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Update primitive-projection LLM-fallback config (admin only, persisted)."""
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+
+    patch_data = body.model_dump(exclude_none=True)
+    if patch_data:
+        row = await patch_config(db, "primitive_projection", patch_data, admin.id)
+        apply_namespace("primitive_projection", row.data)
+
+    pps = get_primitive_projection_settings()
+    pps.reload()
+
+    logger.info(
+        "Primitive-projection config updated by admin %s: llm_fallback=%s, "
+        "max_candidates=%d, timeout=%dms, catalog_cap=%d, min_confidence=%.2f",
+        admin.username,
+        pps.llm_fallback_enabled,
+        pps.llm_fallback_max_candidates,
+        pps.llm_fallback_timeout_ms,
+        pps.llm_fallback_catalog_cap,
+        pps.llm_fallback_min_confidence,
+    )
+
+    return pps
+
+
 # ===== LOGGING CONFIG (DOMAIN LEVEL OVERRIDES) =====
 
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "OFF"}

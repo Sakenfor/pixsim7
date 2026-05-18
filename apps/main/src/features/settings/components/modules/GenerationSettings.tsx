@@ -6,10 +6,14 @@
  */
 import { settingsRegistry } from '../../lib/core/registry';
 import { registerGenerationSettings } from '../../lib/schemas/generation.settings';
+import { registerPrimitiveProjectionSettings } from '../../lib/schemas/primitive_projection.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
 // Auto-register schema-based settings when module loads
 registerGenerationSettings();
+// Primitive-projection LLM-fallback admin group — own server-config adapter,
+// same 'generation' category so it co-renders with the LLM Cache admin group.
+registerPrimitiveProjectionSettings();
 
 export function GenerationSettings() {
   return <DynamicSettingsPanel categoryId="generation" />;

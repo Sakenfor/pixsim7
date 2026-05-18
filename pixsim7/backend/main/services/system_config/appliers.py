@@ -115,3 +115,18 @@ def _apply_media_settings(data: dict) -> None:
 
 
 register_applier("media_settings", _apply_media_settings)
+
+
+# ---------------------------------------------------------------------------
+# "primitive_projection" — LLM-fallback tuning for prompt primitive projection
+# ---------------------------------------------------------------------------
+
+def _apply_primitive_projection_config(data: dict) -> None:
+    from pixsim7.backend.main.services.system_config.settings_store import apply_settings
+
+    # Populate the SettingsBase cache — consumers read fresh via
+    # get_primitive_projection_settings() at analyze time.
+    apply_settings("primitive_projection", data)
+
+
+register_applier("primitive_projection", _apply_primitive_projection_config)
