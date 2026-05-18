@@ -580,6 +580,9 @@ class Bridge:
                                 "choice": msg.get("choice"),     # singular — single-select
                                 "choices": msg.get("choices"),   # plural — multi-select (list of ids)
                                 "text": msg.get("text"),
+                                # Preserve the backend gate's timeout marker so
+                                # ask_user can tell silence from a real deny.
+                                "timed_out": bool(msg.get("timed_out", False)),
                             }
                             self._pending_confirmations[conf_id].set()
 
@@ -1874,7 +1877,9 @@ class Bridge:
                 await asyncio.wait_for(event.wait(), timeout=timeout_s)
                 return self._confirmation_results.get(confirmation_id, {"approved": False})
             except asyncio.TimeoutError:
-                return {"approved": False}
+                # Bridge-side wait expired before the backend gate replied —
+                # still a timeout, not a refusal.
+                return {"approved": False, "timed_out": True}
         finally:
             self._pending_confirmations.pop(confirmation_id, None)
             self._confirmation_results.pop(confirmation_id, None)

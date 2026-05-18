@@ -152,7 +152,10 @@ class ConfirmationGate:
             return self.response
         except asyncio.TimeoutError:
             self.approved = False
-            self.response = {"approved": False}
+            # timed_out distinguishes "user never answered" from an explicit
+            # deny — ask_user surfaces this to the agent so silence isn't
+            # misread as a refusal.
+            self.response = {"approved": False, "timed_out": True}
             return self.response
 
     def resolve(self, approved: bool, **extra: Any) -> None:
