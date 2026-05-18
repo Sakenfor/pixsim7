@@ -20,3 +20,13 @@ export {
   toGameObjectRef,
 } from './gameObjectStore';
 export { GameObjectEntity } from './GameObjectEntity';
+export {
+  GameObjectBehaviorRegistry,
+  NOT_HANDLED,
+} from './gameObjectBehavior';
+export type {
+  BehaviorContext,
+  BehaviorHandler,
+  BehaviorIntent,
+  BehaviorOutcome,
+} from './gameObjectBehavior';

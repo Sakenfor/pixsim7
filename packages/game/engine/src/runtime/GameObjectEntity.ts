@@ -23,6 +23,12 @@ import type {
   Transform,
 } from '@pixsim7/shared.types';
 import { buildEntityRefForKind } from './entityRefStrategy';
+import type {
+  BehaviorContext,
+  BehaviorIntent,
+  BehaviorOutcome,
+  GameObjectBehaviorRegistry,
+} from './gameObjectBehavior';
 import type { GameObjectQuery } from './gameObjectStore';
 
 function deepClone<T>(value: T): T {
@@ -226,5 +232,22 @@ export class GameObjectEntity {
       return false;
     }
     return true;
+  }
+
+  // --- Behavior dispatch seam -------------------------------------------
+
+  /**
+   * Dispatch an intent through a behavior registry. Behavior is resolved by
+   * this object's capabilities/components (never by `kind`), so any genre of
+   * object participates uniformly. Returns `{ handled: false }` when no
+   * registered behavior applies.
+   */
+  dispatch(
+    registry: GameObjectBehaviorRegistry,
+    intent: BehaviorIntent,
+    host?: unknown
+  ): Promise<BehaviorOutcome> {
+    const ctx: BehaviorContext = { entity: this, intent, host };
+    return registry.dispatch(ctx);
   }
 }
