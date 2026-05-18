@@ -63,7 +63,7 @@ export { getUserPreferences, updatePreferenceKey, updateUserPreferences } from '
 export type { AnalyzerPreferences, AutoTagsPreferences, DebugPreferences, DevToolSettingValue, DevToolsPreferences, TagDisplayPreferences, UserPreferences, UserPreferencesResponse } from './userPreferences';
 export { getCurrentUserProfile, updateCurrentUserProfile } from './userProfile';
 export type { UserProfile, UpdateUserProfileParams } from './userProfile';
-export { getCommunityRoom, sendCommunityMessage } from './communityChat';
+export { getCommunityRoom, sendCommunityMessage, markCommunityRoomRead } from './communityChat';
 export type { CommunityChatMessage, CommunityRoomResponse } from './communityChat';
 export { adminDeactivateUser, adminUpdateUser, listAdminUsers, listBridgeMachines, updateAdminUserPermissions } from './adminUsers';
 export type { AdminUpdateUserParams, AdminUserPermissions, AdminUsersListResponse, BridgeMachine, BridgeMachinesResponse, ListAdminUsersParams, ListBridgeMachinesParams } from './adminUsers';

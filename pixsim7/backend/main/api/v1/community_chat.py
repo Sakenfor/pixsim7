@@ -42,6 +42,7 @@ class ChatMessageOut(BaseModel):
 class RoomResponse(BaseModel):
     conversation_id: str
     messages: list[ChatMessageOut] = Field(default_factory=list)
+    unread_count: int = 0
 
 
 class SendMessageRequest(BaseModel):
@@ -67,10 +68,22 @@ async def get_room(current_user: CurrentUser, db: DatabaseSession):
     room = await svc.get_or_create_room()
     await svc.ensure_participant(room.id, current_user.id)
     messages = await svc.list_messages(room.id)
+    unread = await svc.unread_count(room.id, current_user.id)
     return RoomResponse(
         conversation_id=str(room.id),
         messages=[_serialize(m) for m in messages],
+        unread_count=unread,
     )
+
+
+@router.post("/community-chat/room/read")
+async def mark_room_read(current_user: CurrentUser, db: DatabaseSession):
+    """Mark the shared room read for the caller (clear-on-view)."""
+    svc = CommunityChatService(db)
+    room = await svc.get_or_create_room()
+    await svc.ensure_participant(room.id, current_user.id)
+    await svc.mark_read(room.id, current_user.id)
+    return {"ok": True}
 
 
 @router.post("/community-chat/messages", response_model=ChatMessageOut)

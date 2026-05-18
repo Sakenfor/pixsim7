@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getCommunityRoom,
   sendCommunityMessage,
+  markCommunityRoomRead,
   type CommunityChatMessage,
 } from '@lib/api';
 import { API_BASE_URL } from '@lib/api/client';
@@ -66,6 +67,13 @@ export function ChatView() {
   const wsRef = useRef<WebSocket | null>(null);
   const mountedRef = useRef(true);
 
+  // Clear-on-view: while the panel is mounted the user is "looking", so
+  // keep last_read_at fresh. Best-effort — unread truth lives server-side
+  // (plan community-chat / read-state).
+  const markRead = useCallback(() => {
+    void markCommunityRoomRead().catch(() => {});
+  }, []);
+
   const addMessages = useCallback((incoming: CommunityChatMessage[]) => {
     const fresh = incoming.filter((m) => !seenIds.current.has(m.id));
     if (fresh.length === 0) return;
@@ -90,6 +98,7 @@ export function ChatView() {
         seenIds.current = new Set(room.messages.map((m) => m.id));
         setMessages(room.messages);
         setStatus('ready');
+        markRead();
       } catch {
         if (!cancelled) setStatus('error');
       }
@@ -97,7 +106,7 @@ export function ChatView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [markRead]);
 
   // Live WebSocket with basic reconnect + keepalive.
   useEffect(() => {
@@ -127,6 +136,7 @@ export function ChatView() {
           const data = JSON.parse(ev.data);
           if (data?.type === 'message' && data.message) {
             addMessages([data.message as CommunityChatMessage]);
+            if (mountedRef.current) markRead();
           }
         } catch {
           /* ignore non-JSON frames */
@@ -153,7 +163,7 @@ export function ChatView() {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [addMessages]);
+  }, [addMessages, markRead]);
 
   const handleSend = useCallback(async () => {
     const body = input.trim();

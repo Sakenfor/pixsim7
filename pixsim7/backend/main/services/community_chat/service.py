@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +87,46 @@ class CommunityChatService:
         rows = list(result.scalars().all())
         rows.reverse()
         return rows
+
+    async def mark_read(self, conversation_id: UUID, user_id: int) -> None:
+        """Advance the participant's ``last_read_at`` to now (clear-on-view).
+
+        The unread *truth* lives here (a conversation-shaped read model),
+        not in notification-row counting — see plan ``community-chat``
+        checkpoint ``read-state``.
+        """
+        participant = await self.db.get(
+            ConversationParticipant, (conversation_id, user_id)
+        )
+        if participant is None:
+            return
+        participant.last_read_at = utcnow()
+        await self.db.commit()
+
+    async def unread_count(self, conversation_id: UUID, user_id: int) -> int:
+        """Messages newer than the participant's ``last_read_at``.
+
+        Excludes the user's own messages (sending implies having seen the
+        room). NULL ``last_read_at`` = everything is unread.
+        """
+        participant = await self.db.get(
+            ConversationParticipant, (conversation_id, user_id)
+        )
+        last_read_at = participant.last_read_at if participant else None
+
+        query = (
+            select(func.count())
+            .select_from(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == conversation_id,
+                ConversationMessage.sender != user_actor(user_id),
+            )
+        )
+        if last_read_at is not None:
+            query = query.where(ConversationMessage.created_at > last_read_at)
+
+        result = await self.db.execute(query)
+        return int(result.scalar_one())
 
     async def post_message(
         self,

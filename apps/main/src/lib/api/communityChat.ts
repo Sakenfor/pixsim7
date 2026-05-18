@@ -18,6 +18,7 @@ export interface CommunityChatMessage {
 export interface CommunityRoomResponse {
   conversation_id: string;
   messages: CommunityChatMessage[];
+  unread_count: number;
 }
 
 export async function getCommunityRoom(): Promise<CommunityRoomResponse> {
@@ -30,4 +31,8 @@ export async function sendCommunityMessage(
   return pixsimClient.post<CommunityChatMessage>('/community-chat/messages', {
     body,
   });
+}
+
+export async function markCommunityRoomRead(): Promise<void> {
+  await pixsimClient.post('/community-chat/room/read', {});
 }
