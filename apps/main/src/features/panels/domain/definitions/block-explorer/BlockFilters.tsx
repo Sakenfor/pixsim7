@@ -45,7 +45,7 @@ export function BlockFilters({
   onClearFilters,
 }: BlockFiltersProps) {
   const [localQuery, setLocalQuery] = useState(searchQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   // Sync local query when external searchQuery changes (e.g. on clear)

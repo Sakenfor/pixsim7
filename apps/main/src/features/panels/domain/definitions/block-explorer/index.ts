@@ -8,7 +8,7 @@ export default definePanel({
   id: 'block-explorer',
   title: 'Block Explorer',
   component: BlockExplorerPanel,
-  category: 'prompts',
+  category: 'generation',
   panelRole: 'reference',
   tags: ['blocks', 'prompts', 'content-packs', 'explorer', 'generation'],
   icon: 'blocks',

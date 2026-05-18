@@ -1,43 +1,44 @@
 /**
  * BlockExplorerPanel - Browse prompt blocks from content packs
  *
- * Left sidebar: role/category tree with counts.
- * Right detail: selected block text, tags, metadata.
+ * Left sidebar: category tree with counts + role badges.
+ * Right detail: selected block text, tags (authoring vs system), metadata.
  * Fetches from GET /block-templates/blocks (DB-backed).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   searchBlocks,
   listBlockRoles,
   listBlockPackages,
   listBlockTagFacets,
+  getBlockSchema,
   type PromptBlockResponse,
   type BlockRoleSummary,
+  type BlockSchemaResponse,
+  type BlockOpSchema,
+  type BlockOpParamSchema,
+  type BlockOpRefSchema,
 } from '@lib/api/blockTemplates';
+import { Icon } from '@lib/icons';
 
-import {
-  SidebarTreeGroup,
-  SidebarTreeLeafButton,
-} from '@features/panels/components/shared/SidebarTree';
+import { SidebarTreeLeafButton } from '@features/panels/components/shared/SidebarTree';
+import { useWorkspaceStore } from '@features/workspace';
 
 import { BlockFilters, type TagFilter } from './BlockFilters';
+import { useTagDictionary, type TagKeyClass } from './useTagDictionary';
 import { useVocabResolver, type ResolvedTag } from './useVocabResolver';
 
 // ============================================================================
-// Color mapping by role name
+// Deterministic color mapping
+//
+// Roles are now namespaced (`entities:subject`, `materials:rendering`, …) and
+// many blocks carry no role at all, so the old hardcoded role→color table was
+// effectively dead. Derive a stable color from the category string instead.
 // ============================================================================
 
-const ROLE_COLORS: Record<string, string> = {
-  subject: 'blue',
-  environment: 'green',
-  lighting: 'amber',
-  camera: 'slate',
-  style: 'pink',
-  placement: 'purple',
-  composition: 'cyan',
-};
+const PALETTE = ['blue', 'green', 'amber', 'slate', 'pink', 'purple', 'cyan'] as const;
 
 const COLOR_DOT: Record<string, string> = {
   blue: 'bg-blue-400',
@@ -61,36 +62,74 @@ const COLOR_BADGE: Record<string, string> = {
   gray: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
-function roleColor(role: string | null): string {
-  return ROLE_COLORS[role ?? ''] ?? 'gray';
+function categoryColor(category: string | null): string {
+  if (!category) return 'gray';
+  let h = 0;
+  for (let i = 0; i < category.length; i++) {
+    h = (h * 31 + category.charCodeAt(i)) >>> 0;
+  }
+  return PALETTE[h % PALETTE.length];
+}
+
+// ============================================================================
+// Tag classification
+//
+// Op-runtime / provenance keys are noise for browsing — collapse them under a
+// "System tags" section so the authoring-relevant tags stay readable.
+// (Tier 2 will render the structured op schema properly.)
+// ============================================================================
+
+const SYSTEM_TAG_KEYS = new Set([
+  'block_mode',
+  'schema_group',
+  'schema_block_id',
+  'legacy_category',
+  'content_pack',
+  'source_pack',
+  'modifier_family',
+  'composition_role',
+  'scope',
+  'modality_support',
+]);
+
+function isSystemTag(key: string): boolean {
+  return key.startsWith('op_') || SYSTEM_TAG_KEYS.has(key);
+}
+
+function formatTagValue(value: unknown): string {
+  if (value == null) return '';
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface RoleNode {
-  role: string;
-  categories: { category: string | null; label: string; count: number }[];
+interface CategoryNode {
+  category: string;
+  /** Distinct namespaced composition roles seen for this category. */
+  roles: string[];
   totalCount: number;
 }
 
-function buildRoleTree(summaries: BlockRoleSummary[]): RoleNode[] {
-  const map = new Map<string, { category: string | null; label: string; count: number }[]>();
+function buildCategoryTree(summaries: BlockRoleSummary[]): CategoryNode[] {
+  const map = new Map<string, { roles: Set<string>; count: number }>();
   for (const s of summaries) {
-    const role = s.composition_role ?? 'uncategorized';
-    if (!map.has(role)) map.set(role, []);
-    map.get(role)!.push({
-      category: s.category ?? null,
-      label: s.category ?? 'default',
-      count: s.count,
-    });
+    const category = s.category ?? 'uncategorized';
+    if (!map.has(category)) map.set(category, { roles: new Set(), count: 0 });
+    const entry = map.get(category)!;
+    if (s.composition_role) entry.roles.add(s.composition_role);
+    entry.count += s.count;
   }
-  return Array.from(map.entries()).map(([role, categories]) => ({
-    role,
-    categories,
-    totalCount: categories.reduce((sum, c) => sum + c.count, 0),
-  }));
+  return Array.from(map.entries())
+    .map(([category, { roles, count }]) => ({
+      category,
+      roles: Array.from(roles).sort(),
+      totalCount: count,
+    }))
+    .sort((a, b) => b.totalCount - a.totalCount);
 }
 
 // ============================================================================
@@ -116,15 +155,248 @@ function TagValue({
   return <span className="text-neutral-300">{raw}</span>;
 }
 
+function TagKeyLabel({
+  tagKey,
+  cls,
+}: {
+  tagKey: string;
+  cls: TagKeyClass;
+}) {
+  let marker: { text: string; className: string; title: string } | null = null;
+  if (cls.kind === 'unknown') {
+    marker = {
+      text: 'unknown',
+      className: 'text-neutral-600 border-neutral-700/60',
+      title: 'Not in the canonical tag dictionary',
+    };
+  } else if (cls.kind === 'alias') {
+    marker = {
+      text: `→ ${cls.canonical}`,
+      className: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+      title: `Deprecated alias — canonical key is "${cls.canonical}"`,
+    };
+  } else if (cls.kind === 'status') {
+    const danger = /deprecat|retire|legacy/i.test(cls.status);
+    marker = {
+      text: cls.status,
+      className: danger
+        ? 'text-red-400 border-red-500/30 bg-red-500/10'
+        : 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+      title: `Tag dictionary status: ${cls.status}`,
+    };
+  }
+
+  return (
+    <span className="text-neutral-500 flex items-center gap-1 min-w-0">
+      <span className="truncate">{tagKey}</span>
+      {marker && (
+        <span
+          title={marker.title}
+          className={`text-[8px] px-1 rounded border shrink-0 ${marker.className}`}
+        >
+          {marker.text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function TagGrid({
+  entries,
+  resolveTagValue,
+  classifyTagKey,
+}: {
+  entries: [string, unknown][];
+  resolveTagValue: (raw: string) => ResolvedTag;
+  classifyTagKey: (key: string) => TagKeyClass;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+      {entries.map(([key, value]) => (
+        <div key={key} className="contents">
+          <TagKeyLabel tagKey={key} cls={classifyTagKey(key)} />
+          <TagValue raw={formatTagValue(value)} resolveTagValue={resolveTagValue} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpRefRow({ opRef }: { opRef: BlockOpRefSchema }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] py-0.5">
+      <span className="font-mono text-neutral-300">{opRef.key}</span>
+      <span className="text-neutral-600">→</span>
+      <span className="font-mono text-cyan-400">{opRef.capability}</span>
+      {opRef.many && (
+        <span className="text-[9px] text-neutral-500 bg-neutral-800 px-1 rounded">many</span>
+      )}
+      <span
+        className={`text-[9px] px-1 rounded ${
+          opRef.required
+            ? 'bg-amber-500/20 text-amber-400'
+            : 'bg-neutral-800 text-neutral-500'
+        }`}
+      >
+        {opRef.required ? 'required' : 'optional'}
+      </span>
+      {opRef.description && (
+        <span className="text-[10px] text-neutral-500 truncate">{opRef.description}</span>
+      )}
+    </div>
+  );
+}
+
+function OpParamRow({ param }: { param: BlockOpParamSchema }) {
+  const range =
+    param.minimum != null || param.maximum != null
+      ? `[${param.minimum ?? '−∞'}, ${param.maximum ?? '∞'}]`
+      : null;
+
+  return (
+    <div className="py-1 border-b border-neutral-800/40 last:border-0">
+      <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
+        <span className="font-mono text-neutral-200">{param.key}</span>
+        <span className="text-[9px] text-purple-400 bg-purple-500/15 px-1 rounded">
+          {param.type}
+        </span>
+        {param.required && (
+          <span className="text-[9px] text-amber-400 bg-amber-500/20 px-1 rounded">
+            required
+          </span>
+        )}
+        {param.default !== undefined && param.default !== null && (
+          <span className="text-[10px] text-neutral-500">
+            default <span className="text-neutral-300">{formatTagValue(param.default)}</span>
+          </span>
+        )}
+        {range && <span className="text-[10px] text-neutral-500">{range}</span>}
+        {param.ref_capability && (
+          <span className="text-[10px] text-cyan-400">ref:{param.ref_capability}</span>
+        )}
+        {param.tag_key && (
+          <span className="text-[10px] text-neutral-600">tag:{param.tag_key}</span>
+        )}
+      </div>
+      {param.enum && param.enum.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1 ml-1">
+          {param.enum.map((v) => (
+            <span
+              key={v}
+              className={`text-[9px] px-1 py-0.5 rounded border ${
+                String(param.default) === v
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  : 'bg-neutral-800/50 text-neutral-400 border-neutral-700/50'
+              }`}
+            >
+              {v}
+            </span>
+          ))}
+        </div>
+      )}
+      {param.description && (
+        <p className="text-[10px] text-neutral-500 mt-0.5 ml-1">{param.description}</p>
+      )}
+    </div>
+  );
+}
+
+function OpSchemaSection({ op }: { op: BlockOpSchema }) {
+  return (
+    <div className="space-y-2 bg-neutral-800/30 rounded-md p-3 border border-purple-500/20">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider">
+          Op
+        </span>
+        <code className="text-[11px] font-mono text-purple-300">{op.op_id}</code>
+        {op.signature_id && (
+          <span className="text-[10px] text-neutral-500 font-mono">
+            sig:{op.signature_id}
+          </span>
+        )}
+      </div>
+
+      {op.modalities.length > 0 && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-neutral-500">modalities</span>
+          {op.modalities.map((m) => (
+            <span
+              key={m}
+              className="text-[9px] text-neutral-300 bg-neutral-800 px-1 rounded"
+            >
+              {m}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {op.refs.length > 0 && (
+        <div>
+          <h5 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-0.5">
+            Refs
+          </h5>
+          {op.refs.map((r) => (
+            <OpRefRow key={r.key} opRef={r} />
+          ))}
+        </div>
+      )}
+
+      {op.params.length > 0 && (
+        <div>
+          <h5 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-0.5">
+            Params
+          </h5>
+          {op.params.map((p) => (
+            <OpParamRow key={p.key} param={p} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyButton({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 rounded px-1.5 py-0.5 transition-colors"
+    >
+      <Icon name={copied ? 'check' : 'copy'} size={10} />
+      {copied ? 'Copied' : label}
+    </button>
+  );
+}
+
 function BlockDetail({
   block,
+  schema,
+  schemaLoading,
   resolveTagValue,
+  classifyTagKey,
+  onOpenMatrix,
 }: {
   block: PromptBlockResponse;
+  schema: BlockSchemaResponse | null;
+  schemaLoading: boolean;
   resolveTagValue: (raw: string) => ResolvedTag;
+  classifyTagKey: (key: string) => TagKeyClass;
+  onOpenMatrix: (block: PromptBlockResponse) => void;
 }) {
-  const color = roleColor(block.composition_role);
+  const [showSystemTags, setShowSystemTags] = useState(false);
+
+  const color = categoryColor(block.category);
   const badgeClass = COLOR_BADGE[color] ?? COLOR_BADGE.gray;
+
+  const tagEntries = Object.entries(block.tags);
+  const authoringTags = tagEntries.filter(([k]) => !isSystemTag(k));
+  const systemTags = tagEntries.filter(([k]) => isSystemTag(k));
 
   return (
     <div className="p-4 space-y-4">
@@ -132,8 +404,18 @@ function BlockDetail({
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${badgeClass}`}>
-            {block.composition_role}:{block.category}
+            {block.category ?? 'uncategorized'}
           </span>
+          {block.composition_role && (
+            <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded font-mono">
+              {block.composition_role}
+            </span>
+          )}
+          {schema?.block_mode && (
+            <span className="text-[10px] text-purple-400 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 rounded">
+              {schema.block_mode}
+            </span>
+          )}
           {block.default_intent && (
             <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded">
               {block.default_intent}
@@ -146,7 +428,40 @@ function BlockDetail({
           )}
         </div>
         <code className="text-[11px] text-neutral-400 font-mono">{block.block_id}</code>
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <CopyButton label="Copy ID" value={block.block_id} />
+          <CopyButton label="Copy text" value={block.text} />
+          <button
+            type="button"
+            onClick={() => onOpenMatrix(block)}
+            className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 rounded px-1.5 py-0.5 transition-colors"
+          >
+            <Icon name="barChart" size={10} />
+            Open in Matrix
+          </button>
+        </div>
       </div>
+
+      {/* Description */}
+      {block.description && (
+        <div>
+          <h4 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+            Description
+          </h4>
+          <p className="text-xs text-neutral-400 leading-relaxed">{block.description}</p>
+        </div>
+      )}
+
+      {/* Op runtime schema */}
+      {schemaLoading && (
+        <p className="text-[10px] text-neutral-600">Loading op schema…</p>
+      )}
+      {!schemaLoading && schema?.op && <OpSchemaSection op={schema.op} />}
+      {!schemaLoading && schema && !schema.op && (
+        <p className="text-[10px] text-neutral-600 italic">
+          Surface-mode primitive — no op runtime.
+        </p>
+      )}
 
       {/* Text */}
       <div>
@@ -160,17 +475,55 @@ function BlockDetail({
       </div>
 
       {/* Tags */}
-      {Object.keys(block.tags).length > 0 && (
+      {authoringTags.length > 0 && (
         <div>
           <h4 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
             Tags
           </h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-            {Object.entries(block.tags).map(([key, value]) => (
-              <div key={key} className="contents">
-                <span className="text-neutral-500">{key}</span>
-                <TagValue raw={String(value)} resolveTagValue={resolveTagValue} />
-              </div>
+          <TagGrid
+            entries={authoringTags}
+            resolveTagValue={resolveTagValue}
+            classifyTagKey={classifyTagKey}
+          />
+        </div>
+      )}
+
+      {/* System / op tags (collapsed) */}
+      {systemTags.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowSystemTags((v) => !v)}
+            className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider hover:text-neutral-300 transition-colors"
+          >
+            {showSystemTags ? '▾' : '▸'} System tags ({systemTags.length})
+          </button>
+          {showSystemTags && (
+            <div className="mt-1.5">
+              <TagGrid
+                entries={systemTags}
+                resolveTagValue={resolveTagValue}
+                classifyTagKey={classifyTagKey}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Capabilities */}
+      {block.capabilities.length > 0 && (
+        <div>
+          <h4 className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+            Capabilities
+          </h4>
+          <div className="flex flex-wrap gap-1">
+            {block.capabilities.map((cap) => (
+              <span
+                key={cap}
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700/50"
+              >
+                {cap}
+              </span>
             ))}
           </div>
         </div>
@@ -212,7 +565,7 @@ function BlockList({
   return (
     <div className="divide-y divide-neutral-800/50">
       {blocks.map((block) => {
-        const color = roleColor(block.composition_role);
+        const color = categoryColor(block.category);
         const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
         const isSelected = block.block_id === selectedId;
 
@@ -221,9 +574,7 @@ function BlockList({
             key={block.block_id}
             onClick={() => onSelect(block)}
             className={`w-full text-left px-3 py-2 transition-colors ${
-              isSelected
-                ? 'bg-neutral-700/60'
-                : 'hover:bg-neutral-800/50'
+              isSelected ? 'bg-neutral-700/60' : 'hover:bg-neutral-800/50'
             }`}
           >
             <div className="flex items-center gap-1.5">
@@ -250,11 +601,13 @@ function BlockList({
 // ============================================================================
 
 export function BlockExplorerPanel() {
-  const [roleTree, setRoleTree] = useState<RoleNode[]>([]);
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
   const [blocks, setBlocks] = useState<PromptBlockResponse[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<PromptBlockResponse | null>(null);
+  const [blockSchema, setBlockSchema] = useState<BlockSchemaResponse | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const schemaCacheRef = useRef<Map<string, BlockSchemaResponse>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -266,12 +619,27 @@ export function BlockExplorerPanel() {
   const [activeTagFilters, setActiveTagFilters] = useState<TagFilter[]>([]);
 
   const { resolveTagValue } = useVocabResolver();
+  const { classifyTagKey } = useTagDictionary();
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
-  // Load role tree and packages on mount
+  const handleOpenMatrix = useCallback(
+    (block: PromptBlockResponse) => {
+      openFloatingPanel('block-matrix', {
+        context: {
+          category: block.category ?? undefined,
+          composition_role: block.composition_role ?? undefined,
+          package_name: block.package_name ?? undefined,
+        },
+      });
+    },
+    [openFloatingPanel],
+  );
+
+  // Load category tree and packages on mount
   useEffect(() => {
     Promise.all([listBlockRoles(), listBlockPackages()])
       .then(([summaries, pkgs]) => {
-        setRoleTree(buildRoleTree(summaries));
+        setCategoryTree(buildCategoryTree(summaries));
         setPackages(pkgs);
         setIsLoading(false);
       })
@@ -281,24 +649,23 @@ export function BlockExplorerPanel() {
       });
   }, []);
 
-  // Fetch tag facets when role/category changes
+  // Fetch tag facets when category/package changes
   useEffect(() => {
-    if (!selectedRole) {
+    if (!selectedCategory) {
       setTagFacets({});
       return;
     }
     listBlockTagFacets({
-      role: selectedRole,
-      category: selectedCategory ?? undefined,
+      category: selectedCategory,
       package_name: selectedPackage ?? undefined,
     })
       .then(setTagFacets)
       .catch(() => setTagFacets({}));
-  }, [selectedRole, selectedCategory, selectedPackage]);
+  }, [selectedCategory, selectedPackage]);
 
   // Fetch blocks when any filter changes
   useEffect(() => {
-    if (!selectedRole) {
+    if (!selectedCategory) {
       setBlocks([]);
       return;
     }
@@ -307,8 +674,7 @@ export function BlockExplorerPanel() {
         ? activeTagFilters.map((f) => `${f.key}:${f.value}`).join(',')
         : undefined;
     searchBlocks({
-      role: selectedRole,
-      category: selectedCategory ?? undefined,
+      category: selectedCategory,
       package_name: selectedPackage ?? undefined,
       q: searchQuery || undefined,
       tags: tagsParam,
@@ -316,7 +682,7 @@ export function BlockExplorerPanel() {
     })
       .then(setBlocks)
       .catch(() => setBlocks([]));
-  }, [selectedRole, selectedCategory, selectedPackage, searchQuery, activeTagFilters]);
+  }, [selectedCategory, selectedPackage, searchQuery, activeTagFilters]);
 
   // Clear or refresh detail selection when filtered results change.
   useEffect(() => {
@@ -331,16 +697,41 @@ export function BlockExplorerPanel() {
     }
   }, [blocks, selectedBlock]);
 
-  const handleSelectRole = useCallback((role: string) => {
-    setSelectedRole(role);
-    setSelectedCategory(null);
-    setSelectedBlock(null);
-    setSearchQuery('');
-    setActiveTagFilters([]);
-  }, []);
+  // Fetch op-runtime schema for the selected block (cached per block_id).
+  useEffect(() => {
+    if (!selectedBlock) {
+      setBlockSchema(null);
+      setSchemaLoading(false);
+      return;
+    }
+    const blockId = selectedBlock.block_id;
+    const cached = schemaCacheRef.current.get(blockId);
+    if (cached) {
+      setBlockSchema(cached);
+      setSchemaLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBlockSchema(null);
+    setSchemaLoading(true);
+    getBlockSchema(blockId)
+      .then((res) => {
+        if (cancelled) return;
+        schemaCacheRef.current.set(blockId, res);
+        setBlockSchema(res);
+      })
+      .catch(() => {
+        if (!cancelled) setBlockSchema(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSchemaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBlock]);
 
-  const handleSelectCategory = useCallback((role: string, category: string | null) => {
-    setSelectedRole(role);
+  const handleSelectCategory = useCallback((category: string) => {
     setSelectedCategory(category);
     setSelectedBlock(null);
     setSearchQuery('');
@@ -367,8 +758,8 @@ export function BlockExplorerPanel() {
   }, []);
 
   const totalBlocks = useMemo(
-    () => roleTree.reduce((sum, n) => sum + n.totalCount, 0),
-    [roleTree],
+    () => categoryTree.reduce((sum, n) => sum + n.totalCount, 0),
+    [categoryTree],
   );
 
   if (isLoading) {
@@ -389,53 +780,49 @@ export function BlockExplorerPanel() {
 
   return (
     <div className="h-full flex bg-neutral-900">
-      {/* Left sidebar: role/category tree */}
-      <div className="w-40 shrink-0 flex flex-col border-r border-neutral-800">
+      {/* Left sidebar: category tree */}
+      <div className="w-44 shrink-0 flex flex-col border-r border-neutral-800">
         <div className="px-2 py-2 border-b border-neutral-800">
           <h2 className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
-            Blocks
+            Categories
           </h2>
-          <p className="text-[10px] text-neutral-500">{totalBlocks} total</p>
+          <p className="text-[10px] text-neutral-500">
+            {categoryTree.length} categories · {totalBlocks} blocks
+          </p>
         </div>
         <div className="flex-1 overflow-y-auto py-1 px-1">
-          {roleTree.map((node) => {
-            const color = roleColor(node.role);
+          {categoryTree.map((node) => {
+            const color = categoryColor(node.category);
             const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
-            const isRoleSelected = selectedRole === node.role && !selectedCategory;
+            const isSelected = selectedCategory === node.category;
 
             return (
-              <SidebarTreeGroup
-                key={node.role}
-                label={node.role}
+              <SidebarTreeLeafButton
+                key={node.category}
+                label={
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{node.category}</span>
+                    {node.roles.length > 0 && (
+                      <span
+                        className="text-[9px] text-neutral-600 truncate"
+                        title={node.roles.join(', ')}
+                      >
+                        {node.roles.length === 1
+                          ? node.roles[0]
+                          : `${node.roles.length} roles`}
+                      </span>
+                    )}
+                  </span>
+                }
                 dotClassName={dotClass}
-                selected={isRoleSelected}
-                onClick={() => handleSelectRole(node.role)}
+                selected={isSelected}
+                onClick={() => handleSelectCategory(node.category)}
                 trailing={
-                  <span className="text-[10px] text-neutral-500 ml-auto">
+                  <span className="text-[9px] text-neutral-600 tabular-nums ml-auto">
                     {node.totalCount}
                   </span>
                 }
-              >
-                {node.categories.map((cat) => {
-                  const isCatSelected =
-                    selectedRole === node.role && selectedCategory === cat.category;
-                  return (
-                    <SidebarTreeLeafButton
-                      key={cat.category ?? '__default__'}
-                      label={cat.label}
-                      dotClassName={dotClass}
-                      selected={isCatSelected}
-                      onClick={() => handleSelectCategory(node.role, cat.category)}
-                      compact
-                      trailing={
-                        <span className="text-[9px] text-neutral-600 tabular-nums">
-                          {cat.count}
-                        </span>
-                      }
-                    />
-                  );
-                })}
-              </SidebarTreeGroup>
+              />
             );
           })}
         </div>
@@ -444,7 +831,7 @@ export function BlockExplorerPanel() {
       {/* Right: block list + detail */}
       <div className="flex-1 flex min-w-0">
         {/* Block list with filters */}
-        {selectedRole && (
+        {selectedCategory && (
           <div className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
             <div className="border-b border-neutral-800 shrink-0">
               <BlockFilters
@@ -473,13 +860,20 @@ export function BlockExplorerPanel() {
         {/* Detail */}
         <div className="flex-1 overflow-y-auto">
           {selectedBlock ? (
-            <BlockDetail block={selectedBlock} resolveTagValue={resolveTagValue} />
+            <BlockDetail
+              block={selectedBlock}
+              schema={blockSchema}
+              schemaLoading={schemaLoading}
+              resolveTagValue={resolveTagValue}
+              classifyTagKey={classifyTagKey}
+              onOpenMatrix={handleOpenMatrix}
+            />
           ) : (
             <div className="h-full flex items-center justify-center px-6">
               <p className="text-xs text-neutral-500">
-                {selectedRole
+                {selectedCategory
                   ? 'Select a block to view details'
-                  : 'Select a role from the sidebar'}
+                  : 'Select a category from the sidebar'}
               </p>
             </div>
           )}
