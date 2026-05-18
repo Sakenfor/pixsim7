@@ -549,6 +549,25 @@ export function ProjectPanel() {
     selectProjectById(nextId);
   };
 
+  // Lightweight "make this the active project" — sets the project session
+  // (id + name + source world) WITHOUT importing the world bundle. Combined
+  // with the authoring-context resolution chain (worldId ?? sourceWorldId),
+  // this lets Routine Graph / Scene Graph resolve the project's world
+  // without a heavyweight Load.
+  const handleSetActiveProject = () => {
+    if (!selectedProject) {
+      toast.warning('Select a project first');
+      return;
+    }
+    setCurrentProject({
+      projectId: selectedProject.id,
+      projectName: selectedProject.name,
+      projectSourceWorldId: selectedProject.source_world_id ?? null,
+      projectUpdatedAt: selectedProject.updated_at,
+    });
+    toast.success(`Active project: ${selectedProject.name}`);
+  };
+
   const handleSaveCurrent = async () => {
     if (!worldId) {
       toast.warning('Select a world before saving a project');
@@ -947,10 +966,6 @@ export function ProjectPanel() {
 
   return (
     <div className="h-full w-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
-        <WorldContextSelector />
-      </div>
-
       <SidebarContentLayout
         sections={sectionNavItems as unknown as { id: string; label: string }[]}
         activeSectionId={activeSection}
@@ -1490,7 +1505,56 @@ export function ProjectPanel() {
           )}
 
           {activeSection === 'dashboard' && (
-            <ProjectDashboard categories={inventoryAllCategories} />
+            <>
+              <div className="space-y-3 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3">
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-neutral-700 dark:text-neutral-300">
+                    Context
+                  </div>
+                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {currentProjectId != null
+                      ? `Active project: ${currentProjectName ?? `#${currentProjectId}`} (${currentProjectSource})`
+                      : 'Active project: none'}
+                  </div>
+                </div>
+
+                <FormField label="Project" size="sm">
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedProjectId ?? ''}
+                      onChange={(event) => handleProjectSelectValue(event.target.value)}
+                      className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                    >
+                      <option value="">Select a saved project...</option>
+                      {savedProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          #{project.id} {project.name}
+                          {project.id === currentProjectId ? ' (active)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleSetActiveProject}
+                      disabled={
+                        busy ||
+                        !selectedProjectId ||
+                        selectedProjectId === currentProjectId
+                      }
+                    >
+                      Set Active
+                    </Button>
+                  </div>
+                </FormField>
+
+                <div className="overflow-x-auto">
+                  <WorldContextSelector />
+                </div>
+              </div>
+
+              <ProjectDashboard categories={inventoryAllCategories} />
+            </>
           )}
 
           {activeSection === 'debug' && (
