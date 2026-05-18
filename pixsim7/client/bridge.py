@@ -67,8 +67,18 @@ def _focus_suffix(focus) -> str:
     return "--focus-" + hashlib.sha256(canonical.encode()).hexdigest()[:8]
 
 
-def _legacy_mcp_config_name(focus) -> str:
-    return f"focus{_focus_suffix(focus)}.json" if focus else "default.json"
+def _legacy_mcp_config_name(
+    focus, profile_id: str = "", session_id: str = ""
+) -> str:
+    base = f"focus{_focus_suffix(focus)}" if focus else "default"
+    # No identity (startup/base callers) -> legacy name, unchanged. With
+    # identity, the file must be per (profile, session) or two agents on
+    # the same focus clobber each other's config (and X-Profile-Id).
+    pid = _sanitize_for_filename(profile_id) if profile_id else ""
+    sid = _sanitize_for_filename(session_id) if session_id else ""
+    if pid or sid:
+        return f"{base}--{pid or 'na'}-{sid or 'na'}.json"
+    return f"{base}.json"
 
 
 def _per_session_mcp_config_name(
@@ -761,6 +771,8 @@ class Bridge:
         scope: str = "dev",
         token: str = "",
         focus: list[str] | None = None,
+        session_id: str = "",
+        profile_id: str = "",
     ) -> Optional[str]:
         """Generate MCP config file pointing to the pixsim MCP server.
 
@@ -774,7 +786,13 @@ class Bridge:
 
         # ── HTTP mode: shared MCP server is running ──
         if self._mcp_http_url:
-            cache_key = frozenset(focus) if focus else frozenset({"__default__"})
+            # Cache per (focus, profile, session): a config baked with one
+            # agent's X-Profile-Id must not be reused for another.
+            cache_key = (
+                frozenset(focus) if focus else "__default__",
+                profile_id or "",
+                session_id or "",
+            )
             cached = self._mcp_config_cache.get(cache_key)
             if cached and os.path.exists(cached):
                 return cached
@@ -786,11 +804,16 @@ class Bridge:
             # Stable filename: deterministic on (focus) so reopening on
             # the next bridge boot reuses the same path; survives %TEMP%
             # sweeps because we live in pixsim_mcp_config_dir() now.
+            # profile_id/session_id mirror the per-session path so the
+            # X-Profile-Id / X-Chat-Session-Id headers are emitted and
+            # agent attribution doesn't collapse to 'unknown'.
             path = write_claude_mcp_http_config(
                 mcp_url=self._mcp_http_url,
                 api_token=effective_token,
                 scope=mcp_scope,
-                name=_legacy_mcp_config_name(focus),
+                session_id=session_id,
+                profile_id=profile_id,
+                name=_legacy_mcp_config_name(focus, profile_id, session_id),
             )
             self._mcp_config_cache[cache_key] = path
             if not focus:
@@ -1404,7 +1427,19 @@ class Bridge:
             #  (a) feature flag off, focus present
             #  (b) flag on but mint failed (graceful fallback during cutover)
             if mcp_config_override is None and meta["focus"]:
-                mcp_config_override = self._ensure_mcp_config(focus=meta["focus"])
+                # Mirror the per-session path's identity extraction so the
+                # legacy/fallback config still emits X-Profile-Id /
+                # X-Chat-Session-Id (otherwise attribution -> 'unknown').
+                fallback_profile_id = (
+                    msg.get("profile_id")
+                    or (msg.get("profile_config") or {}).get("id")
+                    or ""
+                )
+                mcp_config_override = self._ensure_mcp_config(
+                    focus=meta["focus"],
+                    session_id=str(meta.get("bridge_session_id") or ""),
+                    profile_id=str(fallback_profile_id),
+                )
 
         # On first message of a new conversation, inject persona + token.
         # Resumed conversations already have these in history.

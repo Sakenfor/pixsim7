@@ -657,3 +657,52 @@ class TestMcpDegradationSignal:
         bridge._clear_mcp_degradation()
         assert bridge._mcp_degradation is None
         assert bridge.status()["mcp_degradation"] is None
+
+
+# ── Legacy _ensure_mcp_config identity headers ───────────────────
+# Plan plan-participant-liveness / checkpoint bridge-profile-id-plumbing:
+# the default/fallback path forked from the per-session path and stopped
+# emitting X-Profile-Id / X-Chat-Session-Id, collapsing attribution to
+# agent_id='unknown'. These lock the fork closed.
+
+
+def _read_config_headers(path: str) -> dict:
+    with open(path) as f:
+        cfg = json.load(f)
+    return cfg["mcpServers"]["pixsim"].get("headers", {})
+
+
+class TestLegacyEnsureMcpConfigIdentity:
+    def test_forwards_profile_and_session_headers(self):
+        bridge = _make_bridge()
+        path = bridge._ensure_mcp_config(
+            focus=["plans.management"],
+            session_id="sess-9",
+            profile_id="profile-x",
+        )
+        assert path is not None
+        headers = _read_config_headers(path)
+        assert headers.get("X-Profile-Id") == "profile-x"
+        assert headers.get("X-Chat-Session-Id") == "sess-9"
+
+    def test_omits_headers_when_no_identity(self):
+        # Startup/base callers pass no identity — must stay header-free
+        # (no spurious/empty X-Profile-Id), unchanged from prior behaviour.
+        bridge = _make_bridge()
+        path = bridge._ensure_mcp_config(focus=["plans.management"])
+        assert path is not None
+        headers = _read_config_headers(path)
+        assert "X-Profile-Id" not in headers
+        assert "X-Chat-Session-Id" not in headers
+
+    def test_distinct_profiles_do_not_share_cached_config(self):
+        bridge = _make_bridge()
+        p_a = bridge._ensure_mcp_config(
+            focus=["plans.management"], profile_id="agent-a", session_id="s"
+        )
+        p_b = bridge._ensure_mcp_config(
+            focus=["plans.management"], profile_id="agent-b", session_id="s"
+        )
+        assert p_a is not None and p_b is not None
+        assert _read_config_headers(p_a).get("X-Profile-Id") == "agent-a"
+        assert _read_config_headers(p_b).get("X-Profile-Id") == "agent-b"
