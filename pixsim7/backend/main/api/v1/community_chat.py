@@ -142,7 +142,20 @@ async def websocket_community_chat(websocket: WebSocket, token: str | None = Non
 
     from pixsim7.backend.main.shared.config import settings
 
+    # Logged before any close so a failed handshake is diagnosable (the
+    # reject path is otherwise silent).
+    logger.info(
+        "ws_community_chat_handshake",
+        has_token=bool(token),
+        resolved_user_id=user_id,
+        debug=settings.debug,
+    )
+
     if user_id is None and not settings.debug:
+        logger.warning(
+            "ws_community_chat_rejected",
+            reason="auth" if not token else "token_unresolved",
+        )
         await websocket.close(code=1008, reason="Authentication required")
         return
 
