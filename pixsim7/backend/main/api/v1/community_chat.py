@@ -113,15 +113,24 @@ async def send_message(
 
 # ===== WEBSOCKET =====
 
-async def _resolve_user_id(token: str | None) -> int | None:
-    """Resolve user id from a JWT query-param token (same shape as ws_chat)."""
+async def _resolve_user_id(token: str | None, db) -> int | None:
+    """Resolve user id from a JWT query-param token.
+
+    NOTE: unlike ws_chat's copy, this builds AuthService with a *real*
+    session. Calling the FastAPI dependency ``get_auth_service()``
+    outside DI yields a service whose ``.db`` is an unbound ``Depends``
+    placeholder; when ``jwt_require_session`` is on, ``verify_token_claims``
+    then raises ``AttributeError`` and the bare except silently returns
+    None — so every WS connected as user_id=None and fan-out missed it.
+    """
     if not token:
         return None
     try:
-        from pixsim7.backend.main.api.dependencies import get_auth_service
+        from pixsim7.backend.main.services.user.auth_service import AuthService
+        from pixsim7.backend.main.services.user.user_service import UserService
         from pixsim7.backend.main.shared.actor import RequestPrincipal
 
-        auth_service = get_auth_service()
+        auth_service = AuthService(db, UserService(db))
         payload = await auth_service.verify_token_claims(
             token, update_last_used=False
         )
@@ -138,7 +147,8 @@ async def websocket_community_chat(websocket: WebSocket, token: str | None = Non
     Receive: ``{"type":"message","message":{...}}`` on every new message.
     Send:    ``ping`` -> ``pong``; ``{"type":"message","body":"..."}``.
     """
-    user_id = await _resolve_user_id(token)
+    async with AsyncSessionLocal() as auth_db:
+        user_id = await _resolve_user_id(token, auth_db)
 
     from pixsim7.backend.main.shared.config import settings
 
