@@ -35,6 +35,7 @@ import {
   findMissingAssistantTail,
   evaluateTranscriptRecovery,
   isLastAssistantMessageEqual,
+  tabPrimaryPlanId,
   type ChatTab,
   type AgentEngine,
 } from './assistantChatStore';
@@ -281,6 +282,18 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             { role: 'system' as const, text: 'Response recovered from server', timestamp: new Date(), recovered: true },
             ...recovery.recoveredAssistantTail.map((m) => ({ ...m, recovered: true })),
           ]);
+          setPendingServerMessages(0);
+          setServerTranscriptDiverged(false);
+          setResponseLost(false);
+          return;
+        }
+
+        if (recovery.pendingServerMessages > 0 && recovery.diverged) {
+          // Strict tail-prefix recovery couldn't append safely, but the server
+          // still reports additional assistant replies. Prefer server truth so
+          // the panel self-heals after bridge/backend restarts instead of
+          // getting stuck with a permanent "N server" badge.
+          st.setMessages(tab.id, serverMsgs);
           setPendingServerMessages(0);
           setServerTranscriptDiverged(false);
           setResponseLost(false);
@@ -1266,15 +1279,20 @@ export function AIAssistantPanel() {
     return () => window.removeEventListener(OPEN_PLAN_CHAT_EVENT, handler);
   }, [tabs, profiles]);
 
-  // Group tabs: plan-bound first (grouped by planId), then ungrouped
+  // Group tabs: plan-bound first (grouped by their single PRIMARY plan),
+  // then ungrouped. Keyed off tabPrimaryPlanId — NOT a raw multi-claim
+  // list — so a tab on N plans still renders exactly once. Multi-plan
+  // membership is surfaced in the chat header, never by duplicating the
+  // tab here. See plan-participant-liveness / unify-tab-plan-categorization.
   const { planGroups, ungroupedTabs } = useMemo(() => {
     const byPlan = new Map<string, ChatTab[]>();
     const ungrouped: ChatTab[] = [];
     for (const tab of tabs) {
-      if (tab.planId) {
-        const group = byPlan.get(tab.planId) ?? [];
+      const primaryPlanId = tabPrimaryPlanId(tab);
+      if (primaryPlanId) {
+        const group = byPlan.get(primaryPlanId) ?? [];
         group.push(tab);
-        byPlan.set(tab.planId, group);
+        byPlan.set(primaryPlanId, group);
       } else {
         ungrouped.push(tab);
       }

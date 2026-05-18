@@ -1457,6 +1457,28 @@ export function buildResumedTab(session: {
   };
 }
 
+/**
+ * The single plan a chat tab is *placed under* in the left sidebar.
+ *
+ * INVARIANT: a tab renders exactly ONCE — under this primary — never once
+ * per plan it's claimed on. A tab/session can be on multiple plans (the
+ * participant-claim ledger is multi-valued); that full membership is
+ * surfaced only in the chat header (ContextBar), NOT by duplicating the
+ * tab across sidebar groups. Any sidebar grouping MUST key off this
+ * accessor, not a raw claim list.
+ *
+ * Primary = the tab's manual @-mention binding (`ChatTab.planId`) when set.
+ * When unset it resolves to `null` today (tab → ungrouped bucket), which
+ * is behaviour-preserving. The "else most-recent open claim" fallback is
+ * wired in step 3 once per-tab claims are plumbed into the store — this
+ * accessor is the single seam where that lands, so callers never change.
+ *
+ * Plan `plan-participant-liveness` / `unify-tab-plan-categorization`.
+ */
+export function tabPrimaryPlanId(tab: Pick<ChatTab, 'planId'>): string | null {
+  return tab.planId ?? null;
+}
+
 // =============================================================================
 // Exports
 // =============================================================================

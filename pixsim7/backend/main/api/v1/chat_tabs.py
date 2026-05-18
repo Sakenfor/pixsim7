@@ -8,6 +8,7 @@ session intact, so chats can be reopened later via the closed-tab picker
 Tabs are strictly user-private — no shared/public variant and no admin
 override. Every endpoint scopes by ``user_id == current_user.id``.
 """
+import logging
 from typing import List, Optional
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.domain.docs.models import PlanParticipant
 from pixsim7.backend.main.domain.platform.agent_profile import (
     ChatSession,
     ChatTab,
@@ -32,6 +34,8 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 # specifically want a per-device pip, and is cleaned up alongside.
 NOTIF_REF_TYPE_CHAT_SESSION = "chat_session"
 NOTIF_REF_TYPE_CHAT_TAB = "chat_tab"
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat-tabs", tags=["chat-tabs"])
 
@@ -157,6 +161,54 @@ async def _load_owned_tab(db: AsyncSession, tab_id: UUID, user_id: int) -> ChatT
     return tab
 
 
+async def _sync_plan_claim(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    session_id: Optional[str],
+    old_plan_id: Optional[str],
+    new_plan_id: Optional[str],
+) -> None:
+    """Mirror a tab's plan binding into a PlanParticipant claim.
+
+    A UI ``@plan:`` mention PATCHes ``ChatTab.plan_id``; that scalar is the
+    derived *primary* for sidebar placement, but the multi-plan source of
+    truth is the participant-claim ledger. Recording the claim here lets a
+    user @-mention and an MCP agent self-assign working the *same* chat
+    session resolve to one multi-plan membership (plan
+    ``plan-participant-liveness`` / ``unify-tab-plan-categorization``).
+
+    Best-effort: claim bookkeeping must never fail the tab PATCH. Runs in
+    the caller's transaction (committed by the endpoint). Lazy import keeps
+    the plans helper out of this module's import graph at load time.
+    """
+    if old_plan_id == new_plan_id:
+        return
+    try:
+        from pixsim7.backend.main.api.v1.plans import helpers as _ph
+
+        if old_plan_id:
+            await _ph.release_checkpoint(
+                db, principal=user, plan_id=old_plan_id, checkpoint_id=None
+            )
+        if new_plan_id:
+            await _ph.claim_checkpoint(
+                db,
+                principal=user,
+                plan_id=new_plan_id,
+                checkpoint_id=None,
+                session_id=session_id,
+            )
+    except Exception:  # noqa: BLE001 — claim sync is non-critical bookkeeping
+        logger.warning(
+            "chat-tab plan-claim sync failed (tab session=%s, %s -> %s)",
+            session_id,
+            old_plan_id,
+            new_plan_id,
+            exc_info=True,
+        )
+
+
 # ── Endpoints ─────────────────────────────────────────────────────
 
 
@@ -261,6 +313,7 @@ async def update_chat_tab(
     tab = await _load_owned_tab(db, tab_id, user.id)
 
     updates = payload.model_dump(exclude_unset=True)
+    old_plan_id = tab.plan_id
 
     # session_id binds the tab to a real ChatSession the first time the
     # bridge surfaces Claude's cli_session_id. Validate the target exists
@@ -279,9 +332,101 @@ async def update_chat_tab(
         setattr(tab, key, value)
     tab.updated_at = utcnow()
 
+    if "plan_id" in updates:
+        await _sync_plan_claim(
+            db,
+            user=user,
+            session_id=tab.session_id,
+            old_plan_id=old_plan_id,
+            new_plan_id=tab.plan_id,
+        )
+
     await db.commit()
     await db.refresh(tab)
     return _to_response(tab)
+
+
+class TabPlanClaim(BaseModel):
+    """One plan the tab's chat session is bound to / has an open claim on."""
+
+    planId: str
+    planTitle: Optional[str] = None
+    checkpointId: Optional[str] = None
+    claimedAt: Optional[str] = None
+    # True for the tab's derived *primary* plan (ChatTab.plan_id) — the one
+    # the left sidebar groups this single tab under. The others are
+    # surfaced only in the chat header (multi-plan membership).
+    primary: bool = False
+
+
+class TabPlanClaimsResponse(BaseModel):
+    tabId: str
+    sessionId: Optional[str] = None
+    primaryPlanId: Optional[str] = None
+    plans: List[TabPlanClaim]
+
+
+@router.get("/{tab_id}/plan-claims", response_model=TabPlanClaimsResponse)
+async def list_tab_plan_claims(
+    tab_id: UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """All plans this tab's chat session is on (multi-plan membership).
+
+    Source of truth = the participant-claim ledger keyed by the tab's bound
+    ``session_id`` (shared by UI ``@plan:`` mentions and MCP agent
+    self-assigns in the same session). The scalar ``ChatTab.plan_id`` is the
+    derived *primary* and is always included even if no claim row exists yet
+    (unbound tab, or claim sync skipped). Feeds the ContextBar header chip
+    set; the left sidebar still groups the tab once under ``primaryPlanId``.
+    """
+    tab = await _load_owned_tab(db, tab_id, user.id)
+    primary = tab.plan_id
+
+    from pixsim7.backend.main.api.v1.plans import helpers as _ph
+
+    by_plan: dict[str, TabPlanClaim] = {}
+    if tab.session_id:
+        stmt = select(PlanParticipant).where(
+            PlanParticipant.session_id == tab.session_id,
+            PlanParticipant.role == "builder",
+        )
+        rows = list((await db.execute(stmt)).scalars().all())
+        for row in rows:
+            claim = _ph.participant_claim(row)
+            if not _ph.claim_is_open(claim):
+                continue
+            existing = by_plan.get(row.plan_id)
+            # Keep the most recent open claim per plan.
+            if existing and (existing.claimedAt or "") >= (claim.get("claimed_at") or ""):
+                continue
+            by_plan[row.plan_id] = TabPlanClaim(
+                planId=row.plan_id,
+                checkpointId=claim.get("checkpoint_id"),
+                claimedAt=claim.get("claimed_at"),
+                primary=(row.plan_id == primary),
+            )
+
+    # The derived primary is always present, even without a claim row.
+    if primary and primary not in by_plan:
+        by_plan[primary] = TabPlanClaim(planId=primary, primary=True)
+
+    titles = await _ph.resolve_plan_titles(db, set(by_plan.keys()))
+    # Stable chained sort: primary first, then most-recent claim first
+    # (ISO-8601 strings sort lexicographically), then plan id.
+    plans = sorted(by_plan.values(), key=lambda p: p.planId)
+    plans.sort(key=lambda p: p.claimedAt or "", reverse=True)
+    plans.sort(key=lambda p: not p.primary)
+    for p in plans:
+        p.planTitle = titles.get(p.planId)
+
+    return TabPlanClaimsResponse(
+        tabId=str(tab.id),
+        sessionId=tab.session_id,
+        primaryPlanId=primary,
+        plans=plans,
+    )
 
 
 @router.delete("/{tab_id}")

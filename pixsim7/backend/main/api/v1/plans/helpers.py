@@ -840,6 +840,7 @@ async def claim_checkpoint(
     principal: CurrentUser,
     plan_id: str,
     checkpoint_id: Optional[str],
+    session_id: Optional[str] = None,
 ) -> Tuple[Optional[PlanParticipant], List[PlanParticipant]]:
     """Upsert the caller's builder row with an open claim.
 
@@ -847,6 +848,14 @@ async def claim_checkpoint(
     claimants of the same checkpoint — surfaced, never rejected. The
     upsert + heartbeat advance + principal normalization stay
     single-sourced via _record_plan_participant_from_principal.
+
+    ``session_id`` stamps the participant row with the chat session it
+    belongs to. This is the join key that lets a UI ``@plan:`` mention
+    (user principal) and an MCP agent self-assign (agent principal)
+    working in the *same* chat session resolve to the same multi-plan
+    membership — see plan ``plan-participant-liveness`` checkpoint
+    ``unify-tab-plan-categorization``. Omit for headless/no-session
+    claims (roster-only, no chat-tab grouping side effect).
     """
     now = utcnow()
     claim = {
@@ -860,6 +869,7 @@ async def claim_checkpoint(
         role="builder",
         action="claim",
         principal=principal,
+        session_id=session_id,
         meta={CLAIM_META_KEY: claim},
     )
     if hasattr(db, "flush"):
