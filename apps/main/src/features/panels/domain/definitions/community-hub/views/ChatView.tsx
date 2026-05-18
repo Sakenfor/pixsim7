@@ -1,4 +1,3 @@
-import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 
@@ -114,26 +113,30 @@ export function ChatView() {
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let pingTimer: ReturnType<typeof setInterval> | undefined;
 
+    // Loud one-shot marker: if this never logs on mount, the running
+    // bundle isn't this code (stale dev build / wrong process).
+    console.warn('[community-chat] WS effect mounted');
+
     const scheduleReconnect = () => {
       if (!mountedRef.current) return;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(() => void connect(), 3000);
     };
 
-    const connect = async () => {
+    const connect = () => {
       if (!mountedRef.current) return;
       try {
-        // Token may be momentarily unavailable right after mount; treat
-        // that as a transient failure to retry, not a permanent abort.
-        let token: string | null = null;
-        try {
-          token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
-        } catch (err) {
-          console.warn('[community-chat] token unavailable, will retry', err);
-        }
-        if (!mountedRef.current) return;
+        // Synchronous token read (browser auth storage = localStorage,
+        // key TOKEN_KEY). No async getter that could hang and silently
+        // prevent the socket from ever being created.
+        const token =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem('access_token')
+            : null;
 
-        const ws = new WebSocket(computeCommunityWsUrl(token));
+        const url = computeCommunityWsUrl(token);
+        console.warn('[community-chat] opening WS', url);
+        const ws = new WebSocket(url);
         wsRef.current = ws;
 
         ws.onopen = () => {
