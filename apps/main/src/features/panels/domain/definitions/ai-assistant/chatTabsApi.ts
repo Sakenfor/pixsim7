@@ -158,3 +158,36 @@ export async function listOrphanSessions(limit = 50): Promise<OrphanSession[]> {
   );
   return res.sessions;
 }
+
+/**
+ * One plan this tab's chat session is on (multi-plan membership). Mirrors
+ * `TabPlanClaim` in `pixsim7/backend/main/api/v1/chat_tabs.py`.
+ *
+ * `primary` marks the single plan the left sidebar groups this tab under
+ * (the derived `ChatTab.plan_id`); the rest are surfaced only in the chat
+ * header. See plan `plan-participant-liveness` /
+ * `unify-tab-plan-categorization`.
+ */
+export interface TabPlanClaim {
+  planId: string;
+  planTitle: string | null;
+  checkpointId: string | null;
+  claimedAt: string | null;
+  primary: boolean;
+}
+
+export interface TabPlanClaimsResponse {
+  tabId: string;
+  sessionId: string | null;
+  primaryPlanId: string | null;
+  plans: TabPlanClaim[];
+}
+
+export async function listTabPlanClaims(
+  tabId: string,
+): Promise<TabPlanClaimsResponse> {
+  return pixsimClient.get<TabPlanClaimsResponse>(
+    `/chat-tabs/${tabId}/plan-claims`,
+    { headers: SURFACE_HEADER },
+  );
+}

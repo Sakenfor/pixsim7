@@ -76,6 +76,7 @@ import {
   dismissFailedCreate,
   retryFailedCreate,
 } from './useChatTabsQuery';
+import { useTabPlanClaims } from './useTabPlanClaims';
 
 // =============================================================================
 // Plan-context injection — pulls latest work_summary entries for a plan and
@@ -176,6 +177,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 }) {
   // Messages from Zustand store (survives HMR)
   const messages = useAssistantChatStore((s) => s.messagesByTab[tab.id] ?? EMPTY_CHAT_MESSAGES);
+  // Multi-plan membership for the header chip set (sidebar still groups
+  // this tab once, under its primary). Plan unify-tab-plan-categorization.
+  const tabPlanClaims = useTabPlanClaims(tab.id, tab.planId, tab.sessionId);
   // Hydrate store cache from localStorage on mount (safe in effect, not render)
   useEffect(() => {
     const s = useAssistantChatStore.getState();
@@ -832,6 +836,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           tab={tab}
           profile={activeProfile ?? null}
           poolSession={findPoolSession(bridge, tab.sessionId)}
+          planClaims={tabPlanClaims}
           sending={sending}
           pendingServerMessages={pendingServerMessages}
           serverTranscriptDiverged={serverTranscriptDiverged}

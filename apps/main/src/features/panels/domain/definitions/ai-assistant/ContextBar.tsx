@@ -15,11 +15,21 @@ import { Icon } from '@lib/icons';
 
 import type { ChatTab } from './assistantChatStore';
 import type { PoolSessionInfo, UnifiedProfile } from './assistantTypes';
+import type { TabPlanClaim } from './chatTabsApi';
 
 interface ContextBarProps {
   tab: ChatTab;
   profile: UnifiedProfile | null;
   poolSession: PoolSessionInfo | null;
+  /**
+   * Multi-plan membership for this tab's session (participant-claim
+   * ledger). When non-empty, replaces the single plan chip with a chip
+   * set: primary first (the plan the sidebar groups this tab under),
+   * then every other plan an agent self-assigned in this session. Empty
+   * during load / for an unbound tab — falls back to the `tab.planId`
+   * single chip. Plan `unify-tab-plan-categorization`.
+   */
+  planClaims?: TabPlanClaim[];
   sending?: boolean;
   pendingServerMessages?: number;
   serverTranscriptDiverged?: boolean;
@@ -47,6 +57,7 @@ export function ContextBar({
   tab,
   profile,
   poolSession,
+  planClaims,
   sending = false,
   pendingServerMessages = 0,
   serverTranscriptDiverged = false,
@@ -64,10 +75,36 @@ export function ContextBar({
   const resumeSessionId = liveResumeId || (tab.sessionId?.trim() || null);
   const resumeIsLive = !!liveResumeId;
 
-  // Plan scope
-  if (tab.planId) {
+  // Plan scope — multi-plan chip set when the session's claim ledger is
+  // loaded (primary first, then plans an agent self-assigned in this
+  // session); otherwise the single derived-primary chip (load / unbound).
+  if (planClaims && planClaims.length > 0) {
+    for (const claim of planClaims) {
+      chips.push(
+        <span
+          key={`plan:${claim.planId}`}
+          className={`inline-flex items-center gap-0.5 ${
+            claim.primary ? 'text-emerald-500' : 'text-emerald-500/60'
+          }`}
+          title={
+            (claim.planTitle ? `${claim.planTitle} (${claim.planId})` : claim.planId) +
+            (claim.primary ? ' · primary (sidebar group)' : ' · self-assigned')
+          }
+        >
+          <Icon name="clipboard" size={9} />
+          <span className="truncate max-w-[100px]">
+            {claim.planTitle ?? claim.planId}
+          </span>
+        </span>,
+      );
+    }
+  } else if (tab.planId) {
     chips.push(
-      <span key="plan" className="inline-flex items-center gap-0.5 text-emerald-500">
+      <span
+        key="plan"
+        className="inline-flex items-center gap-0.5 text-emerald-500"
+        title={tab.planId}
+      >
         <Icon name="clipboard" size={9} />
         <span className="truncate max-w-[100px]">{tab.planId}</span>
       </span>,
