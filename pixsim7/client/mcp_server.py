@@ -585,31 +585,49 @@ async def _init_tools() -> None:
 _LOG_WORK_TOOL = types.Tool(
     name="log_work",
     description=(
-        "Log a work summary for the current session. Call this when you finish "
-        "a meaningful piece of work — the summary is stored in the session's "
-        "activity log and optionally updates a plan checkpoint. This helps "
-        "track what was accomplished and provides continuity across sessions."
+        "Record session-scoped work notes — keyed to this chat session, not "
+        "to a commit or a plan.\n\n"
+        "NOT for restating outcomes. The *what changed & why* belongs in the "
+        "git commit message; per-checkpoint outcome + verification belongs in "
+        "the plan checkpoint note (the plans progress update). Re-summarising "
+        "those here just creates a third stale copy.\n\n"
+        "Use this for what those channels structurally cannot hold: decisions "
+        "and trade-offs, ruled-out approaches / dead-ends, blockers, and "
+        "cross-session handoff — the process and negative space between "
+        "commits.\n\n"
+        "When plan_id+checkpoint_id is set, the checkpoint note already "
+        "carries the outcome: keep `summary` to a one-line pointer and put "
+        "the real content in decisions/blockers/next. Standalone (no plan, "
+        "e.g. exploration or debugging) a fuller `summary` is right — it is "
+        "then the only record this session's work exists at all."
     ),
     inputSchema={
         "type": "object",
         "properties": {
             "summary": {
                 "type": "string",
-                "description": "What was accomplished (1-3 sentences). Focus on outcomes, not process.",
+                "description": (
+                    "One line. If a git commit or plan checkpoint note already "
+                    "records the outcome, make this a POINTER to them (e.g. "
+                    "'see commit <sha> / checkpoint <id>') — do not re-state "
+                    "what changed. Only when no commit/plan anchors the work "
+                    "(exploration, debugging, dead-ends) should this carry the "
+                    "full narrative."
+                ),
             },
             "next": {
                 "type": "string",
-                "description": "What to pick up next — unfinished work, next steps, or handoff notes for the next session. Optional.",
+                "description": "Cross-session handoff: what to pick up next, unfinished threads. A primary payload of this tool. Optional.",
             },
             "decisions": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Non-obvious decisions or trade-offs made during this work (e.g. 'chose Zustand over context because X'). Optional.",
+                "description": "Non-obvious decisions, trade-offs, and ruled-out approaches / dead-ends (e.g. 'chose Zustand over context because X'; 'tried Y, abandoned because Z'). A primary payload of this tool. Optional.",
             },
             "blockers": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Blockers discovered that prevent further progress. Optional.",
+                "description": "Blockers discovered that prevent further progress. A primary payload of this tool. Optional.",
             },
             "plan_id": {
                 "type": "string",
@@ -735,6 +753,18 @@ _ASK_USER_TOOL = types.Tool(
             "placeholder": {
                 "type": "string",
                 "description": "Placeholder text for text input field (only for interaction_type=text_input)",
+            },
+            "timeout_s": {
+                "type": "integer",
+                "description": (
+                    "Seconds to wait for the user before timing out (default 120, "
+                    "range 10-3600). A timeout is NOT a refusal — set this higher "
+                    "(e.g. 600+) when the user may be away from the screen (mobile) "
+                    "or the question can wait."
+                ),
+                "default": 120,
+                "minimum": 10,
+                "maximum": 3600,
             },
         },
         "required": ["title"],
@@ -1370,11 +1400,20 @@ async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]
     choices = arguments.get("choices")
     placeholder = arguments.get("placeholder")
 
+    # Caller-tunable wait. Clamp to a sane range; the agent sizes this to the
+    # question (long for "user may be on mobile / away", short for trivial
+    # gates). 120s is the historical default for back-compat.
+    try:
+        timeout_s = int(arguments.get("timeout_s", 120) or 120)
+    except (TypeError, ValueError):
+        timeout_s = 120
+    timeout_s = max(10, min(timeout_s, 3600))
+
     payload: dict[str, Any] = {
         "title": title,
         "description": description,
         "interaction_type": interaction_type,
-        "timeout_s": 120,
+        "timeout_s": timeout_s,
     }
     if choices:
         payload["choices"] = choices
@@ -1382,13 +1421,24 @@ async def _handle_ask_user(arguments: dict[str, Any]) -> list[types.TextContent]
         payload["placeholder"] = placeholder
 
     try:
-        client = httpx.AsyncClient(timeout=130)
+        # Keep the transport ceiling just above the server-side wait so the
+        # confirm endpoint returns a clean {approved:false, timed_out:true}
+        # instead of the client raising a read timeout.
+        client = httpx.AsyncClient(timeout=timeout_s + 10)
         resp = await client.post(f"http://127.0.0.1:{port}/confirm", json=payload)
         await client.aclose()
         if resp.status_code == 200:
             data = resp.json()
             approved = data.get("approved", False)
             if not approved:
+                if data.get("timed_out"):
+                    return [types.TextContent(type="text", text=(
+                        f"User did not respond within {timeout_s}s — the prompt "
+                        f"timed out. This is NOT a refusal: the user may be away "
+                        f"from the screen. Do not assume the answer is 'no'. "
+                        f"Either proceed only if safe to do so without their "
+                        f"input, or ask again (consider a larger timeout_s)."
+                    ))]
                 return [types.TextContent(type="text", text="User declined / cancelled the prompt.")]
             # Return the response based on interaction type
             if interaction_type == "choice":
