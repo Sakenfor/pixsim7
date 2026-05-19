@@ -588,6 +588,18 @@ class AssistantChatBridge {
         return;
       }
 
+      // The backend now re-validates the auth token per message (not just at
+      // connect). A long-lived chat WS whose connect-time token has aged out
+      // gets `token_expired` instead of silently forwarding a dead token that
+      // would make the agent's MCP tools 401. Drop the stale socket so the
+      // next send reconnects via `_connectWs` → a freshly-fetched token; we
+      // still surface the error so the user (or retryLast) resends with it.
+      if (errorCode === 'token_expired') {
+        try { this._ws?.close(); } catch { /* already closed */ }
+        this._ws = null;
+        this._wsToken = null;
+      }
+
       request.status = 'error';
       request.activity = null;
       request.result = {

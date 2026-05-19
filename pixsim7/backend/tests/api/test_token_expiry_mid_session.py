@@ -279,6 +279,86 @@ class TestChatWsTokenOnConnect:
         assert captured_payloads[0].get("user_token") == "fresh-user-token"
 
 
+class TestExpiredEffectiveTokenRefused:
+    """Per-message guard: an expired effective_token is refused, not forwarded.
+
+    Closes the sub-24h "MCP disconnected" path — previously an expired
+    user_token (or stale connect-time raw_token) flowed straight to the
+    per-session MCP token file, turning every MCP call into a silent 401.
+    """
+
+    def _bridge_capturing(self, captured: list):
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = _make_agent()
+
+        async def capture_stream(payload, **kwargs):
+            captured.append(payload)
+            yield {"type": "result", "ok": True, "edited_prompt": "done"}
+
+        mock_bridge.dispatch_task_streaming = capture_stream
+        return mock_bridge
+
+    def test_expired_user_token_refused_not_forwarded(self):
+        """An expired pre-minted user_token yields a typed error, no dispatch."""
+        app = _chat_app()
+        client = TestClient(app)
+        captured: list = []
+        mock_bridge = self._bridge_capturing(captured)
+        expired = _mint_expired_token(purpose="agent")
+
+        with (
+            patch(_RESOLVE_USER, AsyncMock(return_value=1)),
+            patch(_RESOLVE_TOKEN, AsyncMock(return_value="valid-connect-token")),
+            patch(_SETTINGS_DEBUG, False),
+            patch(_BRIDGE, mock_bridge),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat?token=tok") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "user_token": expired,
+                }))
+                data = json.loads(ws.receive_text())
+
+        assert data["type"] == "error"
+        assert data["error_code"] == "token_expired"
+        assert data.get("error_details", {}).get("source") == "user_token"
+        # Crucially: the bridge was never dispatched with the dead token.
+        assert captured == []
+
+    def test_valid_user_token_still_dispatches(self):
+        """Regression guard: a fresh user_token is unaffected by the new check."""
+        app = _chat_app()
+        client = TestClient(app)
+        captured: list = []
+        mock_bridge = self._bridge_capturing(captured)
+        fresh = _mint_token(user_id=1, hours=24, purpose="agent")
+
+        with (
+            patch(_RESOLVE_USER, AsyncMock(return_value=1)),
+            patch(_RESOLVE_TOKEN, AsyncMock(return_value="valid-connect-token")),
+            patch(_SETTINGS_DEBUG, False),
+            patch(_BRIDGE, mock_bridge),
+            patch("pixsim7.backend.main.api.v1.ws_chat.extract_response_text", return_value="done"),
+        ):
+            with client.websocket_connect("/api/v1/ws/chat?token=tok") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "user_token": fresh,
+                }))
+                data = json.loads(ws.receive_text())
+
+        assert data["type"] == "result"
+        assert len(captured) == 1
+        assert captured[0].get("user_token") == fresh
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 3. Bridge WS — token validated once, connection persists
 # ═══════════════════════════════════════════════════════════════════

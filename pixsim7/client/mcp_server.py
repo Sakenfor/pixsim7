@@ -1859,10 +1859,24 @@ async def _mint_via_profile(profile_id: str, login_token: str) -> str | None:
             headers={"Authorization": f"Bearer {login_token}"},
         )
         if resp.status_code != 200:
+            print(
+                f"[pixsim-mcp] Profile token mint returned {resp.status_code} "
+                f"for {profile_id} — self-heal will fall back to login token.",
+                file=sys.stderr,
+            )
             return None
         data = resp.json()
-        return data.get("token", "") or None
-    except Exception:
+        # The endpoint (agent_profiles.mint_profile_token) responds with
+        # ``AgentProfileTokenResponse(access_token=...)``. The legacy
+        # ``token`` key was never emitted, so reading only ``token`` made
+        # profile-based self-heal ALWAYS fail silently (it fell back to the
+        # raw login token, which for agent sessions is the wrong purpose /
+        # often absent) — that is the sub-24h "MCP disconnected" cause.
+        # Prefer ``access_token``; keep ``token`` as a defensive fallback in
+        # case the response shape ever changes again.
+        return data.get("access_token") or data.get("token") or None
+    except Exception as exc:
+        print(f"[pixsim-mcp] Profile token mint raised: {exc}", file=sys.stderr)
         return None
 
 

@@ -71,6 +71,39 @@ async def _resolve_raw_token(token: str | None) -> str | None:
         return None
 
 
+def _token_expired(token: str | None) -> bool:
+    """True iff ``token`` is a well-formed JWT whose ``exp`` is in the past.
+
+    Deliberately narrow: only a parseable JWT with an elapsed ``exp`` is
+    treated as expired. A *missing* token (absence is handled by the
+    caller's fallback chain) or a non-JWT opaque value is NOT blocked — we
+    don't re-verify signatures here (that already happened at connect), we
+    only catch the specific failure this guards against.
+
+    Why per-message (not once at connect): a long-lived chat WS otherwise
+    forwards a stale connect-time ``raw_token`` (or an expired pre-minted
+    ``user_token``) down to the bridge → per-session MCP token file. The MCP
+    server reads that file on every call, so an elapsed token there turns
+    every MCP request into a silent 401 the agent surfaces as "MCP
+    disconnected" — even on sessions younger than 24h, when the per-message
+    mint silently failed and the connect-time token leaked through.
+    """
+    if not token:
+        return False
+    try:
+        from jose import jwt as _jose_jwt
+
+        claims = _jose_jwt.get_unverified_claims(token)
+    except Exception:
+        return False  # not a JWT we can reason about — preserve legacy pass-through
+    exp = claims.get("exp")
+    if not isinstance(exp, (int, float)):
+        return False
+    import time as _time
+
+    return exp <= _time.time()
+
+
 def _error_payload(
     message: str,
     *,
@@ -550,6 +583,28 @@ async def _handle_message(
         pass
 
     effective_token = user_token or (raw_token if raw_token and user_id is not None else None)
+
+    # Per-message re-validation. The chat WS validates its token once at
+    # connect; without this guard a stale connect-time token (or an expired
+    # pre-minted user_token) flows down to the per-session MCP token file and
+    # turns every MCP call into a silent 401 the agent reports as "MCP
+    # disconnected". Refuse loudly here instead of forwarding it — the typed
+    # ``token_expired`` code lets the panel reconnect (re-minting raw_token)
+    # or re-mint user_token rather than fail opaquely.
+    if _token_expired(effective_token):
+        await websocket.send_json({
+            "type": "error",
+            "tab_id": tab_id,
+            **_error_payload(
+                "Auth token expired — message not sent. Reconnect the "
+                "assistant (or retry) to mint a fresh token; sending it "
+                "anyway would make this agent's MCP tools fail silently.",
+                code="token_expired",
+                details={"source": "user_token" if user_token else "ws_raw_token"},
+            ),
+        })
+        return
+
     task_payload = _build_payload(
         prompt=message,
         model=model,

@@ -579,9 +579,23 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           null,
           { params: tokenParams },
         );
+        if (!res?.access_token) throw new Error('mint returned no access_token');
         body.user_token = res.access_token;
       } catch (err) {
+        // Fail loud, not open. Previously this only console.warn'd and fell
+        // through — the dispatch then went out WITHOUT user_token, so the
+        // backend used the chat WS's stale connect-time token. That token is
+        // written to the per-session MCP token file, so every MCP call 401s
+        // and the agent reports "MCP disconnected" — even on sessions younger
+        // than 24h. Abort the send instead; the user message is already in
+        // the log so `retryLast` can re-send once the mint works.
         console.warn('[ai-assistant] Token mint failed for profile', resolvedProfileId, err);
+        useAssistantChatStore.getState().appendMessage(tab.id, {
+          role: 'error',
+          text: `Couldn't mint an auth token for this agent (profile ${resolvedProfileId}). Message not sent — sending it would leave the agent's MCP tools failing. Retry, or check the profile / your login.`,
+          timestamp: new Date(),
+        });
+        return;
       }
     }
 
@@ -668,7 +682,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <div className="flex flex-wrap gap-1.5 justify-center">
               {QUICK_SHORTCUTS.map((s) => (
                 <button key={s.label} onClick={() => void sendMessage(s.prompt)} disabled={sending}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-full border border-th text-th-secondary hover:bg-surface-secondary transition-colors disabled:opacity-50">
                   <Icon name={s.icon} size={12} />{s.label}
                 </button>
               ))}
@@ -730,7 +744,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Fragment key={i}>
               {showDayDivider && ts && (
                 <div className="flex justify-center my-1">
-                  <div className="px-3 py-0.5 rounded-full text-[10px] bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400">
+                  <div className="px-3 py-0.5 rounded-full text-[10px] bg-surface-secondary text-th-secondary">
                     {formatDayDivider(ts)}
                   </div>
                 </div>
@@ -748,7 +762,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {sending && (
           <div className="flex justify-start gap-2 items-end">
             <EngineProfileIcon engine={tab.engine} icon={activeProfileIcon} size={11} className="mb-1" />
-            <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 max-w-[85%]">
+            <div className="bg-surface-secondary rounded-xl px-3 py-2 max-w-[85%]">
               {thinkingEntries.length > 0 && (
                 <ThinkingBlock entries={thinkingEntries} live userMessage={messages.findLast((m) => m.role === 'user')?.text} />
               )}
@@ -808,15 +822,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                 />
               ) : (
                 <div className="flex gap-1">
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-1.5 h-1.5 bg-th-muted rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 bg-th-muted rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 bg-th-muted rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               )}
             </div>
             <button
               onClick={() => chatBridge.cancel(tab.id)}
-              className="text-[10px] text-neutral-400 hover:text-red-500 transition-colors pb-1"
+              className="text-[10px] text-th-muted hover:text-signal-error transition-colors pb-1"
               title="Cancel request"
             >
               <Icon name="x" size={12} />
@@ -827,7 +841,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       </div>
 
       {/* Input */}
-      <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
+      <div className="relative shrink-0 border-t border-th p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
         <ReferencePicker ref={pickerRef} query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
 
@@ -853,7 +867,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                 onBlur={flushDraft}
                 placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
                 disabled={connected === 0 || sending} rows={3}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-th bg-surface-elevated text-th resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
                 style={{ minHeight: '68px', maxHeight: '160px' }}
                 onInput={handleTextareaInput}
               />
@@ -863,7 +877,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                   checkpoint C. */}
               {draftDirty && input.length > 0 && (
                 <span
-                  className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
+                  className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-signal-warning"
                   title="Saving draft…"
                 />
               )}
@@ -877,7 +891,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         {/* Toolbar — profile, model, token, actions below the textarea */}
         <div className="flex gap-1.5 items-center">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
-            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-accent-text' : 'text-th-muted hover:bg-surface-secondary'}`}
             title="Browse actions">
             <Icon name="plus" size={14} />
           </button>
@@ -888,7 +902,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               disabled={sending}
               onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
               className={`h-7 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-                showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                showProfilePicker ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'
               }`}
               title={engineHealthMessage
                 ? `Profile: ${profileDisplay}\n\n⚠ ${engineHealthMessage}`
@@ -914,7 +928,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             </button>
 
             {showProfilePicker && (
-              <div className="absolute bottom-full left-0 mb-1 w-64 max-h-[400px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
+              <div className="absolute bottom-full left-0 mb-1 w-64 max-h-[400px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
                 {/* Editor mode */}
                 {editingProfile != null ? (
                   <ProfileEditor
@@ -931,15 +945,15 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                   <>
                     {/* Persona toggle (when a profile is selected) */}
                     {tab.profileId && activeProfile && (
-                      <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer select-none">
+                      <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={tab.usePersona}
                           onChange={(e) => onUpdateTab({ usePersona: e.target.checked })}
-                          className="rounded border-neutral-300 text-accent focus:ring-accent h-3 w-3"
+                          className="rounded border-th text-accent focus:ring-accent h-3 w-3"
                         />
                         <span>Use persona</span>
-                        <span className="text-[9px] text-neutral-400 ml-auto truncate max-w-[100px]" title={activeProfile.system_prompt || ''}>
+                        <span className="text-[9px] text-th-muted ml-auto truncate max-w-[100px]" title={activeProfile.system_prompt || ''}>
                           {activeProfile.system_prompt ? activeProfile.system_prompt.slice(0, 30) + '...' : 'none set'}
                         </span>
                       </label>
@@ -949,8 +963,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                     {profiles.map((p) => (
                       <div
                         key={p.id}
-                        className={`group w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                          tab.profileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                        className={`group w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-surface-secondary ${
+                          tab.profileId === p.id ? 'bg-accent-subtle text-accent' : 'text-th-secondary'
                         }`}
                       >
                         <button
@@ -972,7 +986,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                             size={12}
                           />
                           <span className="truncate">{p.label}</span>
-                          {p.model_id && <span className="text-[9px] text-neutral-400 truncate max-w-[80px]">{p.model_id}</span>}
+                          {p.model_id && <span className="text-[9px] text-th-muted truncate max-w-[80px]">{p.model_id}</span>}
                         </button>
                         <button
                           onClick={async (e) => {
@@ -986,14 +1000,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                               useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() });
                             }
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
                           title="Mint token (copies to clipboard)"
                         >
                           <Icon name="key" size={10} />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingProfile(p); }}
-                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-th transition-opacity shrink-0"
                           title="Edit profile"
                         >
                           <Icon name="edit" size={10} />
@@ -1014,7 +1028,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                               useAssistantChatStore.getState().appendMessage(tab.id, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() });
                             }
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0"
+                          className="opacity-0 group-hover:opacity-100 text-th-muted hover:text-signal-error transition-opacity shrink-0"
                           title="Archive profile"
                         >
                           <Icon name="trash" size={10} />
@@ -1023,10 +1037,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                     ))}
 
                     {/* New profile button */}
-                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
+                    <div className="border-t border-th-secondary" />
                     <button
                       onClick={() => setEditingProfile('new')}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary"
                     >
                       <Icon name="plus" size={10} className="shrink-0" />
                       <span>New profile</span>
@@ -1050,7 +1064,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
             disabled={sending || !tab.profileId}
             className={`shrink-0 h-7 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
-              tab.injectToken ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+              tab.injectToken ? 'text-signal-warning' : 'text-th-muted hover:text-th'
             }`}
             title={tab.injectToken ? 'Token will be auto-injected (click to disable)' : 'Auto-inject session token'}
           >
@@ -1397,7 +1411,7 @@ export function AIAssistantPanel() {
   }, [tabsError, tabs]);
 
   return (
-    <div className="flex h-full min-h-0 bg-white dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 bg-surface">
       {/* Left sidebar */}
       <SidebarPaneShell
         title="Chats"
@@ -1412,12 +1426,12 @@ export function AIAssistantPanel() {
           {/* Error banner — surfaces failed list/reorder/orphaned-create errors.
               Per-tab create failures render inline on the row instead. */}
           {bannerError && (
-            <div className="shrink-0 mx-1 my-1 px-2 py-1 rounded-md border border-red-200 dark:border-red-900/40 bg-red-50/70 dark:bg-red-950/30 text-[10px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
+            <div className="shrink-0 mx-1 my-1 px-2 py-1 rounded-md border border-signal-error/30 bg-signal-error/10 text-[10px] text-signal-error flex items-start gap-1.5">
               <Icon name="alertCircle" size={11} className="shrink-0 mt-0.5" />
               <span className="flex-1 break-words">{bannerError}</span>
               <button
                 onClick={() => clearLastError()}
-                className="shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-200"
+                className="shrink-0 text-signal-error hover:opacity-80"
                 title="Dismiss"
               >
                 <Icon name="x" size={10} />
@@ -1432,7 +1446,7 @@ export function AIAssistantPanel() {
                 <button
                   type="button"
                   onClick={() => navigateToPlan(planId)}
-                  className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-green-600 dark:text-green-400 hover:underline w-full text-left"
+                  className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-signal-success hover:underline w-full text-left"
                 >
                   <Icon name="clipboard" size={9} className="shrink-0" />
                   <span className="truncate">{planId}</span>
@@ -1444,7 +1458,7 @@ export function AIAssistantPanel() {
 
             {/* Ungrouped chats */}
             {ungroupedTabs.length > 0 && planGroups.length > 0 && (
-              <div className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-neutral-400 dark:text-neutral-500">
+              <div className="flex items-center gap-1 px-1.5 py-1 text-[9px] uppercase tracking-wide font-medium text-th-muted">
                 <Icon name="messageSquare" size={9} className="shrink-0" />
                 <span>Chats</span>
                 <Badge color="gray" className="text-[8px] ml-auto">{ungroupedTabs.length}</Badge>
@@ -1453,13 +1467,13 @@ export function AIAssistantPanel() {
             {ungroupedTabs.map((tab) => renderItem(tab, tab.id === activeTabId))}
 
             {tabs.length === 0 && (
-              <div className="px-2 py-4 text-[10px] text-neutral-400 text-center">No chats yet</div>
+              <div className="px-2 py-4 text-[10px] text-th-muted text-center">No chats yet</div>
             )}
           </div>
 
           {/* Sidebar footer: actions + status */}
-          <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-700 px-2 py-1.5 flex items-center gap-1.5">
-            <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
+          <div className="shrink-0 border-t border-th px-2 py-1.5 flex items-center gap-1.5">
+            <button onClick={() => createTab()} className="text-th-muted hover:text-th" title="New chat">
               <Icon name="plus" size={13} />
             </button>
             <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label, resumeProfileId, lastPlanId) => {
@@ -1489,7 +1503,7 @@ export function AIAssistantPanel() {
                 <button
                   onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1 }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
                   disabled={bridgeStarting}
-                  className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-accent-text hover:bg-accent/90 disabled:opacity-50"
                 >
                   {bridgeStarting ? '...' : 'Connect'}
                 </button>
@@ -1497,13 +1511,13 @@ export function AIAssistantPanel() {
               {connected > 0 ? (
                 <button
                   onClick={() => { bridgeManualStopRef.current = true; pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
-                  className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
+                  className="w-2 h-2 rounded-full bg-signal-success hover:bg-signal-error transition-colors cursor-pointer"
                   title="Connected - click to disconnect"
                 />
               ) : bridge?.process_alive ? (
-                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="Connecting..." />
+                <div className="w-1.5 h-1.5 rounded-full bg-signal-warning animate-pulse" title="Connecting..." />
               ) : (
-                <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />
+                <div className="w-1.5 h-1.5 rounded-full bg-th-muted" title="Offline" />
               )}
             </div>
           </div>
