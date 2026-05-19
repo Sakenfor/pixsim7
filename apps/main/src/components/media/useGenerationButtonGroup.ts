@@ -7,8 +7,8 @@
  * swappable.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
 import { searchBlocks, type PromptBlockResponse } from '@lib/api/blockTemplates';
@@ -40,16 +40,20 @@ import { providerCapabilityRegistry, useProviderCapabilities, useOperationSpec, 
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
+import { useExtendPromptSourceStore } from './extendPromptSourceStore';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardActionMode } from './mediaCardActionModeStore';
 import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
 import { useMediaCardActionStore } from './mediaCardActionStore';
 import { MEDIA_CARD_ACTION_IDS } from './mediaCardCapabilityActions';
-import { useExtendPromptSourceStore } from './extendPromptSourceStore';
-import { useSelectedVideoTimestamp, useVideoMarksStore, SELECT_LAST_FRAME } from './videoMarksStore';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
+import {
+  useGenerationSeedModeStore,
+  type GenerationSeedModePreference,
+} from './quickGenerateModeStore';
 import { getSmartActionLabel, resolveMaxSlotsForModel } from './SlotPicker';
 import { useGenerationCardHandlers } from './useGenerationCardHandlers';
+import { useSelectedVideoTimestamp, useVideoMarksStore, SELECT_LAST_FRAME } from './videoMarksStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -91,18 +95,35 @@ export type GenerationActionExpand =
       isExtending: boolean;
     }
   | {
+      kind: 'quick-generate-menu';
+      onQuickGenerateCurrent: () => void;
+      onQuickGenerateReuseSeed: () => void;
+      primaryMode: GenerationSeedModePreference;
+      isQuickGenerating: boolean;
+      hasSourceGenerationContext: boolean;
+    }
+  | {
       kind: 'regenerate-menu';
       assetAcceptsInput: boolean;
       assetId: number;
       operationType: OperationType;
       isLoadingSource: boolean;
       isInsertingPrompt: boolean;
+      isInsertingSeed: boolean;
+      isInsertingAssets: boolean;
+      isRegenerating: boolean;
+      primarySeedMode: GenerationSeedModePreference;
       insertPromptTitle: string;
       insertSeedTitle: string;
+      insertAssetsTitle: string;
+      showInsertAssets: boolean;
+      onRegenerateDefault: () => void;
+      onRegenerateReuseSeed: () => void;
       onLoadToQuickGen: () => void;
       onLoadToQuickGenNoSeed: () => void;
       onInsertPrompt: () => void;
       onInsertSeed: () => void;
+      onInsertAssets: () => void;
       onOpenSourceAsset: (asset: AssetModel, list?: AssetModel[]) => void;
     }
   | {
@@ -236,6 +257,9 @@ export function useGenerationButtonGroup({
   const [isUploading, setIsUploading] = useState(false);
   const extendPromptSource = useExtendPromptSourceStore((s) => s.promptSource);
   const setExtendPromptSource = useExtendPromptSourceStore((s) => s.setPromptSource);
+  const quickGenerateMode = useGenerationSeedModeStore((s) => s.byAction['quick-generate']);
+  const regenerateMode = useGenerationSeedModeStore((s) => s.byAction.regenerate);
+  const setGenerationSeedMode = useGenerationSeedModeStore((s) => s.setMode);
   const triggerRef = useRef<HTMLDivElement>(null);
   const storedActionMode = useMediaCardActionModeStore((s) => s.byAssetId[id]);
   const setStoredActionMode = useMediaCardActionModeStore((s) => s.setMode);
@@ -351,14 +375,19 @@ export function useGenerationButtonGroup({
     isRegenerating,
     isGeneratingVariations,
     isInsertingPrompt,
+    isInsertingSeed,
+    isInsertingAssets,
     handleQuickGenerate,
+    handleQuickGenerateReuseSeed,
     handleLoadToQuickGen,
     handleInsertPromptOnly,
     handleInsertSeedOnly,
+    handleInsertAssetsOnly,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleArtificialExtend,
     handleRegenerate,
+    handleRegenerateReuseSeed,
     handleGenerateStyleVariations,
   } = useGenerationCardHandlers({
     inputAsset,
@@ -597,15 +626,57 @@ export function useGenerationButtonGroup({
   const hasQuickGenerate = !!cardProps.presetCapabilities?.showsQuickGenerate
     && !!widgetContext?.executeGeneration
     && assetUploadedToProvider;
+  const hasSourceGenerationContext = !!hasGenContext;
+
+  const handleQuickGenerateCurrent = useCallback(() => {
+    setGenerationSeedMode('quick-generate', 'default');
+    void handleQuickGenerate();
+  }, [setGenerationSeedMode, handleQuickGenerate]);
+
+  const handleQuickGenerateWithReuseSeed = useCallback(() => {
+    setGenerationSeedMode('quick-generate', 'reuse-source-seed');
+    void handleQuickGenerateReuseSeed();
+  }, [setGenerationSeedMode, handleQuickGenerateReuseSeed]);
+
+  const handlePrimaryQuickGenerate = useCallback(() => {
+    if (quickGenerateMode === 'reuse-source-seed' && hasSourceGenerationContext) {
+      handleQuickGenerateWithReuseSeed();
+      return;
+    }
+    handleQuickGenerateCurrent();
+  }, [
+    quickGenerateMode,
+    hasSourceGenerationContext,
+    handleQuickGenerateWithReuseSeed,
+    handleQuickGenerateCurrent,
+  ]);
+
+  const handleRegenerateDefault = useCallback(() => {
+    setGenerationSeedMode('regenerate', 'default');
+    void handleRegenerate();
+  }, [setGenerationSeedMode, handleRegenerate]);
+
+  const handleRegenerateWithReuseSeed = useCallback(() => {
+    setGenerationSeedMode('regenerate', 'reuse-source-seed');
+    void handleRegenerateReuseSeed();
+  }, [setGenerationSeedMode, handleRegenerateReuseSeed]);
+
+  const handlePrimaryRegenerate = useCallback(() => {
+    if (regenerateMode === 'reuse-source-seed') {
+      handleRegenerateWithReuseSeed();
+      return;
+    }
+    handleRegenerateDefault();
+  }, [regenerateMode, handleRegenerateWithReuseSeed, handleRegenerateDefault]);
 
   useEffect(() => {
     const isVideoWithContext = mediaType === 'video' && !!hasGenContext;
     useMediaCardActionStore.getState().publishHandlers(id, {
-      handleQuickGenerate: hasQuickGenerate ? handleQuickGenerate : undefined,
+      handleQuickGenerate: hasQuickGenerate ? handlePrimaryQuickGenerate : undefined,
       handleExtendWithSamePrompt: isVideoWithContext ? handleExtendWithSamePrompt : undefined,
       handleExtendWithActivePrompt: isVideoWithContext ? handleExtendWithActivePrompt : undefined,
       handleArtificialExtend: isVideoWithContext ? handleArtificialExtend : undefined,
-      handleRegenerate: hasGenContext ? handleRegenerate : undefined,
+      handleRegenerate: hasGenContext ? handlePrimaryRegenerate : undefined,
       handleGenerateStyleVariations: hasGenContext ? handleGenerateStyleVariations : undefined,
       handleInsertPromptOnly: hasGenContext ? handleInsertPromptOnly : undefined,
     });
@@ -619,11 +690,11 @@ export function useGenerationButtonGroup({
     mediaType,
     hasQuickGenerate,
     hasGenContext,
-    handleQuickGenerate,
+    handlePrimaryQuickGenerate,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleArtificialExtend,
-    handleRegenerate,
+    handlePrimaryRegenerate,
     handleGenerateStyleVariations,
     handleInsertPromptOnly,
   ]);
@@ -781,8 +852,12 @@ export function useGenerationButtonGroup({
   if (hasQuickGenerate) {
     const widgetOpType = widgetContext!.operationType ?? operationType;
     const widgetOpMetadata = OPERATION_METADATA[widgetOpType];
+    const quickGenSeedLine = quickGenerateMode === 'reuse-source-seed'
+      ? 'Seed: reuse source generation seed'
+      : 'Seed: use current Quick Generate seed';
     const quickGenStates = makeAsyncStates('sparkles', [
       'Quick generate with current settings',
+      quickGenSeedLine,
       `Op: ${widgetOpMetadata?.label ?? widgetOpType}`,
       widgetModel ? `Model: ${widgetModel}` : null,
       widgetEffectiveProviderId ? `Provider: ${widgetEffectiveProviderId}` : null,
@@ -794,11 +869,21 @@ export function useGenerationButtonGroup({
       icon: resolved.icon,
       label: resolved.label,
       title: withShortcut(resolved.title, quickGenAction?.shortcut),
-      onClick: handleQuickGenerate,
+      onClick: handlePrimaryQuickGenerate,
       onContextMenu: getActionContextMenuHandler({
         actionId: MEDIA_CARD_ACTION_IDS.quickGenerate,
         label: 'Quick generate',
       }),
+      expand: {
+        kind: 'quick-generate-menu',
+        onQuickGenerateCurrent: handleQuickGenerateCurrent,
+        onQuickGenerateReuseSeed: handleQuickGenerateWithReuseSeed,
+        primaryMode: quickGenerateMode,
+        isQuickGenerating,
+        hasSourceGenerationContext,
+      },
+      expandDelay: 150,
+      collapseDelay: 200,
     });
   }
 
@@ -855,14 +940,21 @@ export function useGenerationButtonGroup({
 
   // Regenerate
   if (hasGenContext) {
-    const regenStates = makeAsyncStates('rotateCcw', 'Regenerate (run same generation again)', 'Regenerating...');
+    const regenerateSeedLine = regenerateMode === 'reuse-source-seed'
+      ? 'Seed: reuse source generation seed'
+      : 'Seed: fresh random seed';
+    const regenStates = makeAsyncStates(
+      'rotateCcw',
+      ['Regenerate (run same generation again)', regenerateSeedLine].join('\n'),
+      'Regenerating...',
+    );
     const resolved = resolveButtonState(regenStates, isRegenerating ? 'busy' : 'idle');
     actions.push({
       id: 'regenerate',
       icon: resolved.icon,
       label: resolved.label,
       title: withShortcut(resolved.title, regenerateAction?.shortcut),
-      onClick: handleRegenerate,
+      onClick: handlePrimaryRegenerate,
       onContextMenu: getActionContextMenuHandler({
         actionId: MEDIA_CARD_ACTION_IDS.regenerate,
         label: 'Regenerate',
@@ -874,12 +966,21 @@ export function useGenerationButtonGroup({
         operationType,
         isLoadingSource,
         isInsertingPrompt,
+        isInsertingSeed,
+        isInsertingAssets,
+        isRegenerating,
+        primarySeedMode: regenerateMode,
         insertPromptTitle: withShortcut('Insert only the prompt', insertPromptAction?.shortcut),
         insertSeedTitle: 'Insert only the seed',
+        insertAssetsTitle: 'Replace widget inputs with the source generation assets',
+        showInsertAssets: assetAcceptsInput,
+        onRegenerateDefault: handleRegenerateDefault,
+        onRegenerateReuseSeed: handleRegenerateWithReuseSeed,
         onLoadToQuickGen: () => { void handleLoadToQuickGen(); },
         onLoadToQuickGenNoSeed: handleLoadToQuickGenNoSeed,
         onInsertPrompt: handleInsertPromptOnly,
         onInsertSeed: handleInsertSeedOnly,
+        onInsertAssets: handleInsertAssetsOnly,
         onOpenSourceAsset: handleOpenSourceAsset,
       },
       expandDelay: 150,

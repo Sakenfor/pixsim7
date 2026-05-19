@@ -7,16 +7,18 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 import { useState, useCallback } from 'react';
 
-import { extractFrame, getAssetGenerationContext } from '@lib/api/assets';
+import { extractFrame, getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { searchBlocks } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 import { fromAssetResponse, toSelectedAsset, type AssetModel } from '@features/assets';
 import { loadToQuickGenDescriptor } from '@features/assets/actions';
 import {
+  type GenerateOverrides,
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import {
+  getGenerationInputStore,
   getGenerationSessionStore,
   getGenerationSettingsStore,
 } from '@features/generation';
@@ -91,13 +93,20 @@ function parseSeedValue(value: unknown): number | undefined {
   return undefined;
 }
 
+function toParamsRecord(params: unknown): Record<string, unknown> {
+  return (params && typeof params === 'object')
+    ? (params as Record<string, unknown>)
+    : {};
+}
+
+function extractSeedFromParams(params: unknown): number | undefined {
+  return parseSeedValue(toParamsRecord(params).seed);
+}
+
 export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const {
     inputAsset,
     operationType,
-    useSessionStore,
-    useSettingsStore,
-    useInputStore,
     widgetContext,
     scopedScopeId,
     data,
@@ -111,6 +120,8 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
   const [isGeneratingVariations, setIsGeneratingVariations] = useState(false);
   const [isInsertingPrompt, setIsInsertingPrompt] = useState(false);
+  const [isInsertingSeed, setIsInsertingSeed] = useState(false);
+  const [isInsertingAssets, setIsInsertingAssets] = useState(false);
 
   // Get generations store for seeding new generations
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
@@ -169,11 +180,43 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
   // Quick generate: delegates to the controller's pipeline directly,
   // bypassing widget state management (no flash on Go button).
-  const handleQuickGenerate = useCallback(async () => {
+  const executeQuickGenerate = useCallback(async (
+    options?: { reuseSourceSeed?: boolean },
+  ) => {
     if (isQuickGenerating || !widgetContext?.executeGeneration) return;
     setIsQuickGenerating(true);
     try {
-      await widgetContext.executeGeneration({ assetOverrides: [inputAsset] });
+      let paramOverrides: GenerateOverrides['paramOverrides'] | undefined;
+      if (options?.reuseSourceSeed) {
+        if (!data.sourceGenerationId && !data.hasGenerationContext) {
+          useToastStore.getState().addToast({
+            type: 'info',
+            message: 'No source generation seed is available for this asset.',
+            duration: 2500,
+          });
+          return;
+        }
+
+        const ctx = await getAssetGenerationContext(id);
+        const { params } = parseGenerationContext(ctx, operationType);
+        const sourceSeed = extractSeedFromParams(params);
+
+        if (sourceSeed === undefined) {
+          useToastStore.getState().addToast({
+            type: 'info',
+            message: 'No seed found in source generation settings.',
+            duration: 2500,
+          });
+          return;
+        }
+
+        paramOverrides = { seed: sourceSeed };
+      }
+
+      await widgetContext.executeGeneration({
+        assetOverrides: [inputAsset],
+        ...(paramOverrides ? { paramOverrides } : {}),
+      });
     } catch (err) {
       useToastStore.getState().addToast({
         type: 'error',
@@ -183,7 +226,23 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     } finally {
       setIsQuickGenerating(false);
     }
-  }, [isQuickGenerating, widgetContext, inputAsset]);
+  }, [
+    isQuickGenerating,
+    widgetContext,
+    inputAsset,
+    data.sourceGenerationId,
+    data.hasGenerationContext,
+    id,
+    operationType,
+  ]);
+
+  const handleQuickGenerate = useCallback(async () => {
+    await executeQuickGenerate();
+  }, [executeQuickGenerate]);
+
+  const handleQuickGenerateReuseSeed = useCallback(async () => {
+    await executeQuickGenerate({ reuseSourceSeed: true });
+  }, [executeQuickGenerate]);
 
   const handleLoadToQuickGen = useCallback(async (options?: { withoutSeed?: boolean }) => {
     if (!loadToQuickGenDescriptor.isVisible(inputAsset) || isLoadingSource || !widgetContext) return;
@@ -247,16 +306,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   ]);
 
   const handleInsertSeedOnly = useCallback(async () => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingPrompt) return;
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingSeed) return;
 
-    setIsInsertingPrompt(true);
+    setIsInsertingSeed(true);
     try {
       const ctx = await getAssetGenerationContext(id);
       const { params } = parseGenerationContext(ctx, operationType);
-      const parsedParams = (params && typeof params === 'object')
-        ? (params as Record<string, unknown>)
-        : {};
-      const seed = parseSeedValue(parsedParams.seed);
+      const seed = extractSeedFromParams(params);
 
       if (seed === undefined) {
         useToastStore.getState().addToast({
@@ -283,13 +339,84 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         duration: 4000,
       });
     } finally {
-      setIsInsertingPrompt(false);
+      setIsInsertingSeed(false);
     }
   }, [
     id,
     data.sourceGenerationId,
     data.hasGenerationContext,
-    isInsertingPrompt,
+    isInsertingSeed,
+    operationType,
+    scopedScopeId,
+    widgetContext,
+  ]);
+
+  // Replace the active widget's inputs with the source generation's assets.
+  // "Load" (not "insert") semantics: it swaps out whatever is currently
+  // queued for this operation so the widget mirrors the source generation.
+  const handleInsertAssetsOnly = useCallback(async () => {
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingAssets) return;
+
+    setIsInsertingAssets(true);
+    try {
+      const ctx = await getAssetGenerationContext(id);
+      const { sourceAssetIds } = parseGenerationContext(ctx, operationType);
+
+      if (!sourceAssetIds || sourceAssetIds.length === 0) {
+        useToastStore.getState().addToast({
+          type: 'info',
+          message: 'No source assets found for this generation.',
+          duration: 2500,
+        });
+        return;
+      }
+
+      const assets = (
+        await Promise.all(
+          sourceAssetIds.map(async (assetId) => {
+            try {
+              return fromAssetResponse(await getAsset(assetId));
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((a): a is AssetModel => a !== null);
+
+      if (assets.length === 0) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: 'Failed to load source assets.',
+          duration: 4000,
+        });
+        return;
+      }
+
+      // Replace: clear current inputs for this operation, then add the source
+      // assets so the widget faithfully reproduces the source generation.
+      // Resolve the widget's own scope (same as the prompt/seed handlers) —
+      // the bare scoped store may not be the one the widget reads from.
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const inputState = getGenerationInputStore(scopeId).getState();
+      inputState.clearInputs(operationType);
+      inputState.addInputs({ assets, operationType });
+
+      widgetContext?.setOpen(true);
+    } catch (error) {
+      console.error('Failed to load source assets:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `Failed to load source assets: ${extractErrorMessage(error)}`,
+        duration: 4000,
+      });
+    } finally {
+      setIsInsertingAssets(false);
+    }
+  }, [
+    id,
+    data.sourceGenerationId,
+    data.hasGenerationContext,
+    isInsertingAssets,
     operationType,
     scopedScopeId,
     widgetContext,
@@ -533,7 +660,9 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   ]);
 
   // Handler for regenerating (re-run the exact same generation)
-  const handleRegenerate = useCallback(async () => {
+  const executeRegenerate = useCallback(async (
+    options?: { reuseSourceSeed?: boolean },
+  ) => {
     if ((!data.sourceGenerationId && !data.hasGenerationContext) || isRegenerating) return;
 
     setIsRegenerating(true);
@@ -574,11 +703,24 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         }
       }
 
-      const parsedParams = params as Record<string, unknown>;
+      const parsedParams = toParamsRecord(params);
       const shouldRandomizeSeed =
         paramsIncludeSeed(parsedParams)
         || await operationSupportsSeedParam(providerId, resolvedOperationType);
-      if (shouldRandomizeSeed) {
+      if (options?.reuseSourceSeed) {
+        const sourceSeed = extractSeedFromParams(parsedParams);
+        if (sourceSeed === undefined) {
+          useToastStore.getState().addToast({
+            type: 'info',
+            message: 'No seed found in source generation settings.',
+            duration: 2500,
+          });
+          return;
+        }
+        if (shouldRandomizeSeed) {
+          sourceParams.seed = sourceSeed;
+        }
+      } else if (shouldRandomizeSeed) {
         sourceParams.seed = nextRandomGenerationSeed();
       }
       await submitDirectGeneration({
@@ -606,6 +748,14 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     operationType,
     submitDirectGeneration,
   ]);
+
+  const handleRegenerate = useCallback(async () => {
+    await executeRegenerate();
+  }, [executeRegenerate]);
+
+  const handleRegenerateReuseSeed = useCallback(async () => {
+    await executeRegenerate({ reuseSourceSeed: true });
+  }, [executeRegenerate]);
 
   /**
    * Generate style variations: re-run the same generation with different
@@ -735,14 +885,19 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     isRegenerating,
     isGeneratingVariations,
     isInsertingPrompt,
+    isInsertingSeed,
+    isInsertingAssets,
     handleQuickGenerate,
+    handleQuickGenerateReuseSeed,
     handleLoadToQuickGen,
     handleInsertPromptOnly,
     handleInsertSeedOnly,
+    handleInsertAssetsOnly,
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleArtificialExtend,
     handleRegenerate,
+    handleRegenerateReuseSeed,
     handleGenerateStyleVariations,
   };
 }

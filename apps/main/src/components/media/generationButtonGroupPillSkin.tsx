@@ -10,20 +10,38 @@
  * its own renderer bundle.
  */
 
+import { ActionHintBadge, DropdownItem, DropdownDivider, Popover, Z, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React from 'react';
 
-import { ActionHintBadge, DropdownItem, DropdownDivider, Popover, Z, type ButtonGroupItem } from '@pixsim7/shared.ui';
 
 import { Icon } from '@lib/icons';
 
+import { SlotPickerGrid } from './SlotPicker';
+import { SourceAssetsPreview } from './SourceAssetsPreview';
 import type {
   GenerationAction,
   GenerationActionExpand,
   GenerationProviderMenuState,
 } from './useGenerationButtonGroup';
 import { getGenerationProviderAccent } from './useGenerationButtonGroup';
-import { SlotPickerGrid } from './SlotPicker';
-import { SourceAssetsPreview } from './SourceAssetsPreview';
+
+type SeedModeAction = {
+  onClick: () => void;
+  icon: React.ComponentProps<typeof Icon>['name'];
+  label: string;
+  title: string;
+  disabled: boolean;
+};
+
+function orderSeedModeActions(
+  primaryMode: 'default' | 'reuse-source-seed',
+  defaultAction: SeedModeAction,
+  reuseAction: SeedModeAction,
+): [SeedModeAction, SeedModeAction] {
+  void primaryMode;
+  // Keep menu option placement stable so users build muscle memory.
+  return [defaultAction, reuseAction];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expand-content renderers (keyed by expand.kind)
@@ -142,6 +160,96 @@ function ExtendMenuExpand({ expand }: { expand: Extract<GenerationActionExpand, 
   );
 }
 
+function QuickGenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpand, { kind: 'quick-generate-menu' }> }) {
+  const {
+    onQuickGenerateCurrent,
+    onQuickGenerateReuseSeed,
+    primaryMode,
+    isQuickGenerating,
+    hasSourceGenerationContext,
+  } = expand;
+  const [firstAction, secondAction] = orderSeedModeActions(
+    primaryMode,
+    {
+      onClick: onQuickGenerateCurrent,
+      icon: 'sparkles',
+      label: 'Generate',
+      title: 'Quick generate with current widget settings',
+      disabled: isQuickGenerating,
+    },
+    {
+      onClick: onQuickGenerateReuseSeed,
+      icon: 'hash',
+      label: 'Reuse Seed',
+      title: hasSourceGenerationContext
+        ? 'Quick generate and override seed with the source generation seed'
+        : 'No source generation context available for this asset',
+      disabled: isQuickGenerating || !hasSourceGenerationContext,
+    },
+  );
+  return (
+    <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl w-40">
+      <button
+        onClick={firstAction.onClick}
+        className="h-8 px-3 text-xs text-white hover:bg-white/15 rounded-t-xl transition-colors flex items-center gap-2"
+        title={firstAction.title}
+        disabled={firstAction.disabled}
+        type="button"
+      >
+        <Icon name={isQuickGenerating ? 'loader' : firstAction.icon} size={12} className={isQuickGenerating ? 'animate-spin' : ''} />
+        <span>{firstAction.label}</span>
+      </button>
+      <div className="h-px bg-white/15 mx-2" />
+      <button
+        onClick={secondAction.onClick}
+        className="h-8 px-3 text-xs text-white hover:bg-white/15 rounded-b-xl transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+        title={secondAction.title}
+        disabled={secondAction.disabled}
+        type="button"
+      >
+        <Icon name={isQuickGenerating ? 'loader' : secondAction.icon} size={12} className={isQuickGenerating ? 'animate-spin' : ''} />
+        <span>{secondAction.label}</span>
+      </button>
+    </div>
+  );
+}
+
+const MENU_SECTION_CLASS =
+  'px-3 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-white/60';
+
+function MenuRow({
+  icon,
+  label,
+  title,
+  onClick,
+  disabled,
+  busy,
+  rounded,
+}: {
+  icon: React.ComponentProps<typeof Icon>['name'];
+  label: string;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  rounded?: 'top' | 'bottom';
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
+        rounded === 'top' ? 'rounded-t-xl' : rounded === 'bottom' ? 'rounded-b-xl' : ''
+      }`}
+      title={title}
+      disabled={disabled}
+      type="button"
+    >
+      <Icon name={busy ? 'loader' : icon} size={12} className={busy ? 'animate-spin' : ''} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpand, { kind: 'regenerate-menu' }> }) {
   const {
     assetAcceptsInput,
@@ -149,66 +257,111 @@ function RegenerateMenuExpand({ expand }: { expand: Extract<GenerationActionExpa
     operationType,
     isLoadingSource,
     isInsertingPrompt,
+    isInsertingSeed,
+    isInsertingAssets,
+    isRegenerating,
+    primarySeedMode,
     insertPromptTitle,
     insertSeedTitle,
+    insertAssetsTitle,
+    showInsertAssets,
+    onRegenerateDefault,
+    onRegenerateReuseSeed,
     onLoadToQuickGen,
     onLoadToQuickGenNoSeed,
     onInsertPrompt,
     onInsertSeed,
+    onInsertAssets,
     onOpenSourceAsset,
   } = expand;
+  const [firstSeedAction, secondSeedAction] = orderSeedModeActions(
+    primarySeedMode,
+    {
+      onClick: onRegenerateDefault,
+      icon: 'rotateCcw',
+      label: 'Regenerate (fresh seed)',
+      title: 'Regenerate with a fresh random seed',
+      disabled: isRegenerating,
+    },
+    {
+      onClick: onRegenerateReuseSeed,
+      icon: 'hash',
+      label: 'Reuse source seed',
+      title: 'Regenerate with the source generation seed',
+      disabled: isRegenerating,
+    },
+  );
   return (
     <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl">
-      <div className="w-36 flex items-stretch">
-        <button
-          onClick={onLoadToQuickGen}
-          className="flex-1 h-8 px-3 text-xs text-white hover:bg-white/15 rounded-tl-xl transition-colors flex items-center gap-2"
-          title="Load everything into Quick Generate"
-          disabled={isLoadingSource}
-          type="button"
-        >
-          {isLoadingSource ? (
-            <Icon name="loader" size={12} className="animate-spin" />
-          ) : (
-            <Icon name="edit" size={12} />
-          )}
-          <span>Load to Quick Gen</span>
-        </button>
-        <button
-          onClick={onLoadToQuickGenNoSeed}
-          className="w-8 h-8 text-white hover:bg-white/15 rounded-tr-xl border-l border-white/15 transition-colors flex items-center justify-center"
-          title="Load to Quick Gen without seed (random seed on next generate)"
-          disabled={isLoadingSource}
-          type="button"
-        >
-          <Icon name={isLoadingSource ? 'loader' : 'shuffle'} size={12} className={isLoadingSource ? 'animate-spin' : ''} />
-        </button>
-      </div>
-      <div className="w-36 flex items-stretch">
-        <button
-          onClick={onInsertPrompt}
-          className={`flex-1 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 ${assetAcceptsInput ? '' : 'rounded-bl-xl'}`}
-          title={insertPromptTitle}
-          disabled={isInsertingPrompt}
-          type="button"
-        >
-          {isInsertingPrompt ? (
-            <Icon name="loader" size={12} className="animate-spin" />
-          ) : (
-            <Icon name="fileText" size={12} />
-          )}
-          <span>Insert Prompt</span>
-        </button>
-        <button
-          onClick={onInsertSeed}
-          className={`w-8 h-8 text-white hover:bg-white/15 border-l border-white/15 transition-colors flex items-center justify-center ${assetAcceptsInput ? '' : 'rounded-br-xl'}`}
-          title={insertSeedTitle}
-          disabled={isInsertingPrompt}
-          type="button"
-        >
-          <Icon name={isInsertingPrompt ? 'loader' : 'hash'} size={12} className={isInsertingPrompt ? 'animate-spin' : ''} />
-        </button>
-      </div>
+      {/* Re-run now — submits a new generation */}
+      <div className={MENU_SECTION_CLASS}>Regenerate</div>
+      <MenuRow
+        icon={firstSeedAction.icon}
+        label={firstSeedAction.label}
+        title={firstSeedAction.title}
+        onClick={firstSeedAction.onClick}
+        disabled={firstSeedAction.disabled}
+        busy={isRegenerating}
+        rounded="top"
+      />
+      <MenuRow
+        icon={secondSeedAction.icon}
+        label={secondSeedAction.label}
+        title={secondSeedAction.title}
+        onClick={secondSeedAction.onClick}
+        disabled={secondSeedAction.disabled}
+        busy={isRegenerating}
+      />
+
+      {/* Insert a single piece into the active widget — no submit */}
+      <div className={MENU_SECTION_CLASS}>Insert into widget</div>
+      <MenuRow
+        icon="fileText"
+        label="Prompt"
+        title={insertPromptTitle}
+        onClick={onInsertPrompt}
+        disabled={isInsertingPrompt}
+        busy={isInsertingPrompt}
+      />
+      <MenuRow
+        icon="hash"
+        label="Seed"
+        title={insertSeedTitle}
+        onClick={onInsertSeed}
+        disabled={isInsertingSeed}
+        busy={isInsertingSeed}
+      />
+      {showInsertAssets && (
+        <MenuRow
+          icon="layers"
+          label="Load asset inputs"
+          title={insertAssetsTitle}
+          onClick={onInsertAssets}
+          disabled={isInsertingAssets}
+          busy={isInsertingAssets}
+        />
+      )}
+
+      {/* Load everything into Quick Generate — no submit */}
+      <div className={MENU_SECTION_CLASS}>Load everything</div>
+      <MenuRow
+        icon="edit"
+        label="Load to Quick Gen"
+        title="Load everything into Quick Generate"
+        onClick={onLoadToQuickGen}
+        disabled={isLoadingSource}
+        busy={isLoadingSource}
+      />
+      <MenuRow
+        icon="shuffle"
+        label="…without seed"
+        title="Load to Quick Gen without seed (random seed on next generate)"
+        onClick={onLoadToQuickGenNoSeed}
+        disabled={isLoadingSource}
+        busy={isLoadingSource}
+        rounded={assetAcceptsInput ? undefined : 'bottom'}
+      />
+
       {assetAcceptsInput && (
         <SourceAssetsPreview
           assetId={assetId}
@@ -263,6 +416,8 @@ function renderPillExpand(expand: GenerationActionExpand): React.ReactNode {
       return <SlotPickerExpand expand={expand} />;
     case 'extend-menu':
       return <ExtendMenuExpand expand={expand} />;
+    case 'quick-generate-menu':
+      return <QuickGenerateMenuExpand expand={expand} />;
     case 'regenerate-menu':
       return <RegenerateMenuExpand expand={expand} />;
     case 'style-variations':
@@ -310,6 +465,9 @@ function resolvePillButtonStyle(action: GenerationAction): React.CSSProperties |
 // Public: translate actions into ButtonGroup items
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Pure action→ButtonGroup translator, intentionally colocated with the pill
+// skin's expand renderers. Fast-refresh DX rule only; safe to suppress.
+// eslint-disable-next-line react-refresh/only-export-components
 export function toPillButtonItems(actions: GenerationAction[]): ButtonGroupItem[] {
   return actions.map((action) => ({
     id: action.id,
