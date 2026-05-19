@@ -43,14 +43,23 @@ _RECONNECT_REPLAY_WAIT_S = 8.0
 _RECONNECT_REPLAY_POLL_S = 0.25
 
 
-async def _resolve_user_id(token: str | None) -> int | None:
-    """Resolve user ID from JWT token."""
+async def _resolve_user_id(token: str | None, db) -> int | None:
+    """Resolve user ID from JWT token.
+
+    Must be given a real ``AsyncSession`` (NOT ``get_auth_service()``
+    outside DI — that returns a service whose ``.db`` is an unbound
+    ``Depends`` placeholder; when ``jwt_require_session`` is on,
+    ``verify_token_claims`` then raises ``AttributeError`` on
+    ``self.db.execute`` and the bare except below silently returns
+    None. See plan ``community-chat`` Pitfalls / Canon.
+    """
     if not token:
         return None
     try:
-        from pixsim7.backend.main.api.dependencies import get_auth_service
+        from pixsim7.backend.main.services.user.auth_service import AuthService
+        from pixsim7.backend.main.services.user.user_service import UserService
         from pixsim7.backend.main.shared.actor import RequestPrincipal
-        auth_service = get_auth_service()
+        auth_service = AuthService(db, UserService(db))
         payload = await auth_service.verify_token_claims(token, update_last_used=False)
         principal = RequestPrincipal.from_jwt_payload(payload)
         return principal.user_id
@@ -58,13 +67,15 @@ async def _resolve_user_id(token: str | None) -> int | None:
         return None
 
 
-async def _resolve_raw_token(token: str | None) -> str | None:
-    """Return the raw bearer token if it's valid."""
+async def _resolve_raw_token(token: str | None, db) -> str | None:
+    """Return the raw bearer token if it's valid. Needs a real session;
+    see ``_resolve_user_id`` for the rationale."""
     if not token:
         return None
     try:
-        from pixsim7.backend.main.api.dependencies import get_auth_service
-        auth_service = get_auth_service()
+        from pixsim7.backend.main.services.user.auth_service import AuthService
+        from pixsim7.backend.main.services.user.user_service import UserService
+        auth_service = AuthService(db, UserService(db))
         await auth_service.verify_token_claims(token, update_last_used=False)
         return token
     except Exception:
@@ -218,6 +229,63 @@ async def _handle_resume_failure(
             tab_id=tab_id,
             error=str(exc),
         )
+
+
+async def _bind_and_persist_result(
+    *,
+    tab_id: str,
+    cli_session_id: str | None,
+    user_id: int | None,
+    user_message: str,
+    response_text: str,
+    duration_ms: int | None,
+) -> None:
+    """Bind the tab + persist assistant reply on the replay path.
+
+    Sister to the canonical bridge-side ``_schedule_session_persistence``
+    (runs the instant ``resolve_task`` fires). This helper is the
+    belt-and-suspenders that closes two gaps when a result reaches the
+    client via a replay route (cached / streamed / replayed) rather than
+    the live ``_handle_message`` result branch:
+
+      * **Tab bind.** CP-A's early-bind requires a ``session_resolved``
+        heartbeat — a page reload between dispatch and first heartbeat
+        misses it, leaving the originating ``ChatTab`` unbound after the
+        result lands. ``_bind_tab_to_session`` is a no-op for tabs that
+        are already bound, so calling it here on the live path too is
+        cheap and keeps both flows identical.
+
+      * **Notification.** ``_store_session_response`` houses the
+        ``chat.message`` emit gate (assistant-is-new dedupe). If the
+        bridge persist failed silently, re-entering here triggers the
+        gate without double-emitting on the happy path: the merge keys
+        on ``(role, stripped text, kind)``, so a second call sees the
+        prior commit's row in ``pre_keys`` and skips the emit.
+
+    Passing ``user_message=""`` is safe: ``_store_session_response``
+    only appends a user row if the string is truthy, and the user turn
+    was already written by CP-A's ``_store_pending_user_message``.
+    """
+    if not cli_session_id:
+        return
+    await _bind_tab_to_session(tab_id, cli_session_id, user_id)
+    if response_text:
+        try:
+            from pixsim7.backend.main.api.v1.meta_contracts import (
+                _store_session_response,
+            )
+            await _store_session_response(
+                session_id=cli_session_id,
+                user_message=user_message,
+                assistant_response=response_text,
+                duration_ms=duration_ms,
+            )
+        except Exception as exc:
+            logger.warning(
+                "ws_chat_replay_store_response_failed",
+                session_id=cli_session_id,
+                error=str(exc),
+            )
 
 
 async def _wait_for_replayed_result(
@@ -874,20 +942,13 @@ async def _handle_message(
                             error=str(exc),
                         )
 
-                    # First-turn bind: tabs are created unbound (plan
-                    # `chat-tab-server-persistence` — first-turn resume-failure
-                    # fix). Once the bridge surfaces Claude's real
-                    # cli_session_id, stamp it onto the originating ChatTab so
-                    # future turns resume the same conversation. No-ops if the
-                    # tab is already bound.
-                    await _bind_tab_to_session(tab_id, cli_session_id, user_id)
-
                     # One-directional chat→plan bridge: make a chat-driven
                     # agent visible in the cross-plan active-agent roster
                     # (it never calls progress/claim, so it would otherwise
                     # be invisible). Lightweight, best-effort; the canonical
                     # boundary vs ChatSession.last_plan_id is documented on
-                    # record_chat_plan_participant.
+                    # record_chat_plan_participant. Live-path only — the
+                    # replay path lacks dispatch-time plan/profile context.
                     if chat_plan_id:
                         try:
                             from pixsim7.backend.main.api.v1.plans.helpers import (
@@ -907,32 +968,23 @@ async def _handle_message(
                                 error=str(exc),
                             )
 
-                    # Belt-and-suspenders durability:
-                    #   * Bridge-side `resolve_task` already scheduled a
-                    #     fire-and-forget `_store_session_response` the moment
-                    #     the agent's reply hit the bridge — that's the one
-                    #     path that survives this WS handler dying.
-                    #   * This awaited call provides strict ordering for the
-                    #     live happy path (DB committed BEFORE WS-send), so a
-                    #     fast frontend reload that re-fetches immediately
-                    #     after seeing the result will find the row populated.
-                    # `_store_session_response` has an assistant-tail dedupe
-                    # so the second call no-ops when both paths fire.
-                    if response_text:
-                        from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
-                        try:
-                            await _store_session_response(
-                                session_id=cli_session_id,
-                                user_message=message,
-                                assistant_response=response_text,
-                                duration_ms=duration_ms,
-                            )
-                        except Exception as exc:
-                            logger.warning(
-                                "ws_chat_store_response_failed",
-                                session_id=cli_session_id,
-                                error=str(exc),
-                            )
+                    # First-turn bind + assistant-reply persist (which also
+                    # houses the chat.message notification gate). Shared
+                    # with the reconnect/replay routes so any path that
+                    # delivers a `result` event to the client goes through
+                    # the same bind+notify surface. Belt-and-suspenders to
+                    # the canonical bridge `_schedule_session_persistence`:
+                    # if the bridge persist failed silently, this re-entry
+                    # still emits the unread pip; if it succeeded, the
+                    # assistant-key dedupe collapses the second call.
+                    await _bind_and_persist_result(
+                        tab_id=tab_id,
+                        cli_session_id=cli_session_id,
+                        user_id=user_id,
+                        user_message=message,
+                        response_text=response_text,
+                        duration_ms=duration_ms,
+                    )
 
                     # MCP-hash → CLI UUID alias row stays fire-and-forget;
                     # it's a tracking row, not the durability path.
@@ -1015,11 +1067,19 @@ async def _stream_active_task(
     tab_id: str,
     task_id: str,
     bridge: Any,
+    user_id: int | None,
 ) -> bool:
     """Stream heartbeats and the eventual result for an in-flight task.
 
     Returns True if a terminal message (result or stream-failure error) was
     sent on this WS, False if there was nothing to wait on (no future).
+
+    Every ``result`` send goes through ``_bind_and_persist_result`` first
+    so a reconnect/replay still binds the originating tab and re-enters
+    the ``chat.message`` emit gate — the live result branch's job when a
+    turn lives long enough to flow through it, but missed here previously
+    if the original ``_handle_message`` task died before its result branch
+    ran (page reload, backend restart with bridge buffering, etc).
     """
     hb_queue: asyncio.Queue = asyncio.Queue(maxsize=64)
     bridge._heartbeat_queues[task_id] = hb_queue
@@ -1035,6 +1095,34 @@ async def _stream_active_task(
         bridge._heartbeat_queues.pop(task_id, None)
         return False
 
+    async def _emit_result(result: Dict[str, Any]) -> None:
+        response_text = extract_response_text(result)
+        cli_session_id = result.get("bridge_session_id")
+        duration_ms = result.get("duration_ms")
+        try:
+            duration_ms = int(duration_ms) if duration_ms is not None else None
+        except (TypeError, ValueError):
+            duration_ms = None
+        # Bind + persist BEFORE wiring the result down to the client so a
+        # fast frontend refetch immediately after seeing the result finds
+        # the row populated (same ordering guarantee as the live path).
+        await _bind_and_persist_result(
+            tab_id=tab_id,
+            cli_session_id=cli_session_id,
+            user_id=user_id,
+            user_message="",
+            response_text=response_text,
+            duration_ms=duration_ms,
+        )
+        await websocket.send_json({
+            "type": "result",
+            "tab_id": tab_id,
+            "ok": True,
+            "response": response_text,
+            "bridge_session_id": cli_session_id,
+            "reconnected": True,
+        })
+
     try:
         timeout = 600  # generous reconnect timeout
         deadline = asyncio.get_event_loop().time() + timeout
@@ -1044,16 +1132,7 @@ async def _stream_active_task(
                 break
 
             if future.done():
-                result = future.result()
-                response_text = extract_response_text(result)
-                await websocket.send_json({
-                    "type": "result",
-                    "tab_id": tab_id,
-                    "ok": True,
-                    "response": response_text,
-                    "bridge_session_id": result.get("bridge_session_id"),
-                    "reconnected": True,
-                })
+                await _emit_result(future.result())
                 return True
 
             hb_wait = asyncio.ensure_future(hb_queue.get())
@@ -1074,16 +1153,7 @@ async def _stream_active_task(
                 hb_wait.cancel()
 
             if future in done:
-                result = future.result()
-                response_text = extract_response_text(result)
-                await websocket.send_json({
-                    "type": "result",
-                    "tab_id": tab_id,
-                    "ok": True,
-                    "response": response_text,
-                    "bridge_session_id": result.get("bridge_session_id"),
-                    "reconnected": True,
-                })
+                await _emit_result(future.result())
                 return True
     except Exception as e:
         await websocket.send_json({
@@ -1120,6 +1190,23 @@ async def _handle_reconnect(
     cached = remote_cmd_bridge.get_completed_result(task_id)
     if cached:
         response_text = extract_response_text(cached)
+        # Bind tab + re-enter the assistant-reply persist (which houses
+        # the chat.message emit gate). Skip on error results — they're
+        # transient and never land in ChatSession.messages anyway.
+        if not cached.get("error"):
+            duration_ms_raw = cached.get("duration_ms")
+            try:
+                duration_ms = int(duration_ms_raw) if duration_ms_raw is not None else None
+            except (TypeError, ValueError):
+                duration_ms = None
+            await _bind_and_persist_result(
+                tab_id=tab_id,
+                cli_session_id=cached.get("bridge_session_id"),
+                user_id=user_id,
+                user_message="",
+                response_text=response_text,
+                duration_ms=duration_ms,
+            )
         await websocket.send_json({
             "type": "result",
             "tab_id": tab_id,
@@ -1138,6 +1225,7 @@ async def _handle_reconnect(
     if task_id in remote_cmd_bridge._active_tasks:
         if await _stream_active_task(
             websocket, tab_id=tab_id, task_id=task_id, bridge=remote_cmd_bridge,
+            user_id=user_id,
         ):
             return
 
@@ -1158,10 +1246,25 @@ async def _handle_reconnect(
             # switch to streaming the live result.
             if await _stream_active_task(
                 websocket, tab_id=tab_id, task_id=task_id, bridge=remote_cmd_bridge,
+                user_id=user_id,
             ):
                 return
         elif replayed:
             response_text = extract_response_text(replayed)
+            if not replayed.get("error"):
+                duration_ms_raw = replayed.get("duration_ms")
+                try:
+                    duration_ms = int(duration_ms_raw) if duration_ms_raw is not None else None
+                except (TypeError, ValueError):
+                    duration_ms = None
+                await _bind_and_persist_result(
+                    tab_id=tab_id,
+                    cli_session_id=replayed.get("bridge_session_id"),
+                    user_id=user_id,
+                    user_message="",
+                    response_text=response_text,
+                    duration_ms=duration_ms,
+                )
             await websocket.send_json({
                 "type": "result",
                 "tab_id": tab_id,
@@ -1229,8 +1332,10 @@ async def websocket_chat(
 
     Multiplexes multiple tab conversations on a single connection via tab_id.
     """
-    user_id = await _resolve_user_id(token)
-    raw_token = await _resolve_raw_token(token)
+    from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+    async with AsyncSessionLocal() as auth_db:
+        user_id = await _resolve_user_id(token, auth_db)
+        raw_token = await _resolve_raw_token(token, auth_db)
 
     # Allow unauthenticated in debug mode
     from pixsim7.backend.main.shared.config import settings
