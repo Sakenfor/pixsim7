@@ -16,6 +16,10 @@ import { sweepMaskOverlayDrafts } from './components/media/viewer/overlays/built
 // bootstrap sees them. Keep these modules tiny — no React / heavy deps.
 import '@features/generation/stores.registrations'
 
+// Side-effect import: registers the per-panel skin store's persisted key
+// with the stores registry. See plan `panel-skin-theming`.
+import '@features/appearance/panelSkins.registrations'
+
 // Side-effect import: registers built-in ticker sources (generations, etc.)
 // before the first <Ticker /> mounts. See `stores-registry-canon`.
 import '@features/ticker/sources.registrations'
@@ -33,6 +37,7 @@ import { getAuthTokenProvider } from '@pixsim7/shared.auth.core'
 import { API_BASE_URL } from './lib/api/client'
 import { initializeConsole } from './lib/dev/console'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
+import { initCoarsePointerClass } from './lib/ui/coarsePointer'
 import { initWebLogger, logEvent } from './lib/utils/logging'
 
 import '@lib/dockview' // Register auto-context menu presets
@@ -43,6 +48,10 @@ logEvent('INFO', 'frontend_app_started')
 
 // Initialize console namespace (pixsim.*)
 initializeConsole()
+
+// Toggle the `coarse-pointer` root class for touch/stylus devices so the
+// global hit-area expansion in index.css applies app-wide.
+initCoarsePointerClass()
 
 // Register and initialize modules outside React to avoid StrictMode re-runs
 registerModules()

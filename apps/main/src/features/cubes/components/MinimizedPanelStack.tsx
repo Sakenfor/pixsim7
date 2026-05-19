@@ -148,6 +148,12 @@ export function MinimizedPanelStack({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
 
+  // Touch swipe-to-rotate (no hover on touch, so a swipe on the expanded
+  // cube cycles faces instead of moving it).
+  const [isSwiping, setIsSwiping] = useState(false);
+  const swipeAnchor = useRef({ x: 0, y: 0 });
+  const swipeAxis = useRef<'x' | 'y' | null>(null);
+
   const [clickExpanded, setClickExpanded] = useState(false);
   const { isExpanded: hoverExpanded, handlers } = useHoverExpand({
     expandDelay: 400,
@@ -310,10 +316,29 @@ export function MinimizedPanelStack({
   // they chose and rotate manually if desired.
 
   // ── Drag + click + dock snap ──
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
+  // Pointer events (not mouse) so touch/pen drag works on mobile.
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return; // primary button / primary touch only
       e.preventDefault();
+      // Capture so we keep getting moves even if the finger leaves the hit area.
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      } catch {
+        /* setPointerCapture can throw if the pointer is already gone */
+      }
+
+      // Touch has no hover, so once the cube is expanded (tapped → bigger) a
+      // swipe rotates faces instead of moving the cube. Collapsed = drag/move.
+      if (e.pointerType !== 'mouse' && isExpanded) {
+        dragStartPos.current = { x: e.clientX, y: e.clientY };
+        swipeAnchor.current = { x: e.clientX, y: e.clientY };
+        swipeAxis.current = null;
+        hasMoved.current = false;
+        setIsSwiping(true);
+        return;
+      }
+
       dragOffset.current = { x: e.clientX - position.x, y: e.clientY - position.y };
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       hasMoved.current = false;
@@ -324,13 +349,64 @@ export function MinimizedPanelStack({
       }
       setIsDragging(true);
     },
-    [position, dockPosition, setDockPosition],
+    [position, dockPosition, setDockPosition, isExpanded],
   );
+
+  // Touch swipe-to-rotate: each swipe step cycles one face; axis locks to the
+  // dominant direction so a horizontal swipe never flips top/bottom.
+  useEffect(() => {
+    if (!isSwiping) return;
+    const STEP = 36; // px of travel per face step
+    const LOCK = 12; // px before the swipe axis locks
+    const handleMove = (e: PointerEvent) => {
+      const totalDx = e.clientX - dragStartPos.current.x;
+      const totalDy = e.clientY - dragStartPos.current.y;
+      if (Math.abs(totalDx) > 4 || Math.abs(totalDy) > 4) hasMoved.current = true;
+
+      if (!swipeAxis.current && Math.max(Math.abs(totalDx), Math.abs(totalDy)) > LOCK) {
+        swipeAxis.current = Math.abs(totalDx) >= Math.abs(totalDy) ? 'y' : 'x';
+      }
+      const axis = swipeAxis.current;
+      if (!axis) return;
+
+      const along =
+        axis === 'y'
+          ? e.clientX - swipeAnchor.current.x
+          : e.clientY - swipeAnchor.current.y;
+
+      // Peek toward the pending face (fraction of one step), same tilt sense
+      // as the desktop hover path.
+      const frac = Math.max(-1, Math.min(1, along / STEP));
+      if (axis === 'y') setHoverTilt({ x: 0, y: -frac * TILT_MAX });
+      else setHoverTilt({ x: frac * TILT_MAX, y: 0 });
+
+      if (Math.abs(along) >= STEP) {
+        const dir: 1 | -1 = along > 0 ? 1 : -1;
+        cycleFace(dir, axis);
+        swipeAnchor.current = { x: e.clientX, y: e.clientY };
+        setHoverTilt({ x: 0, y: 0 });
+      }
+    };
+    const handleUp = () => {
+      setIsSwiping(false);
+      setHoverTilt({ x: 0, y: 0 });
+      // A tap (no real movement) on the expanded cube collapses it.
+      if (!hasMoved.current) setClickExpanded((v) => !v);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [isSwiping, cycleFace]);
 
   useEffect(() => {
     if (!isDragging) return;
     let lastPos = { x: 0, y: 0 };
-    const handleMove = (e: MouseEvent) => {
+    const handleMove = (e: PointerEvent) => {
       const dx = e.clientX - dragStartPos.current.x;
       const dy = e.clientY - dragStartPos.current.y;
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasMoved.current = true;
@@ -368,11 +444,13 @@ export function MinimizedPanelStack({
         }
       }
     };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
     };
   }, [isDragging, cycleFace, hoverTilt.y, hoverTilt.x, leftInset, setDockPosition, setStoredFloatingPos]);
 
@@ -574,7 +652,8 @@ export function MinimizedPanelStack({
         {/* Hit area — slightly larger than cube for easier edge hovering */}
         <div
           className="absolute -inset-2 cursor-grab select-none z-10"
-          onMouseDown={handleMouseDown}
+          style={{ touchAction: 'none' }}
+          onPointerDown={handlePointerDown}
           onMouseMove={(e) => { handleHoverMove(e); if (!isDragging) handleHoverEnter(); }}
           onMouseLeave={handleHoverLeave}
         />

@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * JetBrains Mono — self-hosted, used by the terminal panel skin via
+ * `--font-skin` (plan `panel-skin-theming`). The terminal stack falls back to
+ * Cascadia Mono / Consolas / system monospace, so the skin renders correctly
+ * even before the woff2 assets are added.
+ * TODO(asset): drop JetBrainsMono-{Regular,Bold}.woff2 into
+ *   apps/main/public/fonts/  (no other wiring needed — these @font-face rules
+ *   already reference them and font-display:swap avoids any FOIT).
+ */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -323,30 +347,35 @@ input {
 }
 
 /* ── Ready-made utility classes ──────────────────────────────────────── */
+/* Fallbacks (= clamp() max from .cq-scale above) ensure these classes still
+ * render at a sensible fixed size when the consumer forgets to wrap with
+ * `.cq-scale`. Without fallbacks `var(...)` resolves to nothing, the rule
+ * becomes invalid, and width/height collapse to icon-intrinsic — which is
+ * what made the asset viewer's badges look "slightly off" vs gallery cards. */
 
-.cq-btn-xs          { width: var(--cq-btn-xs);  height: var(--cq-btn-xs);  }
-.cq-btn-xs svg      { width: var(--cq-icon-xs); height: var(--cq-icon-xs); }
+.cq-btn-xs          { width: var(--cq-btn-xs, 16px);  height: var(--cq-btn-xs, 16px);  }
+.cq-btn-xs svg      { width: var(--cq-icon-xs, 8px);  height: var(--cq-icon-xs, 8px);  }
 
-.cq-btn-sm          { width: var(--cq-btn-sm);  height: var(--cq-btn-sm);  }
-.cq-btn-sm svg      { width: var(--cq-icon-sm); height: var(--cq-icon-sm); }
+.cq-btn-sm          { width: var(--cq-btn-sm, 20px);  height: var(--cq-btn-sm, 20px);  }
+.cq-btn-sm svg      { width: var(--cq-icon-sm, 10px); height: var(--cq-icon-sm, 10px); }
 
-.cq-btn-md          { width: var(--cq-btn-md);  height: var(--cq-btn-md);  }
-.cq-btn-md svg      { width: var(--cq-icon-md); height: var(--cq-icon-md); }
+.cq-btn-md          { width: var(--cq-btn-md, 24px);  height: var(--cq-btn-md, 24px);  }
+.cq-btn-md svg      { width: var(--cq-icon-md, 12px); height: var(--cq-icon-md, 12px); }
 
-.cq-btn-lg          { width: var(--cq-btn-lg);  height: var(--cq-btn-lg);  }
-.cq-btn-lg svg      { width: var(--cq-icon-md); height: var(--cq-icon-md); }
+.cq-btn-lg          { width: var(--cq-btn-lg, 32px);  height: var(--cq-btn-lg, 32px);  }
+.cq-btn-lg svg      { width: var(--cq-icon-md, 12px); height: var(--cq-icon-md, 12px); }
 
 .cq-badge {
-  font-size: var(--cq-font-sm);
-  padding: var(--cq-pad-y) var(--cq-pad-x);
+  font-size: var(--cq-font-sm, 10px);
+  padding: var(--cq-pad-y, 2px) var(--cq-pad-x, 6px);
 }
-.cq-badge svg     { width: var(--cq-icon-sm); height: var(--cq-icon-sm); }
+.cq-badge svg     { width: var(--cq-icon-sm, 10px); height: var(--cq-icon-sm, 10px); }
 
 .cq-badge-xs {
-  font-size: var(--cq-font-xs);
-  padding: var(--cq-pad-y) var(--cq-pad-x);
+  font-size: var(--cq-font-xs, 9px);
+  padding: var(--cq-pad-y, 2px) var(--cq-pad-x, 6px);
 }
-.cq-badge-xs svg  { width: var(--cq-icon-xs); height: var(--cq-icon-xs); }
+.cq-badge-xs svg  { width: var(--cq-icon-xs, 8px);  height: var(--cq-icon-xs, 8px);  }
 
 .cq-inset-tr        { top: var(--cq-inset-sm);  right: var(--cq-inset-sm); }
 .cq-inset-tl        { top: var(--cq-inset-sm);  left:  var(--cq-inset-sm); }
@@ -467,6 +496,31 @@ input {
 }
 .dark .thin-scrollbar:hover::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,.2);
+}
+
+/*
+ * Touch hit-area expansion (coarse pointers only).
+ *
+ * `coarse-pointer` is toggled on <html> by lib/ui/coarsePointer.ts. We grow
+ * the *invisible* tappable region of small controls via a transparent ::after
+ * overlay — visuals and layout are untouched, so dense toolbars (assistant
+ * header, etc.) keep their compact look but become finger-friendly.
+ *
+ * `:where()` keeps specificity at 0 so a Tailwind `.absolute`/`.fixed` on a
+ * button still wins (those buttons opt themselves out of the relative nudge).
+ * Opt a too-dense row out explicitly with `no-tap-expand`.
+ */
+.coarse-pointer :where(button, [role="button"], a[role="tab"]):not(.no-tap-expand) {
+  position: relative;
+}
+.coarse-pointer
+  :where(button, [role="button"], a[role="tab"]):not(.no-tap-expand):not(:disabled)::after {
+  content: "";
+  position: absolute;
+  /* ~16px added per axis → a 28px icon button reaches a ~44px tap zone */
+  inset: -8px;
+  /* Purely a hit target — never paint, never affect layout */
+  pointer-events: auto;
 }
 
 /* Respect user's reduced motion preference */

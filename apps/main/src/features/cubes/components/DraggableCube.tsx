@@ -51,15 +51,21 @@ export function DraggableCube({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
 
-  // Handle mouse down - start potential drag
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return; // Only left click
+  // Handle pointer down - start potential drag (pointer, not mouse, so touch works)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return; // primary button / primary touch only
       e.preventDefault();
       e.stopPropagation();
 
       const rect = cubeRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      } catch {
+        /* pointer may already be gone */
+      }
 
       setIsDragging(true);
       hasMoved.current = false;
@@ -78,7 +84,7 @@ export function DraggableCube({
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       const dx = e.clientX - dragStartPos.current.x;
       const dy = e.clientY - dragStartPos.current.y;
 
@@ -94,7 +100,7 @@ export function DraggableCube({
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setIsDragging(false);
       onDragEnd?.();
 
@@ -106,12 +112,14 @@ export function DraggableCube({
       }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [isDragging, cubeId, dragOffset, rotation, updateCube, onDragEnd, onFaceClick]);
 
@@ -180,8 +188,9 @@ export function DraggableCube({
         height: size,
         zIndex: isDragging ? Z.floatOverlay : cube.zIndex,
         perspective: '1000px',
+        touchAction: 'none',
       }}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
