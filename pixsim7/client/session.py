@@ -771,6 +771,30 @@ class AgentCmdSession:
                         except Exception:
                             self._log.debug("session_resolved_progress_failed", exc_info=True)
 
+                    # Plan `chat-session-durable-resume` CP-C: we asked the
+                    # CLI to `--resume <X>` but it handed us a *different*
+                    # conversation id — the prior conversation was gone, so
+                    # this turn has NO model memory. Pre-fix this was silent
+                    # and the panel re-skinned the old transcript onto the
+                    # fresh session, leaving the user with an amnesiac agent
+                    # that looked continuous. Surface it loudly instead.
+                    if (
+                        on_progress
+                        and self._resume_session_id
+                        and self.cli_session_id
+                        and self.cli_session_id != self._resume_session_id
+                    ):
+                        try:
+                            on_progress(
+                                "resume_failed",
+                                json.dumps({
+                                    "requested": self._resume_session_id,
+                                    "actual": self.cli_session_id,
+                                }),
+                            )
+                        except Exception:
+                            self._log.debug("resume_failed_progress_failed", exc_info=True)
+
                 elif parsed.kind == "result":
                     if parsed.text:
                         result_text = parsed.text

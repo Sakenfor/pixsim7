@@ -1547,6 +1547,28 @@ class Bridge:
                         # wait up to 15s for the next keepalive cycle.
                         asyncio.ensure_future(send_progress("processing_task", last_detail))
                     return
+                # Plan `chat-session-durable-resume` CP-C: the CLI could not
+                # restore the requested conversation and started a fresh one.
+                # Stamp it onto hb_base + inflight so it rides every
+                # subsequent heartbeat AND the final result envelope (the
+                # backend forwards whichever lands), then flush immediately.
+                if event_type == "resume_failed" and detail:
+                    try:
+                        parsed_rf = json.loads(detail)
+                    except Exception:
+                        parsed_rf = {"requested": None, "actual": None}
+                    hb_base["resume_failed"] = parsed_rf
+                    inflight = self._inflight_tasks.get(task_id)
+                    if inflight is not None:
+                        inflight["resume_failed"] = parsed_rf
+                    get_logger().warning(
+                        "resume_failed",
+                        task=task_id[:8],
+                        requested=str(parsed_rf.get("requested"))[:12],
+                        actual=str(parsed_rf.get("actual"))[:12],
+                    )
+                    asyncio.ensure_future(send_progress("resume_failed", detail))
+                    return
                 if detail:
                     last_detail = detail[:200]
                 # Mirror onto inflight record so reconnect handshakes carry
@@ -1613,6 +1635,11 @@ class Bridge:
                 }
                 if bridge_session_id:
                     result_msg["bridge_session_id"] = bridge_session_id
+                # CP-C: carry the resume-failure verdict on the result too, so
+                # a turn whose heartbeats were missed (WS hiccup) still tells
+                # the panel the conversation context was lost.
+                if hb_base.get("resume_failed"):
+                    result_msg["resume_failed"] = hb_base["resume_failed"]
                 # Include the original session ID from the task for linking
                 original_session_id = meta.get("bridge_session_id")
                 if original_session_id and original_session_id != bridge_session_id:

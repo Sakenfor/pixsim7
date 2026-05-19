@@ -540,22 +540,32 @@ class AgentPool:
                 self._sessions.pop(existing.session_id, None)
                 self._drop_indexes_for_session(existing.session_id)
 
-        # Use the CLI's actual conversation UUID for --resume (not our derived hash)
+        # Use the CLI's actual conversation UUID for --resume (not our derived hash).
+        #
+        # Plan `chat-session-durable-resume` CP-B: the in-memory `_cli_id_map`
+        # is empty after a bridge restart. The backend persists the mapping in
+        # `ChatSession.cli_session_id`, but the DB-backed lookup used to be
+        # gated to `mcp-`/`auto-` ids only — a plain chat UUID fell straight
+        # through to the blind `resume_id = bridge_session_id` branch with no
+        # recovery, so a restart silently started a fresh conversation. Now
+        # the lookup runs on every map miss, regardless of id shape.
         resume_id = self._cli_id_map.get(bridge_session_id)
         if resume_id:
             get_logger().debug("pool_session_mapped", bridge=bridge_session_id[:8], cli=resume_id[:8])
-        elif bridge_session_id.startswith("mcp-") or bridge_session_id.startswith("auto-"):
-            # Derived session ID — Claude won't recognize it.
-            # Try backend lookup for persisted cli_session_id mapping.
-            resume_id = _lookup_cli_session_id(bridge_session_id)
-            if resume_id:
-                get_logger().debug("pool_session_lookup", bridge=bridge_session_id[:12], cli=resume_id[:8])
-                self._cli_id_map[bridge_session_id] = resume_id
-            else:
-                get_logger().debug("pool_no_mapping", bridge=bridge_session_id[:12])
         else:
-            # Looks like a real UUID — try resume directly
-            resume_id = bridge_session_id
+            looked_up = _lookup_cli_session_id(bridge_session_id)
+            if looked_up:
+                resume_id = looked_up
+                self._cli_id_map[bridge_session_id] = looked_up
+                get_logger().debug("pool_session_lookup", bridge=bridge_session_id[:12], cli=resume_id[:8])
+            elif bridge_session_id.startswith("mcp-") or bridge_session_id.startswith("auto-"):
+                # Derived id Claude won't recognize and no persisted mapping —
+                # nothing to resume; spawn fresh (resume_id stays None).
+                get_logger().debug("pool_no_mapping", bridge=bridge_session_id[:12])
+            else:
+                # Looks like a real conversation UUID — try resuming it
+                # directly (covers the not-yet-persisted same-process case).
+                resume_id = bridge_session_id
 
         return await self._spawn_session(
             command=command or self._command,

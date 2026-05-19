@@ -247,6 +247,71 @@ class TestPoolProperties:
         assert pool.sessions == [s]
 
 
+class TestDbBackedResume:
+    """Plan `chat-session-durable-resume` CP-B: after a bridge restart the
+    in-memory `_cli_id_map` is empty; resume must recover the CLI conversation
+    UUID from the backend (`ChatSession.cli_session_id`) for *any* id shape —
+    not only the legacy `mcp-`/`auto-` prefixes."""
+
+    @staticmethod
+    def _capture_spawn(pool):
+        captured: dict = {}
+
+        async def _fake_spawn(**kwargs):
+            captured.update(kwargs)
+            return AgentCmdSession(session_id="spawned")
+
+        pool._spawn_session = _fake_spawn  # type: ignore[assignment]
+        return captured
+
+    @pytest.mark.asyncio
+    async def test_plain_uuid_recovers_cli_id_from_backend(self, monkeypatch):
+        """A plain conversation UUID with an empty map used to fall straight
+        through to a blind self-resume with no DB recovery. It must now
+        consult the backend and resume the persisted cli_session_id."""
+        import pixsim7.client.agent_pool as ap
+
+        monkeypatch.setattr(
+            ap, "_lookup_cli_session_id", lambda sid: "real-cli-uuid-xyz"
+        )
+        pool = AgentPool(pool_size=1)
+        captured = self._capture_spawn(pool)
+
+        await pool._get_or_create_for_session_id("7d579848-a99d-48a5-bfbb-f058")
+
+        assert captured["resume_session_id"] == "real-cli-uuid-xyz"
+        # Cached so the next turn in the same process skips the HTTP round-trip.
+        assert pool._cli_id_map["7d579848-a99d-48a5-bfbb-f058"] == "real-cli-uuid-xyz"
+
+    @pytest.mark.asyncio
+    async def test_plain_uuid_no_backend_mapping_falls_back_to_direct(self, monkeypatch):
+        """No persisted mapping (e.g. first turn never reached the backend):
+        a real-looking UUID is still worth a direct --resume attempt."""
+        import pixsim7.client.agent_pool as ap
+
+        monkeypatch.setattr(ap, "_lookup_cli_session_id", lambda sid: None)
+        pool = AgentPool(pool_size=1)
+        captured = self._capture_spawn(pool)
+
+        await pool._get_or_create_for_session_id("plain-uuid-1234")
+
+        assert captured["resume_session_id"] == "plain-uuid-1234"
+
+    @pytest.mark.asyncio
+    async def test_derived_id_without_mapping_spawns_fresh(self, monkeypatch):
+        """Derived `mcp-`/`auto-` ids Claude can't recognize must NOT be
+        blindly passed to --resume when there's no DB mapping — spawn fresh."""
+        import pixsim7.client.agent_pool as ap
+
+        monkeypatch.setattr(ap, "_lookup_cli_session_id", lambda sid: None)
+        pool = AgentPool(pool_size=1)
+        captured = self._capture_spawn(pool)
+
+        await pool._get_or_create_for_session_id("mcp-deadbeef")
+
+        assert captured["resume_session_id"] is None
+
+
 class TestEngineProbe:
     """`probe_engine` startup self-test — guards advertised engine list."""
 

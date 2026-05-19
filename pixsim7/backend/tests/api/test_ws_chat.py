@@ -387,6 +387,214 @@ class TestWsChatMessage:
                 assert result["bridge_session_id"] == "sess-123"
                 assert "duration_ms" in result
 
+    def test_interrupted_turn_still_persists_and_binds(self):
+        """Plan `chat-session-durable-resume` CP-A: a turn that surfaces its
+        cli_session_id via heartbeat but never produces a `result` (bridge/MCP
+        drop, timeout) must STILL create a resumable ChatSession, bind the
+        tab, and persist the user turn. Pre-fix all three were gated on the
+        result event, so an interrupted turn left zero server-side trace."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            # session_resolved surfaces the id on a heartbeat — then the
+            # bridge dies: NO result event ever follows.
+            yield {
+                "type": "heartbeat", "action": "session_resolved",
+                "detail": "", "bridge_session_id": "conv-interrupted",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=9, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        mock_bind = AsyncMock()
+        mock_pending = AsyncMock()
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._store_pending_user_message", mock_pending), \
+             patch("pixsim7.backend.main.api.v1.ws_chat._bind_tab_to_session", mock_bind):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t-int", "message": "durable fix please",
+                }))
+                hb = json.loads(ws.receive_text())
+                assert hb["type"] == "heartbeat"
+
+        assert mock_upsert.call_count == 1
+        kw = mock_upsert.call_args.kwargs
+        assert kw["session_id"] == "conv-interrupted"
+        assert kw["cli_session_id"] == "conv-interrupted"
+        # The result path owns the count bump; early-bind must not double it.
+        assert kw["increment_messages"] is False
+        mock_bind.assert_awaited_once_with("t-int", "conv-interrupted", 9)
+        mock_pending.assert_awaited_once()
+        assert mock_pending.call_args.kwargs["session_id"] == "conv-interrupted"
+
+    def test_early_bind_then_result_is_idempotent(self):
+        """Happy path regression: heartbeat early-bind + the result path both
+        upsert the same session. Early-bind must NOT increment (no
+        double-count); the result upsert is the one that bumps the count."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "heartbeat", "action": "session_resolved",
+                "detail": "", "bridge_session_id": "conv-ok",
+            }
+            yield {
+                "type": "result", "ok": True,
+                "response": "done", "bridge_session_id": "conv-ok",
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=9, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        mock_bind = AsyncMock()
+        mock_pending = AsyncMock()
+        mock_store = AsyncMock()
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._store_pending_user_message", mock_pending), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", mock_store), \
+             patch("pixsim7.backend.main.api.v1.ws_chat._bind_tab_to_session", mock_bind):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "t-ok", "message": "hello",
+                }))
+                json.loads(ws.receive_text())  # heartbeat
+                result = json.loads(ws.receive_text())
+                assert result["type"] == "result"
+                assert result["ok"] is True
+
+        # Two upserts, same session, exactly one of which increments.
+        assert mock_upsert.call_count == 2
+        sessions = {c.kwargs["session_id"] for c in mock_upsert.call_args_list}
+        assert sessions == {"conv-ok"}
+        increments = [c.kwargs.get("increment_messages") for c in mock_upsert.call_args_list]
+        assert increments.count(True) == 1
+        assert increments.count(False) == 1
+        # cli_session_id populated on both for the CP-B resume lookup.
+        assert all(c.kwargs.get("cli_session_id") == "conv-ok" for c in mock_upsert.call_args_list)
+
+    def test_resume_failure_forwarded_and_tab_rebound(self):
+        """Plan `chat-session-durable-resume` CP-C/CP-D: a `resume_failed`
+        verdict on a heartbeat must be forwarded to the panel AND trigger the
+        server-side tab rebind (off the dead conversation, onto the fresh
+        one) — never silently dropped."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        rf = {"requested": "old-conv", "actual": "fresh-conv"}
+
+        async def fake_stream(*args, **kwargs):
+            yield {
+                "type": "heartbeat", "action": "resume_failed",
+                "detail": "", "bridge_session_id": "fresh-conv",
+                "resume_failed": rf,
+            }
+            yield {
+                "type": "result", "ok": True, "response": "hi",
+                "bridge_session_id": "fresh-conv", "resume_failed": rf,
+            }
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=9, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        mock_upsert = AsyncMock()
+        mock_bind = AsyncMock()
+        mock_pending = AsyncMock()
+        mock_store = AsyncMock()
+        mock_rebind = AsyncMock()
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", mock_upsert), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._store_pending_user_message", mock_pending), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._store_session_response", mock_store), \
+             patch("pixsim7.backend.main.api.v1.ws_chat._bind_tab_to_session", mock_bind), \
+             patch("pixsim7.backend.main.api.v1.ws_chat._handle_resume_failure", mock_rebind):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()  # welcome
+                ws.send_text(json.dumps({
+                    "type": "message", "tab_id": "11111111-1111-1111-1111-111111111111",
+                    "message": "still there?",
+                }))
+                hb = json.loads(ws.receive_text())
+                result = json.loads(ws.receive_text())
+
+        assert hb["resume_failed"] == rf
+        assert result["resume_failed"] == rf
+        # Rebind invoked (heartbeat path + result path both call it; idempotent).
+        assert mock_rebind.await_count >= 1
+        assert mock_rebind.call_args.args[0] == rf
+
+    def test_handle_resume_failure_repoints_bound_tab(self):
+        """`_handle_resume_failure` force-repoints ChatTab.session_id onto the
+        fresh conversation even though it's already bound (the dead-conv bind
+        is exactly what we must overwrite)."""
+        import asyncio
+        from types import SimpleNamespace
+
+        from pixsim7.backend.main.api.v1.ws_chat import _handle_resume_failure
+
+        tab = SimpleNamespace(
+            user_id=9, session_id="old-conv", updated_at=None,
+        )
+        fake_db = AsyncMock()
+        fake_db.get = AsyncMock(return_value=tab)
+        fake_db.commit = AsyncMock()
+
+        class _Ctx:
+            async def __aenter__(self):
+                return fake_db
+            async def __aexit__(self, *a):
+                return None
+
+        with patch(
+            "pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal",
+            _Ctx,
+        ):
+            asyncio.run(
+                _handle_resume_failure(
+                    {"requested": "old-conv", "actual": "fresh-conv"},
+                    "11111111-1111-1111-1111-111111111111",
+                    9,
+                )
+            )
+
+        assert tab.session_id == "fresh-conv"
+        fake_db.commit.assert_awaited_once()
+
     def test_missing_assistant_id_uses_resolved_default_profile_for_session(self):
         app = _app()
         client = TestClient(app)
@@ -714,6 +922,57 @@ class TestWsChatMessage:
                     "engine": "codex",
                     "assistant_id": "profile-codex",
                     "model": "   ",  # whitespace-only — must be treated as absent
+                }))
+                while True:
+                    msg = json.loads(ws.receive_text())
+                    if msg.get("type") == "result":
+                        break
+
+        assert captured["model"] == "gpt-5.3-codex"
+
+    def test_body_model_is_trimmed_before_dispatch(self):
+        """Whitespace around explicit body.model must be stripped."""
+        app = _app()
+        client = TestClient(app)
+        agent = _make_agent()
+        mock_bridge = MagicMock()
+        mock_bridge.connected_count = 1
+        mock_bridge.get_available_agent.return_value = agent
+
+        captured: dict = {}
+
+        async def fake_stream(payload, **kwargs):
+            captured["model"] = payload.get("model")
+            yield {"type": "result", "ok": True, "response": "ok", "bridge_session_id": "s"}
+
+        mock_bridge.dispatch_task_streaming = fake_stream
+        patches = _debug_patches(user_id=7, token="tok")
+        mock_db_session = MagicMock()
+        mock_db_session.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_db_session.__aexit__ = AsyncMock(return_value=None)
+        resolved_profile = SimpleNamespace(
+            id="profile-codex",
+            system_prompt=None,
+            model_id="gpt-5.4",
+            config=None,
+            reasoning_effort=None,
+        )
+        mock_resolve_profile = AsyncMock(return_value=resolved_profile)
+
+        with patches[0], patches[1], patches[2], \
+             patch(_BRIDGE, mock_bridge), \
+             patch("pixsim7.backend.main.infrastructure.database.session.AsyncSessionLocal", return_value=mock_db_session), \
+             patch("pixsim7.backend.main.api.v1.agent_profiles.resolve_agent_profile", mock_resolve_profile), \
+             patch("pixsim7.backend.main.api.v1.meta_contracts._upsert_chat_session", AsyncMock()):
+            with client.websocket_connect("/api/v1/ws/chat") as ws:
+                ws.receive_text()
+                ws.send_text(json.dumps({
+                    "type": "message",
+                    "tab_id": "t1",
+                    "message": "hello",
+                    "engine": "codex",
+                    "assistant_id": "profile-codex",
+                    "model": "  gpt-5.3-codex  ",
                 }))
                 while True:
                     msg = json.loads(ws.receive_text())

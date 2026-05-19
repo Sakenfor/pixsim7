@@ -21,6 +21,7 @@ import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 import { useReferences, useReferenceInput, ReferencePicker, type ReferencePickerHandle } from '@lib/references';
 
+import { usePanelSkin } from '@features/appearance';
 import { useChatUnread } from '@features/notifications/hooks/useChatUnread';
 import { navigateToPlan } from '@features/workspace/lib/openPanel';
 
@@ -164,6 +165,11 @@ async function injectPlanContext(tabId: string, planId: string): Promise<void> {
   }
 }
 
+// Sentinel prefix for the CP-C resume-failure system banner. Used both to
+// render the notice and to dedupe it (the signal can arrive on a heartbeat
+// and again on the result envelope). Plan `chat-session-durable-resume`.
+const RESUME_FAILED_NOTICE = '⚠ Conversation context lost.';
+
 // =============================================================================
 // Tab Chat View — one per tab, owns its own message state
 // =============================================================================
@@ -221,6 +227,35 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       onUpdateTab({ sessionId: bridgeSessionId });
     }
   }, [bridgeSessionId, tab.sessionId, onUpdateTab]);
+
+  // Plan `chat-session-durable-resume` CP-C/CP-D: the bridge could not
+  // restore the prior conversation and started a fresh one. Surface this
+  // loudly the moment it's known (heartbeat — before the possibly-long
+  // reply), and repoint the client session mirror onto the new conversation
+  // so subsequent turns stay coherent (the server already rebound the tab).
+  // The old transcript stays on screen but is explicitly demarcated as
+  // reference-only — never silently presented as continuous context.
+  const resumeFailed = bridgeReq?.resumeFailed ?? null;
+  const resumeFailedActual = resumeFailed?.actual ?? null;
+  useEffect(() => {
+    if (!resumeFailed) return;
+    const s = useAssistantChatStore.getState();
+    const msgs = s.getMessages(tab.id);
+    const alreadyNotified = msgs.some(
+      (m) => m.role === 'system' && m.text.startsWith(RESUME_FAILED_NOTICE),
+    );
+    if (!alreadyNotified) {
+      s.appendMessage(tab.id, {
+        role: 'system',
+        text: `${RESUME_FAILED_NOTICE} The assistant could not restore this conversation's earlier context and is starting fresh — messages above are shown for reference only and are not in the assistant's memory.`,
+        timestamp: new Date(),
+        recovered: true,
+      });
+    }
+    if (resumeFailedActual && resumeFailedActual !== tab.sessionId) {
+      onUpdateTab({ sessionId: resumeFailedActual });
+    }
+  }, [resumeFailed, resumeFailedActual, tab.id, tab.sessionId, onUpdateTab]);
 
   useEffect(() => {
     if (!tab.sessionId) {
@@ -404,7 +439,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       const prevSessionId = tab.sessionId;
       if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.bridge_session_id });
-        if (prevSessionId) {
+        // The explicit CP-C resume-failure effect owns the messaging when
+        // the bridge confirmed a lost conversation — don't also emit the
+        // weaker generic notice (it would double up / under-state it).
+        if (prevSessionId && !result.resumeFailed) {
           s.appendMessage(tab.id, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() });
         }
       } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
@@ -1084,6 +1122,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 // =============================================================================
 
 export function AIAssistantPanel() {
+  // Per-panel skin (plan `panel-skin-theming`). `default` resolves to no
+  // class, so the panel keeps inheriting the global theme unchanged.
+  const skin = usePanelSkin('ai-assistant');
   const tabs = useAssistantChatStore((s) => s.tabs);
   const activeTabId = useAssistantChatStore((s) => s.activeTabId);
   const unreadByTab = useAssistantChatStore((s) => s.unreadByTab);
@@ -1411,7 +1452,7 @@ export function AIAssistantPanel() {
   }, [tabsError, tabs]);
 
   return (
-    <div className="flex h-full min-h-0 bg-surface">
+    <div className={`flex h-full min-h-0 bg-surface text-th ${skin.className}`} {...skin.rootProps}>
       {/* Left sidebar */}
       <SidebarPaneShell
         title="Chats"

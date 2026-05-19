@@ -163,6 +163,63 @@ async def _bind_tab_to_session(tab_id: str, cli_session_id: str, user_id: int | 
         logger.warning("ws_chat_bind_tab_failed", tab_id=tab_id, error=str(exc))
 
 
+async def _handle_resume_failure(
+    resume_failed: dict,
+    tab_id: str,
+    user_id: int | None,
+) -> None:
+    """Plan ``chat-session-durable-resume`` CP-D: the CLI started a fresh
+    conversation instead of restoring the requested one. The tab is still
+    bound to the dead conversation id; **force**-repoint it to the new
+    ``actual`` id (unlike ``_bind_tab_to_session``, which only binds when
+    NULL) so the next turn continues the conversation that actually exists
+    rather than re-failing to resume the gone one every time.
+
+    The user-facing warning is delivered by the ``resume_failed`` event the
+    caller forwards over the WS — this helper owns only the server-side
+    rebind. Idempotent: a no-op once the tab already points at ``actual``.
+    """
+    actual = resume_failed.get("actual")
+    requested = resume_failed.get("requested")
+    if not actual or not tab_id:
+        return
+    try:
+        from uuid import UUID
+
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatTab
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        try:
+            tab_uuid = UUID(tab_id)
+        except ValueError:
+            return
+
+        async with AsyncSessionLocal() as db:
+            tab = await db.get(ChatTab, tab_uuid)
+            if tab is None:
+                return
+            if user_id is not None and tab.user_id != user_id:
+                return
+            if tab.session_id == actual:
+                return  # already repointed — nothing to do
+            logger.warning(
+                "ws_chat_resume_failed_rebind",
+                tab_id=tab_id,
+                old_session=str(tab.session_id or requested)[:12],
+                new_session=str(actual)[:12],
+            )
+            tab.session_id = actual
+            tab.updated_at = utcnow()
+            await db.commit()
+    except Exception as exc:
+        logger.warning(
+            "ws_chat_resume_failed_rebind_error",
+            tab_id=tab_id,
+            error=str(exc),
+        )
+
+
 async def _wait_for_replayed_result(
     task_id: str,
     *,
@@ -643,6 +700,52 @@ async def _handle_message(
     # Capture the dispatch task_id so we can spawn a drain on TimeoutError.
     dispatch_task_id: str | None = None
 
+    # Plan `chat-session-durable-resume` CP-A: persist + bind the ChatSession
+    # the moment the bridge first surfaces Claude's cli_session_id (via the
+    # `session_resolved` heartbeat), instead of waiting for a `result` event
+    # that an interrupted/timed-out turn never produces. Without this, an
+    # interrupted turn leaves no resumable server session and the tab unbound
+    # — exactly the silent context-loss this plan fixes.
+    from pixsim7.common.scope_helpers import extract_scope
+    chat_scope_key, chat_plan_id, chat_contract_id = extract_scope(context, scope_key)
+    early_bound_session_id: str | None = None
+
+    async def _ensure_session_persisted(sid: str | None) -> None:
+        nonlocal early_bound_session_id
+        if not sid or sid == early_bound_session_id:
+            return
+        early_bound_session_id = sid
+        from pixsim7.backend.main.api.v1.meta_contracts import (
+            _store_pending_user_message,
+            _upsert_chat_session,
+        )
+        try:
+            # increment_messages=False: the result path owns the count bump
+            # (idempotent upsert updates in place). cli_session_id is set so
+            # the agent_pool DB-backed resume (CP-B) can recover the mapping
+            # after a bridge restart — for chat turns the surfaced id IS
+            # Claude's conversation UUID (bridge.py keys them equal).
+            await _upsert_chat_session(
+                session_id=sid, user_id=user_id or 0,
+                engine=engine, label=message[:60],
+                profile_id=resolved_profile_id,
+                scope_key=chat_scope_key,
+                last_plan_id=chat_plan_id or "",
+                last_contract_id=chat_contract_id or "",
+                increment_messages=False,
+                source="chat",
+                cli_session_id=sid,
+            )
+            await _bind_tab_to_session(tab_id, sid, user_id)
+            await _store_pending_user_message(session_id=sid, user_message=message)
+        except Exception as exc:
+            logger.warning(
+                "ws_chat_early_bind_failed",
+                session_id=sid,
+                tab_id=tab_id,
+                error=str(exc),
+            )
+
     try:
         task_id_sent = False
         async for event in remote_cmd_bridge.dispatch_task_streaming(
@@ -684,6 +787,17 @@ async def _handle_message(
                 upstream_session_id = event.get("bridge_session_id")
                 if isinstance(upstream_session_id, str) and upstream_session_id:
                     msg["bridge_session_id"] = upstream_session_id
+                    # Durable-resume CP-A: bind/persist as soon as the id is
+                    # known (idempotent + once-per-turn guarded internally).
+                    await _ensure_session_persisted(upstream_session_id)
+                # CP-C/CP-D: the CLI couldn't restore the prior conversation.
+                # Forward the verdict so the panel can warn the user, and
+                # repoint the tab off the dead conversation onto the fresh
+                # one so subsequent turns stay coherent (not silently lost).
+                rf = event.get("resume_failed")
+                if isinstance(rf, dict) and rf:
+                    msg["resume_failed"] = rf
+                    await _handle_resume_failure(rf, tab_id, user_id)
                 await websocket.send_json(msg)
             elif event.get("type") == "confirmation_request":
                 msg = {
@@ -729,8 +843,8 @@ async def _handle_message(
 
                 if cli_session_id:
                     from pixsim7.backend.main.api.v1.meta_contracts import _upsert_chat_session
-                    from pixsim7.common.scope_helpers import extract_scope
-                    chat_scope_key, chat_plan_id, chat_contract_id = extract_scope(context, scope_key)
+                    # chat_scope_key/plan/contract computed once before the
+                    # dispatch loop (CP-A) — reused here.
 
                     # Await the primary upsert so the row exists before the
                     # response store call runs. Previously this was fire-and-
@@ -746,6 +860,12 @@ async def _handle_message(
                             last_contract_id=chat_contract_id or "",
                             increment_messages=True,
                             source="chat",
+                            # CP-B b2: populate the cli_session_id column so
+                            # agent_pool's DB-backed resume can recover the
+                            # mapping after a bridge restart. Chat turns key
+                            # the row id == cli conversation UUID, so this is
+                            # the same value (kept explicit for the lookup).
+                            cli_session_id=cli_session_id,
                         )
                     except Exception as exc:
                         logger.warning(
@@ -828,7 +948,14 @@ async def _handle_message(
                             source="chat",
                         ))
 
-                await websocket.send_json({
+                # CP-C/CP-D: if the bridge reported a resume failure and the
+                # heartbeats carrying it were missed (WS hiccup), the result
+                # still carries the verdict — forward + rebind here too.
+                result_rf = event.get("resume_failed")
+                if isinstance(result_rf, dict) and result_rf:
+                    await _handle_resume_failure(result_rf, tab_id, user_id)
+
+                result_payload = {
                     "type": "result",
                     "tab_id": tab_id,
                     "ok": True,
@@ -836,7 +963,10 @@ async def _handle_message(
                     "bridge_session_id": cli_session_id,
                     "bridge_client_id": bridge_client_id,
                     "duration_ms": duration_ms,
-                })
+                }
+                if isinstance(result_rf, dict) and result_rf:
+                    result_payload["resume_failed"] = result_rf
+                await websocket.send_json(result_payload)
     except TimeoutError as e:
         # Dispatch timed out — agent went silent for the full window. Spawn
         # a background drain to persist the answer if it still arrives, or
@@ -845,7 +975,11 @@ async def _handle_message(
             asyncio.ensure_future(_drain_late_result(
                 task_id=dispatch_task_id,
                 bridge=remote_cmd_bridge,
-                session_id=bridge_session_id,
+                # Prefer the cli_session_id captured mid-turn (CP-A early
+                # bind) over the requested resume id — on a first turn the
+                # latter is None, which is why an interrupted opening turn
+                # used to leave no placeholder at all.
+                session_id=early_bound_session_id or bridge_session_id,
                 user_message=message,
                 dispatch_started_at=start,
                 timeout_s=timeout_val,

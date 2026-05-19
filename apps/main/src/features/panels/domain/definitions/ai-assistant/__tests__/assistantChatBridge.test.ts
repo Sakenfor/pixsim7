@@ -337,6 +337,53 @@ describe('AssistantChatBridge', () => {
       expect(entry?.bridgeSessionId).toBe('sess-resolved');
     });
 
+    it('captures resume_failed from heartbeat and carries it onto the result', async () => {
+      // Plan `chat-session-durable-resume` CP-C: the bridge could not
+      // restore the prior conversation. The verdict rides the heartbeat
+      // (so the panel can warn before the reply) and the result envelope
+      // (so a missed heartbeat still surfaces it).
+      const ws = await connectAndSend('tab-1', { message: 'still there?' });
+
+      ws.simulateMessage({
+        type: 'heartbeat',
+        tab_id: 'tab-1',
+        action: 'resume_failed',
+        detail: '',
+        task_id: 'task-1',
+        bridge_session_id: 'fresh-conv',
+        resume_failed: { requested: 'old-conv', actual: 'fresh-conv' },
+      });
+
+      expect(bridge.get('tab-1')!.resumeFailed).toEqual({
+        requested: 'old-conv',
+        actual: 'fresh-conv',
+      });
+
+      ws.simulateMessage({
+        type: 'result',
+        tab_id: 'tab-1',
+        ok: true,
+        response: 'Done',
+        bridge_session_id: 'fresh-conv',
+        resume_failed: { requested: 'old-conv', actual: 'fresh-conv' },
+      });
+
+      const result = bridge.consume('tab-1');
+      expect(result?.resumeFailed).toEqual({ requested: 'old-conv', actual: 'fresh-conv' });
+    });
+
+    it('ignores a malformed resume_failed payload', async () => {
+      const ws = await connectAndSend('tab-1', { message: 'hi' });
+      ws.simulateMessage({
+        type: 'heartbeat',
+        tab_id: 'tab-1',
+        action: 'processing_task',
+        detail: 'Working...',
+        resume_failed: {},
+      });
+      expect(bridge.get('tab-1')!.resumeFailed ?? null).toBeNull();
+    });
+
     it('handles error messages', async () => {
       const ws = await connectAndSend('tab-1', { message: 'hi' });
 

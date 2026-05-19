@@ -51,6 +51,13 @@ export interface BridgeRequest {
   abort: AbortController;
   /** Known bridge/CLI session id for this request (used for reconnect recovery). */
   bridgeSessionId?: string;
+  /**
+   * Set when the bridge could NOT restore the requested conversation and
+   * started a fresh one — the agent has no memory of prior turns. Plan
+   * `chat-session-durable-resume` CP-C. The panel surfaces this explicitly
+   * instead of silently re-skinning the old transcript as continuous.
+   */
+  resumeFailed?: ResumeFailure | null;
   /** Server-assigned task ID — used for reconnect after page reload */
   taskId?: string;
   /** Monotonic timestamp of last activity (creation, heartbeat, or reconnect) */
@@ -59,6 +66,13 @@ export interface BridgeRequest {
   _consumed?: boolean;
   /** Non-null when the agent is blocked waiting for user approval */
   pendingConfirmation?: ConfirmationRequest | null;
+}
+
+export interface ResumeFailure {
+  /** The conversation id the panel asked to continue. */
+  requested?: string | null;
+  /** The fresh conversation id the CLI actually started instead. */
+  actual?: string | null;
 }
 
 export interface BridgeResult {
@@ -71,6 +85,8 @@ export interface BridgeResult {
   bridge_session_id?: string;
   thinkingLog?: ThinkingEntry[];
   reconnected?: boolean;
+  /** See BridgeRequest.resumeFailed — plan `chat-session-durable-resume`. */
+  resumeFailed?: ResumeFailure | null;
 }
 
 type Listener = () => void;
@@ -102,6 +118,20 @@ function computeChatWsUrl(token: string | null): string {
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
     return `${proto}//${host}/api/v1/ws/chat${tokenParam}`;
   }
+}
+
+// ── Resume-failure coercion ──
+// The bridge sends `resume_failed: {requested, actual}` on the heartbeat
+// and/or result envelope when the CLI couldn't restore the conversation.
+// Tolerate shape drift (missing keys / null) — its mere presence is the
+// signal that matters.
+function coerceResumeFailure(raw: unknown): ResumeFailure | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const requested = typeof r.requested === 'string' ? r.requested : null;
+  const actual = typeof r.actual === 'string' ? r.actual : null;
+  if (!requested && !actual) return null;
+  return { requested, actual };
 }
 
 // ── Heartbeat dedup helper ──
@@ -520,6 +550,11 @@ class AssistantChatBridge {
         request.bridgeSessionId = incomingSessionId;
         this._persistInflight();
       }
+      const hbResumeFailed = coerceResumeFailure(data.resume_failed);
+      if (hbResumeFailed && !request.resumeFailed) {
+        request.resumeFailed = hbResumeFailed;
+        this._persistInflight();
+      }
       request._lastActivity = Date.now();
       // Skip idle session keepalives — they are not task activity
       if (action === 'cli_session' || detail === 'idle') {
@@ -534,6 +569,8 @@ class AssistantChatBridge {
       if (typeof data.bridge_session_id === 'string' && data.bridge_session_id) {
         request.bridgeSessionId = data.bridge_session_id;
       }
+      const resultResumeFailed = coerceResumeFailure(data.resume_failed) ?? request.resumeFailed ?? null;
+      if (resultResumeFailed) request.resumeFailed = resultResumeFailed;
       request.status = data.ok ? 'completed' : 'error';
       request.activity = null;
       request.result = {
@@ -546,6 +583,7 @@ class AssistantChatBridge {
         bridge_session_id: data.bridge_session_id as string | undefined,
         thinkingLog: request.thinkingLog,
         reconnected: data.reconnected as boolean | undefined,
+        resumeFailed: resultResumeFailed,
       };
       this._clearReconnectRetry(tabId);
       // Persist result to localStorage so it survives full page reload

@@ -2679,6 +2679,68 @@ async def _upsert_chat_session(
         logging.getLogger(__name__).warning("chat_session_upsert_failed: %s", e)
 
 
+async def _store_pending_user_message(
+    session_id: str,
+    user_message: str,
+) -> None:
+    """Persist just the user turn server-side, before any assistant reply.
+
+    Plan ``chat-session-durable-resume`` CP-A: durability used to be gated
+    entirely on the ``result`` event, so an interrupted turn (bridge/MCP
+    drop, timeout) left no server-side trace of the user's message at all —
+    only the frontend's localStorage held it. Writing the user row as soon
+    as the session is known means the turn survives even if no reply ever
+    arrives, and ``_drain_late_result``'s abandoned-placeholder has a real
+    session to land on.
+
+    Merge (not overwrite) via the shared identity rules so the later
+    ``_store_session_response`` (same user text) collapses to one row.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    if not user_message:
+        return
+    try:
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        async with AsyncSessionLocal() as db:
+            session = await db.get(ChatSession, session_id)
+            if not session:
+                rows = (await db.execute(
+                    select(ChatSession)
+                    .where(ChatSession.cli_session_id == session_id)
+                    .limit(1)
+                )).scalars().all()
+                session = rows[0] if rows else None
+            if not session:
+                log.warning(
+                    "store_pending_user_message_session_missing session_id=%s",
+                    session_id,
+                )
+                return
+            if session.status == "archived":
+                return
+            await db.refresh(session, ["messages"])
+            new_rows = [{
+                "role": "user",
+                "text": user_message,
+                "timestamp": utcnow().isoformat(),
+            }]
+            merged = _merge_chat_messages(session.messages, new_rows)
+            session.messages = merged[-50:]
+            session.last_used_at = utcnow()
+            await db.commit()
+    except Exception as e:
+        log.warning(
+            "store_pending_user_message_failed session_id=%s err=%s",
+            session_id,
+            e,
+        )
+
+
 async def _store_session_response(
     session_id: str,
     user_message: str,
