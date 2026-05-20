@@ -230,7 +230,7 @@ def _app(principal=None) -> "FastAPI":
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/dev/plans")
 
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
 
     async def _db():
         yield db
@@ -307,3 +307,295 @@ class TestClaimEndpoints:
                 r = await c.post("/api/v1/dev/plans/plan-a/release", json={})
         assert r.status_code == 200
         assert r.json()["released"] == 2
+
+
+def _scalar_result(value):
+    return SimpleNamespace(scalar_one_or_none=lambda: value)
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestAutoClaim:
+    """Implicit plan-level claim on mutating callsites (option E)."""
+
+    @pytest.mark.asyncio
+    async def test_create_path_with_auto_claim_sets_open_claim(self):
+        added = []
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_scalar_result(None)),
+            add=lambda o: added.append(o),
+        )
+        await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        assert len(added) == 1
+        row = added[0]
+        claim = (row.meta or {}).get("claim")
+        assert claim is not None
+        assert claim["checkpoint_id"] is None
+        assert claim["released_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_path_with_auto_claim_sets_claim_when_absent(self):
+        existing = _participant(meta={"other_key": "preserved"})
+        db = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(existing)))
+        await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        claim = existing.meta.get("claim")
+        assert claim is not None and _h.claim_is_open(claim)
+        assert existing.meta.get("other_key") == "preserved"
+
+    @pytest.mark.asyncio
+    async def test_update_path_with_auto_claim_does_not_stomp_existing_claim(self):
+        existing_claim = _open_claim("cp-explicit")
+        existing = _participant(meta={"claim": existing_claim})
+        db = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(existing)))
+        await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        # specific checkpoint claim must win over auto's checkpoint_id=None
+        assert existing.meta["claim"]["checkpoint_id"] == "cp-explicit"
+        assert existing.meta["claim"]["claimed_at"] == existing_claim["claimed_at"]
+
+    @pytest.mark.asyncio
+    async def test_update_path_replaces_released_claim_on_new_mutation(self):
+        released = {**_open_claim("cp-old"), "released_at": utcnow().isoformat()}
+        existing = _participant(meta={"claim": released})
+        db = SimpleNamespace(execute=AsyncMock(return_value=_scalar_result(existing)))
+        await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="update_plan",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1, auto_claim=True,
+        )
+        # released claim is not "open" so auto_claim re-opens with checkpoint_id=None
+        claim = existing.meta["claim"]
+        assert claim["checkpoint_id"] is None
+        assert claim["released_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_auto_claim_does_not_set_claim(self):
+        added = []
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_scalar_result(None)),
+            add=lambda o: added.append(o),
+        )
+        await _h._record_plan_participant(
+            db, plan_id="plan-a", role="builder", action="touch_only",
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1,
+            # auto_claim defaults to False
+        )
+        assert len(added) == 1
+        meta = added[0].meta
+        assert meta is None or "claim" not in meta
+
+    @pytest.mark.asyncio
+    async def test_from_principal_threads_auto_claim(self):
+        principal = SimpleNamespace(
+            principal_type="agent", agent_id="agent-1", agent_type="claude",
+            run_id="run-1", user_id=1,
+        )
+        with patch.object(_h, "_record_plan_participant", new=AsyncMock()) as rec:
+            await _h._record_plan_participant_from_principal(
+                None, plan_id="plan-a", role="builder", action="update_plan",
+                principal=principal, auto_claim=True,
+            )
+        rec.assert_awaited_once()
+        assert rec.await_args.kwargs.get("auto_claim") is True
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestAgentContextSelfDeclareClaim:
+    """Agent-context endpoint claims only on explicit ?plan_id= self-declare
+    (option C). Auto-pick path stays informational, no claim."""
+
+    @pytest.mark.asyncio
+    async def test_explicit_plan_id_triggers_claim(self):
+        app = _app()
+        bundle = SimpleNamespace(
+            id="plan-a", document_id="doc-a",
+            doc=SimpleNamespace(
+                title="Plan A", status="active", owner="stefan",
+                summary="", namespace="dev/plans", markdown="# A",
+                tags=[],
+            ),
+            plan=SimpleNamespace(
+                stage="implementation", priority="high",
+                updated_at=utcnow(), code_paths=[], companions=[],
+                handoffs=[], depends_on=[],
+            ),
+        )
+        with (
+            patch.object(_h, "list_plan_bundles", new=AsyncMock(return_value=[bundle])),
+            patch.object(_h, "_normalize_stage_for_response", new=lambda x: x),
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_documents",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(_h, "touch_participant_heartbeat", new=AsyncMock(return_value=False)),
+            patch.object(_h, "claim_checkpoint", new=AsyncMock(return_value=(None, []))) as claim_mock,
+        ):
+            async with _client(app) as c:
+                r = await c.get("/api/v1/dev/plans/agent-context?plan_id=plan-a")
+        assert r.status_code == 200
+        claim_mock.assert_awaited_once()
+        kwargs = claim_mock.await_args.kwargs
+        assert kwargs.get("plan_id") == "plan-a"
+        assert kwargs.get("checkpoint_id") is None
+
+    @pytest.mark.asyncio
+    async def test_auto_pick_does_not_claim(self):
+        app = _app()
+        bundle = SimpleNamespace(
+            id="plan-top", document_id="doc-top",
+            doc=SimpleNamespace(
+                title="Top", status="active", owner="stefan",
+                summary="", namespace="dev/plans", markdown="",
+                tags=[],
+            ),
+            plan=SimpleNamespace(
+                stage="implementation", priority="high",
+                updated_at=utcnow(), code_paths=[], companions=[],
+                handoffs=[], depends_on=[],
+            ),
+        )
+        with (
+            patch.object(_h, "list_plan_bundles", new=AsyncMock(return_value=[bundle])),
+            patch.object(_h, "_normalize_stage_for_response", new=lambda x: x),
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_documents",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(_h, "touch_participant_heartbeat", new=AsyncMock(return_value=False)),
+            patch.object(_h, "claim_checkpoint", new=AsyncMock(return_value=(None, []))) as claim_mock,
+        ):
+            async with _client(app) as c:
+                r = await c.get("/api/v1/dev/plans/agent-context")
+        assert r.status_code == 200
+        claim_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_claim_failure_does_not_break_read(self):
+        app = _app()
+        bundle = SimpleNamespace(
+            id="plan-a", document_id="doc-a",
+            doc=SimpleNamespace(
+                title="A", status="active", owner="stefan",
+                summary="", namespace="dev/plans", markdown="",
+                tags=[],
+            ),
+            plan=SimpleNamespace(
+                stage="implementation", priority="high",
+                updated_at=utcnow(), code_paths=[], companions=[],
+                handoffs=[], depends_on=[],
+            ),
+        )
+        with (
+            patch.object(_h, "list_plan_bundles", new=AsyncMock(return_value=[bundle])),
+            patch.object(_h, "_normalize_stage_for_response", new=lambda x: x),
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_documents",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(_h, "touch_participant_heartbeat", new=AsyncMock(return_value=False)),
+            patch.object(
+                _h, "claim_checkpoint",
+                new=AsyncMock(side_effect=RuntimeError("db boom")),
+            ),
+        ):
+            async with _client(app) as c:
+                r = await c.get("/api/v1/dev/plans/agent-context?plan_id=plan-a")
+        # claim explosion does NOT propagate; read still succeeds
+        assert r.status_code == 200
+        assert r.json()["assignment"]["id"] == "plan-a"
+
+
+def _bundle(*, title="Plan A", tags=None, plan_type="feature", plan_id="plan-a"):
+    return SimpleNamespace(
+        id=plan_id,
+        doc=SimpleNamespace(title=title, tags=tags or []),
+        plan=SimpleNamespace(plan_type=plan_type),
+    )
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestTabIdentitySuggestion:
+    def test_tag_keyword_wins_over_plan_type(self):
+        hint = _h.derive_tab_identity_suggestion(
+            _bundle(tags=["auth", "ownership"], plan_type="feature")
+        )
+        assert hint["icon"] == "lock"
+
+    def test_falls_back_to_plan_type_icon(self):
+        hint = _h.derive_tab_identity_suggestion(
+            _bundle(tags=["unrelated"], plan_type="bugfix")
+        )
+        assert hint["icon"] == "bug"
+
+    def test_default_icon_when_no_match(self):
+        hint = _h.derive_tab_identity_suggestion(
+            _bundle(tags=[], plan_type="unknown-type")
+        )
+        assert hint["icon"] == "clipboard"
+
+    def test_subtitle_truncates_long_titles(self):
+        long_title = "x" * 60
+        hint = _h.derive_tab_identity_suggestion(_bundle(title=long_title))
+        assert len(hint["subtitle"]) <= 40
+        assert hint["subtitle"].endswith("…")
+
+    def test_subtitle_passes_short_titles_through(self):
+        hint = _h.derive_tab_identity_suggestion(_bundle(title="Short"))
+        assert hint["subtitle"] == "Short"
+
+    @pytest.mark.asyncio
+    async def test_claim_endpoint_includes_suggestion_when_nudge_fires(self):
+        app = _app()
+        own = _participant(meta={"claim": _open_claim("cp1")})
+        bundle = _bundle(title="Plan Participant Liveness", tags=["plans"], plan_type="feature")
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_bundle",
+                new=AsyncMock(return_value=bundle),
+            ),
+            patch.object(_h, "claim_checkpoint", new=AsyncMock(return_value=(own, []))),
+            patch.object(
+                _h, "maybe_tab_identity_nudge",
+                new=AsyncMock(return_value="brand your tab"),
+            ),
+        ):
+            async with _client(app) as c:
+                r = await c.post("/api/v1/dev/plans/plan-a/claim", json={"checkpoint_id": "cp1"})
+        body = r.json()
+        assert body["nudge"] == "brand your tab"
+        assert body["tab_identity_suggestion"] is not None
+        assert body["tab_identity_suggestion"]["subtitle"] == "Plan Participant Liveness"
+        assert body["tab_identity_suggestion"]["icon"] == "clipboard"  # tags=['plans']
+
+    @pytest.mark.asyncio
+    async def test_claim_endpoint_omits_suggestion_when_nudge_suppressed(self):
+        app = _app()
+        own = _participant(meta={"claim": _open_claim("cp1")})
+        bundle = _bundle()
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.plans.routes_agent.get_plan_bundle",
+                new=AsyncMock(return_value=bundle),
+            ),
+            patch.object(_h, "claim_checkpoint", new=AsyncMock(return_value=(own, []))),
+            patch.object(
+                _h, "maybe_tab_identity_nudge",
+                new=AsyncMock(return_value=None),  # ledger says already shown
+            ),
+        ):
+            async with _client(app) as c:
+                r = await c.post("/api/v1/dev/plans/plan-a/claim", json={"checkpoint_id": "cp1"})
+        body = r.json()
+        assert body["nudge"] is None
+        assert body["tab_identity_suggestion"] is None

@@ -516,6 +516,7 @@ async def _record_plan_participant(
     user_id: Optional[int] = None,
     seen_at=None,
     meta: Optional[Dict[str, Any]] = None,
+    auto_claim: bool = False,
 ) -> None:
     if not hasattr(db, "execute"):
         return
@@ -528,7 +529,6 @@ async def _record_plan_participant(
     normalized_session_id = _normalize_participant_value(session_id)
     normalized_user_id = int(user_id) if isinstance(user_id, int) and user_id > 0 else None
 
-    # Skip records that cannot be attributed to either an agent/session or a user.
     if normalized_agent_id is None and normalized_user_id is None:
         return
 
@@ -564,8 +564,30 @@ async def _record_plan_participant(
         stmt = stmt.where(PlanParticipant.user_id == normalized_user_id)
 
     row = (await db.execute(stmt.limit(1))).scalar_one_or_none()
+
+    # auto_claim: implicit plan-level claim when this call represents a real
+    # mutation (plan create/update/progress/review). Promotes the participant
+    # row to claimed=true so the roster reflects "agent X is working on plan
+    # Y" without an explicit POST /claim. Never stomps an existing open claim
+    # — a more specific checkpoint-scoped claim from claim_checkpoint wins.
+    effective_meta = meta
+    if auto_claim:
+        existing_claim = participant_claim(row) if row is not None else None
+        if not claim_is_open(existing_claim):
+            auto_claim_payload = {
+                CLAIM_META_KEY: {
+                    "checkpoint_id": None,
+                    "claimed_at": observed_at.isoformat(),
+                    "released_at": None,
+                }
+            }
+            if isinstance(effective_meta, dict):
+                effective_meta = {**auto_claim_payload, **effective_meta}
+            else:
+                effective_meta = auto_claim_payload
+
     if row is None:
-        initial_meta = dict(meta) if isinstance(meta, dict) else {}
+        initial_meta = dict(effective_meta) if isinstance(effective_meta, dict) else {}
         row = PlanParticipant(
             plan_id=plan_id,
             role=role,
@@ -594,7 +616,7 @@ async def _record_plan_participant(
         row.agent_type = normalized_agent_type
     if not row.profile_id and (normalized_profile_id or normalized_agent_id):
         row.profile_id = normalized_profile_id or normalized_agent_id
-    row.meta = _participant_merge_meta(row.meta, meta)
+    row.meta = _participant_merge_meta(row.meta, effective_meta)
 
 
 async def _record_plan_participant_from_principal(
@@ -606,6 +628,7 @@ async def _record_plan_participant_from_principal(
     principal: CurrentUser,
     session_id: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
+    auto_claim: bool = False,
 ) -> None:
     actor = _principal_actor_fields(principal)
     await _record_plan_participant(
@@ -621,6 +644,7 @@ async def _record_plan_participant_from_principal(
         session_id=session_id,
         user_id=actor.get("user_id"),
         meta=meta,
+        auto_claim=auto_claim,
     )
 
 
@@ -995,6 +1019,58 @@ async def maybe_tab_identity_nudge(
         row.meta, {TAB_IDENTITY_NUDGE_META_KEY: ledger}
     )
     return text
+
+
+# Plan-type → @lib/icons IconName hint. The agent is free to ignore this —
+# it's a reasonable starting point, not a directive. Names match the
+# lucide-style set documented on the set_tab_identity tool.
+_PLAN_TYPE_ICON_HINTS: Dict[str, str] = {
+    "bugfix": "bug",
+    "refactor": "wrench",
+    "feature": "sparkles",
+    "exploration": "search",
+    "task": "clipboard",
+}
+
+# Tag-keyword → icon override (first match wins). Walked in declaration order.
+_TAG_ICON_HINTS: List[Tuple[str, str]] = [
+    ("auth", "lock"),
+    ("security", "lock"),
+    ("ui", "monitor"),
+    ("frontend", "monitor"),
+    ("panel", "monitor"),
+    ("backend", "database"),
+    ("api", "database"),
+    ("database", "database"),
+    ("test", "flask"),
+    ("docs", "book"),
+    ("plan", "clipboard"),
+]
+
+_TAB_SUBTITLE_MAX_LEN = 40
+
+
+def derive_tab_identity_suggestion(bundle: "PlanBundle") -> Dict[str, str]:
+    """Best-effort {icon, subtitle} hint for set_tab_identity, derived from
+    the plan. Subtitle is the plan title truncated to ≤40 chars; icon
+    prefers tag-keyword matches and falls back to plan-type."""
+    title = (bundle.doc.title or bundle.id or "").strip()
+    if len(title) > _TAB_SUBTITLE_MAX_LEN:
+        subtitle = title[: _TAB_SUBTITLE_MAX_LEN - 1].rstrip() + "…"
+    else:
+        subtitle = title
+
+    icon = ""
+    tags = [str(t).lower() for t in (bundle.doc.tags or []) if t]
+    for keyword, hint in _TAG_ICON_HINTS:
+        if any(keyword in tag for tag in tags):
+            icon = hint
+            break
+    if not icon:
+        plan_type = getattr(bundle.plan, "plan_type", None) or ""
+        icon = _PLAN_TYPE_ICON_HINTS.get(plan_type.lower(), "clipboard")
+
+    return {"icon": icon, "subtitle": subtitle}
 
 
 async def release_claims_for_run(db: AsyncSession, run_id: str) -> int:

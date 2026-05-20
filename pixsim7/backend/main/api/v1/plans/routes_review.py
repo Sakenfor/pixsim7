@@ -651,6 +651,7 @@ async def create_plan_review_request(
         action="create_review_request",
         principal=principal,
         meta={"round_id": str(round_uuid) if round_uuid else None},
+        auto_claim=True,
     )
     await db.commit()
     return _dp._review_request_to_entry(row)
@@ -744,6 +745,7 @@ async def update_plan_review_request(
         action="update_review_request",
         principal=principal,
         meta={"status": row.status},
+        auto_claim=True,
     )
     await db.commit()
     return _dp._review_request_to_entry(row)
@@ -948,6 +950,7 @@ async def create_plan_review_round(
         action="create_review_round",
         principal=principal,
         meta={"round_number": round_number},
+        auto_claim=True,
     )
     await db.commit()
     return _dp._review_round_to_entry(row)
@@ -1001,6 +1004,7 @@ async def update_plan_review_round(
         action="update_review_round",
         principal=principal,
         meta={"round_number": row.round_number, "status": row.status},
+        auto_claim=True,
     )
     await db.commit()
     return _dp._review_round_to_entry(row)
@@ -1125,6 +1129,7 @@ async def create_plan_review_node(
             "kind": payload.kind,
             "author_role": payload.author_role,
         },
+        auto_claim=True,
     )
     await db.commit()
     return PlanReviewNodeCreateResponse(

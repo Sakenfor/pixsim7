@@ -159,6 +159,25 @@ async def get_agent_context(
         except Exception:
             await db.rollback()
 
+    # Self-declare auto-claim: when the caller explicitly requested a plan
+    # (?plan_id=...), treat it as "I am working on this plan now" and upsert
+    # an open claim. Auto-pick (no plan_id) is informational only — claiming
+    # there would flood the roster with every agent's view of the top-priority
+    # plan. Best-effort: a claim failure must never break the read.
+    if target is not None and plan_id:
+        try:
+            session_id = getattr(_user, "chat_session_id", None) or None
+            await _h.claim_checkpoint(
+                db,
+                principal=_user,
+                plan_id=target.id,
+                checkpoint_id=None,
+                session_id=session_id,
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
     # Fetch recent work summaries for the assigned plan (or all plans if none assigned)
     work_summaries: List[WorkSummaryEntry] = []
     try:
@@ -534,6 +553,11 @@ class ClaimConflict(BaseModel):
     last_heartbeat_at: Optional[str] = None
 
 
+class TabIdentitySuggestion(BaseModel):
+    icon: str = Field("", description="Suggested @lib/icons IconName (e.g. 'wrench', 'lock').")
+    subtitle: str = Field("", description="Suggested short tab subtitle (≤ ~40 chars).")
+
+
 class ClaimResponse(BaseModel):
     plan_id: str
     checkpoint_id: Optional[str] = None
@@ -549,6 +573,15 @@ class ClaimResponse(BaseModel):
             "Optional one-line, never-mandatory suggestion (e.g. that you "
             "may brand this chat tab via set_tab_identity). Surfaced at most "
             "once per anchor-type per session — ignore if not actionable."
+        ),
+    )
+    tab_identity_suggestion: Optional[TabIdentitySuggestion] = Field(
+        default=None,
+        description=(
+            "Best-effort {icon, subtitle} starter for set_tab_identity, "
+            "derived from the plan. Only present when the nudge fires "
+            "(same once-per-anchor cap). Agents may pass this through "
+            "unchanged, adjust, or ignore."
         ),
     )
 
@@ -582,12 +615,21 @@ async def claim_plan_checkpoint(
 
     # Soft tab-identity nudge — first self-assign anchor. Best-effort: a
     # nudge must never fail the claim (plan `agent-freeform-tab-identity`).
+    # When the nudge fires, also include a structured {icon, subtitle}
+    # starter derived from the plan so agents have a sensible default to
+    # pass to set_tab_identity.
     nudge: Optional[str] = None
+    suggestion: Optional[TabIdentitySuggestion] = None
     if own is not None:
         try:
             nudge = await _h.maybe_tab_identity_nudge(
                 db, principal=_user, plan_id=plan_id, anchor="claim"
             )
+            if nudge is not None:
+                hint = _h.derive_tab_identity_suggestion(bundle)
+                suggestion = TabIdentitySuggestion(
+                    icon=hint.get("icon", ""), subtitle=hint.get("subtitle", "")
+                )
         except Exception:  # noqa: BLE001 — nudge is non-critical
             logger.warning("tab-identity claim nudge failed", exc_info=True)
 
@@ -599,6 +641,7 @@ async def claim_plan_checkpoint(
         claimed=own is not None,
         participant_id=str(own.id) if own else None,
         nudge=nudge,
+        tab_identity_suggestion=suggestion,
         conflicts=[
             ClaimConflict(
                 agent_id=c.agent_id,
