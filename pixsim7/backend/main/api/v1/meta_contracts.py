@@ -2256,9 +2256,25 @@ async def register_chat_session(
     Uses the same ``_upsert_chat_session`` as the bridge path so both
     produce identical ChatSession records.
     """
+    import logging as _stdlib_logging
+    _stdlib_register_log = _stdlib_logging.getLogger(__name__)
     user_id = 0
     if _user:
         user_id = getattr(_user, 'user_id', None) or getattr(_user, 'id', 0) or 0
+    # DEBUG-floor diagnostic. _upsert_chat_session now self-repairs
+    # user_id=0 rows when a real user_id arrives, so a user_id=0 here
+    # is no longer permanently fatal — but it's still useful to see
+    # what auth the MCP register call carries.
+    _stdlib_register_log.debug(
+        "register_chat_session_auth session_id=%s user_id_resolved=%s "
+        "user_present=%s principal_type=%s principal_id=%s on_behalf_of=%s",
+        payload.session_id,
+        user_id,
+        _user is not None,
+        getattr(_user, "principal_type", None),
+        getattr(_user, "id", None),
+        getattr(_user, "on_behalf_of", None),
+    )
 
     from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
 
@@ -2641,6 +2657,25 @@ async def _upsert_chat_session(
                         session_id,
                     )
                     return
+                # Self-repair stale user_id=0 rows. Background: row creation
+                # races between the MCP server's `register-chat-session` (which
+                # defaults to user_id=0 when its request lacks auth) and the
+                # WS chat handler's CP-A early-bind (which has the real user
+                # id). Whichever fires first wins, and since this update path
+                # never touched user_id, a row born with 0 stayed 0 forever —
+                # and every chat.message notification it produced was
+                # invisible to the authenticated frontend. See plan
+                # `chat-unread-dot-regression`.
+                if user_id and user_id > 0 and (existing.user_id or 0) == 0:
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "chat_session_user_id_self_repair session_id=%s "
+                        "old_user_id=%s new_user_id=%s",
+                        session_id,
+                        existing.user_id,
+                        user_id,
+                    )
+                    existing.user_id = user_id
                 if increment_messages:
                     existing.message_count += 1
                 existing.last_used_at = utcnow()
@@ -2818,7 +2853,8 @@ async def _store_session_response(
                 for m in (session.messages or [])
                 if isinstance(m, dict)
             }
-            assistant_is_new = _chat_message_key(entry) not in pre_keys
+            entry_key = _chat_message_key(entry)
+            assistant_is_new = entry_key not in pre_keys
             merged = _merge_chat_messages(session.messages, new_rows)
             session.messages = merged[-50:]
             session.last_used_at = utcnow()
@@ -2827,6 +2863,23 @@ async def _store_session_response(
             notif_user_id = session.user_id
             notif_label = session.label
             await db.commit()
+
+        # DEBUG-floor diagnostic for the chat.message emit gate. Flip the
+        # logger floor to DEBUG when investigating "no unread dot" symptoms
+        # to see exactly which side of the gate fired (assistant_is_new
+        # True/False), with whose user_id, and what text identity matched.
+        # Kept in tree because the failure mode is hard to reason about
+        # from notification rows alone — see plan
+        # `chat-unread-dot-regression`.
+        log.debug(
+            "store_session_response_decision session_id=%s assistant_is_new=%s "
+            "user_id=%s pre_keys_count=%d entry_text_head=%r",
+            session_id,
+            assistant_is_new,
+            notif_user_id,
+            len(pre_keys),
+            (assistant_response or "")[:60],
+        )
 
         # Per-tab unread pip source (notification-system Phase 4a).
         # ref_type='chat_session' so cross-device tabs on the same session
@@ -2841,8 +2894,15 @@ async def _store_session_response(
                 label=notif_label,
                 preview=assistant_response,
             )
-    except Exception as e:
-        log.warning("store_session_response_failed session_id=%s err=%s", session_id, e)
+    except Exception:
+        # exception() includes the traceback — previously the bare warning
+        # ate the cause and the chat-unread-dot regression hunt had no
+        # signal beyond "no notification row exists". See plan
+        # `chat-unread-dot-regression`.
+        log.exception(
+            "store_session_response_failed session_id=%s",
+            session_id,
+        )
 
 
 async def _emit_chat_message_notification(
@@ -2860,6 +2920,14 @@ async def _emit_chat_message_notification(
     import logging
 
     log = logging.getLogger(__name__)
+    # DEBUG-floor diagnostic. Pairs with `store_session_response_decision`
+    # — together they tell us whether the gate skipped, the emit threw, or
+    # the row was created and the failure is downstream.
+    log.debug(
+        "emit_chat_message_notification_attempt session_id=%s user_id=%s",
+        session_id,
+        user_id,
+    )
     try:
         from pixsim7.backend.main.api.v1.notifications import emit_notification
         from pixsim7.backend.main.infrastructure.database.session import (
@@ -2871,7 +2939,7 @@ async def _emit_chat_message_notification(
             snippet = snippet[:139].rstrip() + "…"
 
         async with AsyncSessionLocal() as db:
-            await emit_notification(
+            n = await emit_notification(
                 db,
                 title=label or "AI Assistant",
                 body=snippet or None,
@@ -2886,11 +2954,22 @@ async def _emit_chat_message_notification(
                 payload={"sessionId": str(session_id)},
             )
             await db.commit()
-    except Exception as e:
-        log.warning(
-            "emit_chat_message_notification_failed session_id=%s err=%s",
+            log.debug(
+                "emit_chat_message_notification_committed session_id=%s "
+                "user_id=%s notif_id=%s",
+                session_id,
+                user_id,
+                getattr(n, "id", None),
+            )
+    except Exception:
+        # exception() includes the traceback. Previously a bare warning
+        # ate the cause and the chat-unread-dot regression hunt had no
+        # signal beyond "no notification row exists". See plan
+        # `chat-unread-dot-regression`.
+        log.exception(
+            "emit_chat_message_notification_failed session_id=%s user_id=%s",
             session_id,
-            e,
+            user_id,
         )
 
 

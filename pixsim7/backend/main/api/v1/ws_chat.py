@@ -28,12 +28,20 @@ import json
 import time
 from typing import Any, Dict, Optional
 
+import logging as _stdlib_logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pixsim_logging import get_logger
 
 from pixsim7.backend.main.services.meta.agent_dispatch import extract_response_text
 
 logger = get_logger()
+# Stdlib logger alongside the structlog one. Some log viewers (notably the
+# launcher's debug panel during the chat-unread-dot regression hunt) showed
+# stdlib INFO events but not structlog events, leaving the auth-resolve trail
+# invisible. The structlog path is still primary; this is a parallel sink for
+# the few probes that need to show up no matter what.
+_stdlib_log = _stdlib_logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -54,6 +62,7 @@ async def _resolve_user_id(token: str | None, db) -> int | None:
     None. See plan ``community-chat`` Pitfalls / Canon.
     """
     if not token:
+        _stdlib_log.debug("ws_chat_resolve_user_id_no_token")
         return None
     try:
         from pixsim7.backend.main.services.user.auth_service import AuthService
@@ -62,12 +71,22 @@ async def _resolve_user_id(token: str | None, db) -> int | None:
         auth_service = AuthService(db, UserService(db))
         payload = await auth_service.verify_token_claims(token, update_last_used=False)
         principal = RequestPrincipal.from_jwt_payload(payload)
-        return principal.user_id
+        resolved = principal.user_id
+        _stdlib_log.debug(
+            "ws_chat_resolve_user_id_ok resolved=%s principal_type=%s sub=%s",
+            resolved,
+            principal.principal_type,
+            payload.get("sub"),
+        )
+        return resolved
     except Exception as exc:
         logger.warning(
             "ws_chat_auth_resolve_failed",
             error_type=type(exc).__name__,
             error=str(exc),
+        )
+        _stdlib_log.exception(
+            "ws_chat_resolve_user_id_failed error_type=%s", type(exc).__name__,
         )
         return None
 
@@ -538,6 +557,12 @@ async def _handle_message(
 
     tab_id = data.get("tab_id", "")
     message = data.get("message", "")
+    _stdlib_log.debug(
+        "ws_chat_handle_message_entry tab_id=%s user_id=%s msg_len=%d",
+        tab_id,
+        user_id,
+        len(message or ""),
+    )
     if not message:
         await websocket.send_json({
             "type": "error",
@@ -1361,6 +1386,12 @@ async def websocket_chat(
     })
 
     logger.info("ws_chat_connected", user_id=user_id)
+    _stdlib_log.debug(
+        "ws_chat_connected_stdlib user_id=%s token_present=%s debug=%s",
+        user_id,
+        token is not None and token != "",
+        bool(getattr(settings, "debug", False)),
+    )
 
     # Track in-flight dispatch tasks for this connection
     active_dispatches: dict[str, asyncio.Task] = {}  # tab_id -> asyncio.Task

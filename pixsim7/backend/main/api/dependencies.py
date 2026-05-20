@@ -358,16 +358,30 @@ async def get_current_principal_optional(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> Optional[RequestPrincipal]:
     """Optional auth — returns None when no token or token is invalid."""
+    import logging as _stdlib_logging
+    _opt_auth_log = _stdlib_logging.getLogger(__name__)
     if not authorization:
+        # DEBUG-floor diagnostic — flip on when investigating endpoints
+        # that should have auth but appear to be hitting the no-auth
+        # fall-through. Verify_failed below stays at ERROR (exception)
+        # because that's a real failure, not just "no caller".
+        _opt_auth_log.debug("get_current_principal_optional_no_auth_header")
         return None
     try:
         token = _extract_bearer_token(authorization)
     except HTTPException:
+        _opt_auth_log.debug(
+            "get_current_principal_optional_bearer_extract_failed header_prefix=%r",
+            (authorization or "")[:16],
+        )
         return None
     try:
         payload = await auth_service.verify_token_claims(token)
         return RequestPrincipal.from_jwt_payload(payload)
     except Exception:
+        _opt_auth_log.exception(
+            "get_current_principal_optional_verify_failed"
+        )
         return None
 
 
