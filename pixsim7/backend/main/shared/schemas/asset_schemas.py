@@ -166,6 +166,9 @@ class AssetResponse(BaseModel):
     source_generation_id: Optional[int] = None
     operation_type: Optional[str] = None
     reproducible_hash: Optional[str] = None
+    # Prompt version reference (FK -> prompt_versions.id). Stable across prompt
+    # text tweaks; the cohort key for "same prompt" grouping/navigation.
+    prompt_version_id: Optional[str] = None
 
     # Storage keys (source of truth for file locations)
     stored_key: Optional[str] = None
@@ -227,9 +230,9 @@ class AssetResponse(BaseModel):
     parent_asset_id: Optional[int] = None
     version_message: Optional[str] = None
 
-    @field_validator("version_family_id", mode="before")
+    @field_validator("version_family_id", "prompt_version_id", mode="before")
     @classmethod
-    def _coerce_version_family_id(cls, v: Any) -> Optional[str]:
+    def _coerce_uuid_to_str(cls, v: Any) -> Optional[str]:
         if v is None:
             return None
         return str(v)

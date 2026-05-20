@@ -2,6 +2,9 @@
  * AssetPanelGrid – Renders multi-asset strip or grid layout.
  * Maps slotItems to empty/filled slot cards.
  */
+import { useMemo, useRef } from 'react';
+
+import { useCardGestures } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 import type { WidgetConfig } from '@lib/ui/overlay';
 
@@ -9,8 +12,11 @@ import type { AssetModel } from '@features/assets';
 import { toggleFavoriteTag } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 import type { InputItem } from '@features/generation';
+import { useSetSlotViewStore } from '@features/generation/stores/setSlotViewStore';
 
 import { MediaCard } from '@/components/media/MediaCard';
+import { SetGridOverlay } from '@/components/media/setGridOverlay';
+import { useInputSlotShortcuts } from '@/components/media/useInputSlotShortcuts';
 import type { OperationType } from '@/types/operations';
 
 import { MaskPreviewOverlay } from './MaskPreviewOverlay';
@@ -162,73 +168,221 @@ export function AssetPanelGrid({
         const isDragging = draggedSlotIndex === idx;
 
         return (
-          <div
+          <FilledSlot
             key={inputItem.id ?? idx}
-            className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} cursor-grab transition-shadow`}
-            {...getDragItemProps(idx)}
-            onClick={() => {
-              if (armedSlotIndex !== undefined) {
-                setArmedSlot(operationType, undefined);
-              }
-              const selectedIndex = inputIndexById.get(inputItem.id);
-              if (selectedIndex !== undefined) {
-                setOperationInputIndex?.(selectedIndex + 1);
-              }
-            }}
-            onDoubleClick={() => onOpenAsset?.(inputItem.asset)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (armedSlotIndex !== undefined) {
-                  setArmedSlot(operationType, undefined);
-                }
-                const selectedIndex = inputIndexById.get(inputItem.id);
-                if (selectedIndex !== undefined) {
-                  setOperationInputIndex?.(selectedIndex + 1);
-                }
-              }
-            }}
-            aria-disabled={isClamped}
-          >
-            <MediaCard
-              asset={inputItem.asset}
-              onToggleFavorite={() => toggleFavoriteTag(inputItem.asset)}
-              customWidgets={buildSlotExtraWidgets(inputItem, idx)}
-              layout={{
-                density: 'compact',
-                hideFooter: true,
-                fillHeight: true,
-                enableHoverPreview,
-                showPlayOverlay,
-                clickToPlay,
-                overlay: (
-                  <>
-                    {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
-                      <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
-                    )}
-                    {buildFusionRoleOverlay(inputItem, idx)}
-                  </>
-                ),
-                className: `${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`,
-              }}
-              picker={{
-                showRemoveButton: true,
-                onRemove: () => removeInput(operationType, inputItem.id),
-                skipped: inputItem.skipped,
-                onToggleSkip: () => toggleSkip(operationType, inputItem.id),
-                lockedTimestamp: inputItem.lockedTimestamp,
-                onLockTimestamp: (timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp),
-                ...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
-                  onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
-                  uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
-                } : {}),
-              }}
-            />
-          </div>
+            inputItem={inputItem}
+            idx={idx}
+            isSelected={isSelected}
+            isClamped={isClamped}
+            isDragOver={isDragOver}
+            isDragging={isDragging}
+            wrapperClasses={wrapperClasses}
+            operationType={operationType}
+            armedSlotIndex={armedSlotIndex}
+            setArmedSlot={setArmedSlot}
+            getDragItemProps={getDragItemProps}
+            inputIndexById={inputIndexById}
+            setOperationInputIndex={setOperationInputIndex}
+            removeInput={removeInput}
+            updateLockedTimestamp={updateLockedTimestamp}
+            toggleSkip={toggleSkip}
+            buildFusionRoleOverlay={buildFusionRoleOverlay}
+            buildSlotExtraWidgets={buildSlotExtraWidgets}
+            enableHoverPreview={enableHoverPreview}
+            showPlayOverlay={showPlayOverlay}
+            clickToPlay={clickToPlay}
+            effectiveProviderId={effectiveProviderId}
+            uploadedAssetIds={uploadedAssetIds}
+            uploadingAssetIds={uploadingAssetIds}
+            handleUploadToProvider={handleUploadToProvider}
+            onOpenAsset={onOpenAsset}
+          />
         );
       })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FilledSlot
+//
+// Per-slot component so `useInputSlotShortcuts` can run inside the React
+// render (rules-of-hooks). Owns nothing structurally — the JSX below is the
+// same wrapper div + MediaCard the inline render used; only `onWheel` is
+// added by the shortcuts hook.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface FilledSlotProps {
+  inputItem: InputItem;
+  idx: number;
+  isSelected: boolean;
+  isClamped: boolean;
+  isDragOver: boolean;
+  isDragging: boolean;
+  wrapperClasses: string;
+  operationType: OperationType;
+  armedSlotIndex: number | undefined;
+  setArmedSlot: (operationType: OperationType, slotIndex: number | undefined) => void;
+  getDragItemProps: (index: number) => Record<string, unknown>;
+  inputIndexById: Map<string, number>;
+  setOperationInputIndex: ((idx: number) => void) | undefined;
+  removeInput: (operationType: OperationType, inputId: string) => void;
+  updateLockedTimestamp: ((operationType: OperationType, inputId: string, timestamp: number | undefined) => void) | undefined;
+  toggleSkip: (operationType: OperationType, inputId: string) => void;
+  buildFusionRoleOverlay: (item: InputItem, slotIdx: number) => React.ReactNode | undefined;
+  buildSlotExtraWidgets: (item: InputItem, slotIdx: number) => WidgetConfig[];
+  enableHoverPreview: boolean;
+  showPlayOverlay: boolean;
+  clickToPlay: boolean;
+  effectiveProviderId: string | undefined;
+  uploadedAssetIds: Set<number>;
+  uploadingAssetIds: Set<number>;
+  handleUploadToProvider: (assetId: number) => Promise<void>;
+  onOpenAsset?: (asset: AssetModel) => void;
+}
+
+function FilledSlot({
+  inputItem,
+  idx,
+  isSelected,
+  isClamped,
+  isDragOver,
+  isDragging,
+  wrapperClasses,
+  operationType,
+  armedSlotIndex,
+  setArmedSlot,
+  getDragItemProps,
+  inputIndexById,
+  setOperationInputIndex,
+  removeInput,
+  updateLockedTimestamp,
+  toggleSkip,
+  buildFusionRoleOverlay,
+  buildSlotExtraWidgets,
+  enableHoverPreview,
+  showPlayOverlay,
+  clickToPlay,
+  effectiveProviderId,
+  uploadedAssetIds,
+  uploadingAssetIds,
+  handleUploadToProvider,
+  onOpenAsset,
+}: FilledSlotProps) {
+  // Shift+Wheel + `[` / `]` shortcuts. The hook attaches a non-passive
+  // wheel listener via DOM (React's onWheel is passive in modern versions,
+  // which makes preventDefault a no-op against the browser's native
+  // Shift+Wheel horizontal scroll). Plan: `media-card-input-time-nav`.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const { commitPrev, commitNext } = useInputSlotShortcuts({
+    asset: inputItem.asset,
+    inputId: inputItem.id,
+    operationType,
+    // Set-linked slots now navigate the set cohort (pin-on-commit) — the
+    // hook branches internally on assetSetRef. Plan: set-slot-walk-and-grid.
+    assetSetRef: inputItem.assetSetRef,
+    isFocused: isSelected,
+    // No clamp gate — keeps `[`/`]` / wheel / swipe consistent with the
+    // chevrons (chevrons render on clamped slots too; see
+    // buildSlotExtraWidgets comment).
+    enabled: true,
+    targetRef: wrapperRef,
+  });
+
+  // Set-linked slots can toggle to a grid view that replaces MediaCard with
+  // a thumbnail grid of the set's members. Plan: set-slot-walk-and-grid.
+  const viewMode = useSetSlotViewStore(
+    (s) => s.viewByInputId[inputItem.id] ?? 'single',
+  );
+  const showSetGrid = !!inputItem.assetSetRef && viewMode === 'grid';
+
+  // Swipe gestures via the 'input-slot' surface. The commit handlers come
+  // from useInputSlotShortcuts so wheel/keyboard/swipe all share one
+  // neighbor lookup via the useAssetSequence cache.
+  const gestureActions = useMemo(
+    () => ({
+      onInputTimeNavPrev: commitPrev,
+      onInputTimeNavNext: commitNext,
+    }),
+    [commitPrev, commitNext],
+  );
+  const { gestureHandlers } = useCardGestures({
+    id: inputItem.asset.id,
+    surfaceId: 'input-slot',
+    actions: gestureActions,
+  });
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} cursor-grab transition-shadow`}
+      {...getDragItemProps(idx)}
+      onClick={() => {
+        if (armedSlotIndex !== undefined) {
+          setArmedSlot(operationType, undefined);
+        }
+        const selectedIndex = inputIndexById.get(inputItem.id);
+        if (selectedIndex !== undefined) {
+          setOperationInputIndex?.(selectedIndex + 1);
+        }
+      }}
+      onDoubleClick={() => onOpenAsset?.(inputItem.asset)}
+      onPointerDown={gestureHandlers.onPointerDown}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (armedSlotIndex !== undefined) {
+            setArmedSlot(operationType, undefined);
+          }
+          const selectedIndex = inputIndexById.get(inputItem.id);
+          if (selectedIndex !== undefined) {
+            setOperationInputIndex?.(selectedIndex + 1);
+          }
+        }
+      }}
+      aria-disabled={isClamped}
+    >
+      {showSetGrid ? (
+        <SetGridOverlay inputItem={inputItem} operationType={operationType} />
+      ) : (
+      <MediaCard
+        asset={inputItem.asset}
+        onToggleFavorite={() => toggleFavoriteTag(inputItem.asset)}
+        customWidgets={buildSlotExtraWidgets(inputItem, idx)}
+        presetCapabilities={{ showsInputTimeNav: true }}
+        layout={{
+          density: 'compact',
+          hideFooter: true,
+          fillHeight: true,
+          enableHoverPreview,
+          showPlayOverlay,
+          clickToPlay,
+          overlay: (
+            <>
+              {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
+                <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
+              )}
+              {buildFusionRoleOverlay(inputItem, idx)}
+            </>
+          ),
+          className: `${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`,
+        }}
+        picker={{
+          showRemoveButton: true,
+          onRemove: () => removeInput(operationType, inputItem.id),
+          skipped: inputItem.skipped,
+          onToggleSkip: () => toggleSkip(operationType, inputItem.id),
+          lockedTimestamp: inputItem.lockedTimestamp,
+          onLockTimestamp: (timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp),
+          ...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
+            onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
+            uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
+          } : {}),
+        }}
+      />
+      )}
     </div>
   );
 }

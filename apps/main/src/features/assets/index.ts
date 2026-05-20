@@ -51,6 +51,14 @@ export { useAssets } from './hooks/useAssets';
 export type { AssetFilters, AssetModel } from './hooks/useAssets';
 // AssetResponse is exported from ./lib/api for API boundary access
 
+export { useAssetSequence } from './hooks/useAssetSequence';
+export type {
+  AssetSequenceAxis,
+  AssetSequenceFilters,
+  UseAssetSequenceArgs,
+  UseAssetSequenceReturn,
+} from './hooks/useAssetSequence';
+
 export { useAssetsController } from './hooks/useAssetsController';
 export type { AssetsController } from './hooks/useAssetsController';
 
@@ -61,6 +69,13 @@ export { useRecentScope } from './hooks/useRecentScope';
 export { useHistoryScope } from './hooks/useHistoryScope';
 
 export { useProbesScope } from './hooks/useProbesScope';
+
+export { useAroundTimeScope } from './hooks/useAroundTimeScope';
+
+export { useSamePromptScope } from './hooks/useSamePromptScope';
+
+export { useResolvedAssetSet } from './hooks/useResolvedAssetSet';
+export type { UseResolvedAssetSetResult } from './hooks/useResolvedAssetSet';
 
 export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
 

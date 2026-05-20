@@ -51,6 +51,7 @@ import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolve
 import { useQuickGenerateController } from '@features/prompts';
 import { useProviderIdForModel } from '@features/providers';
 
+import { createInputTimeNavWidgets } from '@/components/media/inputTimeNavWidget';
 import { OPERATION_METADATA } from '@/types/operations';
 
 import { usePersistedScopeState } from '../hooks/usePersistedScopeState';
@@ -981,9 +982,27 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
         ));
       }
       if (isClamped) widgets.push(warningBadge(`Over limit — only the first ${maxAssetItems} assets will be used`));
+      // Input-slot navigation widgets (chevrons + cohort/view pill).
+      // - For set-linked slots, the chevrons walk the set members (pin-on-
+      //   commit via pinAssetSetMember) and the pill becomes Single/Grid.
+      //   Plan: `set-slot-walk-and-grid`.
+      // - Always shown — including on clamped/over-limit slots. The warning
+      //   badge + amber border already communicate "this slot won't be
+      //   used"; suppressing chevrons on top just confused users (e.g. in
+      //   carousel on i2v where the per-op limit is 1, slot 0 had chevrons
+      //   and slots 1+ silently lost them with no visible context).
+      // Plan: `media-card-input-time-nav`.
+      widgets.push(
+        ...createInputTimeNavWidgets({
+          asset: item.asset,
+          inputId: item.id,
+          operationType,
+          assetSetRef: item.assetSetRef,
+        }),
+      );
       return widgets;
     },
-    [clampedSlotIndices, maxAssetItems, buildSetBadgeWidget, buildSetLinkWidget, handleMaskVersionSwitch],
+    [clampedSlotIndices, maxAssetItems, operationType, buildSetBadgeWidget, buildSetLinkWidget, handleMaskVersionSwitch],
   );
 
   return {

@@ -11,6 +11,9 @@ import { getAssetDisplayUrls, toggleFavoriteTag } from '@features/assets';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 
 import { MediaCard } from '@/components/media/MediaCard';
+import { SetGridOverlay } from '@/components/media/setGridOverlay';
+
+import { useSetSlotViewStore } from '../stores/setSlotViewStore';
 
 import { AssetPanelGrid } from './AssetPanelGrid';
 import { AssetPanelHeader } from './AssetPanelHeader';
@@ -22,6 +25,13 @@ import { useAssetPanelState } from './useAssetPanelState';
 
 export function AssetPanel(props: QuickGenPanelProps) {
   const state = useAssetPanelState(props);
+  // Carousel mode renders its own MediaCard inline (not via FilledSlot), so
+  // we need to read the per-slot view mode here too in order to swap in
+  // SetGridOverlay when the user flips the pill to Grid on a set-linked
+  // slot. Plan: set-slot-walk-and-grid.
+  const carouselViewMode = useSetSlotViewStore((s) =>
+    state.currentInputId ? s.viewByInputId[state.currentInputId] ?? 'single' : 'single',
+  );
 
   const header = (
     <AssetPanelHeader
@@ -231,6 +241,16 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     </button>
                   </div>
                 )}
+              </div>
+            ) : state.currentInput?.assetSetRef && carouselViewMode === 'grid' ? (
+              // Set-linked carousel slot in grid view: replace MediaCard with
+              // the set's thumbnail grid. Wrapper keeps dnd / dbl-click /
+              // sizing identical to the MediaCard branch below.
+              <div className="h-full" onDoubleClick={() => state.openAsset(currentAsset)}>
+                <SetGridOverlay
+                  inputItem={state.currentInput}
+                  operationType={state.operationType}
+                />
               </div>
             ) : (
               <div className="h-full" onDoubleClick={() => state.openAsset(currentAsset)}>

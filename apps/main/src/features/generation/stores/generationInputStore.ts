@@ -53,6 +53,14 @@ export interface OperationInputs {
   currentIndex: number; // 1-based
 }
 
+/**
+ * Which axis the input-slot prev/next navigation (chevrons, `[`/`]`, wheel)
+ * walks. `time` = created_at within media_type+operation_type (default);
+ * `prompt` = created_at within the same prompt_version_id cohort.
+ * Plan: `media-card-input-time-nav`.
+ */
+export type InputNavCohort = 'time' | 'prompt';
+
 export interface AddInputOptions {
   asset: AssetModel;
   operationType: OperationType;
@@ -72,11 +80,23 @@ export interface GenerationInputsState {
   currentProviderByOp: Partial<Record<OperationType, string | undefined>>;
   armedSlotByOperation: Partial<Record<OperationType, number>>;
   inputModeByOperation: Partial<Record<OperationType, 'append' | 'replace'>>;
+  /** Per-operation prev/next navigation cohort (defaults to 'time'). */
+  navCohortByOperation: Partial<Record<OperationType, InputNavCohort>>;
 
   setInputMode: (operationType: OperationType, mode: 'append' | 'replace') => void;
+  /** Set the prev/next navigation cohort for an operation. */
+  setInputNavCohort: (operationType: OperationType, cohort: InputNavCohort) => void;
   addInput: (options: AddInputOptions) => void;
   addInputs: (options: { assets: AssetModel[]; operationType: OperationType }) => void;
   removeInput: (operationType: OperationType, inputId: string) => void;
+  /**
+   * Swap the AssetModel on an existing input in-place, preserving slotIndex
+   * and all per-input metadata (lockedTimestamp, maskLayers, roleOverride,
+   * assetSetRef, skipped). Used by input-slot time-axis navigation
+   * (`media-card-input-time-nav` plan). Honors the fresh-asset-ref rule —
+   * the new asset must be a new AssetModel reference.
+   */
+  replaceInputAsset: (operationType: OperationType, inputId: string, asset: AssetModel) => void;
   removeAssetFromOperation: (operationType: OperationType, assetId: number) => void;
   removeAssetEverywhere: (assetId: number) => void;
   clearInputs: (operationType: OperationType) => void;
@@ -91,6 +111,14 @@ export interface GenerationInputsState {
   setAssetSetRef: (operationType: OperationType, inputId: string, ref: AssetSetSlotRef | undefined) => void;
   updateAssetSetMode: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
   lockAssetSetPick: (operationType: OperationType, inputId: string, assetId: number) => void;
+  /**
+   * Atomic "pin to this set member": flips `assetSetRef.mode` to `'locked'`,
+   * sets `lockedAssetId` AND updates the slot's display `asset` in a single
+   * store update. Used by set-cohort chevron/grid commits so the user's
+   * pick can't desync from the displayed representative. Plan:
+   * `set-slot-walk-and-grid`. No-op when the input lacks an `assetSetRef`.
+   */
+  pinAssetSetMember: (operationType: OperationType, inputId: string, member: AssetModel) => void;
   updatePickStrategy: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
   updatePickState: (operationType: OperationType, inputId: string, patch: { pickIndex?: number; recentPicks?: number[] }) => void;
   setInputMask: (operationType: OperationType, inputId: string, maskUrl: string | undefined) => void;
@@ -193,6 +221,75 @@ function allowDuplicates(operationType: OperationType): boolean {
   return OPERATION_METADATA[operationType]?.allowDuplicateInputs ?? false;
 }
 
+/**
+ * QuotaExceededError-tolerant wrapper around localStorage.
+ *
+ * When a `generation_inputs:<scope>` write trips the ~5MB browser quota,
+ * we drop OTHER scopes' input entries (keep the one we're writing) and
+ * retry once. A second failure is logged and swallowed so the user-facing
+ * store update still applies in-memory — the next mutation gets another
+ * chance once the prune frees space.
+ */
+function createQuotaTolerantLocalStorage(activeKey: string): Storage {
+  return new Proxy(localStorage, {
+    get(target, prop) {
+      if (prop !== 'setItem') {
+        const value = Reflect.get(target, prop);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      return (key: string, value: string) => {
+        try {
+          target.setItem(key, value);
+        } catch (err) {
+          if (!isQuotaExceededError(err)) throw err;
+          const freed = dropOtherGenerationInputKeys(activeKey);
+           
+          console.warn(
+            `[generationInputStore] localStorage quota hit on ${key} — dropped ${freed} other scope input(s), retrying`,
+          );
+          try {
+            target.setItem(key, value);
+          } catch (retryErr) {
+             
+            console.error(
+              `[generationInputStore] localStorage still over quota after prune — write to ${key} dropped`,
+              retryErr,
+            );
+          }
+        }
+      };
+    },
+  });
+}
+
+function isQuotaExceededError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: string }).name;
+  // DOMException names vary by browser; Firefox uses NS_ERROR_DOM_QUOTA_REACHED.
+  return (
+    name === 'QuotaExceededError' ||
+    name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    (err as { code?: number }).code === 22 ||
+    (err as { code?: number }).code === 1014
+  );
+}
+
+function dropOtherGenerationInputKeys(keepKey: string): number {
+  let dropped = 0;
+  // Snapshot keys first — mutating during iteration is unsafe.
+  for (const k of Object.keys(localStorage)) {
+    if (k === keepKey) continue;
+    if (!k.startsWith('generation_inputs:') && !k.startsWith('generation_inputs_v1')) continue;
+    try {
+      localStorage.removeItem(k);
+      dropped++;
+    } catch {
+      // best-effort
+    }
+  }
+  return dropped;
+}
+
 export function createGenerationInputStore(storageKey: string): GenerationInputStoreHook {
   return create<GenerationInputsState>()(
     persist(
@@ -202,12 +299,22 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         currentProviderByOp: {},
         armedSlotByOperation: {},
         inputModeByOperation: {},
+        navCohortByOperation: {},
 
         setInputMode: (operationType, mode) => {
           set((state) => ({
             inputModeByOperation: {
               ...state.inputModeByOperation,
               [operationType]: mode,
+            },
+          }));
+        },
+
+        setInputNavCohort: (operationType, cohort) => {
+          set((state) => ({
+            navCohortByOperation: {
+              ...state.navCohortByOperation,
+              [operationType]: cohort,
             },
           }));
         },
@@ -354,6 +461,29 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                 [operationType]: {
                   items: nextItems,
                   currentIndex: normalizeIndex(existing.currentIndex, nextItems.length),
+                },
+              },
+            };
+          });
+        },
+
+        replaceInputAsset: (operationType, inputId, asset) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            // No-op if the slot already holds this exact asset id; avoids a
+            // spurious re-render when the user clicks the same chevron twice
+            // after a fetch returned the same neighbor.
+            const target = existing.items.find((item) => item.id === inputId);
+            if (!target) return state;
+            if (target.asset.id === asset.id && target.asset === asset) return state;
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, asset } : item
+                  ),
                 },
               },
             };
@@ -607,6 +737,32 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
+        pinAssetSetMember: (operationType, inputId, member) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId || !item.assetSetRef) return item;
+                    return {
+                      ...item,
+                      asset: member,
+                      assetSetRef: {
+                        ...item.assetSetRef,
+                        mode: 'locked' as const,
+                        lockedAssetId: member.id,
+                      },
+                    };
+                  }),
+                },
+              },
+            };
+          });
+        },
+
         updatePickStrategy: (operationType, inputId, strategy) => {
           set((state) => {
             const existing = getOperationInputs(state.inputsByOperation, operationType);
@@ -844,12 +1000,20 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
       }),
       {
         name: storageKey,
-        storage: createJSONStorage(() => localStorage),
+        storage: createJSONStorage(() => createQuotaTolerantLocalStorage(storageKey)),
         version: 1,
+        // NOTE: `inputsByProviderOp` is intentionally NOT persisted.
+        // Each entry stores a full OperationInputs snapshot (with full
+        // AssetModel per item), so the map grows past the ~5MB localStorage
+        // quota during normal QuickGen probing (every provider swap saves
+        // another snapshot). The cross-provider restore still works
+        // in-session via the in-memory state; we just don't rehydrate it
+        // across reloads. See plan `generation-input-persistence-slim`
+        // for the proper {id}-reference + cache-rehydrate fix.
         partialize: (state) => ({
           inputsByOperation: state.inputsByOperation,
-          inputsByProviderOp: state.inputsByProviderOp,
           currentProviderByOp: state.currentProviderByOp,
+          navCohortByOperation: state.navCohortByOperation,
         }),
         onRehydrateStorage: () => (state) => {
           if (!state) return;

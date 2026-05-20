@@ -71,7 +71,7 @@ export type { AssetInFlightGenerations } from './hooks/useAssetInFlightGeneratio
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
-export type { GenerationInputsState, InputItem, InputMaskLayer, AddInputOptions, OperationInputs, AssetSetSlotRef, PickStrategy } from './stores/generationInputStore';
+export type { GenerationInputsState, InputItem, InputMaskLayer, AddInputOptions, OperationInputs, AssetSetSlotRef, PickStrategy, InputNavCohort } from './stores/generationInputStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
 export {
   createGenerationSessionStore,

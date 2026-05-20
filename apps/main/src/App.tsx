@@ -14,7 +14,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
 import { useApplyAppearance } from '@features/appearance';
-import { useHistoryScope, useProbesScope, useRecentScope } from '@features/assets';
+import { useAroundTimeScope, useHistoryScope, useProbesScope, useRecentScope, useSamePromptScope } from '@features/assets';
 import { ContextHubHost } from '@features/contextHub/components/ContextHubHost';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
@@ -145,6 +145,8 @@ function App() {
   useRecentScope();
   useHistoryScope();
   useProbesScope();
+  useAroundTimeScope();
+  useSamePromptScope();
 
   useEffect(() => {
     // Initialize auth state

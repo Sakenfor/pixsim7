@@ -71,6 +71,8 @@ export interface AssetModel {
   hasGenerationContext?: boolean;
   /** True when at least one other asset lists this one as its source/parent (via lineage or upload_context) */
   hasChildren?: boolean;
+  /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
+  recovered?: boolean;
   storedKey?: string | null;
   syncStatus: AssetSyncStatus;
   tags?: TagSummary[];
@@ -86,6 +88,8 @@ export interface AssetModel {
   prompt?: string | null;
   operationType?: string | null;
   reproducibleHash?: string | null;
+  /** Prompt version FK — stable cohort key for "same prompt" grouping/nav. */
+  promptVersionId?: string | null;
 
   /** When present, asset was produced via the "artificial extend" flow
    *  (extract a frame → image-to-video). Carries lineage back to the
@@ -192,6 +196,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     sourceGenerationId: response.source_generation_id,
     hasGenerationContext: response.has_generation_context ?? false,
     hasChildren: (response as any).has_children ?? false,
+    recovered: response.recovered ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
     tags: response.tags?.map((tag) => ({
@@ -213,6 +218,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     prompt: (response as any).prompt ?? null,
     operationType: (response as any).operation_type ?? null,
     reproducibleHash: (response as any).reproducible_hash ?? null,
+    promptVersionId: (response as any).prompt_version_id ?? null,
     artificialExtend: (response as any).artificial_extend ?? null,
 
     // Versioning fields
