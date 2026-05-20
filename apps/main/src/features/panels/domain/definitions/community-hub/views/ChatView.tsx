@@ -10,6 +10,8 @@ import {
 import { API_BASE_URL } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
+import { useCommunityUnread } from '@features/notifications/hooks/useCommunityUnread';
+
 import { useAuthStore } from '@/stores/authStore';
 
 // ---------------------------------------------------------------------------
@@ -65,13 +67,22 @@ export function ChatView() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const mountedRef = useRef(true);
+  // Tracked in a ref (not state) so markRead's identity stays stable and
+  // the WS effect doesn't tear down whenever the conversation id arrives.
+  const conversationIdRef = useRef<string | null>(null);
+
+  const { markReadByConversation } = useCommunityUnread();
 
   // Clear-on-view: while the panel is mounted the user is "looking", so
-  // keep last_read_at fresh. Best-effort — unread truth lives server-side
-  // (plan community-chat / read-state).
+  // keep both layers fresh (plan community-chat / read-state):
+  //   * unread *truth* — POST /community-chat/room/read (Phase 3A)
+  //   * nudge — POST /notifications/mark-read-by-ref ref_type=conversation
+  //     so the activity-bar badge clears (Phase 3B)
   const markRead = useCallback(() => {
     void markCommunityRoomRead().catch(() => {});
-  }, []);
+    const cid = conversationIdRef.current;
+    if (cid) void markReadByConversation(cid).catch(() => {});
+  }, [markReadByConversation]);
 
   const addMessages = useCallback((incoming: CommunityChatMessage[]) => {
     const fresh = incoming.filter((m) => !seenIds.current.has(m.id));
@@ -94,6 +105,7 @@ export function ChatView() {
       try {
         const room = await getCommunityRoom();
         if (cancelled) return;
+        conversationIdRef.current = room.conversation_id;
         seenIds.current = new Set(room.messages.map((m) => m.id));
         setMessages(room.messages);
         setStatus('ready');

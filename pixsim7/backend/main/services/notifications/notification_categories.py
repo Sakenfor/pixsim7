@@ -227,6 +227,20 @@ _BUILTIN_CATEGORIES: List[NotificationCategorySpec] = [
         granularity_options=_ALL_OFF,
         sort_order=96,
     ),
+    # Community-chat message pings (plan ``community-chat`` Phase 3B).
+    # Same default-off contract as ``chat``: never inflates the global bell;
+    # exists only to drive the per-conversation pip + activity-bar badge via
+    # the scoped unread-by-ref query that bypasses default-off suppression.
+    NotificationCategorySpec(
+        id="community",
+        label="Community Chat",
+        description="Unread messages in community conversations",
+        icon="users",
+        default_enabled=False,
+        default_granularity="off",
+        granularity_options=_ALL_OFF,
+        sort_order=97,
+    ),
 ]
 
 

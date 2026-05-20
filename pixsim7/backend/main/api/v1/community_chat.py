@@ -22,6 +22,7 @@ from pixsim7.backend.main.infrastructure.websocket import connection_manager
 from pixsim7.backend.main.services.community_chat import (
     CommunityChatService,
     broadcast_to_conversation,
+    emit_community_message_notification,
 )
 
 logger = get_logger()
@@ -107,6 +108,14 @@ async def send_message(
         db,
         room.id,
         {"type": "message", "message": out.model_dump()},
+    )
+    # Nudge delivery (Phase 3B): targeted per-recipient notification rows so
+    # the activity-bar badge + per-conversation pip light up when the panel
+    # isn't focused. The unread *truth* still lives in last_read_at.
+    await emit_community_message_notification(
+        conversation_id=room.id,
+        sender_user_id=current_user.id,
+        body=body,
     )
     return out
 
@@ -221,6 +230,12 @@ async def websocket_community_chat(websocket: WebSocket, token: str | None = Non
                     room_id,
                     {"type": "message", "message": out.model_dump()},
                 )
+            # Nudge delivery (Phase 3B) — separate session, see notify.py.
+            await emit_community_message_notification(
+                conversation_id=room_id,
+                sender_user_id=user_id,
+                body=body,
+            )
 
     except WebSocketDisconnect:
         logger.info("ws_community_chat_disconnected", user_id=user_id)

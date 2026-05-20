@@ -12,6 +12,16 @@ function AIAssistantWidgetShell() {
   return createElement(Suspense, { fallback: null }, createElement(LazyAIAssistantWidget));
 }
 
+const LazyCommunityWidget = lazy(() =>
+  import('./domain/definitions/community-hub/CommunityActivityBarWidget').then((m) => ({
+    default: m.CommunityActivityBarWidget,
+  }))
+);
+
+function CommunityWidgetShell() {
+  return createElement(Suspense, { fallback: null }, createElement(LazyCommunityWidget));
+}
+
 /**
  * Panels Feature Module
  *
@@ -31,6 +41,13 @@ export const panelsModule = defineModule({
       label: 'AI Assistant',
       icon: 'messageSquare',
       component: AIAssistantWidgetShell,
+    },
+    {
+      id: 'community-chat',
+      order: 6,
+      label: 'Community Chat',
+      icon: 'users',
+      component: CommunityWidgetShell,
     },
   ],
 });
