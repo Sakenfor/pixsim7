@@ -80,10 +80,9 @@ export function PromptCodeMirrorViewer({
     <PromptEditor
       value={prompt}
       onChange={() => {
-        /* read-only — never fires because `disabled` */
+        /* read-only — never fires because `readOnly` */
       }}
-      disabled
-      transparent
+      readOnly
       showCounter={false}
       maxChars={Number.MAX_SAFE_INTEGER}
       placeholder=""

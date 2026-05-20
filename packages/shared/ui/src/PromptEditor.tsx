@@ -21,6 +21,11 @@ export interface PromptEditorProps {
   maxChars?: number;
   placeholder?: string;
   disabled?: boolean;
+  /** Read-only mode: blocks editing like `disabled`, but without the
+   *  grayed-out (opacity-60 + not-allowed cursor) visual treatment. Use
+   *  for inspector/viewer surfaces that should look identical to the
+   *  editable composer. */
+  readOnly?: boolean;
   autoFocus?: boolean;
   className?: string;
   variant?: 'default' | 'compact';
@@ -86,6 +91,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   maxChars = DEFAULT_PROMPT_MAX_CHARS,
   placeholder = 'Describe what you want to generate\u2026',
   disabled = false,
+  readOnly = false,
   autoFocus = false,
   className,
   variant = 'default',
@@ -137,8 +143,8 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     const parent = containerRef.current;
     if (!parent) return;
 
-    const disabledExts = (d: boolean): Extension =>
-      d ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [];
+    const disabledExts = (d: boolean, ro: boolean): Extension =>
+      d || ro ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [];
 
     const state = EditorState.create({
       doc: value,
@@ -167,7 +173,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
           },
         }),
         placeholderComp.current.of(placeholder ? placeholderExt(placeholder) : []),
-        disabledComp.current.of(disabledExts(disabled)),
+        disabledComp.current.of(disabledExts(disabled, readOnly)),
         variantComp.current.of(
           EditorView.contentAttributes.of({
             class: variant === 'compact' ? 'text-sm' : 'text-base',
@@ -197,15 +203,15 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reconfigure: disabled
+  // Reconfigure: disabled / readOnly (same CM config, different visual treatment)
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    const exts: Extension = disabled
+    const exts: Extension = disabled || readOnly
       ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
       : [];
     view.dispatch({ effects: disabledComp.current.reconfigure(exts) });
-  }, [disabled]);
+  }, [disabled, readOnly]);
 
   // Reconfigure: placeholder
   useEffect(() => {
@@ -256,8 +262,13 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 
     suppressNextUpdate.current = true;
     lastEmittedRef.current = value;
+    const currentSelection = view.state.selection.main;
+    const max = value.length;
+    const anchor = Math.max(0, Math.min(currentSelection.anchor, max));
+    const head = Math.max(0, Math.min(currentSelection.head, max));
     view.dispatch({
       changes: { from: 0, to: currentDoc.length, insert: value },
+      selection: { anchor, head },
     });
   }, [value]);
 
