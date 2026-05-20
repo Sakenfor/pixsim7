@@ -39,6 +39,22 @@ class AuthService:
     """
 
     def __init__(self, db: AsyncSession, user_service: UserService):
+        # Fail loud at construction time if ``db`` isn't a real session.
+        # Catches the foot-gun where ``get_auth_service()`` is called
+        # OUTSIDE FastAPI DI: its ``Depends(...)`` defaults aren't resolved,
+        # so ``db`` is a ``Depends`` placeholder. Without this check the
+        # bug only surfaces much later as ``AttributeError`` on
+        # ``self.db.execute`` inside ``verify_token_claims`` — typically
+        # swallowed by a bare ``except`` in WS auth resolvers, causing
+        # silent ``user_id=None`` (see plan ``community-chat`` Pitfalls).
+        if not hasattr(db, "execute"):
+            raise TypeError(
+                f"AuthService received {type(db).__name__} for `db`; expected an "
+                "AsyncSession. Likely cause: get_auth_service() was called outside "
+                "FastAPI DI (Depends() defaults aren't resolved). Use "
+                "AsyncSessionLocal() and construct AuthService(db, UserService(db)) "
+                "directly, or rely on FastAPI's DI resolver."
+            )
         self.db = db
         self.users = user_service
 

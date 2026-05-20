@@ -135,7 +135,14 @@ async def _resolve_user_id(token: str | None, db) -> int | None:
             token, update_last_used=False
         )
         return RequestPrincipal.from_jwt_payload(payload).user_id
-    except Exception:
+    except Exception as exc:
+        # Don't silently swallow — that's what hid the get_auth_service()
+        # outside-DI bug for so long.
+        logger.warning(
+            "ws_community_chat_auth_resolve_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return None
 
 

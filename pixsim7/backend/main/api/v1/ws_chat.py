@@ -63,7 +63,12 @@ async def _resolve_user_id(token: str | None, db) -> int | None:
         payload = await auth_service.verify_token_claims(token, update_last_used=False)
         principal = RequestPrincipal.from_jwt_payload(payload)
         return principal.user_id
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "ws_chat_auth_resolve_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return None
 
 
@@ -78,7 +83,12 @@ async def _resolve_raw_token(token: str | None, db) -> str | None:
         auth_service = AuthService(db, UserService(db))
         await auth_service.verify_token_claims(token, update_last_used=False)
         return token
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "ws_chat_raw_token_verify_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return None
 
 
