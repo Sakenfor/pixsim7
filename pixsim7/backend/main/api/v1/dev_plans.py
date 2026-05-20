@@ -11,7 +11,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +86,53 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
-router = APIRouter(prefix="/dev/plans", tags=["dev", "plans"])
+
+async def _reject_unknown_query_params(request: Request) -> None:
+    """Fail loud on query params not declared by the matched route.
+
+    Default FastAPI behavior silently drops unknown query keys — a
+    typo'd ``include_markdown`` vs ``includeMarkdown``, or a stale
+    param name after a rename, becomes a silent no-op instead of a
+    visible error. This dependency runs after routing, inspects the
+    matched route's declared query params (across the whole dependency
+    tree), and 422s if the request carries extras.
+
+    Wired as a router-level ``dependencies=`` on the dev_plans
+    APIRouter so it propagates to every route on the router and every
+    route on the included sub-routers (FastAPI merges parent
+    dependencies into child routes at include time).
+    """
+    route = request.scope.get("route")
+    if not isinstance(route, APIRoute):
+        return  # mounted apps / non-API routes — skip
+
+    allowed: set[str] = {
+        (p.alias or p.name) for p in route.dependant.query_params
+    }
+    received = set(request.query_params.keys())
+    unknown = sorted(received - allowed)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unknown_query_params",
+                "unknown": unknown,
+                "allowed": sorted(allowed),
+                "hint": (
+                    "These query params were not declared on the route. "
+                    "Check for typos, casing mismatches "
+                    "(snake_case vs camelCase), or stale names after a "
+                    "rename."
+                ),
+            },
+        )
+
+
+router = APIRouter(
+    prefix="/dev/plans",
+    tags=["dev", "plans"],
+    dependencies=[Depends(_reject_unknown_query_params)],
+)
 
 # Include sub-routers
 from pixsim7.backend.main.api.v1.plans.routes_review import router as _review_router
@@ -105,6 +153,7 @@ router.include_router(_export_router)
 
 
 from pixsim7.backend.main.api.v1.plans.schemas import (  # noqa: E402
+    Checkpoint,
     PlanChildSummary,
     PlanSummary,
     PlansIndexResponse,
@@ -510,6 +559,7 @@ async def create_plan(
         role="builder",
         action="create_plan",
         principal=principal,
+        auto_claim=True,
     )
 
     # Audit: PlanRegistry.__audit__ model hook handles creation tracking
@@ -799,6 +849,7 @@ async def update_plan_endpoint(
             action="update_plan",
             principal=principal,
             meta={"changed_fields": [str(c.get("field")) for c in result.changes if c.get("field")]},
+            auto_claim=True,
         )
         await db.commit()
 
@@ -965,6 +1016,7 @@ async def restore_plan_revision(
         action="restore_plan_revision",
         principal=principal,
         meta={"restored_from_revision": revision, "new_revision": result.revision},
+        auto_claim=True,
     )
     await db.commit()
 
@@ -1652,6 +1704,7 @@ async def log_plan_progress(
             "checkpoint_id": payload.checkpoint_id,
             "sync_plan_stage": bool(payload.sync_plan_stage),
         },
+        auto_claim=True,
     )
     await _emit_plan_progress_notification(
         db,
@@ -1980,13 +2033,121 @@ async def get_active_work(
     return ActiveWorkResponse(planId=plan_id, activeCheckpoints=active)
 
 
+# ── Per-checkpoint detail (must precede the `/{plan_id}` catch-all) ──
+
+
+@router.get(
+    "/{plan_id}/checkpoints/{checkpoint_id}",
+    response_model=Checkpoint,
+    summary="Get a single checkpoint by id without pulling the full plan.",
+)
+async def get_plan_checkpoint(
+    plan_id: str,
+    checkpoint_id: str,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Fetch one checkpoint without pulling the entire plan.
+
+    Motivated by MCP tool-result truncation (~30k chars) on plans whose
+    full ``plans.detail`` payload exceeds the budget — the tail of
+    ``checkpoints[]`` gets chopped. Agents can call this endpoint with
+    a known ``checkpoint_id`` (e.g. from ``open_summary.open_checkpoints``)
+    and get just that one entry.
+
+    Returns the checkpoint serialized via the ``Checkpoint`` schema —
+    ``extra="allow"`` preserves any forward-compatible fields not
+    declared on the model.
+    """
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    for cp in bundle.plan.checkpoints or []:
+        if not isinstance(cp, dict):
+            continue
+        if str(cp.get("id") or "").strip() == checkpoint_id:
+            return Checkpoint.model_validate(cp)
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Checkpoint not found: {checkpoint_id} (plan: {plan_id})",
+    )
+
+
 # ── Catch-all: plan by ID (must be last) ─────────────────────────
+
+
+def _parse_fields_filter(
+    fields_csv: str,
+    response_model: type[BaseModel],
+) -> set[str]:
+    """Parse and validate a ``fields=`` CSV against the response model.
+
+    Accepts snake_case (Python attribute names) or camelCase (response
+    aliases) — normalizes to the camelCase aliases used in the JSON
+    payload (since the route dumps with ``by_alias=True``).
+
+    Raises HTTPException(400) on unknown field names — explicit failure
+    is preferred over silently dropping a typo'd field. Always includes
+    ``id``; a response without it is meaningless to consumers.
+    """
+    requested = [tok.strip() for tok in fields_csv.split(",") if tok.strip()]
+    if not requested:
+        raise HTTPException(
+            status_code=400,
+            detail="fields= cannot be empty when provided",
+        )
+
+    snake_to_alias: dict[str, str] = {}
+    valid_names: set[str] = set()
+    for snake, field_info in response_model.model_fields.items():
+        alias = field_info.alias or snake
+        snake_to_alias[snake] = alias
+        valid_names.add(snake)
+        valid_names.add(alias)
+
+    unknown = sorted({tok for tok in requested if tok not in valid_names})
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown field names in `fields=`: {unknown}. "
+                f"Valid names (snake or camel): {sorted(set(snake_to_alias.values()))}"
+            ),
+        )
+
+    keep: set[str] = {snake_to_alias.get(tok, tok) for tok in requested}
+    keep.add("id")  # primary key — non-negotiable
+    return keep
 
 
 @router.get("/{plan_id}", response_model=PlanDetailResponse)
 async def get_plan(
     plan_id: str,
     _user: CurrentUser,
+    include_markdown: bool = Query(
+        True,
+        description=(
+            "When False, drops the `markdown` body from the response — "
+            "usually the largest single chunk on plans with long-form docs. "
+            "Common shortcut for callers who just need metadata + "
+            "checkpoints without the full doc body. Ignored if `fields=` "
+            "is also set (the whitelist wins)."
+        ),
+    ),
+    fields: Optional[str] = Query(
+        None,
+        description=(
+            "Comma-separated whitelist of top-level fields to return "
+            "(snake_case or camelCase both accepted). `id` is always "
+            "included. Unknown field names → 400 (no silent drops). "
+            "Example: `fields=id,title,openSummary,checkpoints`. "
+            "Useful for trimming responses below MCP tool-output "
+            "truncation limits (~30k chars) when only a few fields are "
+            "needed."
+        ),
+    ),
     db: AsyncSession = Depends(get_database),
 ):
     from pixsim7.backend.main.services.docs.plan_write import load_children
@@ -1998,11 +2159,23 @@ async def get_plan(
     children = await load_children(db, plan_id)
 
     summary = _bundle_to_summary(bundle, children=children)
-    return PlanDetailResponse(
+    response = PlanDetailResponse(
         **summary.model_dump(),
         plan_path=bundle.plan.plan_path or "",
         markdown=bundle.doc.markdown or "",
     )
+
+    # Fast path — preserve exact current behavior when no shrink params set.
+    if include_markdown and fields is None:
+        return response
+
+    payload = response.model_dump(by_alias=True, mode="json")
+    if fields is not None:
+        keep = _parse_fields_filter(fields, PlanDetailResponse)
+        payload = {k: v for k, v in payload.items() if k in keep}
+    elif not include_markdown:
+        payload.pop("markdown", None)
+    return JSONResponse(content=payload)
 
 
 # ── Test coverage discovery ──────────────────────────────────────

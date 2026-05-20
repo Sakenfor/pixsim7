@@ -474,7 +474,50 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.detail",
                 method="GET",
                 path="/api/v1/dev/plans/{plan_id}",
-                summary="Get plan with full metadata, markdown, checkpoints, and children.",
+                summary=(
+                    "Get plan with full metadata, markdown, checkpoints, "
+                    "and children. Supports `params.include_markdown=false` "
+                    "to drop the long-form doc body and `params.fields=<csv>` "
+                    "for an explicit top-level field whitelist (snake or "
+                    "camelCase; unknown names → 400; `id` always included). "
+                    "Use these to trim responses below the MCP ~30k "
+                    "truncation limit when only a few fields are needed."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "plan_id": {"type": "string"},
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "include_markdown": {"type": "boolean"},
+                                "fields": {
+                                    "type": "string",
+                                    "description": (
+                                        "Comma-separated field whitelist "
+                                        "(e.g. 'id,title,openSummary,"
+                                        "checkpoints'). Ignored field "
+                                        "params if not set."
+                                    ),
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["read", "planning"],
+            ),
+            MetaContractEndpoint(
+                id="plans.checkpoint_detail",
+                method="GET",
+                path="/api/v1/dev/plans/{plan_id}/checkpoints/{checkpoint_id}",
+                summary=(
+                    "Get a single checkpoint by id without pulling the full "
+                    "plan. Use when ``plans.detail`` payloads exceed tool-"
+                    "output truncation limits (~30k chars) and the tail of "
+                    "``checkpoints[]`` gets chopped. Discover checkpoint IDs "
+                    "via ``open_summary.open_checkpoints`` on ``plans.list`` "
+                    "/ ``plans.detail`` or via ``plans.todo_summary``."
+                ),
                 tags=["read", "planning"],
             ),
             MetaContractEndpoint(
