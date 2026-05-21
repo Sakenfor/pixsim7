@@ -11,13 +11,24 @@ in follow-ups.
 
 from __future__ import annotations
 
+from .early_cdn_openapi import EarlyCdnOpenapiDiagnostic
+from .early_cdn_webapi import EarlyCdnWebapiDiagnostic
+from .pixverse_extend_last_frame import PixverseExtendLastFrameDiagnostic
 from .registry import diagnostic_registry
 from .scan_suspicious_videos import ScanSuspiciousVideosDiagnostic
+from .shell_script import ShellScriptDiagnostic
 from .synthetic import SyntheticDiagnostic
 
 
 def _register_builtins() -> None:
-    for cls in (SyntheticDiagnostic, ScanSuspiciousVideosDiagnostic):
+    for cls in (
+        SyntheticDiagnostic,
+        ScanSuspiciousVideosDiagnostic,
+        ShellScriptDiagnostic,
+        PixverseExtendLastFrameDiagnostic,
+        EarlyCdnWebapiDiagnostic,
+        EarlyCdnOpenapiDiagnostic,
+    ):
         if not diagnostic_registry.has(cls.spec.id):
             diagnostic_registry.register_item(cls())
 

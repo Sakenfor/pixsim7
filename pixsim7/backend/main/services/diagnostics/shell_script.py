@@ -1,0 +1,279 @@
+"""Generic ShellScriptDiagnostic — run an allowlisted script, stream its output.
+
+Spawns a Python script from ``tools/`` or ``scripts/`` and streams its
+stdout/stderr line-by-line as ``log`` events.  Lines that parse as a
+JSON object with a ``type`` field matching one of the framework's
+upgradable event kinds (``phase``, ``observation``, ``transition``,
+``summary``) get promoted to first-class typed events automatically —
+so a script that wants richer UI integration just needs to print
+JSON-lines instead of plain text.
+
+The allowlist is discovered at import time from
+``<repo_root>/tools/*.py`` and ``<repo_root>/scripts/*.py`` (one level
+deep, skipping dunder/underscore files).  Admin-only run gate already
+applies via the diagnostic route.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import shlex
+import sys
+from pathlib import Path
+from typing import Any, AsyncIterator, Optional
+
+from pixsim7.backend.main.shared.path_registry import get_path_registry
+
+from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+
+
+_UPGRADABLE_TYPES = {"phase", "observation", "transition", "summary"}
+_SCAN_DIRS = ("tools", "scripts")
+
+
+def _discover_scripts() -> tuple[str, ...]:
+    root = get_path_registry().repo_root
+    out: list[str] = []
+    for sub in _SCAN_DIRS:
+        d = root / sub
+        if not d.exists():
+            continue
+        for p in sorted(d.glob("*.py")):
+            if p.name.startswith("_") or p.name.startswith("."):
+                continue
+            out.append(p.relative_to(root).as_posix())
+    return tuple(out)
+
+
+_ALLOWED: tuple[str, ...] = _discover_scripts()
+
+
+class ShellScriptDiagnostic(Diagnostic):
+    spec = DiagnosticSpec(
+        id="shell-script",
+        label="Run shell script",
+        description=(
+            "Run an allowlisted Python script from tools/ or scripts/ and "
+            "stream its stdout/stderr as log events. Lines that parse as "
+            "JSON with a known type field (phase/observation/transition/"
+            "summary) become first-class typed events automatically."
+        ),
+        category="diagnostic",
+        params=(
+            DiagnosticParam(
+                name="script",
+                kind="select",
+                label="Script",
+                default=(_ALLOWED[0] if _ALLOWED else ""),
+                options=list(_ALLOWED),
+                required=True,
+                description="Path relative to repo root (allowlisted from tools/ and scripts/).",
+            ),
+            DiagnosticParam(
+                name="args",
+                kind="string",
+                label="CLI args",
+                default="",
+                description="Free-form CLI args appended verbatim (shell-quoted parse).",
+            ),
+            DiagnosticParam(
+                name="kill_grace_s",
+                kind="float",
+                label="Cancel grace (s)",
+                default=5.0,
+                description="Seconds to wait after SIGTERM before SIGKILL on cancel.",
+            ),
+        ),
+    )
+
+    async def run(
+        self,
+        params: dict[str, Any],
+        cancel_event: asyncio.Event,
+    ) -> AsyncIterator[DiagnosticEvent]:
+        loop = asyncio.get_event_loop()
+        t0 = loop.time()
+
+        def now() -> float:
+            return loop.time() - t0
+
+        script = str(params.get("script") or "").strip()
+        args_raw = str(params.get("args") or "")
+        grace = max(0.0, float(params.get("kill_grace_s") or 5.0))
+
+        if script not in _ALLOWED:
+            yield DiagnosticEvent(
+                now(),
+                "error",
+                {"message": f"Script not allowlisted: {script!r}"},
+            )
+            return
+
+        repo_root = get_path_registry().repo_root
+        target = (repo_root / script).resolve()
+        if not target.exists():
+            yield DiagnosticEvent(
+                now(),
+                "error",
+                {"message": f"Script file missing: {target}"},
+            )
+            return
+
+        try:
+            args = shlex.split(args_raw) if args_raw else []
+        except ValueError as exc:
+            yield DiagnosticEvent(
+                now(),
+                "error",
+                {"message": f"Failed to parse args: {exc}"},
+            )
+            return
+
+        yield DiagnosticEvent(now(), "phase", {"phase": "starting"})
+        yield DiagnosticEvent(
+            now(),
+            "log",
+            {
+                "level": "info",
+                "message": (
+                    f"$ {sys.executable} -u {target} "
+                    + " ".join(shlex.quote(a) for a in args)
+                ).rstrip(),
+            },
+        )
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-u",
+                str(target),
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(repo_root),
+            )
+        except Exception as exc:  # noqa: BLE001 — surface spawn failure
+            yield DiagnosticEvent(
+                now(),
+                "error",
+                {"message": f"spawn failed: {type(exc).__name__}: {exc}"},
+            )
+            return
+
+        yield DiagnosticEvent(
+            now(),
+            "transition",
+            {"key": "t_spawned", "value": now(), "pid": proc.pid},
+        )
+        yield DiagnosticEvent(now(), "phase", {"phase": "running"})
+
+        # Fan stdout + stderr into one ordered queue so we preserve interleave order.
+        merged: asyncio.Queue[tuple[str, Optional[bytes]]] = asyncio.Queue()
+
+        async def pump(stream: asyncio.StreamReader, label: str) -> None:
+            while True:
+                line = await stream.readline()
+                if not line:
+                    await merged.put((label, None))
+                    return
+                await merged.put((label, line))
+
+        async def watch_cancel() -> None:
+            await cancel_event.wait()
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                return
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=grace)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+
+        pump_tasks = [
+            asyncio.create_task(pump(proc.stdout, "stdout"), name="shell-script-stdout"),
+            asyncio.create_task(pump(proc.stderr, "stderr"), name="shell-script-stderr"),
+        ]
+        cancel_task = asyncio.create_task(watch_cancel(), name="shell-script-cancel")
+
+        stdout_done = False
+        stderr_done = False
+        stdout_lines = 0
+        stderr_lines = 0
+        upgraded_events = 0
+
+        try:
+            while not (stdout_done and stderr_done):
+                label, line = await merged.get()
+                if line is None:
+                    if label == "stdout":
+                        stdout_done = True
+                    else:
+                        stderr_done = True
+                    continue
+
+                text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                if label == "stdout":
+                    stdout_lines += 1
+                else:
+                    stderr_lines += 1
+
+                upgraded = _maybe_upgrade(text)
+                if upgraded is not None:
+                    upgraded_events += 1
+                    event_type = upgraded.pop("type")
+                    upgraded.pop("t_rel", None)  # diagnostic-supplied t_rel wins
+                    yield DiagnosticEvent(now(), event_type, upgraded)
+                else:
+                    yield DiagnosticEvent(
+                        now(),
+                        "log",
+                        {
+                            "level": "error" if label == "stderr" else "info",
+                            "message": text,
+                            "source": label,
+                        },
+                    )
+        finally:
+            for t in pump_tasks:
+                if not t.done():
+                    t.cancel()
+            if not cancel_task.done():
+                cancel_task.cancel()
+            await asyncio.gather(*pump_tasks, cancel_task, return_exceptions=True)
+
+        rc = await proc.wait()
+
+        yield DiagnosticEvent(now(), "phase", {"phase": "done"})
+        yield DiagnosticEvent(
+            now(),
+            "summary",
+            {
+                "script": script,
+                "args": args,
+                "exit_code": rc,
+                "stdout_lines": stdout_lines,
+                "stderr_lines": stderr_lines,
+                "upgraded_events": upgraded_events,
+            },
+        )
+
+
+def _maybe_upgrade(line: str) -> Optional[dict[str, Any]]:
+    """Return a typed-event dict if ``line`` is JSON with an upgradable type."""
+    s = line.strip()
+    if not s or s[0] != "{":
+        return None
+    try:
+        obj = json.loads(s)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    t = obj.get("type")
+    if not isinstance(t, str) or t not in _UPGRADABLE_TYPES:
+        return None
+    return obj
