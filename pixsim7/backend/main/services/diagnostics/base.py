@@ -133,3 +133,27 @@ class Diagnostic(ABC):
         event regardless of how the generator exits.
         """
         raise NotImplementedError
+
+
+# --- Param helpers -----------------------------------------------------------
+#
+# A ``select`` param's options are plain strings, so to keep a value
+# self-documenting we embed the number in the label (e.g. ``"4 — balanced
+# (default)"``) and parse the leading token back out at run time.  These
+# tolerate a bare number (programmatic callers) or junk (→ default).
+
+
+def parse_select_int(value: Any, default: int) -> int:
+    """Parse the leading int from a select label like ``"8 — many …"``."""
+    try:
+        return int(str(value).strip().split()[0])
+    except (ValueError, IndexError, TypeError):
+        return default
+
+
+def parse_select_float(value: Any, default: float) -> float:
+    """Parse the leading float from a select label like ``"0.25 — fast …"``."""
+    try:
+        return float(str(value).strip().split()[0])
+    except (ValueError, IndexError, TypeError):
+        return default

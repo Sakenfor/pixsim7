@@ -32,7 +32,13 @@ from pixsim7.backend.main.services.asset.signal_analysis import (
 )
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 
-from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+from .base import (
+    Diagnostic,
+    DiagnosticEvent,
+    DiagnosticParam,
+    DiagnosticSpec,
+    parse_select_int,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,17 +201,29 @@ class ScanSuspiciousVideosDiagnostic(Diagnostic):
             ),
             DiagnosticParam(
                 name="limit",
-                kind="int",
+                kind="select",
                 label="Max assets",
-                default=200,
-                description="Hard cap on rows fetched. Increase for full scans.",
+                default="200 — default",
+                options=[
+                    "50 — quick spot-check",
+                    "200 — default",
+                    "1000 — large scan",
+                    "5000 — full sweep (cap)",
+                ],
+                description="Hard cap on rows fetched from the DB.",
             ),
             DiagnosticParam(
                 name="workers",
-                kind="int",
+                kind="select",
                 label="Parallel ffmpeg jobs",
-                default=4,
-                description="Concurrent ffmpeg probes. 1–16 recommended.",
+                default="4 — balanced (default)",
+                options=[
+                    "1 — serial (lowest disk/CPU load)",
+                    "4 — balanced (default)",
+                    "8 — faster",
+                    "16 — max (SSD + many cores)",
+                ],
+                description="Concurrent ffmpeg probes. More = faster but heavier on disk/CPU.",
             ),
             DiagnosticParam(
                 name="write",
@@ -238,8 +256,8 @@ class ScanSuspiciousVideosDiagnostic(Diagnostic):
     ) -> AsyncIterator[DiagnosticEvent]:
         user_id = int(params.get("user_id") or 1)
         provider = str(params.get("provider") or "pixverse")
-        limit = max(1, min(5000, int(params.get("limit") or 200)))
-        workers = max(1, min(16, int(params.get("workers") or 4)))
+        limit = max(1, min(5000, parse_select_int(params.get("limit"), 200)))
+        workers = max(1, min(16, parse_select_int(params.get("workers"), 4)))
         do_write = bool(params.get("write"))
         skip_scanned = bool(params.get("skip_scanned"))
 

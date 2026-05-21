@@ -43,7 +43,14 @@ from types import SimpleNamespace
 from typing import Any, AsyncIterator, Optional
 from urllib.parse import unquote
 
-from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+from .base import (
+    Diagnostic,
+    DiagnosticEvent,
+    DiagnosticParam,
+    DiagnosticSpec,
+    parse_select_float,
+    parse_select_int,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,18 +81,6 @@ def _usable_pixverse_url(value: Any) -> Optional[str]:
     if "pixverse.ai" not in value:
         return None
     return unquote(value) if "%2F" in value else value
-
-
-def _leading_int(value: Any, default: int) -> int:
-    """Extract the leading integer from a select-option string like '8 — many …'.
-
-    Tolerates a bare int (programmatic callers) or any non-numeric value
-    (falls back to ``default``).
-    """
-    try:
-        return max(1, int(str(value).strip().split()[0]))
-    except (ValueError, IndexError, TypeError):
-        return default
 
 
 def _build_synthetic_submission(job_id: str, url: Optional[str]) -> SimpleNamespace:
@@ -179,8 +174,22 @@ class PixverseImageSalvageDiagnostic(Diagnostic):
                 default=_DEFAULT_VIOLATION_ASSET_ID,
                 description="pixsim asset whose local file is uploaded fresh as the bait (default 46360).",
             ),
-            DiagnosticParam(name="poll_interval_s", kind="float", label="Poll interval (s)", default=2.0),
-            DiagnosticParam(name="max_poll_minutes", kind="float", label="Max poll (min)", default=6.0),
+            DiagnosticParam(
+                name="poll_interval_s",
+                kind="select",
+                label="Poll interval (s)",
+                default="2 — default",
+                options=["1 — faster", "2 — default", "5 — gentle"],
+                description="How often to poll get_image for each job.",
+            ),
+            DiagnosticParam(
+                name="max_poll_minutes",
+                kind="select",
+                label="Max poll (min)",
+                default="6 — default",
+                options=["3 — quick", "6 — default", "10 — patient"],
+                description="Give up polling a job after this long.",
+            ),
         ),
     )
 
@@ -226,7 +235,7 @@ class PixverseImageSalvageDiagnostic(Diagnostic):
         try:
             account_spec = str(params.get("account") or "").strip()
             phase = str(params.get("phase") or "both").strip().lower()
-            samples = _leading_int(params.get("violation_samples"), 1)
+            samples = max(1, parse_select_int(params.get("violation_samples"), 1))
             model = str(params.get("model") or _DEFAULT_MODEL).strip()
             benign_prompt = str(params.get("benign_prompt") or "").strip() or _DEFAULT_BENIGN_PROMPT
             violation_prompt = str(params.get("violation_prompt") or "").strip() or _DEFAULT_VIOLATION_PROMPT
@@ -236,8 +245,8 @@ class PixverseImageSalvageDiagnostic(Diagnostic):
                 violation_asset = int(params.get("violation_asset") or _DEFAULT_VIOLATION_ASSET_ID)
             except (TypeError, ValueError):
                 violation_asset = _DEFAULT_VIOLATION_ASSET_ID
-            poll_interval = max(0.5, float(params.get("poll_interval_s") or 2.0))
-            max_poll_minutes = max(0.5, float(params.get("max_poll_minutes") or 6.0))
+            poll_interval = max(0.5, parse_select_float(params.get("poll_interval_s"), 2.0))
+            max_poll_minutes = max(0.5, parse_select_float(params.get("max_poll_minutes"), 6.0))
 
             if not account_spec:
                 await emit("error", {"message": "Account is required (account:<id> or email:password)."})

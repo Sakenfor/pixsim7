@@ -25,7 +25,13 @@ from typing import Any, AsyncIterator, Optional
 
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 
-from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+from .base import (
+    Diagnostic,
+    DiagnosticEvent,
+    DiagnosticParam,
+    DiagnosticSpec,
+    parse_select_float,
+)
 
 
 _UPGRADABLE_TYPES = {"phase", "observation", "transition", "summary"}
@@ -79,10 +85,11 @@ class ShellScriptDiagnostic(Diagnostic):
             ),
             DiagnosticParam(
                 name="kill_grace_s",
-                kind="float",
+                kind="select",
                 label="Cancel grace (s)",
-                default=5.0,
-                description="Seconds to wait after SIGTERM before SIGKILL on cancel.",
+                default="5 — default",
+                options=["2 — impatient", "5 — default", "10 — patient (slow cleanup)"],
+                description="On cancel, how long to wait after SIGTERM before SIGKILL.",
             ),
         ),
     )
@@ -100,7 +107,7 @@ class ShellScriptDiagnostic(Diagnostic):
 
         script = str(params.get("script") or "").strip()
         args_raw = str(params.get("args") or "")
-        grace = max(0.0, float(params.get("kill_grace_s") or 5.0))
+        grace = max(0.0, parse_select_float(params.get("kill_grace_s"), 5.0))
 
         if script not in _ALLOWED:
             yield DiagnosticEvent(

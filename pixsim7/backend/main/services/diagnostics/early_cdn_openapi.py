@@ -34,7 +34,13 @@ from typing import Any, AsyncIterator, Optional
 
 import asyncio
 
-from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+from .base import (
+    Diagnostic,
+    DiagnosticEvent,
+    DiagnosticParam,
+    DiagnosticSpec,
+    parse_select_float,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -164,22 +170,40 @@ class EarlyCdnOpenapiDiagnostic(Diagnostic):
             DiagnosticParam(name="motion_mode", kind="string", label="Motion mode", default="normal"),
             DiagnosticParam(
                 name="poll_interval_s",
-                kind="float",
+                kind="select",
                 label="Poll interval (s)",
-                default=0.25,
+                default="0.25 — fast (resolve sub-second window)",
+                options=[
+                    "0.25 — fast (resolve sub-second window)",
+                    "0.5 — moderate",
+                    "1 — gentle",
+                    "2 — slow",
+                ],
+                description="Fast cadence catches a short real→placeholder window.",
             ),
             DiagnosticParam(
                 name="head_probe_interval_s",
-                kind="float",
+                kind="select",
                 label="HEAD probe interval (s)",
-                default=0.5,
+                default="0.5 — default",
+                options=["0.25 — aggressive (tighter t_404)", "0.5 — default", "1 — light"],
+                description="How often the parallel task HEAD-probes the real CDN URL.",
             ),
-            DiagnosticParam(name="max_poll_minutes", kind="float", label="Max poll (min)", default=6.0),
+            DiagnosticParam(
+                name="max_poll_minutes",
+                kind="select",
+                label="Max poll (min)",
+                default="6 — default",
+                options=["3 — quick", "6 — default", "10 — patient"],
+                description="Give up polling the job after this long.",
+            ),
             DiagnosticParam(
                 name="post_terminal_probe_s",
-                kind="float",
+                kind="select",
                 label="Post-terminal probe (s)",
-                default=60.0,
+                default="60 — default",
+                options=["30 — short", "60 — default", "120 — long (catch very late thumbnails)"],
+                description="After terminal, keep watching for a late thumbnail.",
             ),
         ),
     )
@@ -242,10 +266,10 @@ class EarlyCdnOpenapiDiagnostic(Diagnostic):
             duration = int(params.get("duration") or 5)
             quality = str(params.get("quality") or "360p").strip()
             motion_mode = str(params.get("motion_mode") or "normal").strip()
-            poll_interval = max(0.1, float(params.get("poll_interval_s") or 0.25))
-            head_interval = max(0.1, float(params.get("head_probe_interval_s") or 0.5))
-            max_poll_minutes = max(0.5, float(params.get("max_poll_minutes") or 6.0))
-            post_terminal_s = max(0.0, float(params.get("post_terminal_probe_s") or 60.0))
+            poll_interval = max(0.1, parse_select_float(params.get("poll_interval_s"), 0.25))
+            head_interval = max(0.1, parse_select_float(params.get("head_probe_interval_s"), 0.5))
+            max_poll_minutes = max(0.5, parse_select_float(params.get("max_poll_minutes"), 6.0))
+            post_terminal_s = max(0.0, parse_select_float(params.get("post_terminal_probe_s"), 60.0))
 
             if not openapi_key:
                 await emit("error", {"message": "OpenAPI key is required."})

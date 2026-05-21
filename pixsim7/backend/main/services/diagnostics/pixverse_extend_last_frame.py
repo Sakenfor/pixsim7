@@ -32,7 +32,13 @@ import logging
 import time
 from typing import Any, AsyncIterator, Optional
 
-from .base import Diagnostic, DiagnosticEvent, DiagnosticParam, DiagnosticSpec
+from .base import (
+    Diagnostic,
+    DiagnosticEvent,
+    DiagnosticParam,
+    DiagnosticSpec,
+    parse_select_float,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,15 +135,19 @@ class PixverseExtendLastFrameDiagnostic(Diagnostic):
             ),
             DiagnosticParam(
                 name="poll_interval_s",
-                kind="float",
+                kind="select",
                 label="Poll interval (s)",
-                default=2.0,
+                default="2 — default",
+                options=["1 — faster", "2 — default", "5 — gentle"],
+                description="How often to poll get_video for each extend.",
             ),
             DiagnosticParam(
                 name="max_poll_minutes",
-                kind="float",
+                kind="select",
                 label="Max poll (min)",
-                default=6.0,
+                default="6 — default",
+                options=["3 — quick", "6 — default", "10 — patient"],
+                description="Give up polling an extend after this long.",
             ),
         ),
     )
@@ -192,8 +202,8 @@ class PixverseExtendLastFrameDiagnostic(Diagnostic):
             model = str(params.get("model") or "v6")
             quality = str(params.get("quality") or "360p")
             duration = int(params.get("duration") or 5)
-            poll_interval = max(0.5, float(params.get("poll_interval_s") or 2.0))
-            max_poll_minutes = max(0.5, float(params.get("max_poll_minutes") or 6.0))
+            poll_interval = max(0.5, parse_select_float(params.get("poll_interval_s"), 2.0))
+            max_poll_minutes = max(0.5, parse_select_float(params.get("max_poll_minutes"), 6.0))
 
             if not openapi_key:
                 await emit("error", {"message": "OpenAPI key is required."})
