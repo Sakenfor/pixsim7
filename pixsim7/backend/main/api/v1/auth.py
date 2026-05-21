@@ -130,6 +130,8 @@ async def login(
     except AuthenticationError as e:
         # Development-friendly message; keep generic in production
         raise HTTPException(status_code=401, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
