@@ -1141,6 +1141,7 @@ async def _stream_active_task(
         # Bind + persist BEFORE wiring the result down to the client so a
         # fast frontend refetch immediately after seeing the result finds
         # the row populated (same ordering guarantee as the live path).
+        logger.info("kaprobe_reconnect_emit_result", tab_id=tab_id, cli_session_id=str(cli_session_id)[:12], note="persisting_with_empty_user_message")
         await _bind_and_persist_result(
             tab_id=tab_id,
             cli_session_id=cli_session_id,
@@ -1159,7 +1160,11 @@ async def _stream_active_task(
         })
 
     try:
-        timeout = 600  # generous reconnect timeout
+        # Heartbeat-gap idle bound on the reconnect stream (reset on each
+        # heartbeat below), aligned with the dispatch-side gap so a task that
+        # stalls after a reconnect fails as fast as one that stalls on the
+        # live path — not after a 10-minute idle wait.
+        timeout = getattr(bridge, "HEARTBEAT_GAP_TIMEOUT_S", 90)
         deadline = asyncio.get_event_loop().time() + timeout
         while True:
             remaining = deadline - asyncio.get_event_loop().time()

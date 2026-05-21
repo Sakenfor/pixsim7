@@ -334,6 +334,17 @@ class RemoteCommandBridge:
     # so we wait before declaring tasks failed.
     DISCONNECT_GRACE_SECONDS = 90
 
+    # Max allowed gap BETWEEN heartbeats on an in-flight task, decoupled from
+    # the per-turn ``timeout`` budget. A healthy turn emits a keepalive every
+    # ~15s (bridge ``send_keepalive``), so a gap exceeding this means the
+    # bridge/agent went silent (dead WS, frozen event loop) — fail fast here
+    # instead of starving for the entire ``timeout`` (default 900s). This is
+    # the dispatch-side counterpart to ``DISCONNECT_GRACE_SECONDS`` (which only
+    # fires on a *clean* WS close); it also covers silent stalls that never
+    # surface a disconnect. See plan ``launcher-health-probe-stability`` ›
+    # ``dispatch-starvation-on-bridge-disconnect``.
+    HEARTBEAT_GAP_TIMEOUT_S = 90
+
     async def _fail_tasks_after_grace(
         self,
         task_ids: List[str],
@@ -836,8 +847,11 @@ class RemoteCommandBridge:
             if queue:
                 try:
                     queue.put_nowait(data)
+                    logger.info("kaprobe_hb_routed", task_id=task_id[:8], action=data.get("action"), qsize=queue.qsize())
                 except asyncio.QueueFull:
-                    pass
+                    logger.info("kaprobe_hb_queuefull", task_id=task_id[:8], action=data.get("action"))
+            else:
+                logger.info("kaprobe_hb_dropped_no_queue", task_id=task_id[:8], action=data.get("action"))
 
     async def dispatch_task_streaming(
         self,
@@ -894,14 +908,20 @@ class RemoteCommandBridge:
             yield {"type": "task_created", "task_id": task_id}
 
             hb_queue = self._heartbeat_queues[task_id]
-            deadline = asyncio.get_event_loop().time() + timeout
+            # Fail on a heartbeat *gap*, not the whole turn budget. `min` keeps
+            # tight bounds when a caller deliberately sets a small timeout.
+            gap_timeout = min(timeout, self.HEARTBEAT_GAP_TIMEOUT_S)
+            deadline = asyncio.get_event_loop().time() + gap_timeout
 
             while True:
                 remaining = deadline - asyncio.get_event_loop().time()
                 if remaining <= 0:
                     self._pending_tasks.pop(task_id, None)
                     self._active_tasks.pop(task_id, None)
-                    raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+                    raise TimeoutError(
+                        f"Remote agent sent no heartbeat for {gap_timeout}s "
+                        f"(turn budget {timeout}s) — bridge/agent presumed stalled"
+                    )
 
                 # Check if result is ready
                 if future.done():
@@ -922,8 +942,9 @@ class RemoteCommandBridge:
 
                 if hb_wait in done:
                     hb = hb_wait.result()
-                    # Each heartbeat resets the deadline
-                    deadline = asyncio.get_event_loop().time() + timeout
+                    # Each heartbeat resets the gap deadline
+                    deadline = asyncio.get_event_loop().time() + gap_timeout
+                    logger.info("kaprobe_deadline_reset", task_id=task_id[:8], action=hb.get("action"), gap_timeout=gap_timeout)
 
                     # Confirmation request — yield as distinct event and block until resolved
                     if hb.get("action") == "confirmation_request" and hb.get("confirmation_id"):
@@ -958,8 +979,8 @@ class RemoteCommandBridge:
                             })
                         except Exception:
                             pass
-                        # Reset deadline after confirmation resolved
-                        deadline = asyncio.get_event_loop().time() + timeout
+                        # Reset gap deadline after confirmation resolved
+                        deadline = asyncio.get_event_loop().time() + gap_timeout
                     else:
                         yield {"type": "heartbeat", **hb}
                 else:
@@ -973,10 +994,15 @@ class RemoteCommandBridge:
                     yield result
                     return
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             self._pending_tasks.pop(task_id, None)
             self._active_tasks.pop(task_id, None)
-            raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+            # Preserve the gap-accurate message raised inside the loop; only
+            # synthesize one for a message-less asyncio timeout (e.g. a
+            # confirmation-gate wait that timed out).
+            raise TimeoutError(
+                str(exc) or f"Remote agent did not respond within {timeout}s"
+            )
         finally:
             self._heartbeat_queues.pop(task_id, None)
             # If the task is still pending (SSE dropped but agent still working),
@@ -989,6 +1015,7 @@ class RemoteCommandBridge:
                 # SSE dropped mid-task — leave task_id for heartbeat tracking
                 # but decrement active_tasks so new requests can use this agent
                 # (the pending future will be resolved when the result arrives via WS)
+                logger.info("kaprobe_generator_exit_orphan", task_id=task_id[:8], note="queue_popped_future_pending_hbs_now_dropped")
                 agent.active_tasks = max(0, agent.active_tasks - 1)
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
@@ -1219,6 +1246,7 @@ class RemoteCommandBridge:
         async def _persist() -> None:
             try:
                 from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
+                logger.info("kaprobe_bridge_persist_call", session_id=str(session_id)[:12], has_prompt=bool(prompt), prompt_head=(prompt or "")[:40], resp_len=len(response_text or ""))
                 await _store_session_response(
                     session_id=str(session_id),
                     user_message=prompt,

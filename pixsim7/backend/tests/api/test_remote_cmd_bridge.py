@@ -741,6 +741,93 @@ class TestResolveTaskPersistence:
         assert store_mock.await_args.kwargs["user_message"] == ""
         assert store_mock.await_args.kwargs["assistant_response"] == "Hi"
 
+class TestHeartbeatGapTimeout:
+    """``dispatch_task_streaming`` fails on a heartbeat *gap*, decoupled from
+    the per-turn ``timeout`` budget. Regression for the ~900s starvation
+    symptom: a silent/stalled bridge must fail fast (at the gap), not after
+    the whole turn budget. Plan ``launcher-health-probe-stability`` ›
+    ``dispatch-starvation-on-bridge-disconnect``."""
+
+    @staticmethod
+    def _agent_with_ws(bridge) -> RemoteAgent:
+        agent = RemoteAgent(
+            bridge_client_id="a1", websocket=AsyncMock(), agent_type="claude-cli"
+        )
+        bridge._agents["a1"] = agent
+        return agent
+
+    @pytest.mark.asyncio
+    async def test_fails_at_gap_not_full_turn_budget(self):
+        """Large turn budget, tiny gap, no heartbeats → fails in ~gap, not 900s."""
+        bridge = RemoteCommandBridge()
+        bridge.HEARTBEAT_GAP_TIMEOUT_S = 0.3  # shrink the gap for the test
+        self._agent_with_ws(bridge)
+
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "hi", "engine": "claude"},
+            timeout=900,  # full budget is huge ...
+            bridge_client_id="a1",
+        )
+        first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+        assert first["type"] == "task_created"
+
+        start = asyncio.get_event_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(gen.__anext__(), timeout=5)
+        elapsed = asyncio.get_event_loop().time() - start
+        # ... but it fails near the 0.3s gap, nowhere near the 900s budget.
+        assert elapsed < 4, f"expected fast-fail at the gap, took {elapsed:.1f}s"
+        await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_within_gap_keeps_task_alive(self):
+        """A heartbeat arriving before the gap expires resets it and is
+        yielded — the task is NOT failed."""
+        bridge = RemoteCommandBridge()
+        bridge.HEARTBEAT_GAP_TIMEOUT_S = 0.6
+        agent = self._agent_with_ws(bridge)
+
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "hi", "engine": "claude"}, timeout=900, bridge_client_id="a1"
+        )
+        first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+        assert first["type"] == "task_created"
+        task_id = next(iter(agent.current_task_ids))
+
+        async def _beat():
+            await asyncio.sleep(0.25)  # well within the 0.6s gap
+            bridge.record_heartbeat(
+                "a1",
+                {"task_id": task_id, "action": "processing_task", "detail": "working"},
+            )
+
+        asyncio.ensure_future(_beat())
+        evt = await asyncio.wait_for(gen.__anext__(), timeout=2)
+        assert evt["type"] == "heartbeat"  # kept alive, not raised
+        await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_small_timeout_still_bounds_via_min(self):
+        """A deliberately small `timeout` still bounds the wait (min(timeout,
+        gap)) even though the default gap is large — preserves tight-bound
+        callers."""
+        bridge = RemoteCommandBridge()  # default gap = 90
+        self._agent_with_ws(bridge)
+
+        gen = bridge.dispatch_task_streaming(
+            {"prompt": "hi", "engine": "claude"}, timeout=0.3, bridge_client_id="a1"
+        )
+        first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+        assert first["type"] == "task_created"
+
+        start = asyncio.get_event_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(gen.__anext__(), timeout=5)
+        assert asyncio.get_event_loop().time() - start < 4
+        await gen.aclose()
+
+
+class TestResolveTaskPersistenceDispatchStash:
     @pytest.mark.asyncio
     async def test_dispatch_streaming_stashes_prompt(self):
         """``dispatch_task_streaming`` must put the prompt into ``_active_tasks``
