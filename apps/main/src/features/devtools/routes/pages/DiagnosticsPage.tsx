@@ -275,6 +275,17 @@ export function DiagnosticsView() {
     void listDiagnosticRuns().then(setRecentRuns).catch(() => {});
   }, [isAdmin]);
 
+  // Poll the recent-runs list so runs started elsewhere (another device or
+  // tab) appear without a manual reload. Runs live in the backend process's
+  // memory and aren't persisted, so this list is the only cross-client view.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const intervalId = window.setInterval(() => {
+      void listDiagnosticRuns().then(setRecentRuns).catch(() => {});
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [isAdmin]);
+
   // Keep selection valid as diagnostics arrive or change.
   useEffect(() => {
     if (diagnostics === null) return;

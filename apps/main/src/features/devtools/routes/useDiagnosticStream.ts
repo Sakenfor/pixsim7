@@ -15,8 +15,6 @@ import { computeWebSocketUrl } from '@pixsim7/shared.api.client/browser';
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 import { useEffect, useRef, useState } from 'react';
 
-import { BACKEND_BASE } from '@lib/api/client';
-
 import type { DiagnosticEvent } from './diagnosticsApi';
 
 export type StreamConnectionState =
@@ -36,7 +34,15 @@ interface UseDiagnosticStreamResult {
 
 function buildStreamUrl(runId: string, token: string | null | undefined): string {
   const path = `/api/v1/dev/testing/diagnostics/runs/${encodeURIComponent(runId)}/stream`;
-  const wsUrl = computeWebSocketUrl(BACKEND_BASE, path);
+  // Prefer a same-origin WS so it rides the reverse proxy (Vite's `/api`
+  // proxy sets `ws: true`). The page origin is reachable by definition —
+  // essential for LAN/ZeroTier clients (phone) that loaded the app but may
+  // not have the backend's direct port (8000) opened. Only target an
+  // absolute backend when one is explicitly configured (e.g. a remote
+  // backend via VITE_BACKEND_URL); the inferred host:8000 form bypasses the
+  // proxy and isn't reachable off-box.
+  const explicitBase = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.trim();
+  const wsUrl = computeWebSocketUrl(explicitBase || '', path);
   const url = new URL(wsUrl);
   if (token) url.searchParams.set('token', token);
   return url.toString();
