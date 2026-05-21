@@ -1,17 +1,25 @@
 """
-Embedding Service - orchestrates block embedding and similarity search.
+Block embedding service — thin BlockPrimitive subclass of the generic
+EntityEmbeddingService.
 
-Provides:
-- embed_block: Embed a single block primitive
-- embed_blocks_batch: Batch embed blocks that need it
-- find_similar: Find blocks similar to a given block
-- find_similar_by_text: Find blocks similar to arbitrary text
+Public facade (unchanged API):
+- embed_block: embed a single block primitive (by UUID PK or canonical block_id)
+- embed_blocks_batch: batch-embed blocks that need it
+- find_similar: find blocks similar to a given block
+- find_similar_by_text: find blocks similar to arbitrary text
+
+All the orchestration (batch keyset loop, similarity query, commit boundaries,
+skip-if-cached) lives in EntityEmbeddingService. Vector storage is delegated to
+PerRowStorage over BlockPrimitive's embedding columns. Raw text→vector goes
+through the bound EmbeddingService (locator) — this service no longer touches
+the provider registry directly (keeps the locator the single door; see plan
+embedding-service-generalization, option-1 guardrail).
 """
 import logging
-from typing import Optional
+from typing import Any, Optional, Sequence
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
@@ -19,23 +27,45 @@ from pixsim7.backend.main.services.ai_model.defaults import (
     FALLBACK_DEFAULTS,
     get_default_model,
 )
-from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
-from pixsim7.backend.main.services.embedding.registry import embedding_registry
-from pixsim7.backend.main.shared.errors import ProviderNotFoundError
+from pixsim7.backend.main.services.embedding.generic_service import (
+    EntityEmbeddingService,
+    EntityNotEmbeddedError,
+)
+from pixsim7.backend.main.services.embedding.storage import (
+    PerRowColumns,
+    PerRowStorage,
+    SimilarityResult,
+)
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
 
 # Verb-layer validation now lives in the sibling package (hostless, dim-parametric).
 # Re-exported below with a 768 default to preserve this module's public API.
 from pixsim7.embedding.validation import EmbeddingDimensionError
 from pixsim7.embedding.validation import validate_embeddings as _validate_embeddings
+from pixsim7.embedding.locator import get_embedding_service
+from pixsim7.embedding.protocol import EmbedTextRequest
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 64
 EXPECTED_DIMENSIONS = 768
 
+# Public surface. EmbeddingDimensionError is re-exported from the sibling for
+# back-compat with existing importers / catch sites.
+__all__ = [
+    "BlockEmbeddingService",
+    "EmbeddingService",
+    "EmbeddingModelError",
+    "BlockNotFoundError",
+    "BlockNotEmbeddedError",
+    "EmbeddingDimensionError",
+    "validate_embeddings",
+    "EXPECTED_DIMENSIONS",
+    "BATCH_SIZE",
+]
 
-# ===== Domain errors raised by EmbeddingService =====
+
+# ===== Domain errors raised by BlockEmbeddingService =====
 
 class EmbeddingModelError(ValueError):
     """Unknown or misconfigured embedding model/provider (maps to 400)."""
@@ -79,8 +109,7 @@ def _tag_value(tags: Optional[dict], key: str) -> Optional[str]:
 
 
 def _build_embed_text(block: BlockPrimitive) -> str:
-    """
-    Build the text to embed for a block primitive.
+    """Build the text to embed for a block primitive.
 
     Combines role/category hints plus block text for richer semantic signal.
     """
@@ -97,14 +126,41 @@ def _build_embed_text(block: BlockPrimitive) -> str:
     return " ".join(parts)
 
 
-class EmbeddingService:
-    """Orchestrates embedding generation and similarity search for block primitives."""
+class BlockEmbeddingService(EntityEmbeddingService[BlockPrimitive]):
+    """Embedding generation + similarity search for block primitives."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        storage = PerRowStorage(
+            db,
+            PerRowColumns(
+                vector=BlockPrimitive.embedding,
+                model=BlockPrimitive.embedding_model,
+                exclude_column=BlockPrimitive.block_id,
+            ),
+        )
+        super().__init__(db, storage, batch_size=BATCH_SIZE)
 
-    async def _resolve_model_id(self, model_id: str | None = None) -> str:
-        """Resolve model_id: explicit > db default > fallback."""
+    # ===== EntityEmbeddingService hooks =====
+
+    async def _embed_entities(
+        self, entities: Sequence[BlockPrimitive], *, model_id: str
+    ) -> list[list[float]]:
+        texts = [_build_embed_text(b) for b in entities]
+        result = await get_embedding_service().embed_texts(
+            EmbedTextRequest(texts=texts, model_id=model_id)
+        )
+        # Re-validate at the block's column dimension (768). The composite
+        # already validated against the provider's dims; this guards against a
+        # misconfigured provider whose vectors wouldn't fit BlockPrimitive.embedding.
+        return validate_embeddings(result.vectors, expected_count=len(texts))
+
+    async def _embed_query(self, query: Any, *, model_id: str) -> list[float]:
+        result = await get_embedding_service().embed_texts(
+            EmbedTextRequest(texts=[query], model_id=model_id)
+        )
+        return validate_embeddings(result.vectors, expected_count=1)[0]
+
+    async def _resolve_model_id(self, model_id: str | None) -> str:
         if model_id:
             return model_id
         try:
@@ -114,36 +170,35 @@ class EmbeddingService:
                 AiModelCapability.EMBEDDING, "openai:text-embedding-3-small"
             )
 
-    def _get_provider(self, model_id: str):
-        """
-        Look up the embedding provider for a model_id.
-
-        Raises EmbeddingModelError for unknown model or missing provider.
-        """
-        model = ai_model_registry.get(model_id)
-        if not model:
-            raise EmbeddingModelError(f"Model '{model_id}' not found in AI model registry")
-        provider_id = model.provider_id
-        if not provider_id:
-            raise EmbeddingModelError(f"Model '{model_id}' has no provider_id")
-        try:
-            return embedding_registry.get(provider_id)
-        except ProviderNotFoundError:
-            raise EmbeddingModelError(
-                f"Embedding provider '{provider_id}' for model '{model_id}' is not registered"
+    def _entity_filters(
+        self,
+        *,
+        role: str | None = None,
+        kind: str | None = None,
+        category: str | None = None,
+        **_: Any,
+    ) -> Sequence[ColumnElement[bool]]:
+        conditions: list[ColumnElement[bool]] = []
+        if role:
+            conditions.append(
+                func.jsonb_extract_path_text(BlockPrimitive.tags, "role") == role
             )
+        if kind:
+            conditions.append(
+                func.jsonb_extract_path_text(BlockPrimitive.tags, "kind") == kind
+            )
+        if category:
+            conditions.append(BlockPrimitive.category == category)
+        return conditions
 
-    @staticmethod
-    def _extract_bare_model(model_id: str) -> str:
-        """Extract bare model name from prefixed ID."""
-        if ":" in model_id:
-            return model_id.split(":", 1)[1]
-        return model_id
+    def _keyset_columns(self) -> tuple[ColumnElement, ...]:
+        return (BlockPrimitive.created_at, BlockPrimitive.id)
+
+    # ===== block_id ref resolution =====
 
     @staticmethod
     def _block_lookup_filter(block_ref: UUID | str):
-        """
-        Build lookup predicate from UUID PK or canonical string block_id.
+        """Build lookup predicate from UUID PK or canonical string block_id.
 
         Accepts UUID objects and UUID-like strings for compatibility.
         """
@@ -161,55 +216,36 @@ class EmbeddingService:
 
         return or_(BlockPrimitive.block_id == value, BlockPrimitive.id == parsed_uuid)
 
+    async def _load_block(self, block_ref: UUID | str) -> BlockPrimitive:
+        result = await self.db.execute(
+            select(BlockPrimitive).where(self._block_lookup_filter(block_ref))
+        )
+        block = result.scalar_one_or_none()
+        if not block:
+            raise BlockNotFoundError(f"Block '{block_ref}' not found")
+        return block
+
+    @staticmethod
+    def _shape(result: SimilarityResult[BlockPrimitive]) -> dict:
+        return {
+            "block": result.entity,
+            "distance": result.distance,
+            "similarity_score": result.similarity_score,
+        }
+
+    # ===== public facade (back-compat API) =====
+
     async def embed_block(
         self,
         block_id: UUID | str,
         model_id: str | None = None,
         force: bool = False,
     ) -> BlockPrimitive:
-        """
-        Embed a single block.
-
-        Args:
-            block_id: Block UUID PK or canonical string block_id.
-            model_id: Embedding model to use (defaults to system default)
-            force: Re-embed even if already embedded with same model
-
-        Returns:
-            Updated block
-
-        Raises:
-            BlockNotFoundError: Block not found
-            EmbeddingModelError: Unknown model/provider
-            EmbeddingDimensionError: Provider returned wrong-dimension vectors
-        """
-        result = await self.db.execute(
-            select(BlockPrimitive).where(self._block_lookup_filter(block_id))
-        )
-        block = result.scalar_one_or_none()
-        if not block:
-            raise BlockNotFoundError(f"Block '{block_id}' not found")
-
-        model_id = await self._resolve_model_id(model_id)
-
-        if not force and block.embedding is not None and block.embedding_model == model_id:
-            logger.debug("Block %s already embedded with %s, skipping", block.block_id, model_id)
-            return block
-
-        provider = self._get_provider(model_id)
-        bare_model = self._extract_bare_model(model_id)
-        text = _build_embed_text(block)
-
-        embeddings = await provider.embed_texts(model_id=bare_model, texts=[text])
-        validate_embeddings(embeddings, expected_count=1)
-
-        block.embedding = embeddings[0]
-        block.embedding_model = model_id
-
-        await self.db.commit()
+        """Embed a single block (by UUID PK or canonical block_id)."""
+        block = await self._load_block(block_id)
+        await self.embed_one(block, model_id=model_id, force=force)
         await self.db.refresh(block)
-
-        logger.info("Embedded block %s with model %s", block.block_id, model_id)
+        logger.info("Embedded block %s", block.block_id)
         return block
 
     async def embed_blocks_batch(
@@ -220,123 +256,20 @@ class EmbeddingService:
         kind: str | None = None,
         category: str | None = None,
     ) -> dict:
-        """
-        Batch embed blocks that need embeddings.
-
-        Uses keyset pagination to avoid loading all candidates into memory.
-        Each DB chunk is embedded and committed independently.
-        Provider/validation failures are rolled back and skipped;
-        database commit failures are rolled back and raised (fail-fast).
-
-        Args:
-            model_id: Embedding model to use
-            force: Re-embed all blocks regardless of current state
-            role: Optional filter by tags.role
-            kind: Optional filter by tags.kind
-            category: Optional filter by block category
-
-        Returns:
-            Stats dict with embedded_count, skipped_count, total, model_id
-
-        Raises:
-            EmbeddingModelError: Unknown model/provider (fast-fail before any work)
-        """
-        model_id = await self._resolve_model_id(model_id)
-        provider = self._get_provider(model_id)
-        bare_model = self._extract_bare_model(model_id)
-
-        # Count total candidates up-front (cheap query)
-        count_conditions = self._batch_conditions(model_id, force, role, kind, category)
-        count_q = select(func.count(BlockPrimitive.id))
-        if count_conditions:
-            count_q = count_q.where(and_(*count_conditions))
-        total = (await self.db.execute(count_q)).scalar() or 0
-
-        embedded_count = 0
-        skipped_count = 0
-        last_created_at = None
-        last_id = None
-
-        while True:
-            # Keyset pagination: fetch next chunk
-            conditions = self._batch_conditions(model_id, force, role, kind, category)
-            if last_created_at is not None and last_id is not None:
-                conditions.append(
-                    (BlockPrimitive.created_at > last_created_at)
-                    | (
-                        (BlockPrimitive.created_at == last_created_at)
-                        & (BlockPrimitive.id > last_id)
-                    )
-                )
-
-            query = (
-                select(BlockPrimitive).where(and_(*conditions))
-                if conditions
-                else select(BlockPrimitive)
-            )
-            query = query.order_by(BlockPrimitive.created_at, BlockPrimitive.id).limit(BATCH_SIZE)
-
-            result = await self.db.execute(query)
-            batch = list(result.scalars().all())
-            if not batch:
-                break
-
-            # Advance keyset cursor
-            last_created_at = batch[-1].created_at
-            last_id = batch[-1].id
-
-            texts = [_build_embed_text(b) for b in batch]
-
-            try:
-                embeddings = await provider.embed_texts(model_id=bare_model, texts=texts)
-                validate_embeddings(embeddings, expected_count=len(batch))
-            except Exception as e:
-                logger.error("Batch embedding failed (cursor=%s): %s", last_id, e)
-                skipped_count += len(batch)
-                # Rollback any dirty state from this batch
-                await self.db.rollback()
-                continue
-
-            for block, emb in zip(batch, embeddings):
-                block.embedding = emb
-                block.embedding_model = model_id
-                embedded_count += 1
-
-            try:
-                await self.db.commit()
-            except Exception:
-                logger.exception("Batch commit failed (cursor=%s)", last_id)
-                await self.db.rollback()
-                raise
-            logger.info("Embedded batch of %d blocks (cursor=%s)", len(batch), last_id)
-
+        """Batch-embed blocks that need embeddings. Returns a stats dict."""
+        stats = await self.embed_batch(
+            model_id=model_id,
+            force=force,
+            role=role,
+            kind=kind,
+            category=category,
+        )
         return {
-            "embedded_count": embedded_count,
-            "skipped_count": skipped_count,
-            "total": total,
-            "model_id": model_id,
+            "embedded_count": stats.embedded_count,
+            "skipped_count": stats.skipped_count,
+            "total": stats.total,
+            "model_id": stats.model_id,
         }
-
-    @staticmethod
-    def _batch_conditions(
-        model_id: str,
-        force: bool,
-        role: str | None,
-        kind: str | None,
-        category: str | None,
-    ) -> list:
-        conditions = []
-        if not force:
-            conditions.append(
-                (BlockPrimitive.embedding.is_(None)) | (BlockPrimitive.embedding_model != model_id)
-            )
-        if role:
-            conditions.append(func.jsonb_extract_path_text(BlockPrimitive.tags, "role") == role)
-        if kind:
-            conditions.append(func.jsonb_extract_path_text(BlockPrimitive.tags, "kind") == kind)
-        if category:
-            conditions.append(BlockPrimitive.category == category)
-        return conditions
 
     async def find_similar(
         self,
@@ -348,38 +281,26 @@ class EmbeddingService:
         limit: int = 10,
         threshold: float | None = None,
     ) -> list[dict]:
-        """
-        Find blocks similar to a given block.
-
-        Raises:
-            BlockNotFoundError: Block not found
-            BlockNotEmbeddedError: Block exists but has no embedding
-        """
-        result = await self.db.execute(
-            select(BlockPrimitive).where(self._block_lookup_filter(block_id))
-        )
-        source_block = result.scalar_one_or_none()
-        if not source_block:
-            raise BlockNotFoundError(f"Block '{block_id}' not found")
-        if source_block.embedding is None:
-            raise BlockNotEmbeddedError(
-                f"Block '{block_id}' has no embedding. Embed it first via POST /{block_id}/embed"
-            )
-
-        # Default to source block's role for broad filtering when available.
+        """Find blocks similar to a given block."""
+        source = await self._load_block(block_id)
+        # Default to the source block's role for broad filtering when available.
         if role is None:
-            role = _tag_value(source_block.tags, "role")
-
-        return await self._similarity_query(
-            query_embedding=source_block.embedding,
-            embedding_model=source_block.embedding_model,
-            exclude_block_id=source_block.block_id,
-            role=role,
-            kind=kind,
-            category=category,
-            limit=limit,
-            threshold=threshold,
-        )
+            role = _tag_value(source.tags, "role")
+        try:
+            results = await super().find_similar(
+                source,
+                role=role,
+                kind=kind,
+                category=category,
+                limit=limit,
+                threshold=threshold,
+            )
+        except EntityNotEmbeddedError as exc:
+            raise BlockNotEmbeddedError(
+                f"Block '{block_id}' has no embedding. "
+                f"Embed it first via POST /{block_id}/embed"
+            ) from exc
+        return [self._shape(r) for r in results]
 
     async def find_similar_by_text(
         self,
@@ -392,80 +313,18 @@ class EmbeddingService:
         limit: int = 10,
         threshold: float | None = None,
     ) -> list[dict]:
-        """
-        Find blocks similar to arbitrary text.
-
-        Raises:
-            EmbeddingModelError: Unknown model/provider
-        """
-        model_id = await self._resolve_model_id(model_id)
-        provider = self._get_provider(model_id)
-        bare_model = self._extract_bare_model(model_id)
-
-        embeddings = await provider.embed_texts(model_id=bare_model, texts=[text])
-        validate_embeddings(embeddings, expected_count=1)
-        query_embedding = embeddings[0]
-
-        return await self._similarity_query(
-            query_embedding=query_embedding,
-            embedding_model=model_id,
+        """Find blocks similar to arbitrary text."""
+        results = await self.find_similar_by_query(
+            text,
+            model_id=model_id,
             role=role,
             kind=kind,
             category=category,
             limit=limit,
             threshold=threshold,
         )
+        return [self._shape(r) for r in results]
 
-    async def _similarity_query(
-        self,
-        *,
-        query_embedding: list[float],
-        embedding_model: str | None,
-        exclude_block_id: str | None = None,
-        role: str | None = None,
-        kind: str | None = None,
-        category: str | None = None,
-        limit: int = 10,
-        threshold: float | None = None,
-    ) -> list[dict]:
-        """Run the actual similarity query with pre-filters."""
-        conditions = [
-            BlockPrimitive.embedding.isnot(None),
-        ]
 
-        if embedding_model:
-            conditions.append(BlockPrimitive.embedding_model == embedding_model)
-        if role:
-            conditions.append(func.jsonb_extract_path_text(BlockPrimitive.tags, "role") == role)
-        if kind:
-            conditions.append(func.jsonb_extract_path_text(BlockPrimitive.tags, "kind") == kind)
-        if category:
-            conditions.append(BlockPrimitive.category == category)
-        if exclude_block_id:
-            conditions.append(BlockPrimitive.block_id != exclude_block_id)
-
-        distance_expr = BlockPrimitive.embedding.cosine_distance(query_embedding)
-
-        query = (
-            select(BlockPrimitive, distance_expr.label("distance"))
-            .where(and_(*conditions))
-            .order_by(distance_expr)
-            .limit(limit)
-        )
-
-        result = await self.db.execute(query)
-        rows = result.all()
-
-        results = []
-        for block, distance in rows:
-            if threshold is not None and distance > threshold:
-                continue
-            results.append(
-                {
-                    "block": block,
-                    "distance": float(distance),
-                    "similarity_score": 1.0 - float(distance),
-                }
-            )
-
-        return results
+# Back-compat alias: the class was historically exported as `EmbeddingService`.
+EmbeddingService = BlockEmbeddingService

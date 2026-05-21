@@ -13,7 +13,8 @@ from pixsim7.backend.main.services.embedding.registry import (
     embedding_registry,
 )
 from pixsim7.backend.main.services.embedding.embedding_service import (
-    EmbeddingService,
+    BlockEmbeddingService,
+    EmbeddingService,  # back-compat alias for BlockEmbeddingService
     EmbeddingModelError,
     BlockNotFoundError,
     BlockNotEmbeddedError,
@@ -26,6 +27,7 @@ __all__ = [
     "EmbeddingProvider",
     "EmbeddingProviderRegistry",
     "embedding_registry",
+    "BlockEmbeddingService",
     "EmbeddingService",
     "EmbeddingModelError",
     "BlockNotFoundError",

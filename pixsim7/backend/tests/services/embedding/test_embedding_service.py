@@ -1,9 +1,12 @@
 """
-Tests for EmbeddingService
+Tests for BlockEmbeddingService.
 
 Focused tests for error semantics, dimension validation, and batch resilience.
-All tests are pure-unit: no database, no real providers - everything is mocked.
+All tests are pure-unit: no database, no real providers. Raw text→vector now
+goes through the bound EmbeddingService (locator), so tests override the
+locator with a fake instead of patching a provider lookup.
 """
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -11,7 +14,7 @@ import pytest
 
 try:
     from pixsim7.backend.main.services.embedding.embedding_service import (
-        EmbeddingService,
+        BlockEmbeddingService,
         BlockNotFoundError,
         BlockNotEmbeddedError,
         EmbeddingModelError,
@@ -19,6 +22,8 @@ try:
         validate_embeddings,
         EXPECTED_DIMENSIONS,
     )
+    from pixsim7.embedding.locator import locator as embedding_locator
+    from pixsim7.embedding.protocol import EmbedResult
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False
@@ -32,14 +37,16 @@ def _make_block(**overrides):
     block = MagicMock()
     block.id = overrides.get("id", uuid4())
     block.block_id = overrides.get("block_id", "test_block")
-    block.role = overrides.get("role", "character")
+    block.tags = overrides.get("tags", {})
     block.category = overrides.get("category", None)
-    block.description = overrides.get("description", None)
     block.text = overrides.get("text", "A woman sitting on a bench")
     block.embedding = overrides.get("embedding", None)
     block.embedding_model = overrides.get("embedding_model", None)
-    block.created_at = overrides.get("created_at", None)
-    block.kind = overrides.get("kind", "single_state")
+    # Real datetime: keyset pagination cursors on (created_at, id) and SQLAlchemy
+    # rejects `> None`. Production blocks always have a created_at default.
+    block.created_at = overrides.get(
+        "created_at", datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
     return block
 
 
@@ -49,13 +56,37 @@ def _good_embedding(dims=EXPECTED_DIMENSIONS):
 
 
 def _make_scalar_result(block):
-    """Create a mock for db.execute(...).scalar_one_or_none().
-
-    SQLAlchemy's Result.scalar_one_or_none() is synchronous, so we use
-    a plain MagicMock for the result object — only db.execute() is async.
-    """
+    """Mock for db.execute(...).scalar_one_or_none()."""
     result = MagicMock()
     result.scalar_one_or_none.return_value = block
+    return result
+
+
+def _embed_result(vectors, model_id="openai:text-embedding-3-small"):
+    dim = len(vectors[0]) if vectors else 0
+    return EmbedResult(vectors=vectors, dim=dim, model_id=model_id)
+
+
+class _FakeEmbeddingService:
+    """Stand-in for the bound EmbeddingService; only embed_texts is exercised."""
+
+    def __init__(self, *, embed_texts):
+        self._embed_texts = embed_texts
+
+    async def embed_images(self, request):  # pragma: no cover - not used
+        raise NotImplementedError
+
+    async def embed_texts(self, request):
+        return await self._embed_texts(request)
+
+    async def shutdown(self):  # pragma: no cover - not used
+        pass
+
+
+def _scalars_returning(blocks):
+    """Mock result whose .scalars().unique().all() yields `blocks`."""
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = blocks
     return result
 
 
@@ -114,7 +145,7 @@ class TestFindSimilarMissingBlock:
         db = AsyncMock()
         db.execute.return_value = _make_scalar_result(None)
 
-        service = EmbeddingService(db)
+        service = BlockEmbeddingService(db)
         with pytest.raises(BlockNotFoundError):
             await service.find_similar(uuid4())
 
@@ -130,7 +161,7 @@ class TestFindSimilarNoEmbedding:
         db = AsyncMock()
         db.execute.return_value = _make_scalar_result(block)
 
-        service = EmbeddingService(db)
+        service = BlockEmbeddingService(db)
         with pytest.raises(BlockNotEmbeddedError, match="no embedding"):
             await service.find_similar(block.id)
 
@@ -146,18 +177,19 @@ class TestEmbedBlockDimensionValidation:
         db = AsyncMock()
         db.execute.return_value = _make_scalar_result(block)
 
-        fake_provider = AsyncMock()
-        # Provider returns a 512-dim vector instead of 768
-        fake_provider.embed_texts.return_value = [[0.01] * 512]
+        # Bound service returns a 512-dim vector instead of 768.
+        fake = _FakeEmbeddingService(
+            embed_texts=AsyncMock(return_value=_embed_result([[0.01] * 512]))
+        )
 
-        service = EmbeddingService(db)
-
-        with patch.object(service, '_resolve_model_id', return_value="openai:text-embedding-3-small"), \
-             patch.object(service, '_get_provider', return_value=fake_provider):
+        service = BlockEmbeddingService(db)
+        with patch.object(service, "_resolve_model_id",
+                          AsyncMock(return_value="openai:text-embedding-3-small")), \
+                embedding_locator.override(fake):
             with pytest.raises(EmbeddingDimensionError, match="512 dimensions"):
                 await service.embed_block(block.id)
 
-        # Verify commit was NOT called (bad vector should never be persisted)
+        # Bad vector must never be persisted.
         db.commit.assert_not_called()
 
 
@@ -169,57 +201,42 @@ class TestBatchEmbeddingResilience:
     @pytest.mark.asyncio
     async def test_batch_continues_after_failure(self):
         """
-        Simulate two DB chunks:
-        - Chunk 1: provider returns wrong-dim vectors -> skipped
-        - Chunk 2: provider returns correct vectors -> embedded
+        Two DB chunks:
+        - Chunk 1: bound service returns wrong-dim vectors -> skipped
+        - Chunk 2: correct vectors -> embedded
         """
         block_a = _make_block(id=uuid4(), block_id="block_a", embedding=None)
         block_b = _make_block(id=uuid4(), block_id="block_b", embedding=None)
 
         db = AsyncMock()
-        # Call sequence for execute():
-        # 1. count query -> returns 2
-        # 2. first chunk query -> returns [block_a]
-        # 3. second chunk query -> returns [block_b]
-        # 4. third chunk query -> returns [] (end)
         count_result = MagicMock()
         count_result.scalar.return_value = 2
 
-        chunk1_result = MagicMock()
-        chunk1_result.scalars.return_value.all.return_value = [block_a]
-
-        chunk2_result = MagicMock()
-        chunk2_result.scalars.return_value.all.return_value = [block_b]
-
-        empty_result = MagicMock()
-        empty_result.scalars.return_value.all.return_value = []
-
-        db.execute = AsyncMock(
-            side_effect=[count_result, chunk1_result, chunk2_result, empty_result]
-        )
+        db.execute = AsyncMock(side_effect=[
+            count_result,                       # count query
+            _scalars_returning([block_a]),      # chunk 1
+            _scalars_returning([block_b]),      # chunk 2
+            _scalars_returning([]),             # end
+        ])
         db.commit = AsyncMock()
         db.rollback = AsyncMock()
 
-        fake_provider = AsyncMock()
-        # First call: wrong dims (chunk 1 fails validation)
-        # Second call: correct dims (chunk 2 succeeds)
-        fake_provider.embed_texts = AsyncMock(side_effect=[
-            [[0.01] * 512],       # bad dims
-            [_good_embedding()],  # good dims
-        ])
+        # First embed call: bad dims (chunk 1 fails); second: good dims.
+        fake = _FakeEmbeddingService(embed_texts=AsyncMock(side_effect=[
+            _embed_result([[0.01] * 512]),
+            _embed_result([_good_embedding()]),
+        ]))
 
-        service = EmbeddingService(db)
-
-        with patch.object(service, '_resolve_model_id', return_value="openai:text-embedding-3-small"), \
-             patch.object(service, '_get_provider', return_value=fake_provider):
+        service = BlockEmbeddingService(db)
+        with patch.object(service, "_resolve_model_id",
+                          AsyncMock(return_value="openai:text-embedding-3-small")), \
+                embedding_locator.override(fake):
             stats = await service.embed_blocks_batch()
 
         assert stats["skipped_count"] == 1
         assert stats["embedded_count"] == 1
         assert stats["total"] == 2
-        # rollback called once for the failed batch
         db.rollback.assert_called_once()
-        # commit called once for the successful batch
         assert db.commit.call_count == 1
 
 
@@ -236,37 +253,41 @@ class TestBatchEmbeddingCommitFailure:
         count_result = MagicMock()
         count_result.scalar.return_value = 1
 
-        chunk_result = MagicMock()
-        chunk_result.scalars.return_value.all.return_value = [block]
-
-        db.execute = AsyncMock(side_effect=[count_result, chunk_result])
+        db.execute = AsyncMock(side_effect=[
+            count_result,
+            _scalars_returning([block]),
+        ])
         db.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
         db.rollback = AsyncMock()
 
-        fake_provider = AsyncMock()
-        fake_provider.embed_texts = AsyncMock(return_value=[_good_embedding()])
+        fake = _FakeEmbeddingService(
+            embed_texts=AsyncMock(return_value=_embed_result([_good_embedding()]))
+        )
 
-        service = EmbeddingService(db)
-        with patch.object(service, '_resolve_model_id', return_value="openai:text-embedding-3-small"), \
-             patch.object(service, '_get_provider', return_value=fake_provider):
+        service = BlockEmbeddingService(db)
+        with patch.object(service, "_resolve_model_id",
+                          AsyncMock(return_value="openai:text-embedding-3-small")), \
+                embedding_locator.override(fake):
             with pytest.raises(RuntimeError, match="commit failed"):
                 await service.embed_blocks_batch()
 
         db.rollback.assert_called_once()
 
 
-# ===== EmbeddingModelError for unknown model =====
+# ===== Composite resolves provider; unknown model raises =====
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
-class TestEmbeddingModelError:
+class TestCompositeProviderResolution:
+    """Model→provider resolution moved from the block service to the bound
+    composite. This is the option-1 guardrail: the block service no longer
+    touches the provider registry directly."""
 
     def test_unknown_model_raises(self):
-        db = AsyncMock()
-        service = EmbeddingService(db)
+        from pixsim7.backend.main.adapters.embedding import CompositeEmbeddingService
 
         with patch(
-            'pixsim7.backend.main.services.embedding.embedding_service.ai_model_registry'
+            "pixsim7.backend.main.adapters.embedding.ai_model_registry"
         ) as mock_reg:
             mock_reg.get.return_value = None
             with pytest.raises(EmbeddingModelError, match="not found"):
-                service._get_provider("nonexistent:model")
+                CompositeEmbeddingService._resolve_text_provider("nonexistent:model")
