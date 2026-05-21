@@ -8,7 +8,6 @@ Provides:
 - find_similar_by_text: Find blocks similar to arbitrary text
 """
 import logging
-import math
 from typing import Optional
 from uuid import UUID
 
@@ -24,6 +23,11 @@ from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
 from pixsim7.backend.main.services.embedding.registry import embedding_registry
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+
+# Verb-layer validation now lives in the sibling package (hostless, dim-parametric).
+# Re-exported below with a 768 default to preserve this module's public API.
+from pixsim7.embedding.validation import EmbeddingDimensionError
+from pixsim7.embedding.validation import validate_embeddings as _validate_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -45,50 +49,23 @@ class BlockNotEmbeddedError(Exception):
     """Block exists but has no embedding yet (maps to 422)."""
 
 
-class EmbeddingDimensionError(ValueError):
-    """Embedding vector has wrong dimensions (maps to 500 / skipped in batch)."""
-
-
 # ===== Validation helper =====
+# Thin binding over the sibling's dim-parametric validator, defaulting to the
+# block embedding dimension (768). EmbeddingDimensionError is the sibling's
+# class, re-exported for back-compat with existing importers / catch sites.
 
-def validate_embeddings(embeddings: list, expected_count: int) -> list[list[float]]:
-    """
-    Validate embedding output: correct count, list[float]-compatible, correct dims.
+def validate_embeddings(
+    embeddings: list,
+    expected_count: int,
+    expected_dimensions: int = EXPECTED_DIMENSIONS,
+) -> list[list[float]]:
+    """Validate embedding output (count, list[float]-compatible, dims, finite).
 
     Raises EmbeddingDimensionError on any validation failure.
     """
-    if not isinstance(embeddings, (list, tuple)):
-        raise EmbeddingDimensionError(
-            f"Embeddings payload is {type(embeddings).__name__}, expected list"
-        )
-    if len(embeddings) != expected_count:
-        raise EmbeddingDimensionError(
-            f"Expected {expected_count} embeddings, got {len(embeddings)}"
-        )
-    normalized_embeddings: list[list[float]] = []
-    for i, emb in enumerate(embeddings):
-        if not isinstance(emb, (list, tuple)):
-            raise EmbeddingDimensionError(
-                f"Embedding [{i}] is {type(emb).__name__}, expected list[float]"
-            )
-        if len(emb) != EXPECTED_DIMENSIONS:
-            raise EmbeddingDimensionError(
-                f"Embedding [{i}] has {len(emb)} dimensions, expected {EXPECTED_DIMENSIONS}"
-            )
-        normalized: list[float] = []
-        for j, value in enumerate(emb):
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise EmbeddingDimensionError(
-                    f"Embedding [{i}][{j}] is {type(value).__name__}, expected finite number"
-                )
-            as_float = float(value)
-            if not math.isfinite(as_float):
-                raise EmbeddingDimensionError(
-                    f"Embedding [{i}][{j}] is non-finite ({as_float})"
-                )
-            normalized.append(as_float)
-        normalized_embeddings.append(normalized)
-    return normalized_embeddings
+    return _validate_embeddings(
+        embeddings, expected_count, expected_dimensions=expected_dimensions
+    )
 
 
 def _tag_value(tags: Optional[dict], key: str) -> Optional[str]:

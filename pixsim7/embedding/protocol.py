@@ -10,7 +10,7 @@ Design invariants:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol, Sequence
 
 
@@ -25,8 +25,22 @@ class EmbedRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class EmbedTextRequest:
+    """Texts to embed, plus the model to embed them with.
+
+    Unlike images (one daemon, one model), text embedding supports multiple
+    models (text-embedding-3-small, BGE, …) selected per request. `model_id`
+    is the prefixed identifier (e.g. "openai:text-embedding-3-small"); the
+    bound service resolves it to a concrete provider.
+    """
+
+    texts: Sequence[str]
+    model_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class EmbedResult:
-    """One vector per input path, in input order.
+    """One vector per input (path or text), in input order.
 
     `dim` is implied by len(vectors[i]); kept on the result so callers can
     sanity-check before persisting. `model_id` is the model identifier the
@@ -51,6 +65,18 @@ class EmbeddingService(Protocol):
         Raises:
             EmbeddingServiceError: if the service is unreachable or the
                 inference subprocess returned a non-recoverable error.
+            NotImplementedError: if this implementation is text-only.
+        """
+        ...
+
+    async def embed_texts(self, request: EmbedTextRequest) -> EmbedResult:
+        """Embed each string in `request.texts` with `request.model_id`.
+        Returns vectors in input order.
+
+        Raises:
+            EmbeddingServiceError: if the service is unreachable or the
+                provider returned a non-recoverable error.
+            NotImplementedError: if this implementation is image-only.
         """
         ...
 

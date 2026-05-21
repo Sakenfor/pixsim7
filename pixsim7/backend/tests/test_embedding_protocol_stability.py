@@ -20,6 +20,7 @@ import pytest
 from pixsim7.embedding.protocol import (
     EmbedRequest,
     EmbedResult,
+    EmbedTextRequest,
     EmbeddingService,
     EmbeddingServiceError,
 )
@@ -45,6 +46,12 @@ def test_embed_images_signature() -> None:
     )
 
 
+def test_embed_texts_signature() -> None:
+    assert _method_signature(EmbeddingService, "embed_texts") == (
+        "(self, request: 'EmbedTextRequest') -> 'EmbedResult'"
+    )
+
+
 def test_shutdown_signature() -> None:
     assert _method_signature(EmbeddingService, "shutdown") == "(self) -> 'None'"
 
@@ -55,7 +62,7 @@ def test_only_documented_methods_on_protocol() -> None:
         name for name, attr in inspect.getmembers(EmbeddingService)
         if inspect.isfunction(attr) and not name.startswith("_")
     )
-    assert public == ["embed_images", "shutdown"]
+    assert public == ["embed_images", "embed_texts", "shutdown"]
 
 
 # ── DTO field names ────────────────────────────────────────────────────
@@ -65,6 +72,10 @@ def test_embed_request_fields() -> None:
     assert _field_names(EmbedRequest) == ["paths"]
 
 
+def test_embed_text_request_fields() -> None:
+    assert _field_names(EmbedTextRequest) == ["texts", "model_id"]
+
+
 def test_embed_result_fields() -> None:
     assert _field_names(EmbedResult) == ["vectors", "dim", "model_id"]
 
@@ -72,7 +83,7 @@ def test_embed_result_fields() -> None:
 def test_dtos_are_frozen_and_slotted() -> None:
     """Snapshot DTOs crossing the boundary must stay immutable + slotted —
     that's a Phase-3 wire-stability commitment, not just a stylistic choice."""
-    for dc in (EmbedRequest, EmbedResult):
+    for dc in (EmbedRequest, EmbedTextRequest, EmbedResult):
         params = dc.__dataclass_params__
         assert params.frozen, f"{dc.__name__} must be frozen=True"
         assert params.slots, f"{dc.__name__} must be slots=True"
@@ -91,6 +102,6 @@ def test_service_error_is_exception() -> None:
 def test_dto_type_hints_resolve() -> None:
     """Forward references in the protocol module must resolve — catches
     typos and missing imports that would only blow up at first use."""
-    for dc in (EmbedRequest, EmbedResult):
+    for dc in (EmbedRequest, EmbedTextRequest, EmbedResult):
         # Will raise NameError if any annotation can't be resolved
         get_type_hints(dc)

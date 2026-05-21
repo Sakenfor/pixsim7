@@ -33,6 +33,7 @@ from typing import Optional
 from pixsim7.embedding.protocol import (
     EmbedRequest,
     EmbedResult,
+    EmbedTextRequest,
     EmbeddingService,
     EmbeddingServiceError,
 )
@@ -97,6 +98,12 @@ class DaemonEmbeddingService(EmbeddingService):
             raise EmbeddingServiceError("daemon returned vectors with mixed dims")
 
         return EmbedResult(vectors=vectors, dim=dim, model_id=self._model_id)
+
+    async def embed_texts(self, request: EmbedTextRequest) -> EmbedResult:
+        raise NotImplementedError(
+            "DaemonEmbeddingService embeds images only; text embedding is "
+            "routed through the text-provider registry by the bound composite."
+        )
 
     async def shutdown(self) -> None:
         async with self._lock:
