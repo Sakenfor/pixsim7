@@ -9,6 +9,7 @@ import { isAdminUser } from '@lib/auth/userRoles';
 
 import { automationService } from '@features/automation';
 import { getAccounts } from '@features/providers';
+import { ProviderAccountSelect } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -530,19 +531,18 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Test:</span>
-            <select
-              value={testAccountId?.toString() ?? ''}
-              onChange={(e) => setTestAccountId(e.target.value ? Number(e.target.value) : null)}
-              className="px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            <ProviderAccountSelect
+              accounts={accounts}
+              value={testAccountId}
+              onChange={setTestAccountId}
               disabled={isTesting}
-            >
-              <option value="">Select account...</option>
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.email} ({acc.provider_id})
-                </option>
-              ))}
-            </select>
+              className="px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              emptyLabel="Select account..."
+              noAccountsLabel="No accounts available"
+              allowEmpty
+              showProviderId
+              showStatus
+            />
             <select
               value={testDeviceId.toString()}
               onChange={(e) => setTestDeviceId(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}

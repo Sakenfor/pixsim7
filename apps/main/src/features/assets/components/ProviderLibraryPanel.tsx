@@ -11,6 +11,7 @@ import {
 } from '@features/gallery/lib/useClientFilters';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
 import { usePagedItems } from '@features/gallery/lib/usePagedItems';
+import { ProviderAccountSelect } from '@features/providers';
 import { useProviderAccounts } from '@features/providers/hooks/useProviderAccounts';
 import {
   getPixverseSyncDryRun,
@@ -403,26 +404,18 @@ export function ProviderLibraryPanel({
           <label className="text-xs text-neutral-500 dark:text-neutral-400">
             Account
           </label>
-          {accountsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-neutral-500">
-              <Icon name="loader" className="animate-spin w-4 h-4" />
-              Loading...
-            </div>
-          ) : accounts.length === 0 ? (
-            <div className="text-xs text-neutral-500">No Pixverse accounts configured.</div>
-          ) : (
-            <select
-              value={effectiveAccountId ?? ''}
-              onChange={(e) => setSelectedAccountId(Number(e.target.value))}
-              className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-2 py-1.5 text-sm text-neutral-800 dark:text-neutral-200"
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.nickname || acc.email} {acc.status !== 'active' ? `(${acc.status})` : ''}
-                </option>
-              ))}
-            </select>
-          )}
+          <ProviderAccountSelect
+            accounts={accounts}
+            value={effectiveAccountId}
+            onChange={(accountId) => setSelectedAccountId(accountId)}
+            loading={accountsLoading}
+            className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-2 py-1.5 text-sm text-neutral-800 dark:text-neutral-200"
+            emptyLabel="Select account..."
+            noAccountsLabel="No Pixverse accounts configured."
+            allowEmpty={false}
+            showProviderId={false}
+            showStatus
+          />
         </div>
 
         {/* Include images toggle */}

@@ -11,6 +11,7 @@
  * re-opens the run from history rather than us silently re-subscribing
  * mid-flight.
  */
+import { computeWebSocketUrl } from '@pixsim7/shared.api.client/browser';
 import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 import { useEffect, useRef, useState } from 'react';
 
@@ -34,11 +35,9 @@ interface UseDiagnosticStreamResult {
 }
 
 function buildStreamUrl(runId: string, token: string | null | undefined): string {
-  const wsBase = BACKEND_BASE.replace(/^http/, 'ws');
-  const url = new URL(
-    `/api/v1/dev/testing/diagnostics/runs/${encodeURIComponent(runId)}/stream`,
-    wsBase,
-  );
+  const path = `/api/v1/dev/testing/diagnostics/runs/${encodeURIComponent(runId)}/stream`;
+  const wsUrl = computeWebSocketUrl(BACKEND_BASE, path);
+  const url = new URL(wsUrl);
   if (token) url.searchParams.set('token', token);
   return url.toString();
 }
@@ -66,37 +65,44 @@ export function useDiagnosticStream(runId: string | null): UseDiagnosticStreamRe
     setConnection('connecting');
 
     void (async () => {
-      const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
-      if (cancelled) return;
+      try {
+        const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
+        if (cancelled) return;
 
-      const ws = new WebSocket(buildStreamUrl(runId, token));
-      wsRef.current = ws;
+        const ws = new WebSocket(buildStreamUrl(runId, token));
+        wsRef.current = ws;
 
-      ws.onopen = () => {
-        if (!cancelled) setConnection('open');
-      };
-      ws.onmessage = (msg) => {
-        try {
-          const ev = JSON.parse(msg.data) as DiagnosticEvent;
-          setEvents((prev) => [...prev, ev]);
-        } catch {
-          // ignore malformed payloads
-        }
-      };
-      ws.onerror = () => {
+        ws.onopen = () => {
+          if (!cancelled) setConnection('open');
+        };
+        ws.onmessage = (msg) => {
+          try {
+            const ev = JSON.parse(msg.data) as DiagnosticEvent;
+            setEvents((prev) => [...prev, ev]);
+          } catch {
+            // ignore malformed payloads
+          }
+        };
+        ws.onerror = () => {
+          if (!cancelled) {
+            setError('WebSocket error');
+            setConnection('error');
+          }
+        };
+        ws.onclose = (e) => {
+          if (!cancelled) {
+            setConnection('closed');
+            if (e.code === 1008) {
+              setError('Admin authentication required');
+            }
+          }
+        };
+      } catch (e) {
         if (!cancelled) {
-          setError('WebSocket error');
+          setError(e instanceof Error ? e.message : String(e));
           setConnection('error');
         }
-      };
-      ws.onclose = (e) => {
-        if (!cancelled) {
-          setConnection('closed');
-          if (e.code === 1008) {
-            setError('Admin authentication required');
-          }
-        }
-      };
+      }
     })();
 
     return () => {
