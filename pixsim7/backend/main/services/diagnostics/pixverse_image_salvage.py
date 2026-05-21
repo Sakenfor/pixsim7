@@ -76,6 +76,18 @@ def _usable_pixverse_url(value: Any) -> Optional[str]:
     return unquote(value) if "%2F" in value else value
 
 
+def _leading_int(value: Any, default: int) -> int:
+    """Extract the leading integer from a select-option string like '8 — many …'.
+
+    Tolerates a bare int (programmatic callers) or any non-numeric value
+    (falls back to ``default``).
+    """
+    try:
+        return max(1, int(str(value).strip().split()[0]))
+    except (ValueError, IndexError, TypeError):
+        return default
+
+
 def _build_synthetic_submission(job_id: str, url: Optional[str]) -> SimpleNamespace:
     """Minimal ProviderSubmission stand-in the salvage reads (job id + response)."""
     return SimpleNamespace(
@@ -116,10 +128,21 @@ class PixverseImageSalvageDiagnostic(Diagnostic):
             ),
             DiagnosticParam(
                 name="violation_samples",
-                kind="int",
-                label="Violation samples (concurrent)",
-                default=1,
-                description="Phase B bait jobs to submit concurrently. Bump on high-concurrency accounts.",
+                kind="select",
+                label="Concurrent bait jobs (Phase B)",
+                default="1 — single (free-tier safe)",
+                options=[
+                    "1 — single (free-tier safe)",
+                    "3 — a few samples",
+                    "5 — several",
+                    "8 — many (needs high-concurrency account)",
+                ],
+                description=(
+                    "How many filter-bait images to submit at once. Each is an "
+                    "independent moderation sample — more = more chances to catch a "
+                    "real filter outcome in one run, but they fire concurrently, so "
+                    "the account's plan must allow that many simultaneous generations."
+                ),
             ),
             DiagnosticParam(name="model", kind="string", label="Model", default=_DEFAULT_MODEL),
             DiagnosticParam(
@@ -203,7 +226,7 @@ class PixverseImageSalvageDiagnostic(Diagnostic):
         try:
             account_spec = str(params.get("account") or "").strip()
             phase = str(params.get("phase") or "both").strip().lower()
-            samples = max(1, int(params.get("violation_samples") or 1))
+            samples = _leading_int(params.get("violation_samples"), 1)
             model = str(params.get("model") or _DEFAULT_MODEL).strip()
             benign_prompt = str(params.get("benign_prompt") or "").strip() or _DEFAULT_BENIGN_PROMPT
             violation_prompt = str(params.get("violation_prompt") or "").strip() or _DEFAULT_VIOLATION_PROMPT
