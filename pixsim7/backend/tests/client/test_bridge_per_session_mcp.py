@@ -66,28 +66,46 @@ def _read_config_jwt(path: str) -> str | None:
     return auth.split(" ", 1)[1] if auth.startswith("Bearer ") else None
 
 
+def _read_config_scope(path: str) -> str | None:
+    """Pull the X-Scope-Key (tool-focus) header out of a written config.
+
+    Returns ``None`` when the header is absent (= full toolset, no narrowing).
+    """
+    with open(path) as f:
+        cfg = json.load(f)
+    headers = cfg["mcpServers"]["pixsim"].get("headers", {})
+    return headers.get("X-Scope-Key")
+
+
 # ── Feature flag ─────────────────────────────────────────────────
 
 
 class TestFeatureFlag:
-    """``PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS`` is the cutover switch.
+    """``PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS`` — default **ON** since the
+    2026-05 durable "MCP disconnected" fix.
 
-    Default off keeps the bridge on the legacy ``_ensure_mcp_config`` path
-    so a backend that hasn't shipped the bridge-session endpoint stays
-    functional.
+    The legacy path it gates baked the connect-time ``service_token``
+    statically into the base/default HTTP MCP config and never refreshed
+    it for the bridge's whole WS lifetime, so MCP calls started 401'ing
+    once that token crossed its TTL. Default-on routes every session
+    through ``_ensure_per_session_mcp_config`` (fresh JWT, re-mint within
+    1h of expiry). The env var remains only as a bisecting escape hatch:
+    explicit ``0``/``false``/``no``/``off`` forces the legacy path.
     """
 
-    def test_default_off(self, monkeypatch):
+    def test_default_on_when_unset(self, monkeypatch):
         monkeypatch.delenv("PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS", raising=False)
-        assert Bridge._per_session_subprocess_enabled() is False
+        assert Bridge._per_session_subprocess_enabled() is True
 
-    @pytest.mark.parametrize("val", ["1", "true", "yes", "on", "TRUE", "On"])
-    def test_truthy_values(self, monkeypatch, val):
+    @pytest.mark.parametrize("val", ["1", "true", "yes", "on", "TRUE", "On", "", "maybe"])
+    def test_on_for_unset_or_non_disable_values(self, monkeypatch, val):
+        # Empty / unrecognised values keep the (now default-on) behaviour —
+        # only the explicit disable set below opts out.
         monkeypatch.setenv("PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS", val)
         assert Bridge._per_session_subprocess_enabled() is True
 
-    @pytest.mark.parametrize("val", ["0", "false", "no", "off", "", "maybe"])
-    def test_non_truthy_values(self, monkeypatch, val):
+    @pytest.mark.parametrize("val", ["0", "false", "no", "off", "OFF", "False"])
+    def test_explicit_opt_out_values_force_legacy(self, monkeypatch, val):
         monkeypatch.setenv("PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS", val)
         assert Bridge._per_session_subprocess_enabled() is False
 
@@ -120,6 +138,45 @@ class TestEnsurePerSessionMcpConfig:
         assert _read_config_jwt(path) == "minted-jwt-abc"
         # Cache should remember the result keyed by (session, agent, focus).
         assert ("sess-1", "claude", frozenset({"__default__"})) in bridge._per_session_mcp_cache
+
+    @pytest.mark.asyncio
+    async def test_focus_lands_in_scope_key_header(self):
+        """Focus contracts must reach the MCP server via X-Scope-Key — the
+        server narrows tools to builtins + core + these contracts. Before the
+        fix this header carried the tab scope_key, which matched no contract
+        and collapsed every session to core-only."""
+        bridge = _make_bridge()
+        bridge._mint_agent_session_token = AsyncMock(
+            return_value=("jwt-focus", time.time() + 24 * 3600)
+        )
+
+        path = await bridge._ensure_per_session_mcp_config(
+            chat_session_id="sess-focus",
+            agent_type="claude",
+            profile_id="p",
+            focus=["prompts.authoring", "blocks.discovery"],
+            scope_key="tab:tab-xyz",
+        )
+        # Focus list — not the tab scope_key — is what the server filters on.
+        assert _read_config_scope(path) == "prompts.authoring,blocks.discovery"
+
+    @pytest.mark.asyncio
+    async def test_no_focus_omits_scope_key_for_full_toolset(self):
+        """No focus selected → no X-Scope-Key → server returns the full
+        toolset (handle_list_tools only narrows when a scope is present)."""
+        bridge = _make_bridge()
+        bridge._mint_agent_session_token = AsyncMock(
+            return_value=("jwt-nofocus", time.time() + 24 * 3600)
+        )
+
+        path = await bridge._ensure_per_session_mcp_config(
+            chat_session_id="sess-nofocus",
+            agent_type="claude",
+            profile_id="p",
+            scope_key="tab:tab-xyz",
+        )
+        # Empty scope is not written as a header → full toolset, no narrowing.
+        assert _read_config_scope(path) is None
 
     @pytest.mark.asyncio
     async def test_returns_none_when_http_url_unset(self):

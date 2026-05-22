@@ -879,14 +879,13 @@ class Bridge:
     def _per_session_subprocess_enabled() -> bool:
         """Feature flag for per-(chat_session, agent_type) HTTP MCP configs.
 
-        Default off during rollout. When on, the bridge mints a fresh
-        agent-purpose JWT per dispatch and writes a per-subprocess HTTP
-        MCP config so MCP tool calls resolve identity directly from token
-        claims (no contextvar / sidecar dance). See plan checkpoint
-        ``per-subprocess-jwt-config``.
+        Default on. The legacy shared-config path keeps a connect-time token
+        static for the bridge WS lifetime and is now opt-out only.
+        Per-session subprocess mode mints/rotates session-scoped credentials
+        and avoids the stale-token "MCP disconnected" failure mode.
         """
         raw = os.environ.get("PIXSIM_BRIDGE_PER_SESSION_SUBPROCESS", "").strip().lower()
-        return raw in {"1", "true", "yes", "on"}
+        return raw not in {"0", "false", "no", "off"}
 
     async def _mint_agent_session_token(
         self,
@@ -998,10 +997,19 @@ class Bridge:
         # Stable per-(chat_session, agent_type, focus) filename so a
         # %TEMP%-sweep equivalent (Storage Sense, etc.) doesn't leave the
         # cache holding a stale path.
+        # X-Scope-Key is the MCP server's *tool-focus* channel, consumed only
+        # by handle_list_tools: a contract-ID list narrows tools to
+        # builtins + core + those contracts; an empty value returns the full
+        # toolset. It is NOT an identity channel — identity rides in the JWT
+        # claims plus X-Chat-Session-Id / X-Profile-Id. Send the focus
+        # contracts (mirroring the STDIO path's PIXSIM_SCOPE), or "" for no
+        # narrowing. Previously this sent the tab scope_key, which matched no
+        # contract and collapsed every session to core-only.
+        focus_scope = ",".join(focus) if focus else ""
         path = write_claude_mcp_http_config(
             mcp_url=self._mcp_http_url,
             api_token=token,
-            scope=scope_key or self._mcp_scope,
+            scope=focus_scope,
             session_id=chat_session_id,
             profile_id=profile_id,
             name=_per_session_mcp_config_name(chat_session_id, agent_type, focus),
