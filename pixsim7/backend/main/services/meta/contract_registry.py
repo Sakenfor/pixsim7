@@ -1636,6 +1636,13 @@ def _builtin_user_assistant() -> MetaContract:
             "User-facing AI assistant capabilities: asset management, "
             "generation, game authoring, and project help."
         ),
+        # `provides` = capability tags (the chat UI's focus-area vocabulary);
+        # `relates_to` = the contract ids those capabilities resolve to. The
+        # two namespaces are intentionally distinct — "asset_management" the
+        # capability is NOT "assets.management" the contract (a capability is
+        # many-to-many over contracts). Don't rename one to match the other;
+        # the MCP focus resolver matches `provides ∪ id` precisely so both
+        # work. See mcp_server.resolve_enabled_tool_names_for_focus.
         provides=[
             "asset_management",
             "generation_assistance",

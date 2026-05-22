@@ -254,6 +254,27 @@ def _normalize_contract_id(value: str) -> str:
     return str(value or "").strip().replace("_", ".").lower()
 
 
+# ── Focus: two deliberately-distinct namespaces ──────────────────────────
+# A focus value may be expressed in EITHER of two namespaces, and the resolver
+# accepts both. They are NOT the same axis and must not be conflated:
+#
+#   • capability tag  (contract ``provides``, e.g. "asset_management",
+#     "prompt_authoring", "prompt_authoring:catalog") — the *semantic*, user-
+#     facing vocabulary. Many-to-many: one capability may be provided by
+#     several contracts (e.g. "prompt_authoring" → prompts.authoring AND
+#     blocks.discovery). This is what the chat UI's focus areas and
+#     build_user_system_prompt() use.
+#
+#   • contract id     (e.g. "assets.management", "prompts.authoring") — the
+#     *structural* 1:1 key for one API-surface bundle; its sanitized form is
+#     the grouped tool name. This is the surgical dev/CLI vocabulary
+#     (PIXSIM_SCOPE="prompts_authoring,blocks_discovery").
+#
+# These intentionally diverge — "asset_management" (capability) is NOT
+# "assets.management" (contract). Don't "fix" that by renaming: a capability
+# and a contract are different things, and equal names would falsely imply a
+# 1:1 identity the model doesn't have. Matching ``provides ∪ id`` is what lets
+# both vocabularies resolve to the same tools.
 def resolve_enabled_tool_names_for_focus(
     contracts: list[dict[str, Any]],
     focus_contract_ids: set[str] | None,
@@ -271,15 +292,11 @@ def resolve_enabled_tool_names_for_focus(
     Uses contract-level ``tool_names`` from meta/contracts when present,
     with endpoint-based fallback for older payloads.
 
-    Focus values are matched against each contract's **``provides``**
-    (capability tags) as well as its ``id``. The UI's focus areas live in the
-    ``provides`` namespace (``asset_management``, ``prompt_authoring``, …),
-    which diverges from the contract-id namespace (``assets.management``,
-    ``prompts.authoring``) — id-only matching would silently miss the plural
-    ones. Matching ``provides ∪ id`` mirrors ``build_user_system_prompt`` so a
-    given focus selection narrows the system prompt and the toolset the same
-    way, and it transparently handles sub-focus tags like
-    ``prompt_authoring:catalog``.
+    A focus value matches a contract by its ``provides`` capability tag OR its
+    ``id`` — see the "two deliberately-distinct namespaces" note above. This
+    mirrors ``build_user_system_prompt`` so a given focus narrows the system
+    prompt and the toolset identically, and sub-focus tags like
+    ``prompt_authoring:catalog`` resolve to their owning contract.
     """
     raw_focus = {
         str(f).strip()
