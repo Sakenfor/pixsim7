@@ -323,6 +323,33 @@ def resolve_enabled_tool_names_for_focus(
     return enabled
 
 
+def resolve_focus_filter_names(
+    scope: str | None,
+    contracts: list[dict[str, Any]] | None,
+) -> set[str] | None:
+    """Resolve the enabled tool-name set for an HTTP request scope.
+
+    ``scope`` is the raw ``X-Scope-Key`` header — a comma-separated list of
+    focus contract IDs. Returns the set of tool names to expose, or ``None``
+    to mean "no narrowing; return the full toolset".
+
+    Narrowing only kicks in when at least one focus id names a real contract.
+    A stray scope value (an audience word like ``"dev"``, or a tab scope key
+    that leaked into ``X-Scope-Key``) matches nothing and is treated as
+    no-focus — otherwise it would silently collapse to the core-only set,
+    because ``resolve_enabled_tool_names_for_focus`` always force-adds the
+    core contracts and an unmatched focus is indistinguishable from a
+    deliberate core-only narrowing.
+    """
+    if not scope or contracts is None:
+        return None
+    focus_ids = {_normalize_contract_id(s) for s in scope.split(",") if s.strip()}
+    known_ids = {_normalize_contract_id(c.get("id", "")) for c in contracts}
+    if not (focus_ids & known_ids):
+        return None
+    return set(resolve_enabled_tool_names_for_focus(contracts, focus_ids))
+
+
 def _parse_scope() -> tuple[str | None, set[str]]:
     """Parse PIXSIM_SCOPE into audience filter and contract ID allowlist.
 
@@ -1507,14 +1534,12 @@ async def handle_list_tools() -> list[types.Tool]:
     await _init_tools()
     all_tools = [_REGISTER_SESSION_TOOL, _LOG_WORK_TOOL, _SET_TAB_IDENTITY_TOOL, _ASK_USER_TOOL] + _dynamic_tools
 
-    # In HTTP mode, filter tools by the per-request scope header
-    scope = _request_scope.get()
-    if scope and _contracts_cache is not None:
-        # Parse comma-separated contract IDs from scope header
-        focus_ids = {s.strip().replace("_", ".") for s in scope.split(",") if s.strip()}
-        if focus_ids:
-            enabled_names = set(resolve_enabled_tool_names_for_focus(_contracts_cache, focus_ids))
-            return [t for t in all_tools if t.name in enabled_names]
+    # In HTTP mode, narrow tools by the per-request scope header (X-Scope-Key:
+    # a comma-separated contract-ID list naming the focus contracts). Returns
+    # None when there's nothing to narrow on → full toolset.
+    enabled_names = resolve_focus_filter_names(_request_scope.get(), _contracts_cache)
+    if enabled_names is not None:
+        return [t for t in all_tools if t.name in enabled_names]
 
     return all_tools
 
