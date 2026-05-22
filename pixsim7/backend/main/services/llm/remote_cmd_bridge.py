@@ -847,11 +847,8 @@ class RemoteCommandBridge:
             if queue:
                 try:
                     queue.put_nowait(data)
-                    logger.info("kaprobe_hb_routed", task_id=task_id[:8], action=data.get("action"), qsize=queue.qsize())
                 except asyncio.QueueFull:
-                    logger.info("kaprobe_hb_queuefull", task_id=task_id[:8], action=data.get("action"))
-            else:
-                logger.info("kaprobe_hb_dropped_no_queue", task_id=task_id[:8], action=data.get("action"))
+                    pass
 
     async def dispatch_task_streaming(
         self,
@@ -944,7 +941,6 @@ class RemoteCommandBridge:
                     hb = hb_wait.result()
                     # Each heartbeat resets the gap deadline
                     deadline = asyncio.get_event_loop().time() + gap_timeout
-                    logger.info("kaprobe_deadline_reset", task_id=task_id[:8], action=hb.get("action"), gap_timeout=gap_timeout)
 
                     # Confirmation request — yield as distinct event and block until resolved
                     if hb.get("action") == "confirmation_request" and hb.get("confirmation_id"):
@@ -1015,7 +1011,6 @@ class RemoteCommandBridge:
                 # SSE dropped mid-task — leave task_id for heartbeat tracking
                 # but decrement active_tasks so new requests can use this agent
                 # (the pending future will be resolved when the result arrives via WS)
-                logger.info("kaprobe_generator_exit_orphan", task_id=task_id[:8], note="queue_popped_future_pending_hbs_now_dropped")
                 agent.active_tasks = max(0, agent.active_tasks - 1)
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
@@ -1246,7 +1241,6 @@ class RemoteCommandBridge:
         async def _persist() -> None:
             try:
                 from pixsim7.backend.main.api.v1.meta_contracts import _store_session_response
-                logger.info("kaprobe_bridge_persist_call", session_id=str(session_id)[:12], has_prompt=bool(prompt), prompt_head=(prompt or "")[:40], resp_len=len(response_text or ""))
                 await _store_session_response(
                     session_id=str(session_id),
                     user_message=prompt,

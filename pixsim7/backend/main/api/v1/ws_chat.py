@@ -1141,7 +1141,6 @@ async def _stream_active_task(
         # Bind + persist BEFORE wiring the result down to the client so a
         # fast frontend refetch immediately after seeing the result finds
         # the row populated (same ordering guarantee as the live path).
-        logger.info("kaprobe_reconnect_emit_result", tab_id=tab_id, cli_session_id=str(cli_session_id)[:12], note="persisting_with_empty_user_message")
         await _bind_and_persist_result(
             tab_id=tab_id,
             cli_session_id=cli_session_id,
