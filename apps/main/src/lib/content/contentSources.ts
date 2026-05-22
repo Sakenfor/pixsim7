@@ -51,7 +51,7 @@ registerContentSource({
   entityTypes: ['blocks', 'templates', 'characters'],
   diskPath: 'content_packs/prompt/',
   apiEndpoint: '/block-templates/meta/content-packs/inventory',
-  drillDownPanelId: 'prompt-library-inspector',
+  drillDownPanelId: 'content-packs',
   tags: ['blocks', 'templates', 'characters', 'yaml'],
   async fetchSummary() {
     try {

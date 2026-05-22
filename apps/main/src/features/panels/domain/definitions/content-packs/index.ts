@@ -19,7 +19,7 @@ export default definePanel({
   component: ContentPacksPanel,
   category: 'dev',
   icon: 'package',
-  description: 'Installed content-pack inventory and purge controls.',
+  description: 'Maintenance panel for content-pack inventory, orphan detection, and purge controls.',
   tags: ['content-packs', 'packs', 'admin', 'inventory', 'purge', 'blocks', 'templates'],
   devTool: { category: 'prompts' },
   navigation: {

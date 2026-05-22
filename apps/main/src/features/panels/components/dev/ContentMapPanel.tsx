@@ -162,6 +162,7 @@ function SourceCard({ source, summaryState, onDrillDown, onRefresh }: SourceCard
   const summary = summaryState.status === 'loaded' ? summaryState.data : null;
   const isLoading = summaryState.status === 'loading';
   const isError = summaryState.status === 'error';
+  const showOpenContentPacksAction = source.id === 'prompt-content-packs' && Boolean(source.drillDownPanelId);
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
@@ -234,6 +235,19 @@ function SourceCard({ source, summaryState, onDrillDown, onRefresh }: SourceCard
               {summary.statusDetail}
             </span>
           )}
+        </div>
+      )}
+
+      {showOpenContentPacksAction && (
+        <div className="pt-0.5">
+          <button
+            onClick={() => onDrillDown(source)}
+            className="inline-flex items-center gap-1.5 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-[11px] font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Open Content Packs panel"
+          >
+            <Icon name="externalLink" size={11} />
+            Open Content Packs
+          </button>
         </div>
       )}
 

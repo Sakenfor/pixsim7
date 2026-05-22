@@ -11,10 +11,10 @@ export default definePanel({
   browsable: true,
   tags: ['content', 'packs', 'primitives', 'vocabularies', 'map', 'inventory', 'plugins'],
   icon: 'map',
-  description: 'Map of all content sources: packs, primitives, vocabularies, plugins',
+  description: 'Discovery and health map of content sources with panel drilldowns.',
   updatedAt: '2026-03-15T00:00:00Z',
-  changeNote: 'Birds-eye view of all content sources with live summaries.',
-  featureHighlights: ['Browse packs, primitives, vocabularies, plugins in one place.'],
+  changeNote: 'Use as a cross-source inventory/health overview; drill into dedicated panels for operations.',
+  featureHighlights: ['Browse packs, primitives, vocabularies, plugins, and templates in one place.'],
   navigation: {
     openPreference: 'float-preferred',
   },
