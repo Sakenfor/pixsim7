@@ -164,14 +164,21 @@ function handleJobEvent(message: WebSocketRecord): void {
   // a no-op — fall back to a full fetch so the row appears.
   const optimisticStatus = WS_EVENT_TO_STATUS[message.type];
   if (optimisticStatus && numericGenId) {
-    const errorMsg = message.type === 'job:failed'
+    // job:failed and job:paused (e.g. concurrent-limit quarantine) both carry
+    // error fields so surfaces like the Control Center warning can render them.
+    const carriesError = message.type === 'job:failed' || message.type === 'job:paused';
+    const errorMsg = carriesError
       ? (String(dataRecord?.error ?? message.error ?? '') || null)
+      : null;
+    const errorCode = carriesError
+      ? (String(dataRecord?.error_code ?? message.error_code ?? '') || null)
       : null;
     const existing = useGenerationsStore.getState().generations.get(numericGenId);
     if (existing) {
       patchGeneration(numericGenId, {
         status: optimisticStatus,
         ...(errorMsg ? { errorMessage: errorMsg } : {}),
+        ...(errorCode ? { errorCode } : {}),
       });
     } else {
       pixsimClient

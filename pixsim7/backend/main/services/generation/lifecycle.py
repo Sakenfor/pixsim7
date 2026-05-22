@@ -145,7 +145,9 @@ class GenerationLifecycleService:
                 "user_id": generation.user_id,
                 "status": status.value,
             }
-            if status == GenerationStatus.FAILED:
+            if status in (GenerationStatus.FAILED, GenerationStatus.PAUSED):
+                # PAUSED carries error fields too so surfaces (e.g. the Control
+                # Center quarantine warning) can render without a refetch.
                 payload["error"] = error_message
                 payload["error_code"] = error_code
             logger.info(f"[Lifecycle] Publishing {event_type} for generation {generation_id}")

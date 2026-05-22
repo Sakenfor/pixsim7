@@ -67,6 +67,9 @@ from pixsim7.backend.main.workers.worker_concurrency import (
     _clear_pinned_concurrent_wait_count,
     _plan_pinned_concurrent_defer,
     _normalize_positive_int,
+    mark_prompt_concurrent_quarantined,
+    is_prompt_concurrent_quarantined,
+    seed_agnostic_prompt_group_hash,
 )
 from pixsim7.backend.main.shared.policies.content_filter_retry import (
     max_submit_content_filter_retries,
@@ -374,6 +377,42 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
                 debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
+
+            # Quarantine guard: if this prompt was flagged for repeatedly tripping
+            # the provider's concurrent-limit at low concurrency (spurious 500044 —
+            # see Discriminator A), pause instead of resubmitting. Resubmitting just
+            # re-trips the provider bug and re-collapses the learned cap. Recovery is
+            # automatic once the quarantine key (TTL) expires; editing the prompt is
+            # recommended. See plan ``pixverse-spurious-concurrent-limit``.
+            _prompt_group_hash = seed_agnostic_prompt_group_hash(generation)
+            if await is_prompt_concurrent_quarantined(generation.provider_id, _prompt_group_hash):
+                # update_status persists the error fields and emits JOB_PAUSED so
+                # the Control Center quarantine warning can surface it live.
+                await generation_service.update_status(
+                    generation_id,
+                    GenStatus.PAUSED,
+                    "Paused: this prompt + input image(s) combination repeatedly "
+                    "triggered the provider's concurrent-limit error at low concurrency "
+                    "(likely a provider-side content bug — the prompt and/or an input "
+                    "image can be the cause). It is retryable once the quarantine "
+                    "clears; editing the prompt or swapping the input image is recommended.",
+                    error_code="provider_concurrent_limit_quarantine",
+                )
+                try:
+                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                    arq_pool = await get_arq_pool()
+                    await clear_generation_wait_metadata(arq_pool, generation_id)
+                except Exception:
+                    pass
+                await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
+                gen_logger.warning(
+                    "generation_paused_prompt_quarantined",
+                    generation_id=generation.id,
+                    provider_id=generation.provider_id,
+                    prompt_group_hash=_prompt_group_hash,
+                )
+                return {"status": "paused", "reason": "prompt_concurrent_quarantine"}
 
             # The generation has been admitted for execution (not future-scheduled),
             # so clear any explicit wait marker used by the pinned dispatcher.
@@ -1149,6 +1188,35 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             ),
                             cap_lowered=adaptive_concurrency.get("cap_lowered"),
                             next_probe_delay_seconds=adaptive_concurrency.get("next_probe_delay_seconds"),
+                        )
+                    # Discriminator A: a 500044 rejected while local concurrency is
+                    # below the configured cap is physically impossible as a real
+                    # limit — it's a prompt-induced provider bug. Quarantine the
+                    # offending prompt (seed-agnostic) so sibling generations stop
+                    # hammering the provider and collapsing the learned cap. The
+                    # structured event below is what the Control Center surfaces.
+                    if adaptive_concurrency and adaptive_concurrency.get("spurious"):
+                        spurious_prompt_hash = adaptive_concurrency.get("prompt_group_hash")
+                        await mark_prompt_concurrent_quarantined(
+                            account.provider_id,
+                            spurious_prompt_hash,
+                            account_id=account.id,
+                            trigger_generation_id=generation.id,
+                            gen_logger=gen_logger,
+                        )
+                        gen_logger.warning(
+                            "prompt_quarantined_concurrent_limit",
+                            generation_id=generation.id,
+                            account_id=account.id,
+                            provider_id=account.provider_id,
+                            operation_type=_get_operation_value(generation),
+                            model=gen_model,
+                            prompt_group_hash=spurious_prompt_hash,
+                            observed_local_concurrency=adaptive_concurrency.get(
+                                "observed_local_concurrency"
+                            ),
+                            configured_cap=adaptive_concurrency.get("configured_cap"),
+                            effective_cap=adaptive_concurrency.get("effective_cap"),
                         )
                     concurrent_cooldown_seconds = _get_concurrent_limit_cooldown_seconds(
                         generation, account

@@ -7,6 +7,7 @@ process_generation to gate submissions and schedule probes.
 
 Also contains pinned-generation sibling counting and concurrent-defer planning.
 """
+import json
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -498,6 +499,103 @@ async def get_account_effective_cap_hint(account_id: int) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# Spurious-concurrent-limit prompt quarantine
+# ---------------------------------------------------------------------------
+#
+# When Pixverse returns a *spurious* 500044 (concurrent-limit reject while local
+# concurrency is below the configured cap — see Discriminator A in
+# ``_adaptive_provider_concurrency_record_limit_error``), the offending request is
+# quarantined so sibling generations (same prompt + input image(s), any seed) stop
+# hammering the provider and collapsing the learned cap.  The trigger can be the
+# prompt OR an input image (or the combination), so the quarantine key is hashed
+# over the full request content (prompt + inputs), not the prompt text alone.
+# Recovery is automatic: the quarantine key expires, and the adaptive probe
+# restores the cap once the culprit is no longer being retried.
+# See plan ``pixverse-spurious-concurrent-limit``.
+
+
+def _prompt_quarantine_ttl_seconds() -> int:
+    return _settings_int("prompt_concurrent_quarantine_ttl_seconds", 1800, minimum=60)
+
+
+def _prompt_quarantine_key(provider_id: str, prompt_group_hash: str) -> str:
+    safe_provider = (provider_id or "unknown").strip().lower() or "unknown"
+    return f"generation:prompt_concurrent_quarantine:{safe_provider}:{prompt_group_hash}"
+
+
+async def is_prompt_concurrent_quarantined(
+    provider_id: str,
+    prompt_group_hash: str | None,
+) -> bool:
+    """Return True if a seed-agnostic prompt key is currently quarantined."""
+    if not prompt_group_hash:
+        return False
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        return bool(
+            await redis_client.exists(_prompt_quarantine_key(provider_id, prompt_group_hash))
+        )
+    except Exception:
+        return False
+
+
+async def mark_prompt_concurrent_quarantined(
+    provider_id: str,
+    prompt_group_hash: str | None,
+    *,
+    account_id: int | None,
+    trigger_generation_id: int | None = None,
+    gen_logger=None,
+) -> bool:
+    """Flag a seed-agnostic prompt key as quarantined (TTL'd). Returns success."""
+    if not prompt_group_hash:
+        return False
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        payload = json.dumps(
+            {
+                "account_id": account_id,
+                "trigger_generation_id": trigger_generation_id,
+                "quarantined_at_ts": int(datetime.now(timezone.utc).timestamp()),
+                "reason": "spurious_concurrent_limit",
+            }
+        )
+        await redis_client.set(
+            _prompt_quarantine_key(provider_id, prompt_group_hash),
+            payload,
+            ex=_prompt_quarantine_ttl_seconds(),
+        )
+        return True
+    except Exception as e:
+        if gen_logger:
+            gen_logger.debug("prompt_quarantine_mark_failed", error=str(e))
+        return False
+
+
+def seed_agnostic_prompt_group_hash(generation: Generation) -> str | None:
+    """Seed-agnostic grouping hash over the full request content.
+
+    Hashes ``canonical_params`` + ``inputs`` (so the prompt AND the input
+    image(s)/source refs are all part of the key) with the seed normalized out.
+    Two generations match only when prompt, inputs and params are identical, so a
+    quarantine triggered by a problematic image won't over-block a different
+    image that happens to share the same prompt, and vice-versa.
+    """
+    try:
+        return Generation.compute_hash(
+            getattr(generation, "canonical_params", None) or {},
+            getattr(generation, "inputs", None) or [],
+            include_seed=False,
+        )
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Pre-submit gate
 # ---------------------------------------------------------------------------
 
@@ -627,6 +725,32 @@ async def _adaptive_provider_concurrency_record_limit_error(
     observed_cap = _clamp_provider_cap(max(1, attempted_level - 1), configured_cap)
     is_probe_level_reject = attempted_level > existing_effective
 
+    # Discriminator A: a genuine concurrent-limit can only occur when the
+    # account actually has >= configured_cap jobs in flight.  A 500044 while
+    # local concurrency is below the configured cap is physically impossible
+    # as a real limit — Pixverse emits it spuriously for problematic request
+    # content (content-path bug) even with 1 job running.  The trigger can be
+    # the prompt OR an input image (or the combination).  Clean requests never
+    # trip this, so a spurious reject is always attributable to the exact
+    # request content that received it.  We must NOT lower the learned cap on
+    # these, or one bad request collapses the whole account (observed: acct 2,
+    # 8 -> 1).
+    is_spurious = observed_local < configured_cap
+    # Seed-agnostic grouping key over the full request (prompt + input image(s)
+    # + params) — lets the caller pause sibling generations (same content, any
+    # seed) that would otherwise keep hammering the provider with the same
+    # spurious reject.
+    try:
+        prompt_group_hash = Generation.compute_hash(
+            getattr(generation, "canonical_params", None) or {},
+            getattr(generation, "inputs", None) or [],
+            include_seed=False,
+        )
+    except Exception as _hash_err:  # pragma: no cover - defensive
+        prompt_group_hash = None
+        if gen_logger:
+            gen_logger.debug("prompt_group_hash_compute_failed", error=str(_hash_err))
+
     previous_reject_level = _normalize_positive_int(state.get("consecutive_limit_rejects_level"), 0)
     if previous_reject_level == attempted_level:
         consecutive_rejects = max(0, int(state.get("consecutive_limit_rejects") or 0)) + 1
@@ -653,6 +777,7 @@ async def _adaptive_provider_concurrency_record_limit_error(
         and existing_effective > 1
         and not recently_lowered
         and enough_evidence
+        and not is_spurious
     ):
         new_effective = _clamp_provider_cap(
             min(existing_effective, observed_cap), configured_cap
@@ -702,6 +827,8 @@ async def _adaptive_provider_concurrency_record_limit_error(
         "consecutive_in_cap_limit_rejects": consecutive_in_cap_rejects,
         "lower_after_consecutive_rejects": lower_after_rejects,
         "is_probe_level_reject": is_probe_level_reject,
+        "spurious": is_spurious,
+        "prompt_group_hash": prompt_group_hash,
         "cap_lowered": cap_lowered,
         "next_probe_at_ts": next_probe_at_ts,
         "next_probe_delay_seconds": probe_delay,

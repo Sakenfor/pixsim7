@@ -24,6 +24,14 @@ const CONTENT_ERROR_CODES = new Set([
   'content_filtered',
 ]);
 
+/**
+ * Error code for a generation auto-paused because its prompt + input image(s)
+ * repeatedly tripped the provider's concurrent-limit error at low concurrency
+ * (spurious 500044 — see plan `pixverse-spurious-concurrent-limit`). Surfaced
+ * in the same warning strip as content-moderation issues.
+ */
+const CONCURRENT_QUARANTINE_ERROR_CODE = 'provider_concurrent_limit_quarantine';
+
 /** Check if a generation has a content moderation error */
 function isContentModerationError(gen: GenerationModel): boolean {
   if (gen.errorCode && CONTENT_ERROR_CODES.has(gen.errorCode)) return true;
@@ -31,11 +39,23 @@ function isContentModerationError(gen: GenerationModel): boolean {
   return !gen.errorCode && !!gen.errorMessage && CONTENT_FILTERED_PATTERN.test(gen.errorMessage);
 }
 
+/** Check if a generation was auto-paused by the concurrent-limit quarantine. */
+function isQuarantineWarning(gen: GenerationModel): boolean {
+  return gen.status === 'paused' && gen.errorCode === CONCURRENT_QUARANTINE_ERROR_CODE;
+}
+
+/** Whether a generation should appear in the warning strip at all. */
+function isWarningGeneration(gen: GenerationModel): boolean {
+  return (gen.status === 'failed' && isContentModerationError(gen)) || isQuarantineWarning(gen);
+}
+
 /** Get friendly label from structured error_code or legacy error message */
 function getModerationLabel(gen: GenerationModel): string {
   // Primary: structured errorCode
   if (gen.errorCode) {
     switch (gen.errorCode) {
+      case CONCURRENT_QUARANTINE_ERROR_CODE:
+        return 'Prompt/image paused';
       case 'content_prompt_rejected':
       case 'content_text_rejected':
         return 'Prompt rejected';
@@ -85,7 +105,7 @@ export function ContentModerationWarning({
     useShallow((state) => {
       const warnings: GenerationModel[] = [];
       for (const gen of state.generations.values()) {
-        if (gen.status === 'failed' && isContentModerationError(gen)) {
+        if (isWarningGeneration(gen)) {
           warnings.push(gen);
         }
       }
