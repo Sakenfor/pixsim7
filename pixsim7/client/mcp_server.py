@@ -270,12 +270,23 @@ def resolve_enabled_tool_names_for_focus(
 
     Uses contract-level ``tool_names`` from meta/contracts when present,
     with endpoint-based fallback for older payloads.
+
+    Focus values are matched against each contract's **``provides``**
+    (capability tags) as well as its ``id``. The UI's focus areas live in the
+    ``provides`` namespace (``asset_management``, ``prompt_authoring``, …),
+    which diverges from the contract-id namespace (``assets.management``,
+    ``prompts.authoring``) — id-only matching would silently miss the plural
+    ones. Matching ``provides ∪ id`` mirrors ``build_user_system_prompt`` so a
+    given focus selection narrows the system prompt and the toolset the same
+    way, and it transparently handles sub-focus tags like
+    ``prompt_authoring:catalog``.
     """
-    normalized_focus = {
-        _normalize_contract_id(contract_id)
-        for contract_id in (focus_contract_ids or set())
-        if str(contract_id or "").strip()
+    raw_focus = {
+        str(f).strip()
+        for f in (focus_contract_ids or set())
+        if str(f or "").strip()
     }
+    normalized_focus = {_normalize_contract_id(f) for f in raw_focus}
     include_contract_ids = set(_CORE_CONTRACTS)
     include_contract_ids.update(normalized_focus)
 
@@ -293,7 +304,13 @@ def resolve_enabled_tool_names_for_focus(
 
     for contract in contracts:
         contract_id = _normalize_contract_id(contract.get("id", ""))
-        if not contract_id or contract_id not in include_contract_ids:
+        if not contract_id:
+            continue
+        provides = contract.get("provides")
+        provides = provides if isinstance(provides, list) else []
+        matched_by_id = contract_id in include_contract_ids
+        matched_by_provides = bool(raw_focus.intersection(provides))
+        if not (matched_by_id or matched_by_provides):
             continue
 
         if MCP_GROUPED:
@@ -333,21 +350,31 @@ def resolve_focus_filter_names(
     focus contract IDs. Returns the set of tool names to expose, or ``None``
     to mean "no narrowing; return the full toolset".
 
-    Narrowing only kicks in when at least one focus id names a real contract.
-    A stray scope value (an audience word like ``"dev"``, or a tab scope key
-    that leaked into ``X-Scope-Key``) matches nothing and is treated as
-    no-focus — otherwise it would silently collapse to the core-only set,
-    because ``resolve_enabled_tool_names_for_focus`` always force-adds the
-    core contracts and an unmatched focus is indistinguishable from a
-    deliberate core-only narrowing.
+    Narrowing only kicks in when at least one focus value names a real
+    contract — by ``id`` or by a ``provides`` capability tag (the UI's focus
+    areas live in the ``provides`` namespace). A stray scope value (an
+    audience word like ``"dev"``, or a tab scope key that leaked into
+    ``X-Scope-Key``) matches nothing and is treated as no-focus — otherwise it
+    would silently collapse to the core-only set, because
+    ``resolve_enabled_tool_names_for_focus`` always force-adds the core
+    contracts and an unmatched focus is indistinguishable from a deliberate
+    core-only narrowing.
     """
     if not scope or contracts is None:
         return None
-    focus_ids = {_normalize_contract_id(s) for s in scope.split(",") if s.strip()}
-    known_ids = {_normalize_contract_id(c.get("id", "")) for c in contracts}
-    if not (focus_ids & known_ids):
+    raw_focus = {s.strip() for s in scope.split(",") if s.strip()}
+    if not raw_focus:
         return None
-    return set(resolve_enabled_tool_names_for_focus(contracts, focus_ids))
+    normalized_focus = {_normalize_contract_id(s) for s in raw_focus}
+    known_ids = {_normalize_contract_id(c.get("id", "")) for c in contracts}
+    known_provides: set[str] = set()
+    for c in contracts:
+        provides = c.get("provides")
+        if isinstance(provides, list):
+            known_provides.update(provides)
+    if not (normalized_focus & known_ids) and not (raw_focus & known_provides):
+        return None
+    return set(resolve_enabled_tool_names_for_focus(contracts, raw_focus))
 
 
 def _parse_scope() -> tuple[str | None, set[str]]:

@@ -32,12 +32,19 @@ _CORE = {"plans_management", "project_files"}
 
 
 def _contracts() -> list[dict]:
-    """Minimal contract list spanning the two core contracts plus extras."""
+    """Minimal contract list spanning the two core contracts plus extras.
+
+    ``provides`` carries the capability-tag namespace the UI focus areas live
+    in (e.g. ``asset_management``), which diverges from the contract ``id``
+    namespace (``assets.management``) on the plural ones — the exact mismatch
+    the provides-matching reconciliation exists to bridge.
+    """
     return [
-        {"id": "prompts.authoring", "sub_endpoints": [], "tool_names": []},
-        {"id": "blocks.discovery", "sub_endpoints": [], "tool_names": []},
-        {"id": "plans.management", "sub_endpoints": [], "tool_names": []},
-        {"id": "project.files", "sub_endpoints": [], "tool_names": []},
+        {"id": "prompts.authoring", "provides": ["prompt_authoring", "prompt_authoring:families"], "sub_endpoints": [], "tool_names": []},
+        {"id": "assets.management", "provides": ["asset_management"], "sub_endpoints": [], "tool_names": []},
+        {"id": "blocks.discovery", "provides": ["block_discovery", "prompt_authoring:vocabulary"], "sub_endpoints": [], "tool_names": []},
+        {"id": "plans.management", "provides": ["plan_registry"], "sub_endpoints": [], "tool_names": []},
+        {"id": "project.files", "provides": ["project_file_read"], "sub_endpoints": [], "tool_names": []},
     ]
 
 
@@ -87,3 +94,37 @@ class TestResolveFocusFilterNames:
         assert names is not None
         assert "prompts_authoring" in names
         assert "blocks_discovery" not in names
+
+    # ── Capability-tag (provides) namespace ──────────────────────────
+    # The UI focus areas are provides tags, not contract ids. These diverge
+    # from the id namespace on the plurals: asset_management != assets.management
+    # and prompt_authoring != prompts.authoring. Matching against provides is
+    # what makes the UI's focus selection narrow the toolset correctly.
+
+    def test_capability_tag_asset_management_matches_plural_contract(self):
+        names = mcp_server.resolve_focus_filter_names("asset_management", _contracts())
+        assert names is not None
+        assert "assets_management" in names   # provides match, despite id mismatch
+        assert _CORE <= names
+        assert "prompts_authoring" not in names
+
+    def test_capability_tag_prompt_authoring_matches_plural_contract(self):
+        names = mcp_server.resolve_focus_filter_names("prompt_authoring", _contracts())
+        assert names is not None
+        assert "prompts_authoring" in names   # provides match, despite id mismatch
+        assert "assets_management" not in names
+
+    def test_two_capability_tags_narrow_to_both_contracts(self):
+        # The exact pre-fix failure: selecting both, the id-only matcher would
+        # have dropped the plural-id ones. Both must now be present.
+        names = mcp_server.resolve_focus_filter_names(
+            "asset_management,prompt_authoring", _contracts()
+        )
+        assert names is not None
+        assert {"assets_management", "prompts_authoring"} <= names
+        assert "blocks_discovery" not in names
+
+    def test_sub_focus_tag_matches_owning_contract(self):
+        names = mcp_server.resolve_focus_filter_names("prompt_authoring:families", _contracts())
+        assert names is not None
+        assert "prompts_authoring" in names

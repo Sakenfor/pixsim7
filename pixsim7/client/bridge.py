@@ -1128,11 +1128,13 @@ class Bridge:
         if contracts is None:
             return None
 
-        include_contract_ids = {
-            self._normalize_contract_id(contract_id)
-            for contract_id in focus
-            if str(contract_id or "").strip()
-        }
+        # Focus values are matched by contract id AND by `provides` capability
+        # tag — the UI's focus areas live in the provides namespace
+        # (asset_management, prompt_authoring, …) which diverges from the
+        # contract-id namespace (assets.management, prompts.authoring). Mirrors
+        # mcp_server.resolve_enabled_tool_names_for_focus.
+        raw_focus = {str(f).strip() for f in focus if str(f or "").strip()}
+        include_contract_ids = {self._normalize_contract_id(f) for f in raw_focus}
         include_contract_ids.update({"plans.management", "project.files"})
 
         seen: set[str] = set()
@@ -1150,7 +1152,9 @@ class Bridge:
 
         for contract in contracts:
             contract_id = self._normalize_contract_id(contract.get("id", ""))
-            if contract_id not in include_contract_ids:
+            provides = contract.get("provides")
+            provides = provides if isinstance(provides, list) else []
+            if contract_id not in include_contract_ids and not raw_focus.intersection(provides):
                 continue
             for tool_name in contract.get("tool_names", []):
                 if isinstance(tool_name, str):
