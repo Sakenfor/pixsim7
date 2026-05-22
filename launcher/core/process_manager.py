@@ -6,9 +6,11 @@ Can be used from Qt, web, CLI, or test environments.
 """
 
 import os
+import re
 import signal
 import subprocess
 import time
+import logging
 from typing import Dict, Optional, Callable, List, Any
 from pathlib import Path
 
@@ -27,6 +29,9 @@ try:
     WINDOWS_JOB_AVAILABLE = windows_job.is_available()
 except ImportError:
     WINDOWS_JOB_AVAILABLE = False
+
+
+logger = logging.getLogger("launcher.core.process")
 
 
 class ProcessManager:
@@ -141,16 +146,16 @@ class ProcessManager:
         if not state:
             return False
 
-        state.requested_running = True
-
-        # Don't start if already running
+        # Don't start if already running (affirm user's intent)
         if state.status in (ServiceStatus.RUNNING, ServiceStatus.STARTING):
+            state.requested_running = True
             return True
 
         definition = state.definition
 
         # Config-only services (e.g. _platform) have no process to start
         if not definition.program:
+            state.requested_running = True
             state.status = ServiceStatus.RUNNING
             state.health = HealthStatus.HEALTHY
             self._emit_event(ProcessEvent(
@@ -159,6 +164,14 @@ class ProcessManager:
                 data={"config_only": True}
             ))
             return True
+
+        # NOTE: state.requested_running stays at its prior value (False after
+        # a stop) through pre-flight checks below. This prevents the health
+        # manager's headless cmdline scan (health_manager.py: requested_running
+        # is not False) from re-adopting a still-exiting old process during
+        # the start window. The flip to True happens just before the actual
+        # spawn, below. See plan launcher-health-probe-stability /
+        # mcp-service-restart-no-effect.
 
         # Enforce dependencies (if defined)
         if definition.depends_on:
@@ -178,19 +191,46 @@ class ProcessManager:
                 ))
                 return False
 
-        # Kill any stale process on the service's port before starting
+        # Kill any stale process before starting:
+        #  - HTTP services: detect by port (existing behavior).
+        #  - Headless services (workers, ai-client/MCP bridge): detect by
+        #    cmdline pattern. Protects against orphans from crashed prior
+        #    sessions, manual `python -m ...` debug runs, and any process
+        #    that survived stop() (restart-race tail). Without this,
+        #    health_manager's cmdline scan could re-adopt the orphan after
+        #    spawn, making the user's start a no-op.
         if definition.health_url:
             port = self._extract_port_from_url(definition.health_url)
             if port:
                 stale_pids = self._detect_all_pids_by_port(port)
                 if stale_pids:
-                    for pid in stale_pids:
-                        self._kill_process_tree(pid, force=True)
+                    survivors = self._kill_pids_and_wait(
+                        stale_pids, force=True, timeout=2.0,
+                    )
                     self._emit_event(ProcessEvent(
                         service_key=service_key,
                         event_type="stale_cleared",
-                        data={"port": port, "pids": stale_pids}
+                        data={"port": port, "pids": stale_pids, "survivors": survivors}
                     ))
+        else:
+            try:
+                stale_pids = self._detect_worker_pids(service_key)
+                if stale_pids:
+                    survivors = self._kill_pids_and_wait(
+                        stale_pids, force=True, timeout=2.0,
+                    )
+                    self._emit_event(ProcessEvent(
+                        service_key=service_key,
+                        event_type="stale_cleared",
+                        data={"cmdline_pids": stale_pids, "survivors": survivors}
+                    ))
+            except Exception as e:
+                logger.debug(
+                    "start_headless_stale_cleanup_failed service=%s error_type=%s error=%s",
+                    service_key,
+                    type(e).__name__,
+                    str(e),
+                )
 
         # Check tool availability
         if not self.check_tool_availability(service_key):
@@ -205,6 +245,7 @@ class ProcessManager:
 
         # Use custom start function if provided
         if definition.custom_start:
+            state.requested_running = True  # commit launch intent
             try:
                 success = definition.custom_start(state)
                 if success:
@@ -256,6 +297,7 @@ class ProcessManager:
                 return False
 
         # Standard subprocess start
+        state.requested_running = True  # commit launch intent (Option 2 — defer flip)
         try:
             # Prepare environment: os.environ + global exports + service overrides
             env = os.environ.copy()
@@ -451,9 +493,9 @@ class ProcessManager:
                         detected_pids = self._detect_all_pids_by_port(port)
                         if detected_pids:
                             force_kill = True if os.name == 'nt' else (not graceful)
-                            for pid in detected_pids:
-                                self._kill_process_tree(pid, force=force_kill)
-
+                            survivors = self._kill_pids_and_wait(
+                                detected_pids, force=force_kill, timeout=3.0,
+                            )
                             state.status = ServiceStatus.STOPPED
                             state.health = HealthStatus.STOPPED
                             state.pid = None
@@ -461,18 +503,25 @@ class ProcessManager:
                             self._emit_event(ProcessEvent(
                                 service_key=service_key,
                                 event_type="stopped",
-                                data={"detected_pids": detected_pids}
+                                data={"detected_pids": detected_pids, "survivors": survivors}
                             ))
-                            return True
-                except Exception:
-                    pass
+                            return not survivors
+                except Exception as e:
+                    logger.debug(
+                        "stop_detect_by_port_failed service=%s health_url=%s error_type=%s error=%s",
+                        service_key,
+                        definition.health_url,
+                        type(e).__name__,
+                        str(e),
+                    )
 
             # Headless services (workers, bridges, etc.): detect by command line pattern
             try:
                 worker_pids = self._detect_worker_pids(service_key)
                 if worker_pids:
-                    for pid in worker_pids:
-                        self._kill_process_tree(pid, force=True)
+                    survivors = self._kill_pids_and_wait(
+                        worker_pids, force=True, timeout=3.0,
+                    )
                     state.status = ServiceStatus.STOPPED
                     state.health = HealthStatus.STOPPED
                     state.pid = None
@@ -480,11 +529,16 @@ class ProcessManager:
                     self._emit_event(ProcessEvent(
                         service_key=service_key,
                         event_type="stopped",
-                        data={"worker_pids": worker_pids}
+                        data={"worker_pids": worker_pids, "survivors": survivors}
                     ))
-                    return True
-            except Exception:
-                pass
+                    return not survivors
+            except Exception as e:
+                logger.debug(
+                    "stop_detect_headless_failed service=%s error_type=%s error=%s",
+                    service_key,
+                    type(e).__name__,
+                    str(e),
+                )
 
             # Already stopped or can't find process
             state.status = ServiceStatus.STOPPED
@@ -661,8 +715,13 @@ class ProcessManager:
                                     pids.append(pid)
                             except ValueError:
                                 pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "detect_pids_by_port_failed port=%s error_type=%s error=%s",
+                port,
+                type(e).__name__,
+                str(e),
+            )
         return pids
 
     def _detect_worker_pids(self, service_key: str) -> List[int]:
@@ -724,9 +783,92 @@ class ProcessManager:
                                         pids.append(pid)
                                 except ValueError:
                                     pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "detect_headless_pids_failed service=%s error_type=%s error=%s",
+                service_key,
+                type(e).__name__,
+                str(e),
+            )
         return pids
+
+    def _is_pid_alive(self, pid: Optional[int]) -> bool:
+        """Cross-platform check whether a PID currently exists."""
+        if not pid or pid <= 0:
+            return False
+        try:
+            if os.name == 'nt':
+                result = subprocess.run(
+                    ['tasklist', '/FI', f'PID eq {pid}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    shell=False,
+                )
+                if result.returncode != 0:
+                    return False
+                return re.search(rf"\b{pid}\b", result.stdout or "") is not None
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except Exception:
+            return False
+
+    def _wait_for_pids_exit(self, pids: List[int], timeout: float = 3.0) -> List[int]:
+        """Poll until all given PIDs have exited, or timeout. Returns survivors."""
+        if not pids:
+            return []
+        deadline = time.time() + timeout
+        survivors = list(pids)
+        while survivors and time.time() < deadline:
+            survivors = [p for p in survivors if self._is_pid_alive(p)]
+            if not survivors:
+                return []
+            time.sleep(0.1)
+        return survivors
+
+    def _kill_pids_and_wait(
+        self,
+        pids: List[int],
+        force: bool = True,
+        timeout: float = 3.0,
+    ) -> List[int]:
+        """Kill PIDs and wait for them to exit; escalate to force on graceful timeout.
+
+        Returns survivors that wouldn't die — empty list on full success.
+        Without this wait, callers of stop() (notably restart()) can race the
+        health_manager's headless cmdline scan, which re-adopts a still-exiting
+        PID and silently makes a 'restart' a no-op. See plan
+        launcher-health-probe-stability / mcp-service-restart-no-effect.
+        """
+        if not pids:
+            return []
+        for pid in pids:
+            try:
+                self._kill_process_tree(pid, force=force)
+            except Exception as e:
+                logger.debug(
+                    "kill_process_tree_failed pid=%d error_type=%s error=%s",
+                    pid, type(e).__name__, str(e),
+                )
+        survivors = self._wait_for_pids_exit(pids, timeout=timeout)
+        if survivors and not force:
+            # Graceful kill didn't take — escalate to force on the holdouts
+            for pid in survivors:
+                try:
+                    self._kill_process_tree(pid, force=True)
+                except Exception:
+                    pass
+            survivors = self._wait_for_pids_exit(survivors, timeout=1.5)
+        if survivors:
+            logger.warning(
+                "pids_failed_to_exit pids=%s timeout=%.1fs",
+                survivors, timeout,
+            )
+        return survivors
 
     def _kill_process_tree(self, pid: int, force: bool = False):
         """
