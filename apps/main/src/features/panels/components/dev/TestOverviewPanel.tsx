@@ -1,9 +1,17 @@
-import { PanelShell, SidebarPaneShell, HierarchicalSidebarNav } from '@pixsim7/shared.ui';
+import {
+  PanelShell,
+  SidebarPaneShell,
+  HierarchicalSidebarNav,
+  type HierarchicalSidebarNavItem,
+  type HierarchicalSidebarNavChildItem,
+} from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { canRunCodegen } from '@lib/auth';
+import { canRunCodegen, isAdminUser } from '@lib/auth';
 
 
+import { listDiagnostics, type DiagnosticSpec } from '@features/devtools/routes/diagnosticsApi';
+import { DiagnosticsView } from '@features/devtools/routes/pages/DiagnosticsPage';
 import {
   extractErrorMessage,
   runTestProfile,
@@ -25,7 +33,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 import { TestAnalyticsGraphs } from './TestAnalyticsGraphs';
 
-type TestOverviewSection = 'run' | 'catalog' | 'history' | 'reports';
+type TestOverviewSection = 'run' | 'catalog' | 'history' | 'reports' | 'diagnostics';
 
 interface SuiteSubcategoryGroup {
   key: string;
@@ -410,6 +418,7 @@ export function TestOverviewPanel() {
   const overview = useMemo(() => getTestOverview(), []);
   const user = useAuthStore((state) => state.user);
   const canExecute = canRunCodegen(user);
+  const isAdmin = isAdminUser(user);
   const [runs, setRuns] = useState<TestRunSnapshot[]>(() => listTestRunSnapshots(60));
   const [activeSection, setActiveSection] = useState<TestOverviewSection>('run');
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
@@ -421,6 +430,19 @@ export function TestOverviewPanel() {
   const [backendSuites, setBackendSuites] = useState<CatalogSuiteRecord[]>([]);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [historySuiteFilter, setHistorySuiteFilter] = useState<string | null>(null);
+  // Nested-nav state: which parent rows are expanded, plus the selected leaf
+  // within Catalog (a layer) and Diagnostics (a diagnostic id).
+  const [expandedNavIds, setExpandedNavIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedLayerKey, setSelectedLayerKey] = useState<string | null>(null);
+  const [selectedDiagnosticId, setSelectedDiagnosticId] = useState<string | null>(null);
+  const [diagnosticSpecs, setDiagnosticSpecs] = useState<DiagnosticSpec[]>([]);
+
+  // Load diagnostic specs (admin) to populate the nested nav without mounting
+  // the heavy DiagnosticsView first.
+  useEffect(() => {
+    if (!isAdmin) return;
+    void listDiagnostics().then(setDiagnosticSpecs).catch(() => {});
+  }, [isAdmin]);
 
   const loadServerRuns = useCallback(async () => {
     setServerRunsLoading(true);
@@ -530,6 +552,78 @@ export function TestOverviewPanel() {
     return { reports, references };
   }, [overview.docs]);
 
+  // When a Catalog layer is selected in the nav, narrow the body to it; the
+  // parent "Catalog" row shows all layers.
+  const displayedCatalog = useMemo(
+    () => (selectedLayerKey ? filteredSuiteCatalog.filter((l) => l.key === selectedLayerKey) : filteredSuiteCatalog),
+    [filteredSuiteCatalog, selectedLayerKey],
+  );
+
+  // Single nested sidebar: leaf sections (Run/History/Reports) plus expandable
+  // Catalog (→ layers) and admin-only Diagnostics (→ each diagnostic).
+  const navItems = useMemo<HierarchicalSidebarNavItem[]>(() => {
+    const items: HierarchicalSidebarNavItem[] = [
+      { id: 'run', label: `Run (${overview.profiles.length})` },
+      {
+        id: 'catalog',
+        label: `Catalog (${allSuites.length})`,
+        children: suiteCatalog.map((layer) => ({
+          id: `catalog:${layer.key}`,
+          label: `${layer.label} (${layer.suiteCount})`,
+        })),
+      },
+      { id: 'history', label: `History (${runs.length + serverRuns.length})` },
+      { id: 'reports', label: `Reports (${docsByKind.reports.length})` },
+    ];
+    if (isAdmin) {
+      items.push({
+        id: 'diagnostics',
+        label: `Diagnostics${diagnosticSpecs.length ? ` (${diagnosticSpecs.length})` : ''}`,
+        children: diagnosticSpecs.map((d) => ({ id: `diag:${d.id}`, label: d.label })),
+      });
+    }
+    return items;
+  }, [
+    overview.profiles.length,
+    allSuites.length,
+    suiteCatalog,
+    runs.length,
+    serverRuns.length,
+    docsByKind.reports.length,
+    isAdmin,
+    diagnosticSpecs,
+  ]);
+
+  const handleSelectSection = useCallback((id: string) => {
+    setActiveSection(id as TestOverviewSection);
+    // Selecting the Catalog parent row resets to the all-layers overview.
+    if (id === 'catalog') setSelectedLayerKey(null);
+  }, []);
+
+  const handleToggleExpand = useCallback((id: string) => {
+    setExpandedNavIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleSelectChild = useCallback((itemId: string, childId: string) => {
+    setActiveSection(itemId as TestOverviewSection);
+    if (itemId === 'catalog') setSelectedLayerKey(childId.slice('catalog:'.length));
+    else if (itemId === 'diagnostics') setSelectedDiagnosticId(childId.slice('diag:'.length));
+  }, []);
+
+  const getChildState = useCallback(
+    (item: HierarchicalSidebarNavItem, child: HierarchicalSidebarNavChildItem): 'inactive' | 'active' => {
+      if (item.id === 'catalog') return `catalog:${selectedLayerKey}` === child.id ? 'active' : 'inactive';
+      if (item.id === 'diagnostics') return `diag:${selectedDiagnosticId}` === child.id ? 'active' : 'inactive';
+      return 'inactive';
+    },
+    [selectedLayerKey, selectedDiagnosticId],
+  );
+
   const handleCopyCommand = async (profile: TestProfileDefinition) => {
     try {
       await navigator.clipboard.writeText(profile.command);
@@ -580,14 +674,13 @@ export function TestOverviewPanel() {
       sidebar={
         <SidebarPaneShell widthClassName="w-full" title="Test Overview" variant="light" collapsible expandedWidth={176} persistKey="test-overview-sidebar">
           <HierarchicalSidebarNav
-            items={[
-              { id: 'run', label: `Run (${overview.profiles.length})` },
-              { id: 'catalog', label: `Catalog (${allSuites.length})` },
-              { id: 'history', label: `History (${runs.length + serverRuns.length})` },
-              { id: 'reports', label: `Reports (${docsByKind.reports.length})` },
-            ]}
-            onSelectItem={(id) => setActiveSection(id as TestOverviewSection)}
+            items={navItems}
+            expandedItemIds={expandedNavIds}
+            onToggleExpand={handleToggleExpand}
+            onSelectItem={handleSelectSection}
+            onSelectChild={handleSelectChild}
             getItemState={(item) => (item.id === activeSection ? 'active' : 'inactive')}
+            getChildState={getChildState}
             variant="light"
           />
           <div className="mt-4 border-t border-neutral-200 dark:border-neutral-800 pt-3 px-1 space-y-2">
@@ -668,7 +761,8 @@ export function TestOverviewPanel() {
         </SidebarPaneShell>
       }
       sidebarWidth="w-44"
-      bodyClassName="p-4 space-y-4"
+      bodyScroll={activeSection !== 'diagnostics'}
+      bodyClassName={activeSection === 'diagnostics' ? undefined : 'p-4 space-y-4'}
     >
 
         {activeSection === 'run' && (
@@ -728,7 +822,7 @@ export function TestOverviewPanel() {
                 No suites matching &ldquo;{catalogSearch.trim()}&rdquo;
               </div>
             )}
-            {filteredSuiteCatalog.map((layer) => (
+            {displayedCatalog.map((layer) => (
               <div
                 key={layer.key}
                 className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden"
@@ -975,6 +1069,15 @@ export function TestOverviewPanel() {
               </div>
             )}
           </section>
+        )}
+
+        {activeSection === 'diagnostics' && isAdmin && (
+          <DiagnosticsView
+            hideSidebar
+            selectedId={selectedDiagnosticId}
+            onSelectId={setSelectedDiagnosticId}
+            onDiagnosticsLoaded={setDiagnosticSpecs}
+          />
         )}
     </PanelShell>
   );

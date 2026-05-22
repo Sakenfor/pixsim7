@@ -16,10 +16,12 @@ applies via the diagnostic route.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import shlex
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
@@ -36,11 +38,35 @@ from .base import (
 
 _UPGRADABLE_TYPES = {"phase", "observation", "transition", "summary"}
 _SCAN_DIRS = ("tools", "scripts")
+_SUMMARY_MAX = 72
 
 
-def _discover_scripts() -> tuple[str, ...]:
+@dataclass(frozen=True)
+class _ScriptMeta:
+    """Discovered metadata for one allowlisted script."""
+
+    path: str  # repo-relative posix path; the stable select value
+    summary: str  # first line of the module docstring (may be "")
+    has_apply: bool  # source declares a ``--apply`` flag (dry-run by default)
+
+
+def _extract_summary(text: str) -> str:
+    """First non-empty docstring line, truncated. Empty on parse failure."""
+    try:
+        doc = ast.get_docstring(ast.parse(text))
+    except (SyntaxError, ValueError):
+        return ""
+    if not doc:
+        return ""
+    first = doc.strip().splitlines()[0].strip()
+    if len(first) > _SUMMARY_MAX:
+        first = first[: _SUMMARY_MAX - 1].rstrip() + "…"
+    return first
+
+
+def _discover_scripts() -> tuple[_ScriptMeta, ...]:
     root = get_path_registry().repo_root
-    out: list[str] = []
+    out: list[_ScriptMeta] = []
     for sub in _SCAN_DIRS:
         d = root / sub
         if not d.exists():
@@ -48,11 +74,45 @@ def _discover_scripts() -> tuple[str, ...]:
         for p in sorted(d.glob("*.py")):
             if p.name.startswith("_") or p.name.startswith("."):
                 continue
-            out.append(p.relative_to(root).as_posix())
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text, summary = "", ""
+            else:
+                summary = _extract_summary(text)
+            out.append(
+                _ScriptMeta(
+                    path=p.relative_to(root).as_posix(),
+                    summary=summary,
+                    has_apply="--apply" in text,
+                )
+            )
     return tuple(out)
 
 
-_ALLOWED: tuple[str, ...] = _discover_scripts()
+def _option_label(m: _ScriptMeta) -> str:
+    """Self-documenting select label. The path stays the leading token so
+    ``_parse_script_path`` can recover it (mirrors ``parse_select_*``)."""
+    parts = [m.path]
+    if m.has_apply:
+        parts.append("[--apply]")
+    if m.summary:
+        parts.append(f"— {m.summary}")
+    return " ".join(parts)
+
+
+def _parse_script_path(value: Any) -> str:
+    """Recover the repo-relative path from a select label (or a bare path)."""
+    if not value:
+        return ""
+    tokens = str(value).strip().split()
+    return tokens[0] if tokens else ""
+
+
+_SCRIPTS: tuple[_ScriptMeta, ...] = _discover_scripts()
+_META_BY_PATH: dict[str, _ScriptMeta] = {m.path: m for m in _SCRIPTS}
+_ALLOWED: frozenset[str] = frozenset(_META_BY_PATH)
+_OPTIONS: list[str] = [_option_label(m) for m in _SCRIPTS]
 
 
 class ShellScriptDiagnostic(Diagnostic):
@@ -71,10 +131,24 @@ class ShellScriptDiagnostic(Diagnostic):
                 name="script",
                 kind="select",
                 label="Script",
-                default=(_ALLOWED[0] if _ALLOWED else ""),
-                options=list(_ALLOWED),
+                default=(_OPTIONS[0] if _OPTIONS else ""),
+                options=list(_OPTIONS),
                 required=True,
-                description="Path relative to repo root (allowlisted from tools/ and scripts/).",
+                description=(
+                    "Allowlisted from tools/ and scripts/. Label shows the "
+                    "docstring summary; [--apply] marks scripts that default "
+                    "to dry-run."
+                ),
+            ),
+            DiagnosticParam(
+                name="apply",
+                kind="bool",
+                label="Apply (disable dry-run)",
+                default=False,
+                description=(
+                    "Append --apply for scripts that support it. Ignored "
+                    "(with a warning) for scripts that don't declare the flag."
+                ),
             ),
             DiagnosticParam(
                 name="args",
@@ -105,8 +179,9 @@ class ShellScriptDiagnostic(Diagnostic):
         def now() -> float:
             return loop.time() - t0
 
-        script = str(params.get("script") or "").strip()
+        script = _parse_script_path(params.get("script"))
         args_raw = str(params.get("args") or "")
+        apply = bool(params.get("apply"))
         grace = max(0.0, parse_select_float(params.get("kill_grace_s"), 5.0))
 
         if script not in _ALLOWED:
@@ -136,6 +211,25 @@ class ShellScriptDiagnostic(Diagnostic):
                 {"message": f"Failed to parse args: {exc}"},
             )
             return
+
+        # Translate the dry-run/apply toggle into a flag, but only for scripts
+        # that actually declare --apply, and never duplicate a hand-typed one.
+        meta = _META_BY_PATH.get(script)
+        if apply:
+            if meta is not None and not meta.has_apply:
+                yield DiagnosticEvent(
+                    now(),
+                    "log",
+                    {
+                        "level": "warning",
+                        "message": (
+                            f"{script} has no --apply flag; ignoring the "
+                            "Apply toggle (running as-is)."
+                        ),
+                    },
+                )
+            elif "--apply" not in args:
+                args = [*args, "--apply"]
 
         yield DiagnosticEvent(now(), "phase", {"phase": "starting"})
         yield DiagnosticEvent(
@@ -261,6 +355,7 @@ class ShellScriptDiagnostic(Diagnostic):
             {
                 "script": script,
                 "args": args,
+                "applied": apply and "--apply" in args,
                 "exit_code": rc,
                 "stdout_lines": stdout_lines,
                 "stderr_lines": stderr_lines,

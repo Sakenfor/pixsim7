@@ -166,3 +166,6 @@ site-docs/
 .coverage
 importtime-*.txt
 suspicious-scan*.csv
+
+# Backfill progress-cursor state (per-machine, not source)
+tools/.*.cursor.json

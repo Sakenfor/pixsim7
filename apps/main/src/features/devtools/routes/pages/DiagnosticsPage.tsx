@@ -15,7 +15,7 @@
  * panel-sized container, so route + panel share one source of truth.
  */
 import { SidebarContentLayout, type SidebarContentLayoutSection, useTheme } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { isAdminUser } from '@lib/auth';
@@ -173,7 +173,23 @@ function ParamField({
  * either a full-screen route wrapper (`DiagnosticsPage`) or a
  * panel-sized container (the dockable workspace panel).
  */
-export function DiagnosticsView() {
+export interface DiagnosticsViewProps {
+  /** Hide the built-in diagnostic-picker sidebar (the parent provides nav). */
+  hideSidebar?: boolean;
+  /** Controlled selected diagnostic id. Omit for internal (route) state. */
+  selectedId?: string | null;
+  /** Selection-change callback — required when `selectedId` is controlled. */
+  onSelectId?: (id: string | null) => void;
+  /** Fired with the loaded specs so a parent can build its own nav. */
+  onDiagnosticsLoaded?: (specs: DiagnosticSpec[]) => void;
+}
+
+export function DiagnosticsView({
+  hideSidebar = false,
+  selectedId: controlledSelectedId,
+  onSelectId,
+  onDiagnosticsLoaded,
+}: DiagnosticsViewProps = {}) {
   const currentUser = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(currentUser);
   const { theme: variant } = useTheme();
@@ -183,7 +199,21 @@ export function DiagnosticsView() {
   const initialDiagnosticId = searchParams.get('id');
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticSpec[] | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(initialDiagnosticId);
+  // Selection is controlled when the parent passes `selectedId`; otherwise the
+  // view owns it (standalone route). Both paths funnel through `setSelectedId`.
+  const isControlled = controlledSelectedId !== undefined;
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(initialDiagnosticId);
+  const selectedId = isControlled ? controlledSelectedId : internalSelectedId;
+  const setSelectedId = useCallback(
+    (id: string | null) => {
+      if (isControlled) onSelectId?.(id);
+      else setInternalSelectedId(id);
+    },
+    [isControlled, onSelectId],
+  );
+  // Keep the loaded-callback in a ref so it never re-triggers the fetch effect.
+  const onDiagnosticsLoadedRef = useRef(onDiagnosticsLoaded);
+  onDiagnosticsLoadedRef.current = onDiagnosticsLoaded;
   const [params, setParams] = useState<Record<string, unknown>>({});
   const [paramsByDiagnosticId, setParamsByDiagnosticId] = useState<Record<string, Record<string, unknown>>>({});
   const [recentRuns, setRecentRuns] = useState<DiagnosticRunSummary[]>([]);
@@ -271,7 +301,12 @@ export function DiagnosticsView() {
   // Initial load.
   useEffect(() => {
     if (!isAdmin) return;
-    void listDiagnostics().then(setDiagnostics).catch((e) => setSubmitError(String(e)));
+    void listDiagnostics()
+      .then((specs) => {
+        setDiagnostics(specs);
+        onDiagnosticsLoadedRef.current?.(specs);
+      })
+      .catch((e) => setSubmitError(String(e)));
     void listDiagnosticRuns().then(setRecentRuns).catch(() => {});
   }, [isAdmin]);
 
@@ -379,21 +414,7 @@ export function DiagnosticsView() {
     );
   }
 
-  return (
-    <div className="h-full w-full bg-neutral-950 text-neutral-100">
-      <SidebarContentLayout
-        sections={diagnosticSections}
-        activeSectionId={selectedId ?? ''}
-        onSelectSection={(id) => setSelectedId(id)}
-        sidebarTitle={<span className="truncate text-sm">Diagnostics</span>}
-        sidebarWidth="w-56"
-        variant={variant}
-        collapsible
-        expandedWidth={224}
-        persistKey="testing-diagnostics-sidebar"
-        className="h-full bg-neutral-950 text-neutral-100"
-        contentClassName="overflow-y-auto"
-      >
+  const bodyContent = (
         <div className="space-y-4 p-6">
           <header>
             <h1 className="text-lg font-semibold text-neutral-100">Testing - Diagnostics</h1>
@@ -536,6 +557,34 @@ export function DiagnosticsView() {
             )}
           </section>
         </div>
+  );
+
+  // Embedded (e.g. inside Test Overview): the parent owns the picker nav, so
+  // render just the scrollable body. Standalone route: keep the own sidebar.
+  if (hideSidebar) {
+    return (
+      <div className="h-full w-full overflow-y-auto bg-neutral-950 text-neutral-100">
+        {bodyContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full bg-neutral-950 text-neutral-100">
+      <SidebarContentLayout
+        sections={diagnosticSections}
+        activeSectionId={selectedId ?? ''}
+        onSelectSection={(id) => setSelectedId(id)}
+        sidebarTitle={<span className="truncate text-sm">Diagnostics</span>}
+        sidebarWidth="w-56"
+        variant={variant}
+        collapsible
+        expandedWidth={224}
+        persistKey="testing-diagnostics-sidebar"
+        className="h-full bg-neutral-950 text-neutral-100"
+        contentClassName="overflow-y-auto"
+      >
+        {bodyContent}
       </SidebarContentLayout>
     </div>
   );
