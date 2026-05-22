@@ -1,4 +1,5 @@
 """Content pack management endpoints (list, manifests, reload, inventory, adopt, purge)."""
+import logging
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +8,8 @@ from pixsim7.backend.main.api.dependencies import get_db, require_admin
 from pixsim7.backend.main.domain.user import User
 from .schemas import ContentPackMatrixManifestResponse
 from .router import router
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("/meta/content-packs", response_model=List[str])
@@ -18,26 +21,81 @@ async def list_content_packs():
     return discover_content_packs()
 
 
-@router.get("/meta/content-packs/manifests", response_model=List[ContentPackMatrixManifestResponse])
-async def list_content_pack_manifests(
-    pack: Optional[str] = Query(None, description="Optional pack name filter"),
-):
-    """List optional content-pack manifest files with Block Matrix query presets."""
+def _collect_pack_manifests(packs: List[str]) -> tuple[list[dict], list[dict]]:
+    """Lenient parse across packs → (manifests, issues).
+
+    Per-preset fault isolation: one invalid preset is dropped (recorded in
+    ``issues``) without losing the rest of its pack or 500ing the endpoint that
+    drives the Prompt Library / Block Matrix panels.
+    """
     from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
         CONTENT_PACKS_DIR,
-        discover_content_packs,
-        parse_manifests,
+        parse_manifests_with_issues,
     )
 
-    packs = [pack] if pack else discover_content_packs()
-    manifests: List[ContentPackMatrixManifestResponse] = []
+    manifests: list[dict] = []
+    issues: list[dict] = []
     for pack_name in packs:
         content_dir = CONTENT_PACKS_DIR / pack_name
         if not content_dir.exists() or not content_dir.is_dir():
             continue
-        for raw in parse_manifests(content_dir, pack_name=pack_name):
-            manifests.append(ContentPackMatrixManifestResponse(**raw))
-    return manifests
+        try:
+            pack_manifests, pack_issues = parse_manifests_with_issues(
+                content_dir, pack_name=pack_name
+            )
+        except Exception:
+            # The lenient parser records validation errors as issues; reaching
+            # here means a truly unexpected failure (e.g. an unreadable file).
+            # Never let one pack 500 the whole endpoint.
+            logger.exception("Unexpected error parsing manifests for pack %r", pack_name)
+            continue
+        manifests.extend(pack_manifests)
+        issues.extend(pack_issues)
+
+    if issues:
+        logger.warning(
+            "Skipped %d invalid content-pack manifest preset(s); "
+            "see GET /meta/content-packs/manifest-issues for details",
+            len(issues),
+        )
+    return manifests, issues
+
+
+@router.get("/meta/content-packs/manifests", response_model=List[ContentPackMatrixManifestResponse])
+async def list_content_pack_manifests(
+    pack: Optional[str] = Query(None, description="Optional pack name filter"),
+):
+    """List optional content-pack manifest files with Block Matrix query presets.
+
+    Invalid presets are skipped (not fatal); inspect them via
+    GET /meta/content-packs/manifest-issues.
+    """
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        discover_content_packs,
+    )
+
+    packs = [pack] if pack else discover_content_packs()
+    manifests, _issues = _collect_pack_manifests(packs)
+    return [ContentPackMatrixManifestResponse(**raw) for raw in manifests]
+
+
+@router.get("/meta/content-packs/manifest-issues")
+async def list_content_pack_manifest_issues(
+    pack: Optional[str] = Query(None, description="Optional pack name filter"),
+):
+    """Manifest presets that failed validation and were skipped by /manifests.
+
+    Surfaces what the Block Matrix / Content Map panels would otherwise miss —
+    e.g. a preset whose row/col axis references an unregistered tag key. Each
+    issue: ``{pack_name, source, preset_index, preset_label, error}``.
+    """
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        discover_content_packs,
+    )
+
+    packs = [pack] if pack else discover_content_packs()
+    _manifests, issues = _collect_pack_manifests(packs)
+    return {"issue_count": len(issues), "issues": issues}
 
 
 @router.post("/meta/content-packs/reload")

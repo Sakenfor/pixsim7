@@ -13,8 +13,29 @@ package promptpacks
 //                        < latin.pose.body.arcus_corporis_invitat
 //
 // pose_type tag: arch / lean_forward / lean_back / lean_lateral /
-//                open / present / recline / extend
+//                open / present / recline
 // stance_quality tag: held / presented / settled / transitional
+
+// Only pose_type + stance_quality are registered: they are the matrix-preset
+// axes below and so must resolve in prompt_block_tags. body_region stays an
+// unregistered variant tag (it is never a matrix row/col, and registering it
+// here would conflict with the canonical #BodyRegionValues in schema_v1.cue).
+tag_registry: #TagRegistryV1 & {
+	pose_type: {
+		label:          "Pose Type"
+		description:    "Held body position the phrase describes: lumbar arch, lean, lateral weight shift, open chest, pelvic presentation, recline."
+		allowed_values: ["arch", "lean_forward", "lean_back", "lean_lateral", "open", "present", "recline"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	stance_quality: {
+		label:          "Stance Quality"
+		description:    "Temporal quality of the held pose: settled, held, transitional, or presented."
+		allowed_values: ["held", "transitional", "settled", "presented"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
 
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"

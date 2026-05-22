@@ -183,19 +183,30 @@ const NON_VALUE_REGISTRY_FIELDS = [
   'status',
 ] as const;
 
+// CUE prints this exact stderr line when `-e <expr>` targets an absent name.
+// Any other CUE failure (constraint conflict, eval/syntax error) means the
+// pack DID declare tag_registry but it's broken — and that must surface, not
+// be silently dropped (otherwise the pack quietly leaves the registry and
+// only resurfaces hours later as a 500 on /content-packs/manifests).
+const TAG_REGISTRY_MISSING_RE = /reference "tag_registry" not found/;
+
 function extractTagRegistryFromPack(
   pack: { id: string; cueSource: string }
 ): Record<string, JsonObject> | null {
   // tag_registry is an optional sibling of `pack` and `manifest` at the cue
-  // file's top level. cue export errors when the expression doesn't resolve;
-  // catch and treat as "not declared". A real cue/syntax error would already
-  // have surfaced when the per-pack lint exported `pack` earlier, so we don't
-  // mask significant failures here.
+  // file's top level. Treat ONLY "reference not found" as "not declared";
+  // every other failure must propagate.
   let raw: unknown;
   try {
     raw = runCueExportJson(pack.cueSource, 'tag_registry');
-  } catch {
-    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (TAG_REGISTRY_MISSING_RE.test(msg)) {
+      return null;
+    }
+    throw new Error(
+      `[tag_registry] ${pack.id}: failed to evaluate tag_registry in ${pack.cueSource}\n${msg}`
+    );
   }
   if (!isRecord(raw)) return null;
   const out: Record<string, JsonObject> = {};

@@ -344,6 +344,23 @@ package promptpacks
 
 // ── Pack ───────────────────────────────────────────────────────────────
 
+tag_registry: #TagRegistryV1 & {
+	captive_state: {
+		label:          "Captive State"
+		description:    "Behavior of the held subject: still, struggling, wriggling, feigning (compliance), or playing."
+		allowed_values: ["feigning", "playing", "still", "struggling", "wriggling"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	anchor_point: {
+		label:          "Anchor Point"
+		description:    "Anatomical anchor of the scruff/hold: nape, jaw, throat, or head."
+		allowed_values: ["head", "jaw", "nape", "throat"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_canine_scruff_dynamics"

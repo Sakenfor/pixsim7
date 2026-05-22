@@ -260,82 +260,161 @@ def iter_pack_manifest_sources(content_dir: Path) -> List[Path]:
     return sorted(set(sources))
 
 
-def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]]:
-    """Parse optional content-pack manifests for matrix query presets."""
+def _parse_preset(
+    raw: Any,
+    *,
+    src: Path,
+    index: int,
+    seen_preset_labels: Dict[str, int],
+    family_schemas: Dict[str, Any],
+    known_tag_keys: frozenset[str],
+) -> Dict[str, Any]:
+    """Validate + normalize a single matrix preset. Raises ManifestValidationError.
+
+    ``seen_preset_labels`` is read for duplicate detection and written only on
+    full success — so a preset that fails late validation does not reserve its
+    label (matters for lenient parsing, invisible to strict parsing since any
+    failure raises immediately).
+    """
+    if not isinstance(raw, dict):
+        raise ManifestValidationError(f"{src}: matrix_presets[{index}] must be an object")
+
+    label = _required_non_empty_string(
+        value=raw.get("label"),
+        path=src,
+        section="matrix_presets",
+        index=index,
+        field="label",
+    )
+    if label in seen_preset_labels:
+        raise ManifestValidationError(
+            f"{src}: matrix_presets[{index}].label '{label}' duplicates "
+            f"matrix_presets[{seen_preset_labels[label]}].label"
+        )
+
+    query = raw.get("query")
+    if not isinstance(query, dict):
+        raise ManifestValidationError(
+            f"{src}: matrix_presets[{index}].query must be an object"
+        )
+
+    row_key = query.get("row_key")
+    col_key = query.get("col_key")
+    if not isinstance(row_key, str) or not row_key.strip():
+        raise ManifestValidationError(
+            f"{src}: matrix_presets[{index}].query.row_key must be a non-empty string"
+        )
+    if not isinstance(col_key, str) or not col_key.strip():
+        raise ManifestValidationError(
+            f"{src}: matrix_presets[{index}].query.col_key must be a non-empty string"
+        )
+
+    normalized_query = normalize_manifest_query(query=query, src=src, preset_index=index)
+    validate_manifest_query_registry(
+        query=normalized_query,
+        src=src,
+        preset_index=index,
+        family_schemas=family_schemas,
+        known_tag_keys=known_tag_keys,
+    )
+    validate_manifest_query_family_axes(
+        query=normalized_query,
+        src=src,
+        preset_index=index,
+        family_schemas=family_schemas,
+    )
+    seen_preset_labels[label] = index
+    return {"label": label, "query": normalized_query}
+
+
+def _manifest_issue(
+    *,
+    pack_name: str,
+    content_dir: Path,
+    src: Path,
+    error: BaseException,
+    preset_index: int | None = None,
+    preset_label: str | None = None,
+) -> Dict[str, Any]:
+    return {
+        "pack_name": pack_name,
+        "source": str(src.relative_to(content_dir).as_posix()),
+        "preset_index": preset_index,
+        "preset_label": preset_label,
+        "error": str(error),
+    }
+
+
+def _safe_preset_label(raw: Any) -> str | None:
+    if isinstance(raw, dict):
+        label = raw.get("label")
+        if isinstance(label, str) and label.strip():
+            return label.strip()
+    return None
+
+
+def _parse_manifests_core(
+    content_dir: Path, *, pack_name: str, lenient: bool
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Shared manifest parser. Strict mode raises on the first invalid preset;
+    lenient mode skips invalid presets/sources and records them in ``issues``."""
     sources = iter_pack_manifest_sources(content_dir)
+    manifests: List[Dict[str, Any]] = []
+    issues: List[Dict[str, Any]] = []
     if not sources:
-        return []
+        return manifests, issues
 
     family_schemas = load_prompt_block_family_schemas()
     known_tag_keys = load_prompt_block_tag_keys()
 
-    manifests: List[Dict[str, Any]] = []
     seen_manifest_ids: Dict[str, Path] = {}
 
     for src in sources:
-        data = _load_yaml(src)
-        if not isinstance(data, dict):
-            raise ManifestValidationError(f"{src}: manifest must be an object")
+        try:
+            data = _load_yaml(src)
+            if not isinstance(data, dict):
+                raise ManifestValidationError(f"{src}: manifest must be an object")
 
-        matrix_presets = data.get("matrix_presets")
-        if matrix_presets is None:
+            matrix_presets = data.get("matrix_presets")
+            if matrix_presets is None:
+                continue
+            if not isinstance(matrix_presets, list):
+                raise ManifestValidationError(f"{src}: matrix_presets must be a list")
+        except ManifestValidationError as exc:
+            if not lenient:
+                raise
+            issues.append(_manifest_issue(pack_name=pack_name, content_dir=content_dir, src=src, error=exc))
             continue
-        if not isinstance(matrix_presets, list):
-            raise ManifestValidationError(f"{src}: matrix_presets must be a list")
 
         parsed_presets: List[Dict[str, Any]] = []
         seen_preset_labels: Dict[str, int] = {}
 
         for index, raw in enumerate(matrix_presets):
-            if not isinstance(raw, dict):
-                raise ManifestValidationError(f"{src}: matrix_presets[{index}] must be an object")
-
-            label = _required_non_empty_string(
-                value=raw.get("label"),
-                path=src,
-                section="matrix_presets",
-                index=index,
-                field="label",
-            )
-            if label in seen_preset_labels:
-                raise ManifestValidationError(
-                    f"{src}: matrix_presets[{index}].label '{label}' duplicates "
-                    f"matrix_presets[{seen_preset_labels[label]}].label"
+            try:
+                parsed_presets.append(
+                    _parse_preset(
+                        raw,
+                        src=src,
+                        index=index,
+                        seen_preset_labels=seen_preset_labels,
+                        family_schemas=family_schemas,
+                        known_tag_keys=known_tag_keys,
+                    )
                 )
-            seen_preset_labels[label] = index
-
-            query = raw.get("query")
-            if not isinstance(query, dict):
-                raise ManifestValidationError(
-                    f"{src}: matrix_presets[{index}].query must be an object"
+            except ManifestValidationError as exc:
+                if not lenient:
+                    raise
+                issues.append(
+                    _manifest_issue(
+                        pack_name=pack_name,
+                        content_dir=content_dir,
+                        src=src,
+                        error=exc,
+                        preset_index=index,
+                        preset_label=_safe_preset_label(raw),
+                    )
                 )
-
-            row_key = query.get("row_key")
-            col_key = query.get("col_key")
-            if not isinstance(row_key, str) or not row_key.strip():
-                raise ManifestValidationError(
-                    f"{src}: matrix_presets[{index}].query.row_key must be a non-empty string"
-                )
-            if not isinstance(col_key, str) or not col_key.strip():
-                raise ManifestValidationError(
-                    f"{src}: matrix_presets[{index}].query.col_key must be a non-empty string"
-                )
-
-            normalized_query = normalize_manifest_query(query=query, src=src, preset_index=index)
-            validate_manifest_query_registry(
-                query=normalized_query,
-                src=src,
-                preset_index=index,
-                family_schemas=family_schemas,
-                known_tag_keys=known_tag_keys,
-            )
-            validate_manifest_query_family_axes(
-                query=normalized_query,
-                src=src,
-                preset_index=index,
-                family_schemas=family_schemas,
-            )
-            parsed_presets.append({"label": label, "query": normalized_query})
+                continue
 
         # Header fields (id/title/description/version/category) are validated
         # by the shared extractor in pack_manifest_header so per-source metadata
@@ -345,14 +424,20 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
             extract_header_fields,
         )
 
-        header = extract_header_fields(data=data, src=src)
-        manifest_id = header["id"]
-        if manifest_id is not None:
-            if manifest_id in seen_manifest_ids:
-                raise ManifestValidationError(
-                    f"{src}: manifest id '{manifest_id}' already defined in {seen_manifest_ids[manifest_id]}"
-                )
-            seen_manifest_ids[manifest_id] = src
+        try:
+            header = extract_header_fields(data=data, src=src)
+            manifest_id = header["id"]
+            if manifest_id is not None:
+                if manifest_id in seen_manifest_ids:
+                    raise ManifestValidationError(
+                        f"{src}: manifest id '{manifest_id}' already defined in {seen_manifest_ids[manifest_id]}"
+                    )
+                seen_manifest_ids[manifest_id] = src
+        except ManifestValidationError as exc:
+            if not lenient:
+                raise
+            issues.append(_manifest_issue(pack_name=pack_name, content_dir=content_dir, src=src, error=exc))
+            continue
 
         manifests.append(
             {
@@ -366,4 +451,25 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
             }
         )
 
+    return manifests, issues
+
+
+def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]]:
+    """Parse optional content-pack manifests for matrix query presets.
+
+    Strict: raises ManifestValidationError on the first invalid preset/source.
+    For per-preset fault isolation use ``parse_manifests_with_issues``.
+    """
+    manifests, _ = _parse_manifests_core(content_dir, pack_name=pack_name, lenient=False)
     return manifests
+
+
+def parse_manifests_with_issues(
+    content_dir: Path, *, pack_name: str
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Lenient parse: skip invalid presets/sources, returning (valid_manifests, issues).
+
+    Each issue is a dict ``{pack_name, source, preset_index, preset_label, error}``.
+    A single bad preset no longer drops the whole pack or 500s the endpoint.
+    """
+    return _parse_manifests_core(content_dir, pack_name=pack_name, lenient=True)

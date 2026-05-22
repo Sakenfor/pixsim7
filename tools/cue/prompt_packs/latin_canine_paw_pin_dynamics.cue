@@ -341,6 +341,23 @@ package promptpacks
 
 // ── Pack ───────────────────────────────────────────────────────────────
 
+tag_registry: #TagRegistryV1 & {
+	paw_target: {
+		label:          "Paw Target"
+		description:    "Anatomical/object target of the paw pin."
+		allowed_values: ["ankle", "forearm", "garment", "hair", "hand", "hip", "shoulder", "wrist"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	claim_type: {
+		label:          "Claim Type"
+		description:    "Function of the paw placement: press (force down), block (prevent motion), anchor (rest weight), or mark (claim without restraint)."
+		allowed_values: ["anchor", "block", "mark", "press"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_canine_paw_pin_dynamics"

@@ -59,6 +59,7 @@ from pixsim7.backend.main.services.prompt.block.content_pack_manifests import (
     iter_pack_manifest_sources as _iter_pack_manifest_sources_impl,
     normalize_manifest_query as _normalize_manifest_query_impl,
     parse_manifests as _parse_manifests_impl,
+    parse_manifests_with_issues as _parse_manifests_with_issues_impl,
     validate_manifest_query_family_axes as _validate_manifest_query_family_axes_impl,
     validate_manifest_query_registry as _validate_manifest_query_registry_impl,
 )
@@ -711,6 +712,12 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
         return _parse_manifests_impl(content_dir, pack_name=pack_name)
     except ManifestValidationError as exc:
         raise ContentPackValidationError(str(exc)) from exc
+
+
+def parse_manifests_with_issues(content_dir: Path, *, pack_name: str):
+    """Lenient parse — returns (valid_manifests, issues) and never raises on a
+    bad preset. See content_pack_manifests.parse_manifests_with_issues."""
+    return _parse_manifests_with_issues_impl(content_dir, pack_name=pack_name)
 
 
 def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:

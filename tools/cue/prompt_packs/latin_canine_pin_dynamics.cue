@@ -312,6 +312,16 @@ package promptpacks
 
 // ── Pack ───────────────────────────────────────────────────────────────
 
+tag_registry: #TagRegistryV1 & {
+	canine_archetype: {
+		label:          "Canine Archetype"
+		description:    "Canine archetype the phrase casts: catulus (pup), canis (dog), lupus (wolf), molossus (mastiff), grex (pack), or generic."
+		allowed_values: ["canis", "catulus", "generic", "grex", "lupus", "molossus"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_canine_pin_dynamics"

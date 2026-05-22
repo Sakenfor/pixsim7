@@ -365,6 +365,23 @@ package promptpacks
 
 // ── Pack ───────────────────────────────────────────────────────────────
 
+tag_registry: #TagRegistryV1 & {
+	mouth_target: {
+		label:          "Mouth Target"
+		description:    "Anatomical target of the mouth/jaw contact."
+		allowed_values: ["ankle", "collarbone", "finger", "forearm", "hair", "hand", "neck", "shoulder", "wrist"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	bite_state: {
+		label:          "Bite State"
+		description:    "Pressure tier of the bite: open cradle, held lightly, closed without pressure, warning pressure, or scoring."
+		allowed_values: ["closed_no_pressure", "held_lightly", "open_cradle", "scoring", "warning_pressure"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_canine_mouthing_dynamics"

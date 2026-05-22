@@ -10,6 +10,7 @@ import yaml
 from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
     ContentPackValidationError,
     parse_manifests,
+    parse_manifests_with_issues,
 )
 
 
@@ -833,5 +834,79 @@ def test_parse_manifests_category_non_string_raises() -> None:
         )
         with pytest.raises(ContentPackValidationError, match="category must be a string"):
             parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ── Lenient parsing (parse_manifests_with_issues) ────────────────────────────
+
+def test_lenient_skips_invalid_preset_keeps_valid_one() -> None:
+    """One invalid preset is dropped + recorded; sibling valid preset survives."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "x",
+                "matrix_presets": [
+                    {"label": "Good", "query": {"row_key": "role", "col_key": "tag:beat_axis"}},
+                    {"label": "Bad", "query": {"row_key": "tag:__definitely_not_registered__", "col_key": "role"}},
+                ],
+            },
+        )
+        manifests, issues = parse_manifests_with_issues(root, pack_name="testpack")
+        assert len(manifests) == 1
+        labels = [p["label"] for p in manifests[0]["matrix_presets"]]
+        assert labels == ["Good"]
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue["pack_name"] == "testpack"
+        assert issue["preset_index"] == 1
+        assert issue["preset_label"] == "Bad"
+        assert "__definitely_not_registered__" in issue["error"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_lenient_valid_manifest_yields_no_issues() -> None:
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "x",
+                "matrix_presets": [
+                    {"label": "Good", "query": {"row_key": "role", "col_key": "tag:beat_axis"}},
+                ],
+            },
+        )
+        manifests, issues = parse_manifests_with_issues(root, pack_name="testpack")
+        assert len(manifests) == 1
+        assert issues == []
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_lenient_skipped_preset_label_does_not_block_duplicate_later() -> None:
+    """A skipped (failed) preset must not reserve its label for dup detection."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "id": "x",
+                "matrix_presets": [
+                    {"label": "Dup", "query": {"row_key": "tag:__nope__", "col_key": "role"}},
+                    {"label": "Dup", "query": {"row_key": "role", "col_key": "tag:beat_axis"}},
+                ],
+            },
+        )
+        manifests, issues = parse_manifests_with_issues(root, pack_name="testpack")
+        # First "Dup" fails on the unregistered key (not on duplication); the
+        # second "Dup" is then accepted because the failed one didn't reserve it.
+        assert len(manifests) == 1
+        assert [p["label"] for p in manifests[0]["matrix_presets"]] == ["Dup"]
+        assert len(issues) == 1
+        assert issues[0]["preset_index"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)

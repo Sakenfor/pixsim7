@@ -11,6 +11,23 @@ package promptpacks
 // variables.  `proximity` tag (near / intimate / contact) describes the
 // implied spatial relationship.
 
+tag_registry: #TagRegistryV1 & {
+	sense: {
+		label:          "Sense"
+		description:    "Sensory modality the phrase emphasizes: auditory, tactile, or thermal."
+		allowed_values: ["auditory", "tactile", "thermal"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	proximity: {
+		label:          "Proximity"
+		description:    "Distance tier of the breath: near, intimate (very close), or contact (touching)."
+		allowed_values: ["contact", "intimate", "near"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_breath_proximity"

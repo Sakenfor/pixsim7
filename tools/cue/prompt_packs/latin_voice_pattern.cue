@@ -14,6 +14,16 @@ package promptpacks
 // New axis: voice_type (moan / sigh / gasp / murmur / cry) identifies the
 // quality of the sound rather than its temporal pattern.
 
+tag_registry: #TagRegistryV1 & {
+	voice_type: {
+		label:          "Voice Type"
+		description:    "Voicing of the phrase: cry, gasp, moan, murmur, sigh."
+		allowed_values: ["cry", "gasp", "moan", "murmur", "sigh"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_voice_pattern"

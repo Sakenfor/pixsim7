@@ -280,6 +280,23 @@ package promptpacks
 
 // ── Pack ───────────────────────────────────────────────────────────────
 
+tag_registry: #TagRegistryV1 & {
+	modality: {
+		label:          "Modality"
+		description:    "Sensory/behavioral modality of the canine dynamic: breath, gaze, posture, scent, tactile, visual, vocal."
+		allowed_values: ["breath", "gaze", "posture", "tactile", "vocal"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+	canine_archetype: {
+		label:          "Canine Archetype"
+		description:    "Canine archetype the phrase casts: catulus (pup), canis (dog), lupus (wolf), molossus (mastiff), grex (pack), or generic."
+		allowed_values: ["catulus", "generic"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_canine_submission_dynamics"

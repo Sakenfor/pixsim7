@@ -10,6 +10,16 @@ package promptpacks
 // processus, virga, membra genitalia).  Poetic variants draw on the Lucretian
 // tradition of semina vitae and natural generative mystery.
 
+tag_registry: #TagRegistryV1 & {
+	descriptor_type: {
+		label:          "Descriptor Type"
+		description:    "Whether the phrase describes morphology (form) or function (purpose)."
+		allowed_values: ["function", "morphology"]
+		applies_to: [{role: "modifier", category: "latin_enhancer"}]
+		status: "active"
+	}
+}
+
 pack: #PromptBlockPackV1 & {
 	version:      "1.0.0"
 	package_name: "latin_repro_organ"
