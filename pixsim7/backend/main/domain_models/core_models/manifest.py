@@ -36,6 +36,7 @@ manifest = DomainModelManifest(
         "pixsim7.backend.main.domain.providers.models.provider_instance_config",
         "pixsim7.backend.main.domain.scene",
         "pixsim7.backend.main.domain.log_entry",
+        "pixsim7.backend.main.domain.diagnostics",
         "pixsim7.backend.main.domain.system_config",
         "pixsim7.backend.main.domain.docs.models",
         "pixsim7.backend.main.domain.platform.agent_profile",

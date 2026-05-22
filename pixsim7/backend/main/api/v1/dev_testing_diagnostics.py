@@ -163,16 +163,16 @@ async def run_diagnostic(
 
 @router.get("/runs", summary="List recent diagnostic runs")
 async def list_runs(_: CurrentAdminUser, limit: int = Query(25, ge=1, le=200)) -> dict[str, Any]:
-    runs = diagnostic_run_manager.list_recent(limit=limit)
-    return {"runs": [r.to_summary() for r in runs], "total": len(runs)}
+    runs = await diagnostic_run_manager.list_summaries(limit=limit)
+    return {"runs": runs, "total": len(runs)}
 
 
 @router.get("/runs/{run_id}", summary="Get a single diagnostic run with its event log")
 async def get_run(run_id: str, _: CurrentAdminUser) -> dict[str, Any]:
-    run = diagnostic_run_manager.get(run_id)
-    if run is None:
+    detail = await diagnostic_run_manager.get_detail(run_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail=f"Unknown run '{run_id}'")
-    return run.to_detail()
+    return detail
 
 
 @router.post("/runs/{run_id}/cancel", summary="Cancel a running diagnostic")
@@ -212,8 +212,21 @@ async def stream_run(
 
     run = diagnostic_run_manager.get(run_id)
     if run is None:
+        # Not active in memory — replay from the durable store if we have it
+        # (run finished earlier, possibly on another client or before a reload).
+        # The persisted event list already includes the terminal event, so the
+        # client renders the finished run, then we close.
+        detail = await diagnostic_run_manager.get_detail(run_id)
         await websocket.accept()
-        await websocket.send_json({"type": "error", "message": f"Unknown run '{run_id}'"})
+        if detail is None:
+            await websocket.send_json({"type": "error", "message": f"Unknown run '{run_id}'"})
+            await websocket.close()
+            return
+        await websocket.send_json(
+            {"type": "connected", "run_id": run_id, "status": detail.get("status")}
+        )
+        for event in detail.get("events", []):
+            await websocket.send_json(event)
         await websocket.close()
         return
 
