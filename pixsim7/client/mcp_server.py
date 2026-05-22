@@ -343,8 +343,15 @@ def _parse_scope() -> tuple[str | None, set[str]]:
     return None, ids
 
 
-async def _fetch_contracts() -> list[dict]:
-    """Fetch contracts from meta API. Returns empty list on failure."""
+async def _fetch_contracts() -> list[dict] | None:
+    """Fetch contracts from meta API.
+
+    Returns the contract list on success (possibly empty), or ``None`` on
+    failure (non-200 / exception). The ``None`` vs ``[]`` distinction matters:
+    ``_init_tools`` must not freeze a *failed* fetch for the process lifetime,
+    or the agent permanently loses every dynamic tool. ``[]`` is a legitimate
+    (cacheable) result; ``None`` means "retry next time".
+    """
     try:
         token = _get_token()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -357,7 +364,7 @@ async def _fetch_contracts() -> list[dict]:
         resp = await client.get("/api/v1/meta/contracts", params=params, headers=headers)
         if resp.status_code != 200:
             print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
-            return []
+            return None
         data = resp.json()
         contracts = data.get("contracts", [])
         if contract_ids:
@@ -366,7 +373,7 @@ async def _fetch_contracts() -> list[dict]:
         return contracts
     except Exception as e:
         print(f"[pixsim-mcp] Failed to fetch meta contracts: {e}", file=sys.stderr)
-        return []
+        return None
 
 
 MCP_GROUPED = os.environ.get("PIXSIM_MCP_GROUPED", "1").strip() in ("1", "true", "yes")
@@ -456,8 +463,17 @@ async def _init_tools() -> None:
     if _initialized:
         return
 
-    contracts = await _fetch_contracts()
+    fetched = await _fetch_contracts()
+    fetch_failed = fetched is None
+    contracts = fetched or []
     _contracts_cache = contracts
+
+    # Rebuild from scratch on every (re)attempt so a prior failed attempt's
+    # escape-hatch tool isn't duplicated when we retry after a transient
+    # backend outage.
+    _dynamic_tools.clear()
+    _dynamic_routes.clear()
+    _tool_aliases.clear()
     seen_tool_names: set[str] = set()
 
     if MCP_GROUPED:
@@ -571,7 +587,20 @@ async def _init_tools() -> None:
         },
     ))
 
-    _initialized = True
+    # Only freeze the result when the fetch actually succeeded. Caching a
+    # failed fetch (backend briefly unavailable during boot/restart, or a
+    # 401 before the token settles) would deterministically strip every
+    # dynamic tool — including the fundamental plans_management /
+    # project_files core contracts — for the entire process lifetime. Leaving
+    # _initialized False lets the next tools/list retry and self-heal.
+    if not fetch_failed:
+        _initialized = True
+    else:
+        print(
+            "[pixsim-mcp] Contract fetch failed; serving escape hatch only "
+            "and will retry on next tools/list",
+            file=sys.stderr,
+        )
     mode = "grouped" if MCP_GROUPED else "fine-grained"
     print(
         f"[pixsim-mcp] Loaded {len(_dynamic_tools) - 1} tools from "
@@ -1785,8 +1814,17 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _get_expired_token_claims() -> tuple[str, dict]:
-    """Read the current (possibly expired) token and decode its claims."""
-    expired = API_TOKEN or ""
+    """Read the current (possibly expired) token and decode its claims.
+
+    For HTTP transport the expiring credential is usually forwarded per
+    request (``Authorization`` header -> ``_request_token`` contextvar), so
+    prefer that first. Fall back to process/file sources for STDIO mode.
+    """
+    req_token = _request_token.get()
+    if isinstance(req_token, str) and req_token.strip():
+        expired = req_token.strip()
+    else:
+        expired = API_TOKEN or ""
     if API_TOKEN_FILE:
         try:
             with open(API_TOKEN_FILE, "r") as f:
@@ -1815,6 +1853,7 @@ async def _try_refresh_token() -> str | None:
     profile_id = (
         claims.get("profile_id")
         or claims.get("agent_id")
+        or _normalize_profile_id(_request_profile_id.get())
         or _resolved_profile_id  # from auto-registration
     )
 
