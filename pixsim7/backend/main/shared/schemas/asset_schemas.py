@@ -121,6 +121,8 @@ class AssetSearchRequest(BaseModel):
     embedder_id: str | None = Field(None, description="Embedder space to search in; defaults to user's primary")
 
     prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
+    prompt_family_id: UUID | None = Field(None, description="Filter by prompt family ID (all versions of a prompt)")
+    input_assets_key: str | None = Field(None, description="Filter by input-assets key (assets sharing the same input-asset set)")
 
     group_by: AssetGroupBy | None = Field(None, description="Group key to filter assets by (source, generation, prompt, sibling)")
     group_key: str | None = Field(
@@ -166,9 +168,13 @@ class AssetResponse(BaseModel):
     source_generation_id: Optional[int] = None
     operation_type: Optional[str] = None
     reproducible_hash: Optional[str] = None
+    # Grouping key for "same input assets" siblings (sorted source-asset-id set).
+    input_assets_key: Optional[str] = None
     # Prompt version reference (FK -> prompt_versions.id). Stable across prompt
     # text tweaks; the cohort key for "same prompt" grouping/navigation.
     prompt_version_id: Optional[str] = None
+    # Prompt family (denormalized) — cohort key for "same prompt (all versions)".
+    prompt_family_id: Optional[str] = None
 
     # Storage keys (source of truth for file locations)
     stored_key: Optional[str] = None
@@ -230,7 +236,7 @@ class AssetResponse(BaseModel):
     parent_asset_id: Optional[int] = None
     version_message: Optional[str] = None
 
-    @field_validator("version_family_id", "prompt_version_id", mode="before")
+    @field_validator("version_family_id", "prompt_version_id", "prompt_family_id", mode="before")
     @classmethod
     def _coerce_uuid_to_str(cls, v: Any) -> Optional[str]:
         if v is None:
@@ -242,6 +248,14 @@ class AssetResponse(BaseModel):
 
     # Lineage: whether any other asset lists this one as its source/parent (computed at response build time)
     has_children: bool = False
+
+    # Sibling counts (computed at response build time, user-scoped, include-self).
+    # same_inputs_count: assets sharing this asset's input-asset set (Asset.input_assets_key).
+    # same_prompt_count: assets sharing this asset's prompt family (PromptVersion.family_id).
+    # 0 when not applicable (no inputs / no prompt linkage). Frontend hides the
+    # badge below 2. See plan media-card-sibling-badges.
+    same_inputs_count: int = 0
+    same_prompt_count: int = 0
 
     # Artificial-extend lineage (computed from media_metadata.generation_context.artificial_extend)
     # When present, asset was produced via the "extend via last-frame i2v" flow.

@@ -925,8 +925,32 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
   if (asset.sourceGenerationId) {
     variants.push({ id: 'generation', label: 'Same generation', icon: 'sparkles', filters: { source_generation_id: asset.sourceGenerationId } });
   }
+  if (asset.inputAssetsKey) {
+    variants.push({ id: 'input-assets', label: 'Same input assets', icon: 'link', filters: { input_assets_key: asset.inputAssetsKey } });
+  }
+  if (asset.promptVersionId) {
+    variants.push({ id: 'prompt-version', label: 'Same prompt version', icon: 'prompt', filters: { prompt_version_id: asset.promptVersionId } });
+  }
+  if (asset.promptFamilyId) {
+    variants.push({ id: 'prompt-family', label: 'Same prompt (all versions)', icon: 'messageSquare', filters: { prompt_family_id: asset.promptFamilyId } });
+  }
   if (asset.createdAt) {
-    variants.push({ id: 'neighborhood', label: 'Around this time', icon: 'clock', filters: { created_to: asset.createdAt, sort: 'new' } });
+    // Centered ±12h window so "around" actually spans both sides of the pivot.
+    // Previously this filtered with only `created_to`, which silently dropped
+    // everything created AFTER the pivot — same shape of asymmetry as the
+    // input-slot prev/next chevrons (see plan `media-card-input-time-nav`).
+    const pivotMs = new Date(asset.createdAt).getTime();
+    const HALF_WINDOW_MS = 12 * 60 * 60 * 1000;
+    variants.push({
+      id: 'neighborhood',
+      label: 'Around this time',
+      icon: 'clock',
+      filters: {
+        created_from: new Date(pivotMs - HALF_WINDOW_MS).toISOString(),
+        created_to: new Date(pivotMs + HALF_WINDOW_MS).toISOString(),
+        sort: 'new',
+      },
+    });
   }
 
   const threshold = useMediaSettingsStore.getState().visualSimilarityThreshold;
@@ -939,8 +963,10 @@ function buildMoreFromVariants(asset: AssetModel): { id: string; label: string; 
   return variants;
 }
 
-/** Open a floating mini-gallery panel with variants for switching. */
-function openRelatedGallery(asset: AssetModel, variantId: string) {
+/** Open a floating mini-gallery panel with variants for switching.
+ *  Exported so other surfaces (e.g. media-card sibling-count badges) can open
+ *  the same panel in the same style. */
+export function openRelatedGallery(asset: AssetModel, variantId: string) {
   const variants = buildMoreFromVariants(asset);
   const active = variants.find((v) => v.id === variantId);
   if (!active) return;

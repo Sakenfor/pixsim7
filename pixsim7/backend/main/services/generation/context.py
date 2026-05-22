@@ -106,6 +106,26 @@ def extract_source_asset_ids(inputs: list) -> List[int]:
     return ids
 
 
+def compute_input_assets_key(source_asset_ids: List[int]) -> Optional[str]:
+    """
+    Stable key grouping outputs that share the same *set* of input assets,
+    regardless of order, duplication, or any other generation params.
+
+    Returns a SHA256 hex digest over the sorted, de-duplicated id set, or
+    None when there are no input assets (text-to-* generations, uploads).
+
+    Looser than `Generation.reproducible_hash` (which also folds in params):
+    this groups "all rolls that started from these same inputs".
+    """
+    unique = sorted({int(i) for i in source_asset_ids if i is not None})
+    if not unique:
+        return None
+    import hashlib
+
+    raw = ",".join(str(i) for i in unique).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 # Keys that get stripped from the stamped `params` blob before it lands on
 # `asset.media_metadata["generation_context"]`.  They are either:
 #   * rebuildable at read time (composition_assets ← source_asset_ids), or

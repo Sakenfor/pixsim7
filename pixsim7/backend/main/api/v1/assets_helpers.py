@@ -10,6 +10,7 @@ from pixsim7.backend.main.shared.actor import resolve_effective_user_id
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.services.asset.lineage import AssetLineageService
+from pixsim7.backend.main.services.asset.sibling_counts import AssetSiblingCountService
 from pixsim7.backend.main.services.tag import TagAssignment
 from pixsim7.backend.main.domain.assets.tag import AssetTag
 
@@ -75,6 +76,10 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     ar.tags = [TagSummary.model_validate(tag) for tag in tags]
     has_children_map = await AssetLineageService(db).has_children_map([asset.id])
     ar.has_children = has_children_map.get(asset.id, False)
+    counts = await AssetSiblingCountService(db).counts_map([asset], asset.user_id)
+    asset_counts = counts.get(asset.id, {})
+    ar.same_inputs_count = asset_counts.get("same_inputs", 0)
+    ar.same_prompt_count = asset_counts.get("same_prompt", 0)
 
     return ar
 
@@ -91,6 +96,16 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
     tags_map = await asset_tags.get_tags_batch(ids)
     has_children_map = await AssetLineageService(db).has_children_map(ids)
 
+    # Sibling counts are user-scoped; group by owner so a mixed-owner list
+    # (e.g. admin views) still counts each asset within its own library.
+    sibling_svc = AssetSiblingCountService(db)
+    by_owner: dict[int, List] = {}
+    for asset in assets:
+        by_owner.setdefault(asset.user_id, []).append(asset)
+    sibling_counts: dict = {}
+    for owner_user_id, owned in by_owner.items():
+        sibling_counts.update(await sibling_svc.counts_map(owned, owner_user_id))
+
     responses: List[AssetResponse] = []
     for asset in assets:
         ar = AssetResponse.model_validate(asset)
@@ -98,6 +113,9 @@ async def build_asset_responses_with_tags(assets, db: DatabaseSession) -> List[A
         ar.recovered = _compute_recovered(asset)
         ar.tags = [TagSummary.model_validate(tag) for tag in tags_map.get(asset.id, [])]
         ar.has_children = has_children_map.get(asset.id, False)
+        asset_counts = sibling_counts.get(asset.id, {})
+        ar.same_inputs_count = asset_counts.get("same_inputs", 0)
+        ar.same_prompt_count = asset_counts.get("same_prompt", 0)
         responses.append(ar)
 
     return responses

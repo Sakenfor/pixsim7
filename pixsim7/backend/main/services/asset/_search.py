@@ -365,6 +365,14 @@ class AssetSearchMixin:
         if prompt_version_id is not None:
             query = query.where(Asset.prompt_version_id == prompt_version_id)
 
+        # Prompt family filter (denormalized on asset) — "same prompt, all versions"
+        if sf.prompt_family_id is not None:
+            query = query.where(Asset.prompt_family_id == sf.prompt_family_id)
+
+        # Input-assets-key filter — "same input assets" siblings
+        if sf.input_assets_key is not None:
+            query = query.where(Asset.input_assets_key == sf.input_assets_key)
+
         # Lineage filters - use EXISTS subqueries to avoid row duplication
         if operation_type is not None:
             query = query.where(

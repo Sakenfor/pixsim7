@@ -345,6 +345,13 @@ export interface PresetCapabilities {
   /** Whether to skip the tags tooltip (e.g., for focused workflows) */
   skipTagsTooltip?: boolean;
 
+  /**
+   * Show the top-left sibling-count badges (same-input-assets + same-prompt-family).
+   * Information-dense surfaces only — enabled on Default and Detailed presets.
+   * Each badge self-hides at render time when its count is below 2.
+   */
+  showsSiblingBadges?: boolean;
+
   /** Whether buttons should be visible on touch devices (default: inherit from visibility) */
   touchFriendlyButtons?: boolean;
 
@@ -360,6 +367,16 @@ export interface PresetCapabilities {
   /** Hide the upload button inside the generation button group pill only.
    *  Use this for compact/gallery contexts where assets are already in the library. */
   skipPillUpload?: boolean;
+
+  /**
+   * Show hover-revealed prev/next chevrons at the card's vertical-center edges
+   * for time-axis navigation through "assets created around this one."
+   * Intended for the **input-slot** MediaCard variant (e.g. AssetPanelGrid).
+   * Gallery / picker cards must leave this off.
+   *
+   * Plan: `media-card-input-time-nav` (sub-plan of `media-card-surface`).
+   */
+  showsInputTimeNav?: boolean;
 
   /**
    * Preset-scoped gesture behavior overrides for MediaCard interactions.

@@ -11,7 +11,6 @@ import { createBindingFromValue } from '@lib/editing-core';
 import type { OverlayPreset, OverlayConfiguration, OverlayWidget } from '../types';
 import { createBadgeWidget, BADGE_PRIORITY } from '../widgets/BadgeWidget';
 import { createButtonWidget } from '../widgets/ButtonWidget';
-import { createPanelWidget } from '../widgets/PanelWidget';
 
 // Helper to tag preset-defined widgets for linting/debugging
 function asMediaCardPresetWidget(widget: OverlayWidget): OverlayWidget {
@@ -31,7 +30,7 @@ export const defaultPreset: OverlayPreset = {
   icon: '⚖️',
   category: 'media',
   // Default preset enables the generation button group for all cards
-  capabilities: { showsGenerationMenu: true, showsQuickGenerate: true },
+  capabilities: { showsGenerationMenu: true, showsQuickGenerate: true, showsSiblingBadges: true },
   configuration: {
     id: 'media-card-default',
     name: 'Default Media Card',
@@ -94,58 +93,30 @@ export const compactPreset: OverlayPreset = {
 /**
  * Detailed / Information Heavy
  *
- * Maximum information display with metadata panel on hover.
+ * Maximum information display. Keeps the generation button group as a
+ * fundamental card control and surfaces extra provenance through the top-left
+ * sibling-count badges (same-input-assets + same-prompt-family) rather than a
+ * panel — the old bottom-center metadata panel collided with the button group
+ * at the same anchor, so it was removed. See plan media-card-sibling-badges.
  */
 export const detailedPreset: OverlayPreset = {
   id: 'media-card-detailed',
   name: 'Detailed',
   icon: '📋',
   category: 'media',
-  // Detailed uses all runtime widgets plus its own metadata panel
-  capabilities: {},
+  capabilities: {
+    showsGenerationMenu: true,
+    showsQuickGenerate: true,
+    showsSiblingBadges: true,
+  },
   configuration: {
     id: 'media-card-detailed',
     name: 'Detailed Media Card',
     description: 'Maximum information with all available data',
     spacing: 'normal',
-    widgets: [
-      // Runtime provides primary icon, status, duration, etc.
-      // This preset adds a metadata panel for extra information.
-
-      // Use bottom-center to avoid overlapping MediaCard's runtime
-      // upload/tag widgets at bottom-left.
-      asMediaCardPresetWidget(
-        createPanelWidget({
-          id: 'metadata-panel',
-          position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
-          visibility: { trigger: 'hover-container' },
-          titleBinding: createBindingFromValue('title', 'Metadata'),
-          variant: 'glass',
-          contentBinding: createBindingFromValue('content', (data) => {
-            // Format duration as MM:SS
-            const formatDuration = (sec?: number) => {
-              if (!sec) return null;
-              const mins = Math.floor(sec / 60);
-              const secs = Math.floor(sec % 60);
-              return `${mins}:${secs.toString().padStart(2, '0')}`;
-            };
-            const duration = formatDuration(data.durationSec);
-
-            return (
-              <div className="space-y-1 text-xs">
-                <div>Provider: {data.providerId}</div>
-                <div>Type: {data.mediaType}</div>
-                {duration && <div>Duration: {duration}</div>}
-                {data.createdAt && (
-                  <div>Created: {new Date(data.createdAt).toLocaleDateString()}</div>
-                )}
-              </div>
-            );
-          }),
-          priority: 5,
-        }),
-      ),
-    ],
+    // All widgets come from the runtime set (primary icon, status, duration,
+    // generation button group, sibling-count badges, …).
+    widgets: [],
   },
 };
 

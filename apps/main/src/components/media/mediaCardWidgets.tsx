@@ -6,15 +6,17 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { Badge, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
+import { useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
+import { openRelatedGallery } from '@lib/dockview/contextMenu/actions/assetActions';
 import { createBindingFromValue } from '@lib/editing-core';
 import type { ModelFamilyInfo } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
+  createExpandableBadge,
   BADGE_SLOT,
   BADGE_PRIORITY,
   createVideoScrubWidget,
@@ -44,6 +46,7 @@ import {
 } from './mediaCardGeneration';
 import { buildMediaCardRuntimeWidgets } from './mediaCardRuntimeWidgetBuilder';
 import { useVideoMarksStore } from './videoMarksStore';
+
 
 // Re-export from split files for backwards compatibility
 export {
@@ -118,6 +121,13 @@ export interface MediaCardOverlayData {
   // Versioning
   /** Version number within a version family (null = standalone) */
   versionNumber?: number | null;
+  /** User-scoped, include-self count of assets sharing the same input-asset set.
+   *  0 when the asset had no input assets. Badge hidden below 2. */
+  sameInputsCount?: number;
+  /** User-scoped, include-self count of assets sharing the same prompt family.
+   *  0 when the asset has no prompt linkage. Badge hidden below 2. */
+  samePromptCount?: number;
+  onFilterByTagShortcut?: (tagSlug: string) => void;
   // Picker (CompactAssetCard merger) — read by createVideoScrubber per render.
   lockedTimestamp?: number;
   onLockTimestamp?: (timestamp: number | undefined) => void;
@@ -684,132 +694,147 @@ export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidg
 }
 
 /**
- * Create version badge (bottom-left) — shows "v3" when asset is part of a version family.
- * Returns null at render time for non-versioned assets.
+ * Create version badge (bottom-left) — shows "v3" when asset is part of a
+ * version family, hidden otherwise. Built on the canonical
+ * {@link createBadgeWidget} primitive (text variant + `visibleWhen`).
  */
 export function createVersionBadge(): OverlayWidget<MediaCardOverlayData> {
-  return {
+  return createBadgeWidget({
     id: 'version',
-    type: 'badge',
     ...BADGE_SLOT.bottomLeft,
     stackGroup: 'badges-bl',
-    visibility: { trigger: 'always', transition: 'none' },
+    variant: 'text',
+    color: 'blue',
+    className: '!bg-blue-900/70 !text-blue-200 text-[10px] font-medium backdrop-blur-sm',
     priority: BADGE_PRIORITY.background,
-    interactive: false,
-    render: (data: MediaCardOverlayData) => {
-      if (!data.versionNumber) return null;
-      return (
-        <Badge
-          color="blue"
-          className="cq-badge inline-flex items-center gap-1 !bg-blue-900/70 !text-blue-200 text-[10px] font-medium backdrop-blur-sm shadow-sm"
-        >
-          <span className="whitespace-nowrap">v{data.versionNumber}</span>
-        </Badge>
-      );
-    },
+    labelBinding: createBindingFromValue('label', (data) =>
+      data.versionNumber ? `v${data.versionNumber}` : '',
+    ),
+    visibleWhen: (data) => Boolean(data.versionNumber),
+  });
+}
+
+/** Dark, compact styling shared by the top-left sibling-count badges. */
+const SIBLING_BADGE_CLASS =
+  '!bg-black/65 !text-white text-[10px] font-medium backdrop-blur-sm';
+
+/**
+ * Sibling-count badge factory (top-left, below the primary media-type icon).
+ *
+ * Built on the canonical {@link createBadgeWidget} primitive — the single
+ * entry point for media-card badges (styling, stacking, hover wiggle, and the
+ * `visibleWhen` hide rule all live there). Gated to information-dense presets
+ * via the `showsSiblingBadges` capability (Default + Detailed); each badge
+ * self-hides below 2 via `visibleWhen` (a lone asset reading "1" is noise).
+ * Counts are user-scoped and include-self ("3" = this asset + two siblings).
+ *
+ * Anchor `top-left` + `stackGroup: 'badges-tl'` makes it auto-stack under the
+ * primary icon via the overlay flex layout — no hard-coded offsets. Plan:
+ * media-card-sibling-badges.
+ */
+function createSiblingCountBadge(opts: {
+  id: string;
+  icon: string;
+  priority: number;
+  /**
+   * Resolve which `buildMoreFromVariants` id to open in the mini-gallery, given
+   * the card's asset. Must match the grouping the count represents — return
+   * null to no-op (the badge shouldn't have been visible in that case).
+   */
+  resolveVariantId: (asset: MediaCardResolvedProps['contextMenuAsset']) => string | null;
+  getCount: (data: MediaCardOverlayData) => number;
+  tooltip: string;
+}): (props: MediaCardResolvedProps) => OverlayWidget<MediaCardOverlayData> | null {
+  return (props: MediaCardResolvedProps) => {
+    if (!props.presetCapabilities?.showsSiblingBadges) return null;
+    return createBadgeWidget({
+      id: opts.id,
+      ...BADGE_SLOT.topLeft,
+      variant: 'icon-text',
+      icon: opts.icon,
+      color: 'gray',
+      className: SIBLING_BADGE_CLASS,
+      priority: opts.priority,
+      labelBinding: createBindingFromValue('label', (data) => String(opts.getCount(data) ?? 0)),
+      visibleWhen: (data) => (opts.getCount(data) ?? 0) >= 2,
+      tooltip: opts.tooltip,
+      // Click opens the same mini-gallery the "More from…" context menu uses,
+      // filtered to exactly the assets this count represents. Being interactive
+      // also gives the badge the canonical hover wiggle automatically.
+      onClick: () => {
+        const variantId = opts.resolveVariantId(props.contextMenuAsset);
+        if (variantId) openRelatedGallery(props.contextMenuAsset, variantId);
+      },
+    });
   };
 }
 
-/** Upper bound before the warnings pill collapses to an aggregate count. */
-const WARNINGS_INLINE_THRESHOLD = 2;
+/** "Same input assets" badge — link icon + count of assets sharing the input set. */
+export const createSameInputsBadge = createSiblingCountBadge({
+  id: 'same-inputs',
+  icon: 'link',
+  priority: BADGE_PRIORITY.background,
+  resolveVariantId: () => 'input-assets',
+  getCount: (data) => data.sameInputsCount ?? 0,
+  tooltip: 'Assets that share these input assets',
+});
 
-function warningRingClass(severity: AssetWarning['severity']): string {
-  return severity === 'error' ? 'ring-red-500/90' : 'ring-amber-400/90';
+/**
+ * "Same prompt" badge — message-bubble icon + count of assets in the prompt
+ * family. The count groups by prompt family when available, else falls back to
+ * the exact prompt version — so the click must open the matching variant
+ * (`prompt-family` vs `prompt-version`), not always `prompt-family`.
+ */
+export const createSamePromptBadge = createSiblingCountBadge({
+  id: 'same-prompt',
+  icon: 'messageSquare',
+  // One below same-inputs so it stacks underneath within badges-tl.
+  priority: BADGE_PRIORITY.background - 1,
+  resolveVariantId: (asset) =>
+    asset?.promptFamilyId ? 'prompt-family' : asset?.promptVersionId ? 'prompt-version' : null,
+  getCount: (data) => data.samePromptCount ?? 0,
+  tooltip: 'Assets that share this prompt',
+});
+
+/** Ring color per indicator severity. `info` is non-warning provenance (e.g. recovered). */
+function indicatorRingClass(severity: AssetWarning['severity']): string {
+  if (severity === 'error') return 'ring-red-500/90';
+  if (severity === 'info') return 'ring-emerald-400/90';
+  return 'ring-amber-400/90';
 }
 
-function WarningChip({ warning, size = 4 }: { warning: AssetWarning; size?: 4 | 5 }) {
-  const dim = size === 5 ? 'w-5 h-5' : 'w-4 h-4';
-  const iconSize = size === 5 ? 11 : 9;
-  return (
-    <span
-      className={`inline-flex items-center justify-center ${dim} rounded-full bg-neutral-900/80 ring-2 ${warningRingClass(warning.severity)}`}
-      title={warning.tooltip}
-      aria-label={warning.tooltip}
-    >
-      <Icon name={warning.icon} size={iconSize} className="text-white" color="#fff" />
-    </span>
-  );
-}
-
-function WarningsBadgeContent({ warnings }: { warnings: AssetWarning[] }) {
-  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
-  const triggerRef = useRef<HTMLDivElement>(null);
-
-  if (warnings.length <= WARNINGS_INLINE_THRESHOLD) {
-    return (
-      <div className="cq-badge inline-flex items-center gap-0.5 rounded-full bg-black/60 backdrop-blur-sm shadow-sm px-1 py-0.5">
-        {warnings.map((w) => <WarningChip key={w.id} warning={w} />)}
-      </div>
-    );
-  }
-
-  // Overflow: one aggregate chip (highest-severity ring + count). Hover expands
-  // a portal listing every warning with its label.
-  const hasError = warnings.some((w) => w.severity === 'error');
-  const aggregateSeverity: AssetWarning['severity'] = hasError ? 'error' : 'warning';
-  const aggregateTooltip = `${warnings.length} warnings — hover for details`;
-
-  return (
-    <>
-      <div
-        ref={triggerRef}
-        {...handlers}
-        className="cq-badge inline-flex items-center gap-0.5 rounded-full bg-black/60 backdrop-blur-sm shadow-sm pl-1 pr-1.5 py-0.5"
-      >
-        <span
-          className={`inline-flex items-center justify-center w-4 h-4 rounded-full bg-neutral-900/80 ring-2 ${warningRingClass(aggregateSeverity)}`}
-          title={aggregateTooltip}
-          aria-label={aggregateTooltip}
-        >
-          <Icon name="alertTriangle" size={9} className="text-white" color="#fff" />
-        </span>
-        <span className="text-[10px] font-semibold text-white leading-none">{warnings.length}</span>
-      </div>
-      {isExpanded && (
-        <PortalFloat
-          anchor={triggerRef.current}
-          placement="top"
-          align="start"
-          offset={6}
-          onMouseEnter={handlers.onMouseEnter}
-          onMouseLeave={handlers.onMouseLeave}
-        >
-          <div className="min-w-[180px] max-w-[260px] rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-xl py-1 ring-1 ring-white/10">
-            {warnings.map((w) => (
-              <div key={w.id} className="flex items-start gap-2 px-2 py-1">
-                <WarningChip warning={w} size={5} />
-                <span className="text-[11px] leading-snug text-white/90">{w.tooltip}</span>
-              </div>
-            ))}
-          </div>
-        </PortalFloat>
-      )}
-    </>
-  );
+/** Rank so the lead chip shows the most urgent signal (error > warning > info). */
+function indicatorRank(severity: AssetWarning['severity']): number {
+  return severity === 'error' ? 2 : severity === 'warning' ? 1 : 0;
 }
 
 /**
- * Warnings badge (bottom-left) — clustered pill showing per-asset warning
- * icons (e.g. "no reusable last frame"). Up to {WARNINGS_INLINE_THRESHOLD}
- * render as inline chips; beyond that, collapses to a count + hover-expand
- * list so the pill never crowds the card.
+ * Indicator cluster badge (bottom-left) — built on the canonical
+ * {@link createExpandableBadge} primitive: a single aggregate chip for
+ * per-asset signals (provider-flagged warning, recovered-from-provider info,
+ * …) that wiggles on hover and hover-expands a list of every indicator.
+ * Folds in what was the standalone "recovered" pill; recovered arrives as an
+ * `info`-severity entry from {@link getAssetWarnings}.
  */
 export function createWarningsBadge(): OverlayWidget<MediaCardOverlayData> {
-  return {
+  return createExpandableBadge<MediaCardOverlayData>({
     id: 'warnings',
-    type: 'custom',
     ...BADGE_SLOT.bottomLeft,
     stackGroup: 'badges-bl',
-    visibility: { trigger: 'always', transition: 'none' },
     priority: BADGE_PRIORITY.important,
-    interactive: true,
-    handlesOwnInteraction: true,
-    render: (data: MediaCardOverlayData) => {
+    items: (data) => {
       const warnings = data.warnings;
-      if (!warnings || warnings.length === 0) return null;
-      return <WarningsBadgeContent warnings={warnings} />;
+      if (!warnings || warnings.length === 0) return [];
+      return [...warnings]
+        .sort((a, b) => indicatorRank(b.severity) - indicatorRank(a.severity))
+        .map((w) => ({
+          id: w.id,
+          icon: w.icon,
+          label: w.tooltip,
+          ringClass: indicatorRingClass(w.severity),
+        }));
     },
-  };
+  });
 }
 
 /**
@@ -1108,11 +1133,11 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const blurTimeoutRef = useRef<number>(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { results, loading, parsedQuery, hasExplicitNamespace } =
+  const { results, loading, parsedNamespace, parsedQuery, hasExplicitNamespace } =
     useTagAutocomplete(inputValue, { enabled: isExpanded && inputFocused, namespaceOverride: selectedNamespace });
 
   // Typed namespace (from colon syntax) takes priority over dropdown selection
-  const activeNamespace = hasExplicitNamespace ? typedNamespace : selectedNamespace;
+  const activeNamespace = hasExplicitNamespace ? parsedNamespace : selectedNamespace;
 
   // Clear blur timeout on unmount
   useEffect(() => () => window.clearTimeout(blurTimeoutRef.current), []);
@@ -1130,6 +1155,15 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     }
     setInputValue('');
   }, [addRecentTag, defaultTags, toggleDefaultTag]);
+
+  const handleFilterByTagShortcut = useCallback(
+    (slug: string, e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      data.onFilterByTagShortcut?.(slug);
+    },
+    [data],
+  );
 
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent card open
@@ -1252,28 +1286,41 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
                 const nsPrefix = colonIdx > 0 ? slug.slice(0, colonIdx + 1) : '';
                 const tagName = colonIdx > 0 ? slug.slice(colonIdx + 1) : slug;
                 return (
-                  <button
-                    key={slug}
-                    onClick={() => toggleDefaultTag(slug)}
-                    className={`
-                      w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-                      hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
-                      ${isActive ? 'text-accent font-medium' : 'text-neutral-700 dark:text-neutral-300'}
-                    `}
-                  >
-                    <span className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]
-                      ${isActive
-                        ? 'bg-accent border-accent text-accent-text'
-                        : 'border-neutral-300 dark:border-neutral-600'}`}
+                  <div key={slug} className="flex items-center px-2 gap-1">
+                    <button
+                      onClick={() => toggleDefaultTag(slug)}
+                      className={`
+                        flex-1 px-1 py-1.5 text-left text-sm flex items-center gap-2 rounded
+                        hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
+                        ${isActive ? 'text-accent font-medium' : 'text-neutral-700 dark:text-neutral-300'}
+                      `}
                     >
-                      {isActive && '✓'}
-                    </span>
-                    <Icon name="tag" size={12} className="shrink-0" />
-                    <span className="truncate">
-                      {nsPrefix && <span className="text-neutral-400 text-[10px]">{nsPrefix}</span>}
-                      {tagName}
-                    </span>
-                  </button>
+                      <span
+                        className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]
+                          ${isActive
+                            ? 'bg-accent border-accent text-accent-text'
+                            : 'border-neutral-300 dark:border-neutral-600'}`}
+                      >
+                        {isActive && '✓'}
+                      </span>
+                      <Icon name="tag" size={12} className="shrink-0" />
+                      <span className="truncate">
+                        {nsPrefix && <span className="text-neutral-400 text-[10px]">{nsPrefix}</span>}
+                        {tagName}
+                      </span>
+                    </button>
+                    {isActive && data.onFilterByTagShortcut && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleFilterByTagShortcut(slug, e)}
+                        className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded text-neutral-500 dark:text-neutral-400 hover:text-accent hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                        title={`Filter gallery by ${slug}`}
+                        aria-label={`Filter gallery by ${slug}`}
+                      >
+                        <Icon name="eye" size={12} className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -1466,5 +1513,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createQuickAddButton,
     createVersionBadge,
     createWarningsBadge,
+    createSameInputsBadge,
+    createSamePromptBadge,
   });
 }

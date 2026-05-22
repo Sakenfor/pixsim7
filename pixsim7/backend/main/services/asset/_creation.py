@@ -266,7 +266,9 @@ class AssetCreationMixin:
             source_generation_id=generation.id,
             operation_type=generation.operation_type.value if generation.operation_type else None,
             reproducible_hash=getattr(generation, 'reproducible_hash', None),
+            input_assets_key=self._compute_input_assets_key(generation),
             prompt_version_id=getattr(generation, 'prompt_version_id', None),
+            prompt_family_id=await self._resolve_prompt_family_id(generation),
             provider_uploads={submission.provider_id: provider_asset_id},
             media_metadata=metadata,
             prompt=prompt_text,
@@ -334,6 +336,28 @@ class AssetCreationMixin:
         if not isinstance(inputs, list):
             return []
         return extract_source_asset_ids(inputs)
+
+    @classmethod
+    def _compute_input_assets_key(cls, generation: Any) -> Optional[str]:
+        """Denormalized grouping key for "same input assets" sibling counts."""
+        from pixsim7.backend.main.services.generation.context import compute_input_assets_key
+
+        return compute_input_assets_key(cls._extract_input_asset_ids(generation))
+
+    async def _resolve_prompt_family_id(self, generation: Any) -> Optional[UUID]:
+        """Resolve the prompt family for "same prompt family" grouping.
+
+        Denormalized onto the asset so counts/filters need no join. Looks up the
+        generation's prompt version's family; returns None for one-off prompts
+        (no family) or generations without a prompt version.
+        """
+        prompt_version_id = getattr(generation, "prompt_version_id", None)
+        if not prompt_version_id:
+            return None
+        from pixsim7.backend.main.domain.prompt.models import PromptVersion
+
+        version = await self.db.get(PromptVersion, prompt_version_id)
+        return getattr(version, "family_id", None) if version else None
 
     @staticmethod
     def _extract_run_context(generation: Any) -> Optional[Dict[str, Any]]:

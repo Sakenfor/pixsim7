@@ -90,6 +90,8 @@ def _build_search_filters(request: AssetSearchRequest) -> AssetSearchFilters:
         has_children=request.has_children,
         asset_ids=request.asset_ids,
         prompt_version_id=request.prompt_version_id,
+        prompt_family_id=request.prompt_family_id,
+        input_assets_key=request.input_assets_key,
         group_by=request.group_by.value if isinstance(request.group_by, Enum) else request.group_by,
         group_key=request.group_key,
         similar_to=request.similar_to,

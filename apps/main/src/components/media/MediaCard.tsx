@@ -33,6 +33,7 @@ import {
 import { Icon } from '@lib/icons';
 import { useCapturedFrame } from '@lib/media/capturedFrameStore';
 import { useVideoActivationSlot } from '@lib/media/videoActivationPool';
+import { useIsCoarsePointer } from '@lib/ui/coarsePointer';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -117,6 +118,8 @@ export interface MediaCardBadgeConfig {
 
 export interface MediaCardRuntimeProps {
   onOpen?: (id: number) => void;
+  /** Gallery shortcut: focus the active gallery filters to a specific tag slug. */
+  onFilterByTagShortcut?: (tagSlug: string) => void;
   /** Hash status for primary icon ring (local folders duplicate detection) */
   hashStatus?: 'unique' | 'duplicate' | 'hashing';
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
@@ -343,6 +346,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     description,
     createdAt,
     onOpen,
+    onFilterByTagShortcut,
     providerStatus,
     overlayConfig: customOverlayConfig,
     customWidgets = [],
@@ -365,6 +369,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   );
   const pinCompareTarget = useMediaCompareTargetStore((state) => state.pinTarget);
   const [isCapabilityActive, setIsCapabilityActive] = useState(false);
+
+  // Touch tap-to-reveal: on coarse pointers there is no hover, so hover-gated
+  // overlays (the generation button group, etc.) are unreachable. The first tap
+  // reveals them (and is swallowed instead of opening the viewer); a second tap
+  // opens the viewer as usual; a tap outside the card hides them again.
+  const isCoarsePointer = useIsCoarsePointer();
+  const cardRootRef = useRef<HTMLDivElement | null>(null);
+  const [overlayRevealed, setOverlayRevealed] = useState(false);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({
@@ -662,6 +674,21 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     };
   }, [selectedPreset, resolved.presetCapabilities]);
 
+  // Only hijack the first tap when this card actually has hover-gated chrome
+  // worth revealing (the generation menu). Other cards keep one-tap open.
+  const canRevealOverlays = isCoarsePointer && !!presetCapabilities.showsGenerationMenu;
+
+  // Hide the revealed overlays when the user taps outside this card.
+  useEffect(() => {
+    if (!canRevealOverlays || !overlayRevealed) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (cardRootRef.current?.contains(e.target as Node | null)) return;
+      setOverlayRevealed(false);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown, true);
+  }, [canRevealOverlays, overlayRevealed]);
+
   // ── Gesture support ────────────────────────────────────────────────────
   const gesture = useCardGestures({
     id,
@@ -689,6 +716,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       return;
     }
     if (onOpen) {
+      setOverlayRevealed(false);
       onOpen(id);
     }
   };
@@ -971,6 +999,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     providerUploads: resolved.contextMenuAsset?.providerUploads,
     lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
     versionNumber: resolved.contextMenuAsset?.versionNumber,
+    sameInputsCount: resolved.contextMenuAsset?.sameInputsCount,
+    samePromptCount: resolved.contextMenuAsset?.samePromptCount,
+    onFilterByTagShortcut,
     lockedTimestamp: picker?.lockedTimestamp,
     onLockTimestamp: picker?.onLockTimestamp,
     onHoldUploadFrame: picker?.onHoldUploadFrame,
@@ -983,7 +1014,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     resolved.sourceGenerationId, resolved.hasGenerationContext,
     resolved.isFavorite, resolved.onToggleFavorite,
     resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
-    resolved.width, resolved.height, stableOnUploadToProvider,
+    resolved.width, resolved.height, stableOnUploadToProvider, onFilterByTagShortcut,
     picker?.lockedTimestamp, picker?.onLockTimestamp, picker?.onHoldUploadFrame,
     warnings,
   ]);
@@ -1012,6 +1043,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
   return (
     <div
+      ref={cardRootRef}
       className={wrapperClass}
       data-pixsim7="media-card"
       {...componentContextMenuAttrs}
@@ -1022,6 +1054,17 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         const nextTarget = event.relatedTarget;
         if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
           setIsCapabilityActive(false);
+        }
+      }}
+      // Touch first-tap reveals the hover-gated overlays instead of opening the
+      // viewer; the tap is swallowed (capture-phase) so neither the thumbnail's
+      // open handler nor the compact wrapper onClick fires. Subsequent taps pass
+      // through normally.
+      onClickCapture={(event) => {
+        if (canRevealOverlays && !overlayRevealed) {
+          event.stopPropagation();
+          event.preventDefault();
+          setOverlayRevealed(true);
         }
       }}
       onClick={isCompact ? layout?.onClick : undefined}
@@ -1036,6 +1079,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         configuration={overlayConfig}
         data={overlayData}
         className={layout?.fillHeight ? 'flex-1 min-h-0' : undefined}
+        forceHovered={overlayRevealed}
         customState={useMemo(() => ({
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,

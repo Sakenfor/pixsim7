@@ -54,6 +54,8 @@ class AssetSearchFilters:
     source_asset_id: Optional[int] = None
     sha256: Optional[str] = None
     prompt_version_id: Any = None
+    prompt_family_id: Any = None
+    input_assets_key: Optional[str] = None
     operation_type: Any = None
     has_parent: Optional[bool] = None
     has_children: Optional[bool] = None

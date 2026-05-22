@@ -71,6 +71,13 @@ export interface AssetModel {
   hasGenerationContext?: boolean;
   /** True when at least one other asset lists this one as its source/parent (via lineage or upload_context) */
   hasChildren?: boolean;
+  /** User-scoped, include-self count of assets sharing the same input-asset set
+   *  (Asset.input_assets_key). 0 when the asset had no input assets. */
+  sameInputsCount?: number;
+  /** User-scoped, include-self count of assets sharing the same prompt family
+   *  (PromptVersion.family_id; falls back to exact version for one-off prompts).
+   *  0 when the asset has no prompt linkage. */
+  samePromptCount?: number;
   /** True when this image was CDN-salvaged from a Pixverse false-filter / stuck-processing state */
   recovered?: boolean;
   storedKey?: string | null;
@@ -88,8 +95,12 @@ export interface AssetModel {
   prompt?: string | null;
   operationType?: string | null;
   reproducibleHash?: string | null;
+  /** Grouping key for "same input assets" siblings (sorted source-asset-id set). */
+  inputAssetsKey?: string | null;
   /** Prompt version FK — stable cohort key for "same prompt" grouping/nav. */
   promptVersionId?: string | null;
+  /** Prompt family (denormalized) — cohort key for "same prompt (all versions)". */
+  promptFamilyId?: string | null;
 
   /** When present, asset was produced via the "artificial extend" flow
    *  (extract a frame → image-to-video). Carries lineage back to the
@@ -196,6 +207,8 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     sourceGenerationId: response.source_generation_id,
     hasGenerationContext: response.has_generation_context ?? false,
     hasChildren: (response as any).has_children ?? false,
+    sameInputsCount: (response as any).same_inputs_count ?? 0,
+    samePromptCount: (response as any).same_prompt_count ?? 0,
     recovered: response.recovered ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
@@ -218,7 +231,9 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     prompt: (response as any).prompt ?? null,
     operationType: (response as any).operation_type ?? null,
     reproducibleHash: (response as any).reproducible_hash ?? null,
+    inputAssetsKey: (response as any).input_assets_key ?? null,
     promptVersionId: (response as any).prompt_version_id ?? null,
+    promptFamilyId: (response as any).prompt_family_id ?? null,
     artificialExtend: (response as any).artificial_extend ?? null,
 
     // Versioning fields

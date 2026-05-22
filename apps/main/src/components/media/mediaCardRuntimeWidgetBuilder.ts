@@ -24,6 +24,8 @@ interface MediaCardRuntimeWidgetFactories {
   createQuickAddButton: () => OverlayWidget<MediaCardOverlayData> | null;
   createVersionBadge: () => OverlayWidget<MediaCardOverlayData>;
   createWarningsBadge: () => OverlayWidget<MediaCardOverlayData>;
+  createSameInputsBadge: MediaCardWidgetFactory;
+  createSamePromptBadge: MediaCardWidgetFactory;
 }
 
 /**
@@ -51,6 +53,8 @@ export function buildMediaCardRuntimeWidgets(
     createQuickAddButton,
     createVersionBadge,
     createWarningsBadge,
+    createSameInputsBadge,
+    createSamePromptBadge,
   } = factories;
 
   const widgets = [
@@ -70,6 +74,8 @@ export function buildMediaCardRuntimeWidgets(
     createGenerationButtonGroup(props),
     createVersionBadge(),
     createWarningsBadge(),
+    createSameInputsBadge(props),
+    createSamePromptBadge(props),
   ];
 
   let result = widgets

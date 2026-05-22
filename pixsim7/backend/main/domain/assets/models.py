@@ -294,6 +294,17 @@ class Asset(SQLModel, table=True):
         sa_column=Column(String(64), index=True, nullable=True),
         description="Seed-agnostic hash for sibling discovery (same inputs + params)"
     )
+    input_assets_key: Optional[str] = Field(
+        default=None,
+        # No standalone index: access is always user-scoped, served by the
+        # composite partial index idx_asset_user_input_key below.
+        sa_column=Column(String(64), nullable=True),
+        description=(
+            "SHA over the sorted set of source asset IDs used to create this asset. "
+            "Groups outputs sharing the same input assets regardless of other params/seed "
+            "(looser than reproducible_hash). Null when the generation had no input assets."
+        ),
+    )
     prompt_version_id: Optional[UUID] = Field(
         default=None,
         sa_column=Column(
@@ -303,6 +314,18 @@ class Asset(SQLModel, table=True):
             nullable=True,
         ),
         description="Prompt version reference for prompt grouping"
+    )
+    prompt_family_id: Optional[UUID] = Field(
+        default=None,
+        # Denormalized from PromptVersion.family_id so "same prompt family"
+        # grouping/counts/filtering need no join. No DB FK (cross-domain).
+        # Access is user-scoped → composite partial index idx_asset_user_prompt_family.
+        sa_column=Column(PG_UUID(as_uuid=True), nullable=True),
+        description=(
+            "Prompt family reference (denormalized from the prompt version's family). "
+            "Groups outputs across all versions of the same prompt. Null for one-off "
+            "prompts not in a family and for non-generated assets."
+        ),
     )
 
     # ===== VERSIONING =====
@@ -355,6 +378,20 @@ class Asset(SQLModel, table=True):
         # Composite indexes for gallery filter queries
         Index("idx_asset_user_archived_kind", "user_id", "is_archived", "asset_kind"),
         Index("idx_asset_gallery_default", "user_id", "is_archived", "asset_kind", "searchable", "created_at"),
+        # User-scoped "same input assets" sibling-count grouping
+        Index(
+            "idx_asset_user_input_key",
+            "user_id",
+            "input_assets_key",
+            postgresql_where="input_assets_key IS NOT NULL",
+        ),
+        # User-scoped "same prompt family" sibling-count grouping + filter
+        Index(
+            "idx_asset_user_prompt_family",
+            "user_id",
+            "prompt_family_id",
+            postgresql_where="prompt_family_id IS NOT NULL",
+        ),
     )
 
     def model_post_init(self, __context: Any) -> None:

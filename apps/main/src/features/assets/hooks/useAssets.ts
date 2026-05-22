@@ -64,6 +64,10 @@ export type AssetFilters = {
 
   // Prompt version filter (UUID string)
   prompt_version_id?: string;
+  // Prompt family filter (UUID string) — "same prompt, all versions"
+  prompt_family_id?: string;
+  // Input-assets-key filter — "same input assets" siblings
+  input_assets_key?: string;
 
   // Sort options (backend fields)
   sort_by?: 'created_at' | 'file_size_bytes';
@@ -219,6 +223,8 @@ export function useAssets(options?: {
 
     // Prompt version filter
     prompt_version_id: filters.prompt_version_id || undefined,
+    prompt_family_id: filters.prompt_family_id || undefined,
+    input_assets_key: filters.input_assets_key || undefined,
 
     // Asset kind — surfaced explicitly so the live-prepend handler can compare
     // an inbound asset's kind against the active filter. Without this, kinds
