@@ -202,3 +202,53 @@ class TestToolInflightHeartbeat:
         heartbeats = [detail for evt, detail in progress if evt == "tool_running"]
         assert heartbeats, f"expected a tool_running heartbeat, got {progress}"
         assert any("pytest -q" in d and "s)" in d for d in heartbeats)
+
+
+class TestInactivityTimeoutMessage:
+    """When the subprocess goes silent past the inactivity budget, the raised
+    error must distinguish a stalled-after-tool-result hang (agent_idle — the
+    common upstream CLI/API hang) from a tool that was still running, and name
+    the last action so recurrences are triageable. See session.py:968.
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    @staticmethod
+    def _tool_result() -> dict:
+        return {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+
+    def test_agent_idle_after_tool_result_names_last_step_and_marks_stall(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # Tool runs and returns — then the agent goes silent (the
+                # e6bde4d4 scenario): tool_inflight is back to False, so only
+                # the flat inactivity budget guards the hang.
+                await s._response_queue.put(self._tool_use("ls foo"))
+                await asyncio.sleep(0.05)
+                await s._response_queue.put(self._tool_result())
+                # ...and nothing more.
+
+            feeder = asyncio.create_task(feed())
+            err: str | None = None
+            try:
+                await s.send_message("go", timeout=1)
+            except RuntimeError as e:
+                err = str(e)
+            feeder.cancel()
+            return err
+
+        msg = asyncio.run(_run())
+        assert msg is not None, "expected a RuntimeError on inactivity timeout"
+        assert "No response within 1s" in msg
+        # agent_idle hint, naming the last surfaced action.
+        assert "stalled" in msg
+        assert "ls foo" in msg

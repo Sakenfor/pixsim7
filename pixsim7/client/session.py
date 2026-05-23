@@ -964,8 +964,42 @@ class AgentCmdSession:
 
         except asyncio.TimeoutError:
             self.stats.errors += 1
+            # Capture timing/context BEFORE _mark_ready() clears _busy_*.
+            elapsed_total_s = (
+                int((datetime.now(timezone.utc) - self._busy_started_at).total_seconds())
+                if self._busy_started_at is not None
+                else None
+            )
+            last_action = self._busy_last_action
+            last_detail = self._busy_last_detail
+            # Two regimes collapse to this timeout: a tool was still running
+            # (long/blocking tool), vs. the agent went silent *after* its last
+            # tool result — a stalled model/CLI step with no tool to blame. The
+            # latter is invisible to the tool-inflight extend logic, so make it
+            # explicit here for triage (these read identically to the user
+            # otherwise, and recur for upstream CLI/API hangs).
+            stall_kind = "tool_inflight" if tool_inflight else "agent_idle"
+            self._log.warning(
+                "session_inactivity_timeout",
+                timeout_s=timeout,
+                stall_kind=stall_kind,
+                last_action=last_action,
+                last_detail=last_detail,
+                elapsed_total_s=elapsed_total_s,
+                partial_result_len=len(result_text),
+                cli_session=self.cli_session_id,
+            )
             self._mark_ready()
-            raise RuntimeError(f"No response within {timeout}s")
+            if tool_inflight:
+                hint = (
+                    f"a tool was still running ({last_detail or last_action or 'unknown tool'})"
+                )
+            else:
+                hint = (
+                    f"agent went silent after {last_detail or last_action or 'its last step'} "
+                    "— the model/CLI step appears stalled"
+                )
+            raise RuntimeError(f"No response within {timeout}s: {hint}")
         except asyncio.CancelledError:
             self._log.info("session_send_cancelled")
             raise
