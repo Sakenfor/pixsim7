@@ -103,6 +103,52 @@ async def test_spurious_reject_does_not_lower_cap():
 
 
 @pytest.mark.asyncio
+async def test_spurious_below_threshold_does_not_quarantine():
+    """A lone spurious reject (count below threshold) must NOT quarantine."""
+    state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=0)
+    p_load, p_save, p_rel, p_hint = _patches(state)
+    base = "pixsim7.backend.main.workers.worker_concurrency."
+    with p_load, p_save, p_rel, p_hint, patch(
+        base + "bump_spurious_concurrent_count", new_callable=AsyncMock, return_value=1,
+    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3):
+        result = await _adaptive_provider_concurrency_record_limit_error(
+            generation=_make_generation(),
+            account=_make_account(max_concurrent_jobs=8, current=1),
+            model="gemini-3.1-flash",
+            local_concurrency=1,
+            gen_logger=_NoopLogger(),
+        )
+
+    assert result["spurious"] is True
+    assert result["spurious_count"] == 1
+    assert result["quarantine_now"] is False  # below threshold -> no pause
+    assert result["cap_lowered"] is False
+
+
+@pytest.mark.asyncio
+async def test_spurious_at_threshold_quarantines():
+    """Reaching the spurious threshold for the same request triggers quarantine."""
+    state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=0)
+    p_load, p_save, p_rel, p_hint = _patches(state)
+    base = "pixsim7.backend.main.workers.worker_concurrency."
+    with p_load, p_save, p_rel, p_hint, patch(
+        base + "bump_spurious_concurrent_count", new_callable=AsyncMock, return_value=3,
+    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3):
+        result = await _adaptive_provider_concurrency_record_limit_error(
+            generation=_make_generation(),
+            account=_make_account(max_concurrent_jobs=8, current=1),
+            model="gemini-3.1-flash",
+            local_concurrency=1,
+            gen_logger=_NoopLogger(),
+        )
+
+    assert result["spurious"] is True
+    assert result["spurious_count"] == 3
+    assert result["quarantine_now"] is True
+    assert result["cap_lowered"] is False  # still never lowered on spurious
+
+
+@pytest.mark.asyncio
 async def test_genuine_reject_still_lowers_cap():
     """500044 while local (8) == configured cap (8) is genuine -> cap may lower."""
     state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=2)

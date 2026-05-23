@@ -1191,11 +1191,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                     # Discriminator A: a 500044 rejected while local concurrency is
                     # below the configured cap is physically impossible as a real
-                    # limit — it's a prompt-induced provider bug. Quarantine the
-                    # offending prompt (seed-agnostic) so sibling generations stop
-                    # hammering the provider and collapsing the learned cap. The
+                    # limit — it's a content-induced provider bug. Only quarantine
+                    # once the SAME request has tripped it enough times in a short
+                    # window (quarantine_now) — a lone transient reject must not
+                    # pause a prompt the user is actively iterating on. Quarantining
+                    # stops sibling generations from hammering the provider; the
                     # structured event below is what the Control Center surfaces.
-                    if adaptive_concurrency and adaptive_concurrency.get("spurious"):
+                    if adaptive_concurrency and adaptive_concurrency.get("quarantine_now"):
                         spurious_prompt_hash = adaptive_concurrency.get("prompt_group_hash")
                         await mark_prompt_concurrent_quarantined(
                             account.provider_id,
@@ -1212,6 +1214,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             operation_type=_get_operation_value(generation),
                             model=gen_model,
                             prompt_group_hash=spurious_prompt_hash,
+                            spurious_count=adaptive_concurrency.get("spurious_count"),
                             observed_local_concurrency=adaptive_concurrency.get(
                                 "observed_local_concurrency"
                             ),

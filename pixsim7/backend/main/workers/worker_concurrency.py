@@ -576,6 +576,71 @@ async def mark_prompt_concurrent_quarantined(
         return False
 
 
+# --- Spurious-reject evidence gate -----------------------------------------
+#
+# A single spurious 500044 is NOT enough to quarantine — the provider can emit
+# the odd transient reject, and over-quarantining locks out prompts the user is
+# actively iterating on.  We require N spurious rejects for the *same* request
+# within a short window before quarantining.  This mirrors the cap-lowering
+# threshold the old logic used (3 consecutive in-cap rejects), so quarantine
+# fires at roughly the same evidence point the cap *would* have been reduced —
+# but now scoped to the offending request instead of the whole account.  The
+# short TTL means isolated rejects decay before they accumulate; only a rapid
+# retry storm for one request (the actual bug signature) crosses the threshold.
+
+
+def _spurious_concurrent_quarantine_threshold() -> int:
+    return _settings_int("spurious_concurrent_quarantine_threshold", 3, minimum=1)
+
+
+def _spurious_concurrent_count_ttl_seconds() -> int:
+    return _settings_int("spurious_concurrent_count_ttl_seconds", 120, minimum=10)
+
+
+def _spurious_concurrent_count_key(provider_id: str, prompt_group_hash: str) -> str:
+    safe_provider = (provider_id or "unknown").strip().lower() or "unknown"
+    return f"generation:spurious_concurrent_count:{safe_provider}:{prompt_group_hash}"
+
+
+async def bump_spurious_concurrent_count(
+    provider_id: str,
+    prompt_group_hash: str | None,
+    *,
+    gen_logger=None,
+) -> int:
+    """Increment + return the recent spurious-reject count for a request key."""
+    if not prompt_group_hash:
+        return 0
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        key = _spurious_concurrent_count_key(provider_id, prompt_group_hash)
+        count = await redis_client.incr(key)
+        await redis_client.expire(key, _spurious_concurrent_count_ttl_seconds())
+        return max(0, int(count))
+    except Exception as e:
+        if gen_logger:
+            gen_logger.debug("spurious_concurrent_count_bump_failed", error=str(e))
+        return 0
+
+
+async def clear_spurious_concurrent_count(
+    provider_id: str,
+    prompt_group_hash: str | None,
+) -> None:
+    """Reset the spurious-reject streak for a request key (on a clean submit)."""
+    if not prompt_group_hash:
+        return
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        await redis_client.delete(_spurious_concurrent_count_key(provider_id, prompt_group_hash))
+    except Exception:
+        pass
+
+
 def seed_agnostic_prompt_group_hash(generation: Generation) -> str | None:
     """Seed-agnostic grouping hash over the full request content.
 
@@ -751,6 +816,19 @@ async def _adaptive_provider_concurrency_record_limit_error(
         if gen_logger:
             gen_logger.debug("prompt_group_hash_compute_failed", error=str(_hash_err))
 
+    # Evidence gate: only quarantine after N spurious rejects for the SAME
+    # request within a short window — a lone transient reject must not pause a
+    # prompt the user is actively iterating on.
+    spurious_count = 0
+    quarantine_now = False
+    if is_spurious and prompt_group_hash:
+        spurious_count = await bump_spurious_concurrent_count(
+            str(getattr(account, "provider_id", "") or ""),
+            prompt_group_hash,
+            gen_logger=gen_logger,
+        )
+        quarantine_now = spurious_count >= _spurious_concurrent_quarantine_threshold()
+
     previous_reject_level = _normalize_positive_int(state.get("consecutive_limit_rejects_level"), 0)
     if previous_reject_level == attempted_level:
         consecutive_rejects = max(0, int(state.get("consecutive_limit_rejects") or 0)) + 1
@@ -828,6 +906,8 @@ async def _adaptive_provider_concurrency_record_limit_error(
         "lower_after_consecutive_rejects": lower_after_rejects,
         "is_probe_level_reject": is_probe_level_reject,
         "spurious": is_spurious,
+        "spurious_count": spurious_count,
+        "quarantine_now": quarantine_now,
         "prompt_group_hash": prompt_group_hash,
         "cap_lowered": cap_lowered,
         "next_probe_at_ts": next_probe_at_ts,
@@ -849,6 +929,14 @@ async def _adaptive_provider_concurrency_record_submit_success(
     attempted_level_hint: int | None = None,
     gen_logger,
 ) -> None:
+    # A clean submit clears the spurious-reject streak for this request so a
+    # prompt that succeeds between transient rejects can't falsely escalate to
+    # quarantine.  Done regardless of adaptive state.
+    await clear_spurious_concurrent_count(
+        str(getattr(account, "provider_id", "") or ""),
+        seed_agnostic_prompt_group_hash(generation),
+    )
+
     if not _adaptive_provider_concurrency_enabled():
         return
 
