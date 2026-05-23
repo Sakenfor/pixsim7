@@ -48,9 +48,9 @@ function formatTokens(n: number): string {
 }
 
 function contextColor(pct: number): string {
-  if (pct >= 80) return 'text-red-400';
-  if (pct >= 60) return 'text-amber-400';
-  return 'text-emerald-400';
+  if (pct >= 80) return 'text-signal-error';
+  if (pct >= 60) return 'text-signal-warning';
+  return 'text-signal-success';
 }
 
 export function ContextBar({
@@ -84,7 +84,7 @@ export function ContextBar({
         <span
           key={`plan:${claim.planId}`}
           className={`inline-flex items-center gap-0.5 ${
-            claim.primary ? 'text-emerald-500' : 'text-emerald-500/60'
+            claim.primary ? 'text-signal-success' : 'text-signal-success/60'
           }`}
           title={
             (claim.planTitle ? `${claim.planTitle} (${claim.planId})` : claim.planId) +
@@ -102,7 +102,7 @@ export function ContextBar({
     chips.push(
       <span
         key="plan"
-        className="inline-flex items-center gap-0.5 text-emerald-500"
+        className="inline-flex items-center gap-0.5 text-signal-success"
         title={tab.planId}
       >
         <Icon name="clipboard" size={9} />
@@ -113,7 +113,7 @@ export function ContextBar({
 
   if (!tab.sessionId && sending) {
     chips.push(
-      <span key="context-pending" className="inline-flex items-center gap-0.5 text-blue-400" title="Waiting for first reply to establish session context">
+      <span key="context-pending" className="inline-flex items-center gap-0.5 text-signal-info" title="Waiting for first reply to establish session context">
         <Icon name="layers" size={9} />
         <span>context: pending</span>
       </span>,
@@ -137,7 +137,7 @@ export function ContextBar({
     } else {
       // Unknown window (Claude) — just show tokens used
       chips.push(
-        <span key="context" className="inline-flex items-center gap-0.5 text-blue-400" title={`${poolSession.total_tokens.toLocaleString()} tokens used`}>
+        <span key="context" className="inline-flex items-center gap-0.5 text-signal-info" title={`${poolSession.total_tokens.toLocaleString()} tokens used`}>
           <Icon name="layers" size={9} />
           <span>{used} tokens</span>
         </span>,
@@ -159,7 +159,7 @@ export function ContextBar({
     chips.push(
       <span
         key="response-lost"
-        className="inline-flex items-center gap-0.5 text-rose-400"
+        className="inline-flex items-center gap-0.5 text-signal-error"
         title="Server has your message but no assistant response is recorded. The reply may have been lost during agent processing or backend restart. 'check again' refetches the server transcript; 're-ask' re-sends your last question to the agent."
       >
         <Icon name="alertCircle" size={9} />
@@ -168,7 +168,7 @@ export function ContextBar({
           <button
             type="button"
             onClick={onRetry}
-            className="ml-1 underline hover:text-rose-300"
+            className="ml-1 underline hover:opacity-80"
           >
             re-ask
           </button>
@@ -177,7 +177,7 @@ export function ContextBar({
           <button
             type="button"
             onClick={onRecheck}
-            className="ml-1 underline hover:text-rose-300"
+            className="ml-1 underline hover:opacity-80"
           >
             check again
           </button>
@@ -188,7 +188,7 @@ export function ContextBar({
     chips.push(
       <span
         key="server-gap"
-        className="inline-flex items-center gap-0.5 text-amber-400"
+        className="inline-flex items-center gap-0.5 text-signal-warning"
         title={`${pendingServerMessages} assistant message${pendingServerMessages === 1 ? '' : 's'} exist on server but are not visible locally yet`}
       >
         <Icon name="alertTriangle" size={9} />
@@ -199,7 +199,7 @@ export function ContextBar({
     chips.push(
       <span
         key="server-diverged"
-        className="inline-flex items-center gap-0.5 text-amber-400"
+        className="inline-flex items-center gap-0.5 text-signal-warning"
         title="Local and server assistant transcript tails differ"
       >
         <Icon name="alertTriangle" size={9} />
@@ -240,14 +240,14 @@ export function ContextBar({
   const model = tab.modelOverride || poolSession?.cli_model || profile?.model_id;
   if (model) {
     chips.push(
-      <span key="model" className="inline-flex items-center gap-0.5 text-neutral-400">
+      <span key="model" className="inline-flex items-center gap-0.5 text-th-secondary">
         <Icon name="cpu" size={9} />
         <span>{model}</span>
       </span>,
     );
   } else {
     chips.push(
-      <span key="engine" className="inline-flex items-center gap-0.5 text-neutral-400">
+      <span key="engine" className="inline-flex items-center gap-0.5 text-th-secondary">
         <Icon name="cpu" size={9} />
         <span>{tab.engine}</span>
       </span>,
@@ -257,7 +257,7 @@ export function ContextBar({
   // Custom instructions
   if (tab.customInstructions.trim()) {
     chips.push(
-      <span key="instructions" className="inline-flex items-center gap-0.5 text-amber-400" title={tab.customInstructions.trim()}>
+      <span key="instructions" className="inline-flex items-center gap-0.5 text-signal-warning" title={tab.customInstructions.trim()}>
         <Icon name="fileText" size={9} />
         <span>instructions</span>
       </span>,
@@ -280,7 +280,7 @@ export function ContextBar({
     <div className="flex items-center gap-2 px-1 pb-1 text-[9px] font-medium overflow-x-auto whitespace-nowrap scrollbar-none">
       {chips.map((chip, i) => (
         <span key={i} className="contents">
-          {i > 0 && <span className="text-neutral-300 dark:text-neutral-700">·</span>}
+          {i > 0 && <span className="text-th-muted">·</span>}
           {chip}
         </span>
       ))}

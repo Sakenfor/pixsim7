@@ -3,13 +3,9 @@
 @tailwind utilities;
 
 /*
- * JetBrains Mono — self-hosted, used by the terminal panel skin via
- * `--font-skin` (plan `panel-skin-theming`). The terminal stack falls back to
- * Cascadia Mono / Consolas / system monospace, so the skin renders correctly
- * even before the woff2 assets are added.
- * TODO(asset): drop JetBrainsMono-{Regular,Bold}.woff2 into
- *   apps/main/public/fonts/  (no other wiring needed — these @font-face rules
- *   already reference them and font-display:swap avoids any FOIT).
+ * JetBrains Mono - self-hosted, used by the terminal panel skin via
+ * `--font-skin` (plan `panel-skin-theming`). Files are vendored in
+ * `apps/main/public/fonts/`.
  */
 @font-face {
   font-family: 'JetBrains Mono';
@@ -21,7 +17,7 @@
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
-  font-weight: 600 700;
+  font-weight: 700;
   font-display: swap;
   src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
 }

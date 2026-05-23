@@ -72,6 +72,27 @@ const preset = {
           muted: 'rgb(var(--color-accent-muted) / <alpha-value>)',
           text: 'rgb(var(--color-accent-text) / <alpha-value>)',
         },
+        // CSS-variable-driven status signals. Distinct from the static
+        // `success/warning/error/info` scale above so existing callers don't
+        // shift hue — `signal-*` re-skins (a panel skin can override
+        // --success/--warning/--error/--info within its subtree, e.g. the
+        // terminal skin maps them to phosphor-friendly tones). Used by the
+        // AI Assistant panel for context-usage / status chips and pips.
+        signal: {
+          success: 'rgb(var(--success) / <alpha-value>)',
+          warning: 'rgb(var(--warning) / <alpha-value>)',
+          error: 'rgb(var(--error) / <alpha-value>)',
+          info: 'rgb(var(--info) / <alpha-value>)',
+        },
+      },
+      // Token-driven border colors. `th` maps to the dedicated --color-border
+      // var (NOT --color-text), so `border-th` is a true surface border token
+      // that re-skins with the rest of the token set. Tailwind merges this on
+      // top of the colors-derived borderColor scale, so this explicit entry
+      // wins for `border-th` / `border-th-secondary`.
+      borderColor: {
+        th: 'rgb(var(--color-border) / <alpha-value>)',
+        'th-secondary': 'rgb(var(--color-border-secondary) / <alpha-value>)',
       },
       boxShadow: {
         // Elevation system for consistent depth

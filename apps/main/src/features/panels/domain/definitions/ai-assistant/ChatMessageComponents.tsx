@@ -143,7 +143,7 @@ export function inlineFormat(text: string): React.ReactNode {
       parts.push(<em key={parts.length}>{match[4]}</em>);
     } else if (match[5]) {
       // "quoted string"
-      parts.push(<span key={parts.length} className="text-amber-700 dark:text-amber-300">&quot;{match[5]}&quot;</span>);
+      parts.push(<span key={parts.length} className="text-signal-warning">&quot;{match[5]}&quot;</span>);
     } else if (match[6]) {
       // file path (e.g. /foo/bar.ts:42 or C:\foo\bar.py)
       parts.push(<code key={parts.length} className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[11px] font-mono text-emerald-700 dark:text-emerald-300">{match[6]}</code>);
@@ -200,22 +200,22 @@ export function ThinkingBlock({ entries, live, userMessage }: { entries: Array<{
     <div className="mb-1.5">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+        className="flex items-center gap-1.5 text-[10px] text-th-secondary hover:text-th transition-colors"
       >
         <Icon name={live ? 'loader' : 'cpu'} size={10} className={live ? 'animate-spin' : ''} />
         <span>{live ? 'Thinking...' : `${deduped.length} step${deduped.length !== 1 ? 's' : ''}`}</span>
         {deduped.length > 0 && (
-          <span className={`text-[9px] px-1 py-0.5 rounded ${expanded ? 'bg-accent/10 text-accent' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'}`}>
+          <span className={`text-[9px] px-1 py-0.5 rounded ${expanded ? 'bg-accent/10 text-accent' : 'bg-surface-inset text-th-secondary'}`}>
             {expanded ? 'hide' : 'show'}
           </span>
         )}
       </button>
       {expanded && (
-        <div className="mt-1.5 pl-3 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-1 max-h-[240px] overflow-y-auto">
+        <div className="mt-1.5 pl-3 border-l-2 border-th space-y-1 max-h-[240px] overflow-y-auto">
           {deduped.map((e, i) => (
-            <div key={i} className="flex gap-2 text-[10px] leading-relaxed py-1 px-1.5 rounded bg-neutral-50 dark:bg-neutral-800/50">
-              <span className="text-neutral-400 dark:text-neutral-500 font-mono shrink-0 select-none">{i + 1}</span>
-              <span className="text-neutral-600 dark:text-neutral-300">{e.detail || e.action}</span>
+            <div key={i} className="flex gap-2 text-[10px] leading-relaxed py-1 px-1.5 rounded bg-surface-secondary">
+              <span className="text-th-muted font-mono shrink-0 select-none">{i + 1}</span>
+              <span className="text-th-secondary">{e.detail || e.action}</span>
             </div>
           ))}
         </div>
@@ -270,22 +270,22 @@ export function ConfirmationCard({
   };
 
   return (
-    <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-2">
+    <div className="rounded-xl border border-signal-warning/40 bg-signal-warning/10 px-3 py-2.5 space-y-2">
       <div className="flex items-center gap-1.5">
-        <Icon name="alertCircle" size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />
-        <span className="text-xs font-medium text-amber-800 dark:text-amber-200">{title}</span>
+        <Icon name="alertCircle" size={12} className="text-signal-warning shrink-0" />
+        <span className="text-xs font-medium text-signal-warning">{title}</span>
       </div>
       {description && (
-        <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">{description}</p>
+        <p className="text-[11px] text-signal-warning leading-relaxed">{description}</p>
       )}
       {toolName && (
-        <div className="rounded-lg bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1.5 space-y-1">
+        <div className="rounded-lg bg-signal-warning/15 px-2.5 py-1.5 space-y-1">
           <div className="flex items-center gap-1.5">
-            <Icon name="terminal" size={10} className="text-amber-600 dark:text-amber-400" />
-            <code className="text-[10px] font-mono font-medium text-amber-800 dark:text-amber-200">{toolName}</code>
+            <Icon name="terminal" size={10} className="text-signal-warning" />
+            <code className="text-[10px] font-mono font-medium text-signal-warning">{toolName}</code>
           </div>
           {toolInput && Object.keys(toolInput).length > 0 && (
-            <pre className="text-[10px] font-mono text-amber-700 dark:text-amber-300/80 whitespace-pre-wrap max-h-[120px] overflow-y-auto leading-relaxed">
+            <pre className="text-[10px] font-mono text-signal-warning/90 whitespace-pre-wrap max-h-[120px] overflow-y-auto leading-relaxed">
               {JSON.stringify(toolInput, null, 2)}
             </pre>
           )}
@@ -295,10 +295,10 @@ export function ConfirmationCard({
       {/* Approve / Deny */}
       {interactionType === 'approve_deny' && (
         <div className="flex items-center gap-2 pt-0.5">
-          <button onClick={onApprove} className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors">
+          <button onClick={onApprove} className="px-3 py-1 rounded-md text-[11px] font-medium bg-signal-success hover:opacity-90 text-white transition-colors">
             Approve
           </button>
-          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] font-medium bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-700 dark:text-neutral-300 transition-colors">
+          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] font-medium bg-surface-inset hover:bg-surface-secondary text-th-secondary transition-colors">
             Deny
           </button>
         </div>
@@ -311,13 +311,13 @@ export function ConfirmationCard({
             <button
               key={c.id}
               onClick={() => onChoice?.(c.id)}
-              className="w-full text-left px-3 py-1.5 rounded-md text-[11px] border border-amber-200 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-800/30 transition-colors"
+              className="w-full text-left px-3 py-1.5 rounded-md text-[11px] border border-signal-warning/30 hover:bg-signal-warning/15 transition-colors"
             >
-              <span className="font-medium text-amber-800 dark:text-amber-200">{c.label}</span>
-              {c.description && <span className="text-amber-600 dark:text-amber-400 ml-1.5">— {c.description}</span>}
+              <span className="font-medium text-signal-warning">{c.label}</span>
+              {c.description && <span className="text-signal-warning ml-1.5">— {c.description}</span>}
             </button>
           ))}
-          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+          <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-th-secondary hover:text-th transition-colors">
             Cancel
           </button>
         </div>
@@ -335,24 +335,24 @@ export function ConfirmationCard({
                 onClick={() => toggleMulti(c.id)}
                 className={`w-full text-left px-3 py-1.5 rounded-md text-[11px] border transition-colors flex items-center gap-2 ${
                   checked
-                    ? 'border-amber-400 dark:border-amber-500 bg-amber-100 dark:bg-amber-800/40'
-                    : 'border-amber-200 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-800/30'
+                    ? 'border-signal-warning/60 bg-signal-warning/15'
+                    : 'border-signal-warning/30 hover:bg-signal-warning/15'
                 }`}
                 aria-pressed={checked}
               >
                 <span
                   className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border text-[10px] leading-none ${
                     checked
-                      ? 'bg-amber-500 border-amber-500 text-white'
-                      : 'border-amber-400 dark:border-amber-600 bg-white dark:bg-neutral-900'
+                      ? 'bg-signal-warning border-signal-warning text-white'
+                      : 'border-signal-warning/50 bg-surface'
                   }`}
                   aria-hidden
                 >
                   {checked ? '✓' : ''}
                 </span>
                 <span className="flex-1">
-                  <span className="font-medium text-amber-800 dark:text-amber-200">{c.label}</span>
-                  {c.description && <span className="text-amber-600 dark:text-amber-400 ml-1.5">— {c.description}</span>}
+                  <span className="font-medium text-signal-warning">{c.label}</span>
+                  {c.description && <span className="text-signal-warning ml-1.5">— {c.description}</span>}
                 </span>
               </button>
             );
@@ -361,11 +361,11 @@ export function ConfirmationCard({
             <button
               onClick={() => onMultiChoice?.(Array.from(multiSelected))}
               disabled={multiSelected.size === 0}
-              className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-40"
+              className="px-3 py-1 rounded-md text-[11px] font-medium bg-signal-success hover:opacity-90 text-white transition-colors disabled:opacity-40"
             >
               Submit ({multiSelected.size})
             </button>
-            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-th-secondary hover:text-th transition-colors">
               Cancel
             </button>
           </div>
@@ -381,18 +381,18 @@ export function ConfirmationCard({
             onChange={(e) => setTextValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && textValue.trim()) onTextSubmit?.(textValue.trim()); }}
             placeholder={placeholder || 'Type your response...'}
-            className="w-full px-2.5 py-1.5 rounded-md text-[11px] border border-amber-200 dark:border-amber-700/60 bg-white dark:bg-neutral-900 text-amber-900 dark:text-amber-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full px-2.5 py-1.5 rounded-md text-[11px] border border-signal-warning/30 bg-surface text-th focus:outline-none focus:ring-1 focus:ring-signal-warning"
             autoFocus
           />
           <div className="flex items-center gap-2">
             <button
               onClick={() => { if (textValue.trim()) onTextSubmit?.(textValue.trim()); }}
               disabled={!textValue.trim()}
-              className="px-3 py-1 rounded-md text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-40"
+              className="px-3 py-1 rounded-md text-[11px] font-medium bg-signal-success hover:opacity-90 text-white transition-colors disabled:opacity-40"
             >
               Submit
             </button>
-            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-neutral-500 hover:text-neutral-400 transition-colors">
+            <button onClick={onDeny} className="px-3 py-1 rounded-md text-[11px] text-th-secondary hover:text-th transition-colors">
               Cancel
             </button>
           </div>
@@ -416,8 +416,8 @@ export function ResolvedConfirmationBadge({
   return (
     <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] ${
       isApproved
-        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+        ? 'bg-signal-success/15 text-signal-success'
+        : 'bg-signal-error/15 text-signal-error'
     }`}>
       <Icon name={isApproved ? 'check' : 'x'} size={9} />
       <span>{isApproved ? 'Approved' : 'Denied'}: {toolName || title}</span>
@@ -458,8 +458,8 @@ export function MessageBubble({
         <div
           className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] ${
             isRecoveryHeader
-              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-dashed border-amber-400/60 dark:border-amber-600/60'
-              : 'bg-neutral-100 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400'
+              ? 'bg-signal-warning/15 text-signal-warning border border-dashed border-signal-warning/50'
+              : 'bg-surface-secondary text-th-secondary'
           }`}
           title={timeTitle || undefined}
         >
@@ -476,10 +476,10 @@ export function MessageBubble({
     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group ${showAssistantIcon ? 'items-start gap-2' : ''}`}>
       {showAssistantIcon && <EngineProfileIcon engine={engine} icon={profileIcon} size={11} className="mt-0.5" />}
       <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
-        msg.role === 'user' ? 'bg-accent text-white'
-          : msg.role === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
-          : msg.recovered ? 'bg-amber-50/60 dark:bg-amber-900/10 text-neutral-900 dark:text-neutral-100 border border-dashed border-amber-400/70 dark:border-amber-600/60'
-          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
+        msg.role === 'user' ? 'bg-accent text-accent-text'
+          : msg.role === 'error' ? 'bg-signal-error/10 text-signal-error border border-signal-error/30'
+          : msg.recovered ? 'bg-signal-warning/10 text-th border border-dashed border-signal-warning/50'
+          : 'bg-surface-secondary text-th'
       }`}>
         {msg.role === 'assistant' && msg.thinkingLog && msg.thinkingLog.length > 0 && (
           <ThinkingBlock entries={msg.thinkingLog} userMessage={userMessage} />
@@ -499,7 +499,7 @@ export function MessageBubble({
               </button>
             )}
             {msg.role === 'error' && onRetry && (
-              <button onClick={onRetry} className="text-[10px] text-red-500 hover:text-red-400 flex items-center gap-0.5">
+              <button onClick={onRetry} className="text-[10px] text-signal-error hover:opacity-80 flex items-center gap-0.5">
                 <Icon name="refreshCw" size={10} /> Retry
               </button>
             )}

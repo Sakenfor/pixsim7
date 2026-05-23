@@ -53,8 +53,8 @@ export function AIAssistantActivityBarWidget() {
         onClick={handleClick}
         className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors relative ${
           connected > 0
-            ? 'text-blue-400 bg-blue-500/15'
-            : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
+            ? 'text-accent bg-accent/15'
+            : 'text-th-muted hover:text-th hover:bg-surface-secondary'
         }`}
         aria-label={`AI Assistant${
           questionsTotal > 0
@@ -71,11 +71,11 @@ export function AIAssistantActivityBarWidget() {
             pending agent question (orange, Phase 4b) takes precedence over
             unread replies (blue, Phase 4a): a blocked agent is more urgent. */}
         {questionsTotal > 0 ? (
-          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-orange-500 text-[10px] font-semibold text-white leading-none">
+          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-signal-warning text-[10px] font-semibold text-white leading-none">
             {questionsTotal > 99 ? '99+' : questionsTotal}
           </div>
         ) : unreadTotal > 0 ? (
-          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-blue-500 text-[10px] font-semibold text-white leading-none">
+          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-signal-info text-[10px] font-semibold text-white leading-none">
             {unreadTotal > 99 ? '99+' : unreadTotal}
           </div>
         ) : null}
@@ -83,7 +83,7 @@ export function AIAssistantActivityBarWidget() {
         {/* Connection dot */}
         <div
           className={`absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full transition-colors ${
-            connected > 0 ? 'bg-green-500' : 'bg-neutral-600'
+            connected > 0 ? 'bg-signal-success' : 'bg-th-muted'
           }`}
         />
       </button>
@@ -107,7 +107,7 @@ function AssistantTooltip({
 
   return createPortal(
     <div
-      className="fixed z-tooltip py-1.5 px-3 bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm text-xs text-neutral-200 whitespace-nowrap pointer-events-none"
+      className="fixed z-tooltip py-1.5 px-3 bg-surface-inset border border-th-secondary rounded-lg shadow-xl backdrop-blur-sm text-xs text-th whitespace-nowrap pointer-events-none"
       style={{
         top: rect.top + rect.height / 2,
         left: rect.right + 4,
@@ -115,7 +115,7 @@ function AssistantTooltip({
       }}
     >
       <div className="flex items-center gap-1.5">
-        <div className={`w-1.5 h-1.5 rounded-full ${connected > 0 ? 'bg-green-500' : 'bg-neutral-500'}`} />
+        <div className={`w-1.5 h-1.5 rounded-full ${connected > 0 ? 'bg-signal-success' : 'bg-th-muted'}`} />
         <span>AI Assistant {connected > 0 ? '' : '(offline)'}</span>
       </div>
     </div>,

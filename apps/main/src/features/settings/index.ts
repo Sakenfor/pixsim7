@@ -101,6 +101,7 @@ export { registerTaggingSettings } from './lib/schemas/tagging.settings';
 export { registerNotificationSettings } from './lib/schemas/notification.settings';
 export { registerIconSettings } from './lib/schemas/icon.settings';
 export { registerThemeSettings } from './lib/schemas/theme.settings';
+export { registerSurfacesSettings } from './lib/schemas/surfaces.settings';
 // Note: registerAssetSettings, registerMediaSettings, registerGallerySettings removed - now unified in registerLibrarySettings
 
 // ============================================================================

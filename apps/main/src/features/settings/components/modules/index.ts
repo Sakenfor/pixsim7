@@ -84,6 +84,7 @@ import './NotificationSettings';
 import './GestureSurfacesSettings';
 import './IconSettings';
 import './ThemeSettings';
+import './SurfacesSettings';
 import './LibrarySettings';
 import './NodesSettings';
 import './PromptsSettings';

@@ -88,9 +88,9 @@ export function EngineProfileIcon({
   // confirmation signal).
   const healthRingClass =
     health === 'unhealthy'
-      ? 'absolute -inset-px rounded-full ring-2 ring-red-500'
+      ? 'absolute -inset-px rounded-full ring-2 ring-signal-error'
       : health === 'healthy'
-        ? 'absolute -inset-px rounded-full ring-1 ring-emerald-400/70'
+        ? 'absolute -inset-px rounded-full ring-1 ring-signal-success/70'
         : null;
   return (
     <span

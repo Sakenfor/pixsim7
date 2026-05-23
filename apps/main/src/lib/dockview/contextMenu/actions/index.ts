@@ -34,6 +34,7 @@ import {
   registerPanelActionCapabilities,
   unpinTabAction,
 } from './panelActions';
+import { panelSkinAction } from './panelSkinActions';
 import {
   savePresetAction,
   loadPresetAction,
@@ -236,17 +237,18 @@ const layoutPresetsSubmenuAction: MenuAction = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * All actions combined.
+ * Core actions exported for inspection and tests.
  *
  * Individual actions (close, maximize, restore, properties) come through
  * the capability system via registerPanelActionCapabilities().
  */
 export const allActions = [
-  ...assetActions,
   // Panel top-level: Float Panel (close/maximize/restore/properties via capabilities)
   floatPanelAction,
   pinTabAction,
   unpinTabAction,
+  // Per-panel skin (only shows for skinnable panels)
+  panelSkinAction,
   // Composite submenus
   panelsSubmenuAction,
   layoutPresetsSubmenuAction,
@@ -262,6 +264,13 @@ export const allActions = [
   ...devContextActions,
 ];
 
+function getRegisteredActions(): MenuAction[] {
+  return [
+    ...assetActions,
+    ...allActions,
+  ];
+}
+
 let actionsRegistered = false;
 
 /**
@@ -276,7 +285,7 @@ export function registerContextMenuActions() {
   registerPanelActionCapabilities();
   // Quick-add and preset actions are now inside composite submenus,
   // so we no longer register them as standalone capability actions.
-  contextMenuRegistry.registerAll(allActions);
+  contextMenuRegistry.registerAll(getRegisteredActions());
 
   // Per-context category ordering: background context shows panels first
   contextMenuRegistry.setContextCategoryPriority('background', {

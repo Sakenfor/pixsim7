@@ -89,27 +89,27 @@ export function SessionItem({
       tabIndex={0}
       className={`group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
         isActive
-          ? 'bg-blue-50 dark:bg-blue-950/40 text-neutral-900 dark:text-neutral-100'
-          : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+          ? 'bg-accent-subtle text-th'
+          : 'text-th-secondary hover:bg-surface-secondary'
       }`}
     >
       <div className="relative shrink-0">
         <EngineProfileIcon engine={tab.engine} icon={tabIcon} size={12} />
         {isFailedCreate ? (
           <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-1 ring-white dark:ring-neutral-950"
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-error ring-1 ring-surface"
             title="Couldn't save this tab to the server — retry or dismiss"
           />
         ) : hasPendingQuestion ? (
           <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500 ring-1 ring-white dark:ring-neutral-950 animate-pulse"
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-warning ring-1 ring-surface animate-pulse"
             title="Agent is waiting on your answer"
           />
         ) : isSending ? (
-          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-success animate-pulse" />
         ) : hasUnread ? (
           <span
-            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 ring-1 ring-white dark:ring-neutral-950"
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-signal-info ring-1 ring-surface"
             title="Unread reply"
           />
         ) : null}
@@ -118,7 +118,7 @@ export function SessionItem({
         {isRenaming ? (
           <input
             autoFocus
-            className="w-full text-[11px] font-medium bg-white dark:bg-neutral-800 border border-blue-300 dark:border-blue-600 rounded px-1 py-0 outline-none"
+            className="w-full text-[11px] font-medium bg-surface text-th border border-accent rounded px-1 py-0 outline-none"
             value={renameValue}
             onChange={(e) => onSetRenameValue(e.target.value)}
             onBlur={() => onCommitRename(tab.id, renameValue)}
@@ -131,7 +131,7 @@ export function SessionItem({
           />
         ) : (
           <div
-            className={`text-[11px] truncate ${(hasUnread || hasPendingQuestion) && !isActive ? 'font-semibold text-neutral-900 dark:text-neutral-100' : 'font-medium'}`}
+            className={`text-[11px] truncate ${(hasUnread || hasPendingQuestion) && !isActive ? 'font-semibold text-th' : 'font-medium'}`}
             onDoubleClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
           >
             {tab.label}
@@ -139,7 +139,7 @@ export function SessionItem({
         )}
         {secondaryLine && !isRenaming && (
           <div
-            className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate"
+            className="text-[9px] text-th-muted truncate"
             title={subtitle ?? undefined}
           >
             {secondaryLine}
@@ -154,7 +154,7 @@ export function SessionItem({
           {onRetryCreate && (
             <button
               onClick={(e) => { e.stopPropagation(); onRetryCreate(tab.id); }}
-              className="text-amber-500 hover:text-amber-600 dark:hover:text-amber-400"
+              className="text-signal-warning hover:opacity-80"
               title="Retry server save"
             >
               <Icon name="refresh" size={10} />
@@ -163,7 +163,7 @@ export function SessionItem({
           {onDismissFailedCreate && (
             <button
               onClick={(e) => { e.stopPropagation(); onDismissFailedCreate(tab.id); }}
-              className="text-neutral-400 hover:text-red-500"
+              className="text-th-muted hover:text-signal-error"
               title="Dismiss — drop this tab locally"
             >
               <Icon name="x" size={10} />
@@ -174,7 +174,7 @@ export function SessionItem({
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); onStartRename(tab.id, tab.label); }}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+            className="text-th-muted hover:text-th"
             title="Rename"
           >
             <Icon name="edit" size={10} />
@@ -182,7 +182,7 @@ export function SessionItem({
           {tab.planId && onUnlinkPlan && (
             <button
               onClick={(e) => { e.stopPropagation(); onUnlinkPlan(tab.id); }}
-              className="text-neutral-400 hover:text-green-600 dark:hover:text-green-400"
+              className="text-th-muted hover:text-signal-success"
               title="Unlink from plan"
             >
               <Icon name="link" size={10} />
@@ -191,7 +191,7 @@ export function SessionItem({
           {tabCount > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
-              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+              className="text-th-muted hover:text-th"
               title="Close"
             >
               <Icon name="x" size={10} />

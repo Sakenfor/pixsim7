@@ -91,34 +91,34 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
 
   return (
     <div className="p-2 space-y-2">
-      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
+      <div className="text-[11px] font-medium text-th-secondary">
         {isNew ? 'New Profile' : `Edit: ${profile.label}`}
       </div>
 
       {isNew && (
         <input value={id} onChange={(e) => setId(e.target.value)} placeholder="ID (slug, optional)"
-          className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+          className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent" />
       )}
 
       <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Name *"
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent" />
 
       <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description"
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent" />
 
       <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Icon (e.g. sparkles, code, cpu)"
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent" />
 
       {/* Engine + Method + Model */}
       <div className="flex gap-1.5">
         <select value={agentType} onChange={(e) => setAgentType(e.target.value)}
-          className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+          className="flex-1 px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
           <option value="claude">Claude</option>
           <option value="codex">Codex</option>
           <option value="custom">Custom</option>
         </select>
         <select value={method} onChange={(e) => setMethod(e.target.value)}
-          className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+          className="flex-1 px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
           <option value="remote">CMD (bridge)</option>
           <option value="api">API (direct)</option>
         </select>
@@ -128,11 +128,11 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
         value={modelId}
         onChange={setModelId}
         agentType={agentType}
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent"
       />
 
       <select value={reasoningEffort} onChange={(e) => setReasoningEffort(e.target.value)}
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated focus:outline-none focus:ring-1 focus:ring-accent">
         <option value="">Effort (default)</option>
         <option value="low">Low</option>
         <option value="medium">Medium</option>
@@ -143,12 +143,12 @@ export function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps)
 
       <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Persona / system prompt"
         rows={3}
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
+        className="w-full px-2 py-1 text-[11px] rounded border border-th bg-surface-elevated resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
 
-      {error && <div className="text-[10px] text-red-500">{error}</div>}
+      {error && <div className="text-[10px] text-signal-error">{error}</div>}
 
       <div className="flex gap-1.5 justify-end">
-        <button onClick={onCancel} className="px-2 py-1 text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+        <button onClick={onCancel} className="px-2 py-1 text-[10px] text-th-secondary hover:text-th">
           Cancel
         </button>
         <Button size="sm" onClick={handleSave} disabled={saving || !label.trim()}>
@@ -314,7 +314,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
       <button
         ref={ref}
         onClick={() => setOpen(!open)}
-        className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+        className="text-th-muted hover:text-th"
         title="Resume session"
       >
         <Icon name="history" size={12} />
@@ -328,20 +328,20 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
         open={open}
         onClose={handleClose}
         triggerRef={ref}
-        className="w-72 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
+        className="w-72 rounded-lg border border-th bg-surface shadow-lg"
       >
         <div className="h-[350px] overflow-y-auto">
           {/* Engine filter tabs */}
-          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
-            <button onClick={() => setFilter('')} className={`px-1.5 py-0.5 text-[9px] rounded ${!filter ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>All</button>
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-th-secondary">
+            <button onClick={() => setFilter('')} className={`px-1.5 py-0.5 text-[9px] rounded ${!filter ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'}`}>All</button>
             {[...AGENT_COMMANDS, { id: 'api' as const, label: 'API', icon: 'zap' as IconName }].map((e) => (
-              <button key={e.id} onClick={() => setFilter(e.id)} className={`px-1.5 py-0.5 text-[9px] rounded ${filter === e.id ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>{e.label}</button>
+              <button key={e.id} onClick={() => setFilter(e.id)} className={`px-1.5 py-0.5 text-[9px] rounded ${filter === e.id ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'}`}>{e.label}</button>
             ))}
             <div className="ml-auto flex items-center gap-1">
               {profileId && (
                 <button
                   onClick={() => setProfileOnly(!profileOnly)}
-                  className={`px-1.5 py-0.5 text-[9px] rounded ${profileOnly ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                  className={`px-1.5 py-0.5 text-[9px] rounded ${profileOnly ? 'bg-accent text-accent-text' : 'text-th-secondary hover:bg-surface-secondary'}`}
                   title="Filter by current profile"
                 >
                   <Icon name="user" size={9} />
@@ -354,7 +354,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                   setOrphansOnly((v) => !v);
                   if (!orphansOnly) setShowArchived(false);
                 }}
-                className={`px-1.5 py-0.5 text-[9px] rounded ${orphansOnly ? 'bg-blue-500/20 text-blue-500' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                className={`px-1.5 py-0.5 text-[9px] rounded ${orphansOnly ? 'bg-signal-info/20 text-signal-info' : 'text-th-secondary hover:bg-surface-secondary'}`}
                 title={orphansOnly ? 'Showing recent chats with no open tab — click for all' : 'Recent chats — sessions without an open tab'}
               >
                 <Icon name="messageSquare" size={9} />
@@ -364,7 +364,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                   setShowArchived((v) => !v);
                   if (!showArchived) setOrphansOnly(false);
                 }}
-                className={`px-1.5 py-0.5 text-[9px] rounded ${showArchived ? 'bg-amber-500/20 text-amber-500' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                className={`px-1.5 py-0.5 text-[9px] rounded ${showArchived ? 'bg-signal-warning/20 text-signal-warning' : 'text-th-secondary hover:bg-surface-secondary'}`}
                 title={showArchived ? 'Showing archived — click for active' : 'Show archived sessions'}
               >
                 <Icon name="archive" size={9} />
@@ -373,7 +373,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
           </div>
 
           {/* Paste session id to resume (pixsim7 id or agent CLI resume hash) */}
-          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-th-secondary">
             <input
               type="text"
               value={pasteId}
@@ -381,27 +381,27 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void resumeById(); } }}
               placeholder="Paste session id to resume…"
               disabled={pasteBusy}
-              className="flex-1 min-w-0 px-2 py-1 text-[10px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-200 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-accent"
+              className="flex-1 min-w-0 px-2 py-1 text-[10px] rounded border border-th bg-surface text-th placeholder:text-th-muted focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <button
               type="button"
               onClick={() => void resumeById()}
               disabled={!pasteId.trim() || pasteBusy}
-              className="shrink-0 px-2 py-1 text-[10px] rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="shrink-0 px-2 py-1 text-[10px] rounded bg-accent text-accent-text hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {pasteBusy ? '…' : 'Resume'}
             </button>
           </div>
 
           {loading && sessions.length === 0 && (
-            <div className="p-3 text-center text-[11px] text-neutral-500">Loading sessions...</div>
+            <div className="p-3 text-center text-[11px] text-th-secondary">Loading sessions...</div>
           )}
           {actionError && (
-            <div className="px-3 py-1.5 text-[10px] text-red-500 border-b border-neutral-100 dark:border-neutral-800">{actionError}</div>
+            <div className="px-3 py-1.5 text-[10px] text-signal-error border-b border-th-secondary">{actionError}</div>
           )}
 
           {!loading && filtered.length === 0 && (
-            <div className="p-3 text-center text-[11px] text-neutral-500">No sessions found</div>
+            <div className="p-3 text-center text-[11px] text-th-secondary">No sessions found</div>
           )}
 
           {filtered.map((s) => {
@@ -417,7 +417,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
             return (
               <div
                 key={s.id}
-                className="group w-full flex items-center gap-1 px-1 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                className="group w-full flex items-center gap-1 px-1 border-b border-th-secondary last:border-0 hover:bg-surface-secondary"
               >
                 <button
                   onClick={() => {
@@ -436,7 +436,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                     <div className={`text-[11px] truncate flex items-center gap-1 ${engineColor}`}>
                       {(s.source === 'mcp' || s.source === 'mcp-auto') && (
                         <span
-                          className="shrink-0 px-1 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[8px] font-semibold tracking-wide"
+                          className="shrink-0 px-1 rounded bg-signal-warning/15 text-signal-warning text-[8px] font-semibold tracking-wide"
                           title="Started from CLI/MCP — chat will show work summaries as context"
                         >
                           CLI
@@ -444,7 +444,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       )}
                       <span className="truncate">{s.label}</span>
                     </div>
-                    <div className="text-[9px] text-neutral-400">
+                    <div className="text-[9px] text-th-muted">
                       {sessionProfileLabel ? `${sessionProfileLabel} · ` : ''}
                       {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
@@ -472,7 +472,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       void restoreSession(s);
                     }}
                     disabled={actionId === s.id}
-                    className="shrink-0 w-6 h-6 rounded text-neutral-400 hover:text-emerald-500 hover:bg-white dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 transition"
+                    className="shrink-0 w-6 h-6 rounded text-th-muted hover:text-signal-success hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 transition"
                     title="Restore session"
                   >
                     <Icon name="rotateCcw" size={10} />
@@ -485,7 +485,7 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
                       void archiveSession(s);
                     }}
                     disabled={actionId === s.id}
-                    className="shrink-0 w-6 h-6 rounded text-neutral-400 hover:text-red-500 hover:bg-white dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 transition"
+                    className="shrink-0 w-6 h-6 rounded text-th-muted hover:text-signal-error hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 transition"
                     title="Archive session"
                   >
                     <Icon name="trash2" size={10} />
@@ -498,13 +498,13 @@ export function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
           {canLoadMore && (
             <button
               onClick={() => setLimit((prev) => Math.min(prev + RESUME_SESSION_PAGE_SIZE, RESUME_SESSION_MAX_LIMIT))}
-              className="w-full px-3 py-2 text-[10px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-t border-neutral-100 dark:border-neutral-800"
+              className="w-full px-3 py-2 text-[10px] font-medium text-th-secondary hover:bg-surface-secondary border-t border-th-secondary"
             >
               Load more sessions
             </button>
           )}
           {loading && sessions.length > 0 && (
-            <div className="px-3 py-2 text-center text-[10px] text-neutral-500 border-t border-neutral-100 dark:border-neutral-800">
+            <div className="px-3 py-2 text-center text-[10px] text-th-secondary border-t border-th-secondary">
               Loading...
             </div>
           )}
@@ -549,7 +549,7 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
         <button
           onClick={() => setOpen(!open)}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1 text-[10px] rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1 text-[10px] rounded-full border border-th bg-surface-elevated text-th-secondary hover:bg-surface-secondary cursor-pointer transition-colors"
         >
           <Icon name="rotateCcw" size={10} />
           Resume a session ({sessions.length})
@@ -557,7 +557,7 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
         </button>
 
         {open && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-72 max-h-[200px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-20">
             {sessions.map((s) => {
               const profileName = s.profile_id && profileLabels?.get(s.profile_id);
               const engineColor = getEngineBrand(s.engine).textColor;
@@ -565,7 +565,7 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
                 <button
                   key={s.id}
                   onClick={() => { onResume(s.id, s.engine, s.label, s.profile_id ?? null, s.last_plan_id); setOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-secondary transition-colors"
                 >
                   <EngineProfileIcon
                     engine={s.engine}
@@ -573,12 +573,12 @@ export function InlineResumePicker({ profileId, profileLabels, onResume }: {
                     size={11}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200 truncate">{s.label}</div>
-                    <div className="flex items-center gap-1 text-[9px] text-neutral-400">
+                    <div className="text-[11px] font-medium text-th truncate">{s.label}</div>
+                    <div className="flex items-center gap-1 text-[9px] text-th-muted">
                       {profileName && <span className={engineColor}>{profileName}</span>}
                       {s.engine !== 'claude' && <span>{s.engine}</span>}
                       <span>{s.message_count} msgs</span>
-                      {s.last_plan_id && <span className="text-green-500">plan:{s.last_plan_id}</span>}
+                      {s.last_plan_id && <span className="text-signal-success">plan:{s.last_plan_id}</span>}
                     </div>
                   </div>
                 </button>
@@ -656,26 +656,26 @@ export function ActionPicker({ open, onClose, onSelect, disabled }: {
   if (!open) return null;
 
   return (
-    <div ref={ref} className="absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[300px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-10">
+    <div ref={ref} className="absolute bottom-full left-0 right-0 mb-1 mx-2 max-h-[300px] overflow-y-auto rounded-lg border border-th bg-surface shadow-lg z-10">
       {groups.length === 0 && (
-        <div className="p-3 text-center text-xs text-neutral-500">{loaded ? 'No actions available' : 'Loading...'}</div>
+        <div className="p-3 text-center text-xs text-th-secondary">{loaded ? 'No actions available' : 'Loading...'}</div>
       )}
       {groups.map((g) => {
         const isOpen = expanded === g.id;
         return (
           <div key={g.id}>
-            <button onClick={() => setExpanded(isOpen ? null : g.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
-              <Icon name={g.icon} size={13} className="text-neutral-400 shrink-0" />
-              <span className="font-medium text-neutral-700 dark:text-neutral-300">{g.label}</span>
+            <button onClick={() => setExpanded(isOpen ? null : g.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-surface-secondary transition-colors">
+              <Icon name={g.icon} size={13} className="text-th-muted shrink-0" />
+              <span className="font-medium text-th-secondary">{g.label}</span>
               <Badge color="gray" className="text-[9px] ml-auto">{g.actions.length}</Badge>
-              <Icon name="chevronRight" size={10} className={`text-neutral-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+              <Icon name="chevronRight" size={10} className={`text-th-muted transition-transform ${isOpen ? 'rotate-90' : ''}`} />
             </button>
             {isOpen && (
               <div className="pl-3">
                 {g.actions.map((a, i) => (
                   <button key={`${a.contractId}-${i}`} onClick={() => { onSelect(a.prompt); onClose(); }} disabled={disabled}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-40 transition-colors">
-                    <Icon name={a.icon} size={11} className="shrink-0 text-neutral-400" />
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary disabled:opacity-40 transition-colors">
+                    <Icon name={a.icon} size={11} className="shrink-0 text-th-muted" />
                     <span className="truncate text-left">{a.label}</span>
                   </button>
                 ))}
@@ -745,11 +745,11 @@ function salvageWorkSummary(entry: WorkSummaryEntry): WorkSummaryEntry {
 
 /** Color per summary: green = has commit, blue = plan-linked, amber = no commit, red outline = has blockers */
 function summaryColor(s: WorkSummaryEntry): string {
-  if (s.metadata?.blockers?.length) return 'text-red-500';
+  if (s.metadata?.blockers?.length) return 'text-signal-error';
   const hasCommit = s.metadata?.commit || (s.metadata?.evidence ?? []).some((e) => /^[0-9a-f]{7,40}$/i.test(e));
-  if (hasCommit) return 'text-emerald-500';
-  if (s.plan_id) return 'text-blue-500';
-  return 'text-amber-500';
+  if (hasCommit) return 'text-signal-success';
+  if (s.plan_id) return 'text-signal-info';
+  return 'text-signal-warning';
 }
 
 /**
@@ -778,7 +778,7 @@ function CollapsibleSection({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
-    <div className={`mt-1 ${divider ? 'pt-1.5 border-t border-neutral-100 dark:border-neutral-800' : ''} text-[10px] ${className ?? ''}`}>
+    <div className={`mt-1 ${divider ? 'pt-1.5 border-t border-th-secondary' : ''} text-[10px] ${className ?? ''}`}>
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -824,22 +824,22 @@ function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry })
         <Icon name="fileText" size={12} />
       </div>
       {isExpanded && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 max-h-[60vh] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl z-30 p-2.5">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 max-h-[60vh] overflow-y-auto rounded-lg border border-th bg-surface shadow-xl z-30 p-2.5">
           {/* Compact header row — time, SHA, plan id. Always visible. */}
-          <div className="flex items-center gap-1.5 text-[9px] text-neutral-400 flex-wrap">
+          <div className="flex items-center gap-1.5 text-[9px] text-th-muted flex-wrap">
             <span>{time}</span>
             {sha && (
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                className="font-mono text-blue-400 hover:underline hover:text-blue-300"
+                className="font-mono text-signal-info hover:underline hover:opacity-80"
                 onClick={() => { if (fullSha) navigator.clipboard.writeText(fullSha); }}
                 title={`${fullSha}\nClick to copy`}
               >
                 {sha}
               </button>
             )}
-            {summary.plan_id && <span className="text-blue-500">{summary.plan_id}</span>}
+            {summary.plan_id && <span className="text-signal-info">{summary.plan_id}</span>}
           </div>
 
           {/* Summary (the `detail` field) — primary content; only auto-retracts
@@ -849,7 +849,7 @@ function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry })
               label="Summary"
               defaultExpanded={detail.length <= AUTO_EXPAND_TEXT_CHARS * 2}
               divider
-              className="text-neutral-700 dark:text-neutral-300"
+              className="text-th-secondary"
             >
               <div className="text-[11px]">{detail}</div>
             </CollapsibleSection>
@@ -860,7 +860,7 @@ function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry })
               label="Next"
               defaultExpanded={next.length <= AUTO_EXPAND_TEXT_CHARS}
               divider
-              className="text-amber-600 dark:text-amber-400"
+              className="text-signal-warning"
             >
               {next}
             </CollapsibleSection>
@@ -886,7 +886,7 @@ function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry })
               label="Blocked"
               count={blockers.length}
               defaultExpanded
-              className="text-red-500"
+              className="text-signal-error"
             >
               <ul className="list-disc pl-3 space-y-0.5">
                 {blockers.map((b, i) => <li key={i}>{b}</li>)}
@@ -899,7 +899,7 @@ function WorkSummaryIcon({ summary: rawSummary }: { summary: WorkSummaryEntry })
               label="Files"
               count={files.length}
               defaultExpanded={files.length <= AUTO_EXPAND_LIST_ITEMS}
-              className="text-neutral-500 dark:text-neutral-400"
+              className="text-th-secondary"
             >
               <ul className="space-y-0.5 font-mono">
                 {files.map((f, i) => <li key={i} className="truncate" title={f}>{f}</li>)}
@@ -1008,7 +1008,7 @@ export function BridgeSettingsPopover() {
       <button
         ref={ref}
         onClick={() => setOpen(!open)}
-        className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+        className="text-th-muted hover:text-th"
         title="Bridge settings"
       >
         <Icon name="settings" size={12} />
@@ -1022,18 +1022,18 @@ export function BridgeSettingsPopover() {
         open={open}
         onClose={() => setOpen(false)}
         triggerRef={ref}
-        className="w-72 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
+        className="w-72 rounded-lg border border-th bg-surface shadow-lg"
       >
         <div className="p-3 space-y-3">
-          <div className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">
+          <div className="text-[10px] font-semibold text-th-secondary uppercase tracking-wide">
             Bridge Settings
           </div>
-          <div className="text-[9px] text-neutral-400">
+          <div className="text-[9px] text-th-muted">
             Changes take effect on next restart.
           </div>
 
           {!data && (
-            <div className="text-[10px] text-neutral-400 py-2 text-center">Loading...</div>
+            <div className="text-[10px] text-th-muted py-2 text-center">Loading...</div>
           )}
 
           {visibleFields.map((field) => (
@@ -1131,8 +1131,8 @@ export function NotificationMutePopover() {
         onClick={() => setOpen(!open)}
         className={
           anyMuted
-            ? 'text-orange-500 hover:text-orange-600'
-            : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+            ? 'text-signal-warning hover:opacity-80'
+            : 'text-th-muted hover:text-th'
         }
         title={anyMuted ? 'Nudges muted' : 'Mute chat / question nudges'}
       >
@@ -1147,19 +1147,19 @@ export function NotificationMutePopover() {
         open={open}
         onClose={() => setOpen(false)}
         triggerRef={ref}
-        className="w-64 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg"
+        className="w-64 rounded-lg border border-th bg-surface shadow-lg"
       >
         <div className="p-3 space-y-3">
-          <div className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">
+          <div className="text-[10px] font-semibold text-th-secondary uppercase tracking-wide">
             Nudge mute
           </div>
-          <div className="text-[9px] text-neutral-400">
+          <div className="text-[9px] text-th-muted">
             Silence these per-tab nudges. Full controls in Settings →
             Notifications.
           </div>
 
           {!cats && (
-            <div className="text-[10px] text-neutral-400 py-2 text-center">
+            <div className="text-[10px] text-th-muted py-2 text-center">
               Loading...
             </div>
           )}
@@ -1172,10 +1172,10 @@ export function NotificationMutePopover() {
                 className="flex items-center justify-between gap-2"
               >
                 <div className="min-w-0">
-                  <div className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
+                  <div className="text-[10px] font-medium text-th-secondary">
                     {c.label}
                   </div>
-                  <div className="text-[9px] text-neutral-400 truncate">
+                  <div className="text-[9px] text-th-muted truncate">
                     {c.description}
                   </div>
                 </div>
@@ -1185,8 +1185,8 @@ export function NotificationMutePopover() {
                   }
                   className={`shrink-0 px-2 py-0.5 text-[9px] rounded border transition-colors ${
                     muted
-                      ? 'bg-orange-500/15 border-orange-500/40 text-orange-500'
-                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-300 dark:hover:border-neutral-600'
+                      ? 'bg-signal-warning/15 border-signal-warning/40 text-signal-warning'
+                      : 'border-th text-th-secondary hover:border-th-secondary'
                   }`}
                   title={muted ? 'Muted — click to unmute' : 'On — click to mute'}
                 >
@@ -1208,9 +1208,9 @@ function BridgeSettingField({ field, value, onChange }: {
 }) {
   return (
     <div className="space-y-1">
-      <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">{field.label}</div>
+      <div className="text-[10px] font-medium text-th-secondary">{field.label}</div>
       {field.description && (
-        <div className="text-[9px] text-neutral-400 dark:text-neutral-500 leading-relaxed">{field.description}</div>
+        <div className="text-[9px] text-th-muted leading-relaxed">{field.description}</div>
       )}
       {field.type === 'multi_select' && (
         <div className="flex flex-wrap gap-1">
@@ -1226,7 +1226,7 @@ function BridgeSettingField({ field, value, onChange }: {
                 className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${
                   active
                     ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600'
+                    : 'border-th text-th-muted hover:border-th-secondary'
                 }`}
               >
                 {opt}
@@ -1243,7 +1243,7 @@ function BridgeSettingField({ field, value, onChange }: {
             const n = parseInt(e.target.value, 10);
             if (!isNaN(n)) onChange(n);
           }}
-          className="w-20 px-2 py-0.5 text-[10px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-20 px-2 py-0.5 text-[10px] rounded border border-th bg-surface text-th-secondary focus:outline-none focus:ring-1 focus:ring-accent"
         />
       )}
       {field.type === 'boolean' && (
@@ -1254,7 +1254,7 @@ function BridgeSettingField({ field, value, onChange }: {
             onChange={(e) => onChange(e.target.checked)}
             className="rounded text-accent focus:ring-accent h-3.5 w-3.5"
           />
-          <span className="text-[10px] text-neutral-600 dark:text-neutral-400">{value ? 'Enabled' : 'Disabled'}</span>
+          <span className="text-[10px] text-th-secondary">{value ? 'Enabled' : 'Disabled'}</span>
         </label>
       )}
     </div>
@@ -1367,7 +1367,7 @@ export function ModelSelector({ value, onChange, disabled, engine }: {
       value={value || ''}
       onChange={(e) => onChange(e.target.value || null)}
       disabled={disabled}
-      className="shrink-0 h-8 px-1 text-[9px] text-neutral-500 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
+      className="shrink-0 h-8 px-1 text-[9px] text-th-secondary bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
       title={value ? `Model: ${value}` : 'Model (profile default)'}
     >
       <option value="">model</option>
@@ -1483,11 +1483,11 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
     entry.children?.some((c) => focusAreas.includes(c.id)) ?? false;
 
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 overflow-hidden">
+    <div className="rounded-lg border border-th bg-surface-elevated overflow-hidden">
       {/* Focus area chips — always visible for quick toggling */}
       {availableFocus.length > 0 && (
         <div className="px-3 py-2 flex flex-wrap gap-1 items-center">
-          <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mr-1">Focus</span>
+          <span className="text-[9px] font-medium text-th-secondary uppercase tracking-wide mr-1">Focus</span>
           {availableFocus.map((f) => {
             const active = focusAreas.includes(f.id);
             const childActive = hasActiveChild(f);
@@ -1500,7 +1500,7 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
                   className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
                     active || childActive
                       ? 'bg-accent/15 text-accent'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      : 'bg-surface-secondary text-th-secondary hover:bg-surface-inset'
                   } ${isGroup ? 'rounded-l-full' : 'rounded-full'}`}
                 >
                   {f.label}
@@ -1512,7 +1512,7 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
                     className={`px-1 py-0.5 rounded-r-full text-[10px] transition-colors border-l ${
                       active || childActive
                         ? 'bg-accent/15 text-accent border-accent/20'
-                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 border-neutral-200 dark:border-neutral-700'
+                        : 'bg-surface-secondary text-th-secondary hover:bg-surface-inset border-th'
                     }`}
                     title={groupExpanded ? 'Collapse sub-focuses' : 'Expand sub-focuses'}
                   >
@@ -1523,7 +1523,7 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
             );
           })}
           {hasFocus && (
-            <button onClick={() => onChangeFocus([])} className="text-[9px] text-neutral-400 hover:text-neutral-600 ml-1">clear</button>
+            <button onClick={() => onChangeFocus([])} className="text-[9px] text-th-muted hover:text-th ml-1">clear</button>
           )}
         </div>
       )}
@@ -1531,7 +1531,7 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
       {/* Expanded sub-focus children */}
       {availableFocus.filter((f) => f.children && expandedGroups.has(f.id)).map((f) => (
         <div key={`sub-${f.id}`} className="px-3 pb-1.5 flex flex-wrap gap-1 items-center ml-4">
-          <span className="text-[8px] text-neutral-400 mr-0.5">{f.label}:</span>
+          <span className="text-[8px] text-th-muted mr-0.5">{f.label}:</span>
           {f.children!.map((child) => {
             const active = focusAreas.includes(child.id);
             return (
@@ -1541,7 +1541,7 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
                 className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-colors ${
                   active
                     ? 'bg-accent/20 text-accent'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    : 'bg-surface-secondary text-th-muted hover:bg-surface-inset'
                 }`}
               >
                 {child.label}
@@ -1554,42 +1554,42 @@ export function SystemPromptPreview({ profileId, customInstructions, onChangeIns
       {/* Collapsible details header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors border-t border-neutral-200 dark:border-neutral-700"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-th-secondary hover:bg-surface-secondary transition-colors border-t border-th"
       >
-        <Icon name="fileText" size={12} className="shrink-0 text-neutral-400" />
+        <Icon name="fileText" size={12} className="shrink-0 text-th-muted" />
         <span className="font-medium">System Prompt</span>
         {persona && <Badge color="blue" className="text-[8px]">+ persona</Badge>}
         {customInstructions.trim() && <Badge color="amber" className="text-[8px]">+ custom</Badge>}
         {hasFocus && <Badge color="green" className="text-[8px]">{focusAreas.length} focus</Badge>}
-        <Icon name="chevronRight" size={10} className={`ml-auto text-neutral-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        <Icon name="chevronRight" size={10} className={`ml-auto text-th-muted transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
 
       {expanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-700 px-3 py-2 space-y-2">
+        <div className="border-t border-th px-3 py-2 space-y-2">
           <div>
-            <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Base prompt</div>
-            <pre className="text-[10px] leading-relaxed text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-[120px] overflow-y-auto font-mono bg-neutral-100 dark:bg-neutral-800 rounded p-2">
+            <div className="text-[9px] font-medium text-th-secondary uppercase tracking-wide mb-1">Base prompt</div>
+            <pre className="text-[10px] leading-relaxed text-th-secondary whitespace-pre-wrap max-h-[120px] overflow-y-auto font-mono bg-surface-secondary rounded p-2">
               {basePrompt}
             </pre>
           </div>
 
           {persona && (
             <div>
-              <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Persona (from profile)</div>
-              <pre className="text-[10px] leading-relaxed text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-[80px] overflow-y-auto font-mono bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+              <div className="text-[9px] font-medium text-th-secondary uppercase tracking-wide mb-1">Persona (from profile)</div>
+              <pre className="text-[10px] leading-relaxed text-th-secondary whitespace-pre-wrap max-h-[80px] overflow-y-auto font-mono bg-accent-subtle rounded p-2">
                 {persona}
               </pre>
             </div>
           )}
 
           <div>
-            <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Custom instructions (appended)</div>
+            <div className="text-[9px] font-medium text-th-secondary uppercase tracking-wide mb-1">Custom instructions (appended)</div>
             <textarea
               value={customInstructions}
               onChange={(e) => onChangeInstructions(e.target.value)}
               placeholder="Add extra instructions for this conversation..."
               rows={2}
-              className="w-full px-2 py-1.5 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 resize-none focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-neutral-400"
+              className="w-full px-2 py-1.5 text-[11px] rounded border border-th bg-surface text-th resize-none focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-th-muted"
             />
           </div>
         </div>
