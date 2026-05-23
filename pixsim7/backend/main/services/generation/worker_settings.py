@@ -168,6 +168,34 @@ class GenerationWorkerSettings(SettingsBase):
         description="Consecutive successful probe submits required before raising the learned effective cap",
     )
 
+    # ── Spurious Concurrent-Limit Quarantine ──────────────────────────────
+    # A 500044 ("concurrent limit") while the account is essentially idle is a
+    # provider-side request bug (not a real limit) — see Discriminator A. It
+    # never lowers the learned cap. Optionally, the offending request can also
+    # be quarantined (paused) to stop a retry storm. OFF by default because for
+    # content the provider filters via 500044, those rejects are normal churn.
+
+    spurious_concurrent_quarantine_enabled: bool = Field(
+        False,
+        description="When on, auto-pause (quarantine) a request that repeatedly trips the provider's concurrent-limit while the account is idle. Cap protection (Discriminator A) is always on regardless.",
+    )
+    spurious_concurrent_local_floor: int = Field(
+        1, ge=1, le=64,
+        description="Max local in-flight count at which a concurrent-limit reject is treated as a provider-side request bug (idle-reject). Rejects above this are normal backpressure and ignored.",
+    )
+    spurious_concurrent_quarantine_threshold: int = Field(
+        3, ge=1, le=100,
+        description="Idle-rejects for the same request (within the count window) before it is quarantined",
+    )
+    spurious_concurrent_count_ttl_seconds: int = Field(
+        120, ge=10, le=86400,
+        description="Redis TTL for the per-request idle-reject counter (streak window)",
+    )
+    prompt_concurrent_quarantine_ttl_seconds: int = Field(
+        1800, ge=60, le=86400,
+        description="How long a quarantined request stays auto-paused before it can run again",
+    )
+
 
 def get_worker_settings() -> GenerationWorkerSettings:
     """Get the global GenerationWorkerSettings instance."""

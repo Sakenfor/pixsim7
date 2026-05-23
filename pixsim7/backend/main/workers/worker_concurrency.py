@@ -589,6 +589,21 @@ async def mark_prompt_concurrent_quarantined(
 # retry storm for one request (the actual bug signature) crosses the threshold.
 
 
+def _spurious_concurrent_quarantine_enabled() -> bool:
+    # Default OFF: for content that the provider filters via 500044 (adult-ish
+    # image gen), repeated rejects are normal churn the user retries through —
+    # pausing there is wrong. Discriminator A still protects the cap regardless.
+    return _settings_bool("spurious_concurrent_quarantine_enabled", False)
+
+
+def _spurious_concurrent_local_floor() -> int:
+    # A 500044 is only an unambiguous provider-side request bug when the account
+    # is essentially idle (local concurrency at/below this floor) — that can't be
+    # a real concurrent limit. Rejects at higher local concurrency are normal
+    # backpressure (e.g. flooding many gens of one image) and must NOT count.
+    return _settings_int("spurious_concurrent_local_floor", 1, minimum=1)
+
+
 def _spurious_concurrent_quarantine_threshold() -> int:
     return _settings_int("spurious_concurrent_quarantine_threshold", 3, minimum=1)
 
@@ -790,17 +805,21 @@ async def _adaptive_provider_concurrency_record_limit_error(
     observed_cap = _clamp_provider_cap(max(1, attempted_level - 1), configured_cap)
     is_probe_level_reject = attempted_level > existing_effective
 
-    # Discriminator A: a genuine concurrent-limit can only occur when the
-    # account actually has >= configured_cap jobs in flight.  A 500044 while
-    # local concurrency is below the configured cap is physically impossible
-    # as a real limit — Pixverse emits it spuriously for problematic request
-    # content (content-path bug) even with 1 job running.  The trigger can be
-    # the prompt OR an input image (or the combination).  Clean requests never
-    # trip this, so a spurious reject is always attributable to the exact
-    # request content that received it.  We must NOT lower the learned cap on
-    # these, or one bad request collapses the whole account (observed: acct 2,
-    # 8 -> 1).
-    is_spurious = observed_local < configured_cap
+    # Discriminator A: a genuine concurrent-limit needs the account to actually
+    # be at capacity. A 500044 while the account is essentially IDLE (local
+    # concurrency at/below a small floor, default 1) is physically impossible as
+    # a real limit — Pixverse emits it spuriously for problematic request
+    # content (content-path bug) even with nothing else running. That idle-reject
+    # is the true bug fingerprint and is what would otherwise wrongly drive the
+    # cap down (observed: acct 2, 8 -> 1, all at local=1).
+    #
+    # NOTE: rejects at higher local concurrency (e.g. flooding many gens of one
+    # image until the account fills) are *normal backpressure*, NOT this bug —
+    # they must keep lowering the cap so adaptive learning still works. Using the
+    # configured cap here (the old behaviour) wrongly tagged that backpressure as
+    # spurious and over-quarantined. Filtering is unrelated (different error
+    # codes, never reaches this path).
+    is_spurious = observed_local <= _spurious_concurrent_local_floor()
     # Seed-agnostic grouping key over the full request (prompt + input image(s)
     # + params) — lets the caller pause sibling generations (same content, any
     # seed) that would otherwise keep hammering the provider with the same
@@ -816,12 +835,14 @@ async def _adaptive_provider_concurrency_record_limit_error(
         if gen_logger:
             gen_logger.debug("prompt_group_hash_compute_failed", error=str(_hash_err))
 
-    # Evidence gate: only quarantine after N spurious rejects for the SAME
-    # request within a short window — a lone transient reject must not pause a
-    # prompt the user is actively iterating on.
+    # Evidence gate: only quarantine after N idle-rejects for the SAME request
+    # within a short window — a lone reject must not pause a prompt the user is
+    # actively iterating on — and only when quarantine is explicitly enabled
+    # (default off, since for filtered adult content these rejects are normal
+    # churn). Discriminator A above protects the cap regardless of this gate.
     spurious_count = 0
     quarantine_now = False
-    if is_spurious and prompt_group_hash:
+    if is_spurious and prompt_group_hash and _spurious_concurrent_quarantine_enabled():
         spurious_count = await bump_spurious_concurrent_count(
             str(getattr(account, "provider_id", "") or ""),
             prompt_group_hash,

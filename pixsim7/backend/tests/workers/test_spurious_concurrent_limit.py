@@ -110,7 +110,9 @@ async def test_spurious_below_threshold_does_not_quarantine():
     base = "pixsim7.backend.main.workers.worker_concurrency."
     with p_load, p_save, p_rel, p_hint, patch(
         base + "bump_spurious_concurrent_count", new_callable=AsyncMock, return_value=1,
-    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3):
+    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3), patch(
+        base + "_spurious_concurrent_quarantine_enabled", return_value=True,
+    ):
         result = await _adaptive_provider_concurrency_record_limit_error(
             generation=_make_generation(),
             account=_make_account(max_concurrent_jobs=8, current=1),
@@ -133,7 +135,9 @@ async def test_spurious_at_threshold_quarantines():
     base = "pixsim7.backend.main.workers.worker_concurrency."
     with p_load, p_save, p_rel, p_hint, patch(
         base + "bump_spurious_concurrent_count", new_callable=AsyncMock, return_value=3,
-    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3):
+    ), patch(base + "_spurious_concurrent_quarantine_threshold", return_value=3), patch(
+        base + "_spurious_concurrent_quarantine_enabled", return_value=True,
+    ):
         result = await _adaptive_provider_concurrency_record_limit_error(
             generation=_make_generation(),
             account=_make_account(max_concurrent_jobs=8, current=1),
@@ -146,6 +150,52 @@ async def test_spurious_at_threshold_quarantines():
     assert result["spurious_count"] == 3
     assert result["quarantine_now"] is True
     assert result["cap_lowered"] is False  # still never lowered on spurious
+
+
+@pytest.mark.asyncio
+async def test_quarantine_disabled_by_default():
+    """With the quarantine setting off (default), even repeated idle-rejects
+    never quarantine — cap protection still applies."""
+    state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=0)
+    p_load, p_save, p_rel, p_hint = _patches(state)
+    base = "pixsim7.backend.main.workers.worker_concurrency."
+    with p_load, p_save, p_rel, p_hint, patch(
+        base + "_spurious_concurrent_quarantine_enabled", return_value=False,
+    ):
+        result = await _adaptive_provider_concurrency_record_limit_error(
+            generation=_make_generation(),
+            account=_make_account(max_concurrent_jobs=8, current=1),
+            model="gemini-3.1-flash",
+            local_concurrency=1,
+            gen_logger=_NoopLogger(),
+        )
+
+    assert result["spurious"] is True       # still classified (protects cap)
+    assert result["quarantine_now"] is False  # but never pauses when disabled
+    assert result["cap_lowered"] is False
+
+
+@pytest.mark.asyncio
+async def test_backpressure_reject_is_not_spurious():
+    """A reject at higher local concurrency (flooding one image) is normal
+    backpressure, NOT the idle-reject bug: not spurious, and cap can lower."""
+    state = _state(effective_cap=8, configured_cap=8, in_cap_rejects=2)
+    p_load, p_save, p_rel, p_hint = _patches(state)
+    base = "pixsim7.backend.main.workers.worker_concurrency."
+    with p_load, p_save, p_rel, p_hint, patch(
+        base + "_spurious_concurrent_local_floor", return_value=1,
+    ):
+        result = await _adaptive_provider_concurrency_record_limit_error(
+            generation=_make_generation(),
+            account=_make_account(max_concurrent_jobs=8, current=5),
+            model="gemini-3.1-flash",
+            local_concurrency=5,  # 5 > floor(1) -> backpressure, not the bug
+            gen_logger=_NoopLogger(),
+        )
+
+    assert result["spurious"] is False
+    assert result["quarantine_now"] is False
+    assert result["cap_lowered"] is True  # normal adaptive learning still works
 
 
 @pytest.mark.asyncio
