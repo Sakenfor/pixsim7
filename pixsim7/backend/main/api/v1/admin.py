@@ -833,6 +833,222 @@ async def update_generation_worker_config(
     return ws
 
 
+# ===== PROVIDER CONCURRENCY HEALTH (adaptive cap + spurious-500044 quarantine) =====
+
+class ProviderConcurrencyAccount(BaseModel):
+    id: int
+    nickname: str | None = None
+    provider_id: str
+    status: str
+    configured_cap: int
+    effective_cap: int | None = None  # learned cap (Redis hint); None when not degraded
+    current_processing_jobs: int
+    degraded: bool
+
+
+class ProviderConcurrencyQuarantine(BaseModel):
+    provider_id: str
+    prompt_group_hash: str
+    account_id: int | None = None
+    trigger_generation_id: int | None = None
+    quarantined_at_ts: int | None = None
+    ttl_seconds: int | None = None
+
+
+class ProviderConcurrencyStatus(BaseModel):
+    settings: Dict[str, Any]
+    accounts: List[ProviderConcurrencyAccount]
+    quarantines: List[ProviderConcurrencyQuarantine]
+    paused_generation_count: int
+
+
+_QUARANTINE_PREFIX = "generation:prompt_concurrent_quarantine:"
+
+
+@router.get("/admin/provider-concurrency/status", response_model=ProviderConcurrencyStatus)
+async def get_provider_concurrency_status(user: CurrentUser, db: DatabaseSession):
+    """Live provider-concurrency health: per-account learned cap vs configured
+    cap, active spurious-500044 quarantines, and current knob values."""
+    from sqlalchemy import select, func
+    from pixsim7.backend.main.domain.providers import ProviderAccount
+    from pixsim7.backend.main.domain import Generation
+    from pixsim7.backend.main.domain.enums import GenerationStatus
+    from pixsim7.backend.main.workers.worker_concurrency import get_account_effective_cap_hint
+
+    ws = get_worker_settings()
+    settings_view = {
+        "spurious_concurrent_quarantine_enabled": ws.spurious_concurrent_quarantine_enabled,
+        "spurious_concurrent_local_floor": ws.spurious_concurrent_local_floor,
+        "spurious_concurrent_quarantine_threshold": ws.spurious_concurrent_quarantine_threshold,
+        "spurious_concurrent_count_ttl_seconds": ws.spurious_concurrent_count_ttl_seconds,
+        "prompt_concurrent_quarantine_ttl_seconds": ws.prompt_concurrent_quarantine_ttl_seconds,
+        "adaptive_provider_concurrency_enabled": ws.adaptive_provider_concurrency_enabled,
+    }
+
+    # Accounts + learned-cap hints
+    rows = (
+        await db.execute(
+            select(ProviderAccount).where(ProviderAccount.user_id == user.id)
+        )
+    ).scalars().all()
+    accounts: List[ProviderConcurrencyAccount] = []
+    for acct in rows:
+        configured = int(getattr(acct, "max_concurrent_jobs", 0) or 0)
+        hint = await get_account_effective_cap_hint(acct.id)
+        degraded = hint is not None and configured > 0 and hint < configured
+        accounts.append(
+            ProviderConcurrencyAccount(
+                id=acct.id,
+                nickname=getattr(acct, "nickname", None),
+                provider_id=acct.provider_id,
+                status=acct.status.value if hasattr(acct.status, "value") else str(acct.status),
+                configured_cap=configured,
+                effective_cap=hint,
+                current_processing_jobs=int(getattr(acct, "current_processing_jobs", 0) or 0),
+                degraded=bool(degraded),
+            )
+        )
+    # Surface degraded / in-use accounts first.
+    accounts.sort(key=lambda a: (not a.degraded, -a.current_processing_jobs, a.id))
+
+    # Active quarantines (Redis)
+    quarantines: List[ProviderConcurrencyQuarantine] = []
+    try:
+        redis_client = await get_redis()
+        async for key in redis_client.scan_iter(match=_QUARANTINE_PREFIX + "*"):
+            parts = key.split(":")
+            provider_id = parts[-2] if len(parts) >= 2 else "unknown"
+            prompt_hash = parts[-1]
+            raw = await redis_client.get(key)
+            ttl = await redis_client.ttl(key)
+            meta: Dict[str, Any] = {}
+            if raw:
+                try:
+                    meta = json.loads(raw)
+                except Exception:
+                    meta = {}
+            quarantines.append(
+                ProviderConcurrencyQuarantine(
+                    provider_id=provider_id,
+                    prompt_group_hash=prompt_hash,
+                    account_id=meta.get("account_id"),
+                    trigger_generation_id=meta.get("trigger_generation_id"),
+                    quarantined_at_ts=meta.get("quarantined_at_ts"),
+                    ttl_seconds=ttl if isinstance(ttl, int) and ttl >= 0 else None,
+                )
+            )
+    except Exception as e:
+        logger.warning("provider_concurrency_status_quarantine_scan_failed: %s", e)
+
+    paused_count = int(
+        (
+            await db.execute(
+                select(func.count(Generation.id)).where(
+                    Generation.user_id == user.id,
+                    Generation.status == GenerationStatus.PAUSED,
+                    Generation.error_code == "provider_concurrent_limit_quarantine",
+                )
+            )
+        ).scalar()
+        or 0
+    )
+
+    return ProviderConcurrencyStatus(
+        settings=settings_view,
+        accounts=accounts,
+        quarantines=quarantines,
+        paused_generation_count=paused_count,
+    )
+
+
+class ClearQuarantineBody(BaseModel):
+    provider_id: str
+    prompt_group_hash: str
+    resume_paused: bool = True
+
+
+@router.post("/admin/provider-concurrency/clear-quarantine")
+async def clear_provider_concurrency_quarantine(body: ClearQuarantineBody, user: CurrentUser, db: DatabaseSession):
+    """Lift a quarantine and (optionally) resume its paused generations."""
+    from pixsim7.backend.main.workers.worker_concurrency import (
+        _prompt_quarantine_key,
+        seed_agnostic_prompt_group_hash,
+    )
+
+    redis_client = await get_redis()
+    deleted = await redis_client.delete(_prompt_quarantine_key(body.provider_id, body.prompt_group_hash))
+
+    resumed = 0
+    if body.resume_paused:
+        resumed = await _resume_quarantined_matching(db, user, body.prompt_group_hash)
+
+    return {"cleared": bool(deleted), "resumed": resumed}
+
+
+@router.post("/admin/provider-concurrency/resume-quarantined")
+async def resume_quarantined_generations(user: CurrentUser, db: DatabaseSession):
+    """Resume every generation paused by the concurrent-limit quarantine."""
+    resumed = await _resume_quarantined_matching(db, user, None)
+    return {"resumed": resumed}
+
+
+class ResetCapBody(BaseModel):
+    account_id: int
+
+
+@router.post("/admin/provider-concurrency/reset-cap")
+async def reset_provider_concurrency_cap(body: ResetCapBody, user: CurrentUser):
+    """Reset an account's learned (degraded) concurrency cap back to configured.
+
+    Deletes the per-account adaptive-state + effective-cap-hint keys; the cap
+    re-derives from the configured maximum and probes back up as the provider
+    allows."""
+    redis_client = await get_redis()
+    deleted = 0
+    patterns = [
+        f"generation:provider_concurrency_adaptive:*:acct:{body.account_id}:*",
+        f"generation:account_effective_cap_hint:{body.account_id}",
+    ]
+    for pat in patterns:
+        keys = [k async for k in redis_client.scan_iter(match=pat)]
+        if keys:
+            deleted += await redis_client.delete(*keys)
+    return {"reset": True, "keys_deleted": deleted}
+
+
+async def _resume_quarantined_matching(db, user, prompt_group_hash: str | None) -> int:
+    """Resume PAUSED quarantine generations. When ``prompt_group_hash`` is given,
+    only those whose seed-agnostic key matches; otherwise all of them."""
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain import Generation
+    from pixsim7.backend.main.domain.enums import GenerationStatus
+    from pixsim7.backend.main.services.generation import GenerationService
+    from pixsim7.backend.main.services.user import UserService
+    from pixsim7.backend.main.workers.worker_concurrency import seed_agnostic_prompt_group_hash
+
+    paused = (
+        await db.execute(
+            select(Generation).where(
+                Generation.user_id == user.id,
+                Generation.status == GenerationStatus.PAUSED,
+                Generation.error_code == "provider_concurrent_limit_quarantine",
+            )
+        )
+    ).scalars().all()
+
+    gen_service = GenerationService(db, UserService(db))
+    resumed = 0
+    for gen in paused:
+        if prompt_group_hash is not None and seed_agnostic_prompt_group_hash(gen) != prompt_group_hash:
+            continue
+        try:
+            await gen_service.resume_generation(gen.id, user)
+            resumed += 1
+        except Exception as e:
+            logger.warning("resume_quarantined_failed gen=%s: %s", gen.id, e)
+    return resumed
+
+
 # ===== LLM CONFIG (CACHE TUNING) =====
 
 from pixsim7.backend.main.services.llm.llm_settings import LLMSettings, get_llm_settings

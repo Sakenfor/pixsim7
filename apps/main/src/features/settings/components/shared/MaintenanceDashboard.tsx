@@ -10,7 +10,10 @@
  *  3. Content Links       — content-blob linkage
  *  4. Upload Method       — source-attribution coverage
  *  5. Folder Context      — local asset folder metadata backfill
- *  6. Thumbnails          — action-only (regenerate missing)
+ *  6. Preview Derivatives — preview regen at current preview_size cap
+ *  7. Format Conversion   — image format conversion (webp/jpeg)
+ *  8. Signal Scan         — broken-video heuristic scan
+ *  9. Thumbnails          — action-only (regenerate missing)
  */
 
 import {
@@ -26,15 +29,25 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { BACKEND_BASE } from '@lib/api/client';
-import { withCorrelationHeaders } from '@lib/api/correlationHeaders';
 import { useAsyncTask, useAsyncTaskStore } from '@lib/asyncTask';
-import { authService } from '@lib/auth';
 import { Icon, type IconName } from '@lib/icons';
-
 
 import { DuplicatesRow } from './DuplicatesRow';
 import { DurationCohortTable } from './DurationCohortTable';
+import {
+  bustStatsCache,
+  extractErrorMessage,
+  fmt,
+  humanBytes,
+  maintGet,
+  maintPost,
+  readStatsCache,
+  writeStatsCache,
+} from './maintenanceShared';
+import { Spinner } from './MaintenanceSpinner';
+import { ProviderConcurrencyRow } from './ProviderConcurrencyRow';
+
+const SURFACE = 'settings:maintenance-dashboard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,6 +97,17 @@ interface FolderContextStats {
   percentage: number;
 }
 
+interface PreviewBackfillStats {
+  total_assets: number;
+  with_preview: number;
+  eligible_no_preview: number;
+  upgradeable: number;
+  not_eligible: number;
+  percentage: number;
+  target_size: number;
+  prev_cap: number;
+}
+
 interface HealthStatus {
   status: 'healthy' | 'degraded';
   database: string;
@@ -97,43 +121,6 @@ interface ActionResult {
 }
 
 // ---------------------------------------------------------------------------
-// API helpers
-// ---------------------------------------------------------------------------
-
-function authHeaders(): Record<string, string> {
-  const token = authService.getStoredToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function apiFetch<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
-  const res = await fetch(`${BACKEND_BASE}${path}`, {
-    method,
-    headers: withCorrelationHeaders(authHeaders(), 'settings:maintenance-dashboard'),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || res.statusText);
-  }
-  return res.json();
-}
-
-function fmt(n: number) {
-  return n.toLocaleString();
-}
-
-// ---------------------------------------------------------------------------
-// Spinner — local alias mapping legacy className-based callers to the shared
-// LoadingSpinner. Existing call sites pass `className="w-3 h-3"` etc.; we
-// translate those to the shared size variants.
-// ---------------------------------------------------------------------------
-
-function Spinner({ className = '' }: { className?: string }) {
-  // Heuristic: w-3 h-3 → xs; w-3.5 h-3.5 (default) → sm; otherwise default sm.
-  const size: 'xs' | 'sm' = /w-3\b/.test(className) ? 'xs' : 'sm';
-  return <LoadingSpinner size={size} />;
-}
-
-// ---------------------------------------------------------------------------
 // System health header
 // ---------------------------------------------------------------------------
 
@@ -141,7 +128,7 @@ function HealthHeader() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
-    apiFetch<HealthStatus>('/health').then(setHealth).catch(() => {});
+    maintGet<HealthStatus>('/health', SURFACE).then(setHealth).catch(() => {});
   }, []);
 
   if (!health) return null;
@@ -220,18 +207,27 @@ function resolveEndpoint(template: string, batchSize: number): string {
 
 function useMaintenanceRow<S>(config: RowConfig<S>, batchSize: number) {
   const taskId = `maintenance:${config.statsEndpoint}`;
-  const [stats, setStats] = useState<S | null>(null);
+  const [stats, setStats] = useState<S | null>(() =>
+    readStatsCache<S>(config.statsEndpoint),
+  );
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
+    const cached = readStatsCache<S>(config.statsEndpoint);
+    if (cached) {
+      setStats(cached);
+      setFetchError(null);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await apiFetch<S>(config.statsEndpoint);
+      const data = await maintGet<S>(config.statsEndpoint, SURFACE);
+      writeStatsCache(config.statsEndpoint, data);
       setStats(data);
       setFetchError(null);
-    } catch (err: any) {
-      setFetchError(err.message || 'Failed to load stats');
+    } catch (err) {
+      setFetchError(extractErrorMessage(err) || 'Failed to load stats');
     } finally {
       setLoading(false);
     }
@@ -241,9 +237,11 @@ function useMaintenanceRow<S>(config: RowConfig<S>, batchSize: number) {
     taskId,
     async () => {
       const endpoint = resolveEndpoint(config.actionEndpoint, batchSize);
-      const data = await apiFetch<any>(endpoint, 'POST');
+      const data = await maintPost<any>(endpoint, SURFACE);
       const msg = config.resultMessage(data);
-      const refreshed = await apiFetch<S>(config.statsEndpoint);
+      bustStatsCache(config.statsEndpoint);
+      const refreshed = await maintGet<S>(config.statsEndpoint, SURFACE);
+      writeStatsCache(config.statsEndpoint, refreshed);
       setStats(refreshed);
       return msg;
     },
@@ -593,6 +591,47 @@ const signalScanConfig: RowConfig<SignalScanStats> = {
   renderExtra: () => <DurationCohortTable />,
 };
 
+const previewBackfillConfig: RowConfig<PreviewBackfillStats> = {
+  statsEndpoint: '/api/v1/assets/preview-backfill-stats',
+  actionEndpoint: '/api/v1/assets/backfill-previews?limit={limit}',
+  defaultBatchSize: 100,
+  extract: (s) => {
+    const eligible = s.total_assets - s.not_eligible;
+    return {
+      done: s.with_preview,
+      total: eligible,
+      pct: s.percentage,
+      complete: s.eligible_no_preview === 0 && s.upgradeable === 0,
+      actionable: s.eligible_no_preview + s.upgradeable,
+      label: 'Preview Derivatives',
+      statsText:
+        eligible > 0
+          ? `${fmt(s.with_preview)} / ${fmt(eligible)} eligible have previews`
+          : 'No preview-eligible assets',
+      actionVerb: 'Regen',
+    };
+  },
+  detailLines: (s) => {
+    const lines: string[] = [];
+    if (s.eligible_no_preview > 0)
+      lines.push(`${fmt(s.eligible_no_preview)} need a first preview`);
+    if (s.upgradeable > 0)
+      lines.push(`${fmt(s.upgradeable)} below current cap (regen ≤ ${s.target_size}px)`);
+    if (s.not_eligible > 0)
+      lines.push(`${fmt(s.not_eligible)} below ${800}px source threshold (no preview by design)`);
+    if (s.eligible_no_preview === 0 && s.upgradeable === 0 && s.total_assets > 0)
+      lines.push(`All eligible assets have previews at ${s.target_size}px`);
+    return lines;
+  },
+  resultMessage: (d) => {
+    const parts: string[] = [];
+    if (d.enqueued > 0) parts.push(`${d.enqueued} regen jobs enqueued`);
+    if (d.skipped > 0) parts.push(`${d.skipped} skipped`);
+    if (d.errors > 0) parts.push(`${d.errors} errors`);
+    return parts.length > 0 ? parts.join(', ') : null;
+  },
+};
+
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
   statsEndpoint: '/api/v1/assets/format-conversion-stats?target_format=webp',
   actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit={limit}',
@@ -851,7 +890,7 @@ function ThumbnailRow({
     setActing(true);
     setResult(null);
     try {
-      const data = await apiFetch<any>('/api/v1/assets/backfill-thumbnails?limit=50&missing_only=true', 'POST');
+      const data = await maintPost<any>('/api/v1/assets/backfill-thumbnails?limit=50&missing_only=true', SURFACE);
       if (data.generated > 0 || data.errors > 0) {
         const parts: string[] = [];
         parts.push(`${data.generated} regenerated`);
@@ -861,8 +900,8 @@ function ThumbnailRow({
       } else {
         setResult({ message: 'No missing thumbnails found' });
       }
-    } catch (err: any) {
-      setResult({ message: err.message || 'Failed to regenerate', isError: true });
+    } catch (err) {
+      setResult({ message: extractErrorMessage(err) || 'Failed to regenerate', isError: true });
     } finally {
       setActing(false);
     }
@@ -1102,18 +1141,11 @@ function TableSizeBar({ data, toast, index }: { data: number; toast: number; ind
   const total = data + toast + index || 1;
   return (
     <div className="flex h-1.5 rounded-full overflow-hidden bg-muted min-w-[60px]">
-      <div className="bg-blue-500 h-full" style={{ width: `${(data / total) * 100}%` }} title={`Data: ${fmtSize(data)}`} />
-      <div className="bg-amber-400 h-full" style={{ width: `${(toast / total) * 100}%` }} title={`TOAST: ${fmtSize(toast)}`} />
-      <div className="bg-gray-400 h-full" style={{ width: `${(index / total) * 100}%` }} title={`Indexes: ${fmtSize(index)}`} />
+      <div className="bg-blue-500 h-full" style={{ width: `${(data / total) * 100}%` }} title={`Data: ${humanBytes(data)}`} />
+      <div className="bg-amber-400 h-full" style={{ width: `${(toast / total) * 100}%` }} title={`TOAST: ${humanBytes(toast)}`} />
+      <div className="bg-gray-400 h-full" style={{ width: `${(index / total) * 100}%` }} title={`Indexes: ${humanBytes(index)}`} />
     </div>
   );
-}
-
-function fmtSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
-  return `${(bytes / 1073741824).toFixed(1)} GB`;
 }
 
 function fmtCount(n: number): string {
@@ -1139,6 +1171,8 @@ function SeverityBadge({ severity }: { severity: string }) {
 // StorageOverview
 // ---------------------------------------------------------------------------
 
+const STORAGE_OVERVIEW_KEY = '/api/v1/assets/storage-overview';
+
 function StorageOverview({
   onRefresh,
 }: {
@@ -1151,13 +1185,20 @@ function StorageOverview({
   const [runningAction, setRunningAction] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
+    const cached = readStatsCache<StorageOverviewData>(STORAGE_OVERVIEW_KEY);
+    if (cached) {
+      setData(cached);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch<StorageOverviewData>('/api/v1/assets/storage-overview');
+      const resp = await maintGet<StorageOverviewData>(STORAGE_OVERVIEW_KEY, SURFACE);
+      writeStatsCache(STORAGE_OVERVIEW_KEY, resp);
       setData(resp);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load storage overview');
+    } catch (err) {
+      setError(extractErrorMessage(err) || 'Failed to load storage overview');
     } finally {
       setLoading(false);
     }
@@ -1180,15 +1221,18 @@ function StorageOverview({
     setRunningAction(id);
     setActionResult(null);
     try {
-      const result = await apiFetch<any>(endpoint, 'POST');
+      const result = await maintPost<any>(endpoint, SURFACE);
       const msg = result.dry_run
         ? `Dry run: ${result.freed_human || result.deleted_count + ' items'} would be freed`
         : `Done: ${result.freed_human || ''} freed`;
       setActionResult({ message: msg });
-      // Refresh after non-dry-run
-      if (!result.dry_run) fetchData();
-    } catch (err: any) {
-      setActionResult({ message: err.message || 'Action failed', isError: true });
+      // Refresh after non-dry-run — bust the cached scan first so it refetches.
+      if (!result.dry_run) {
+        bustStatsCache(STORAGE_OVERVIEW_KEY);
+        fetchData();
+      }
+    } catch (err) {
+      setActionResult({ message: extractErrorMessage(err) || 'Action failed', isError: true });
     } finally {
       setRunningAction(null);
     }
@@ -1351,7 +1395,7 @@ function StorageOverview({
           {data.unused_indexes.length > 0 && (
             <div className="pt-1.5 space-y-0.5">
               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                {data.unused_indexes.length} unused indexes ({fmtSize(data.unused_indexes.reduce((s, i) => s + i.size_bytes, 0))})
+                {data.unused_indexes.length} unused indexes ({humanBytes(data.unused_indexes.reduce((s, i) => s + i.size_bytes, 0))})
               </span>
               <div className="pl-2 space-y-0.5 max-h-[100px] overflow-y-auto">
                 {data.unused_indexes.slice(0, 10).map((idx) => (
@@ -1436,6 +1480,7 @@ const STATS_TASK_NAV: readonly TaskNavEntry[] = [
   { id: 'content',       label: 'Content Links',    icon: 'link' },
   { id: 'upload-method', label: 'Upload Method',    icon: 'upload' },
   { id: 'folder',        label: 'Folder Context',   icon: 'folderTree' },
+  { id: 'previews',      label: 'Preview Derivatives', icon: 'zoomIn' },
   { id: 'format',        label: 'Format Conversion', icon: 'image' },
   { id: 'signal',        label: 'Signal Scan',      icon: 'alertTriangle' },
 ];
@@ -1465,6 +1510,7 @@ export function MaintenanceDashboard() {
     content:         useMaintenanceTask(contentConfig, refreshCallbacks),
     'upload-method': useMaintenanceTask(uploadMethodConfig, refreshCallbacks),
     folder:          useMaintenanceTask(folderContextConfig, refreshCallbacks),
+    previews:        useMaintenanceTask(previewBackfillConfig, refreshCallbacks),
     format:          useMaintenanceTask(formatConversionConfig, refreshCallbacks),
     signal:          useMaintenanceTask(signalScanConfig, refreshCallbacks),
   } as const;
@@ -1472,6 +1518,7 @@ export function MaintenanceDashboard() {
   const refreshAll = async () => {
     setRefreshing(true);
     useAsyncTaskStore.getState().clearAll('maintenance:');
+    bustStatsCache();
     await Promise.allSettled(refreshCallbacks.current.map((cb) => cb()));
     setRefreshing(false);
   };
@@ -1493,6 +1540,11 @@ export function MaintenanceDashboard() {
         icon: isRunning ? <LoadingSpinner size="xs" /> : <Icon name={entry.icon} size={14} />,
       };
     }),
+    {
+      id: 'provider-concurrency',
+      label: 'Provider Concurrency',
+      icon: <Icon name="gauge" size={14} />,
+    },
     {
       id: 'duplicates',
       label: 'Duplicates',
@@ -1547,6 +1599,8 @@ export function MaintenanceDashboard() {
           <MaintenanceTaskDetail task={activeTask} />
         </div>
       )}
+
+      {activeId === 'provider-concurrency' && <ProviderConcurrencyRow />}
 
       {activeId === 'duplicates' && (
         <div className="p-4">
