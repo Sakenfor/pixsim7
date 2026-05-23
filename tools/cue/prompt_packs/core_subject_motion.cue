@@ -36,6 +36,12 @@ pack: #PromptBlockPackV1 & {
 						"stride", "strides", "striding",
 						"leap", "leaps", "leaping",
 						"pace", "pacing",
+						// Ballistic / vertical locomotion — these gate into the
+						// dedicated `jump` gait + jump/vault variants below
+						// rather than the walk/run gaits.
+						"jump", "jumps", "jumping", "jumped",
+						"hop", "hops", "hopping", "hopped",
+						"vault", "vaults", "vaulting", "vaulted",
 					]
 				}
 				op: {
@@ -184,6 +190,32 @@ pack: #PromptBlockPackV1 & {
 							direction: "right"
 							speed:     "slow"
 							gait:      "turn"
+						}
+					},
+					// Ballistic / vertical locomotion. Distinct `jump` gait so
+					// these read as jump-like motion rather than a walk/run gait.
+					{
+						key: "jump"
+						op_args: {
+							direction: "up"
+							speed:     "normal"
+							gait:      "jump"
+						}
+					},
+					{
+						key: "jump_forward"
+						op_args: {
+							direction: "forward"
+							speed:     "normal"
+							gait:      "jump"
+						}
+					},
+					{
+						key: "vault"
+						op_args: {
+							direction: "forward"
+							speed:     "fast"
+							gait:      "jump"
 						}
 					},
 				]

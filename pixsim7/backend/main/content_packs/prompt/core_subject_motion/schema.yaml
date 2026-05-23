@@ -50,6 +50,18 @@ blocks:
           - leaping
           - pace
           - pacing
+          - jump
+          - jumps
+          - jumping
+          - jumped
+          - hop
+          - hops
+          - hopping
+          - hopped
+          - vault
+          - vaults
+          - vaulting
+          - vaulted
       op:
         op_id: subject.move.apply
         signature_id: subject.motion.v1
@@ -94,6 +106,7 @@ blocks:
               - run
               - drift
               - turn
+              - jump
             default: walk
           - key: target_ref
             required: false
@@ -164,3 +177,18 @@ blocks:
             direction: right
             speed: slow
             gait: turn
+        - key: jump
+          op_args:
+            direction: up
+            speed: normal
+            gait: jump
+        - key: jump_forward
+          op_args:
+            direction: forward
+            speed: normal
+            gait: jump
+        - key: vault
+          op_args:
+            direction: forward
+            speed: fast
+            gait: jump
