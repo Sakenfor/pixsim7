@@ -150,20 +150,29 @@ class SyntheticGenerationService:
         asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Stamp generation_context onto media_metadata
-        from .context import build_generation_context, extract_source_asset_ids
+        from .context import (
+            build_generation_context,
+            extract_source_asset_ids,
+            compute_input_assets_key,
+        )
+        source_asset_ids = extract_source_asset_ids(gen_data["inputs"])
         gen_ctx = build_generation_context(
             operation_type=gen_data["operation_type"].value,
             provider_id=asset.provider_id,
             prompt=gen_data["final_prompt"],
             params={k: v for k, v in gen_data["canonical_params"].items()
                     if k not in ("operation_type", "_provider_asset_id")},
-            source_asset_ids=extract_source_asset_ids(gen_data["inputs"]),
+            source_asset_ids=source_asset_ids,
             prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
             reproducible_hash=gen_data["reproducible_hash"],
         )
         meta = asset.media_metadata or {}
         meta["generation_context"] = gen_ctx
         asset.media_metadata = meta
+
+        # Denormalize "same input assets" grouping key (parity with normal
+        # generation→asset path; synthetic path historically left this null).
+        asset.input_assets_key = compute_input_assets_key(source_asset_ids)
 
         # Explicit commit - FastAPI dependency doesn't auto-commit
         await self.db.commit()
@@ -220,20 +229,29 @@ class SyntheticGenerationService:
         asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Re-stamp generation_context onto asset media_metadata
-        from .context import build_generation_context, extract_source_asset_ids
+        from .context import (
+            build_generation_context,
+            extract_source_asset_ids,
+            compute_input_assets_key,
+        )
+        source_asset_ids = extract_source_asset_ids(gen_data["inputs"])
         gen_ctx = build_generation_context(
             operation_type=gen_data["operation_type"].value,
             provider_id=asset.provider_id,
             prompt=gen_data["final_prompt"],
             params={k: v for k, v in gen_data["canonical_params"].items()
                     if k not in ("operation_type", "_provider_asset_id")},
-            source_asset_ids=extract_source_asset_ids(gen_data["inputs"]),
+            source_asset_ids=source_asset_ids,
             prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
             reproducible_hash=gen_data["reproducible_hash"],
         )
         meta = asset.media_metadata or {}
         meta["generation_context"] = gen_ctx
         asset.media_metadata = meta
+
+        # Denormalize "same input assets" grouping key (parity with normal
+        # generation→asset path; synthetic path historically left this null).
+        asset.input_assets_key = compute_input_assets_key(source_asset_ids)
 
         self.db.add(generation)
         await self.db.commit()

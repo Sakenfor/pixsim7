@@ -68,6 +68,7 @@ class AssetEnrichmentService:
         asset: Asset,
         user: User,
         provider_metadata: Optional[Dict[str, Any]] = None,
+        resolve_by_hash: bool = True,
     ) -> Optional["Generation"]:
         """
         Full enrichment pipeline for synced provider assets.
@@ -107,7 +108,7 @@ class AssetEnrichmentService:
 
         # Step 1: Extract embedded assets and create lineage
         try:
-            await self._extract_and_register_embedded(asset, user)
+            await self._extract_and_register_embedded(asset, user, resolve_by_hash=resolve_by_hash)
         except Exception as e:
             logger.warning(
                 "enrich_synced_asset_embedded_failed",
@@ -150,6 +151,7 @@ class AssetEnrichmentService:
         asset: Asset,
         user: User,
         provider_metadata: Optional[Dict[str, Any]] = None,
+        resolve_by_hash: bool = True,
     ) -> Optional["Generation"]:
         """
         Re-enrich an asset that already has a generation by repopulating it.
@@ -213,7 +215,7 @@ class AssetEnrichmentService:
             )
 
             # Re-extract embedded assets and create new lineage
-            await self._extract_and_register_embedded(asset, user)
+            await self._extract_and_register_embedded(asset, user, resolve_by_hash=resolve_by_hash)
 
             # Check how many lineage edges were created
             from sqlalchemy import select, func
@@ -251,7 +253,12 @@ class AssetEnrichmentService:
 
         return generation
 
-    async def _extract_and_register_embedded(self, asset: Asset, user: User) -> None:
+    async def _extract_and_register_embedded(
+        self,
+        asset: Asset,
+        user: User,
+        resolve_by_hash: bool = True,
+    ) -> None:
         """
         Use provider hook to extract embedded assets (images/prompts) and
         register them as provider-agnostic Asset rows (REMOTE).
@@ -264,7 +271,10 @@ class AssetEnrichmentService:
         image is referenced by different ID formats (numeric vs UUID).
         """
         from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
-        from pixsim7.backend.main.services.asset.dedup import find_existing_asset
+        from pixsim7.backend.main.services.asset.dedup import (
+            find_existing_asset,
+            resolve_existing_asset_by_url_hash,
+        )
         from pixsim_logging import get_logger
         logger = get_logger()
 
@@ -372,6 +382,28 @@ class AssetEnrichmentService:
                 remote_url=remote_url,
             )
 
+            # Content-hash fallback: a source referenced only by a provider-side
+            # URL (e.g. an i2i generated on the provider's site) may be bytes we
+            # already hold under a different provider id. Download + hash + match
+            # sha256 before minting a duplicate stub. Only runs on id/URL miss,
+            # so it costs at most one download per unresolved source.
+            source_sha256: Optional[str] = None
+            if not existing_asset and resolve_by_hash:
+                existing_asset, source_sha256 = await resolve_existing_asset_by_url_hash(
+                    self.db,
+                    user_id=owner_user_id,
+                    provider_id=asset.provider_id,
+                    remote_url=remote_url,
+                )
+                if existing_asset:
+                    logger.info(
+                        "embedded_asset_hash_match",
+                        asset_id=asset.id,
+                        existing_asset_id=existing_asset.id,
+                        sha256_prefix=source_sha256[:16] if source_sha256 else None,
+                        detail="Resolved source to existing local asset via sha256",
+                    )
+
             if existing_asset:
                 logger.debug(
                     "embedded_asset_dedup_match",
@@ -383,7 +415,8 @@ class AssetEnrichmentService:
                 )
                 parent_asset = existing_asset
             else:
-                # Create new parent asset
+                # Create new parent asset. Stamp the source sha256 (if we
+                # computed one above) so future syncs dedup by content too.
                 parent_asset = await add_asset(
                     self.db,
                     user_id=owner_user_id,
@@ -398,6 +431,7 @@ class AssetEnrichmentService:
                     sync_status=SyncStatus.REMOTE,
                     source_generation_id=None,
                     media_metadata=item_metadata,
+                    sha256=source_sha256,
                 )
 
             # Get role from item or infer from create_mode

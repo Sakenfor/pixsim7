@@ -200,6 +200,69 @@ async def find_existing_asset(
     return None
 
 
+async def resolve_existing_asset_by_url_hash(
+    db: AsyncSession,
+    user_id: int,
+    provider_id: str,
+    remote_url: str,
+) -> tuple[Optional[Asset], Optional[str]]:
+    """
+    Last-resort source resolution: download the remote bytes, hash them, and
+    match against an existing asset's ``sha256``.
+
+    Used when provider-id / URL matching fails for a source image referenced
+    only by a (provider-side) URL — e.g. an i2i generated on the provider's own
+    site whose source image we already hold under a different provider id. The
+    same bytes ⇒ same sha256 ⇒ we can link the local asset instead of minting a
+    duplicate REMOTE stub.
+
+    Costs one byte download per call, so callers should only invoke it after the
+    cheap (id/URL) strategies miss.
+
+    Returns:
+        ``(asset, sha256)`` — ``asset`` is the matched local asset or ``None``;
+        ``sha256`` is the computed content hash (returned even on no-match so
+        callers can stamp it on a stub they create). ``(None, None)`` if the
+        download/hash failed.
+    """
+    if not remote_url:
+        return None, None
+
+    from pixsim7.backend.main.shared.http_utils import download_url_to_temp
+    from pixsim7.backend.main.shared.storage_utils import compute_sha256
+
+    temp_path: Optional[str] = None
+    try:
+        temp_path = await download_url_to_temp(
+            remote_url,
+            log_context={"purpose": "source_hash_resolve"},
+        )
+        sha256 = compute_sha256(temp_path)
+    except Exception as e:
+        logger.warning(
+            "source_hash_resolve_download_failed",
+            remote_url=remote_url[:120],
+            error=str(e),
+        )
+        return None, None
+    finally:
+        if temp_path:
+            import os
+
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    stmt = select(Asset).where(
+        Asset.sha256 == sha256,
+        Asset.user_id == user_id,
+    )
+    result = await db.execute(stmt)
+    existing = result.scalars().first()
+    return existing, sha256
+
+
 async def find_existing_assets_batch(
     db: AsyncSession,
     user_id: int,

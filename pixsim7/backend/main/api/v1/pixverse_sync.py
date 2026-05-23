@@ -414,7 +414,7 @@ async def sync_pixverse_assets(
                 )
                 continue
 
-            await add_asset(
+            asset = await add_asset(
                 db,
                 user_id=current_user.id,
                 media_type=MediaType.IMAGE,
@@ -425,11 +425,16 @@ async def sync_pixverse_assets(
                 sync_status=SyncStatus.REMOTE,
                 media_metadata=item["raw"],  # Full Pixverse payload
             )
+
+            # Enrich: extract embedded assets + create synthetic generation
+            await enrichment_service.enrich_synced_asset(asset, current_user, item["raw"])
+
             image_stats["created"] += 1
             logger.debug(
                 "pixverse_image_imported",
                 image_id=img_id,
                 account_id=account_id,
+                asset_id=asset.id,
             )
 
     logger.info(
