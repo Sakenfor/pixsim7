@@ -11,6 +11,7 @@ TEST_SUITE = {
     "category": "client/protocols",
     "covers": [
         "pixsim7/client/protocols.py",
+        "pixsim7/client/session.py",
     ],
     "order": 18.7,
 }
@@ -149,3 +150,55 @@ class TestCodexAgentMessageNotForwardedAsProgress:
         assert not any("Short answer" in d for d in forwarded)
         # Tool-call progress is still surfaced.
         assert any("shell_command" in d for d in forwarded)
+
+
+class TestToolInflightHeartbeat:
+    """A tool that runs silently (Bash script, blocking MCP call, subagent)
+    emits no stdout while it works. The session re-arms its inactivity timeout
+    during that silence and must pulse a `tool_running` heartbeat — carrying the
+    last action plus elapsed seconds — so the thinking bubble reads as "still
+    working" rather than a frozen last line. See session.py send_message.
+    """
+
+    @staticmethod
+    def _tool_use(command: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": command}}]},
+        }
+
+    def test_silent_tool_pulses_heartbeat_with_elapsed(self):
+        async def _run():
+            s = AgentCmdSession("test-session", command="claude")
+            s._process = _FakeProc()
+
+            progress: list[tuple[str, str]] = []
+
+            def on_progress(evt: str, detail: str) -> None:
+                progress.append((evt, detail))
+
+            async def feed():
+                await asyncio.sleep(0.05)
+                # Tool starts → opens the silent window (tool_inflight=True).
+                await s._response_queue.put(self._tool_use("pytest -q"))
+                # Stay silent long enough for one re-arm (slice = min(timeout,30)
+                # = 1s here), then finish the turn.
+                await asyncio.sleep(1.35)
+                await s._response_queue.put({"type": "result", "result": "done"})
+
+            feeder = asyncio.create_task(feed())
+            # timeout=1 → the in-flight re-arm slice is 1s, so the heartbeat
+            # fires once before the result lands.
+            result = await s.send_message("go", timeout=1, on_progress=on_progress)
+            await feeder
+            return result, progress
+
+        result, progress = asyncio.run(_run())
+
+        assert result == "done"
+        # The tool launch itself is surfaced.
+        assert any(evt == "progress" and "pytest -q" in detail for evt, detail in progress)
+        # A keepalive heartbeat fired during the silent wait, stamped with elapsed.
+        heartbeats = [detail for evt, detail in progress if evt == "tool_running"]
+        assert heartbeats, f"expected a tool_running heartbeat, got {progress}"
+        assert any("pytest -q" in d and "s)" in d for d in heartbeats)

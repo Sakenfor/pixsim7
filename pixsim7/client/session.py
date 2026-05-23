@@ -726,6 +726,9 @@ class AgentCmdSession:
         # killing the turn (mirrors the backend heartbeat-extend in
         # remote_cmd_bridge.dispatch_task_streaming).
         tool_inflight = False
+        # Wall-clock when the in-flight tool began emitting silence, so the
+        # re-arm heartbeat below can report elapsed seconds.
+        tool_started_at: Optional[datetime] = None
         try:
             while True:
                 while True:
@@ -738,11 +741,31 @@ class AgentCmdSession:
                         break
                     except asyncio.TimeoutError:
                         if tool_inflight and self.is_alive:
+                            elapsed_s = (
+                                int((datetime.now(timezone.utc) - tool_started_at).total_seconds())
+                                if tool_started_at is not None
+                                else None
+                            )
                             self._log.info(
                                 "session_tool_inflight_extend",
                                 last_action=self._busy_last_action,
                                 last_detail=self._busy_last_detail,
+                                elapsed_s=elapsed_s,
                             )
+                            # Pulse the thinking bubble so a long-running tool
+                            # (Bash script, blocking MCP call, subagent) reads
+                            # as "still working" instead of a frozen last line.
+                            # The elapsed stamp lets the user tell a healthy
+                            # long wait from a hang. Cadence follows the re-arm
+                            # slice (<=30s), complementing the bridge keepalive.
+                            if on_progress:
+                                detail = self._busy_last_detail or self._busy_last_action or "Working..."
+                                if elapsed_s is not None:
+                                    detail = f"{detail} ({elapsed_s}s)"
+                                try:
+                                    on_progress("tool_running", detail)
+                                except Exception:
+                                    self._log.debug("tool_inflight_progress_failed", exc_info=True)
                             continue
                         raise
 
@@ -751,6 +774,7 @@ class AgentCmdSession:
                 # block re-opens it (the tool is about to run); every other
                 # event means the agent is streaming again.
                 tool_inflight = False
+                tool_started_at = None
 
                 if parsed.kind == "init":
                     if parsed.session_id:
@@ -910,6 +934,7 @@ class AgentCmdSession:
                         # Tool is about to run → reopen the silent-gap window so
                         # the inactivity timeout extends until its result lands.
                         tool_inflight = True
+                        tool_started_at = datetime.now(timezone.utc)
 
                     # ── Tool gate: pause stdout reader until user approves ──
                     if tool_gate and _block_type == "tool_use" and isinstance(_first_block, dict):
