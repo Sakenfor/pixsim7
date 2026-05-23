@@ -535,7 +535,21 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
     }
     tokens.update(_iter_tag_tokens(tags_for_lexical))
     tokens.update(_iter_op_tokens(op_payload))
-    phrases = frozenset(_iter_tag_phrases(tags))
+
+    # Phrase-aware block-id matching: the leaf segment is the concept name
+    # (`core.camera.pov.over_shoulder` -> "over_shoulder"). Its adjacent-phrase
+    # form lets a multi-word block_id earn a phrase match, and its content
+    # tokens drive the compound gate in `_score_entry` that stops a lone shared
+    # token (e.g. the preposition "over") from crediting `over_shoulder`.
+    leaf_segment = block_id.split(".")[-1]
+    leaf_tokens = _tokenize(leaf_segment)
+    leaf_phrase = " ".join(leaf_segment.replace("_", " ").replace("-", " ").split())
+    block_id_phrases = (
+        frozenset({leaf_phrase})
+        if " " in leaf_phrase and len(leaf_phrase) >= 3
+        else frozenset()
+    )
+    phrases = frozenset(_iter_tag_phrases(tags)) | block_id_phrases
     context_synonyms = frozenset(_iter_context_synonym_tokens(tags))
 
     op_id_for_domain = _as_text(op_payload.get("op_id")) or ""
@@ -581,6 +595,8 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         "category": category,
         "tokens": frozenset(filtered_tokens),
         "block_tokens": frozenset(block_tokens),
+        "leaf_tokens": frozenset(leaf_tokens),
+        "block_id_phrases": block_id_phrases,
         "op_id": op_id,
         "signature_id": signature_id,
         "op_modalities": tuple(op_modalities),
@@ -880,7 +896,6 @@ def _score_entry(
         if token not in _INDEX_STOP_TOKENS and token not in _LOW_SIGNAL_OVERLAP_TOKENS
     }
     block_id_overlap = sorted(probe_tokens & entry_block_tokens)
-    block_id_bonus = min(0.24, 0.12 * len(block_id_overlap))
 
     entry_phrases = entry.get("phrases") or frozenset()
     phrase_haystack = evidence.get("phrase_haystack") or ""
@@ -890,6 +905,32 @@ def _score_entry(
             if f" {phrase} " in phrase_haystack:
                 matched_phrases.append(phrase)
     phrase_bonus = min(0.2, 0.12 * len(matched_phrases))
+
+    # Phrase-aware block-id gate. A block_id whose leaf names a multi-word
+    # concept (>=2 content tokens, e.g. "over_shoulder") must match on its
+    # phrase or on >=2 of its content tokens. A single shared token — typically
+    # a preposition like "over" colliding with `over_shoulder` — neither credits
+    # the block-id nor counts as specific evidence on its own.
+    leaf_content_tokens = {
+        token
+        for token in set(entry.get("leaf_tokens") or set())
+        if token not in _INDEX_STOP_TOKENS
+        and token not in _LOW_SIGNAL_OVERLAP_TOKENS
+        and token not in _DIRECTIONAL_TOKENS
+    }
+    is_compound_block_id = len(leaf_content_tokens) >= 2
+    block_id_phrases = entry.get("block_id_phrases") or frozenset()
+    matched_block_id_phrase = any(
+        phrase in matched_phrases for phrase in block_id_phrases
+    )
+    weak_compound_partial = (
+        is_compound_block_id
+        and len(probe_tokens & leaf_content_tokens) < 2
+        and not matched_block_id_phrase
+    )
+    block_id_bonus = (
+        0.0 if weak_compound_partial else min(0.24, 0.12 * len(block_id_overlap))
+    )
 
     score = min(
         1.0,
@@ -1124,17 +1165,24 @@ def _score_entry(
     if family_bonus:
         score = min(1.0, score + family_bonus)
 
+    # Tokens belonging to a weak compound-partial block-id don't count toward
+    # specific evidence — the lone "over" of "over_shoulder" must not qualify.
+    specific_overlap = [
+        token
+        for token in overlap_all
+        if not (weak_compound_partial and token in leaf_content_tokens)
+    ]
     has_specific_evidence = (
-        len(overlap_all) >= 2
+        len(specific_overlap) >= 2
         or any(
             token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
-            for token in overlap_all
+            for token in specific_overlap
         )
         or any(
             token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
             for token in overlap_keywords
         )
-        or bool(overlap_distinguishing)
+        or bool(overlap_distinguishing and not weak_compound_partial)
     )
     if not has_specific_evidence:
         return None
