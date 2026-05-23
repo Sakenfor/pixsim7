@@ -1,5 +1,7 @@
 package promptpacks
 
+import "list"
+
 #Modality: "image" | "video" | "both"
 
 #SimpleId:   =~"^[a-z][a-z0-9_]*$"
@@ -20,8 +22,36 @@ package promptpacks
 
 // Canonical shared enum values.
 #SpeedValues: ["slow", "normal", "fast"]
-#DirectionValuesNoNone: ["in", "out", "left", "right", "up", "down", "forward", "backward", "around"]
-#DirectionValues: ["in", "out", "left", "right", "up", "down", "forward", "backward", "around", "none"]
+// Canonical direction vocabulary — single source of truth for direction
+// VALUES and their projection SYNONYMS, shared by every movement-capable
+// domain (the standalone direction axis, subject motion, camera motion, …).
+// Add a direction or tweak a synonym here once; every consumer inherits it.
+// Consumers:
+//   - core_direction: comprehends the whole list into its axis variants.
+//   - core_subject_motion / core_camera: pull one entry's synonyms by value
+//     via #DirectionSynonyms.<value> onto the matching variant.
+#DirectionVocabularyList: [...{value: #SimpleId, synonyms: [...string]}] & [
+	{value: "in", synonyms: ["inward", "inside", "into", "toward center", "closer"]},
+	{value: "out", synonyms: ["outward", "outside", "away", "from center", "further"]},
+	{value: "left", synonyms: ["leftward", "port", "left side", "to the left", "slide left"]},
+	{value: "right", synonyms: ["rightward", "starboard", "right side", "to the right", "slide right"]},
+	{value: "up", synonyms: ["upward", "rise", "ascend", "look up", "toward ceiling"]},
+	{value: "down", synonyms: ["downward", "lower", "descend", "look down", "toward floor"]},
+	{value: "forward", synonyms: ["ahead", "onward", "toward", "advance", "move forward"]},
+	{value: "backward", synonyms: ["back", "reverse", "rearward", "retreat", "step back"]},
+	{value: "around", synonyms: ["circle", "encircle", "around", "spin around", "rotate around"]},
+]
+
+// value → synonyms map, for consumers wiring one variant at a time.
+#DirectionSynonyms: {
+	for _e in #DirectionVocabularyList {
+		"\(_e.value)": _e.synonyms
+	}
+}
+
+// Ordered value lists derived from the vocabulary above.
+#DirectionValuesNoNone: [for _e in #DirectionVocabularyList {_e.value}]
+#DirectionValues: list.Concat([#DirectionValuesNoNone, ["none"]])
 #ShotSizeValues: ["extreme_wide", "wide", "medium", "close_up", "extreme_close_up"]
 #SubjectCountValues: ["single", "pair", "group"]
 #FocusTargetValues: ["subject", "target", "background"]

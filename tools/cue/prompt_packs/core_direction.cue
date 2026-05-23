@@ -50,125 +50,16 @@ pack: #PromptBlockPackV1 & {
 						"orbit",
 					]
 				}
-				variants: [
-					{
-						key: "in"
-						tags: {
-							direction: "in"
-							direction_synonyms: [
-								"inward",
-								"inside",
-								"into",
-								"toward center",
-								"closer",
-							]
-						}
-					},
-					{
-						key: "out"
-						tags: {
-							direction: "out"
-							direction_synonyms: [
-								"outward",
-								"outside",
-								"away",
-								"from center",
-								"further",
-							]
-						}
-					},
-					{
-						key: "left"
-						tags: {
-							direction: "left"
-							direction_synonyms: [
-								"leftward",
-								"port",
-								"left side",
-								"to the left",
-								"slide left",
-							]
-						}
-					},
-					{
-						key: "right"
-						tags: {
-							direction: "right"
-							direction_synonyms: [
-								"rightward",
-								"starboard",
-								"right side",
-								"to the right",
-								"slide right",
-							]
-						}
-					},
-					{
-						key: "up"
-						tags: {
-							direction: "up"
-							direction_synonyms: [
-								"upward",
-								"rise",
-								"ascend",
-								"look up",
-								"toward ceiling",
-							]
-						}
-					},
-					{
-						key: "down"
-						tags: {
-							direction: "down"
-							direction_synonyms: [
-								"downward",
-								"lower",
-								"descend",
-								"look down",
-								"toward floor",
-							]
-						}
-					},
-					{
-						key: "forward"
-						tags: {
-							direction: "forward"
-							direction_synonyms: [
-								"ahead",
-								"onward",
-								"toward",
-								"advance",
-								"move forward",
-							]
-						}
-					},
-					{
-						key: "backward"
-						tags: {
-							direction: "backward"
-							direction_synonyms: [
-								"back",
-								"reverse",
-								"rearward",
-								"retreat",
-								"step back",
-							]
-						},
-					},
-					{
-						key: "around"
-						tags: {
-							direction: "around"
-							direction_synonyms: [
-								"circle",
-								"encircle",
-								"around",
-								"spin around",
-								"rotate around",
-							]
-						}
-					},
-				]
+				// Variants comprehended from the shared direction vocabulary
+				// (schema_v1.cue #DirectionVocabularyList) — single source of
+				// truth for values + synonyms.
+				variants: [for _e in #DirectionVocabularyList {
+					key: _e.value
+					tags: {
+						direction:          _e.value
+						direction_synonyms: _e.synonyms
+					}
+				}]
 			},
 		},
 	]

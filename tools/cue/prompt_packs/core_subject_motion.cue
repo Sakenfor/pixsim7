@@ -95,130 +95,37 @@ pack: #PromptBlockPackV1 & {
 						gait:      "walk"
 					}
 				}
-				variants: [
-					{
-						key: "move_forward"
-						op_args: {
-							direction: "forward"
-							speed:     "normal"
-							gait:      "walk"
-						}
-					},
-					{
-						key: "move_left"
-						op_args: {
-							direction: "left"
-							speed:     "slow"
-							gait:      "step"
-						}
-					},
-					{
-						key: "move_right"
-						op_args: {
-							direction: "right"
-							speed:     "slow"
-							gait:      "step"
-						}
-					},
-					{
-						key: "turn_around"
-						op_args: {
-							direction: "around"
-							speed:     "normal"
-							gait:      "turn"
-						}
-					},
-					{
-						key: "move_backward"
-						op_args: {
-							direction: "backward"
-							speed:     "normal"
-							gait:      "walk"
-						}
-					},
-					{
-						key: "move_in"
-						op_args: {
-							direction: "in"
-							speed:     "slow"
-							gait:      "step"
-						}
-					},
-					{
-						key: "move_out"
-						op_args: {
-							direction: "out"
-							speed:     "slow"
-							gait:      "step"
-						}
-					},
-					{
-						key: "run_forward"
-						op_args: {
-							direction: "forward"
-							speed:     "fast"
-							gait:      "run"
-						}
-					},
-					{
-						key: "drift_left"
-						op_args: {
-							direction: "left"
-							speed:     "slow"
-							gait:      "drift"
-						}
-					},
-					{
-						key: "drift_right"
-						op_args: {
-							direction: "right"
-							speed:     "slow"
-							gait:      "drift"
-						}
-					},
-					{
-						key: "turn_left"
-						op_args: {
-							direction: "left"
-							speed:     "slow"
-							gait:      "turn"
-						}
-					},
-					{
-						key: "turn_right"
-						op_args: {
-							direction: "right"
-							speed:     "slow"
-							gait:      "turn"
-						}
-					},
-					// Ballistic / vertical locomotion. Distinct `jump` gait so
-					// these read as jump-like motion rather than a walk/run gait.
-					{
-						key: "jump"
-						op_args: {
-							direction: "up"
-							speed:     "normal"
-							gait:      "jump"
-						}
-					},
-					{
-						key: "jump_forward"
-						op_args: {
-							direction: "forward"
-							speed:     "normal"
-							gait:      "jump"
-						}
-					},
-					{
-						key: "vault"
-						op_args: {
-							direction: "forward"
-							speed:     "fast"
-							gait:      "jump"
-						}
-					},
-				]
+				// Variants comprehended from a (key, direction, speed, gait)
+				// table — direction values come from the shared vocabulary's
+				// enum (#DirectionValuesNoNone). Direction *synonyms* are
+				// intentionally NOT projected onto motion variants: the eval
+				// showed the extra cross-domain tokens (e.g. "back", "look down")
+				// displace correct matches, and core_direction already carries
+				// them. Ballistic locomotion uses the distinct `jump` gait.
+				variants: [for _v in [
+					{key: "move_forward", direction:  "forward", speed:  "normal", gait: "walk"},
+					{key: "move_left", direction:     "left", speed:     "slow", gait: "step"},
+					{key: "move_right", direction:    "right", speed:    "slow", gait: "step"},
+					{key: "turn_around", direction:   "around", speed:   "normal", gait: "turn"},
+					{key: "move_backward", direction: "backward", speed: "normal", gait: "walk"},
+					{key: "move_in", direction:       "in", speed:       "slow", gait: "step"},
+					{key: "move_out", direction:      "out", speed:      "slow", gait: "step"},
+					{key: "run_forward", direction:   "forward", speed:  "fast", gait: "run"},
+					{key: "drift_left", direction:    "left", speed:     "slow", gait: "drift"},
+					{key: "drift_right", direction:   "right", speed:    "slow", gait: "drift"},
+					{key: "turn_left", direction:     "left", speed:     "slow", gait: "turn"},
+					{key: "turn_right", direction:    "right", speed:    "slow", gait: "turn"},
+					{key: "jump", direction:          "up", speed:       "normal", gait: "jump"},
+					{key: "jump_forward", direction:  "forward", speed:  "normal", gait: "jump"},
+					{key: "vault", direction:         "forward", speed:  "fast", gait: "jump"},
+				] {
+					key: _v.key
+					op_args: {
+						direction: _v.direction
+						speed:     _v.speed
+						gait:      _v.gait
+					}
+				}]
 			}
 		},
 	]
