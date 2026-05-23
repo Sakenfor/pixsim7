@@ -108,7 +108,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     setLoading(true);
     setError('');
     try {
-      const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans?refresh=true');
+      const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans');
       const canonicalPlans = res.plans.filter((p) => isCanonicalPlanId(p.id));
       if (canonicalPlans.length !== res.plans.length) {
         console.warn('PlansPanel: dropped non-canonical plan IDs from sidebar list');

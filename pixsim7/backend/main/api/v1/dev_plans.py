@@ -273,7 +273,6 @@ async def list_plans(
     include_hidden: bool = Query(False, description="Include archived and removed plans (hidden by default)"),
     limit: int = Query(100, ge=1, le=500, description="Max plans to return"),
     offset: int = Query(0, ge=0, description="Number of plans to skip"),
-    refresh: bool = Query(False),
     db: AsyncSession = Depends(get_database),
 ):
     bundles = await list_plan_bundles(db)

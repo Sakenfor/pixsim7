@@ -180,7 +180,7 @@ export function PlanDetailView({
     setLoading(true);
     setError('');
     pixsimClient
-      .get<PlanDetail>(`/dev/plans/${encodedPlanId}?refresh=true`)
+      .get<PlanDetail>(`/dev/plans/${encodedPlanId}`)
       .then((res) => setDetail(res))
       .catch((err) => setError(toErrorMessage(err, 'Failed to load plan')))
       .finally(() => setLoading(false));
