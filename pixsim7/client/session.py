@@ -853,10 +853,19 @@ class AgentCmdSession:
                     _first_block = (_content[0] if isinstance(_content, list) and _content else _content) if _content else {}
                     _block_type = _first_block.get("type", "") if isinstance(_first_block, dict) else ""
                     is_text_block = raw_type == "assistant" and _block_type == "text"
+                    # Codex emits completed `agent_message` items as narration between
+                    # tool batches, each carrying full reply-like text. Capture them as
+                    # the running result, but (like Claude's is_text_block, suppressed
+                    # below) do NOT forward them as progress: reply text painted into
+                    # the thinking bubble reads as "the answer started over from
+                    # scratch" each time a new narration lands. Tool-call item/completed
+                    # events stay forwardable (useful "Using tool: …" status).
+                    is_agent_message_completed = False
                     if raw_type == "item.completed" or raw_method_norm == "item/completed":
                         item = raw.get("item") or raw.get("params", {}).get("item", {})
                         if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
                             result_text = item["text"]
+                            is_agent_message_completed = True
                     # Also accumulate streaming deltas (app-server agentMessage/delta)
                     elif is_delta:
                         delta = raw.get("params", {}).get("delta", "")
@@ -877,7 +886,14 @@ class AgentCmdSession:
                         type=raw_type or raw_method_norm,
                         is_delta=is_delta,
                         is_text=is_text_block,
-                        forwarded=bool(on_progress and parsed.text and not is_delta and not is_text_block),
+                        is_agent_message=is_agent_message_completed,
+                        forwarded=bool(
+                            on_progress
+                            and parsed.text
+                            and not is_delta
+                            and not is_text_block
+                            and not is_agent_message_completed
+                        ),
                         text_len=len(parsed.text) if parsed.text else 0,
                         result_len=len(result_text),
                     )
@@ -905,8 +921,16 @@ class AgentCmdSession:
                             self._mark_ready()
                             raise RuntimeError(f"Tool denied by user: {gate_name}")
 
-                    # Only forward meaningful progress (tool use, thinking, status) — skip streaming text
-                    if on_progress and parsed.text and not is_delta and not is_text_block:
+                    # Only forward meaningful progress (tool use, thinking, status) —
+                    # skip streaming text (Claude deltas/text blocks) and Codex
+                    # completed agent_message narration (full reply-like text).
+                    if (
+                        on_progress
+                        and parsed.text
+                        and not is_delta
+                        and not is_text_block
+                        and not is_agent_message_completed
+                    ):
                         on_progress("progress", parsed.text)
 
                 else:
