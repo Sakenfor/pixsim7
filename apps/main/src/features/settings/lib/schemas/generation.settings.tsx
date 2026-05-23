@@ -69,6 +69,11 @@ interface GenerationWorkerServerConfig {
   adaptive_provider_concurrency_raise_after_consecutive_probe_successes: number;
   max_pinned_concurrent_waits: number;
   pinned_concurrent_wait_counter_ttl_seconds: number;
+  spurious_concurrent_quarantine_enabled: boolean;
+  spurious_concurrent_local_floor: number;
+  spurious_concurrent_quarantine_threshold: number;
+  spurious_concurrent_count_ttl_seconds: number;
+  prompt_concurrent_quarantine_ttl_seconds: number;
 }
 
 async function fetchGenerationWorkerServerConfig(): Promise<GenerationWorkerServerConfig> {
@@ -621,6 +626,53 @@ const generationGroups: SettingGroup[] = [
         step: 60,
         defaultValue: 172800,
       },
+      {
+        id: 'serverWorker_spuriousConcurrentQuarantineEnabled',
+        type: 'toggle',
+        label: 'Spurious 500044 Quarantine',
+        description: 'Auto-pause a request that repeatedly trips the provider concurrent-limit while the account is idle (a content-path bug). Off by default — cap protection still applies regardless.',
+        defaultValue: false,
+      },
+      {
+        id: 'serverWorker_spuriousConcurrentLocalFloor',
+        type: 'number',
+        label: 'Idle-Reject Floor (local ≤)',
+        description: 'Max in-flight count at which a concurrent-limit reject is treated as a provider-side request bug. Higher in-flight is normal backpressure and ignored.',
+        min: 1,
+        max: 64,
+        step: 1,
+        defaultValue: 1,
+      },
+      {
+        id: 'serverWorker_spuriousConcurrentQuarantineThreshold',
+        type: 'number',
+        label: 'Quarantine Threshold',
+        description: 'Idle-rejects for the same request (within the count window) before it is quarantined.',
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 3,
+      },
+      {
+        id: 'serverWorker_spuriousConcurrentCountTtlSeconds',
+        type: 'number',
+        label: 'Idle-Reject Count Window (s)',
+        description: 'Redis TTL for the per-request idle-reject streak counter.',
+        min: 10,
+        max: 86400,
+        step: 10,
+        defaultValue: 120,
+      },
+      {
+        id: 'serverWorker_promptConcurrentQuarantineTtlSeconds',
+        type: 'number',
+        label: 'Quarantine Duration (s)',
+        description: 'How long a quarantined request stays auto-paused before it can run again.',
+        min: 60,
+        max: 86400,
+        step: 60,
+        defaultValue: 1800,
+      },
     ],
   },
   {
@@ -700,6 +752,11 @@ const GENERATION_WORKER_FIELD_MAP: Record<string, keyof GenerationWorkerServerCo
   serverWorker_adaptiveProviderConcurrencyRaiseAfterConsecutiveProbeSuccesses: 'adaptive_provider_concurrency_raise_after_consecutive_probe_successes',
   serverWorker_maxPinnedConcurrentWaits: 'max_pinned_concurrent_waits',
   serverWorker_pinnedConcurrentWaitCounterTtlSeconds: 'pinned_concurrent_wait_counter_ttl_seconds',
+  serverWorker_spuriousConcurrentQuarantineEnabled: 'spurious_concurrent_quarantine_enabled',
+  serverWorker_spuriousConcurrentLocalFloor: 'spurious_concurrent_local_floor',
+  serverWorker_spuriousConcurrentQuarantineThreshold: 'spurious_concurrent_quarantine_threshold',
+  serverWorker_spuriousConcurrentCountTtlSeconds: 'spurious_concurrent_count_ttl_seconds',
+  serverWorker_promptConcurrentQuarantineTtlSeconds: 'prompt_concurrent_quarantine_ttl_seconds',
 };
 
 // Field ID → server config key mapping (llm namespace)
@@ -714,6 +771,7 @@ const SERVER_BOOLEAN_FIELDS = new Set([
   'server_autoRetryEnabled',
   'serverWorker_contentFilterYieldCountsAsRetry',
   'serverWorker_adaptiveProviderConcurrencyEnabled',
+  'serverWorker_spuriousConcurrentQuarantineEnabled',
   'server_llmCacheEnabled',
 ]);
 
@@ -998,6 +1056,11 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       serverWorker_adaptiveProviderConcurrencyRaiseAfterConsecutiveProbeSuccesses: generationWorkerConfig?.adaptive_provider_concurrency_raise_after_consecutive_probe_successes,
       serverWorker_maxPinnedConcurrentWaits: generationWorkerConfig?.max_pinned_concurrent_waits,
       serverWorker_pinnedConcurrentWaitCounterTtlSeconds: generationWorkerConfig?.pinned_concurrent_wait_counter_ttl_seconds,
+      serverWorker_spuriousConcurrentQuarantineEnabled: generationWorkerConfig?.spurious_concurrent_quarantine_enabled,
+      serverWorker_spuriousConcurrentLocalFloor: generationWorkerConfig?.spurious_concurrent_local_floor,
+      serverWorker_spuriousConcurrentQuarantineThreshold: generationWorkerConfig?.spurious_concurrent_quarantine_threshold,
+      serverWorker_spuriousConcurrentCountTtlSeconds: generationWorkerConfig?.spurious_concurrent_count_ttl_seconds,
+      serverWorker_promptConcurrentQuarantineTtlSeconds: generationWorkerConfig?.prompt_concurrent_quarantine_ttl_seconds,
       // Server config fields — LLM
       server_llmCacheEnabled: llmConfig?.llm_cache_enabled,
       server_llmCacheTtl: llmConfig?.llm_cache_ttl,
